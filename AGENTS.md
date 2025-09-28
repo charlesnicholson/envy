@@ -10,7 +10,7 @@
 
 ## Build, Test, and Development Commands
 - `cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON` configures an out-of-tree build rooted at `out/`. Ninja is the only supported generator—avoid Makefiles so third-party downloads, installs, and object files remain isolated and deleting `out/` resets the tree.
-- `cmake --build out --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (SecureTransport), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3.
+- `cmake --build out --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3.
 - `ctest --test-dir out -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration. Always re-run after touching dependency options.
 - When iterating on dependency behaviour, rebuild individual targets with `cmake --build out --target <dependency>` to avoid full reconfigure cycles.
 
@@ -23,7 +23,7 @@
 - Extend `tests/third_party_smoke.cpp` with any new link-time probes. New behaviour warrants additional focused executables registered through `add_test`.
 - Runtime checks should remain fast (<1s) and must clean up allocations (e.g., `git_libgit2_shutdown`, `curl_easy_cleanup`, `archive_write_free`).
 - For diagnosis, use `ctest -V` or filter with `ctest -R <pattern>`; document nuanced repro steps in PR descriptions or `docs/`.
-- Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit. Static hashing needs (e.g., MD5) should lean on the bundled mbedTLS implementation rather than bespoke code.
+- Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit. Static hashing needs (e.g., MD5) should lean on the bundled OpenSSL implementation rather than bespoke code.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit headers (`feat:`, `fix:`, `build:`, `docs:`) so changelog automation remains straightforward.

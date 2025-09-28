@@ -11,7 +11,8 @@ All downloads, source trees, and install steps are redirected underneath the act
 
 ## libcurl
 - Source: https://github.com/curl/curl (tag `curl-8_8_0`).
-- Built with SecureTransport and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined.
+- Built with OpenSSL (using the in-tree static toolchain) and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined, and the TLS backend now aligns with the rest of the project.
+- On macOS the build points `CURL_CA_BUNDLE` at `/etc/ssl/cert.pem` so OpenSSL inherits the system trust store; adjust the corresponding cache entry if another path is required on your platform.
 
 ## libssh2
 - Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.0`).

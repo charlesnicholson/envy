@@ -20,6 +20,89 @@ find_library(RESOLV_LIBRARY resolv REQUIRED)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
+# OpenSSL --------------------------------------------------------------------
+set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl" CACHE PATH "" FORCE)
+set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+
+find_program(PERL_EXECUTABLE perl REQUIRED)
+find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
+
+set(_openssl_target "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+        set(_openssl_target "darwin64-arm64-cc")
+    else()
+        set(_openssl_target "darwin64-x86_64-cc")
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        set(_openssl_target "linux-aarch64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+        set(_openssl_target "linux-x86_64")
+    endif()
+endif()
+
+if(_openssl_target STREQUAL "")
+    message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+ExternalProject_Add(openssl
+    GIT_REPOSITORY https://github.com/openssl/openssl.git
+    GIT_TAG openssl-3.2.1
+    GIT_SHALLOW TRUE
+    UPDATE_DISCONNECTED TRUE
+    CONFIGURE_COMMAND ${PERL_EXECUTABLE} Configure ${_openssl_target} --prefix=${OPENSSL_INSTALL_DIR} --libdir=lib no-shared no-tests no-apps no-dso
+    BUILD_COMMAND ${OPENSSL_MAKE_COMMAND} -j
+    INSTALL_COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
+    BUILD_IN_SOURCE ON
+    BUILD_BYPRODUCTS
+        ${OPENSSL_INSTALL_DIR}/lib/libssl.a
+        ${OPENSSL_INSTALL_DIR}/lib/libcrypto.a
+)
+
+set(_OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include")
+set(_OPENSSL_LIB_DIR "${OPENSSL_INSTALL_DIR}/lib")
+set(_OPENSSL_SSL_LIBRARY "${_OPENSSL_LIB_DIR}/libssl.a")
+set(_OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_LIB_DIR}/libcrypto.a")
+
+file(MAKE_DIRECTORY "${_OPENSSL_INCLUDE_DIR}")
+file(MAKE_DIRECTORY "${_OPENSSL_LIB_DIR}")
+
+if(NOT TARGET OpenSSL::Crypto)
+    add_library(openssl_crypto STATIC IMPORTED GLOBAL)
+    set_target_properties(openssl_crypto PROPERTIES
+        IMPORTED_LOCATION "${_OPENSSL_CRYPTO_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}")
+    add_dependencies(openssl_crypto openssl)
+    add_library(OpenSSL::Crypto ALIAS openssl_crypto)
+endif()
+
+if(NOT TARGET OpenSSL::SSL)
+    add_library(openssl_ssl STATIC IMPORTED GLOBAL)
+    set_target_properties(openssl_ssl PROPERTIES
+        IMPORTED_LOCATION "${_OPENSSL_SSL_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}"
+        INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
+    add_dependencies(openssl_ssl openssl)
+    add_library(OpenSSL::SSL ALIAS openssl_ssl)
+endif()
+
+set(_OpenSSL_CONFIG_DIR "${CMAKE_BINARY_DIR}/cmake/openssl")
+file(MAKE_DIRECTORY "${_OpenSSL_CONFIG_DIR}")
+set(OPENSSL_CONFIG_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}")
+set(OPENSSL_CONFIG_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}")
+set(OPENSSL_CONFIG_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}")
+configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/OpenSSLConfig.cmake.in"
+    "${_OpenSSL_CONFIG_DIR}/OpenSSLConfig.cmake"
+    @ONLY
+)
+set(OpenSSL_DIR "${_OpenSSL_CONFIG_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
+set(OPENSSL_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}" CACHE FILEPATH "" FORCE)
+
 # libgit2 -------------------------------------------------------------------
 set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
 set(USE_SSH ON CACHE BOOL "" FORCE)
@@ -62,14 +145,28 @@ unset(_libgit2_target)
 unset(_codex_libgit2_warning_silencers)
 
 # libcurl -------------------------------------------------------------------
-set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
-set(CURL_USE_SECTRANSP ON CACHE BOOL "" FORCE)
+set(CMAKE_USE_OPENSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_SECTRANSP OFF CACHE BOOL "" FORCE)
 set(CURL_ZLIB ON CACHE BOOL "" FORCE)
 set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
 set(ENABLE_THREADED_RESOLVER ON CACHE BOOL "" FORCE)
 set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(CURL_ENABLE_SSL ON CACHE BOOL "" FORCE)
-set(CURL_CA_BUNDLE "auto" CACHE STRING "" FORCE)
+
+set(_curl_ca_bundle "")
+if(APPLE)
+    set(_curl_ca_bundle "/etc/ssl/cert.pem")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_curl_ca_bundle "/etc/ssl/certs/ca-certificates.crt")
+endif()
+
+if(_curl_ca_bundle AND EXISTS "${_curl_ca_bundle}")
+    set(CURL_CA_BUNDLE "${_curl_ca_bundle}" CACHE STRING "" FORCE)
+else()
+    set(CURL_CA_BUNDLE "auto" CACHE STRING "" FORCE)
+endif()
+unset(_curl_ca_bundle)
 FetchContent_Declare(libcurl
     GIT_REPOSITORY https://github.com/curl/curl.git
     GIT_TAG curl-8_8_0
@@ -78,6 +175,12 @@ FetchContent_Declare(libcurl
 FetchContent_MakeAvailable(libcurl)
 if(NOT TARGET CURL::libcurl)
     add_library(CURL::libcurl ALIAS libcurl)
+endif()
+if(TARGET libcurl_static)
+    add_dependencies(libcurl_static openssl)
+endif()
+if(TARGET libcurl_shared)
+    add_dependencies(libcurl_shared openssl)
 endif()
 
 # oneTBB --------------------------------------------------------------------
@@ -179,86 +282,6 @@ if(NOT blake3_POPULATED)
     target_include_directories(blake3 PUBLIC "${blake3_SOURCE_DIR}/c")
     add_library(blake3::blake3 ALIAS blake3)
 endif()
-
-# OpenSSL --------------------------------------------------------------------
-set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl" CACHE PATH "" FORCE)
-set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
-
-find_program(PERL_EXECUTABLE perl REQUIRED)
-find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
-
-set(_openssl_target "")
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
-        set(_openssl_target "darwin64-arm64-cc")
-    else()
-        set(_openssl_target "darwin64-x86_64-cc")
-    endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-        set(_openssl_target "linux-aarch64")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-        set(_openssl_target "linux-x86_64")
-    endif()
-endif()
-
-if(_openssl_target STREQUAL "")
-    message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
-endif()
-
-ExternalProject_Add(openssl
-    GIT_REPOSITORY https://github.com/openssl/openssl.git
-    GIT_TAG openssl-3.2.1
-    GIT_SHALLOW TRUE
-    UPDATE_DISCONNECTED TRUE
-    CONFIGURE_COMMAND ${PERL_EXECUTABLE} Configure ${_openssl_target} --prefix=${OPENSSL_INSTALL_DIR} --libdir=lib no-shared no-tests no-apps no-dso
-    BUILD_COMMAND ${OPENSSL_MAKE_COMMAND} -j
-    INSTALL_COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
-    BUILD_IN_SOURCE ON
-    BUILD_BYPRODUCTS
-        ${OPENSSL_INSTALL_DIR}/lib/libssl.a
-        ${OPENSSL_INSTALL_DIR}/lib/libcrypto.a
-)
-
-set(_OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include")
-set(_OPENSSL_LIB_DIR "${OPENSSL_INSTALL_DIR}/lib")
-set(_OPENSSL_SSL_LIBRARY "${_OPENSSL_LIB_DIR}/libssl.a")
-set(_OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_LIB_DIR}/libcrypto.a")
-
-if(NOT TARGET OpenSSL::Crypto)
-    add_library(openssl_crypto STATIC IMPORTED GLOBAL)
-    set_target_properties(openssl_crypto PROPERTIES
-        IMPORTED_LOCATION "${_OPENSSL_CRYPTO_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}")
-    add_dependencies(openssl_crypto openssl)
-    add_library(OpenSSL::Crypto ALIAS openssl_crypto)
-endif()
-
-if(NOT TARGET OpenSSL::SSL)
-    add_library(openssl_ssl STATIC IMPORTED GLOBAL)
-    set_target_properties(openssl_ssl PROPERTIES
-        IMPORTED_LOCATION "${_OPENSSL_SSL_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}"
-        INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
-    add_dependencies(openssl_ssl openssl)
-    add_library(OpenSSL::SSL ALIAS openssl_ssl)
-endif()
-
-set(_OpenSSL_CONFIG_DIR "${CMAKE_BINARY_DIR}/cmake/openssl")
-file(MAKE_DIRECTORY "${_OpenSSL_CONFIG_DIR}")
-set(OPENSSL_CONFIG_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}")
-set(OPENSSL_CONFIG_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}")
-set(OPENSSL_CONFIG_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}")
-configure_file(
-    "${PROJECT_SOURCE_DIR}/cmake/OpenSSLConfig.cmake.in"
-    "${_OpenSSL_CONFIG_DIR}/OpenSSLConfig.cmake"
-    @ONLY
-)
-set(OpenSSL_DIR "${_OpenSSL_CONFIG_DIR}" CACHE PATH "" FORCE)
-set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}" CACHE PATH "" FORCE)
-set(OPENSSL_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
-set(OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
-set(OPENSSL_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}" CACHE FILEPATH "" FORCE)
 
 # libssh2 -------------------------------------------------------------------
 set(LIBSSH2_WITH_MBEDTLS OFF CACHE BOOL "" FORCE)

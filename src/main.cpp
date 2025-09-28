@@ -153,10 +153,10 @@ void check_curl() {
         throw std::runtime_error("libcurl built without libssh2 support");
     }
     const std::string_view ssl_backend{info->ssl_version ? info->ssl_version : ""};
-  if (ssl_backend.find("SecureTransport") == std::string_view::npos) {
+  if (ssl_backend.find("OpenSSL") == std::string_view::npos) {
     curl_easy_cleanup(curl);
     curl_global_cleanup();
-    throw std::runtime_error("libcurl not using SecureTransport");
+    throw std::runtime_error("libcurl not using OpenSSL");
   }
 
   static constexpr const char *kCurlProbeUrl = "https://github.com/";

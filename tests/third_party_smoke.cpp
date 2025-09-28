@@ -38,7 +38,7 @@ int main() {
         return 1;
     }
     const std::string_view ssl_backend{info->ssl_version ? info->ssl_version : ""};
-    if (ssl_backend.find("SecureTransport") == std::string_view::npos) {
+    if (ssl_backend.find("OpenSSL") == std::string_view::npos) {
         curl_global_cleanup();
         return 1;
     }

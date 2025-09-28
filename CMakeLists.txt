@@ -7,7 +7,7 @@ endif()
 
 project(codex_cmake_test
     VERSION 0.1.0
-    DESCRIPTION "Static test driver bundling libgit2, libcurl (SecureTransport), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3"
+    DESCRIPTION "Static test driver bundling libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
