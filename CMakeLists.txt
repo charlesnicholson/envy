@@ -7,7 +7,7 @@ endif()
 
 project(codex_cmake_test
     VERSION 0.1.0
-    DESCRIPTION "Static test driver bundling libgit2, libcurl (SecureTransport), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
+    DESCRIPTION "Static test driver bundling libgit2, libcurl (SecureTransport), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -44,6 +44,8 @@ target_link_libraries(codex_cmake_test
     PRIVATE
         codex::thirdparty
 )
+
+add_dependencies(codex_cmake_test openssl)
 
 target_include_directories(codex_cmake_test
     PRIVATE

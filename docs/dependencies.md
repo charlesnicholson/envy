@@ -15,12 +15,12 @@ All downloads, source trees, and install steps are redirected underneath the act
 
 ## libssh2
 - Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.0`).
-- Compiled as a static library with mbedTLS providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
+- Compiled as a static library with OpenSSL providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
 
-## mbedTLS
-- Source: https://github.com/Mbed-TLS/mbedtls (tag `v3.5.2`).
-- Programs and tests are disabled; only the static libraries (`libmbedtls.a`, `libmbedx509.a`, `libmbedcrypto.a`) are built. Their locations are shared with libssh2 through cache variables so the SSH backend resolves without relying on system packages.
-- The runtime probes also use `mbedtls_md5` to validate an MD5 digest against a known vector, giving us a high-speed checksum without introducing another dependency.
+## OpenSSL
+- Source: https://github.com/openssl/openssl (tag `openssl-3.2.1`).
+- Built via `ExternalProject_Add` invoking the upstream Configure script with `no-shared`, `no-tests`, and `no-apps` so we export static `OpenSSL::SSL`/`OpenSSL::Crypto` targets without shipping the CLI tooling. The install lands inside the build tree and a generated `OpenSSLConfig.cmake` allows other dependencies (libssh2) to `find_package` the bundled build.
+- The runtime probes use OpenSSL's `MD5` implementation to validate a known digest while also confirming TLS 1.3-capable libraries are present for consumers such as libssh2.
 
 ## Lua
 - Source: https://github.com/lua/lua (tag `v5.4.6`).

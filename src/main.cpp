@@ -7,15 +7,17 @@
 #include <tbb/task_arena.h>
 
 #include <curl/curlver.h>
-#include <mbedtls/md5.h>
+#include <openssl/evp.h>
 
 #include "lua.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -308,20 +310,45 @@ void check_blake3() {
 }
 
 void check_md5() {
-  std::cout << "[md5] Hashing test vector via mbedTLS..." << std::endl;
+  std::cout << "[md5] Hashing test vector via OpenSSL..." << std::endl;
   static constexpr std::string_view message =
       "The quick brown fox jumps over the lazy dog";
-  std::array<unsigned char, 16> digest{};
-  if (mbedtls_md5(reinterpret_cast<const unsigned char *>(message.data()),
-                  message.size(), digest.data()) != 0) {
-    throw std::runtime_error("mbedtls_md5 failed");
+  static constexpr std::size_t kMd5DigestLength = 16;
+  std::array<unsigned char, kMd5DigestLength> digest{};
+
+  struct MdCtxDeleter {
+    void operator()(EVP_MD_CTX *ctx) const {
+      if (ctx) {
+        EVP_MD_CTX_free(ctx);
+      }
+    }
+  };
+
+  std::unique_ptr<EVP_MD_CTX, MdCtxDeleter> ctx{EVP_MD_CTX_new()};
+  if (!ctx) {
+    throw std::runtime_error("OpenSSL failed to allocate MD context");
   }
 
-  static constexpr unsigned char expected_bytes[16] = {
+  if (EVP_DigestInit_ex(ctx.get(), EVP_md5(), nullptr) != 1) {
+    throw std::runtime_error("OpenSSL EVP_MD init failed");
+  }
+  if (EVP_DigestUpdate(ctx.get(), message.data(), message.size()) != 1) {
+    throw std::runtime_error("OpenSSL EVP_MD update failed");
+  }
+
+  unsigned int written = 0;
+  if (EVP_DigestFinal_ex(ctx.get(), digest.data(), &written) != 1) {
+    throw std::runtime_error("OpenSSL EVP_MD finalization failed");
+  }
+  if (written != digest.size()) {
+    throw std::runtime_error("OpenSSL MD5 produced unexpected length");
+  }
+
+  static constexpr std::array<unsigned char, kMd5DigestLength> expected_bytes{
       0x9e, 0x10, 0x7d, 0x9d, 0x37, 0x2b, 0xb6, 0x82,
       0x6b, 0xd8, 0x1d, 0x35, 0x42, 0xa4, 0x19, 0xd6};
-  if (!std::equal(digest.begin(), digest.end(), std::begin(expected_bytes))) {
-    throw std::runtime_error("mbedtls_md5 produced unexpected digest: " +
+  if (!std::equal(digest.begin(), digest.end(), expected_bytes.begin())) {
+    throw std::runtime_error("OpenSSL MD5 produced unexpected digest: " +
                              to_hex(digest.data(), digest.size()));
   }
 

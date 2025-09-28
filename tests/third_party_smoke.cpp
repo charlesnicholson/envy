@@ -6,9 +6,10 @@
 #include <tbb/global_control.h>
 
 #include <curl/curlver.h>
-#include <mbedtls/md5.h>
+#include <openssl/evp.h>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -67,17 +68,30 @@ int main() {
     std::array<uint8_t, BLAKE3_OUT_LEN> digest{};
     blake3_hasher_finalize(&hasher, digest.data(), digest.size());
 
-    std::array<unsigned char, 16> md5{};
+    static constexpr std::size_t kMd5DigestLength = 16;
+    std::array<unsigned char, kMd5DigestLength> md5{};
     static constexpr std::string_view md5_msg =
         "The quick brown fox jumps over the lazy dog";
-    if (mbedtls_md5(reinterpret_cast<const unsigned char *>(md5_msg.data()),
-                    md5_msg.size(), md5.data()) != 0) {
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) {
         return 1;
     }
-    static constexpr unsigned char md5_expected[16] = {
+    const int init_ok = EVP_DigestInit_ex(ctx, EVP_md5(), nullptr);
+    const int update_ok = init_ok == 1
+        ? EVP_DigestUpdate(ctx, md5_msg.data(), md5_msg.size())
+        : 0;
+    unsigned int written = 0;
+    const int final_ok = update_ok == 1
+        ? EVP_DigestFinal_ex(ctx, md5.data(), &written)
+        : 0;
+    EVP_MD_CTX_free(ctx);
+    if (final_ok != 1 || written != md5.size()) {
+        return 1;
+    }
+    static constexpr std::array<unsigned char, kMd5DigestLength> md5_expected{
         0x9e, 0x10, 0x7d, 0x9d, 0x37, 0x2b, 0xb6, 0x82,
         0x6b, 0xd8, 0x1d, 0x35, 0x42, 0xa4, 0x19, 0xd6};
-    if (!std::equal(md5.begin(), md5.end(), std::begin(md5_expected))) {
+    if (!std::equal(md5.begin(), md5.end(), md5_expected.begin())) {
         return 1;
     }
 

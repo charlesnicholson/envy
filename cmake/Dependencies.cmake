@@ -180,35 +180,92 @@ if(NOT blake3_POPULATED)
     add_library(blake3::blake3 ALIAS blake3)
 endif()
 
-# mbedTLS -------------------------------------------------------------------
-set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
-set(ENABLE_SHARED OFF CACHE BOOL "" FORCE)
-set(ENABLE_STATIC ON CACHE BOOL "" FORCE)
-FetchContent_Declare(mbedtls
-    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-    GIT_TAG v3.5.2
+# OpenSSL --------------------------------------------------------------------
+set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl" CACHE PATH "" FORCE)
+set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+
+find_program(PERL_EXECUTABLE perl REQUIRED)
+find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
+
+set(_openssl_target "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+        set(_openssl_target "darwin64-arm64-cc")
+    else()
+        set(_openssl_target "darwin64-x86_64-cc")
+    endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        set(_openssl_target "linux-aarch64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+        set(_openssl_target "linux-x86_64")
+    endif()
+endif()
+
+if(_openssl_target STREQUAL "")
+    message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+ExternalProject_Add(openssl
+    GIT_REPOSITORY https://github.com/openssl/openssl.git
+    GIT_TAG openssl-3.2.1
     GIT_SHALLOW TRUE
+    UPDATE_DISCONNECTED TRUE
+    CONFIGURE_COMMAND ${PERL_EXECUTABLE} Configure ${_openssl_target} --prefix=${OPENSSL_INSTALL_DIR} --libdir=lib no-shared no-tests no-apps no-dso
+    BUILD_COMMAND ${OPENSSL_MAKE_COMMAND} -j
+    INSTALL_COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
+    BUILD_IN_SOURCE ON
+    BUILD_BYPRODUCTS
+        ${OPENSSL_INSTALL_DIR}/lib/libssl.a
+        ${OPENSSL_INSTALL_DIR}/lib/libcrypto.a
 )
-FetchContent_MakeAvailable(mbedtls)
-set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
-set(MBEDTLS_LIBRARY_DIR "${mbedtls_BINARY_DIR}/library" CACHE PATH "" FORCE)
-set(MBEDTLS_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedtls.a" CACHE FILEPATH "" FORCE)
-set(MBEDX509_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedx509.a" CACHE FILEPATH "" FORCE)
-set(MBEDCRYPTO_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedcrypto.a" CACHE FILEPATH "" FORCE)
-add_library(mbedtls_static INTERFACE)
-target_include_directories(mbedtls_static INTERFACE "${MBEDTLS_INCLUDE_DIR}")
-target_link_libraries(mbedtls_static INTERFACE
-    "${MBEDTLS_LIBRARY}"
-    "${MBEDX509_LIBRARY}"
-    "${MBEDCRYPTO_LIBRARY}")
-add_library(mbedtls::bundle ALIAS mbedtls_static)
+
+set(_OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include")
+set(_OPENSSL_LIB_DIR "${OPENSSL_INSTALL_DIR}/lib")
+set(_OPENSSL_SSL_LIBRARY "${_OPENSSL_LIB_DIR}/libssl.a")
+set(_OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_LIB_DIR}/libcrypto.a")
+
+if(NOT TARGET OpenSSL::Crypto)
+    add_library(openssl_crypto STATIC IMPORTED GLOBAL)
+    set_target_properties(openssl_crypto PROPERTIES
+        IMPORTED_LOCATION "${_OPENSSL_CRYPTO_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}")
+    add_dependencies(openssl_crypto openssl)
+    add_library(OpenSSL::Crypto ALIAS openssl_crypto)
+endif()
+
+if(NOT TARGET OpenSSL::SSL)
+    add_library(openssl_ssl STATIC IMPORTED GLOBAL)
+    set_target_properties(openssl_ssl PROPERTIES
+        IMPORTED_LOCATION "${_OPENSSL_SSL_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}"
+        INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
+    add_dependencies(openssl_ssl openssl)
+    add_library(OpenSSL::SSL ALIAS openssl_ssl)
+endif()
+
+set(_OpenSSL_CONFIG_DIR "${CMAKE_BINARY_DIR}/cmake/openssl")
+file(MAKE_DIRECTORY "${_OpenSSL_CONFIG_DIR}")
+set(OPENSSL_CONFIG_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}")
+set(OPENSSL_CONFIG_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}")
+set(OPENSSL_CONFIG_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}")
+configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/OpenSSLConfig.cmake.in"
+    "${_OpenSSL_CONFIG_DIR}/OpenSSLConfig.cmake"
+    @ONLY
+)
+set(OpenSSL_DIR "${_OpenSSL_CONFIG_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
+set(OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
+set(OPENSSL_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}" CACHE FILEPATH "" FORCE)
 
 # libssh2 -------------------------------------------------------------------
-set(LIBSSH2_WITH_MBEDTLS ON CACHE BOOL "" FORCE)
-set(LIBSSH2_WITH_OPENSSL OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_WITH_MBEDTLS OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_WITH_OPENSSL ON CACHE BOOL "" FORCE)
 set(LIBSSH2_WITH_LIBGCRYPT OFF CACHE BOOL "" FORCE)
 set(LIBSSH2_WITH_WINCNG OFF CACHE BOOL "" FORCE)
+set(CRYPTO_BACKEND OpenSSL CACHE STRING "" FORCE)
 set(ENABLE_ZLIB_COMPRESSION ON CACHE BOOL "" FORCE)
 set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -252,8 +309,10 @@ if(NOT libssh2_POPULATED)
 endif()
 if(TARGET libssh2_static)
     add_library(libssh2::libssh2 ALIAS libssh2_static)
+    add_dependencies(libssh2_static openssl)
 elseif(TARGET libssh2)
     add_library(libssh2::libssh2 ALIAS libssh2)
+    add_dependencies(libssh2 openssl)
 else()
     message(FATAL_ERROR "libssh2 target was not created by FetchContent")
 endif()
@@ -319,11 +378,13 @@ target_link_libraries(codex_thirdparty
         libarchive::libarchive
         lua::lua
         blake3::blake3
-        mbedtls::bundle
+        OpenSSL::SSL
         libssh2::libssh2
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}
 )
+
+add_dependencies(codex_thirdparty openssl)
 
 target_compile_definitions(codex_thirdparty INTERFACE
     CURL_STATICLIB
