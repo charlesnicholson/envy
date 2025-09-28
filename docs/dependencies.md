@@ -20,6 +20,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## mbedTLS
 - Source: https://github.com/Mbed-TLS/mbedtls (tag `v3.5.2`).
 - Programs and tests are disabled; only the static libraries (`libmbedtls.a`, `libmbedx509.a`, `libmbedcrypto.a`) are built. Their locations are shared with libssh2 through cache variables so the SSH backend resolves without relying on system packages.
+- The runtime probes also use `mbedtls_md5` to validate an MD5 digest against a known vector, giving us a high-speed checksum without introducing another dependency.
 
 ## Lua
 - Source: https://github.com/lua/lua (tag `v5.4.6`).

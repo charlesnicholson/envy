@@ -23,7 +23,7 @@
 - Extend `tests/third_party_smoke.cpp` with any new link-time probes. New behaviour warrants additional focused executables registered through `add_test`.
 - Runtime checks should remain fast (<1s) and must clean up allocations (e.g., `git_libgit2_shutdown`, `curl_easy_cleanup`, `archive_write_free`).
 - For diagnosis, use `ctest -V` or filter with `ctest -R <pattern>`; document nuanced repro steps in PR descriptions or `docs/`.
-- Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit.
+- Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit. Static hashing needs (e.g., MD5) should lean on the bundled mbedTLS implementation rather than bespoke code.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit headers (`feat:`, `fix:`, `build:`, `docs:`) so changelog automation remains straightforward.

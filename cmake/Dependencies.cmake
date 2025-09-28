@@ -196,6 +196,13 @@ set(MBEDTLS_LIBRARY_DIR "${mbedtls_BINARY_DIR}/library" CACHE PATH "" FORCE)
 set(MBEDTLS_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedtls.a" CACHE FILEPATH "" FORCE)
 set(MBEDX509_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedx509.a" CACHE FILEPATH "" FORCE)
 set(MBEDCRYPTO_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedcrypto.a" CACHE FILEPATH "" FORCE)
+add_library(mbedtls_static INTERFACE)
+target_include_directories(mbedtls_static INTERFACE "${MBEDTLS_INCLUDE_DIR}")
+target_link_libraries(mbedtls_static INTERFACE
+    "${MBEDTLS_LIBRARY}"
+    "${MBEDX509_LIBRARY}"
+    "${MBEDCRYPTO_LIBRARY}")
+add_library(mbedtls::bundle ALIAS mbedtls_static)
 
 # libssh2 -------------------------------------------------------------------
 set(LIBSSH2_WITH_MBEDTLS ON CACHE BOOL "" FORCE)
@@ -312,6 +319,7 @@ target_link_libraries(codex_thirdparty
         libarchive::libarchive
         lua::lua
         blake3::blake3
+        mbedtls::bundle
         libssh2::libssh2
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}

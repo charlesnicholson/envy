@@ -7,6 +7,7 @@
 #include <tbb/task_arena.h>
 
 #include <curl/curlver.h>
+#include <mbedtls/md5.h>
 
 #include "lua.hpp"
 
@@ -15,13 +16,24 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
 
 namespace {
+std::string to_hex(const unsigned char *data, size_t length) {
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0');
+  for (size_t i = 0; i < length; ++i) {
+    oss << std::setw(2) << static_cast<int>(data[i]);
+  }
+  return oss.str();
+}
+
 [[noreturn]] void throw_git_error(const char *context) {
   const git_error *err = git_error_last();
   if (err && err->message) {
@@ -222,8 +234,8 @@ void check_tbb() {
 }
 
 void check_libarchive() {
-    std::cout << "[libarchive] Creating archive in-memory..." << std::endl;
-    static constexpr std::string_view payload = "archive-smoke-test";
+  std::cout << "[libarchive] Creating archive in-memory..." << std::endl;
+  static constexpr std::string_view payload = "archive-smoke-test";
 
     archive *writer = archive_write_new();
     if (!writer) {
@@ -267,11 +279,11 @@ void check_libarchive() {
     archive_entry_free(entry);
     archive_write_close(writer);
     archive_write_free(writer);
-    std::cout << "[libarchive] Wrote and freed PAX archive successfully." << std::endl;
+  std::cout << "[libarchive] Wrote and freed PAX archive successfully." << std::endl;
 }
 
 void check_blake3() {
-    std::cout << "[BLAKE3] Hashing smoke payload..." << std::endl;
+  std::cout << "[BLAKE3] Hashing smoke payload..." << std::endl;
     static constexpr std::string_view message = "blake3-smoke";
     blake3_hasher hasher;
     blake3_hasher_init(&hasher);
@@ -292,19 +304,42 @@ void check_blake3() {
     if (digest != digest_second) {
         throw std::runtime_error("BLAKE3 digests are not deterministic");
     }
-    std::cout << "[BLAKE3] Digest computed and verified." << std::endl;
+  std::cout << "[BLAKE3] Digest computed and verified." << std::endl;
+}
+
+void check_md5() {
+  std::cout << "[md5] Hashing test vector via mbedTLS..." << std::endl;
+  static constexpr std::string_view message =
+      "The quick brown fox jumps over the lazy dog";
+  std::array<unsigned char, 16> digest{};
+  if (mbedtls_md5(reinterpret_cast<const unsigned char *>(message.data()),
+                  message.size(), digest.data()) != 0) {
+    throw std::runtime_error("mbedtls_md5 failed");
+  }
+
+  static constexpr unsigned char expected_bytes[16] = {
+      0x9e, 0x10, 0x7d, 0x9d, 0x37, 0x2b, 0xb6, 0x82,
+      0x6b, 0xd8, 0x1d, 0x35, 0x42, 0xa4, 0x19, 0xd6};
+  if (!std::equal(digest.begin(), digest.end(), std::begin(expected_bytes))) {
+    throw std::runtime_error("mbedtls_md5 produced unexpected digest: " +
+                             to_hex(digest.data(), digest.size()));
+  }
+
+  std::cout << "[md5] Digest " << to_hex(digest.data(), digest.size())
+            << " validated." << std::endl;
 }
 } // namespace
 
 int main() {
-    try {
-        std::cout << "=== codex-cmake-test dependency probe ===" << std::endl;
+  try {
+    std::cout << "=== codex-cmake-test dependency probe ===" << std::endl;
         check_git();
         check_curl();
         check_lua();
         check_tbb();
         check_libarchive();
         check_blake3();
+        check_md5();
     } catch (const std::exception &ex) {
         std::cerr << "Initialization failed: " << ex.what() << '\n';
         return EXIT_FAILURE;
