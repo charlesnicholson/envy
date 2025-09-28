@@ -5,14 +5,12 @@
 #include <blake3.h>
 #include <tbb/global_control.h>
 
+#include <curl/curlver.h>
 #include <array>
 #include <cstdint>
+#include <string_view>
 
 #include "lua.hpp"
-
-extern "C" {
-#include "ssh_api.h"
-}
 
 int main() {
     if (git_libgit2_init() < 0) {
@@ -23,13 +21,30 @@ int main() {
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
         return 1;
     }
-    curl_global_cleanup();
-
-    struct ssh *session = nullptr;
-    if (ssh_init(&session, 0, nullptr) != 0 || session == nullptr) {
+    const curl_version_info_data *info = curl_version_info(CURLVERSION_NOW);
+    if (!info) {
+        curl_global_cleanup();
         return 1;
     }
-    ssh_free(session);
+    if ((info->features & CURL_VERSION_SSL) == 0U) {
+        curl_global_cleanup();
+        return 1;
+    }
+    if (!info->libssh_version || info->libssh_version[0] == '\0') {
+        curl_global_cleanup();
+        return 1;
+    }
+    const std::string_view ssl_backend{info->ssl_version ? info->ssl_version : ""};
+    if (ssl_backend.find("SecureTransport") == std::string_view::npos) {
+        curl_global_cleanup();
+        return 1;
+    }
+    curl_global_cleanup();
+
+    const auto features = git_libgit2_features();
+    if ((features & GIT_FEATURE_HTTPS) == 0 || (features & GIT_FEATURE_SSH) == 0) {
+        return 1;
+    }
 
     lua_State *L = luaL_newstate();
     if (!L) {

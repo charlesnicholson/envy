@@ -13,9 +13,6 @@ set_property(GLOBAL PROPERTY JOB_POOLS codex_fetch=4)
 # (e.g., rm -rf out/) leaves the system pristine.
 set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
 
-set(OPENSSL_ROOT_DIR "/opt/homebrew/opt/openssl@3")
-set(OPENSSL_USE_STATIC_LIBS ON)
-find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 find_package(ZLIB REQUIRED)
 find_library(RESOLV_LIBRARY resolv REQUIRED)
 
@@ -24,6 +21,8 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # libgit2 -------------------------------------------------------------------
+set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
+set(USE_SSH ON CACHE BOOL "" FORCE)
 set(LIBGIT2_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBGIT2_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LIBGIT2_BUILD_CLI OFF CACHE BOOL "" FORCE)
@@ -63,7 +62,8 @@ unset(_libgit2_target)
 unset(_codex_libgit2_warning_silencers)
 
 # libcurl -------------------------------------------------------------------
-set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_SECTRANSP ON CACHE BOOL "" FORCE)
 set(CURL_ZLIB ON CACHE BOOL "" FORCE)
 set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
 set(ENABLE_THREADED_RESOLVER ON CACHE BOOL "" FORCE)
@@ -180,6 +180,77 @@ if(NOT blake3_POPULATED)
     add_library(blake3::blake3 ALIAS blake3)
 endif()
 
+# mbedTLS -------------------------------------------------------------------
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_SHARED OFF CACHE BOOL "" FORCE)
+set(ENABLE_STATIC ON CACHE BOOL "" FORCE)
+FetchContent_Declare(mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG v3.5.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(mbedtls)
+set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+set(MBEDTLS_LIBRARY_DIR "${mbedtls_BINARY_DIR}/library" CACHE PATH "" FORCE)
+set(MBEDTLS_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedtls.a" CACHE FILEPATH "" FORCE)
+set(MBEDX509_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedx509.a" CACHE FILEPATH "" FORCE)
+set(MBEDCRYPTO_LIBRARY "${MBEDTLS_LIBRARY_DIR}/libmbedcrypto.a" CACHE FILEPATH "" FORCE)
+
+# libssh2 -------------------------------------------------------------------
+set(LIBSSH2_WITH_MBEDTLS ON CACHE BOOL "" FORCE)
+set(LIBSSH2_WITH_OPENSSL OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_WITH_LIBGCRYPT OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_WITH_WINCNG OFF CACHE BOOL "" FORCE)
+set(ENABLE_ZLIB_COMPRESSION ON CACHE BOOL "" FORCE)
+set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+FetchContent_Declare(libssh2
+    GIT_REPOSITORY https://github.com/libssh2/libssh2.git
+    GIT_TAG libssh2-1.11.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(libssh2)
+if(NOT libssh2_POPULATED)
+    FetchContent_Populate(libssh2)
+    set(_libssh2_cmake "${libssh2_SOURCE_DIR}/CMakeLists.txt")
+    if(EXISTS "${_libssh2_cmake}")
+        file(READ "${_libssh2_cmake}" _libssh2_contents)
+        set(_libssh2_patched "${_libssh2_contents}")
+        string(REPLACE "cmake_minimum_required(VERSION 3.1)" "cmake_minimum_required(VERSION 3.5)" _libssh2_patched "${_libssh2_patched}")
+        string(REPLACE "project(libssh2 C)\n\nset(CMAKE_MODULE_PATH" "project(libssh2 C)\nset(CMAKE_SOURCE_DIR \"\${PROJECT_SOURCE_DIR}\")\n\nset(CMAKE_MODULE_PATH" _libssh2_patched "${_libssh2_patched}")
+        if(NOT _libssh2_patched STREQUAL _libssh2_contents)
+            file(WRITE "${_libssh2_cmake}" "${_libssh2_patched}")
+        endif()
+    endif()
+    set(_libssh2_original_cmake_source_dir "${CMAKE_SOURCE_DIR}")
+    set(CMAKE_SOURCE_DIR "${libssh2_SOURCE_DIR}")
+    set(_libssh2_pc_source "${libssh2_SOURCE_DIR}/libssh2.pc.in")
+    set(_libssh2_pc_dest "${PROJECT_SOURCE_DIR}/libssh2.pc.in")
+    set(_libssh2_pc_copied FALSE)
+    if(NOT EXISTS "${_libssh2_pc_dest}")
+        file(COPY "${_libssh2_pc_source}" DESTINATION "${PROJECT_SOURCE_DIR}")
+        set(_libssh2_pc_copied TRUE)
+    endif()
+    add_subdirectory(${libssh2_SOURCE_DIR} ${libssh2_BINARY_DIR})
+    if(_libssh2_pc_copied)
+        file(REMOVE "${_libssh2_pc_dest}")
+    endif()
+    unset(_libssh2_pc_source)
+    unset(_libssh2_pc_dest)
+    unset(_libssh2_pc_copied)
+    set(CMAKE_SOURCE_DIR "${_libssh2_original_cmake_source_dir}")
+    unset(_libssh2_original_cmake_source_dir)
+endif()
+if(TARGET libssh2_static)
+    add_library(libssh2::libssh2 ALIAS libssh2_static)
+elseif(TARGET libssh2)
+    add_library(libssh2::libssh2 ALIAS libssh2)
+else()
+    message(FATAL_ERROR "libssh2 target was not created by FetchContent")
+endif()
+
 # Lua -----------------------------------------------------------------------
 FetchContent_Declare(lua
     GIT_REPOSITORY https://github.com/lua/lua.git
@@ -229,79 +300,24 @@ if(NOT lua_POPULATED)
     add_library(lua::lua ALIAS lua)
 endif()
 
-# OpenSSH -------------------------------------------------------------------
-set(OPENSSH_VERSION "9.7p1")
-set(OPENSSH_PREFIX "${CMAKE_BINARY_DIR}/third_party/openssh")
-set(OPENSSH_SOURCE_DIR "${CMAKE_BINARY_DIR}/third_party/openssh-src")
-set(OPENSSH_BINARY_DIR "${CMAKE_BINARY_DIR}/third_party/openssh-build")
-set(OPENSSH_SSL_ROOT "/opt/homebrew/opt/openssl@3")
-file(MAKE_DIRECTORY
-    "${OPENSSH_SOURCE_DIR}"
-    "${OPENSSH_SOURCE_DIR}/openbsd-compat"
-    "${OPENSSH_BINARY_DIR}"
-)
-ExternalProject_Add(openssh_ep
-    URL https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz
-    URL_HASH SHA256=490426f766d82a2763fcacd8d83ea3d70798750c7bd2aff2e57dc5660f773ffd
-    SOURCE_DIR ${OPENSSH_SOURCE_DIR}
-    BINARY_DIR ${OPENSSH_BINARY_DIR}
-    PATCH_COMMAND ${CMAKE_COMMAND} -DOPENSSH_SOURCE_DIR=${OPENSSH_SOURCE_DIR} -P ${PROJECT_SOURCE_DIR}/cmake/PatchOpenSSH.cmake
-    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env
-        CPPFLAGS=-I${OPENSSH_SSL_ROOT}/include
-        LDFLAGS=-L${OPENSSH_SSL_ROOT}/lib
-        PKG_CONFIG_PATH=${OPENSSH_SSL_ROOT}/lib/pkgconfig
-        ${OPENSSH_SOURCE_DIR}/configure
-            --prefix=${OPENSSH_PREFIX}
-            --disable-etc-default-login
-            --without-zlib-version-check
-            --without-openssl-header-check
-            --with-ssl-dir=${OPENSSH_SSL_ROOT}
-            --with-ssl-engine
-            --disable-security-key
-            --without-security-key-builtin
-            --without-security-key-provider
-            --with-privsep-path=${OPENSSH_PREFIX}/var/empty
-    BUILD_COMMAND /bin/sh -c "make clean && make"
-    INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS
-        ${OPENSSH_BINARY_DIR}/libssh.a
-        ${OPENSSH_BINARY_DIR}/openbsd-compat/libopenbsd-compat.a
-    LOG_CONFIGURE ON
-    LOG_BUILD ON
-)
-
-add_library(openssh STATIC IMPORTED)
-set_target_properties(openssh PROPERTIES
-    IMPORTED_LOCATION "${OPENSSH_BINARY_DIR}/libssh.a"
-    INTERFACE_INCLUDE_DIRECTORIES "${OPENSSH_SOURCE_DIR};${OPENSSH_SOURCE_DIR}/openbsd-compat;${OPENSSH_BINARY_DIR}"
-    INTERFACE_COMPILE_DEFINITIONS HAVE_CONFIG_H
-)
-set_property(TARGET openssh APPEND PROPERTY INTERFACE_LINK_LIBRARIES
-    "${OPENSSH_BINARY_DIR}/openbsd-compat/libopenbsd-compat.a")
-add_dependencies(openssh openssh_ep)
-add_library(openssh::ssh ALIAS openssh)
-
 # Aggregate -----------------------------------------------------------------
 add_library(codex_thirdparty INTERFACE)
 add_library(codex::thirdparty ALIAS codex_thirdparty)
 
 target_link_libraries(codex_thirdparty
     INTERFACE
-        codex_openssh_stubs
         codex::libgit2
         CURL::libcurl
         TBB::tbb
         libarchive::libarchive
         lua::lua
-        openssh::ssh
         blake3::blake3
-        OpenSSL::Crypto
+        libssh2::libssh2
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}
 )
 
 target_compile_definitions(codex_thirdparty INTERFACE
-    GIT_SSH
     CURL_STATICLIB
 )
 

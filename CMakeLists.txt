@@ -7,7 +7,7 @@ endif()
 
 project(codex_cmake_test
     VERSION 0.1.0
-    DESCRIPTION "Static test driver bundling libgit2, libcurl, OpenSSH, Lua, oneTBB, libarchive, and BLAKE3"
+    DESCRIPTION "Static test driver bundling libgit2, libcurl (SecureTransport), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -29,10 +29,6 @@ if(ENABLE_LTO)
 endif()
 
 include(cmake/Dependencies.cmake)
-
-add_library(codex_openssh_stubs STATIC src/openssh_stubs.cpp)
-target_compile_features(codex_openssh_stubs PRIVATE cxx_std_20)
-target_link_libraries(codex_openssh_stubs PRIVATE openssh::ssh)
 
 add_executable(codex_cmake_test
     src/main.cpp

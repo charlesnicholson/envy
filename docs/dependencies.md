@@ -7,16 +7,19 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## libgit2
 - Source: https://github.com/libgit2/libgit2 (tag `v1.7.2`).
 - CMake options disable CLI and shared builds. The library exports as `codex::libgit2` and is consumed via the standard `git2` target.
+- `USE_HTTPS` is forced to `SecureTransport` and `USE_SSH` is enabled so HTTPS traffic rides the system TLS stack while SSH uses our bundled libssh2 build.
 
 ## libcurl
 - Source: https://github.com/curl/curl (tag `curl-8_8_0`).
-- Compiled with OpenSSL and zlib support; CURL executable is disabled. For static builds we set `CURL_STATICLIB` and create the `CURL::libcurl` alias.
+- Built with SecureTransport and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined.
 
-## OpenSSH
-- Source: https://github.com/openssh/openssh-portable (tag `V_9_7_P1`).
-- Built via `ExternalProject_Add`, requesting a static `libssh.a` and installing into `${build}/third_party/openssh` (with `${build}` usually `out/`). The imported target is published as `openssh::ssh`.
-- Expect to provide the macOS SDK `sdkroot` and `--with-security-key-builtin` flags when touching hardware-backed authentication.
-- Headers are consumed as `<libssh/libssh.h>`; confirm the install step places headers under `${prefix}/include/libssh` after configuration changes.
+## libssh2
+- Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.0`).
+- Compiled as a static library with mbedTLS providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
+
+## mbedTLS
+- Source: https://github.com/Mbed-TLS/mbedtls (tag `v3.5.2`).
+- Programs and tests are disabled; only the static libraries (`libmbedtls.a`, `libmbedx509.a`, `libmbedcrypto.a`) are built. Their locations are shared with libssh2 through cache variables so the SSH backend resolves without relying on system packages.
 
 ## Lua
 - Source: https://github.com/lua/lua (tag `v5.4.6`).

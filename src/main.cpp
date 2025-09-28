@@ -6,31 +6,39 @@
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
 
-extern "C" {
-#include "ssh_api.h"
-}
+#include <curl/curlver.h>
 
 #include "lua.hpp"
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 
 namespace {
 void check_git() {
+    std::cout << "[libgit2] Initializing runtime..." << std::endl;
     if (git_libgit2_init() < 0) {
         throw std::runtime_error("libgit2 failed to initialize");
     }
+    const auto features = git_libgit2_features();
+    if ((features & GIT_FEATURE_HTTPS) == 0) {
+        git_libgit2_shutdown();
+        throw std::runtime_error("libgit2 HTTPS transport unavailable");
+    }
+    if ((features & GIT_FEATURE_SSH) == 0) {
+        git_libgit2_shutdown();
+        throw std::runtime_error("libgit2 SSH transport unavailable");
+    }
     git_libgit2_shutdown();
+    std::cout << "[libgit2] HTTPS and SSH transports are available." << std::endl;
 }
 
 void check_curl() {
+    std::cout << "[libcurl] Global init and transport capability check..." << std::endl;
     CURLcode init_result = curl_global_init(CURL_GLOBAL_ALL);
     if (init_result != CURLE_OK) {
         throw std::runtime_error("libcurl global init failed");
@@ -41,19 +49,39 @@ void check_curl() {
         throw std::runtime_error("libcurl easy handle creation failed");
     }
     curl_easy_setopt(curl, CURLOPT_NOPROXY, "*");
+    const curl_version_info_data *info = curl_version_info(CURLVERSION_NOW);
+    if (!info) {
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        throw std::runtime_error("curl_version_info returned null");
+    }
+    if ((info->features & CURL_VERSION_SSL) == 0U) {
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        throw std::runtime_error("libcurl built without TLS support");
+    }
+    if (!info->libssh_version || info->libssh_version[0] == '\0') {
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        throw std::runtime_error("libcurl built without libssh2 support");
+    }
+    const std::string_view ssl_backend{info->ssl_version ? info->ssl_version : ""};
+    if (ssl_backend.find("SecureTransport") == std::string_view::npos) {
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        throw std::runtime_error("libcurl not using SecureTransport");
+    }
     curl_easy_cleanup(curl);
     curl_global_cleanup();
-}
-
-void check_ssh() {
-    struct ssh *session = nullptr;
-    if (ssh_init(&session, 0, nullptr) != 0 || session == nullptr) {
-        throw std::runtime_error("OpenSSH ssh_init failed");
-    }
-    ssh_free(session);
+    std::cout << "[libcurl] TLS backend: "
+              << (info->ssl_version ? info->ssl_version : "unknown")
+              << "; libssh2: "
+              << (info->libssh_version ? info->libssh_version : "none")
+              << std::endl;
 }
 
 void check_lua() {
+    std::cout << "[Lua] Spinning up interpreter..." << std::endl;
     lua_State *L = luaL_newstate();
     if (!L) {
         throw std::runtime_error("luaL_newstate failed");
@@ -63,11 +91,18 @@ void check_lua() {
         lua_close(L);
         throw std::runtime_error("lua execution failed");
     }
+    if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) != 4) {
+        lua_pop(L, 1);
+        lua_close(L);
+        throw std::runtime_error("lua returned unexpected result");
+    }
     lua_pop(L, 1);
     lua_close(L);
+    std::cout << "[Lua] Interpreter opened, executed script, and shutdown cleanly." << std::endl;
 }
 
 void check_tbb() {
+    std::cout << "[oneTBB] Running parallel_for smoke test..." << std::endl;
     std::array<int, 8> values{};
     tbb::task_arena arena;
     arena.execute([&] {
@@ -80,9 +115,11 @@ void check_tbb() {
             throw std::runtime_error("oneTBB parallel_for produced unexpected data");
         }
     }
+    std::cout << "[oneTBB] parallel_for produced expected results." << std::endl;
 }
 
 void check_libarchive() {
+    std::cout << "[libarchive] Creating archive in-memory..." << std::endl;
     static constexpr std::string_view payload = "archive-smoke-test";
 
     archive *writer = archive_write_new();
@@ -127,10 +164,11 @@ void check_libarchive() {
     archive_entry_free(entry);
     archive_write_close(writer);
     archive_write_free(writer);
-
+    std::cout << "[libarchive] Wrote and freed PAX archive successfully." << std::endl;
 }
 
 void check_blake3() {
+    std::cout << "[BLAKE3] Hashing smoke payload..." << std::endl;
     static constexpr std::string_view message = "blake3-smoke";
     blake3_hasher hasher;
     blake3_hasher_init(&hasher);
@@ -151,14 +189,15 @@ void check_blake3() {
     if (digest != digest_second) {
         throw std::runtime_error("BLAKE3 digests are not deterministic");
     }
+    std::cout << "[BLAKE3] Digest computed and verified." << std::endl;
 }
 } // namespace
 
 int main() {
     try {
+        std::cout << "=== codex-cmake-test dependency probe ===" << std::endl;
         check_git();
         check_curl();
-        check_ssh();
         check_lua();
         check_tbb();
         check_libarchive();
