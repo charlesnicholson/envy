@@ -1,6 +1,12 @@
 include(FetchContent)
 include(ExternalProject)
 
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Disable deprecated CMake warnings from third-party builds" FORCE)
+
 set_property(GLOBAL PROPERTY JOB_POOLS codex_fetch=4)
 
 # Keep all dependency artifacts under the active build directory so removing it
@@ -40,6 +46,21 @@ elseif(TARGET libgit2)
 else()
     message(FATAL_ERROR "libgit2 target was not created by FetchContent")
 endif()
+
+set(_codex_libgit2_warning_silencers
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-declaration-after-statement>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-unused-but-set-parameter>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-single-bit-bitfield-constant-conversion>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-array-parameter>
+)
+foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
+    if(TARGET ${_libgit2_target})
+        target_compile_options(${_libgit2_target} PRIVATE ${_codex_libgit2_warning_silencers})
+    endif()
+endforeach()
+
+unset(_libgit2_target)
+unset(_codex_libgit2_warning_silencers)
 
 # libcurl -------------------------------------------------------------------
 set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
@@ -214,6 +235,11 @@ set(OPENSSH_PREFIX "${CMAKE_BINARY_DIR}/third_party/openssh")
 set(OPENSSH_SOURCE_DIR "${CMAKE_BINARY_DIR}/third_party/openssh-src")
 set(OPENSSH_BINARY_DIR "${CMAKE_BINARY_DIR}/third_party/openssh-build")
 set(OPENSSH_SSL_ROOT "/opt/homebrew/opt/openssl@3")
+file(MAKE_DIRECTORY
+    "${OPENSSH_SOURCE_DIR}"
+    "${OPENSSH_SOURCE_DIR}/openbsd-compat"
+    "${OPENSSH_BINARY_DIR}"
+)
 ExternalProject_Add(openssh_ep
     URL https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz
     URL_HASH SHA256=490426f766d82a2763fcacd8d83ea3d70798750c7bd2aff2e57dc5660f773ffd

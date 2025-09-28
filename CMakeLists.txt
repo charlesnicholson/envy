@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.26)
 
+if(POLICY CMP0069)
+    cmake_policy(SET CMP0069 NEW)
+    set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
+endif()
+
 project(codex_cmake_test
     VERSION 0.1.0
     DESCRIPTION "Static test driver bundling libgit2, libcurl, OpenSSH, Lua, oneTBB, libarchive, and BLAKE3"
