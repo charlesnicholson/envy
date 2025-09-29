@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Environment Constraints
+- Operate strictly within this repository directory; do not modify files or state outside the project tree.
+- Never change the host environment (no system-wide config edits, package installs, symlinks, or file moves outside the repo).
+
 ## Project Structure & Module Organization
 - `CMakeLists.txt` configures the C++20 test driver and pulls in all dependencies through `cmake/Dependencies.cmake`; do not add ad-hoc `FetchContent` calls elsewhere.
 - Avoid Git submodules—every vendored dependency must be fetched or mirrored through CMake so the repository remains lightweight and reproducible.
@@ -9,10 +13,12 @@
 - Any design notes or per-library instructions should go under `docs/`; update `docs/dependencies.md` when pinning or patching vendored code.
 
 ## Build, Test, and Development Commands
+- For day-to-day development disable LTO for faster turns: `cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF` (re-enable before release validation).
 - `cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON` configures an out-of-tree build rooted at `out/`. Ninja is the only supported generator—avoid Makefiles so third-party downloads, installs, and object files remain isolated and deleting `out/` resets the tree.
 - `cmake --build out --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3.
-- `ctest --test-dir out -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration. Always re-run after touching dependency options.
+- `ctest --test-dir out -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration and must succeed before completion.
 - When iterating on dependency behaviour, rebuild individual targets with `cmake --build out --target <dependency>` to avoid full reconfigure cycles.
+- A task is incomplete until `rm -rf out`, a fresh configure, full rebuild, and `ctest --test-dir out -V` all finish with no warnings or errors, and the smoke test executable runs successfully.
 
 ## Coding Style & Naming Conventions
 - C++20, 2-space indentation (enforced by `.editorconfig`), and Allman braces for functions/namespaces. Prefer `CamelCase` classes, `snake_case` free/static functions, and `kPascalCase` constants.

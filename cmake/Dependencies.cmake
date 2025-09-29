@@ -29,12 +29,12 @@ find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
 FetchContent_Declare(openssl
     GIT_REPOSITORY https://github.com/openssl/openssl.git
-    GIT_TAG openssl-3.2.1
+    GIT_TAG openssl-3.5.3
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
-    message(STATUS "Fetching OpenSSL sources (openssl-3.2.1)...")
+    message(STATUS "Fetching OpenSSL sources (openssl-3.5.3)...")
     FetchContent_Populate(openssl)
 
     set(_openssl_target "")
@@ -252,6 +252,11 @@ set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
 set(ENABLE_THREADED_RESOLVER ON CACHE BOOL "" FORCE)
 set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(CURL_ENABLE_SSL ON CACHE BOOL "" FORCE)
+set(CURL_BROTLI OFF CACHE STRING "" FORCE)
+set(CURL_ZSTD OFF CACHE STRING "" FORCE)
+set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
+set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
+set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 
 set(_curl_ca_bundle "")
 if(APPLE)
@@ -269,7 +274,7 @@ unset(_curl_ca_bundle)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 FetchContent_Declare(libcurl
     GIT_REPOSITORY https://github.com/curl/curl.git
-    GIT_TAG curl-8_8_0
+    GIT_TAG curl-8_16_0
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(libcurl)

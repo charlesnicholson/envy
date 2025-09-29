@@ -9,12 +9,28 @@ The project prioritizes lean binaries and predictable performance: we use straig
 - CMake 3.26+
 - Ninja build system
 
+## Environment Constraints
+
+All development must remain confined to this repository directory. Do not create symlinks, move system files, or otherwise modify the host environment outside `codex-cmake-test`.
+
 ## Quick Start
 
+Iterate with link-time optimization disabled to keep rebuilds fast:
+
 ```bash
+cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
+cmake --build out --target codex_cmake_test --parallel
+ctest --test-dir out -V
+```
+
+Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and test run without warnings or errors:
+
+```bash
+rm -rf out
 cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
 cmake --build out --target codex_cmake_test --parallel
 ctest --test-dir out -V
+out/codex-tool/codex_cmake_test
 ```
 
 Source files are formatted with 2-space indentation as enforced by the repository `.editorconfig`.
