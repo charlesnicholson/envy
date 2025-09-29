@@ -13,12 +13,18 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <random>
+#include <sstream>
+#include <string>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
@@ -31,6 +37,406 @@ std::string to_hex(const unsigned char *data, size_t length) {
     oss << std::setw(2) << static_cast<int>(data[i]);
   }
   return oss.str();
+}
+
+class CurlGlobalGuard {
+ public:
+  CurlGlobalGuard() {
+    const CURLcode rc = curl_global_init(CURL_GLOBAL_ALL);
+    if (rc != CURLE_OK) {
+      throw std::runtime_error("curl_global_init failed: " +
+                               std::string(curl_easy_strerror(rc)));
+    }
+  }
+
+  ~CurlGlobalGuard() { curl_global_cleanup(); }
+};
+
+class CurlEasyHandle {
+ public:
+  CurlEasyHandle() : handle_(curl_easy_init()) {
+    if (!handle_) {
+      throw std::runtime_error("curl_easy_init failed");
+    }
+  }
+
+  ~CurlEasyHandle() {
+    if (handle_) {
+      curl_easy_cleanup(handle_);
+    }
+  }
+
+  CURL *get() const { return handle_; }
+
+ private:
+  CURL *handle_{};
+};
+
+void apply_common_curl_options(CURL *curl) {
+  curl_easy_setopt(curl, CURLOPT_NOPROXY, "*");
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+  curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "codex-cmake-test/1.0");
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
+  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+}
+
+size_t write_stream_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
+  auto *stream = static_cast<std::ofstream *>(userdata);
+  const size_t total = size * nmemb;
+  stream->write(static_cast<const char *>(ptr), static_cast<std::streamsize>(total));
+  if (!*stream) {
+    return 0;
+  }
+  return total;
+}
+
+size_t write_string_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
+  auto *out = static_cast<std::string *>(userdata);
+  const size_t total = size * nmemb;
+  out->append(static_cast<const char *>(ptr), total);
+  return total;
+}
+
+void download_file_to_path(const std::string &url, const std::filesystem::path &destination) {
+  CurlEasyHandle handle;
+  apply_common_curl_options(handle.get());
+
+  std::ofstream output(destination, std::ios::binary);
+  if (!output) {
+    throw std::runtime_error("Failed to open " + destination.string() + " for writing");
+  }
+
+  char error_buffer[CURL_ERROR_SIZE] = {0};
+  curl_easy_setopt(handle.get(), CURLOPT_ERRORBUFFER, error_buffer);
+  curl_easy_setopt(handle.get(), CURLOPT_URL, url.c_str());
+  curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, write_stream_callback);
+  curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &output);
+
+  const CURLcode rc = curl_easy_perform(handle.get());
+  output.flush();
+  if (rc != CURLE_OK) {
+    const std::string message = error_buffer[0] != '\0'
+                                    ? std::string(error_buffer)
+                                    : std::string(curl_easy_strerror(rc));
+    throw std::runtime_error("curl failed to download " + url + ": " + message);
+  }
+  if (!output) {
+    throw std::runtime_error("Failed to flush downloaded data to " + destination.string());
+  }
+}
+
+std::string read_file_to_string(const std::filesystem::path &path) {
+  std::ifstream input(path);
+  if (!input) {
+    throw std::runtime_error("Failed to open " + path.string() + " for reading");
+  }
+  std::ostringstream oss;
+  oss << input.rdbuf();
+  return oss.str();
+}
+
+std::string extract_sha256_from_text(const std::string &text) {
+  std::istringstream iss(text);
+  std::string token;
+  while (iss >> token) {
+    if (token.size() == 64 &&
+        std::all_of(token.begin(), token.end(), [](unsigned char ch) { return std::isxdigit(ch) != 0; })) {
+      std::string lowered = token;
+      std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+      });
+      return lowered;
+    }
+  }
+  throw std::runtime_error("Failed to locate SHA256 digest in signature file");
+}
+
+std::array<unsigned char, 32> compute_sha256(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("Failed to open " + path.string() + " for hashing");
+  }
+
+  struct MdCtxDeleter {
+    void operator()(EVP_MD_CTX *ctx) const {
+      if (ctx) {
+        EVP_MD_CTX_free(ctx);
+      }
+    }
+  };
+
+  std::unique_ptr<EVP_MD_CTX, MdCtxDeleter> ctx{EVP_MD_CTX_new()};
+  if (!ctx) {
+    throw std::runtime_error("OpenSSL failed to allocate SHA256 context");
+  }
+  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+    throw std::runtime_error("OpenSSL SHA256 init failed");
+  }
+
+  std::array<char, 1 << 15> buffer{};
+  while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
+    const auto read_bytes = static_cast<size_t>(input.gcount());
+    if (read_bytes > 0) {
+      if (EVP_DigestUpdate(ctx.get(), buffer.data(), read_bytes) != 1) {
+        throw std::runtime_error("OpenSSL SHA256 update failed");
+      }
+    }
+  }
+  if (input.bad()) {
+    throw std::runtime_error("Failed while reading " + path.string() + " for SHA256");
+  }
+
+  std::array<unsigned char, 32> digest{};
+  unsigned int written = 0;
+  if (EVP_DigestFinal_ex(ctx.get(), digest.data(), &written) != 1) {
+    throw std::runtime_error("OpenSSL SHA256 finalization failed");
+  }
+  if (written != digest.size()) {
+    throw std::runtime_error("OpenSSL SHA256 produced unexpected length");
+  }
+  return digest;
+}
+
+void archive_copy_data(struct archive *source, struct archive *dest) {
+  const void *buff = nullptr;
+  size_t size = 0;
+  la_int64_t offset = 0;
+  while (true) {
+    const int r = archive_read_data_block(source, &buff, &size, &offset);
+    if (r == ARCHIVE_EOF) {
+      break;
+    }
+    if (r != ARCHIVE_OK) {
+      throw std::runtime_error(std::string("libarchive read error: ") + archive_error_string(source));
+    }
+    const int write_result = archive_write_data_block(dest, buff, size, offset);
+    if (write_result != ARCHIVE_OK) {
+      throw std::runtime_error(std::string("libarchive write error: ") + archive_error_string(dest));
+    }
+  }
+}
+
+void extract_archive(const std::filesystem::path &archive_path,
+                     const std::filesystem::path &destination) {
+  archive *reader = archive_read_new();
+  if (!reader) {
+    throw std::runtime_error("libarchive read allocation failed");
+  }
+  archive_read_support_filter_all(reader);
+  archive_read_support_format_all(reader);
+
+  archive *writer = archive_write_disk_new();
+  if (!writer) {
+    archive_read_free(reader);
+    throw std::runtime_error("libarchive write allocation failed");
+  }
+  archive_write_disk_set_options(writer, ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
+                                         ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
+  archive_write_disk_set_standard_lookup(writer);
+
+  if (archive_read_open_filename(reader, archive_path.string().c_str(), 10240) != ARCHIVE_OK) {
+    const std::string message = std::string("libarchive failed to open ") + archive_path.string() +
+                                ": " + archive_error_string(reader);
+    archive_write_free(writer);
+    archive_read_free(reader);
+    throw std::runtime_error(message);
+  }
+
+  archive_entry *entry = nullptr;
+  while (true) {
+    const int r = archive_read_next_header(reader, &entry);
+    if (r == ARCHIVE_EOF) {
+      break;
+    }
+    if (r != ARCHIVE_OK) {
+      const std::string message = std::string("libarchive failed to read header: ") +
+                                  archive_error_string(reader);
+      archive_read_close(reader);
+      archive_write_close(writer);
+      archive_read_free(reader);
+      archive_write_free(writer);
+      throw std::runtime_error(message);
+    }
+
+    const char *entry_path = archive_entry_pathname(entry);
+    const std::filesystem::path full_path = destination / (entry_path ? entry_path : "");
+    const auto parent = full_path.parent_path();
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent);
+    }
+    const std::string full_path_str = full_path.string();
+    archive_entry_copy_pathname(entry, full_path_str.c_str());
+    if (const char *hardlink = archive_entry_hardlink(entry)) {
+      const auto hardlink_full = (destination / hardlink).string();
+      archive_entry_copy_hardlink(entry, hardlink_full.c_str());
+    }
+
+    int write_header_result = archive_write_header(writer, entry);
+    if (write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
+      const std::string message = std::string("libarchive failed to write header: ") +
+                                  archive_error_string(writer);
+      archive_read_close(reader);
+      archive_write_close(writer);
+      archive_read_free(reader);
+      archive_write_free(writer);
+      throw std::runtime_error(message);
+    }
+
+    if (archive_entry_size(entry) > 0) {
+      archive_copy_data(reader, writer);
+    }
+    if (archive_write_finish_entry(writer) != ARCHIVE_OK) {
+      const std::string message = std::string("libarchive failed to finish entry: ") +
+                                  archive_error_string(writer);
+      archive_read_close(reader);
+      archive_write_close(writer);
+      archive_read_free(reader);
+      archive_write_free(writer);
+      throw std::runtime_error(message);
+    }
+  }
+
+  archive_read_close(reader);
+  archive_write_close(writer);
+  archive_read_free(reader);
+  archive_write_free(writer);
+}
+
+std::filesystem::path locate_arm_none_eabi_gcc(const std::filesystem::path &root) {
+  std::error_code ec;
+  std::filesystem::recursive_directory_iterator it(root, std::filesystem::directory_options::follow_directory_symlink, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to start directory scan: " + ec.message());
+  }
+  const std::filesystem::recursive_directory_iterator end;
+  for (; it != end; it.increment(ec)) {
+    if (ec) {
+      throw std::runtime_error("Failed while scanning extracted toolchain: " + ec.message());
+    }
+    const auto &path = it->path();
+    std::error_code status_ec;
+    const auto status = std::filesystem::status(path, status_ec);
+    if (status_ec) {
+      throw std::runtime_error("Failed to query status for " + path.string() + ": " + status_ec.message());
+    }
+    if (std::filesystem::is_regular_file(status) && path.filename() == "arm-none-eabi-gcc") {
+      return path;
+    }
+  }
+  throw std::runtime_error("arm-none-eabi-gcc not found in extracted archive");
+}
+
+std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("Failed to open " + path.string() + " for BLAKE3 hashing");
+  }
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+
+  std::array<char, 1 << 15> buffer{};
+  while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
+    const auto read_bytes = static_cast<size_t>(input.gcount());
+    if (read_bytes > 0) {
+      blake3_hasher_update(&hasher, buffer.data(), read_bytes);
+    }
+  }
+  if (input.bad()) {
+    throw std::runtime_error("Failed while reading " + path.string() + " for BLAKE3");
+  }
+
+  std::array<uint8_t, BLAKE3_OUT_LEN> digest{};
+  blake3_hasher_finalize(&hasher, digest.data(), digest.size());
+  return digest;
+}
+
+std::filesystem::path create_unique_directory(std::string_view prefix) {
+  const auto base = std::filesystem::temp_directory_path();
+  std::random_device rd;
+  std::mt19937_64 rng(rd());
+  std::uniform_int_distribution<uint64_t> dist;
+
+  for (int attempt = 0; attempt < 32; ++attempt) {
+    std::ostringstream name;
+    name << prefix << '-' << std::hex << std::setw(16) << std::setfill('0') << dist(rng);
+    const auto candidate = base / name.str();
+    std::error_code ec;
+    if (std::filesystem::create_directories(candidate, ec)) {
+      return candidate;
+    }
+    if (ec && ec != std::errc::file_exists) {
+      throw std::system_error(ec, "Failed to create " + candidate.string());
+    }
+  }
+
+  throw std::runtime_error("Unable to create unique temporary directory");
+}
+
+void probe_arm_toolchain() {
+  static constexpr std::string_view kArchiveUrl =
+      "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/"
+      "arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi.tar.xz";
+  static constexpr std::string_view kSignatureUrl =
+      "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/"
+      "arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi.tar.xz.sha256asc";
+
+  std::cout << "[arm-toolchain] Preparing temporary workspace..." << std::endl;
+  const auto temp_root = create_unique_directory("codex-arm-toolchain");
+
+  struct ScopedPath {
+    explicit ScopedPath(std::filesystem::path p) : value(std::move(p)) {}
+    ~ScopedPath() {
+      if (!value.empty()) {
+        std::error_code ec;
+        std::filesystem::remove_all(value, ec);
+      }
+    }
+    std::filesystem::path value;
+  } cleanup(temp_root);
+
+  const auto archive_path = temp_root / "arm-gnu-toolchain.tar.xz";
+  const auto signature_path = temp_root / "arm-gnu-toolchain.tar.xz.sha256asc";
+  const auto extract_dir = temp_root / "extract";
+  std::filesystem::create_directories(extract_dir);
+
+  CurlGlobalGuard curl_guard;
+
+  std::cout << "[arm-toolchain] Downloading toolchain archive..." << std::endl;
+  download_file_to_path(std::string(kArchiveUrl), archive_path);
+
+  std::cout << "[arm-toolchain] Downloading SHA256 signature..." << std::endl;
+  download_file_to_path(std::string(kSignatureUrl), signature_path);
+
+  const auto signature_text = read_file_to_string(signature_path);
+  const auto expected_digest = extract_sha256_from_text(signature_text);
+  std::cout << "[arm-toolchain] Verifying SHA256 digest..." << std::endl;
+  const auto computed_digest = compute_sha256(archive_path);
+  const auto computed_hex = to_hex(computed_digest.data(), computed_digest.size());
+  if (computed_hex != expected_digest) {
+    throw std::runtime_error("SHA256 verification failed: expected " + expected_digest +
+                             " but computed " + computed_hex);
+  }
+
+  std::cout << "[arm-toolchain] Extracting archive..." << std::endl;
+  extract_archive(archive_path, extract_dir);
+
+  const auto gcc_path = locate_arm_none_eabi_gcc(extract_dir);
+  const auto blake3_digest = compute_blake3_file(gcc_path);
+  std::cout << "[arm-toolchain] arm-none-eabi-gcc BLAKE3: "
+            << to_hex(blake3_digest.data(), blake3_digest.size()) << std::endl;
+
+  std::error_code cleanup_ec;
+  std::filesystem::remove_all(temp_root, cleanup_ec);
+  if (cleanup_ec) {
+    throw std::runtime_error("Failed to remove temporary workspace: " + cleanup_ec.message());
+  }
+  cleanup.value.clear();
+  std::cout << "[arm-toolchain] Temporary workspace removed." << std::endl;
 }
 
 [[noreturn]] void throw_git_error(const char *context) {
@@ -364,6 +770,7 @@ int main() {
         check_libarchive();
         check_blake3();
         check_md5();
+        probe_arm_toolchain();
     } catch (const std::exception &ex) {
         std::cerr << "Initialization failed: " << ex.what() << '\n';
         return EXIT_FAILURE;
