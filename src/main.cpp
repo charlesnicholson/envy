@@ -336,6 +336,7 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
   if (!input) {
     throw std::runtime_error("Failed to open " + path.string() + " for BLAKE3 hashing");
   }
+
   blake3_hasher hasher;
   blake3_hasher_init(&hasher);
 
@@ -355,26 +356,24 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
   return digest;
 }
 
-std::filesystem::path create_unique_directory(std::string_view prefix) {
+std::filesystem::path create_temp_directory() {
   const auto base = std::filesystem::temp_directory_path();
+  if (!std::filesystem::exists(base)) {
+    throw std::runtime_error("Temporary directory base does not exist");
+  }
+
   std::random_device rd;
   std::mt19937_64 rng(rd());
   std::uniform_int_distribution<uint64_t> dist;
 
-  for (int attempt = 0; attempt < 32; ++attempt) {
-    std::ostringstream name;
-    name << prefix << '-' << std::hex << std::setw(16) << std::setfill('0') << dist(rng);
-    const auto candidate = base / name.str();
-    std::error_code ec;
-    if (std::filesystem::create_directories(candidate, ec)) {
-      return candidate;
-    }
-    if (ec && ec != std::errc::file_exists) {
-      throw std::system_error(ec, "Failed to create " + candidate.string());
-    }
-  }
+  std::ostringstream name;
+  name << "codex-cmake-test-" << std::hex << std::setw(16) << std::setfill('0') << dist(rng);
+  const auto candidate = base / name.str();
 
-  throw std::runtime_error("Unable to create unique temporary directory");
+  std::error_code ec;
+  std::filesystem::remove_all(candidate, ec);
+  std::filesystem::create_directories(candidate);
+  return candidate;
 }
 
 void probe_arm_toolchain() {
@@ -386,7 +385,8 @@ void probe_arm_toolchain() {
       "arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi.tar.xz.sha256asc";
 
   std::cout << "[arm-toolchain] Preparing temporary workspace..." << std::endl;
-  const auto temp_root = create_unique_directory("codex-arm-toolchain");
+  const auto temp_root = create_temp_directory();
+  std::cout << "[arm-toolchain] Workspace directory: " << temp_root << std::endl;
 
   struct ScopedPath {
     explicit ScopedPath(std::filesystem::path p) : value(std::move(p)) {}
@@ -403,6 +403,7 @@ void probe_arm_toolchain() {
   const auto signature_path = temp_root / "arm-gnu-toolchain.tar.xz.sha256asc";
   const auto extract_dir = temp_root / "extract";
   std::filesystem::create_directories(extract_dir);
+  std::cout << "[arm-toolchain] Extract destination: " << extract_dir << std::endl;
 
   CurlGlobalGuard curl_guard;
 
@@ -417,6 +418,8 @@ void probe_arm_toolchain() {
   std::cout << "[arm-toolchain] Verifying SHA256 digest..." << std::endl;
   const auto computed_digest = compute_sha256(archive_path);
   const auto computed_hex = to_hex(computed_digest.data(), computed_digest.size());
+  std::cout << "[arm-toolchain] Expected SHA256: " << expected_digest << std::endl;
+  std::cout << "[arm-toolchain] Computed SHA256: " << computed_hex << std::endl;
   if (computed_hex != expected_digest) {
     throw std::runtime_error("SHA256 verification failed: expected " + expected_digest +
                              " but computed " + computed_hex);
@@ -424,6 +427,28 @@ void probe_arm_toolchain() {
 
   std::cout << "[arm-toolchain] Extracting archive..." << std::endl;
   extract_archive(archive_path, extract_dir);
+
+  std::uint64_t extracted_files = 0;
+  std::error_code iter_ec;
+  for (std::filesystem::recursive_directory_iterator it(extract_dir, std::filesystem::directory_options::follow_directory_symlink, iter_ec), end;
+       it != end; it.increment(iter_ec)) {
+    if (iter_ec) {
+      throw std::runtime_error("Failed while counting extracted files: " + iter_ec.message());
+    }
+    std::error_code status_ec;
+    const auto status = std::filesystem::status(it->path(), status_ec);
+    if (status_ec) {
+      throw std::runtime_error("Failed to query status during counting for " + it->path().string() +
+                               ": " + status_ec.message());
+    }
+    if (std::filesystem::is_regular_file(status)) {
+      ++extracted_files;
+    }
+  }
+  if (iter_ec) {
+    throw std::runtime_error("Failed to iterate extracted files: " + iter_ec.message());
+  }
+  std::cout << "[arm-toolchain] Extracted file count: " << extracted_files << std::endl;
 
   const auto gcc_path = locate_arm_none_eabi_gcc(extract_dir);
   const auto blake3_digest = compute_blake3_file(gcc_path);
