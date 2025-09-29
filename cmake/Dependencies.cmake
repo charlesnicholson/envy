@@ -194,10 +194,9 @@ unset(_libssh2_pc_file)
 # libgit2 -------------------------------------------------------------------
 set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
 set(USE_SSH ON CACHE BOOL "" FORCE)
-set(LIBGIT2_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(LIBGIT2_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LIBGIT2_BUILD_CLI OFF CACHE BOOL "" FORCE)
-set(LIBGIT2_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 FetchContent_Declare(libgit2
     GIT_REPOSITORY https://github.com/libgit2/libgit2.git
