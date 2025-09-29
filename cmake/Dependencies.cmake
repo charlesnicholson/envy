@@ -21,52 +21,70 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # OpenSSL --------------------------------------------------------------------
-set(OPENSSL_INSTALL_DIR "${CMAKE_BINARY_DIR}/openssl" CACHE PATH "" FORCE)
-set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+set(OPENSSL_SOURCE "${CMAKE_BINARY_DIR}/_deps/openssl-src")
+set(OPENSSL_BINARY "${CMAKE_BINARY_DIR}/_deps/openssl-build")
 
 find_program(PERL_EXECUTABLE perl REQUIRED)
 find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
-set(_openssl_target "")
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
-        set(_openssl_target "darwin64-arm64-cc")
-    else()
-        set(_openssl_target "darwin64-x86_64-cc")
-    endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-        set(_openssl_target "linux-aarch64")
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-        set(_openssl_target "linux-x86_64")
-    endif()
-endif()
-
-if(_openssl_target STREQUAL "")
-    message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
-endif()
-
-ExternalProject_Add(openssl
+FetchContent_Declare(openssl
     GIT_REPOSITORY https://github.com/openssl/openssl.git
     GIT_TAG openssl-3.2.1
     GIT_SHALLOW TRUE
-    UPDATE_DISCONNECTED TRUE
-    CONFIGURE_COMMAND ${PERL_EXECUTABLE} Configure ${_openssl_target} --prefix=${OPENSSL_INSTALL_DIR} --libdir=lib no-shared no-tests no-apps no-dso
-    BUILD_COMMAND ${OPENSSL_MAKE_COMMAND} -j
-    INSTALL_COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
-    BUILD_IN_SOURCE ON
-    BUILD_BYPRODUCTS
-        ${OPENSSL_INSTALL_DIR}/lib/libssl.a
-        ${OPENSSL_INSTALL_DIR}/lib/libcrypto.a
 )
+FetchContent_GetProperties(openssl)
+if(NOT openssl_POPULATED)
+    FetchContent_Populate(openssl)
 
-set(_OPENSSL_INCLUDE_DIR "${OPENSSL_INSTALL_DIR}/include")
-set(_OPENSSL_LIB_DIR "${OPENSSL_INSTALL_DIR}/lib")
-set(_OPENSSL_SSL_LIBRARY "${_OPENSSL_LIB_DIR}/libssl.a")
-set(_OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_LIB_DIR}/libcrypto.a")
+    set(_openssl_target "")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+            set(_openssl_target "darwin64-arm64-cc")
+        else()
+            set(_openssl_target "darwin64-x86_64-cc")
+        endif()
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+            set(_openssl_target "linux-aarch64")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+            set(_openssl_target "linux-x86_64")
+        endif()
+    endif()
 
-file(MAKE_DIRECTORY "${_OPENSSL_INCLUDE_DIR}")
-file(MAKE_DIRECTORY "${_OPENSSL_LIB_DIR}")
+    if(_openssl_target STREQUAL "")
+        message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+
+    set(_openssl_configure_stamp "${OPENSSL_BINARY}/.configured")
+    if(NOT EXISTS "${_openssl_configure_stamp}")
+        file(MAKE_DIRECTORY "${OPENSSL_BINARY}")
+        execute_process(
+            COMMAND ${PERL_EXECUTABLE} Configure ${_openssl_target} --prefix=${OPENSSL_BINARY} --libdir=lib no-shared no-tests no-apps no-dso
+            WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+        file(WRITE "${_openssl_configure_stamp}" "configured\n")
+    endif()
+    unset(_openssl_configure_stamp)
+
+    add_custom_command(
+        OUTPUT "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a"
+        COMMAND ${OPENSSL_MAKE_COMMAND} -j
+        COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
+        WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
+        COMMENT "Building OpenSSL"
+        VERBATIM
+    )
+
+    add_custom_target(openssl ALL
+        DEPENDS "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a")
+endif()
+
+set(_OPENSSL_INCLUDE_DIR "${OPENSSL_BINARY}/include")
+set(_OPENSSL_SSL_LIBRARY "${OPENSSL_BINARY}/lib/libssl.a")
+set(_OPENSSL_CRYPTO_LIBRARY "${OPENSSL_BINARY}/lib/libcrypto.a")
+
+file(MAKE_DIRECTORY "${_OPENSSL_INCLUDE_DIR}" "${OPENSSL_BINARY}/lib")
 
 if(NOT TARGET OpenSSL::Crypto)
     add_library(openssl_crypto STATIC IMPORTED GLOBAL)
@@ -87,18 +105,6 @@ if(NOT TARGET OpenSSL::SSL)
     add_library(OpenSSL::SSL ALIAS openssl_ssl)
 endif()
 
-set(_OpenSSL_CONFIG_DIR "${CMAKE_BINARY_DIR}/cmake/openssl")
-file(MAKE_DIRECTORY "${_OpenSSL_CONFIG_DIR}")
-set(OPENSSL_CONFIG_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}")
-set(OPENSSL_CONFIG_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}")
-set(OPENSSL_CONFIG_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}")
-configure_file(
-    "${PROJECT_SOURCE_DIR}/cmake/OpenSSLConfig.cmake.in"
-    "${_OpenSSL_CONFIG_DIR}/OpenSSLConfig.cmake"
-    @ONLY
-)
-set(OpenSSL_DIR "${_OpenSSL_CONFIG_DIR}" CACHE PATH "" FORCE)
-set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}" CACHE PATH "" FORCE)
 set(OPENSSL_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
 set(OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
 set(OPENSSL_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}" CACHE FILEPATH "" FORCE)
