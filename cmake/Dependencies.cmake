@@ -154,10 +154,12 @@ if(TARGET libssh2_static)
     add_library(libssh2::libssh2 ALIAS libssh2_static)
     add_dependencies(libssh2_static openssl)
     set(_libssh2_primary_target libssh2_static)
+    set_target_properties(libssh2_static PROPERTIES INTERFACE_LINK_LIBRARIES "")
 elseif(TARGET libssh2)
     add_library(libssh2::libssh2 ALIAS libssh2)
     add_dependencies(libssh2 openssl)
     set(_libssh2_primary_target libssh2)
+    set_target_properties(libssh2 PROPERTIES INTERFACE_LINK_LIBRARIES "")
 else()
     message(FATAL_ERROR "libssh2 target was not created by FetchContent")
 endif()
@@ -271,12 +273,14 @@ if(TARGET libcurl_static)
     if(DEFINED _libssh2_primary_target)
         add_dependencies(libcurl_static ${_libssh2_primary_target})
     endif()
+    set_target_properties(libcurl_static PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 if(TARGET libcurl_shared)
     add_dependencies(libcurl_shared openssl)
     if(DEFINED _libssh2_primary_target)
         add_dependencies(libcurl_shared ${_libssh2_primary_target})
     endif()
+    set_target_properties(libcurl_shared PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 unset(_libssh2_primary_target)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
@@ -447,6 +451,15 @@ target_link_libraries(codex_thirdparty
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}
 )
+
+if(APPLE)
+    target_link_libraries(codex_thirdparty INTERFACE
+        "-framework SystemConfiguration"
+        "-framework CoreFoundation"
+        "-framework CoreServices"
+        "-framework Security"
+    )
+endif()
 
 add_dependencies(codex_thirdparty openssl)
 
