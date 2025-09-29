@@ -34,6 +34,7 @@ FetchContent_Declare(openssl
 )
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
+    message(STATUS "Fetching OpenSSL sources (openssl-3.2.1)...")
     FetchContent_Populate(openssl)
 
     set(_openssl_target "")
@@ -55,6 +56,7 @@ if(NOT openssl_POPULATED)
         message(FATAL_ERROR "Unsupported platform for OpenSSL build: ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
     endif()
 
+    message(STATUS "Configuring OpenSSL for ${_openssl_target}")
     set(_openssl_configure_stamp "${OPENSSL_BINARY}/.configured")
     if(NOT EXISTS "${_openssl_configure_stamp}")
         file(MAKE_DIRECTORY "${OPENSSL_BINARY}")
