@@ -2,6 +2,7 @@
 #include <archive_entry.h>
 
 #include <aws/core/Aws.h>
+#include <aws/core/platform/Environment.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <aws/core/auth/SSOCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
@@ -9,12 +10,15 @@
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
+#include <aws/s3/model/HeadObjectRequest.h>
 
 #include <blake3.h>
 
 #include "lua.hpp"
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -22,11 +26,13 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <string_view>
 #include <vector>
 
 #include <tbb/flow_graph.h>
@@ -48,6 +54,7 @@ class AwsApiGuard {
  public:
   AwsApiGuard()
   {
+    ::setenv("AWS_SDK_LOAD_CONFIG", "1", 1);
     options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Error;
     Aws::InitAPI(options_);
   }
@@ -143,18 +150,42 @@ class TempManagerScope {
   TempResourceManager &manager_;
 };
 
-std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider()
+struct S3UriParts {
+  std::string bucket;
+  std::string key;
+};
+
+S3UriParts parse_s3_uri(std::string_view uri)
+{
+  static constexpr std::string_view kScheme = "s3://";
+  if (!uri.starts_with(kScheme)) {
+    throw std::invalid_argument("S3 URI must start with s3://");
+  }
+  std::string_view remainder = uri.substr(kScheme.size());
+  const auto slash = remainder.find('/');
+  if (slash == std::string_view::npos || slash == 0 || slash + 1 >= remainder.size()) {
+    throw std::invalid_argument("S3 URI must include bucket and key, e.g. s3://bucket/key");
+  }
+  S3UriParts parts;
+  parts.bucket = std::string(remainder.substr(0, slash));
+  parts.key = std::string(remainder.substr(slash + 1));
+  return parts;
+}
+
+std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
+    const Aws::S3::S3ClientConfiguration &s3_config)
 {
   static constexpr const char *kAllocationTag = "codex-cmake-test-sso";
+  const Aws::String profile_from_env = Aws::Environment::GetEnv("AWS_PROFILE");
+  const Aws::String profile = profile_from_env.empty() ? Aws::Auth::GetConfigProfileName() : profile_from_env;
   try {
-    auto sso_provider = Aws::MakeShared<Aws::Auth::SSOCredentialsProvider>(kAllocationTag);
-    const auto credentials = sso_provider->GetAWSCredentials();
-    if (!credentials.GetAWSAccessKeyId().empty() && !credentials.GetAWSSecretKey().empty() &&
-        !credentials.IsExpiredOrEmpty()) {
-      std::cout << "[aws-sdk] Using AWS SSO credentials provider." << std::endl;
-      return sso_provider;
-    }
-    std::cout << "[aws-sdk] AWS SSO credentials unavailable; falling back to default provider chain." << std::endl;
+    auto client_config = Aws::MakeShared<Aws::Client::ClientConfiguration>(kAllocationTag);
+    *client_config = static_cast<const Aws::Client::ClientConfiguration &>(s3_config);
+    auto sso_provider = Aws::MakeShared<Aws::Auth::SSOCredentialsProvider>(
+        kAllocationTag, profile, std::static_pointer_cast<const Aws::Client::ClientConfiguration>(client_config));
+    std::cout << "[aws-sdk] Using AWS SSO credentials provider for profile '" << profile
+              << "'." << std::endl;
+    return sso_provider;
   } catch (const std::exception &ex) {
     std::cout << "[aws-sdk] AWS SSO provider initialization failed: " << ex.what()
               << "; falling back to default provider chain." << std::endl;
@@ -336,9 +367,6 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
   if (key.empty()) {
     throw std::runtime_error("S3 object key must not be empty");
   }
-  if (region.empty()) {
-    throw std::runtime_error("S3 region must not be empty");
-  }
 
   const auto temp_dir = manager.create_directory();
   const auto file_name = std::filesystem::path(key).filename();
@@ -348,20 +376,86 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
   const auto destination = temp_dir / file_name;
 
   Aws::S3::S3ClientConfiguration config;
-  config.region = region.c_str();
+  if (!region.empty()) {
+    config.region = region.c_str();
+  }
   config.scheme = Aws::Http::Scheme::HTTPS;
   config.verifySSL = true;
   config.connectTimeoutMs = 3000;
   config.requestTimeoutMs = 30000;
 
-  const auto credentials_provider = select_credentials_provider();
+  const auto credentials_provider = select_credentials_provider(config);
   Aws::S3::S3Client client(credentials_provider, nullptr, config);
+
+  long long expected_size = -1;
+  {
+    Aws::S3::Model::HeadObjectRequest head_request;
+    head_request.SetBucket(bucket.c_str());
+    head_request.SetKey(key.c_str());
+    const auto head_outcome = client.HeadObject(head_request);
+    if (head_outcome.IsSuccess()) {
+      expected_size = head_outcome.GetResult().GetContentLength();
+    }
+  }
 
   Aws::S3::Model::GetObjectRequest request;
   request.SetBucket(bucket.c_str());
   request.SetKey(key.c_str());
 
+  struct ProgressState {
+    std::mutex mutex;
+    long long downloaded = 0;
+    std::chrono::steady_clock::time_point last_update = std::chrono::steady_clock::now();
+  };
+  const auto progress_state = std::make_shared<ProgressState>();
+
+  request.SetDataReceivedEventHandler([progress_state, expected_size](const Aws::Http::HttpRequest *,
+                                                                      Aws::Http::HttpResponse *,
+                                                                      long long bytes_transferred) {
+    if (bytes_transferred <= 0) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(progress_state->mutex);
+    progress_state->downloaded += bytes_transferred;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - progress_state->last_update < std::chrono::milliseconds(200)) {
+      return;
+    }
+    progress_state->last_update = now;
+    std::cout << '\r';
+    if (expected_size > 0) {
+      const double percent = static_cast<double>(progress_state->downloaded) * 100.0 /
+                             static_cast<double>(expected_size);
+      const double clamped = percent > 100.0 ? 100.0 : percent;
+      std::cout << "[aws-sdk] Download progress: " << std::fixed << std::setprecision(1)
+                << clamped << "%";
+    } else {
+      const double mebibytes = static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
+      std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2) << mebibytes
+                << " MiB";
+    }
+    std::cout << std::flush;
+  });
+
+  const auto download_start = std::chrono::steady_clock::now();
   auto outcome = client.GetObject(request);
+  const auto download_end = std::chrono::steady_clock::now();
+
+  {
+    std::lock_guard<std::mutex> lock(progress_state->mutex);
+    if (progress_state->downloaded > 0) {
+      std::cout << '\r';
+      if (expected_size > 0) {
+        std::cout << "[aws-sdk] Download progress: 100.0%";
+      } else {
+        const double mebibytes = static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
+        std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2) << mebibytes
+                  << " MiB";
+      }
+      std::cout << std::string(10, ' ') << '\n';
+    }
+  }
+
   if (!outcome.IsSuccess()) {
     const auto &error = outcome.GetError();
     throw std::runtime_error("S3 GetObject failed: " + error.GetMessage());
@@ -378,8 +472,10 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     throw std::runtime_error("Failed while writing S3 object to " + destination.string());
   }
 
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(download_end - download_start);
   std::cout << "[lua] Downloaded s3://" << bucket << '/' << key << " to "
-            << destination << std::endl;
+            << destination << " in " << std::fixed << std::setprecision(3)
+            << static_cast<double>(elapsed.count()) / 1000.0 << "s" << std::endl;
   return destination;
 }
 
@@ -395,7 +491,7 @@ int lua_download_s3_object(lua_State *L)
 
   const std::string bucket = luaL_checkstring(L, 1);
   const std::string key = luaL_checkstring(L, 2);
-  const std::string region = argc >= 3 ? luaL_checkstring(L, 3) : "us-east-1";
+  const std::string region = argc >= 3 ? luaL_checkstring(L, 3) : "";
 
   try {
     const auto archive_path = download_s3_object(*g_temp_manager, bucket, key, region);
@@ -441,16 +537,18 @@ int lua_extract_to_temp(lua_State *L)
   }
 }
 
-static constexpr char kLuaScript[] = R"(local bucket = assert(os.getenv("CODEX_S3_BUCKET"), "CODEX_S3_BUCKET must be set")
-local key = assert(os.getenv("CODEX_S3_KEY"), "CODEX_S3_KEY must be set")
-local region = os.getenv("CODEX_S3_REGION") or "us-east-1"
+static constexpr char kLuaScript[] = R"(local bucket = assert(codex_bucket, "codex_bucket must be set")
+local key = assert(codex_key, "codex_key must be set")
+local region = codex_region or ""
 
 local archive_path = download_s3_object(bucket, key, region)
 blake3_hex(archive_path)
 extract_to_temp(archive_path)
 )";
 
-void run_lua_workflow()
+void run_lua_workflow(const std::string &bucket,
+                      const std::string &key,
+                      const std::string &region)
 {
   AwsApiGuard aws_guard;
   TempResourceManager temp_manager;
@@ -469,6 +567,13 @@ void run_lua_workflow()
   lua_pushcfunction(state.get(), lua_extract_to_temp);
   lua_setglobal(state.get(), "extract_to_temp");
 
+  lua_pushlstring(state.get(), bucket.c_str(), static_cast<lua_Integer>(bucket.size()));
+  lua_setglobal(state.get(), "codex_bucket");
+  lua_pushlstring(state.get(), key.c_str(), static_cast<lua_Integer>(key.size()));
+  lua_setglobal(state.get(), "codex_key");
+  lua_pushlstring(state.get(), region.c_str(), static_cast<lua_Integer>(region.size()));
+  lua_setglobal(state.get(), "codex_region");
+
   if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
     const char *message = lua_tostring(state.get(), -1);
     throw std::runtime_error(std::string("Failed to load Lua script: ") +
@@ -485,16 +590,25 @@ void run_lua_workflow()
 
 }  // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+  if (argc < 2) {
+    std::cerr << "Usage: " << (argc > 0 ? argv[0] : "codex-tool")
+              << " s3://<bucket>/<key> [region]" << std::endl;
+    return EXIT_FAILURE;
+  }
+
   try {
+    const auto parts = parse_s3_uri(argv[1]);
+    const std::string region_arg = argc >= 3 ? std::string(argv[2]) : std::string{};
+
     tbb::task_arena arena;
-    arena.execute([] {
+    arena.execute([&] {
       tbb::flow::graph graph;
       tbb::flow::continue_node<tbb::flow::continue_msg> runner(
           graph,
-          [](const tbb::flow::continue_msg &) {
-            run_lua_workflow();
+          [&](const tbb::flow::continue_msg &) {
+            run_lua_workflow(parts.bucket, parts.key, region_arg);
           });
 
       runner.try_put(tbb::flow::continue_msg{});
