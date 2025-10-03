@@ -20,9 +20,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # Favor size-optimized release binaries
 foreach(_lang IN ITEMS C CXX)
     set(_flags "${CMAKE_${_lang}_FLAGS_RELEASE}")
-    if(_flags MATCHES "-O[0-3zZ]")
-        string(REGEX REPLACE "-O[0-3zZ]" "" _flags "${_flags}")
-    endif()
+    string(REGEX REPLACE "-O[0-9A-Za-z]*" "" _flags "${_flags}")
     set(_flags "${_flags} -Os")
     string(STRIP "${_flags}" _flags)
     set(CMAKE_${_lang}_FLAGS_RELEASE "${_flags}" CACHE STRING "Release flags" FORCE)
@@ -52,6 +50,8 @@ set_target_properties(codex_cmake_test PROPERTIES
 )
 
 target_compile_features(codex_cmake_test PRIVATE cxx_std_20)
+target_compile_options(codex_cmake_test PRIVATE -ffunction-sections -fdata-sections)
+target_link_options(codex_cmake_test PRIVATE -Wl,-dead_strip)
 
 target_link_libraries(codex_cmake_test
     PRIVATE
