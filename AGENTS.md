@@ -22,6 +22,7 @@
 - `ctest --test-dir out/build -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration and must succeed before completion.
 - When iterating on dependency behaviour, rebuild individual targets with `cmake --build out/build --target <dependency>` to avoid full reconfigure cycles.
 - All transient artifacts must stay under `out/`, and removing the directory (`rm -rf out`) restores a pristine working tree. A task is incomplete until that full-cycle rebuild succeeds with no warnings or errors and the smoke test executable runs cleanly.
+- Third-party CMake subprojects must configure during the top-level configure step and build during the top-level build step; never compile third-party libraries at configure-time or trigger new configuration phases from the build graph.
 
 ## Coding Style & Naming Conventions
 - C++20, 2-space indentation (enforced by `.editorconfig`), and Allman braces for functions/namespaces. Prefer `CamelCase` classes, `snake_case` free/static functions, and `kPascalCase` constants.
