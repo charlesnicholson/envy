@@ -13,16 +13,13 @@ set_property(GLOBAL PROPERTY JOB_POOLS codex_fetch=4)
 # forces a rebuild while reusing cached downloads.
 set(CODEX_THIRDPARTY_CACHE_DIR "${PROJECT_SOURCE_DIR}/out/cache/third_party" CACHE PATH "Directory for cached third-party sources")
 file(MAKE_DIRECTORY "${CODEX_THIRDPARTY_CACHE_DIR}")
+set(FETCHCONTENT_BASE_DIR "${CODEX_THIRDPARTY_CACHE_DIR}")
+
 
 function(codex_fetchcontent_populate name human_name)
-    string(TOUPPER "${name}" _codex_upper)
     string(TOLOWER "${name}" _codex_lower)
-
-    set(_codex_source_dir "${CODEX_THIRDPARTY_CACHE_DIR}/${_codex_lower}-src")
+    set(_codex_source_dir "${FETCHCONTENT_BASE_DIR}/${_codex_lower}-src")
     set(_codex_binary_dir "${CMAKE_BINARY_DIR}/_deps/${_codex_lower}-build")
-
-    set("FETCHCONTENT_SOURCE_DIR_${_codex_upper}" "${_codex_source_dir}")
-    set("FETCHCONTENT_BINARY_DIR_${_codex_upper}" "${_codex_binary_dir}")
 
     set(_codex_prev_defined FALSE)
     if(DEFINED FETCHCONTENT_FULLY_DISCONNECTED)
@@ -41,29 +38,21 @@ function(codex_fetchcontent_populate name human_name)
     FetchContent_GetProperties(${name})
 
     if(_codex_prev_defined)
-        set(FETCHCONTENT_FULLY_DISCONNECTED "${_codex_prev_value}" PARENT_SCOPE)
         set(FETCHCONTENT_FULLY_DISCONNECTED "${_codex_prev_value}")
     else()
-        unset(FETCHCONTENT_FULLY_DISCONNECTED PARENT_SCOPE)
         unset(FETCHCONTENT_FULLY_DISCONNECTED)
     endif()
 
-    set("FETCHCONTENT_SOURCE_DIR_${_codex_upper}" "${FETCHCONTENT_SOURCE_DIR_${_codex_upper}}" PARENT_SCOPE)
-    set("FETCHCONTENT_BINARY_DIR_${_codex_upper}" "${FETCHCONTENT_BINARY_DIR_${_codex_upper}}" PARENT_SCOPE)
-    set(${_codex_lower}_SOURCE_DIR "${${_codex_lower}_SOURCE_DIR}" PARENT_SCOPE)
-    set(${_codex_lower}_BINARY_DIR "${${_codex_lower}_BINARY_DIR}" PARENT_SCOPE)
     set(${name}_SOURCE_DIR "${_codex_source_dir}" PARENT_SCOPE)
     set(${name}_BINARY_DIR "${_codex_binary_dir}" PARENT_SCOPE)
-    set(${name}_POPULATED "${${name}_POPULATED}" PARENT_SCOPE)
-
-    set(${name}_SOURCE_DIR "${_codex_source_dir}")
-    set(${name}_BINARY_DIR "${_codex_binary_dir}")
+    if(DEFINED ${name}_POPULATED)
+        set(${name}_POPULATED "${${name}_POPULATED}" PARENT_SCOPE)
+    endif()
 
     unset(_codex_prev_defined)
     unset(_codex_prev_value)
     unset(_codex_source_dir)
     unset(_codex_binary_dir)
-    unset(_codex_upper)
     unset(_codex_lower)
 endfunction()
 
@@ -367,6 +356,9 @@ if(TARGET libcurl_shared)
     endif()
     set_target_properties(libcurl_shared PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
+set(CURL_INCLUDE_DIR "${libcurl_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+set(CURL_LIBRARY "${libcurl_BINARY_DIR}/lib/libcurl.a" CACHE FILEPATH "" FORCE)
+set(CURL_LIBRARIES "${CURL_LIBRARY}" CACHE STRING "" FORCE)
 unset(_libssh2_primary_target)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
 
@@ -384,6 +376,42 @@ if(NOT oneTBB_POPULATED)
     FetchContent_GetProperties(oneTBB)
 endif()
 add_subdirectory(${oneTBB_SOURCE_DIR} ${oneTBB_BINARY_DIR})
+
+# AWS SDK -------------------------------------------------------------------
+set(AWS_SDK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(AWS_SDK_CPP_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(AWS_SDK_CPP_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(AWS_SDK_CPP_CUSTOM_MEMORY_MANAGEMENT OFF CACHE BOOL "" FORCE)
+set(BUILD_ONLY "s3" CACHE STRING "" FORCE)
+set(AWS_BUILD_ONLY "s3" CACHE STRING "" FORCE)
+set(AWS_SDK_CPP_BUILD_ONLY "s3" CACHE STRING "" FORCE)
+set(ENFORCE_SUBMODULE_VERSIONS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(aws_sdk
+    URL https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip
+    URL_HASH SHA256=504493b205a8a466751af8654b2f32e9917df9e75bcff5defdf72fe320837ba3
+)
+FetchContent_GetProperties(aws_sdk)
+if(NOT aws_sdk_POPULATED OR NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
+    codex_fetchcontent_populate(aws_sdk "AWS SDK for C++")
+    FetchContent_GetProperties(aws_sdk)
+endif()
+
+set(_aws_crt_root "${aws_sdk_SOURCE_DIR}/crt/aws-crt-cpp")
+set(_aws_crt_marker "${_aws_crt_root}/crt/aws-c-common/CMakeLists.txt")
+if(NOT EXISTS "${_aws_crt_root}/CMakeLists.txt" OR NOT EXISTS "${_aws_crt_marker}")
+    message(STATUS "[codex] Prefetching AWS CRT dependencies...")
+    execute_process(
+        COMMAND bash "${aws_sdk_SOURCE_DIR}/prefetch_crt_dependency.sh"
+        WORKING_DIRECTORY "${aws_sdk_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY)
+    file(REMOVE_RECURSE "${_aws_crt_root}/crt/tmp")
+endif()
+
+set(_codex_prev_build_testing ${BUILD_TESTING})
+set(BUILD_TESTING OFF CACHE BOOL "Disable tests inside AWS SDK build" FORCE)
+add_subdirectory(${aws_sdk_SOURCE_DIR} ${aws_sdk_BINARY_DIR})
+set(BUILD_TESTING ${_codex_prev_build_testing} CACHE BOOL "Restart project testing flag" FORCE)
+unset(_codex_prev_build_testing)
 
 # libarchive ----------------------------------------------------------------
 set(ENABLE_CAT OFF CACHE BOOL "" FORCE)
@@ -541,6 +569,8 @@ target_link_libraries(codex_thirdparty
         blake3::blake3
         OpenSSL::SSL
         libssh2::libssh2
+        AWS::aws-cpp-sdk-s3
+        aws-crt-cpp
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}
 )
@@ -555,6 +585,8 @@ if(APPLE)
 endif()
 
 add_dependencies(codex_thirdparty openssl)
+add_dependencies(codex_thirdparty aws-cpp-sdk-s3)
+add_dependencies(codex_thirdparty aws-crt-cpp)
 
 target_compile_definitions(codex_thirdparty INTERFACE
     CURL_STATICLIB
@@ -562,4 +594,8 @@ target_compile_definitions(codex_thirdparty INTERFACE
 
 target_include_directories(codex_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/aws-cpp-sdk-core/include>"
+    "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
+    "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
+    "$<BUILD_INTERFACE:${_aws_crt_root}/include>"
 )

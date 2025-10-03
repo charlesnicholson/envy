@@ -1,6 +1,6 @@
 # codex-cmake-test
 
-Static macOS test driver that bundles libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3 into a single executable using modern CMake. The goal is to build each dependency from source without Git submodules, link everything statically, and exercise the libraries in a unified smoke test.
+Static macOS test driver that bundles libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, BLAKE3, and the AWS SDK for C++ (S3-only) into a single executable using modern CMake. The goal is to build each dependency from source without Git submodules, link everything statically, and exercise the libraries in a unified smoke test.
 
 The project prioritizes lean binaries and predictable performance: we use straightforward, well-understood concurrency primitives (via oneTBB) and avoid gratuitous template metaprogramming or other "clever" tricks that hurt readability and optimization. Every component is selected and configured to minimize size while retaining full HTTPS/SSH functionality, including high-speed MD5 hashing powered by OpenSSL for compatibility checks.
 

@@ -32,4 +32,5 @@ if [[ "${need_configure}" -eq 1 ]]; then
         -D ENABLE_LTO="${ENABLE_LTO}"
 fi
 
-"${CMAKE_BIN}" --build "${BUILD_DIR}" --parallel
+"${CMAKE_BIN}" --build "${BUILD_DIR}" --target codex_cmake_test --parallel
+"${CMAKE_BIN}" --build "${BUILD_DIR}" --target third_party_smoke --parallel

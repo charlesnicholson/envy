@@ -6,6 +6,13 @@
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
 
+#include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProvider.h>
+#include <aws/core/client/ClientConfiguration.h>
+#include <aws/core/http/HttpTypes.h>
+#include <aws/core/utils/logging/LogLevel.h>
+#include <aws/s3/S3Client.h>
+
 #include <curl/curlver.h>
 #include <openssl/evp.h>
 
@@ -69,7 +76,7 @@ class CurlEasyHandle {
   CURL *get() const { return handle_; }
 
  private:
-  CURL *handle_{};
+ CURL *handle_{};
 };
 
 void apply_common_curl_options(CURL *curl) {
@@ -94,6 +101,22 @@ size_t write_stream_callback(void *ptr, size_t size, size_t nmemb, void *userdat
   }
   return total;
 }
+
+class AwsApiGuard {
+ public:
+  AwsApiGuard() {
+    options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Error;
+    Aws::InitAPI(options_);
+  }
+
+  AwsApiGuard(const AwsApiGuard &) = delete;
+  AwsApiGuard &operator=(const AwsApiGuard &) = delete;
+
+  ~AwsApiGuard() { Aws::ShutdownAPI(options_); }
+
+ private:
+  Aws::SDKOptions options_{};
+};
 
 size_t write_string_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {
   auto *out = static_cast<std::string *>(userdata);
@@ -625,6 +648,44 @@ void check_curl() {
             << "; response code " << response_code << std::endl;
 }
 
+void check_s3_presign() {
+  std::cout << "[aws-sdk] Generating presigned S3 URL..." << std::endl;
+  AwsApiGuard guard;
+
+  const Aws::Auth::AWSCredentials credentials("AKIDCODExAMPLE", "verySecretKeyExample");
+  auto provider = std::make_shared<Aws::Auth::SimpleAWSCredentialsProvider>(credentials);
+
+  Aws::Client::ClientConfiguration config;
+  config.region = "us-east-1";
+  config.scheme = Aws::Http::Scheme::HTTPS;
+  config.verifySSL = true;
+  config.connectTimeoutMs = 2000;
+  config.requestTimeoutMs = 5000;
+
+  Aws::S3::S3Client client(provider, config,
+                           Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+                           false);
+
+  const Aws::String bucket = "codex-cmake-test-bucket";
+  const Aws::String key = "smoke-object.txt";
+  const Aws::String presigned = client.GeneratePresignedUrl(
+      bucket, key, Aws::Http::HttpMethod::HTTP_PUT, 900);
+
+  const std::string presigned_utf8 = presigned.c_str();
+  if (presigned_utf8.empty()) {
+    throw std::runtime_error("[aws-sdk] Presigned URL generation returned empty string");
+  }
+  if (presigned_utf8.find(bucket.c_str()) == std::string::npos ||
+      presigned_utf8.find(key.c_str()) == std::string::npos) {
+    throw std::runtime_error("[aws-sdk] Presigned URL missing bucket or key tokens");
+  }
+  if (presigned_utf8.rfind("https://", 0) != 0) {
+    throw std::runtime_error("[aws-sdk] Presigned URL does not use HTTPS: " + presigned_utf8);
+  }
+
+  std::cout << "[aws-sdk] Presigned URL generated successfully." << std::endl;
+}
+
 void check_lua() {
     std::cout << "[Lua] Spinning up interpreter..." << std::endl;
     lua_State *L = luaL_newstate();
@@ -790,6 +851,7 @@ int main() {
     std::cout << "=== codex-cmake-test dependency probe ===" << std::endl;
         check_git();
         check_curl();
+        check_s3_presign();
         check_lua();
         check_tbb();
         check_libarchive();
