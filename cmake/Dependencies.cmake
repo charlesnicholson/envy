@@ -382,9 +382,9 @@ set(AWS_SDK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(AWS_SDK_CPP_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(AWS_SDK_CPP_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(AWS_SDK_CPP_CUSTOM_MEMORY_MANAGEMENT OFF CACHE BOOL "" FORCE)
-set(BUILD_ONLY "s3" CACHE STRING "" FORCE)
-set(AWS_BUILD_ONLY "s3" CACHE STRING "" FORCE)
-set(AWS_SDK_CPP_BUILD_ONLY "s3" CACHE STRING "" FORCE)
+set(BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
+set(AWS_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
+set(AWS_SDK_CPP_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(ENFORCE_SUBMODULE_VERSIONS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(aws_sdk
     URL https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip
@@ -569,6 +569,8 @@ target_link_libraries(codex_thirdparty
         OpenSSL::SSL
         libssh2::libssh2
         AWS::aws-cpp-sdk-s3
+        AWS::aws-cpp-sdk-sso
+        AWS::aws-cpp-sdk-sso-oidc
         aws-crt-cpp
         ZLIB::ZLIB
         ${RESOLV_LIBRARY}
@@ -585,6 +587,8 @@ endif()
 
 add_dependencies(codex_thirdparty openssl)
 add_dependencies(codex_thirdparty aws-cpp-sdk-s3)
+add_dependencies(codex_thirdparty aws-cpp-sdk-sso)
+add_dependencies(codex_thirdparty aws-cpp-sdk-sso-oidc)
 add_dependencies(codex_thirdparty aws-crt-cpp)
 
 target_compile_definitions(codex_thirdparty INTERFACE

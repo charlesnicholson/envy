@@ -2,6 +2,8 @@
 #include <archive_entry.h>
 
 #include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/auth/SSOCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/http/HttpTypes.h>
 #include <aws/core/utils/logging/LogLevel.h>
@@ -140,6 +142,25 @@ class TempManagerScope {
  private:
   TempResourceManager &manager_;
 };
+
+std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider()
+{
+  static constexpr const char *kAllocationTag = "codex-cmake-test-sso";
+  try {
+    auto sso_provider = Aws::MakeShared<Aws::Auth::SSOCredentialsProvider>(kAllocationTag);
+    const auto credentials = sso_provider->GetAWSCredentials();
+    if (!credentials.GetAWSAccessKeyId().empty() && !credentials.GetAWSSecretKey().empty() &&
+        !credentials.IsExpiredOrEmpty()) {
+      std::cout << "[aws-sdk] Using AWS SSO credentials provider." << std::endl;
+      return sso_provider;
+    }
+    std::cout << "[aws-sdk] AWS SSO credentials unavailable; falling back to default provider chain." << std::endl;
+  } catch (const std::exception &ex) {
+    std::cout << "[aws-sdk] AWS SSO provider initialization failed: " << ex.what()
+              << "; falling back to default provider chain." << std::endl;
+  }
+  return Aws::MakeShared<Aws::Auth::DefaultAWSCredentialsProviderChain>(kAllocationTag);
+}
 
 void archive_copy_data(struct archive *source, struct archive *dest)
 {
@@ -326,14 +347,15 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
   }
   const auto destination = temp_dir / file_name;
 
-  Aws::Client::ClientConfiguration config;
+  Aws::S3::S3ClientConfiguration config;
   config.region = region.c_str();
   config.scheme = Aws::Http::Scheme::HTTPS;
   config.verifySSL = true;
   config.connectTimeoutMs = 3000;
   config.requestTimeoutMs = 30000;
 
-  Aws::S3::S3Client client(config);
+  const auto credentials_provider = select_credentials_provider();
+  Aws::S3::S3Client client(credentials_provider, nullptr, config);
 
   Aws::S3::Model::GetObjectRequest request;
   request.SetBucket(bucket.c_str());
