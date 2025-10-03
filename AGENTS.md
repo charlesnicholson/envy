@@ -13,12 +13,15 @@
 - Any design notes or per-library instructions should go under `docs/`; update `docs/dependencies.md` when pinning or patching vendored code.
 
 ## Build, Test, and Development Commands
-- For day-to-day development disable LTO for faster turns: `cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF` (re-enable before release validation).
-- `cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON` configures an out-of-tree build rooted at `out/`. Ninja is the only supported generator—avoid Makefiles so third-party downloads, installs, and object files remain isolated and deleting `out/` resets the tree.
-- `cmake --build out --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3.
-- `ctest --test-dir out -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration and must succeed before completion.
-- When iterating on dependency behaviour, rebuild individual targets with `cmake --build out --target <dependency>` to avoid full reconfigure cycles.
-- A task is incomplete until `rm -rf out`, a fresh configure, full rebuild, and `ctest --test-dir out -V` all finish with no warnings or errors, and the smoke test executable runs successfully.
+- For day-to-day development disable LTO for faster turns: `cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF` (re-enable before release validation).
+- `cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON` configures an out-of-tree build rooted at `out/`. Ninja is the only supported generator—avoid Makefiles so third-party downloads, installs, and object files remain isolated.
+- Use the top-level `./build.sh` wrapper in the project root for routine work; it configures `out/build` on demand and always drives a full build, which is fast enough that splitting targets is unnecessary.
+- Cache all fetched or generated third-party payloads inside `out/cache/third_party`. Build logic must check for the required archives or source trees in that directory before attempting a network fetch so we do not redownload large toolchains unnecessarily.
+- Place every configure cache, object file, and executable under `out/build`; for example `out/build/codex-tool/codex_cmake_test` for the smoke driver. Deleting `out/build` forces a rebuild while preserving the dependency cache.
+- `cmake --build out/build --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3.
+- `ctest --test-dir out/build -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration and must succeed before completion.
+- When iterating on dependency behaviour, rebuild individual targets with `cmake --build out/build --target <dependency>` to avoid full reconfigure cycles.
+- All transient artifacts must stay under `out/`, and removing the directory (`rm -rf out`) restores a pristine working tree. A task is incomplete until that full-cycle rebuild succeeds with no warnings or errors and the smoke test executable runs cleanly.
 
 ## Coding Style & Naming Conventions
 - C++20, 2-space indentation (enforced by `.editorconfig`), and Allman braces for functions/namespaces. Prefer `CamelCase` classes, `snake_case` free/static functions, and `kPascalCase` constants.

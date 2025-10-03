@@ -9,9 +9,63 @@ set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Disable deprecated CMake warnings from
 
 set_property(GLOBAL PROPERTY JOB_POOLS codex_fetch=4)
 
-# Keep all dependency artifacts under the active build directory so removing it
-# (e.g., rm -rf out/) leaves the system pristine.
-set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
+# Persist fetched sources outside the build tree so deleting `out/build`
+# forces a rebuild while reusing cached downloads.
+set(CODEX_THIRDPARTY_CACHE_DIR "${PROJECT_SOURCE_DIR}/out/cache/third_party" CACHE PATH "Directory for cached third-party sources")
+file(MAKE_DIRECTORY "${CODEX_THIRDPARTY_CACHE_DIR}")
+
+function(codex_fetchcontent_populate name human_name)
+    string(TOUPPER "${name}" _codex_upper)
+    string(TOLOWER "${name}" _codex_lower)
+
+    set(_codex_source_dir "${CODEX_THIRDPARTY_CACHE_DIR}/${_codex_lower}-src")
+    set(_codex_binary_dir "${CMAKE_BINARY_DIR}/_deps/${_codex_lower}-build")
+
+    set("FETCHCONTENT_SOURCE_DIR_${_codex_upper}" "${_codex_source_dir}")
+    set("FETCHCONTENT_BINARY_DIR_${_codex_upper}" "${_codex_binary_dir}")
+
+    set(_codex_prev_defined FALSE)
+    if(DEFINED FETCHCONTENT_FULLY_DISCONNECTED)
+        set(_codex_prev_defined TRUE)
+        set(_codex_prev_value "${FETCHCONTENT_FULLY_DISCONNECTED}")
+    endif()
+
+    if(EXISTS "${_codex_source_dir}")
+        message(STATUS "[codex] Reusing cached ${human_name} sources at ${_codex_source_dir}")
+        set(FETCHCONTENT_FULLY_DISCONNECTED ON)
+    else()
+        message(STATUS "[codex] No cached ${human_name} sources at ${_codex_source_dir}; fetching")
+    endif()
+
+    FetchContent_Populate(${name})
+    FetchContent_GetProperties(${name})
+
+    if(_codex_prev_defined)
+        set(FETCHCONTENT_FULLY_DISCONNECTED "${_codex_prev_value}" PARENT_SCOPE)
+        set(FETCHCONTENT_FULLY_DISCONNECTED "${_codex_prev_value}")
+    else()
+        unset(FETCHCONTENT_FULLY_DISCONNECTED PARENT_SCOPE)
+        unset(FETCHCONTENT_FULLY_DISCONNECTED)
+    endif()
+
+    set("FETCHCONTENT_SOURCE_DIR_${_codex_upper}" "${FETCHCONTENT_SOURCE_DIR_${_codex_upper}}" PARENT_SCOPE)
+    set("FETCHCONTENT_BINARY_DIR_${_codex_upper}" "${FETCHCONTENT_BINARY_DIR_${_codex_upper}}" PARENT_SCOPE)
+    set(${_codex_lower}_SOURCE_DIR "${${_codex_lower}_SOURCE_DIR}" PARENT_SCOPE)
+    set(${_codex_lower}_BINARY_DIR "${${_codex_lower}_BINARY_DIR}" PARENT_SCOPE)
+    set(${name}_SOURCE_DIR "${_codex_source_dir}" PARENT_SCOPE)
+    set(${name}_BINARY_DIR "${_codex_binary_dir}" PARENT_SCOPE)
+    set(${name}_POPULATED "${${name}_POPULATED}" PARENT_SCOPE)
+
+    set(${name}_SOURCE_DIR "${_codex_source_dir}")
+    set(${name}_BINARY_DIR "${_codex_binary_dir}")
+
+    unset(_codex_prev_defined)
+    unset(_codex_prev_value)
+    unset(_codex_source_dir)
+    unset(_codex_binary_dir)
+    unset(_codex_upper)
+    unset(_codex_lower)
+endfunction()
 
 find_package(ZLIB REQUIRED)
 find_library(RESOLV_LIBRARY resolv REQUIRED)
@@ -21,7 +75,6 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # OpenSSL --------------------------------------------------------------------
-set(OPENSSL_SOURCE "${CMAKE_BINARY_DIR}/_deps/openssl-src")
 set(OPENSSL_BINARY "${CMAKE_BINARY_DIR}/_deps/openssl-build")
 
 find_program(PERL_EXECUTABLE perl REQUIRED)
@@ -35,7 +88,8 @@ FetchContent_Declare(openssl
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
     message(STATUS "Fetching OpenSSL sources (openssl-3.5.3)...")
-    FetchContent_Populate(openssl)
+    codex_fetchcontent_populate(openssl "OpenSSL")
+    FetchContent_GetProperties(openssl)
 
     set(_openssl_target "")
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -128,7 +182,8 @@ FetchContent_Declare(libssh2
 )
 FetchContent_GetProperties(libssh2)
 if(NOT libssh2_POPULATED)
-    FetchContent_Populate(libssh2)
+    codex_fetchcontent_populate(libssh2 "libssh2")
+    FetchContent_GetProperties(libssh2)
     set(_libssh2_cmake "${libssh2_SOURCE_DIR}/CMakeLists.txt")
     if(EXISTS "${_libssh2_cmake}")
         file(READ "${_libssh2_cmake}" _libssh2_contents)
@@ -180,26 +235,9 @@ set(LIBSSH2_LIBRARY_DIR "${libssh2_BINARY_DIR}/src" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIR "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIRS "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 
-set(_libssh2_pkgconfig_dir "${CMAKE_BINARY_DIR}/pkgconfig")
-file(MAKE_DIRECTORY "${_libssh2_pkgconfig_dir}")
-set(_libssh2_pc_file "${_libssh2_pkgconfig_dir}/libssh2.pc")
-file(WRITE "${_libssh2_pc_file}"
-    "prefix=${libssh2_BINARY_DIR}\n"
-    "exec_prefix=\${prefix}\n"
-    "libdir=\${prefix}/src\n"
-    "includedir=${libssh2_SOURCE_DIR}/include\n\n"
-    "Name: libssh2\n"
-    "Description: Bundled libssh2 static build\n"
-    "Version: 1.11.0\n"
-    "Libs: \${libdir}/libssh2.a\n"
-    "Cflags: -I\${includedir}\n")
-if(DEFINED ENV{PKG_CONFIG_PATH} AND NOT "$ENV{PKG_CONFIG_PATH}" STREQUAL "")
-    set(ENV{PKG_CONFIG_PATH} "${_libssh2_pkgconfig_dir}:$ENV{PKG_CONFIG_PATH}")
-else()
-    set(ENV{PKG_CONFIG_PATH} "${_libssh2_pkgconfig_dir}")
-endif()
-
-unset(_libssh2_pc_file)
+# Ensure pkg-config lookups consider only system defaults; the build patches
+# libgit2 to rely on the in-tree libssh2 target instead.
+set(ENV{PKG_CONFIG_PATH} "")
 
 # libgit2 -------------------------------------------------------------------
 set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
@@ -213,7 +251,36 @@ FetchContent_Declare(libgit2
     GIT_TAG v1.7.2
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(libgit2)
+FetchContent_GetProperties(libgit2)
+if(NOT libgit2_POPULATED)
+    codex_fetchcontent_populate(libgit2 "libgit2")
+    FetchContent_GetProperties(libgit2)
+endif()
+
+set(_codex_libgit2_select "${libgit2_SOURCE_DIR}/cmake/SelectSSH.cmake")
+if(EXISTS "${_codex_libgit2_select}")
+    file(READ "${_codex_libgit2_select}" _codex_libgit2_select_contents)
+    if(NOT _codex_libgit2_select_contents MATCHES "codex override")
+        string(REPLACE "\tfind_pkglibraries(LIBSSH2 libssh2)\n"
+            "\tif(TARGET libssh2::libssh2) # codex override\n\t\tset(LIBSSH2_FOUND 1)\n\t\tset(LIBSSH2_INCLUDE_DIRS \"${libssh2_SOURCE_DIR}/include\")\n\t\tset(LIBSSH2_LIBRARY_DIRS \"${libssh2_BINARY_DIR}/src\")\n\t\tset(LIBSSH2_LIBRARIES libssh2::libssh2)\n\t\tset(LIBSSH2_LDFLAGS \"\")\n\telse()\n\t\tfind_pkglibraries(LIBSSH2 libssh2)\n\tendif()\n"
+            _codex_libgit2_select_patched "${_codex_libgit2_select_contents}")
+        if(NOT _codex_libgit2_select_patched STREQUAL _codex_libgit2_select_contents)
+            file(WRITE "${_codex_libgit2_select}" "${_codex_libgit2_select_patched}")
+        endif()
+        unset(_codex_libgit2_select_patched)
+        file(READ "${_codex_libgit2_select}" _codex_libgit2_select_contents)
+        string(REPLACE "\tcheck_library_exists(\"${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n\tendif()\n"
+            "\tif(NOT TARGET libssh2::libssh2) # codex override\n\t\tcheck_library_exists(\"${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n\t\tendif()\n\tendif()\n"
+            _codex_libgit2_select_patched "${_codex_libgit2_select_contents}")
+        if(NOT _codex_libgit2_select_patched STREQUAL _codex_libgit2_select_contents)
+            file(WRITE "${_codex_libgit2_select}" "${_codex_libgit2_select_patched}")
+        endif()
+        unset(_codex_libgit2_select_patched)
+        unset(_codex_libgit2_select_contents)
+    endif()
+endif()
+unset(_codex_libgit2_select)
+add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
 if(TARGET libgit2package)
     add_library(codex::libgit2 ALIAS libgit2package)
     target_include_directories(libgit2package INTERFACE
@@ -277,7 +344,12 @@ FetchContent_Declare(libcurl
     GIT_TAG curl-8_16_0
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(libcurl)
+FetchContent_GetProperties(libcurl)
+if(NOT libcurl_POPULATED)
+    codex_fetchcontent_populate(libcurl "libcurl")
+    FetchContent_GetProperties(libcurl)
+endif()
+add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
 if(NOT TARGET CURL::libcurl)
     add_library(CURL::libcurl ALIAS libcurl)
 endif()
@@ -306,7 +378,12 @@ FetchContent_Declare(oneTBB
     GIT_TAG v2022.0.0
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(oneTBB)
+FetchContent_GetProperties(oneTBB)
+if(NOT oneTBB_POPULATED)
+    codex_fetchcontent_populate(oneTBB "oneTBB")
+    FetchContent_GetProperties(oneTBB)
+endif()
+add_subdirectory(${oneTBB_SOURCE_DIR} ${oneTBB_BINARY_DIR})
 
 # libarchive ----------------------------------------------------------------
 set(ENABLE_CAT OFF CACHE BOOL "" FORCE)
@@ -337,7 +414,8 @@ FetchContent_Declare(libarchive
 )
 FetchContent_GetProperties(libarchive)
 if(NOT libarchive_POPULATED)
-    FetchContent_Populate(libarchive)
+    codex_fetchcontent_populate(libarchive "libarchive")
+    FetchContent_GetProperties(libarchive)
     set(_libarchive_cmake "${libarchive_SOURCE_DIR}/CMakeLists.txt")
     if(EXISTS "${_libarchive_cmake}")
         file(READ "${_libarchive_cmake}" _libarchive_contents)
@@ -377,7 +455,8 @@ FetchContent_Declare(blake3
 )
 FetchContent_GetProperties(blake3)
 if(NOT blake3_POPULATED)
-    FetchContent_Populate(blake3)
+    codex_fetchcontent_populate(blake3 "BLAKE3")
+    FetchContent_GetProperties(blake3)
     set(BLAKE3_SOURCES
         "${blake3_SOURCE_DIR}/c/blake3.c"
         "${blake3_SOURCE_DIR}/c/blake3_dispatch.c"
@@ -406,7 +485,8 @@ FetchContent_Declare(lua
 )
 FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
-    FetchContent_Populate(lua)
+    codex_fetchcontent_populate(lua "Lua")
+    FetchContent_GetProperties(lua)
     file(GLOB LUA_CORE_SOURCES
         "${lua_SOURCE_DIR}/lapi.c"
         "${lua_SOURCE_DIR}/lcode.c"

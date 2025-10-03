@@ -18,25 +18,27 @@ All development must remain confined to this repository directory. Do not create
 Iterate with link-time optimization disabled to keep rebuilds fast:
 
 ```bash
-cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
-cmake --build out --target codex_cmake_test --parallel
-ctest --test-dir out -V
+cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
+cmake --build out/build --target codex_cmake_test --parallel
+ctest --test-dir out/build -V
 ```
+
+The helper script `./build.sh` at the project root handles this workflow for you: it lazily configures `out/build` if the cache is missing and always drives a full build. The build is quick enough that targeting individual binaries is unnecessary.
 
 Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and test run without warnings or errors:
 
 ```bash
 rm -rf out
-cmake -S . -B out -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
-cmake --build out --target codex_cmake_test --parallel
-ctest --test-dir out -V
-out/codex-tool/codex_cmake_test
+cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
+cmake --build out/build --target codex_cmake_test --parallel
+ctest --test-dir out/build -V
+out/build/codex-tool/codex_cmake_test
 ```
 
 Source files are formatted with 2-space indentation as enforced by the repository `.editorconfig`.
 
-`codex_cmake_test` resides in `out/codex-tool` and runs a runtime smoke suite across every dependency.
+`codex_cmake_test` resides in `out/build/codex-tool` and runs a runtime smoke suite across every dependency.
 
-All third-party checkouts, build artifacts, and installs stay underneath `out/`; deleting the directory restores a pristine working tree.
+All transient artifacts must land underneath `out/`. Cache vendored source trees, extracted archives, and any vendor installs inside `out/cache/third_party`; build logic must verify the required payloads exist there before initiating another fetch so we avoid re-downloading large dependencies. Configure and build into `out/build`, which holds the CMake cache, Ninja objects, and the final binaries. Deleting `out/build` forces a rebuild while preserving the dependency cache, while removing `out/` entirely restores the repository to a pristine state.
 
 See `AGENTS.md` for contributor guidance and `docs/dependencies.md` for notes on configuring the bundled libraries.
