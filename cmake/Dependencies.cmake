@@ -562,7 +562,6 @@ add_library(codex::thirdparty ALIAS codex_thirdparty)
 target_link_libraries(codex_thirdparty
     INTERFACE
         codex::libgit2
-        CURL::libcurl
         TBB::tbb
         libarchive::libarchive
         lua::lua
@@ -598,4 +597,5 @@ target_include_directories(codex_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${_aws_crt_root}/include>"
+    "$<BUILD_INTERFACE:${libcurl_SOURCE_DIR}/include>"
 )
