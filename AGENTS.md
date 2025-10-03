@@ -39,3 +39,4 @@
 - Squash iterative fixups locally; keep one commit per logical change (e.g., "build: pin libarchive to 3.7.2").
 - Every PR must describe dependency revisions touched, the build command used, and include the relevant `ctest` output (or rationale when infeasible).
 - Coordinate cross-library adjustments by updating `docs/dependencies.md` and referencing the section in your PR summary for easy reviewer context.
+- Do not preserve backward compatibility; prioritize the current requirements and simplify aggressively when older entry points get in the way.

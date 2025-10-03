@@ -420,7 +420,7 @@ int lua_blake3_hex(lua_State *L)
   }
 }
 
-int lua_unzip_to_temp(lua_State *L)
+int lua_extract_to_temp(lua_State *L)
 {
   const std::string archive = luaL_checkstring(L, 1);
   if (!g_temp_manager) {
@@ -431,12 +431,13 @@ int lua_unzip_to_temp(lua_State *L)
     const auto destination = g_temp_manager->create_directory();
     extract_archive(archive, destination);
     const auto count = count_regular_files(destination);
-    std::cout << "[lua] Extracted " << count << " files into " << destination << std::endl;
+    std::cout << "[lua] Extracted " << count << " files into " << destination
+              << std::endl;
     lua_pushstring(L, destination.string().c_str());
     lua_pushinteger(L, static_cast<lua_Integer>(count));
     return 2;
   } catch (const std::exception &ex) {
-    return luaL_error(L, "unzip_to_temp failed: %s", ex.what());
+    return luaL_error(L, "extract_to_temp failed: %s", ex.what());
   }
 }
 
@@ -446,7 +447,7 @@ local region = os.getenv("CODEX_S3_REGION") or "us-east-1"
 
 local archive_path = download_s3_object(bucket, key, region)
 blake3_hex(archive_path)
-unzip_to_temp(archive_path)
+extract_to_temp(archive_path)
 )";
 
 void run_lua_workflow()
@@ -465,8 +466,8 @@ void run_lua_workflow()
   lua_setglobal(state.get(), "download_s3_object");
   lua_pushcfunction(state.get(), lua_blake3_hex);
   lua_setglobal(state.get(), "blake3_hex");
-  lua_pushcfunction(state.get(), lua_unzip_to_temp);
-  lua_setglobal(state.get(), "unzip_to_temp");
+  lua_pushcfunction(state.get(), lua_extract_to_temp);
+  lua_setglobal(state.get(), "extract_to_temp");
 
   if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
     const char *message = lua_tostring(state.get(), -1);
