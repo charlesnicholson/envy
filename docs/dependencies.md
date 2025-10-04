@@ -19,7 +19,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Compiled as a static library with OpenSSL providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
 
 ## OpenSSL
-- Source: https://github.com/openssl/openssl (tag `openssl-3.5.3`).
+- Source: https://www.openssl.org/source/openssl-3.6.0.tar.gz.
 - Built via `ExternalProject_Add` invoking the upstream Configure script with `no-shared`, `no-tests`, and `no-apps` so we export static `OpenSSL::SSL`/`OpenSSL::Crypto` targets without shipping the CLI tooling. The install lands inside the build tree and a generated `OpenSSLConfig.cmake` allows other dependencies (libssh2) to `find_package` the bundled build.
 - The runtime probes use OpenSSL's `MD5` implementation to validate a known digest while also confirming TLS 1.3-capable libraries are present for consumers such as libssh2.
 

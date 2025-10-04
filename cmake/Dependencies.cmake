@@ -66,18 +66,23 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # OpenSSL --------------------------------------------------------------------
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" OUTPUT_VARIABLE OPENSSL_BINARY)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "openssl-3.6.0.tar.gz" OUTPUT_VARIABLE _openssl_archive)
+set(_openssl_url https://www.openssl.org/source/openssl-3.6.0.tar.gz)
+if(EXISTS "${_openssl_archive}")
+    file(TO_CMAKE_PATH "${_openssl_archive}" _openssl_archive_norm)
+    set(_openssl_url "file://${_openssl_archive_norm}")
+endif()
 
 find_program(PERL_EXECUTABLE perl REQUIRED)
 find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
 FetchContent_Declare(openssl
-    GIT_REPOSITORY https://github.com/openssl/openssl.git
-    GIT_TAG openssl-3.5.3
-    GIT_SHALLOW TRUE
+    URL ${_openssl_url}
+    URL_HASH SHA256=b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
 )
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
-    message(STATUS "Fetching OpenSSL sources (openssl-3.5.3)...")
+    message(STATUS "Fetching OpenSSL sources (openssl-3.6.0)...")
     codex_fetchcontent_populate(openssl "OpenSSL")
     FetchContent_GetProperties(openssl)
 
@@ -125,6 +130,10 @@ if(NOT openssl_POPULATED)
     add_custom_target(openssl ALL
         DEPENDS "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a")
 endif()
+
+unset(_openssl_archive)
+unset(_openssl_archive_norm)
+unset(_openssl_url)
 
 set(_OPENSSL_INCLUDE_DIR "${OPENSSL_BINARY}/include")
 set(_OPENSSL_SSL_LIBRARY "${OPENSSL_BINARY}/lib/libssl.a")
@@ -249,25 +258,29 @@ endif()
 
 set(_codex_libgit2_select "${libgit2_SOURCE_DIR}/cmake/SelectSSH.cmake")
 if(EXISTS "${_codex_libgit2_select}")
-    file(READ "${_codex_libgit2_select}" _codex_libgit2_select_contents)
-    if(NOT _codex_libgit2_select_contents MATCHES "codex override")
-        string(REPLACE "\tfind_pkglibraries(LIBSSH2 libssh2)\n"
-            "\tif(TARGET libssh2::libssh2) # codex override\n\t\tset(LIBSSH2_FOUND 1)\n\t\tset(LIBSSH2_INCLUDE_DIRS \"${libssh2_SOURCE_DIR}/include\")\n\t\tset(LIBSSH2_LIBRARY_DIRS \"${libssh2_BINARY_DIR}/src\")\n\t\tset(LIBSSH2_LIBRARIES libssh2::libssh2)\n\t\tset(LIBSSH2_LDFLAGS \"\")\n\telse()\n\t\tfind_pkglibraries(LIBSSH2 libssh2)\n\tendif()\n"
-            _codex_libgit2_select_patched "${_codex_libgit2_select_contents}")
-        if(NOT _codex_libgit2_select_patched STREQUAL _codex_libgit2_select_contents)
-            file(WRITE "${_codex_libgit2_select}" "${_codex_libgit2_select_patched}")
-        endif()
-        unset(_codex_libgit2_select_patched)
-        file(READ "${_codex_libgit2_select}" _codex_libgit2_select_contents)
-        string(REPLACE "\tcheck_library_exists(\"${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n\tendif()\n"
-            "\tif(NOT TARGET libssh2::libssh2) # codex override\n\t\tcheck_library_exists(\"${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n\t\tendif()\n\tendif()\n"
-            _codex_libgit2_select_patched "${_codex_libgit2_select_contents}")
-        if(NOT _codex_libgit2_select_patched STREQUAL _codex_libgit2_select_contents)
-            file(WRITE "${_codex_libgit2_select}" "${_codex_libgit2_select_patched}")
-        endif()
-        unset(_codex_libgit2_select_patched)
-        unset(_codex_libgit2_select_contents)
-    endif()
+    set(_codex_libgit2_patch_script "${CMAKE_BINARY_DIR}/codex_patch_libgit2_select.py")
+    set(_codex_libgit2_patch_template [==[
+import pathlib, re
+path = pathlib.Path(r"@SELECT_PATH@")
+text = path.read_text()
+if 'codex override v2' not in text:
+    text = text.replace('find_pkglibraries(LIBSSH2 libssh2)\n', 'if(TARGET libssh2::libssh2) # codex override v2\n\tset(LIBSSH2_FOUND 1)\n\tset(LIBSSH2_INCLUDE_DIRS "@LIBSSH2_SOURCE@/include")\n\tset(LIBSSH2_LIBRARY_DIRS "@LIBSSH2_BINARY@/src")\n\tset(LIBSSH2_LIBRARIES "@LIBSSH2_BINARY@/src/libssh2.a")\n\tset(LIBSSH2_LDFLAGS "")\nelse()\n\tfind_pkglibraries(LIBSSH2 libssh2)\nendif()\n')
+    text = re.sub(r'\tcheck_library_exists\("\${LIBSSH2_LIBRARIES}" libssh2_userauth_publickey_frommemory "\${LIBSSH2_LIBRARY_DIRS}" HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n\tif\(HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n\t\tset\(GIT_SSH_MEMORY_CREDENTIALS 1\)\n\tendif\(\)\n', 'if(NOT TARGET libssh2::libssh2) # codex override v2\n\tcheck_library_exists("@LIBSSH2_BINARY@/src/libssh2.a" libssh2_userauth_publickey_frommemory "@LIBSSH2_BINARY@/src" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n\tendif()\nelse()\n\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\nendif()\n', text, 1)
+    path.write_text(text)
+]==])
+    set(SELECT_PATH "${_codex_libgit2_select}")
+    set(LIBSSH2_SOURCE "${libssh2_SOURCE_DIR}")
+    set(LIBSSH2_BINARY "${libssh2_BINARY_DIR}")
+    string(CONFIGURE "${_codex_libgit2_patch_template}" _codex_libgit2_patch_content @ONLY)
+    file(WRITE "${_codex_libgit2_patch_script}" "${_codex_libgit2_patch_content}")
+    execute_process(COMMAND python3 "${_codex_libgit2_patch_script}"
+        COMMAND_ERROR_IS_FATAL ANY)
+    file(REMOVE "${_codex_libgit2_patch_script}")
+    unset(_codex_libgit2_patch_template)
+    unset(_codex_libgit2_patch_content)
+    unset(SELECT_PATH)
+    unset(LIBSSH2_SOURCE)
+    unset(LIBSSH2_BINARY)
 endif()
 unset(_codex_libgit2_select)
 add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})

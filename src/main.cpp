@@ -2,12 +2,14 @@
 #include <archive_entry.h>
 
 #include <aws/core/Aws.h>
+#include <aws/core/Version.h>
 #include <aws/core/platform/Environment.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <aws/core/auth/SSOCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/http/HttpTypes.h>
 #include <aws/core/utils/logging/LogLevel.h>
+#include <aws/crt/Api.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -16,6 +18,7 @@
 
 #include "lua.hpp"
 
+#include <curl/curl.h>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -25,8 +28,10 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <libssh2.h>
 #include <memory>
 #include <mutex>
+#include <openssl/crypto.h>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -34,6 +39,10 @@
 #include <system_error>
 #include <string_view>
 #include <vector>
+#include <zlib.h>
+
+#include <git2.h>
+#include <oneapi/tbb/version.h>
 
 #include <tbb/flow_graph.h>
 #include <tbb/task_arena.h>
@@ -590,6 +599,32 @@ void run_lua_workflow(const std::string &bucket,
 
 }  // namespace
 
+void print_dependency_versions()
+{
+  std::cout << "Third-party component versions:" << std::endl;
+
+  int git_major = 0;
+  int git_minor = 0;
+  int git_revision = 0;
+  git_libgit2_version(&git_major, &git_minor, &git_revision);
+  std::cout << "  libgit2: " << git_major << '.' << git_minor << '.' << git_revision << std::endl;
+
+  std::cout << "  libcurl: " << LIBCURL_VERSION << std::endl;
+  std::cout << "  libssh2: " << LIBSSH2_VERSION << std::endl;
+  std::cout << "  OpenSSL: " << OpenSSL_version(OPENSSL_VERSION) << std::endl;
+  std::cout << "  libarchive: " << archive_version_details() << std::endl;
+  std::cout << "  Lua: " << LUA_RELEASE << std::endl;
+  std::cout << "  oneTBB: " << TBB_runtime_version() << std::endl;
+  std::cout << "  BLAKE3: " << BLAKE3_VERSION_STRING << std::endl;
+  std::cout << "  zlib: " << zlibVersion() << std::endl;
+  std::cout << "  AWS SDK for C++: " << Aws::Version::GetVersionString() << std::endl;
+
+  Aws::Crt::ApiHandle crt_handle;
+  const auto crt_version = crt_handle.GetCrtVersion();
+  std::cout << "  AWS CRT: " << crt_version.major << '.' << crt_version.minor << '.'
+            << crt_version.patch << std::endl;
+}
+
 int main(int argc, char **argv)
 {
   if (argc < 2) {
@@ -599,6 +634,8 @@ int main(int argc, char **argv)
   }
 
   try {
+    print_dependency_versions();
+
     const auto parts = parse_s3_uri(argv[1]);
     const std::string region_arg = argc >= 3 ? std::string(argv[2]) : std::string{};
 
