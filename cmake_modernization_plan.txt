@@ -1,9 +1,9 @@
 Multi-step plan to simplify and modernize CMake (minimum version 4.1.2)
 
-1. Normalize project options and cache handling
-   - Convert every `set(... CACHE ... FORCE)` that toggles dependency behaviour into properly documented `option()`/`set()` guards with `FORCE` reserved for first-configuration defaults.
-   - Group knobs under a dedicated `cmake/options.cmake` module and gate feature combos with `cmake_dependent_option()` so repeated re-configures stop toggling user-provided cache values.
-   - Expose user-facing toggles (e.g., `ENABLE_LTO`, dependency feature trims) through a preset-friendly namespace such as `CODEX_` for clarity.
+1. Confirm the minimal configuration surface
+   - Audit the top-level `CMakeLists.txt` and dependency logic to ensure the only user-visible cache knobs remain `CMAKE_BUILD_TYPE` and `ENABLE_LTO`; remove any stray options that leak through from vendored projects.
+   - Lock third-party builds to their required settings (tests/examples off, static libs only) via hard-coded cache edits or toolchain flags so they cannot be toggled accidentally.
+   - Document this invariant in contributor guides and comments so future refactors preserve the single supported configuration path.
 
 2. Refactor dependency acquisition helpers
    - Replace the bespoke `codex_fetchcontent_populate` with the modern `FetchContent_MakeAvailable()` workflow, using the 4.1 `FETCHCONTENT_BASE_DIR` initialization via `cmake_path(NORMAL_PATH ...)` and `FetchContent_Declare` options like `FIND_PACKAGE_ARGS` to reduce manual property plumbing.

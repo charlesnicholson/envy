@@ -15,6 +15,8 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 - Any design notes or per-library instructions should go under `docs/`; update `docs/dependencies.md` when pinning or patching vendored code.
 
 ## Build, Test, and Development Commands
+- Configuration is intentionally fixed: only `CMAKE_BUILD_TYPE` and `ENABLE_LTO` may vary. Do **not** introduce additional cache options or expose third-party toggles.
+- All vendored third-party tests and examples must remain disabled; never enable them in CI or local builds.
 - For day-to-day development disable LTO for faster turns: `cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF` (re-enable before release validation).
 - `cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON` configures an out-of-tree build rooted at `out/`. Ninja is the only supported generator—avoid Makefiles so third-party downloads, installs, and object files remain isolated.
 - Use the top-level `./build.sh` wrapper in the project root for routine work; it configures `out/build` on demand and always drives a full build, which is fast enough that splitting targets is unnecessary.
