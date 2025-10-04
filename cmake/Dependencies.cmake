@@ -492,7 +492,7 @@ endif()
 # BLAKE3 --------------------------------------------------------------------
 FetchContent_Declare(blake3
     GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
-    GIT_TAG 1.5.1
+    GIT_TAG 1.8.2
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(blake3)

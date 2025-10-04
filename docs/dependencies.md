@@ -37,7 +37,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Keep changes to compression feature flags synchronized with `check_libarchive()` in `src/main.cpp` so the runtime probe reflects the configured capabilities.
 
 ## BLAKE3
-- Source: https://github.com/BLAKE3-team/BLAKE3 (tag `1.5.1`).
+- Source: https://github.com/BLAKE3-team/BLAKE3 (tag `1.8.2`).
 - The C implementation is built directly with architecture-specific files added conditionally (x86-64 SIMD or ARM NEON). The exported target is `blake3::blake3` with headers under the `c/` directory.
 - Update the smoke tests if you adjust SIMD availability so we continue to hash test vectors along the most optimized path.
 
