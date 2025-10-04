@@ -247,7 +247,7 @@ set(BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 FetchContent_Declare(libgit2
     GIT_REPOSITORY https://github.com/libgit2/libgit2.git
-    GIT_TAG v1.7.2
+    GIT_TAG v1.9.1
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(libgit2)
@@ -287,8 +287,8 @@ add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
 if(TARGET libgit2package)
     add_library(codex::libgit2 ALIAS libgit2package)
     target_include_directories(libgit2package INTERFACE
-        ${libgit2_SOURCE_DIR}/include
-        ${libgit2_BINARY_DIR}/include)
+        "$<BUILD_INTERFACE:${libgit2_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${libgit2_BINARY_DIR}/include>")
 elseif(TARGET git2)
     add_library(codex::libgit2 ALIAS git2)
 elseif(TARGET libgit2)
@@ -451,7 +451,7 @@ set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libarchive
     GIT_REPOSITORY https://github.com/libarchive/libarchive.git
-    GIT_TAG v3.7.2
+    GIT_TAG v3.8.1
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(libarchive)
@@ -516,13 +516,14 @@ if(NOT blake3_POPULATED)
     endif()
     add_library(blake3 STATIC ${BLAKE3_SOURCES})
     target_include_directories(blake3 PUBLIC "${blake3_SOURCE_DIR}/c")
+    target_compile_features(blake3 PUBLIC c_std_99)
     add_library(blake3::blake3 ALIAS blake3)
 endif()
 
 # Lua -----------------------------------------------------------------------
 FetchContent_Declare(lua
     GIT_REPOSITORY https://github.com/lua/lua.git
-    GIT_TAG v5.4.6
+    GIT_TAG v5.4.8
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(lua)
@@ -566,6 +567,10 @@ if(NOT lua_POPULATED)
     add_library(lua STATIC ${LUA_CORE_SOURCES})
     target_include_directories(lua PUBLIC "${lua_SOURCE_DIR}")
     target_compile_definitions(lua PUBLIC LUA_COMPAT_5_3)
+    set_target_properties(lua PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED ON)
+    target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=c99>)
     add_library(lua::lua ALIAS lua)
 endif()
 

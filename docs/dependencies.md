@@ -5,7 +5,7 @@ This repository is an experiment in linking several complex dependencies statica
 All downloads, source trees, and install steps are redirected underneath the active build directory (recommended: `out/`). Removing that directory cleans every third-party artifact.
 
 ## libgit2
-- Source: https://github.com/libgit2/libgit2 (tag `v1.7.2`).
+- Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
 - CMake options disable CLI and shared builds. The library exports as `codex::libgit2` and is consumed via the standard `git2` target.
 - `USE_HTTPS` is forced to `SecureTransport` and `USE_SSH` is enabled so HTTPS traffic rides the system TLS stack while SSH uses our bundled libssh2 build.
 
@@ -24,7 +24,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - The runtime probes use OpenSSL's `MD5` implementation to validate a known digest while also confirming TLS 1.3-capable libraries are present for consumers such as libssh2.
 
 ## Lua
-- Source: https://github.com/lua/lua (tag `v5.4.6`).
+- Source: https://github.com/lua/lua (tag `v5.4.8`).
 - Upstream Makefile is bypassed; we build `lua` as a static library directly with `add_library` and expose it as `lua::lua`. The helper header `include/lua.hpp` wraps the C headers for seamless C++ consumption.
 
 ## oneTBB
@@ -32,7 +32,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Builds via upstream CMake with tests off. We link against `TBB::tbb` and keep `BUILD_SHARED_LIBS=OFF` for static archives.
 
 ## libarchive
-- Source: https://github.com/libarchive/libarchive (tag `v3.7.2`).
+- Source: https://github.com/libarchive/libarchive (tag `v3.8.1`).
 - Non-essential tools and compression backends are disabled so the build depends only on project-managed sources. The `archive` target is re-exported as `libarchive::libarchive` for consumers.
 - Keep changes to compression feature flags synchronized with `check_libarchive()` in `src/main.cpp` so the runtime probe reflects the configured capabilities.
 
