@@ -15,7 +15,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - On macOS the build points `CURL_CA_BUNDLE` at `/etc/ssl/cert.pem` so OpenSSL inherits the system trust store; adjust the corresponding cache entry if another path is required on your platform.
 
 ## libssh2
-- Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.0`).
+- Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.1`).
 - Compiled as a static library with OpenSSL providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
 
 ## OpenSSL

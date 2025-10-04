@@ -176,7 +176,7 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
 FetchContent_Declare(libssh2
     GIT_REPOSITORY https://github.com/libssh2/libssh2.git
-    GIT_TAG libssh2-1.11.0
+    GIT_TAG libssh2-1.11.1
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(libssh2)
@@ -212,18 +212,20 @@ if(NOT libssh2_POPULATED)
     set(CMAKE_SOURCE_DIR "${_libssh2_original_cmake_source_dir}")
     unset(_libssh2_original_cmake_source_dir)
 endif()
-if(TARGET libssh2_static)
-    add_library(libssh2::libssh2 ALIAS libssh2_static)
-    add_dependencies(libssh2_static openssl)
+if(TARGET libssh2::libssh2)
+    set(_libssh2_primary_target libssh2::libssh2)
+elseif(TARGET libssh2_static)
     set(_libssh2_primary_target libssh2_static)
-    set_target_properties(libssh2_static PROPERTIES INTERFACE_LINK_LIBRARIES "")
 elseif(TARGET libssh2)
-    add_library(libssh2::libssh2 ALIAS libssh2)
-    add_dependencies(libssh2 openssl)
     set(_libssh2_primary_target libssh2)
-    set_target_properties(libssh2 PROPERTIES INTERFACE_LINK_LIBRARIES "")
 else()
     message(FATAL_ERROR "libssh2 target was not created by FetchContent")
+endif()
+
+if(NOT TARGET libssh2::libssh2)
+    add_library(libssh2::libssh2 ALIAS ${_libssh2_primary_target})
+    add_dependencies(${_libssh2_primary_target} openssl)
+    set_target_properties(${_libssh2_primary_target} PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 
 set(Libssh2_DIR "${libssh2_BINARY_DIR}" CACHE PATH "" FORCE)
@@ -444,11 +446,12 @@ set(ENABLE_LZO OFF CACHE BOOL "" FORCE)
 set(ENABLE_PCREPOSIX OFF CACHE BOOL "" FORCE)
 set(ENABLE_LIBXML2 OFF CACHE BOOL "" FORCE)
 set(ENABLE_ICONV OFF CACHE BOOL "" FORCE)
-set(ENABLE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(ENABLE_OPENSSL ON CACHE BOOL "" FORCE)
 set(ENABLE_EXPAT OFF CACHE BOOL "" FORCE)
 set(ENABLE_CNG OFF CACHE BOOL "" FORCE)
 set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libarchive
     GIT_REPOSITORY https://github.com/libarchive/libarchive.git
     GIT_TAG v3.8.1
