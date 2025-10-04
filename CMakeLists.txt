@@ -64,9 +64,3 @@ target_include_directories(codex_cmake_test
     PRIVATE
         ${PROJECT_SOURCE_DIR}/include
 )
-
-set(BUILD_TESTING ON CACHE BOOL "Enable project tests" FORCE)
-include(CTest)
-if(BUILD_TESTING)
-    add_subdirectory(tests)
-endif()

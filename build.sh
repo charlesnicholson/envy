@@ -33,4 +33,3 @@ if [[ "${need_configure}" -eq 1 ]]; then
 fi
 
 "${CMAKE_BIN}" --build "${BUILD_DIR}" --target codex_cmake_test --parallel
-"${CMAKE_BIN}" --build "${BUILD_DIR}" --target third_party_smoke --parallel

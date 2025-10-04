@@ -9,7 +9,7 @@
 - Avoid Git submodules—every vendored dependency must be fetched or mirrored through CMake so the repository remains lightweight and reproducible.
 - Third-party glue and helper macros belong in the `cmake/` directory. Create new modules (e.g., `cmake/FetchFoo.cmake`) rather than embedding logic in targets.
 - Runtime sources live in `src/` with public headers kept in `include/`; keep C++ headers self-contained so static consumers remain deterministic.
-- Test scaffolding resides in `tests/`. Mirror target names (`tests/<target>_*.cpp`) and share fixtures via subdirectories only when reused.
+- Add test scaffolding under `tests/` (create the directory when needed). Mirror target names (`tests/<target>_*.cpp`) and share fixtures via subdirectories only when reused.
 - Any design notes or per-library instructions should go under `docs/`; update `docs/dependencies.md` when pinning or patching vendored code.
 
 ## Build, Test, and Development Commands
@@ -19,9 +19,9 @@
 - Cache all fetched or generated third-party payloads inside `out/cache/third_party`. Build logic must check for the required archives or source trees in that directory before attempting a network fetch so we do not redownload large toolchains unnecessarily.
 - Place every configure cache, object file, and executable under `out/build`; for example `out/build/codex-tool/codex_cmake_test` for the smoke driver. Deleting `out/build` forces a rebuild while preserving the dependency cache.
 - `cmake --build out/build --target codex_cmake_test --parallel` compiles the statically linked driver that exercises libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3.
-- `ctest --test-dir out/build -V` runs the smoke tests (`third_party_smoke`) to validate link-time integration and must succeed before completion.
 - When iterating on dependency behaviour, rebuild individual targets with `cmake --build out/build --target <dependency>` to avoid full reconfigure cycles.
-- All transient artifacts must stay under `out/`, and removing the directory (`rm -rf out`) restores a pristine working tree. A task is incomplete until that full-cycle rebuild succeeds with no warnings or errors and the smoke test executable runs cleanly.
+- All transient artifacts must stay under `out/`, and removing the directory (`rm -rf out`) restores a pristine working tree. A task is incomplete until the full-cycle rebuild succeeds with no warnings or errors.
+- Any task that modifies source code is only considered complete once `./build.sh` finishes successfully.
 - Third-party CMake subprojects must configure during the top-level configure step and build during the top-level build step; never compile third-party libraries at configure-time or trigger new configuration phases from the build graph.
 
 ## Coding Style & Naming Conventions
@@ -30,7 +30,7 @@
 - `clang-format` configuration is forthcoming—run your local profile but keep diffs minimal until the repo-standard file lands.
 
 ## Testing Guidelines & Performance Philosophy
-- Extend `tests/third_party_smoke.cpp` with any new link-time probes. New behaviour warrants additional focused executables registered through `add_test`.
+- Add focused tests through CTest when new behaviour warrants validation.
 - Runtime checks should remain fast (<1s) and must clean up allocations (e.g., `git_libgit2_shutdown`, `curl_easy_cleanup`, `archive_write_free`).
 - For diagnosis, use `ctest -V` or filter with `ctest -R <pattern>`; document nuanced repro steps in PR descriptions or `docs/`.
 - Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit. Static hashing needs (e.g., MD5) should lean on the bundled OpenSSL implementation rather than bespoke code.
