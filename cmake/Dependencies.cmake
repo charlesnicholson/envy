@@ -381,7 +381,7 @@ set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(oneTBB
     GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
-    GIT_TAG v2022.0.0
+    GIT_TAG v2022.2.0
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(oneTBB)

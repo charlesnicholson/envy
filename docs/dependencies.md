@@ -28,7 +28,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Upstream Makefile is bypassed; we build `lua` as a static library directly with `add_library` and expose it as `lua::lua`. The helper header `include/lua.hpp` wraps the C headers for seamless C++ consumption.
 
 ## oneTBB
-- Source: https://github.com/oneapi-src/oneTBB (tag `v2022.0.0`).
+- Source: https://github.com/oneapi-src/oneTBB (tag `v2022.2.0`).
 - Builds via upstream CMake with tests off. We link against `TBB::tbb` and keep `BUILD_SHARED_LIBS=OFF` for static archives.
 
 ## libarchive
