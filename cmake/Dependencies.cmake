@@ -2,6 +2,7 @@ include(FetchContent)
 include(ExternalProject)
 
 if(POLICY CMP0169)
+    cmake_policy(PUSH)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
@@ -11,15 +12,15 @@ set_property(GLOBAL PROPERTY JOB_POOLS codex_fetch=4)
 
 # Persist fetched sources outside the build tree so deleting `out/build`
 # forces a rebuild while reusing cached downloads.
-set(CODEX_THIRDPARTY_CACHE_DIR "${PROJECT_SOURCE_DIR}/out/cache/third_party" CACHE PATH "Directory for cached third-party sources")
+cmake_path(APPEND PROJECT_SOURCE_DIR "out" "cache" "third_party" OUTPUT_VARIABLE CODEX_THIRDPARTY_CACHE_DIR)
 file(MAKE_DIRECTORY "${CODEX_THIRDPARTY_CACHE_DIR}")
 set(FETCHCONTENT_BASE_DIR "${CODEX_THIRDPARTY_CACHE_DIR}")
 
 
 function(codex_fetchcontent_populate name human_name)
     string(TOLOWER "${name}" _codex_lower)
-    set(_codex_source_dir "${FETCHCONTENT_BASE_DIR}/${_codex_lower}-src")
-    set(_codex_binary_dir "${CMAKE_BINARY_DIR}/_deps/${_codex_lower}-build")
+    cmake_path(APPEND FETCHCONTENT_BASE_DIR "${_codex_lower}-src" OUTPUT_VARIABLE _codex_source_dir)
+    cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "${_codex_lower}-build" OUTPUT_VARIABLE _codex_binary_dir)
 
     set(_codex_prev_defined FALSE)
     if(DEFINED FETCHCONTENT_FULLY_DISCONNECTED)
@@ -64,7 +65,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # OpenSSL --------------------------------------------------------------------
-set(OPENSSL_BINARY "${CMAKE_BINARY_DIR}/_deps/openssl-build")
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" OUTPUT_VARIABLE OPENSSL_BINARY)
 
 find_program(PERL_EXECUTABLE perl REQUIRED)
 find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
@@ -603,3 +604,7 @@ target_include_directories(codex_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${_aws_crt_root}/include>"
     "$<BUILD_INTERFACE:${libcurl_SOURCE_DIR}/include>"
 )
+
+if(POLICY CMP0169)
+    cmake_policy(POP)
+endif()

@@ -1,9 +1,4 @@
-cmake_minimum_required(VERSION 3.26)
-
-if(POLICY CMP0069)
-    cmake_policy(SET CMP0069 NEW)
-    set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
-endif()
+cmake_minimum_required(VERSION 4.1.2)
 
 project(codex_cmake_test
     VERSION 0.1.0
@@ -17,16 +12,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# Favor size-optimized release binaries
-foreach(_lang IN ITEMS C CXX)
-    set(_flags "${CMAKE_${_lang}_FLAGS_RELEASE}")
-    string(REGEX REPLACE "-O[0-9A-Za-z]*" "" _flags "${_flags}")
-    set(_flags "${_flags} -Os")
-    string(STRIP "${_flags}" _flags)
-    set(CMAKE_${_lang}_FLAGS_RELEASE "${_flags}" CACHE STRING "Release flags" FORCE)
+# Favor size-optimized release binaries by normalizing optimization flags
+set(_codex_size_opt "-Os")
+if(MSVC)
+    set(_codex_size_opt "/Os")
+endif()
+
+foreach(_codex_lang IN ITEMS C CXX)
+    set(_codex_flags "${CMAKE_${_codex_lang}_FLAGS_RELEASE}")
+    string(REGEX REPLACE "-O[0-9A-Za-z]*" "" _codex_flags "${_codex_flags}")
+    string(REGEX REPLACE "/O[0-9A-Za-z]*" "" _codex_flags "${_codex_flags}")
+    string(STRIP "${_codex_flags}" _codex_flags)
+    if(_codex_flags STREQUAL "")
+        set(_codex_flags "${_codex_size_opt}")
+    else()
+        string(APPEND _codex_flags " ${_codex_size_opt}")
+    endif()
+    set(CMAKE_${_codex_lang}_FLAGS_RELEASE "${_codex_flags}" CACHE STRING "Release flags" FORCE)
 endforeach()
-unset(_lang)
-unset(_flags)
+unset(_codex_size_opt)
+unset(_codex_flags)
+unset(_codex_lang)
 
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
 if(ENABLE_LTO)

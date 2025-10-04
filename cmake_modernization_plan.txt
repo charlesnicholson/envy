@@ -1,0 +1,30 @@
+Multi-step plan to simplify and modernize CMake (minimum version 4.1.2)
+
+1. Normalize project options and cache handling
+   - Convert every `set(... CACHE ... FORCE)` that toggles dependency behaviour into properly documented `option()`/`set()` guards with `FORCE` reserved for first-configuration defaults.
+   - Group knobs under a dedicated `cmake/options.cmake` module and gate feature combos with `cmake_dependent_option()` so repeated re-configures stop toggling user-provided cache values.
+   - Expose user-facing toggles (e.g., `ENABLE_LTO`, dependency feature trims) through a preset-friendly namespace such as `CODEX_` for clarity.
+
+2. Refactor dependency acquisition helpers
+   - Replace the bespoke `codex_fetchcontent_populate` with the modern `FetchContent_MakeAvailable()` workflow, using the 4.1 `FETCHCONTENT_BASE_DIR` initialization via `cmake_path(NORMAL_PATH ...)` and `FetchContent_Declare` options like `FIND_PACKAGE_ARGS` to reduce manual property plumbing.
+   - Encapsulate third-party configuration into per-package modules under `cmake/deps/` that return imported targets, using `list(APPEND)` on caller-provided collections instead of global variables.
+   - Where a third-party library needs patching (libssh2/libarchive), replace inline file edits with `file(CONFIGURE)`-driven patch application or `execute_process(COMMAND git apply ...)` guarded by stamp files to keep the main configure step idempotent.
+
+3. Modernize ExternalProject usage for OpenSSL and AWS CRT
+   - Swap the ad-hoc `execute_process`/stamp sequence for OpenSSL with `ExternalProject_Add` arguments (`CONFIGURE_COMMAND`, `BUILD_COMMAND`, `INSTALL_COMMAND`) alongside the `DOWNLOAD_EXTRACT_TIMESTAMP` and `UPDATE_DISCONNECTED` properties introduced in 4.x.
+   - Generate imported targets via `add_library` + `IMPORTED_GLOBAL` inside a helper module that consumes the ExternalProject install tree using generator expressions for include/lib paths.
+   - For AWS CRT prefetching, replace the shell script call with `ExternalProject_Add_Step` custom commands or, if feasible, rely on upstream `FETCHCONTENT_UPDATES_DISCONNECTED` signalling.
+
+4. Reorganize the aggregate target wiring
+   - Replace manual `add_dependencies(codex_thirdparty ...)` chains with target-level usage requirements (e.g., `target_link_libraries(codex_thirdparty INTERFACE OpenSSL::SSL)` and rely on CMake's dependency graph to infer build order.
+   - Move the platform-specific frameworks into a generator-expression-based `INTERFACE_LINK_LIBRARIES` assignment to keep the target declarative.
+   - Ensure every third-party target propagates proper `INTERFACE_INCLUDE_DIRECTORIES`/`INTERFACE_COMPILE_DEFINITIONS`, eliminating late-bound `set()` cache pokes (e.g., `CURL_INCLUDE_DIR`).
+
+5. Surface modern developer UX improvements
+   - Introduce `CMakePresets.json` covering common Release/Debug/LTO permutations so developers do not need to pass long configure command lines.
+   - Publish a `cmake/toolchains/` file if cross-compilation is expected, using 4.1's improved `CMAKE_SYSROOT` handling instead of ad-hoc environment requirements.
+   - Document the new workflow in `README.md`/`AGENTS.md`, replacing raw `cmake` invocations with `cmake --workflow --preset <name>` once the presets are in place.
+
+6. Validation and migration
+   - After each major refactor above, reconfigure from a clean tree and run `./build.sh` to verify the static driver and dependent projects still build without warnings.
+   - Provide a migration note (docs/modernizing-cmake.md) summarizing behavioural changes, new options, and any removed cache entries so downstream automation can update.
