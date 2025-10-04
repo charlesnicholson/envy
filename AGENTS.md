@@ -30,14 +30,14 @@
 - `clang-format` configuration is forthcoming—run your local profile but keep diffs minimal until the repo-standard file lands.
 
 ## Testing Guidelines & Performance Philosophy
-- Add focused tests through CTest when new behaviour warrants validation.
+- Add focused tests through lightweight harnesses that run outside CTest; CMake should remain build-only.
 - Runtime checks should remain fast (<1s) and must clean up allocations (e.g., `git_libgit2_shutdown`, `curl_easy_cleanup`, `archive_write_free`).
-- For diagnosis, use `ctest -V` or filter with `ctest -R <pattern>`; document nuanced repro steps in PR descriptions or `docs/`.
+- For diagnosis, invoke `out/build/codex-tool/codex_cmake_test` directly and document nuanced repro steps in PR descriptions or `docs/`.
 - Optimize for small binaries and high runtime performance. Favor simple, cache-friendly data structures, thread-aware algorithms (via oneTBB), and avoid "cute" or excessive template metaprogramming that complicates maintenance without measurable benefit. Static hashing needs (e.g., MD5) should lean on the bundled OpenSSL implementation rather than bespoke code.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit headers (`feat:`, `fix:`, `build:`, `docs:`) so changelog automation remains straightforward.
 - Squash iterative fixups locally; keep one commit per logical change (e.g., "build: pin libarchive to 3.7.2").
-- Every PR must describe dependency revisions touched, the build command used, and include the relevant `ctest` output (or rationale when infeasible).
+- Every PR must describe dependency revisions touched, the build command used, and include the relevant runtime output (or rationale when infeasible).
 - Coordinate cross-library adjustments by updating `docs/dependencies.md` and referencing the section in your PR summary for easy reviewer context.
 - Do not preserve backward compatibility; prioritize the current requirements and simplify aggressively when older entry points get in the way.

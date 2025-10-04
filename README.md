@@ -20,18 +20,19 @@ Iterate with link-time optimization disabled to keep rebuilds fast:
 ```bash
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
 cmake --build out/build --target codex_cmake_test --parallel
-ctest --test-dir out/build -V
+out/build/codex-tool/codex_cmake_test
 ```
 
 The helper script `./build.sh` at the project root handles this workflow for you: it lazily configures `out/build` if the cache is missing and always drives a full build. The build is quick enough that targeting individual binaries is unnecessary.
 
-Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and test run without warnings or errors:
+CMake is used strictly for builds; there is no CTest integration. Run the resulting `out/build/codex-tool/codex_cmake_test` executable directly when you need a smoke pass.
+
+Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and smoke run without warnings or errors:
 
 ```bash
 rm -rf out
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
 cmake --build out/build --target codex_cmake_test --parallel
-ctest --test-dir out/build -V
 out/build/codex-tool/codex_cmake_test
 ```
 
