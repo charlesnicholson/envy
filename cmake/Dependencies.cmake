@@ -16,6 +16,11 @@ cmake_path(APPEND PROJECT_SOURCE_DIR "out" "cache" "third_party" OUTPUT_VARIABLE
 file(MAKE_DIRECTORY "${CODEX_THIRDPARTY_CACHE_DIR}")
 set(FETCHCONTENT_BASE_DIR "${CODEX_THIRDPARTY_CACHE_DIR}")
 
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+if(DEFINED ENV{CODEX_FETCH_FULLY_DISCONNECTED})
+    set(FETCHCONTENT_FULLY_DISCONNECTED ON)
+endif()
+
 # ---------------------------------------------------------------------------
 # Third-party version catalog
 # ---------------------------------------------------------------------------
@@ -52,46 +57,6 @@ set(CODEX_BLAKE3_TAG "1.8.2")
 set(CODEX_LUA_REPOSITORY "https://github.com/lua/lua.git")
 set(CODEX_LUA_TAG "v5.4.8")
 
-function(codex_fetchcontent_populate name human_name)
-    string(TOLOWER "${name}" _codex_lower)
-    cmake_path(APPEND FETCHCONTENT_BASE_DIR "${_codex_lower}-src" OUTPUT_VARIABLE _codex_source_dir)
-    cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "${_codex_lower}-build" OUTPUT_VARIABLE _codex_binary_dir)
-
-    set(_codex_prev_defined FALSE)
-    if(DEFINED FETCHCONTENT_FULLY_DISCONNECTED)
-        set(_codex_prev_defined TRUE)
-        set(_codex_prev_value "${FETCHCONTENT_FULLY_DISCONNECTED}")
-    endif()
-
-    if(EXISTS "${_codex_source_dir}")
-        message(STATUS "[codex] Reusing cached ${human_name} sources at ${_codex_source_dir}")
-        set(FETCHCONTENT_FULLY_DISCONNECTED ON)
-    else()
-        message(STATUS "[codex] No cached ${human_name} sources at ${_codex_source_dir}; fetching")
-    endif()
-
-    FetchContent_Populate(${name})
-    FetchContent_GetProperties(${name})
-
-    if(_codex_prev_defined)
-        set(FETCHCONTENT_FULLY_DISCONNECTED "${_codex_prev_value}")
-    else()
-        unset(FETCHCONTENT_FULLY_DISCONNECTED)
-    endif()
-
-    set(${name}_SOURCE_DIR "${_codex_source_dir}" PARENT_SCOPE)
-    set(${name}_BINARY_DIR "${_codex_binary_dir}" PARENT_SCOPE)
-    if(DEFINED ${name}_POPULATED)
-        set(${name}_POPULATED "${${name}_POPULATED}" PARENT_SCOPE)
-    endif()
-
-    unset(_codex_prev_defined)
-    unset(_codex_prev_value)
-    unset(_codex_source_dir)
-    unset(_codex_binary_dir)
-    unset(_codex_lower)
-endfunction()
-
 find_package(ZLIB REQUIRED)
 find_library(RESOLV_LIBRARY resolv REQUIRED)
 
@@ -118,7 +83,7 @@ FetchContent_Declare(openssl
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
     message(STATUS "Fetching OpenSSL sources (openssl-${CODEX_OPENSSL_VERSION})...")
-    codex_fetchcontent_populate(openssl "OpenSSL")
+    FetchContent_Populate(openssl)
     FetchContent_GetProperties(openssl)
 
     set(_openssl_target "")
@@ -222,7 +187,7 @@ FetchContent_Declare(libssh2
 )
 FetchContent_GetProperties(libssh2)
 if(NOT libssh2_POPULATED)
-    codex_fetchcontent_populate(libssh2 "libssh2")
+    FetchContent_Populate(libssh2)
     FetchContent_GetProperties(libssh2)
     set(_libssh2_cmake "${libssh2_SOURCE_DIR}/CMakeLists.txt")
     if(EXISTS "${_libssh2_cmake}")
@@ -307,7 +272,7 @@ FetchContent_Declare(libgit2
 )
 FetchContent_GetProperties(libgit2)
 if(NOT libgit2_POPULATED)
-    codex_fetchcontent_populate(libgit2 "libgit2")
+    FetchContent_Populate(libgit2)
     FetchContent_GetProperties(libgit2)
 endif()
 
@@ -423,7 +388,7 @@ FetchContent_Declare(libcurl
 )
 FetchContent_GetProperties(libcurl)
 if(NOT libcurl_POPULATED)
-    codex_fetchcontent_populate(libcurl "libcurl")
+    FetchContent_Populate(libcurl)
     FetchContent_GetProperties(libcurl)
 endif()
 add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
@@ -463,8 +428,14 @@ FetchContent_Declare(oneTBB
 )
 FetchContent_GetProperties(oneTBB)
 if(NOT oneTBB_POPULATED)
-    codex_fetchcontent_populate(oneTBB "oneTBB")
+    FetchContent_Populate(oneTBB)
     FetchContent_GetProperties(oneTBB)
+endif()
+if(DEFINED onetbb_SOURCE_DIR AND NOT DEFINED oneTBB_SOURCE_DIR)
+    set(oneTBB_SOURCE_DIR "${onetbb_SOURCE_DIR}")
+endif()
+if(DEFINED onetbb_BINARY_DIR AND NOT DEFINED oneTBB_BINARY_DIR)
+    set(oneTBB_BINARY_DIR "${onetbb_BINARY_DIR}")
 endif()
 add_subdirectory(${oneTBB_SOURCE_DIR} ${oneTBB_BINARY_DIR})
 
@@ -483,7 +454,7 @@ FetchContent_Declare(aws_sdk
 )
 FetchContent_GetProperties(aws_sdk)
 if(NOT aws_sdk_POPULATED OR NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
-    codex_fetchcontent_populate(aws_sdk "AWS SDK for C++")
+    FetchContent_Populate(aws_sdk)
     FetchContent_GetProperties(aws_sdk)
 endif()
 
@@ -536,7 +507,7 @@ FetchContent_Declare(libarchive
 )
 FetchContent_GetProperties(libarchive)
 if(NOT libarchive_POPULATED)
-    codex_fetchcontent_populate(libarchive "libarchive")
+    FetchContent_Populate(libarchive)
     FetchContent_GetProperties(libarchive)
     set(_libarchive_cmake "${libarchive_SOURCE_DIR}/CMakeLists.txt")
     if(EXISTS "${_libarchive_cmake}")
@@ -577,7 +548,7 @@ FetchContent_Declare(blake3
 )
 FetchContent_GetProperties(blake3)
 if(NOT blake3_POPULATED)
-    codex_fetchcontent_populate(blake3 "BLAKE3")
+    FetchContent_Populate(blake3)
     FetchContent_GetProperties(blake3)
     set(BLAKE3_SOURCES
         "${blake3_SOURCE_DIR}/c/blake3.c"
@@ -608,7 +579,7 @@ FetchContent_Declare(lua
 )
 FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
-    codex_fetchcontent_populate(lua "Lua")
+    FetchContent_Populate(lua)
     FetchContent_GetProperties(lua)
     file(GLOB LUA_CORE_SOURCES
         "${lua_SOURCE_DIR}/lapi.c"
