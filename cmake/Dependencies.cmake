@@ -174,10 +174,16 @@ set(ENABLE_ZLIB_COMPRESSION ON CACHE BOOL "" FORCE)
 set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libssh2-1.11.1.tar.gz" OUTPUT_VARIABLE _libssh2_archive)
+set(_libssh2_url https://www.libssh2.org/download/libssh2-1.11.1.tar.gz)
+if(EXISTS "${_libssh2_archive}")
+    file(TO_CMAKE_PATH "${_libssh2_archive}" _libssh2_archive_norm)
+    set(_libssh2_url "file://${_libssh2_archive_norm}")
+endif()
+
 FetchContent_Declare(libssh2
-    GIT_REPOSITORY https://github.com/libssh2/libssh2.git
-    GIT_TAG libssh2-1.11.1
-    GIT_SHALLOW TRUE
+    URL ${_libssh2_url}
+    URL_HASH SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
 )
 FetchContent_GetProperties(libssh2)
 if(NOT libssh2_POPULATED)
@@ -212,6 +218,9 @@ if(NOT libssh2_POPULATED)
     set(CMAKE_SOURCE_DIR "${_libssh2_original_cmake_source_dir}")
     unset(_libssh2_original_cmake_source_dir)
 endif()
+unset(_libssh2_archive)
+unset(_libssh2_archive_norm)
+unset(_libssh2_url)
 if(TARGET libssh2::libssh2)
     set(_libssh2_primary_target libssh2::libssh2)
 elseif(TARGET libssh2_static)
@@ -344,10 +353,16 @@ else()
 endif()
 unset(_curl_ca_bundle)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "curl-8.16.0.tar.xz" OUTPUT_VARIABLE _curl_archive)
+set(_curl_url https://curl.se/download/curl-8.16.0.tar.xz)
+if(EXISTS "${_curl_archive}")
+    file(TO_CMAKE_PATH "${_curl_archive}" _curl_archive_norm)
+    set(_curl_url "file://${_curl_archive_norm}")
+endif()
+
 FetchContent_Declare(libcurl
-    GIT_REPOSITORY https://github.com/curl/curl.git
-    GIT_TAG curl-8_16_0
-    GIT_SHALLOW TRUE
+    URL ${_curl_url}
+    URL_HASH SHA256=40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d
 )
 FetchContent_GetProperties(libcurl)
 if(NOT libcurl_POPULATED)
@@ -355,6 +370,9 @@ if(NOT libcurl_POPULATED)
     FetchContent_GetProperties(libcurl)
 endif()
 add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
+unset(_curl_archive)
+unset(_curl_archive_norm)
+unset(_curl_url)
 if(NOT TARGET CURL::libcurl)
     add_library(CURL::libcurl ALIAS libcurl)
 endif()
