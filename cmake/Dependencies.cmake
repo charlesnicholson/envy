@@ -280,6 +280,15 @@ set(LIBSSH2_LIBRARY_DIR "${libssh2_BINARY_DIR}/src" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIR "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIRS "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 
+set(_codex_libssh2_actual "${_libssh2_primary_target}")
+if(_codex_libssh2_actual STREQUAL "libssh2::libssh2")
+    get_target_property(_codex_libssh2_actual libssh2::libssh2 ALIASED_TARGET)
+endif()
+if(_codex_libssh2_actual AND TARGET ${_codex_libssh2_actual})
+    target_compile_definitions(${_codex_libssh2_actual} PRIVATE __STDC_WANT_LIB_EXT1__=1)
+endif()
+unset(_codex_libssh2_actual)
+
 # Ensure pkg-config lookups consider only system defaults; the build patches
 # libgit2 to rely on the in-tree libssh2 target instead.
 set(ENV{PKG_CONFIG_PATH} "")
@@ -342,6 +351,19 @@ elseif(TARGET libgit2)
 else()
     message(FATAL_ERROR "libgit2 target was not created by FetchContent")
 endif()
+
+foreach(_codex_git_target IN ITEMS libgit2package git2 libgit2)
+    if(TARGET ${_codex_git_target})
+        get_target_property(_codex_git_iface ${_codex_git_target} INTERFACE_LINK_LIBRARIES)
+        if(_codex_git_iface)
+            list(REMOVE_ITEM _codex_git_iface libssh2::libssh2 "${LIBSSH2_LIBRARY}")
+            set_target_properties(${_codex_git_target} PROPERTIES
+                INTERFACE_LINK_LIBRARIES "${_codex_git_iface}")
+        endif()
+    endif()
+endforeach()
+unset(_codex_git_target)
+unset(_codex_git_iface)
 
 set(_codex_libgit2_warning_silencers
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-declaration-after-statement>

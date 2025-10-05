@@ -32,6 +32,7 @@
 #include <memory>
 #include <mutex>
 #include <openssl/crypto.h>
+#include <openssl/sha.h>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -338,6 +339,79 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
   return digest;
 }
 
+std::array<uint8_t, SHA256_DIGEST_LENGTH> compute_sha256_file(const std::filesystem::path &path)
+{
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("Failed to open " + path.string() + " for SHA256 hashing");
+  }
+
+  SHA256_CTX ctx;
+  if (SHA256_Init(&ctx) != 1) {
+    throw std::runtime_error("SHA256_Init failed");
+  }
+
+  std::array<char, 1 << 15> buffer{};
+  while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
+    const auto read_bytes = static_cast<size_t>(input.gcount());
+    if (read_bytes > 0 && SHA256_Update(&ctx, buffer.data(), read_bytes) != 1) {
+      throw std::runtime_error("SHA256_Update failed for " + path.string());
+    }
+  }
+  if (input.bad()) {
+    throw std::runtime_error("Failed while reading " + path.string() + " for SHA256");
+  }
+
+  std::array<uint8_t, SHA256_DIGEST_LENGTH> digest{};
+  if (SHA256_Final(digest.data(), &ctx) != 1) {
+    throw std::runtime_error("SHA256_Final failed");
+  }
+  return digest;
+}
+
+std::vector<std::filesystem::path> collect_first_regular_files(const std::filesystem::path &root,
+                                                               std::size_t max_count)
+{
+  std::vector<std::filesystem::path> files;
+  files.reserve(max_count);
+
+  std::error_code ec;
+  for (std::filesystem::recursive_directory_iterator it(
+           root, std::filesystem::directory_options::follow_directory_symlink, ec), end;
+       it != end && files.size() < max_count; it.increment(ec)) {
+    if (ec) {
+      throw std::runtime_error("Failed to iterate " + root.string() + ": " + ec.message());
+    }
+    std::error_code status_ec;
+    const auto status = std::filesystem::status(it->path(), status_ec);
+    if (status_ec) {
+      throw std::runtime_error("Failed to query status for " + it->path().string() +
+                               ": " + status_ec.message());
+    }
+    if (std::filesystem::is_regular_file(status)) {
+      files.push_back(it->path());
+    }
+  }
+  if (ec) {
+    throw std::runtime_error("Failed to finalize iteration for " + root.string() +
+                             ": " + ec.message());
+  }
+  return files;
+}
+
+std::string relative_display(const std::filesystem::path &path, const std::filesystem::path &base)
+{
+  std::error_code ec;
+  const auto rel = std::filesystem::relative(path, base, ec);
+  if (!ec) {
+    const auto normalized = rel.lexically_normal();
+    if (!normalized.empty()) {
+      return normalized.generic_string();
+    }
+  }
+  return path.filename().generic_string();
+}
+
 std::uint64_t count_regular_files(const std::filesystem::path &root)
 {
   std::uint64_t count = 0;
@@ -481,10 +555,13 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     throw std::runtime_error("Failed while writing S3 object to " + destination.string());
   }
 
+  const auto sha256 = compute_sha256_file(destination);
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(download_end - download_start);
-  std::cout << "[lua] Downloaded s3://" << bucket << '/' << key << " to "
+  std::cout << "[aws-sdk] Downloaded s3://" << bucket << '/' << key << " to "
             << destination << " in " << std::fixed << std::setprecision(3)
             << static_cast<double>(elapsed.count()) / 1000.0 << "s" << std::endl;
+  std::cout << "[aws-sdk] SHA256(" << destination.filename() << ") = "
+            << to_hex(sha256.data(), sha256.size()) << std::endl;
   return destination;
 }
 
@@ -511,20 +588,6 @@ int lua_download_s3_object(lua_State *L)
   }
 }
 
-int lua_blake3_hex(lua_State *L)
-{
-  const std::string path = luaL_checkstring(L, 1);
-  try {
-    const auto digest = compute_blake3_file(path);
-    const auto hex = to_hex(digest.data(), digest.size());
-    std::cout << "[lua] BLAKE3(" << path << ") = " << hex << std::endl;
-    lua_pushlstring(L, hex.c_str(), hex.size());
-    return 1;
-  } catch (const std::exception &ex) {
-    return luaL_error(L, "blake3_hex failed: %s", ex.what());
-  }
-}
-
 int lua_extract_to_temp(lua_State *L)
 {
   const std::string archive = luaL_checkstring(L, 1);
@@ -536,8 +599,21 @@ int lua_extract_to_temp(lua_State *L)
     const auto destination = g_temp_manager->create_directory();
     extract_archive(archive, destination);
     const auto count = count_regular_files(destination);
-    std::cout << "[lua] Extracted " << count << " files into " << destination
-              << std::endl;
+    std::cout << "[lua] Extracted " << count << " files" << std::endl;
+
+    const auto sample_files = collect_first_regular_files(destination, 5);
+    if (sample_files.empty()) {
+      std::cout << "[lua] No regular files discovered in archive." << std::endl;
+    } else {
+      std::size_t index = 1;
+      for (const auto &file_path : sample_files) {
+        const auto digest = compute_blake3_file(file_path);
+        std::cout << "[lua] BLAKE3 sample " << index++ << ": "
+                  << relative_display(file_path, destination)
+                  << " => " << to_hex(digest.data(), digest.size()) << std::endl;
+      }
+    }
+
     lua_pushstring(L, destination.string().c_str());
     lua_pushinteger(L, static_cast<lua_Integer>(count));
     return 2;
@@ -551,7 +627,6 @@ local key = assert(codex_key, "codex_key must be set")
 local region = codex_region or ""
 
 local archive_path = download_s3_object(bucket, key, region)
-blake3_hex(archive_path)
 extract_to_temp(archive_path)
 )";
 
@@ -571,8 +646,6 @@ void run_lua_workflow(const std::string &bucket,
 
   lua_pushcfunction(state.get(), lua_download_s3_object);
   lua_setglobal(state.get(), "download_s3_object");
-  lua_pushcfunction(state.get(), lua_blake3_hex);
-  lua_setglobal(state.get(), "blake3_hex");
   lua_pushcfunction(state.get(), lua_extract_to_temp);
   lua_setglobal(state.get(), "extract_to_temp");
 
