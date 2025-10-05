@@ -1,19 +1,17 @@
 Modernization roadmap for CMake (baseline 4.1.2)
 
 1. Normalize dependency acquisition
-   - Drop the hand-rolled codex_fetchcontent_populate() helper in favour of CMake’s native FetchContent workflow.
-   - Use FETCHCONTENT_BASE_DIR and PER_PROJECT naming to keep the existing cache layout under out/cache/third_party, but rely on FetchContent_MakeAvailable() or FetchContent_MakeAvailable_EXCLUDE_FROM_ALL to create targets.
-   - Gate downloads with FETCHCONTENT_UPDATES_DISCONNECTED / FETCHCONTENT_FULLY_DISCONNECTED so offline reuse still works without custom wiring.
+   - Replace the codex_fetchcontent_populate() helper with native FetchContent calls (still TODO).
+   - Switch to FetchContent_MakeAvailable* helpers while keeping FETCHCONTENT_BASE_DIR/out/cache/third_party semantics (TODO).
+   - Rely on FETCHCONTENT_FULLY_DISCONNECTED/UPDATES_DISCONNECTED instead of the custom wrapper logic (TODO).
 
 2. Encapsulate third-party setup
-   - Move bespoke patches and configuration (libssh2 overrides, libarchive edits, AWS CRT bootstrap) into focused modules inside cmake/deps/ (e.g., FetchLibSSH2.cmake) so Dependencies.cmake becomes declarative glue.
-   - Replace ad-hoc execute_process + python snippets with CMake -P scripts invoked via add_custom_command where configure-time edits are unavoidable.
-   - Use configure_file() to stamp patch scripts and guard them with cmake_path comparisons, eliminating repeated work on reconfigure.
+   - Relocate bespoke dependency tweaks (libssh2 overrides, libarchive edits, etc.) into focused modules under cmake/deps/ (TODO).
+   - Use configure_file() to materialize patch scripts and skip repeated work on reconfigure (TODO).
 
 3. Adopt latest CMake conveniences
-   - Surface a minimal CMakePresets.json that mirrors ./build.sh but allows IDE/CLI discovery without duplicating configuration flags.
-   - Use cmake_path(), target_sources(FILE_SET …), generator expressions, and FetchContent_MakeAvailable() idioms introduced since CMake 3.23 to simplify conditional logic.
-   - Consolidate policy pushes/pops at file scope (CMP0169 etc.) and upgrade deprecated behaviour rather than locking policies to OLD when practical.
+   - Introduce cmake_path(), target_sources(FILE_SET ...), generator expressions, and FetchContent_MakeAvailable() where conditional logic or exports can shrink (TODO).
+   - Audit remaining policy pushes/pops (CMP0169 etc.) and modernize behaviour instead of forcing OLD modes (TODO).
 
 4. Verification cadence
    - After each modernization milestone, configure from an empty build directory (rm -rf out) and run ./build.sh to validate both dependency builds and the codex-tool target.
