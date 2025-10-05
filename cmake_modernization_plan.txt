@@ -15,11 +15,6 @@ Modernization roadmap for CMake (baseline 4.1.2)
    - Use cmake_path(), target_sources(FILE_SET …), generator expressions, and FetchContent_MakeAvailable() idioms introduced since CMake 3.23 to simplify conditional logic.
    - Consolidate policy pushes/pops at file scope (CMP0169 etc.) and upgrade deprecated behaviour rather than locking policies to OLD when practical.
 
-4. Simplify toolchain and script wiring
-   - Keep build.sh as the single entry point but make it a thin wrapper that forwards to cmake --preset once presets exist, reducing dual maintenance.
-   - For prefetch_crt_dependency.sh, create a dedicated CMake script that runs the shim-aware PATH override so Dependencies.cmake stays inside the CMake language.
-   - Document the runtime expectations in docs/dependencies.md so contributors know the canonical way to add or bump dependencies.
-
-5. Verification cadence
+4. Verification cadence
    - After each modernization milestone, configure from an empty build directory (rm -rf out) and run ./build.sh to validate both dependency builds and the codex-tool target.
    - Track the migration progress (decisions, removed helpers, new presets) in docs/modernizing-cmake.md so automation and future agents can understand the rollout sequence.
