@@ -9,6 +9,7 @@
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/http/HttpTypes.h>
 #include <aws/core/utils/logging/LogLevel.h>
+#include <aws/core/utils/logging/NullLogSystem.h>
 #include <aws/crt/Api.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
@@ -65,7 +66,10 @@ class AwsApiGuard {
   AwsApiGuard()
   {
     ::setenv("AWS_SDK_LOAD_CONFIG", "1", 1);
-    options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Error;
+    options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+    options_.loggingOptions.logger_create_fn = []() {
+      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>("codex-cmake-test-logging");
+    };
     Aws::InitAPI(options_);
   }
 
