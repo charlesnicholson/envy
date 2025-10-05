@@ -34,16 +34,20 @@ set(CODEX_LIBSSH2_ARCHIVE "libssh2-${CODEX_LIBSSH2_VERSION}.tar.gz")
 set(CODEX_LIBSSH2_URL "https://www.libssh2.org/download/${CODEX_LIBSSH2_ARCHIVE}")
 set(CODEX_LIBSSH2_SHA256 d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7)
 
-set(CODEX_LIBGIT2_REPOSITORY "https://github.com/libgit2/libgit2.git")
-set(CODEX_LIBGIT2_TAG "v1.9.1")
+set(CODEX_LIBGIT2_VERSION "1.9.1")
+set(CODEX_LIBGIT2_ARCHIVE "libgit2-${CODEX_LIBGIT2_VERSION}.tar.gz")
+set(CODEX_LIBGIT2_URL "https://github.com/libgit2/libgit2/archive/refs/tags/v${CODEX_LIBGIT2_VERSION}.tar.gz")
+set(CODEX_LIBGIT2_SHA256 14cab3014b2b7ad75970ff4548e83615f74d719afe00aa479b4a889c1e13fc00)
 
 set(CODEX_LIBCURL_VERSION "8.16.0")
 set(CODEX_LIBCURL_ARCHIVE "curl-${CODEX_LIBCURL_VERSION}.tar.xz")
 set(CODEX_LIBCURL_URL "https://curl.se/download/${CODEX_LIBCURL_ARCHIVE}")
 set(CODEX_LIBCURL_SHA256 40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d)
 
-set(CODEX_ONETBB_REPOSITORY "https://github.com/oneapi-src/oneTBB.git")
-set(CODEX_ONETBB_TAG "v2022.2.0")
+set(CODEX_ONETBB_VERSION "2022.2.0")
+set(CODEX_ONETBB_ARCHIVE "oneTBB-${CODEX_ONETBB_VERSION}.tar.gz")
+set(CODEX_ONETBB_URL "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v${CODEX_ONETBB_VERSION}.tar.gz")
+set(CODEX_ONETBB_SHA256 f0f78001c8c8edb4bddc3d4c5ee7428d56ae313254158ad1eec49eced57f6a5b)
 
 set(CODEX_AWS_SDK_URL "https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip")
 set(CODEX_AWS_SDK_SHA256 504493b205a8a466751af8654b2f32e9917df9e75bcff5defdf72fe320837ba3)
@@ -265,10 +269,15 @@ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBGIT2_ARCHIVE}" OUTPUT_VARIABLE _libgit2_archive)
+set(_libgit2_url "${CODEX_LIBGIT2_URL}")
+if(EXISTS "${_libgit2_archive}")
+    file(TO_CMAKE_PATH "${_libgit2_archive}" _libgit2_archive_norm)
+    set(_libgit2_url "file://${_libgit2_archive_norm}")
+endif()
 FetchContent_Declare(libgit2
-    GIT_REPOSITORY ${CODEX_LIBGIT2_REPOSITORY}
-    GIT_TAG ${CODEX_LIBGIT2_TAG}
-    GIT_SHALLOW TRUE
+    URL ${_libgit2_url}
+    URL_HASH SHA256=${CODEX_LIBGIT2_SHA256}
 )
 FetchContent_GetProperties(libgit2)
 if(NOT libgit2_POPULATED)
@@ -342,6 +351,9 @@ foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-par
     endif()
 endforeach()
 
+unset(_libgit2_archive)
+unset(_libgit2_archive_norm)
+unset(_libgit2_url)
 unset(_libgit2_target)
 unset(_codex_libgit2_warning_silencers)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
@@ -421,23 +433,31 @@ unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
 # oneTBB --------------------------------------------------------------------
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_ONETBB_ARCHIVE}" OUTPUT_VARIABLE _onetbb_archive)
+set(_onetbb_url "${CODEX_ONETBB_URL}")
+if(EXISTS "${_onetbb_archive}")
+    file(TO_CMAKE_PATH "${_onetbb_archive}" _onetbb_archive_norm)
+    set(_onetbb_url "file://${_onetbb_archive_norm}")
+endif()
 FetchContent_Declare(oneTBB
-    GIT_REPOSITORY ${CODEX_ONETBB_REPOSITORY}
-    GIT_TAG ${CODEX_ONETBB_TAG}
-    GIT_SHALLOW TRUE
+    URL ${_onetbb_url}
+    URL_HASH SHA256=${CODEX_ONETBB_SHA256}
 )
 FetchContent_GetProperties(oneTBB)
 if(NOT oneTBB_POPULATED)
     FetchContent_Populate(oneTBB)
     FetchContent_GetProperties(oneTBB)
 endif()
-if(DEFINED onetbb_SOURCE_DIR AND NOT DEFINED oneTBB_SOURCE_DIR)
+if(NOT DEFINED oneTBB_SOURCE_DIR AND DEFINED onetbb_SOURCE_DIR)
     set(oneTBB_SOURCE_DIR "${onetbb_SOURCE_DIR}")
 endif()
-if(DEFINED onetbb_BINARY_DIR AND NOT DEFINED oneTBB_BINARY_DIR)
+if(NOT DEFINED oneTBB_BINARY_DIR AND DEFINED onetbb_BINARY_DIR)
     set(oneTBB_BINARY_DIR "${onetbb_BINARY_DIR}")
 endif()
 add_subdirectory(${oneTBB_SOURCE_DIR} ${oneTBB_BINARY_DIR})
+unset(_onetbb_archive)
+unset(_onetbb_archive_norm)
+unset(_onetbb_url)
 
 # AWS SDK -------------------------------------------------------------------
 set(AWS_SDK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
