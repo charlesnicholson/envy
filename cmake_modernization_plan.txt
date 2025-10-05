@@ -1,30 +1,30 @@
 Multi-step plan to simplify and modernize CMake (minimum version 4.1.2)
 
-1. Confirm the minimal configuration surface
-   - Audit the top-level `CMakeLists.txt` and dependency logic to ensure the only user-visible cache knobs remain `CMAKE_BUILD_TYPE` and `ENABLE_LTO`; remove any stray options that leak through from vendored projects.
-   - Lock third-party builds to their required settings (tests/examples off, static libs only) via hard-coded cache edits or toolchain flags so they cannot be toggled accidentally.
-   - Document this invariant in contributor guides and comments so future refactors preserve the single supported configuration path.
+1. Preserve the constrained configuration surface
+   - Re-audit `CMakeLists.txt` and `cmake/Dependencies.cmake` after every dependency change to ensure the only cache knobs exposed to users remain `CMAKE_BUILD_TYPE` and `ENABLE_LTO`.
+   - Keep third-party toggles hard-coded (tests/examples off, static builds on) and document these invariants inline so they stay aligned with AGENTS.md.
+   - Carry the same contract into contributor docs (`docs/dependencies.md`, `README.md`) so future refactors understand the single supported build path.
 
-2. Refactor dependency acquisition helpers
-   - Replace the bespoke `codex_fetchcontent_populate` with the modern `FetchContent_MakeAvailable()` workflow, using the 4.1 `FETCHCONTENT_BASE_DIR` initialization via `cmake_path(NORMAL_PATH ...)` and `FetchContent_Declare` options like `FIND_PACKAGE_ARGS` to reduce manual property plumbing.
-   - Encapsulate third-party configuration into per-package modules under `cmake/deps/` that return imported targets, using `list(APPEND)` on caller-provided collections instead of global variables.
-   - Where a third-party library needs patching (libssh2/libarchive), replace inline file edits with `file(CONFIGURE)`-driven patch application or `execute_process(COMMAND git apply ...)` guarded by stamp files to keep the main configure step idempotent.
+2. Harden the dependency version catalog
+   - Expand the new catalog at the top of `cmake/Dependencies.cmake` into the source of truth for every URL, archive, and checksum.
+   - Add a lightweight lint (e.g., CMake option or scripting) that fails configure when a dependency block lacks catalog coverage, keeping ad-hoc literals from creeping back in.
+   - Mirror significant bumps in `docs/dependencies.md` so release notes and automation can diff versions easily.
 
-3. Modernize ExternalProject usage for OpenSSL and AWS CRT
-   - Swap the ad-hoc `execute_process`/stamp sequence for OpenSSL with `ExternalProject_Add` arguments (`CONFIGURE_COMMAND`, `BUILD_COMMAND`, `INSTALL_COMMAND`) alongside the `DOWNLOAD_EXTRACT_TIMESTAMP` and `UPDATE_DISCONNECTED` properties introduced in 4.x.
-   - Generate imported targets via `add_library` + `IMPORTED_GLOBAL` inside a helper module that consumes the ExternalProject install tree using generator expressions for include/lib paths.
-   - For AWS CRT prefetching, replace the shell script call with `ExternalProject_Add_Step` custom commands or, if feasible, rely on upstream `FETCHCONTENT_UPDATES_DISCONNECTED` signalling.
+3. Tame FetchContent plumbing without losing caching guarantees
+   - Evaluate replacing `codex_fetchcontent_populate` with `FetchContent_MakeAvailable()` only if we can preserve the cached source layout under `out/cache/third_party` and the disconnected/offline workflows.
+   - Where direct substitution is impractical, encapsulate repeated patch/setup logic in helper modules under `cmake/` rather than open-coding edits inside the main dependency file.
+   - Normalize patch application (libssh2/libarchive/custom scripts) through `file(CONFIGURE)` + stamp files so configure traces remain deterministic on reconfigure.
 
-4. Reorganize the aggregate target wiring
-   - Replace manual `add_dependencies(codex_thirdparty ...)` chains with target-level usage requirements (e.g., `target_link_libraries(codex_thirdparty INTERFACE OpenSSL::SSL)` and rely on CMake's dependency graph to infer build order.
-   - Move the platform-specific frameworks into a generator-expression-based `INTERFACE_LINK_LIBRARIES` assignment to keep the target declarative.
-   - Ensure every third-party target propagates proper `INTERFACE_INCLUDE_DIRECTORIES`/`INTERFACE_COMPILE_DEFINITIONS`, eliminating late-bound `set()` cache pokes (e.g., `CURL_INCLUDE_DIR`).
+4. Rationalize aggregate target wiring
+   - Revisit `codex::thirdparty` and ensure every dependency is expressed via `target_link_libraries(... INTERFACE ...)`, letting CMake infer the build graph instead of manual `add_dependencies` chains.
+   - Move platform-specific framework links behind generator expressions on the same target to keep logic declarative.
+   - Remove any leftover cache pokes (`set(CURL_INCLUDE_DIR ...)`, etc.) once upstream targets propagate includes correctly.
 
-5. Surface modern developer UX improvements
-   - Introduce `CMakePresets.json` covering common Release/Debug/LTO permutations so developers do not need to pass long configure command lines.
-   - Publish a `cmake/toolchains/` file if cross-compilation is expected, using 4.1's improved `CMAKE_SYSROOT` handling instead of ad-hoc environment requirements.
-   - Document the new workflow in `README.md`/`AGENTS.md`, replacing raw `cmake` invocations with `cmake --workflow --preset <name>` once the presets are in place.
+5. Improve developer UX within the existing workflow
+   - Keep `./build.sh` as the primary entrypoint but consider layering optional `CMakePresets.json` that simply call into the script, so IDEs and CLI users share the same configuration recipe.
+   - Capture any new workflow expectations in `AGENTS.md` and the README, ensuring instructions stay consistent across automation and human contributors.
+   - If cross-compilation becomes necessary, introduce toolchain files under `cmake/toolchains/` with the same caching model rather than separate ad-hoc instructions.
 
 6. Validation and migration
-   - After each major refactor above, reconfigure from a clean tree and run `./build.sh` to verify the static driver and dependent projects still build without warnings.
-   - Provide a migration note (docs/modernizing-cmake.md) summarizing behavioural changes, new options, and any removed cache entries so downstream automation can update.
+   - After each modernization milestone, reconfigure from a clean tree and run `./build.sh` to validate the static driver and third-party projects.
+   - Track changes in a short `docs/modernizing-cmake.md` note so downstream automation and agents understand the rollout timeline and required adjustments.
