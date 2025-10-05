@@ -689,12 +689,6 @@ if(APPLE)
     )
 endif()
 
-add_dependencies(codex_thirdparty openssl)
-add_dependencies(codex_thirdparty aws-cpp-sdk-s3)
-add_dependencies(codex_thirdparty aws-cpp-sdk-sso)
-add_dependencies(codex_thirdparty aws-cpp-sdk-sso-oidc)
-add_dependencies(codex_thirdparty aws-crt-cpp)
-
 target_compile_definitions(codex_thirdparty INTERFACE
     CURL_STATICLIB
 )
@@ -705,7 +699,6 @@ target_include_directories(codex_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${_aws_crt_root}/include>"
-    "$<BUILD_INTERFACE:${libcurl_SOURCE_DIR}/include>"
 )
 
 if(POLICY CMP0169)

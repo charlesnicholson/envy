@@ -1,30 +1,25 @@
-Multi-step plan to simplify and modernize CMake (minimum version 4.1.2)
+Modernization roadmap for CMake (baseline 4.1.2)
 
-1. Preserve the constrained configuration surface
-   - Re-audit `CMakeLists.txt` and `cmake/Dependencies.cmake` after every dependency change to ensure the only cache knobs exposed to users remain `CMAKE_BUILD_TYPE` and `ENABLE_LTO`.
-   - Keep third-party toggles hard-coded (tests/examples off, static builds on) and document these invariants inline so they stay aligned with AGENTS.md.
-   - Carry the same contract into contributor docs (`docs/dependencies.md`, `README.md`) so future refactors understand the single supported build path.
+1. Normalize dependency acquisition
+   - Drop the hand-rolled codex_fetchcontent_populate() helper in favour of CMake’s native FetchContent workflow.
+   - Use FETCHCONTENT_BASE_DIR and PER_PROJECT naming to keep the existing cache layout under out/cache/third_party, but rely on FetchContent_MakeAvailable() or FetchContent_MakeAvailable_EXCLUDE_FROM_ALL to create targets.
+   - Gate downloads with FETCHCONTENT_UPDATES_DISCONNECTED / FETCHCONTENT_FULLY_DISCONNECTED so offline reuse still works without custom wiring.
 
-2. Harden the dependency version catalog
-   - Expand the new catalog at the top of `cmake/Dependencies.cmake` into the source of truth for every URL, archive, and checksum.
-   - Add a lightweight lint (e.g., CMake option or scripting) that fails configure when a dependency block lacks catalog coverage, keeping ad-hoc literals from creeping back in.
-   - Mirror significant bumps in `docs/dependencies.md` so release notes and automation can diff versions easily.
+2. Encapsulate third-party setup
+   - Move bespoke patches and configuration (libssh2 overrides, libarchive edits, AWS CRT bootstrap) into focused modules inside cmake/deps/ (e.g., FetchLibSSH2.cmake) so Dependencies.cmake becomes declarative glue.
+   - Replace ad-hoc execute_process + python snippets with CMake -P scripts invoked via add_custom_command where configure-time edits are unavoidable.
+   - Use configure_file() to stamp patch scripts and guard them with cmake_path comparisons, eliminating repeated work on reconfigure.
 
-3. Tame FetchContent plumbing without losing caching guarantees
-   - Evaluate replacing `codex_fetchcontent_populate` with `FetchContent_MakeAvailable()` only if we can preserve the cached source layout under `out/cache/third_party` and the disconnected/offline workflows.
-   - Where direct substitution is impractical, encapsulate repeated patch/setup logic in helper modules under `cmake/` rather than open-coding edits inside the main dependency file.
-   - Normalize patch application (libssh2/libarchive/custom scripts) through `file(CONFIGURE)` + stamp files so configure traces remain deterministic on reconfigure.
+3. Adopt latest CMake conveniences
+   - Surface a minimal CMakePresets.json that mirrors ./build.sh but allows IDE/CLI discovery without duplicating configuration flags.
+   - Use cmake_path(), target_sources(FILE_SET …), generator expressions, and FetchContent_MakeAvailable() idioms introduced since CMake 3.23 to simplify conditional logic.
+   - Consolidate policy pushes/pops at file scope (CMP0169 etc.) and upgrade deprecated behaviour rather than locking policies to OLD when practical.
 
-4. Rationalize aggregate target wiring
-   - Revisit `codex::thirdparty` and ensure every dependency is expressed via `target_link_libraries(... INTERFACE ...)`, letting CMake infer the build graph instead of manual `add_dependencies` chains.
-   - Move platform-specific framework links behind generator expressions on the same target to keep logic declarative.
-   - Remove any leftover cache pokes (`set(CURL_INCLUDE_DIR ...)`, etc.) once upstream targets propagate includes correctly.
+4. Simplify toolchain and script wiring
+   - Keep build.sh as the single entry point but make it a thin wrapper that forwards to cmake --preset once presets exist, reducing dual maintenance.
+   - For prefetch_crt_dependency.sh, create a dedicated CMake script that runs the shim-aware PATH override so Dependencies.cmake stays inside the CMake language.
+   - Document the runtime expectations in docs/dependencies.md so contributors know the canonical way to add or bump dependencies.
 
-5. Improve developer UX within the existing workflow
-   - Keep `./build.sh` as the primary entrypoint but consider layering optional `CMakePresets.json` that simply call into the script, so IDEs and CLI users share the same configuration recipe.
-   - Capture any new workflow expectations in `AGENTS.md` and the README, ensuring instructions stay consistent across automation and human contributors.
-   - If cross-compilation becomes necessary, introduce toolchain files under `cmake/toolchains/` with the same caching model rather than separate ad-hoc instructions.
-
-6. Validation and migration
-   - After each modernization milestone, reconfigure from a clean tree and run `./build.sh` to validate the static driver and third-party projects.
-   - Track changes in a short `docs/modernizing-cmake.md` note so downstream automation and agents understand the rollout timeline and required adjustments.
+5. Verification cadence
+   - After each modernization milestone, configure from an empty build directory (rm -rf out) and run ./build.sh to validate both dependency builds and the codex-tool target.
+   - Track the migration progress (decisions, removed helpers, new presets) in docs/modernizing-cmake.md so automation and future agents can understand the rollout sequence.

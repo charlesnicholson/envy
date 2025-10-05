@@ -27,6 +27,7 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 - All transient artifacts must stay under `out/`, and removing the directory (`rm -rf out`) restores a pristine working tree. A task is incomplete until the full-cycle rebuild succeeds with no warnings or errors.
 - Any task that modifies source code is only considered complete once `./build.sh` finishes successfully.
 - Third-party CMake subprojects must configure during the top-level configure step and build during the top-level build step; never compile third-party libraries at configure-time or trigger new configuration phases from the build graph.
+- On macOS, `otool -L out/build/codex-tool` must list only system frameworks plus `libz`, `libiconv`, `libSystem`, `libresolv`, and `libc++`. If any third-party static dependency appears as a dynamic dependency, the build is misconfigured and must be corrected before shipping.
 
 ## Coding Style & Naming Conventions
 - C++20, 2-space indentation (enforced by `.editorconfig`), and Allman braces for functions/namespaces. Prefer `CamelCase` classes, `snake_case` free/static functions, and `kPascalCase` constants.
