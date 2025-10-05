@@ -1,0 +1,16 @@
+import pathlib
+
+cmake_path = pathlib.Path(r"@LIBSSH2_CMAKELISTS@")
+text = cmake_path.read_text()
+updated = text
+
+if "cmake_minimum_required(VERSION 3.5)" not in updated:
+    updated = updated.replace("cmake_minimum_required(VERSION 3.1)", "cmake_minimum_required(VERSION 3.5)")
+
+marker = "project(libssh2 C)\n\nset(CMAKE_MODULE_PATH"
+insertion = "project(libssh2 C)\nset(CMAKE_SOURCE_DIR \"${PROJECT_SOURCE_DIR}\")\n\nset(CMAKE_MODULE_PATH"
+if "set(CMAKE_SOURCE_DIR \"${PROJECT_SOURCE_DIR}\")" not in updated and marker in updated:
+    updated = updated.replace(marker, insertion, 1)
+
+if updated != text:
+    cmake_path.write_text(updated)

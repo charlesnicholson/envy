@@ -469,10 +469,17 @@ set(_aws_crt_root "${aws_sdk_SOURCE_DIR}/crt/aws-crt-cpp")
 set(_aws_crt_marker "${_aws_crt_root}/crt/aws-c-common/CMakeLists.txt")
 if(NOT EXISTS "${_aws_crt_root}/CMakeLists.txt" OR NOT EXISTS "${_aws_crt_marker}")
     message(STATUS "[codex] Prefetching AWS CRT dependencies...")
+    set(_codex_prefetch_path "$ENV{PATH}")
+    if(_codex_prefetch_path)
+        set(_codex_prefetch_path "${PROJECT_SOURCE_DIR}/tools:${_codex_prefetch_path}")
+    else()
+        set(_codex_prefetch_path "${PROJECT_SOURCE_DIR}/tools")
+    endif()
     execute_process(
-        COMMAND bash "${aws_sdk_SOURCE_DIR}/prefetch_crt_dependency.sh"
+        COMMAND ${CMAKE_COMMAND} -E env PATH=${_codex_prefetch_path} bash "${aws_sdk_SOURCE_DIR}/prefetch_crt_dependency.sh"
         WORKING_DIRECTORY "${aws_sdk_SOURCE_DIR}"
         COMMAND_ERROR_IS_FATAL ANY)
+    unset(_codex_prefetch_path)
     file(REMOVE_RECURSE "${_aws_crt_root}/crt/tmp")
 endif()
 
