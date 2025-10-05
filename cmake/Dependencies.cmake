@@ -16,6 +16,41 @@ cmake_path(APPEND PROJECT_SOURCE_DIR "out" "cache" "third_party" OUTPUT_VARIABLE
 file(MAKE_DIRECTORY "${CODEX_THIRDPARTY_CACHE_DIR}")
 set(FETCHCONTENT_BASE_DIR "${CODEX_THIRDPARTY_CACHE_DIR}")
 
+# ---------------------------------------------------------------------------
+# Third-party version catalog
+# ---------------------------------------------------------------------------
+set(CODEX_OPENSSL_VERSION "3.6.0")
+set(CODEX_OPENSSL_ARCHIVE "openssl-${CODEX_OPENSSL_VERSION}.tar.gz")
+set(CODEX_OPENSSL_URL "https://www.openssl.org/source/${CODEX_OPENSSL_ARCHIVE}")
+set(CODEX_OPENSSL_SHA256 b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9)
+
+set(CODEX_LIBSSH2_VERSION "1.11.1")
+set(CODEX_LIBSSH2_ARCHIVE "libssh2-${CODEX_LIBSSH2_VERSION}.tar.gz")
+set(CODEX_LIBSSH2_URL "https://www.libssh2.org/download/${CODEX_LIBSSH2_ARCHIVE}")
+set(CODEX_LIBSSH2_SHA256 d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7)
+
+set(CODEX_LIBGIT2_REPOSITORY "https://github.com/libgit2/libgit2.git")
+set(CODEX_LIBGIT2_TAG "v1.9.1")
+
+set(CODEX_LIBCURL_VERSION "8.16.0")
+set(CODEX_LIBCURL_ARCHIVE "curl-${CODEX_LIBCURL_VERSION}.tar.xz")
+set(CODEX_LIBCURL_URL "https://curl.se/download/${CODEX_LIBCURL_ARCHIVE}")
+set(CODEX_LIBCURL_SHA256 40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d)
+
+set(CODEX_ONETBB_REPOSITORY "https://github.com/oneapi-src/oneTBB.git")
+set(CODEX_ONETBB_TAG "v2022.2.0")
+
+set(CODEX_AWS_SDK_URL "https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip")
+set(CODEX_AWS_SDK_SHA256 504493b205a8a466751af8654b2f32e9917df9e75bcff5defdf72fe320837ba3)
+
+set(CODEX_LIBARCHIVE_REPOSITORY "https://github.com/libarchive/libarchive.git")
+set(CODEX_LIBARCHIVE_TAG "v3.8.1")
+
+set(CODEX_BLAKE3_REPOSITORY "https://github.com/BLAKE3-team/BLAKE3.git")
+set(CODEX_BLAKE3_TAG "1.8.2")
+
+set(CODEX_LUA_REPOSITORY "https://github.com/lua/lua.git")
+set(CODEX_LUA_TAG "v5.4.8")
 
 function(codex_fetchcontent_populate name human_name)
     string(TOLOWER "${name}" _codex_lower)
@@ -66,8 +101,8 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 # OpenSSL --------------------------------------------------------------------
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" OUTPUT_VARIABLE OPENSSL_BINARY)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "openssl-3.6.0.tar.gz" OUTPUT_VARIABLE _openssl_archive)
-set(_openssl_url https://www.openssl.org/source/openssl-3.6.0.tar.gz)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_OPENSSL_ARCHIVE}" OUTPUT_VARIABLE _openssl_archive)
+set(_openssl_url "${CODEX_OPENSSL_URL}")
 if(EXISTS "${_openssl_archive}")
     file(TO_CMAKE_PATH "${_openssl_archive}" _openssl_archive_norm)
     set(_openssl_url "file://${_openssl_archive_norm}")
@@ -78,11 +113,11 @@ find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
 FetchContent_Declare(openssl
     URL ${_openssl_url}
-    URL_HASH SHA256=b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9
+    URL_HASH SHA256=${CODEX_OPENSSL_SHA256}
 )
 FetchContent_GetProperties(openssl)
 if(NOT openssl_POPULATED)
-    message(STATUS "Fetching OpenSSL sources (openssl-3.6.0)...")
+    message(STATUS "Fetching OpenSSL sources (openssl-${CODEX_OPENSSL_VERSION})...")
     codex_fetchcontent_populate(openssl "OpenSSL")
     FetchContent_GetProperties(openssl)
 
@@ -174,8 +209,8 @@ set(ENABLE_ZLIB_COMPRESSION ON CACHE BOOL "" FORCE)
 set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libssh2-1.11.1.tar.gz" OUTPUT_VARIABLE _libssh2_archive)
-set(_libssh2_url https://www.libssh2.org/download/libssh2-1.11.1.tar.gz)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBSSH2_ARCHIVE}" OUTPUT_VARIABLE _libssh2_archive)
+set(_libssh2_url "${CODEX_LIBSSH2_URL}")
 if(EXISTS "${_libssh2_archive}")
     file(TO_CMAKE_PATH "${_libssh2_archive}" _libssh2_archive_norm)
     set(_libssh2_url "file://${_libssh2_archive_norm}")
@@ -183,7 +218,7 @@ endif()
 
 FetchContent_Declare(libssh2
     URL ${_libssh2_url}
-    URL_HASH SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
+    URL_HASH SHA256=${CODEX_LIBSSH2_SHA256}
 )
 FetchContent_GetProperties(libssh2)
 if(NOT libssh2_POPULATED)
@@ -257,8 +292,8 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 FetchContent_Declare(libgit2
-    GIT_REPOSITORY https://github.com/libgit2/libgit2.git
-    GIT_TAG v1.9.1
+    GIT_REPOSITORY ${CODEX_LIBGIT2_REPOSITORY}
+    GIT_TAG ${CODEX_LIBGIT2_TAG}
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(libgit2)
@@ -353,8 +388,8 @@ else()
 endif()
 unset(_curl_ca_bundle)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "curl-8.16.0.tar.xz" OUTPUT_VARIABLE _curl_archive)
-set(_curl_url https://curl.se/download/curl-8.16.0.tar.xz)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
+set(_curl_url "${CODEX_LIBCURL_URL}")
 if(EXISTS "${_curl_archive}")
     file(TO_CMAKE_PATH "${_curl_archive}" _curl_archive_norm)
     set(_curl_url "file://${_curl_archive_norm}")
@@ -362,7 +397,7 @@ endif()
 
 FetchContent_Declare(libcurl
     URL ${_curl_url}
-    URL_HASH SHA256=40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d
+    URL_HASH SHA256=${CODEX_LIBCURL_SHA256}
 )
 FetchContent_GetProperties(libcurl)
 if(NOT libcurl_POPULATED)
@@ -400,8 +435,8 @@ unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(oneTBB
-    GIT_REPOSITORY https://github.com/oneapi-src/oneTBB.git
-    GIT_TAG v2022.2.0
+    GIT_REPOSITORY ${CODEX_ONETBB_REPOSITORY}
+    GIT_TAG ${CODEX_ONETBB_TAG}
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(oneTBB)
@@ -421,8 +456,8 @@ set(AWS_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(AWS_SDK_CPP_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(ENFORCE_SUBMODULE_VERSIONS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(aws_sdk
-    URL https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip
-    URL_HASH SHA256=504493b205a8a466751af8654b2f32e9917df9e75bcff5defdf72fe320837ba3
+    URL ${CODEX_AWS_SDK_URL}
+    URL_HASH SHA256=${CODEX_AWS_SDK_SHA256}
 )
 FetchContent_GetProperties(aws_sdk)
 if(NOT aws_sdk_POPULATED OR NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
@@ -471,8 +506,8 @@ set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libarchive
-    GIT_REPOSITORY https://github.com/libarchive/libarchive.git
-    GIT_TAG v3.8.1
+    GIT_REPOSITORY ${CODEX_LIBARCHIVE_REPOSITORY}
+    GIT_TAG ${CODEX_LIBARCHIVE_TAG}
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(libarchive)
@@ -512,8 +547,8 @@ endif()
 
 # BLAKE3 --------------------------------------------------------------------
 FetchContent_Declare(blake3
-    GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
-    GIT_TAG 1.8.2
+    GIT_REPOSITORY ${CODEX_BLAKE3_REPOSITORY}
+    GIT_TAG ${CODEX_BLAKE3_TAG}
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(blake3)
@@ -543,8 +578,8 @@ endif()
 
 # Lua -----------------------------------------------------------------------
 FetchContent_Declare(lua
-    GIT_REPOSITORY https://github.com/lua/lua.git
-    GIT_TAG v5.4.8
+    GIT_REPOSITORY ${CODEX_LUA_REPOSITORY}
+    GIT_TAG ${CODEX_LUA_TAG}
     GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(lua)

@@ -627,17 +627,38 @@ void print_dependency_versions()
 
 int main(int argc, char **argv)
 {
-  if (argc < 2) {
+  bool show_versions = false;
+  std::vector<std::string_view> positional_args;
+  positional_args.reserve(static_cast<size_t>(argc));
+
+  for (int i = 1; i < argc; ++i) {
+    const std::string_view arg{argv[i]};
+    if (arg == "-v") {
+      show_versions = true;
+    } else if (!arg.empty() && arg.front() == '-') {
+      std::cerr << "Unknown option: " << arg << std::endl;
+      std::cerr << "Usage: " << (argc > 0 ? argv[0] : "codex-tool")
+                << " [-v] s3://<bucket>/<key> [region]" << std::endl;
+      return EXIT_FAILURE;
+    } else {
+      positional_args.push_back(arg);
+    }
+  }
+
+  if (show_versions) {
+    print_dependency_versions();
+    return EXIT_SUCCESS;
+  }
+
+  if (positional_args.empty()) {
     std::cerr << "Usage: " << (argc > 0 ? argv[0] : "codex-tool")
-              << " s3://<bucket>/<key> [region]" << std::endl;
+              << " [-v] s3://<bucket>/<key> [region]" << std::endl;
     return EXIT_FAILURE;
   }
 
   try {
-    print_dependency_versions();
-
-    const auto parts = parse_s3_uri(argv[1]);
-    const std::string region_arg = argc >= 3 ? std::string(argv[2]) : std::string{};
+    const auto parts = parse_s3_uri(positional_args.front());
+    const std::string region_arg = positional_args.size() >= 2 ? std::string(positional_args[1]) : std::string{};
 
     tbb::task_arena arena;
     arena.execute([&] {
