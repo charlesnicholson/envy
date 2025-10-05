@@ -2,34 +2,27 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${ROOT_DIR}/out/build"
-CACHE_DIR="${ROOT_DIR}/out/cache/third_party"
 CMAKE_BIN="${CMAKE:-cmake}"
-GENERATOR="${CMAKE_GENERATOR:-Ninja}"
-BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
-ENABLE_LTO="${ENABLE_LTO:-OFF}"
+CACHE_DIR="${ROOT_DIR}/out/cache/third_party"
+BUILD_DIR="${ROOT_DIR}/out/build"
+PRESET="release-lto-on"
 
 mkdir -p "${CACHE_DIR}"
 
+CACHE_FILE="${BUILD_DIR}/CMakeCache.txt"
+PRESET_FILE="${BUILD_DIR}/.codex-preset"
+
 need_configure=1
-if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+if [[ -f "${CACHE_FILE}" && -f "${PRESET_FILE}" ]]; then
+  if [[ "${PRESET}" == "$(<"${PRESET_FILE}")" ]]; then
     need_configure=0
-    cache_file="${BUILD_DIR}/CMakeCache.txt"
-    if ! grep -q "^CMAKE_BUILD_TYPE:STRING=${BUILD_TYPE}$" "${cache_file}" 2>/dev/null; then
-        need_configure=1
-    fi
-    if ! grep -q "^ENABLE_LTO:BOOL=${ENABLE_LTO}$" "${cache_file}" 2>/dev/null; then
-        need_configure=1
-    fi
+  fi
 fi
 
 if [[ "${need_configure}" -eq 1 ]]; then
-    "${CMAKE_BIN}" \
-        -S "${ROOT_DIR}" \
-        -B "${BUILD_DIR}" \
-        -G "${GENERATOR}" \
-        -D CMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-        -D ENABLE_LTO="${ENABLE_LTO}"
+  "${CMAKE_BIN}" --preset "${PRESET}" --log-level=STATUS
+  mkdir -p "${BUILD_DIR}"
+  printf '%s\n' "${PRESET}" > "${PRESET_FILE}"
 fi
 
-"${CMAKE_BIN}" --build "${BUILD_DIR}" --target codex_cmake_test --parallel
+"${CMAKE_BIN}" --build --preset "${PRESET}"

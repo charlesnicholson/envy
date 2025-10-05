@@ -1,0 +1,39 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 1,
+    "patch": 2
+  },
+  "configurePresets": [
+    {
+      "name": "codex-base",
+      "hidden": true,
+      "displayName": "Codex Base",
+      "generator": "Ninja",
+      "binaryDir": "out/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "release-lto-on",
+      "displayName": "Release (LTO On)",
+      "inherits": "codex-base",
+      "cacheVariables": {
+        "ENABLE_LTO": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release-lto-on",
+      "displayName": "Build codex_cmake_test (LTO On)",
+      "configurePreset": "release-lto-on",
+      "targets": [
+        "codex_cmake_test"
+      ],
+      "jobs": 0
+    }
+  ]
+}

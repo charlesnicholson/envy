@@ -4,6 +4,12 @@ This repository is an experiment in linking several complex dependencies statica
 
 All downloads, source trees, and install steps are redirected underneath the active build directory (recommended: `out/`). Removing that directory cleans every third-party artifact.
 
+## Build Workflow
+- `./build.sh` is the supported entry point and always drives the `release-lto-on` preset so local and IDE workflows stay aligned.
+- The preset keeps LTO enabled by default; run `cmake --preset release-lto-on` directly if you need manual control.
+- Presets share the fixed binary directory `out/build` and reuse the dependency cache under `out/cache/third_party` for predictable rebuilds.
+- When adjusting third-party wiring, add helper scripts under `cmake/scripts/` so `cmake/Dependencies.cmake` remains declarative.
+
 ## libgit2
 - Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
 - CMake options disable CLI and shared builds. The library exports as `codex::libgit2` and is consumed via the standard `git2` target.
@@ -30,6 +36,11 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## oneTBB
 - Source: https://github.com/oneapi-src/oneTBB (tag `v2022.2.0`).
 - Builds via upstream CMake with tests off. We link against `TBB::tbb` and keep `BUILD_SHARED_LIBS=OFF` for static archives.
+
+## AWS SDK
+- Source: https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip.
+- Built as static libraries with tests, CLI utilities, and non-essential components disabled so only `s3`, `sso`, and `sso-oidc` ship in the final bundle.
+- CRT dependencies are prefetched through `cmake/scripts/prefetch_aws_crt.cmake`, which adds the repo shims to `PATH` before invoking the upstream `prefetch_crt_dependency.sh`; reuse that script when updating SDK or CRT revisions.
 
 ## libarchive
 - Source: https://github.com/libarchive/libarchive (tag `v3.8.1`).
