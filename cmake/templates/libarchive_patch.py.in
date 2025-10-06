@@ -1,0 +1,16 @@
+import pathlib
+
+cmake_path = pathlib.Path(r"@LIBARCHIVE_CMAKELISTS@")
+text = cmake_path.read_text()
+
+updated = text.replace(
+    "CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12 FATAL_ERROR)",
+    "cmake_minimum_required(VERSION 3.5)",
+)
+updated = updated.replace(
+    "cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)",
+    "cmake_minimum_required(VERSION 3.5)",
+)
+
+if updated != text:
+    cmake_path.write_text(updated)
