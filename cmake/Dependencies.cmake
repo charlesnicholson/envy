@@ -49,17 +49,25 @@ set(CODEX_ONETBB_ARCHIVE "oneTBB-${CODEX_ONETBB_VERSION}.tar.gz")
 set(CODEX_ONETBB_URL "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v${CODEX_ONETBB_VERSION}.tar.gz")
 set(CODEX_ONETBB_SHA256 f0f78001c8c8edb4bddc3d4c5ee7428d56ae313254158ad1eec49eced57f6a5b)
 
-set(CODEX_AWS_SDK_URL "https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip")
+set(CODEX_AWS_SDK_VERSION "1.11.661")
+set(CODEX_AWS_SDK_ARCHIVE "aws-sdk-cpp-${CODEX_AWS_SDK_VERSION}.zip")
+set(CODEX_AWS_SDK_URL "https://github.com/aws/aws-sdk-cpp/archive/refs/tags/${CODEX_AWS_SDK_VERSION}.zip")
 set(CODEX_AWS_SDK_SHA256 504493b205a8a466751af8654b2f32e9917df9e75bcff5defdf72fe320837ba3)
 
-set(CODEX_LIBARCHIVE_REPOSITORY "https://github.com/libarchive/libarchive.git")
-set(CODEX_LIBARCHIVE_TAG "v3.8.1")
+set(CODEX_LIBARCHIVE_VERSION "3.8.1")
+set(CODEX_LIBARCHIVE_ARCHIVE "libarchive-${CODEX_LIBARCHIVE_VERSION}.tar.gz")
+set(CODEX_LIBARCHIVE_URL "https://www.libarchive.org/downloads/libarchive-${CODEX_LIBARCHIVE_VERSION}.tar.gz")
+set(CODEX_LIBARCHIVE_SHA256 bde832a5e3344dc723cfe9cc37f8e54bde04565bfe6f136bc1bd31ab352e9fab)
 
-set(CODEX_BLAKE3_REPOSITORY "https://github.com/BLAKE3-team/BLAKE3.git")
-set(CODEX_BLAKE3_TAG "1.8.2")
+set(CODEX_BLAKE3_VERSION "1.8.2")
+set(CODEX_BLAKE3_ARCHIVE "blake3-${CODEX_BLAKE3_VERSION}.tar.gz")
+set(CODEX_BLAKE3_URL "https://github.com/BLAKE3-team/BLAKE3/archive/refs/tags/${CODEX_BLAKE3_VERSION}.tar.gz")
+set(CODEX_BLAKE3_SHA256 6b51aefe515969785da02e87befafc7fdc7a065cd3458cf1141f29267749e81f)
 
-set(CODEX_LUA_REPOSITORY "https://github.com/lua/lua.git")
-set(CODEX_LUA_TAG "v5.4.8")
+set(CODEX_LUA_VERSION "5.4.8")
+set(CODEX_LUA_ARCHIVE "lua-${CODEX_LUA_VERSION}.tar.gz")
+set(CODEX_LUA_URL "https://www.lua.org/ftp/lua-${CODEX_LUA_VERSION}.tar.gz")
+set(CODEX_LUA_SHA256 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae)
 
 find_package(ZLIB REQUIRED)
 find_library(RESOLV_LIBRARY resolv REQUIRED)
@@ -468,8 +476,14 @@ set(BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(AWS_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(AWS_SDK_CPP_BUILD_ONLY "s3;sso;sso-oidc" CACHE STRING "" FORCE)
 set(ENFORCE_SUBMODULE_VERSIONS OFF CACHE BOOL "" FORCE)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_AWS_SDK_ARCHIVE}" OUTPUT_VARIABLE _aws_sdk_archive)
+set(_aws_sdk_url "${CODEX_AWS_SDK_URL}")
+if(EXISTS "${_aws_sdk_archive}")
+    file(TO_CMAKE_PATH "${_aws_sdk_archive}" _aws_sdk_archive_norm)
+    set(_aws_sdk_url "file://${_aws_sdk_archive_norm}")
+endif()
 FetchContent_Declare(aws_sdk
-    URL ${CODEX_AWS_SDK_URL}
+    URL ${_aws_sdk_url}
     URL_HASH SHA256=${CODEX_AWS_SDK_SHA256}
 )
 FetchContent_GetProperties(aws_sdk)
@@ -477,6 +491,10 @@ if(NOT aws_sdk_POPULATED OR NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
     FetchContent_Populate(aws_sdk)
     FetchContent_GetProperties(aws_sdk)
 endif()
+
+unset(_aws_sdk_archive)
+unset(_aws_sdk_archive_norm)
+unset(_aws_sdk_url)
 
 set(_aws_crt_root "${aws_sdk_SOURCE_DIR}/crt/aws-crt-cpp")
 set(_aws_crt_marker "${_aws_crt_root}/crt/aws-c-common/CMakeLists.txt")
@@ -520,10 +538,15 @@ set(ENABLE_CNG OFF CACHE BOOL "" FORCE)
 set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "" FORCE)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBARCHIVE_ARCHIVE}" OUTPUT_VARIABLE _libarchive_archive)
+set(_libarchive_url "${CODEX_LIBARCHIVE_URL}")
+if(EXISTS "${_libarchive_archive}")
+    file(TO_CMAKE_PATH "${_libarchive_archive}" _libarchive_archive_norm)
+    set(_libarchive_url "file://${_libarchive_archive_norm}")
+endif()
 FetchContent_Declare(libarchive
-    GIT_REPOSITORY ${CODEX_LIBARCHIVE_REPOSITORY}
-    GIT_TAG ${CODEX_LIBARCHIVE_TAG}
-    GIT_SHALLOW TRUE
+    URL ${_libarchive_url}
+    URL_HASH SHA256=${CODEX_LIBARCHIVE_SHA256}
 )
 FetchContent_GetProperties(libarchive)
 if(NOT libarchive_POPULATED)
@@ -540,6 +563,10 @@ if(NOT libarchive_POPULATED)
         endif()
     endif()
     add_subdirectory(${libarchive_SOURCE_DIR} ${libarchive_BINARY_DIR})
+unset(_libarchive_archive)
+unset(_libarchive_archive_norm)
+unset(_libarchive_cmake)
+unset(_libarchive_sources)
 endif()
 if(TARGET archive)
     add_library(libarchive::libarchive ALIAS archive)
@@ -561,10 +588,15 @@ else()
 endif()
 
 # BLAKE3 --------------------------------------------------------------------
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_BLAKE3_ARCHIVE}" OUTPUT_VARIABLE _blake3_archive)
+set(_blake3_url "${CODEX_BLAKE3_URL}")
+if(EXISTS "${_blake3_archive}")
+    file(TO_CMAKE_PATH "${_blake3_archive}" _blake3_archive_norm)
+    set(_blake3_url "file://${_blake3_archive_norm}")
+endif()
 FetchContent_Declare(blake3
-    GIT_REPOSITORY ${CODEX_BLAKE3_REPOSITORY}
-    GIT_TAG ${CODEX_BLAKE3_TAG}
-    GIT_SHALLOW TRUE
+    URL ${_blake3_url}
+    URL_HASH SHA256=${CODEX_BLAKE3_SHA256}
 )
 FetchContent_GetProperties(blake3)
 if(NOT blake3_POPULATED)
@@ -590,60 +622,76 @@ if(NOT blake3_POPULATED)
     target_compile_features(blake3 PUBLIC c_std_99)
     add_library(blake3::blake3 ALIAS blake3)
 endif()
+unset(_blake3_archive)
+unset(_blake3_archive_norm)
+unset(_blake3_url)
 
 # Lua -----------------------------------------------------------------------
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LUA_ARCHIVE}" OUTPUT_VARIABLE _lua_archive)
+set(_lua_url "${CODEX_LUA_URL}")
+if(EXISTS "${_lua_archive}")
+    file(TO_CMAKE_PATH "${_lua_archive}" _lua_archive_norm)
+    set(_lua_url "file://${_lua_archive_norm}")
+endif()
 FetchContent_Declare(lua
-    GIT_REPOSITORY ${CODEX_LUA_REPOSITORY}
-    GIT_TAG ${CODEX_LUA_TAG}
-    GIT_SHALLOW TRUE
+    URL ${_lua_url}
+    URL_HASH SHA256=${CODEX_LUA_SHA256}
 )
 FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
     FetchContent_Populate(lua)
     FetchContent_GetProperties(lua)
+    set(_lua_source_root "${lua_SOURCE_DIR}")
+    if(EXISTS "${_lua_source_root}/src/lapi.c")
+        set(_lua_source_root "${lua_SOURCE_DIR}/src")
+    endif()
     file(GLOB LUA_CORE_SOURCES
-        "${lua_SOURCE_DIR}/lapi.c"
-        "${lua_SOURCE_DIR}/lcode.c"
-        "${lua_SOURCE_DIR}/lctype.c"
-        "${lua_SOURCE_DIR}/ldebug.c"
-        "${lua_SOURCE_DIR}/ldo.c"
-        "${lua_SOURCE_DIR}/ldump.c"
-        "${lua_SOURCE_DIR}/lfunc.c"
-        "${lua_SOURCE_DIR}/lgc.c"
-        "${lua_SOURCE_DIR}/llex.c"
-        "${lua_SOURCE_DIR}/lmem.c"
-        "${lua_SOURCE_DIR}/lobject.c"
-        "${lua_SOURCE_DIR}/lopcodes.c"
-        "${lua_SOURCE_DIR}/lparser.c"
-        "${lua_SOURCE_DIR}/lstate.c"
-        "${lua_SOURCE_DIR}/lstring.c"
-        "${lua_SOURCE_DIR}/ltable.c"
-        "${lua_SOURCE_DIR}/ltm.c"
-        "${lua_SOURCE_DIR}/lundump.c"
-        "${lua_SOURCE_DIR}/lvm.c"
-        "${lua_SOURCE_DIR}/lzio.c"
-        "${lua_SOURCE_DIR}/lauxlib.c"
-        "${lua_SOURCE_DIR}/lbaselib.c"
-        "${lua_SOURCE_DIR}/lcorolib.c"
-        "${lua_SOURCE_DIR}/ldblib.c"
-        "${lua_SOURCE_DIR}/liolib.c"
-        "${lua_SOURCE_DIR}/lmathlib.c"
-        "${lua_SOURCE_DIR}/loslib.c"
-        "${lua_SOURCE_DIR}/lstrlib.c"
-        "${lua_SOURCE_DIR}/ltablib.c"
-        "${lua_SOURCE_DIR}/lutf8lib.c"
-        "${lua_SOURCE_DIR}/loadlib.c"
-        "${lua_SOURCE_DIR}/linit.c"
+        "${_lua_source_root}/lapi.c"
+        "${_lua_source_root}/lcode.c"
+        "${_lua_source_root}/lctype.c"
+        "${_lua_source_root}/ldebug.c"
+        "${_lua_source_root}/ldo.c"
+        "${_lua_source_root}/ldump.c"
+        "${_lua_source_root}/lfunc.c"
+        "${_lua_source_root}/lgc.c"
+        "${_lua_source_root}/llex.c"
+        "${_lua_source_root}/lmem.c"
+        "${_lua_source_root}/lobject.c"
+        "${_lua_source_root}/lopcodes.c"
+        "${_lua_source_root}/lparser.c"
+        "${_lua_source_root}/lstate.c"
+        "${_lua_source_root}/lstring.c"
+        "${_lua_source_root}/ltable.c"
+        "${_lua_source_root}/ltm.c"
+        "${_lua_source_root}/lundump.c"
+        "${_lua_source_root}/lvm.c"
+        "${_lua_source_root}/lzio.c"
+        "${_lua_source_root}/lauxlib.c"
+        "${_lua_source_root}/lbaselib.c"
+        "${_lua_source_root}/lcorolib.c"
+        "${_lua_source_root}/ldblib.c"
+        "${_lua_source_root}/liolib.c"
+        "${_lua_source_root}/lmathlib.c"
+        "${_lua_source_root}/loslib.c"
+        "${_lua_source_root}/lstrlib.c"
+        "${_lua_source_root}/ltablib.c"
+        "${_lua_source_root}/lutf8lib.c"
+        "${_lua_source_root}/loadlib.c"
+        "${_lua_source_root}/linit.c"
     )
     add_library(lua STATIC ${LUA_CORE_SOURCES})
-    target_include_directories(lua PUBLIC "${lua_SOURCE_DIR}")
+    target_include_directories(lua PUBLIC "${lua_SOURCE_DIR}" "${_lua_source_root}")
     target_compile_definitions(lua PUBLIC LUA_COMPAT_5_3)
     set_target_properties(lua PROPERTIES
         C_STANDARD 99
         C_STANDARD_REQUIRED ON)
     target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=c99>)
     add_library(lua::lua ALIAS lua)
+    unset(_lua_source_root)
 endif()
+unset(_lua_archive)
+unset(_lua_archive_norm)
+unset(_lua_url)
 
 # Aggregate -----------------------------------------------------------------
 add_library(codex_thirdparty INTERFACE)
