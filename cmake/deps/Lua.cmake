@@ -4,14 +4,20 @@ if(EXISTS "${_lua_archive}")
     file(TO_CMAKE_PATH "${_lua_archive}" _lua_archive_norm)
     set(_lua_url "file://${_lua_archive_norm}")
 endif()
-FetchContent_Declare(lua
-    URL ${_lua_url}
-    URL_HASH SHA256=${CODEX_LUA_SHA256}
-)
-FetchContent_GetProperties(lua)
-if(NOT lua_POPULATED)
-    FetchContent_Populate(lua)
-    FetchContent_GetProperties(lua)
+
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "lua-src" OUTPUT_VARIABLE lua_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "lua-build" OUTPUT_VARIABLE lua_BINARY_DIR)
+
+if(NOT EXISTS "${lua_SOURCE_DIR}/lapi.c" AND NOT EXISTS "${lua_SOURCE_DIR}/src/lapi.c")
+    FetchContent_Populate(lua
+        SOURCE_DIR "${lua_SOURCE_DIR}"
+        BINARY_DIR "${lua_BINARY_DIR}"
+        URL ${_lua_url}
+        URL_HASH SHA256=${CODEX_LUA_SHA256}
+    )
+endif()
+
+if(NOT TARGET lua)
     set(_lua_source_root "${lua_SOURCE_DIR}")
     if(EXISTS "${_lua_source_root}/src/lapi.c")
         set(_lua_source_root "${lua_SOURCE_DIR}/src")

@@ -14,14 +14,16 @@ if(EXISTS "${_libssh2_archive}")
     set(_libssh2_url "file://${_libssh2_archive_norm}")
 endif()
 
-FetchContent_Declare(libssh2
-    URL ${_libssh2_url}
-    URL_HASH SHA256=${CODEX_LIBSSH2_SHA256}
-)
-FetchContent_GetProperties(libssh2)
-if(NOT libssh2_POPULATED)
-    FetchContent_Populate(libssh2)
-    FetchContent_GetProperties(libssh2)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libssh2-src" OUTPUT_VARIABLE libssh2_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libssh2-build" OUTPUT_VARIABLE libssh2_BINARY_DIR)
+
+if(NOT EXISTS "${libssh2_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(libssh2
+        SOURCE_DIR "${libssh2_SOURCE_DIR}"
+        BINARY_DIR "${libssh2_BINARY_DIR}"
+        URL ${_libssh2_url}
+        URL_HASH SHA256=${CODEX_LIBSSH2_SHA256}
+    )
 endif()
 
 if(DEFINED libssh2_SOURCE_DIR AND DEFINED libssh2_BINARY_DIR)

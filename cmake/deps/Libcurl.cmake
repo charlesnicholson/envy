@@ -37,12 +37,8 @@ FetchContent_Declare(libcurl
     URL ${_curl_url}
     URL_HASH SHA256=${CODEX_LIBCURL_SHA256}
 )
+FetchContent_MakeAvailable(libcurl)
 FetchContent_GetProperties(libcurl)
-if(NOT libcurl_POPULATED)
-    FetchContent_Populate(libcurl)
-    FetchContent_GetProperties(libcurl)
-endif()
-add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
 unset(_curl_archive)
 unset(_curl_archive_norm)
 unset(_curl_url)

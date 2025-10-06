@@ -28,14 +28,16 @@ if(EXISTS "${_libarchive_archive}")
     set(_libarchive_url "file://${_libarchive_archive_norm}")
 endif()
 
-FetchContent_Declare(libarchive
-    URL ${_libarchive_url}
-    URL_HASH SHA256=${CODEX_LIBARCHIVE_SHA256}
-)
-FetchContent_GetProperties(libarchive)
-if(NOT libarchive_POPULATED)
-    FetchContent_Populate(libarchive)
-    FetchContent_GetProperties(libarchive)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libarchive-src" OUTPUT_VARIABLE libarchive_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libarchive-build" OUTPUT_VARIABLE libarchive_BINARY_DIR)
+
+if(NOT EXISTS "${libarchive_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(libarchive
+        SOURCE_DIR "${libarchive_SOURCE_DIR}"
+        BINARY_DIR "${libarchive_BINARY_DIR}"
+        URL ${_libarchive_url}
+        URL_HASH SHA256=${CODEX_LIBARCHIVE_SHA256}
+    )
 endif()
 
 if(DEFINED libarchive_SOURCE_DIR AND DEFINED libarchive_BINARY_DIR)

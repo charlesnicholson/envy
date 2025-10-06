@@ -1,9 +1,0 @@
-Modernization roadmap for CMake (baseline 4.1.2)
-
-1. Adopt latest CMake conveniences
-   - Introduce cmake_path(), target_sources(FILE_SET ...), generator expressions, and FetchContent_MakeAvailable() where conditional logic or exports can shrink (TODO).
-   - Audit remaining policy pushes/pops (CMP0169 etc.) and modernize behaviour instead of forcing OLD modes (TODO).
-
-2. Verification cadence
-   - After each modernization milestone, configure from an empty build directory (rm -rf out) and run ./build.sh to validate both dependency builds and the codex-tool target.
-   - Track the migration progress (decisions, removed helpers, new presets) in docs/modernizing-cmake.md so automation and future agents can understand the rollout sequence.

@@ -10,14 +10,17 @@ if(EXISTS "${_libgit2_archive}")
     file(TO_CMAKE_PATH "${_libgit2_archive}" _libgit2_archive_norm)
     set(_libgit2_url "file://${_libgit2_archive_norm}")
 endif()
-FetchContent_Declare(libgit2
-    URL ${_libgit2_url}
-    URL_HASH SHA256=${CODEX_LIBGIT2_SHA256}
-)
-FetchContent_GetProperties(libgit2)
-if(NOT libgit2_POPULATED)
-    FetchContent_Populate(libgit2)
-    FetchContent_GetProperties(libgit2)
+
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libgit2-src" OUTPUT_VARIABLE libgit2_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libgit2-build" OUTPUT_VARIABLE libgit2_BINARY_DIR)
+
+if(NOT EXISTS "${libgit2_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(libgit2
+        SOURCE_DIR "${libgit2_SOURCE_DIR}"
+        BINARY_DIR "${libgit2_BINARY_DIR}"
+        URL ${_libgit2_url}
+        URL_HASH SHA256=${CODEX_LIBGIT2_SHA256}
+    )
 endif()
 
 if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR AND

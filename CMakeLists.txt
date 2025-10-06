@@ -55,8 +55,16 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-add_executable(codex_cmake_test
-    src/main.cpp
+add_executable(codex_cmake_test)
+
+target_sources(codex_cmake_test
+    PRIVATE
+        src/main.cpp
+    PUBLIC
+        FILE_SET public_headers TYPE HEADERS
+            BASE_DIRS "${PROJECT_SOURCE_DIR}/include"
+            FILES
+                include/lua.hpp
 )
 
 set_target_properties(codex_cmake_test PROPERTIES
@@ -64,8 +72,15 @@ set_target_properties(codex_cmake_test PROPERTIES
 )
 
 target_compile_features(codex_cmake_test PRIVATE cxx_std_20)
-target_compile_options(codex_cmake_test PRIVATE -ffunction-sections -fdata-sections)
-target_link_options(codex_cmake_test PRIVATE -Wl,-dead_strip)
+target_compile_options(codex_cmake_test PRIVATE
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
+)
+target_link_options(codex_cmake_test PRIVATE
+    $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
+)
 
 target_link_libraries(codex_cmake_test
     PRIVATE
@@ -76,5 +91,5 @@ add_dependencies(codex_cmake_test openssl)
 
 target_include_directories(codex_cmake_test
     PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )

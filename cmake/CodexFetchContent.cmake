@@ -36,7 +36,17 @@ function(codex_fetchcontent_acquire name human_name)
         message(STATUS "[codex] No cached ${human_name} sources at ${_codex_source_dir}; fetching")
     endif()
 
-    FetchContent_Populate(${name})
+    if(NOT DEFINED ${name}_SOURCE_DIR)
+        string(TOLOWER "${name}" _codex_lower_auto)
+        cmake_path(APPEND FETCHCONTENT_BASE_DIR "${_codex_lower_auto}-src" OUTPUT_VARIABLE ${name}_SOURCE_DIR)
+        cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "${_codex_lower_auto}-build" OUTPUT_VARIABLE ${name}_BINARY_DIR)
+        unset(_codex_lower_auto)
+    endif()
+
+    FetchContent_Populate(${name}
+        SOURCE_DIR "${${name}_SOURCE_DIR}"
+        BINARY_DIR "${${name}_BINARY_DIR}"
+    )
     FetchContent_GetProperties(${name})
 
     if(_codex_prev_defined)

@@ -5,8 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/CodexFetchContent.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/DependencyPatches.cmake")
 
 if(POLICY CMP0169)
-    cmake_policy(PUSH)
-    cmake_policy(SET CMP0169 OLD)
+    cmake_policy(SET CMP0169 NEW)
 endif()
 
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Disable deprecated CMake warnings from third-party builds" FORCE)
@@ -74,6 +73,12 @@ set(CODEX_LUA_SHA256 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530
 
 find_package(ZLIB REQUIRED)
 find_library(RESOLV_LIBRARY resolv REQUIRED)
+if(APPLE)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
+    find_library(SYSTEMCONFIGURATION_FRAMEWORK SystemConfiguration REQUIRED)
+    find_library(SECURITY_FRAMEWORK Security REQUIRED)
+endif()
 
 # Enforce static libraries across third-party builds.
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FORCE)
@@ -112,10 +117,10 @@ target_link_libraries(codex_thirdparty
 
 if(APPLE)
     target_link_libraries(codex_thirdparty INTERFACE
-        "-framework SystemConfiguration"
-        "-framework CoreFoundation"
-        "-framework CoreServices"
-        "-framework Security"
+        ${SYSTEMCONFIGURATION_FRAMEWORK}
+        ${COREFOUNDATION_FRAMEWORK}
+        ${CORESERVICES_FRAMEWORK}
+        ${SECURITY_FRAMEWORK}
     )
 endif()
 
@@ -130,7 +135,3 @@ target_include_directories(codex_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${CODEX_AWSCRT_ROOT}/include>"
 )
-
-if(POLICY CMP0169)
-    cmake_policy(POP)
-endif()

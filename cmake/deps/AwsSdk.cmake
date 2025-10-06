@@ -12,14 +12,17 @@ if(EXISTS "${_aws_sdk_archive}")
     file(TO_CMAKE_PATH "${_aws_sdk_archive}" _aws_sdk_archive_norm)
     set(_aws_sdk_url "file://${_aws_sdk_archive_norm}")
 endif()
-FetchContent_Declare(aws_sdk
-    URL ${_aws_sdk_url}
-    URL_HASH SHA256=${CODEX_AWS_SDK_SHA256}
-)
-FetchContent_GetProperties(aws_sdk)
-if(NOT aws_sdk_POPULATED OR NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
-    FetchContent_Populate(aws_sdk)
-    FetchContent_GetProperties(aws_sdk)
+
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "aws_sdk-src" OUTPUT_VARIABLE aws_sdk_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "aws_sdk-build" OUTPUT_VARIABLE aws_sdk_BINARY_DIR)
+
+if(NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(aws_sdk
+        SOURCE_DIR "${aws_sdk_SOURCE_DIR}"
+        BINARY_DIR "${aws_sdk_BINARY_DIR}"
+        URL ${_aws_sdk_url}
+        URL_HASH SHA256=${CODEX_AWS_SDK_SHA256}
+    )
 endif()
 
 unset(_aws_sdk_archive)

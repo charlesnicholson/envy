@@ -9,15 +9,17 @@ endif()
 find_program(PERL_EXECUTABLE perl REQUIRED)
 find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
-FetchContent_Declare(openssl
-    URL ${_openssl_url}
-    URL_HASH SHA256=${CODEX_OPENSSL_SHA256}
-)
-FetchContent_GetProperties(openssl)
-if(NOT openssl_POPULATED)
+cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "openssl-src" OUTPUT_VARIABLE openssl_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-subbuild" OUTPUT_VARIABLE openssl_BINARY_DIR)
+
+if(NOT EXISTS "${openssl_SOURCE_DIR}/Configure")
     message(STATUS "Fetching OpenSSL sources (openssl-${CODEX_OPENSSL_VERSION})...")
-    FetchContent_Populate(openssl)
-    FetchContent_GetProperties(openssl)
+    FetchContent_Populate(openssl
+        SOURCE_DIR "${openssl_SOURCE_DIR}"
+        BINARY_DIR "${openssl_BINARY_DIR}"
+        URL ${_openssl_url}
+        URL_HASH SHA256=${CODEX_OPENSSL_SHA256}
+    )
 
     set(_openssl_target "")
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
