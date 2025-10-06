@@ -27,6 +27,13 @@ The helper script `./build.sh` at the project root handles this workflow for you
 
 CMake is used strictly for builds; there is no CTest integration. Run the resulting `out/build/codex-tool/codex_cmake_test` executable directly when you need a smoke pass.
 
+## CMake Layout
+
+- `cmake/Dependencies.cmake` is the single aggregation point. It only includes shared helpers and the modules under `cmake/deps/`; keep per-library logic out of the top-level file.
+- Each vendored dependency has a corresponding module (for example `cmake/deps/Libgit2.cmake`) that owns its `FetchContent` declaration, cache knobs, and build tweaks. Add new dependencies by mirroring that pattern.
+- Shared utilities such as `CodexFetchContent.cmake` and `DependencyPatches.cmake` provide the common job pools, cache wiring, and patch helpers that modules may reuse.
+- Patch scripts must be generated with `configure_file()` using templates in `cmake/templates/` so reconfigures stay idempotent and we avoid rewriting vendored sources multiple times.
+
 Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and smoke run without warnings or errors:
 
 ```bash

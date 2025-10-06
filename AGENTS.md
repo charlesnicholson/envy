@@ -9,7 +9,8 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 ## Project Structure & Module Organization
 - `CMakeLists.txt` configures the C++20 test driver and pulls in all dependencies through `cmake/Dependencies.cmake`; do not add ad-hoc `FetchContent` calls elsewhere.
 - Avoid Git submodules—every vendored dependency must be fetched or mirrored through CMake so the repository remains lightweight and reproducible.
-- Third-party glue and helper macros belong in the `cmake/` directory. Create new modules (e.g., `cmake/FetchFoo.cmake`) rather than embedding logic in targets.
+- Third-party setup lives in dedicated modules under `cmake/deps/` (e.g., `cmake/deps/OpenSSL.cmake`). Extend those files instead of editing `cmake/Dependencies.cmake` directly, and keep any shared helpers in `cmake/CodexFetchContent.cmake` or `cmake/DependencyPatches.cmake`.
+- Patch logic must use `configure_file()` to materialize scripts in the binary tree; add new templates under `cmake/templates/` and wire them through the helpers in `cmake/DependencyPatches.cmake` so repeated reconfigures stay idempotent.
 - Runtime sources live in `src/` with public headers kept in `include/`; keep C++ headers self-contained so static consumers remain deterministic.
 - Add test scaffolding under `tests/` (create the directory when needed). Mirror target names (`tests/<target>_*.cpp`) and share fixtures via subdirectories only when reused.
 - Any design notes or per-library instructions should go under `docs/`; update `docs/dependencies.md` when pinning or patching vendored code.
