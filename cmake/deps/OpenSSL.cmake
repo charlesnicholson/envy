@@ -1,6 +1,6 @@
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" OUTPUT_VARIABLE OPENSSL_BINARY)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_OPENSSL_ARCHIVE}" OUTPUT_VARIABLE _openssl_archive)
-set(_openssl_url "${CODEX_OPENSSL_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_OPENSSL_ARCHIVE}" OUTPUT_VARIABLE _openssl_archive)
+set(_openssl_url "${ENVY_OPENSSL_URL}")
 if(EXISTS "${_openssl_archive}")
     file(TO_CMAKE_PATH "${_openssl_archive}" _openssl_archive_norm)
     set(_openssl_url "file://${_openssl_archive_norm}")
@@ -9,16 +9,16 @@ endif()
 find_program(PERL_EXECUTABLE perl REQUIRED)
 find_program(OPENSSL_MAKE_COMMAND make REQUIRED)
 
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "openssl-src" OUTPUT_VARIABLE openssl_SOURCE_DIR)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "openssl-src" OUTPUT_VARIABLE openssl_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-subbuild" OUTPUT_VARIABLE openssl_BINARY_DIR)
 
 if(NOT EXISTS "${openssl_SOURCE_DIR}/Configure")
-    message(STATUS "Fetching OpenSSL sources (openssl-${CODEX_OPENSSL_VERSION})...")
+    message(STATUS "Fetching OpenSSL sources (openssl-${ENVY_OPENSSL_VERSION})...")
     FetchContent_Populate(openssl
         SOURCE_DIR "${openssl_SOURCE_DIR}"
         BINARY_DIR "${openssl_BINARY_DIR}"
         URL ${_openssl_url}
-        URL_HASH SHA256=${CODEX_OPENSSL_SHA256}
+        URL_HASH SHA256=${ENVY_OPENSSL_SHA256}
     )
 
     set(_openssl_target "")
@@ -53,18 +53,19 @@ if(NOT EXISTS "${openssl_SOURCE_DIR}/Configure")
     endif()
     unset(_openssl_configure_stamp)
 
-    add_custom_command(
-        OUTPUT "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a"
-        COMMAND ${OPENSSL_MAKE_COMMAND} -j
-        COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
-        WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
-        COMMENT "Building OpenSSL"
-        VERBATIM
-    )
-
-    add_custom_target(openssl ALL
-        DEPENDS "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a")
 endif()
+
+add_custom_command(
+    OUTPUT "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a"
+    COMMAND ${OPENSSL_MAKE_COMMAND} -j
+    COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
+    WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
+    COMMENT "Building OpenSSL"
+    VERBATIM
+)
+
+add_custom_target(openssl ALL
+    DEPENDS "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a")
 
 unset(_openssl_archive)
 unset(_openssl_archive_norm)

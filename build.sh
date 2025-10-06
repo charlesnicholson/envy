@@ -10,7 +10,7 @@ PRESET="release-lto-on"
 mkdir -p "${CACHE_DIR}"
 
 CACHE_FILE="${BUILD_DIR}/CMakeCache.txt"
-PRESET_FILE="${BUILD_DIR}/.codex-preset"
+PRESET_FILE="${BUILD_DIR}/.envy-preset"
 
 need_configure=1
 if [[ -f "${CACHE_FILE}" && -f "${PRESET_FILE}" ]]; then

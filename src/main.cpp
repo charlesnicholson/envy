@@ -68,7 +68,7 @@ class AwsApiGuard {
     ::setenv("AWS_SDK_LOAD_CONFIG", "1", 1);
     options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
     options_.loggingOptions.logger_create_fn = []() {
-      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>("codex-cmake-test-logging");
+      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>("envy-cmake-test-logging");
     };
     Aws::InitAPI(options_);
   }
@@ -97,7 +97,7 @@ std::filesystem::path create_temp_directory()
   std::uniform_int_distribution<uint64_t> dist;
 
   std::ostringstream name;
-  name << "codex-cmake-test-" << std::hex << std::setw(16) << std::setfill('0')
+  name << "envy-cmake-test-" << std::hex << std::setw(16) << std::setfill('0')
        << dist(rng);
   const auto candidate = base / name.str();
 
@@ -189,7 +189,7 @@ S3UriParts parse_s3_uri(std::string_view uri)
 std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
     const Aws::S3::S3ClientConfiguration &s3_config)
 {
-  static constexpr const char *kAllocationTag = "codex-cmake-test-sso";
+  static constexpr const char *kAllocationTag = "envy-cmake-test-sso";
   const Aws::String profile_from_env = Aws::Environment::GetEnv("AWS_PROFILE");
   const Aws::String profile = profile_from_env.empty() ? Aws::Auth::GetConfigProfileName() : profile_from_env;
   try {
@@ -626,9 +626,9 @@ int lua_extract_to_temp(lua_State *L)
   }
 }
 
-static constexpr char kLuaScript[] = R"(local bucket = assert(codex_bucket, "codex_bucket must be set")
-local key = assert(codex_key, "codex_key must be set")
-local region = codex_region or ""
+static constexpr char kLuaScript[] = R"(local bucket = assert(envy_bucket, "envy_bucket must be set")
+local key = assert(envy_key, "envy_key must be set")
+local region = envy_region or ""
 
 local archive_path = download_s3_object(bucket, key, region)
 extract_to_temp(archive_path)
@@ -654,11 +654,11 @@ void run_lua_workflow(const std::string &bucket,
   lua_setglobal(state.get(), "extract_to_temp");
 
   lua_pushlstring(state.get(), bucket.c_str(), static_cast<lua_Integer>(bucket.size()));
-  lua_setglobal(state.get(), "codex_bucket");
+  lua_setglobal(state.get(), "envy_bucket");
   lua_pushlstring(state.get(), key.c_str(), static_cast<lua_Integer>(key.size()));
-  lua_setglobal(state.get(), "codex_key");
+  lua_setglobal(state.get(), "envy_key");
   lua_pushlstring(state.get(), region.c_str(), static_cast<lua_Integer>(region.size()));
-  lua_setglobal(state.get(), "codex_region");
+  lua_setglobal(state.get(), "envy_region");
 
   if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
     const char *message = lua_tostring(state.get(), -1);
@@ -714,7 +714,7 @@ int main(int argc, char **argv)
       show_versions = true;
     } else if (!arg.empty() && arg.front() == '-') {
       std::cerr << "Unknown option: " << arg << std::endl;
-      std::cerr << "Usage: " << (argc > 0 ? argv[0] : "codex-tool")
+      std::cerr << "Usage: " << (argc > 0 ? argv[0] : "envy")
                 << " [-v] s3://<bucket>/<key> [region]" << std::endl;
       return EXIT_FAILURE;
     } else {
@@ -728,7 +728,7 @@ int main(int argc, char **argv)
   }
 
   if (positional_args.empty()) {
-    std::cerr << "Usage: " << (argc > 0 ? argv[0] : "codex-tool")
+    std::cerr << "Usage: " << (argc > 0 ? argv[0] : "envy")
               << " [-v] s3://<bucket>/<key> [region]" << std::endl;
     return EXIT_FAILURE;
   }

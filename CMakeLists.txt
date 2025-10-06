@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1.2)
 
-project(codex_cmake_test
+project(envy_cmake_test
     VERSION 0.1.0
     DESCRIPTION "Static test driver bundling libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
@@ -21,26 +21,26 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Favor size-optimized release binaries by normalizing optimization flags
-set(_codex_size_opt "-Os")
+set(_envy_size_opt "-Os")
 if(MSVC)
-    set(_codex_size_opt "/Os")
+    set(_envy_size_opt "/Os")
 endif()
 
-foreach(_codex_lang IN ITEMS C CXX)
-    set(_codex_flags "${CMAKE_${_codex_lang}_FLAGS_RELEASE}")
-    string(REGEX REPLACE "-O[0-9A-Za-z]*" "" _codex_flags "${_codex_flags}")
-    string(REGEX REPLACE "/O[0-9A-Za-z]*" "" _codex_flags "${_codex_flags}")
-    string(STRIP "${_codex_flags}" _codex_flags)
-    if(_codex_flags STREQUAL "")
-        set(_codex_flags "${_codex_size_opt}")
+foreach(_envy_lang IN ITEMS C CXX)
+    set(_envy_flags "${CMAKE_${_envy_lang}_FLAGS_RELEASE}")
+    string(REGEX REPLACE "-O[0-9A-Za-z]*" "" _envy_flags "${_envy_flags}")
+    string(REGEX REPLACE "/O[0-9A-Za-z]*" "" _envy_flags "${_envy_flags}")
+    string(STRIP "${_envy_flags}" _envy_flags)
+    if(_envy_flags STREQUAL "")
+        set(_envy_flags "${_envy_size_opt}")
     else()
-        string(APPEND _codex_flags " ${_codex_size_opt}")
+        string(APPEND _envy_flags " ${_envy_size_opt}")
     endif()
-    set(CMAKE_${_codex_lang}_FLAGS_RELEASE "${_codex_flags}" CACHE STRING "Release flags" FORCE)
+    set(CMAKE_${_envy_lang}_FLAGS_RELEASE "${_envy_flags}" CACHE STRING "Release flags" FORCE)
 endforeach()
-unset(_codex_size_opt)
-unset(_codex_flags)
-unset(_codex_lang)
+unset(_envy_size_opt)
+unset(_envy_flags)
+unset(_envy_lang)
 
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
 if(ENABLE_LTO)
@@ -55,9 +55,9 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-add_executable(codex_cmake_test)
+add_executable(envy_cmake_test)
 
-target_sources(codex_cmake_test
+target_sources(envy_cmake_test
     PRIVATE
         src/main.cpp
     PUBLIC
@@ -67,29 +67,29 @@ target_sources(codex_cmake_test
                 include/lua.hpp
 )
 
-set_target_properties(codex_cmake_test PROPERTIES
-    OUTPUT_NAME codex-tool
+set_target_properties(envy_cmake_test PROPERTIES
+    OUTPUT_NAME envy
 )
 
-target_compile_features(codex_cmake_test PRIVATE cxx_std_20)
-target_compile_options(codex_cmake_test PRIVATE
+target_compile_features(envy_cmake_test PRIVATE cxx_std_20)
+target_compile_options(envy_cmake_test PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
 )
-target_link_options(codex_cmake_test PRIVATE
+target_link_options(envy_cmake_test PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
 )
 
-target_link_libraries(codex_cmake_test
+target_link_libraries(envy_cmake_test
     PRIVATE
-        codex::thirdparty
+        envy::thirdparty
 )
 
-add_dependencies(codex_cmake_test openssl)
+add_dependencies(envy_cmake_test openssl)
 
-target_include_directories(codex_cmake_test
+target_include_directories(envy_cmake_test
     PRIVATE
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )

@@ -21,14 +21,14 @@ set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "" FORCE)
 
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBARCHIVE_ARCHIVE}" OUTPUT_VARIABLE _libarchive_archive)
-set(_libarchive_url "${CODEX_LIBARCHIVE_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBARCHIVE_ARCHIVE}" OUTPUT_VARIABLE _libarchive_archive)
+set(_libarchive_url "${ENVY_LIBARCHIVE_URL}")
 if(EXISTS "${_libarchive_archive}")
     file(TO_CMAKE_PATH "${_libarchive_archive}" _libarchive_archive_norm)
     set(_libarchive_url "file://${_libarchive_archive_norm}")
 endif()
 
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libarchive-src" OUTPUT_VARIABLE libarchive_SOURCE_DIR)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "libarchive-src" OUTPUT_VARIABLE libarchive_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libarchive-build" OUTPUT_VARIABLE libarchive_BINARY_DIR)
 
 if(NOT EXISTS "${libarchive_SOURCE_DIR}/CMakeLists.txt")
@@ -36,12 +36,12 @@ if(NOT EXISTS "${libarchive_SOURCE_DIR}/CMakeLists.txt")
         SOURCE_DIR "${libarchive_SOURCE_DIR}"
         BINARY_DIR "${libarchive_BINARY_DIR}"
         URL ${_libarchive_url}
-        URL_HASH SHA256=${CODEX_LIBARCHIVE_SHA256}
+        URL_HASH SHA256=${ENVY_LIBARCHIVE_SHA256}
     )
 endif()
 
 if(DEFINED libarchive_SOURCE_DIR AND DEFINED libarchive_BINARY_DIR)
-    codex_patch_libarchive_cmakelists("${libarchive_SOURCE_DIR}" "${libarchive_BINARY_DIR}")
+    envy_patch_libarchive_cmakelists("${libarchive_SOURCE_DIR}" "${libarchive_BINARY_DIR}")
 endif()
 
 add_subdirectory(${libarchive_SOURCE_DIR} ${libarchive_BINARY_DIR})

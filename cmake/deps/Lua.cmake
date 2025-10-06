@@ -1,11 +1,11 @@
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LUA_ARCHIVE}" OUTPUT_VARIABLE _lua_archive)
-set(_lua_url "${CODEX_LUA_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LUA_ARCHIVE}" OUTPUT_VARIABLE _lua_archive)
+set(_lua_url "${ENVY_LUA_URL}")
 if(EXISTS "${_lua_archive}")
     file(TO_CMAKE_PATH "${_lua_archive}" _lua_archive_norm)
     set(_lua_url "file://${_lua_archive_norm}")
 endif()
 
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "lua-src" OUTPUT_VARIABLE lua_SOURCE_DIR)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "lua-src" OUTPUT_VARIABLE lua_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "lua-build" OUTPUT_VARIABLE lua_BINARY_DIR)
 
 if(NOT EXISTS "${lua_SOURCE_DIR}/lapi.c" AND NOT EXISTS "${lua_SOURCE_DIR}/src/lapi.c")
@@ -13,7 +13,7 @@ if(NOT EXISTS "${lua_SOURCE_DIR}/lapi.c" AND NOT EXISTS "${lua_SOURCE_DIR}/src/l
         SOURCE_DIR "${lua_SOURCE_DIR}"
         BINARY_DIR "${lua_BINARY_DIR}"
         URL ${_lua_url}
-        URL_HASH SHA256=${CODEX_LUA_SHA256}
+        URL_HASH SHA256=${ENVY_LUA_SHA256}
     )
 endif()
 

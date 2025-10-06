@@ -26,8 +26,8 @@ else()
 endif()
 unset(_curl_ca_bundle)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
-set(_curl_url "${CODEX_LIBCURL_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
+set(_curl_url "${ENVY_LIBCURL_URL}")
 if(EXISTS "${_curl_archive}")
     file(TO_CMAKE_PATH "${_curl_archive}" _curl_archive_norm)
     set(_curl_url "file://${_curl_archive_norm}")
@@ -35,7 +35,7 @@ endif()
 
 FetchContent_Declare(libcurl
     URL ${_curl_url}
-    URL_HASH SHA256=${CODEX_LIBCURL_SHA256}
+    URL_HASH SHA256=${ENVY_LIBCURL_SHA256}
 )
 FetchContent_MakeAvailable(libcurl)
 FetchContent_GetProperties(libcurl)

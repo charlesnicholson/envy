@@ -8,12 +8,12 @@ All downloads, source trees, and install steps are redirected underneath the act
 - `./build.sh` is the supported entry point and always drives the `release-lto-on` preset so local and IDE workflows stay aligned.
 - The preset keeps LTO enabled by default; run `cmake --preset release-lto-on` directly if you need manual control.
 - Presets share the fixed binary directory `out/build` and reuse the dependency cache under `out/cache/third_party` for predictable rebuilds.
-- Set `CODEX_FETCH_FULLY_DISCONNECTED=ON` before running `./build.sh` to skip network checks and force reuse of cached third-party sources.
+- Set `ENVY_FETCH_FULLY_DISCONNECTED=ON` before running `./build.sh` to skip network checks and force reuse of cached third-party sources.
 - When adjusting third-party wiring, add helper scripts under `cmake/scripts/` so `cmake/Dependencies.cmake` remains declarative.
 
 ## libgit2
 - Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
-- CMake options disable CLI and shared builds. The library exports as `codex::libgit2` and is consumed via the standard `git2` target.
+- CMake options disable CLI and shared builds. The library exports as `envy::libgit2` and is consumed via the standard `git2` target.
 - `USE_HTTPS` is forced to `SecureTransport` and `USE_SSH` is enabled so HTTPS traffic rides the system TLS stack while SSH uses our bundled libssh2 build.
 
 ## libcurl

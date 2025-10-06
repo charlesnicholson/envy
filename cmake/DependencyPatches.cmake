@@ -1,15 +1,15 @@
 # Helper utilities for applying one-off patches to third-party sources.
 
-function(codex_patch_libssh2 source_dir binary_dir)
+function(envy_patch_libssh2 source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
 
-    set(_stamp "${_binary_dir_norm}/codex_libssh2_patch.stamp")
+    set(_stamp "${_binary_dir_norm}/envy_libssh2_patch.stamp")
     if(EXISTS "${_stamp}")
         return()
     endif()
 
-    set(_script "${_binary_dir_norm}/codex_patch_libssh2.py")
+    set(_script "${_binary_dir_norm}/envy_patch_libssh2.py")
     set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libssh2_patch.py.in")
 
     set(LIBSSH2_CMAKELISTS "${_source_dir_norm}/CMakeLists.txt")
@@ -28,16 +28,16 @@ function(codex_patch_libssh2 source_dir binary_dir)
     unset(_binary_dir_norm)
 endfunction()
 
-function(codex_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh2_source_dir libssh2_binary_dir)
+function(envy_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh2_source_dir libssh2_binary_dir)
     set(_source_dir_norm "${libgit2_source_dir}")
     set(_binary_dir_norm "${libgit2_binary_dir}")
 
-    set(_stamp "${_binary_dir_norm}/codex_libgit2_select_patch.stamp")
+    set(_stamp "${_binary_dir_norm}/envy_libgit2_select_patch.stamp")
     if(EXISTS "${_stamp}")
         return()
     endif()
 
-    set(_script "${_binary_dir_norm}/codex_patch_libgit2_select.py")
+    set(_script "${_binary_dir_norm}/envy_patch_libgit2_select.py")
     set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libgit2_select_patch.py.in")
 
     set(SELECT_PATH "${_source_dir_norm}/cmake/SelectSSH.cmake")
@@ -65,16 +65,16 @@ function(codex_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh
     unset(LIBSSH2_BINARY)
 endfunction()
 
-function(codex_patch_libarchive_cmakelists source_dir binary_dir)
+function(envy_patch_libarchive_cmakelists source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
 
-    set(_stamp "${_binary_dir_norm}/codex_libarchive_patch.stamp")
+    set(_stamp "${_binary_dir_norm}/envy_libarchive_patch.stamp")
     if(EXISTS "${_stamp}")
         return()
     endif()
 
-    set(_script "${_binary_dir_norm}/codex_patch_libarchive.py")
+    set(_script "${_binary_dir_norm}/envy_patch_libarchive.py")
     set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libarchive_patch.py.in")
 
     set(LIBARCHIVE_CMAKELISTS "${_source_dir_norm}/CMakeLists.txt")

@@ -4,10 +4,10 @@ import re
 select_path = pathlib.Path(r"@SELECT_PATH@")
 text = select_path.read_text()
 
-if "codex override v2" not in text:
+if "envy override v2" not in text:
     updated = text.replace(
         "find_pkglibraries(LIBSSH2 libssh2)\n",
-        "if(TARGET libssh2::libssh2) # codex override v2\n"
+        "if(TARGET libssh2::libssh2) # envy override v2\n"
         "\tset(LIBSSH2_FOUND 1)\n"
         "\tset(LIBSSH2_INCLUDE_DIRS \"@LIBSSH2_SOURCE@/include\")\n"
         "\tset(LIBSSH2_LIBRARY_DIRS \"@LIBSSH2_BINARY@/src\")\n"
@@ -23,7 +23,7 @@ if "codex override v2" not in text:
         r"\tif\(HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n"
         r"\t\tset\(GIT_SSH_MEMORY_CREDENTIALS 1\)\n"
         r"\tendif\(\)\n",
-        "if(NOT TARGET libssh2::libssh2) # codex override v2\n"
+        "if(NOT TARGET libssh2::libssh2) # envy override v2\n"
         "\tcheck_library_exists(\"@LIBSSH2_BINARY@/src/libssh2.a\" libssh2_userauth_publickey_frommemory \"@LIBSSH2_BINARY@/src\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
         "\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
         "\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n"

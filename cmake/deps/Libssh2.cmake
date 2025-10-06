@@ -7,14 +7,14 @@ set(ENABLE_ZLIB_COMPRESSION ON CACHE BOOL "" FORCE)
 set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_LIBSSH2_ARCHIVE}" OUTPUT_VARIABLE _libssh2_archive)
-set(_libssh2_url "${CODEX_LIBSSH2_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBSSH2_ARCHIVE}" OUTPUT_VARIABLE _libssh2_archive)
+set(_libssh2_url "${ENVY_LIBSSH2_URL}")
 if(EXISTS "${_libssh2_archive}")
     file(TO_CMAKE_PATH "${_libssh2_archive}" _libssh2_archive_norm)
     set(_libssh2_url "file://${_libssh2_archive_norm}")
 endif()
 
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "libssh2-src" OUTPUT_VARIABLE libssh2_SOURCE_DIR)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "libssh2-src" OUTPUT_VARIABLE libssh2_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libssh2-build" OUTPUT_VARIABLE libssh2_BINARY_DIR)
 
 if(NOT EXISTS "${libssh2_SOURCE_DIR}/CMakeLists.txt")
@@ -22,12 +22,12 @@ if(NOT EXISTS "${libssh2_SOURCE_DIR}/CMakeLists.txt")
         SOURCE_DIR "${libssh2_SOURCE_DIR}"
         BINARY_DIR "${libssh2_BINARY_DIR}"
         URL ${_libssh2_url}
-        URL_HASH SHA256=${CODEX_LIBSSH2_SHA256}
+        URL_HASH SHA256=${ENVY_LIBSSH2_SHA256}
     )
 endif()
 
 if(DEFINED libssh2_SOURCE_DIR AND DEFINED libssh2_BINARY_DIR)
-    codex_patch_libssh2("${libssh2_SOURCE_DIR}" "${libssh2_BINARY_DIR}")
+    envy_patch_libssh2("${libssh2_SOURCE_DIR}" "${libssh2_BINARY_DIR}")
 endif()
 
 set(_libssh2_original_cmake_source_dir "${CMAKE_SOURCE_DIR}")
@@ -76,13 +76,13 @@ set(LIBSSH2_LIBRARY_DIR "${libssh2_BINARY_DIR}/src" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIR "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIRS "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 
-set(_codex_libssh2_actual "${_libssh2_primary_target}")
-if(_codex_libssh2_actual STREQUAL "libssh2::libssh2")
-    get_target_property(_codex_libssh2_actual libssh2::libssh2 ALIASED_TARGET)
+set(_envy_libssh2_actual "${_libssh2_primary_target}")
+if(_envy_libssh2_actual STREQUAL "libssh2::libssh2")
+    get_target_property(_envy_libssh2_actual libssh2::libssh2 ALIASED_TARGET)
 endif()
-if(_codex_libssh2_actual AND TARGET ${_codex_libssh2_actual})
-    target_compile_definitions(${_codex_libssh2_actual} PRIVATE __STDC_WANT_LIB_EXT1__=1)
+if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
+    target_compile_definitions(${_envy_libssh2_actual} PRIVATE __STDC_WANT_LIB_EXT1__=1)
 endif()
-unset(_codex_libssh2_actual)
+unset(_envy_libssh2_actual)
 
 set(ENV{PKG_CONFIG_PATH} "")

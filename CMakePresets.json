@@ -7,9 +7,9 @@
   },
   "configurePresets": [
     {
-      "name": "codex-base",
+      "name": "envy-base",
       "hidden": true,
-      "displayName": "Codex Base",
+      "displayName": "Envy Base",
       "generator": "Ninja",
       "binaryDir": "out/build",
       "cacheVariables": {
@@ -19,7 +19,7 @@
     {
       "name": "release-lto-on",
       "displayName": "Release (LTO On)",
-      "inherits": "codex-base",
+      "inherits": "envy-base",
       "cacheVariables": {
         "ENABLE_LTO": "ON"
       }
@@ -28,10 +28,10 @@
   "buildPresets": [
     {
       "name": "release-lto-on",
-      "displayName": "Build codex_cmake_test (LTO On)",
+      "displayName": "Build envy_cmake_test (LTO On)",
       "configurePreset": "release-lto-on",
       "targets": [
-        "codex_cmake_test"
+        "envy_cmake_test"
       ],
       "jobs": 0
     }

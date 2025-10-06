@@ -1,14 +1,14 @@
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
-cmake_path(APPEND CODEX_THIRDPARTY_CACHE_DIR "${CODEX_ONETBB_ARCHIVE}" OUTPUT_VARIABLE _onetbb_archive)
-set(_onetbb_url "${CODEX_ONETBB_URL}")
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_ONETBB_ARCHIVE}" OUTPUT_VARIABLE _onetbb_archive)
+set(_onetbb_url "${ENVY_ONETBB_URL}")
 if(EXISTS "${_onetbb_archive}")
     file(TO_CMAKE_PATH "${_onetbb_archive}" _onetbb_archive_norm)
     set(_onetbb_url "file://${_onetbb_archive_norm}")
 endif()
 FetchContent_Declare(oneTBB
     URL ${_onetbb_url}
-    URL_HASH SHA256=${CODEX_ONETBB_SHA256}
+    URL_HASH SHA256=${ENVY_ONETBB_SHA256}
 )
 FetchContent_MakeAvailable(oneTBB)
 FetchContent_GetProperties(oneTBB)
