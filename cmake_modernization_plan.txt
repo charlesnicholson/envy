@@ -1,10 +1,6 @@
 Modernization roadmap for CMake (baseline 4.1.2)
 
-1. Normalize dependency acquisition
-   - DONE: Replaced codex_fetchcontent_populate() with native FetchContent_Populate calls and standard disconnect flags.
-   - Switch to FetchContent_MakeAvailable* helpers while keeping FETCHCONTENT_BASE_DIR/out/cache/third_party semantics (TODO).
-   - DONE: Default FETCHCONTENT_UPDATES_DISCONNECTED to ON and expose FETCHCONTENT_FULLY_DISCONNECTED via env toggle, replacing the custom wrapper.
-
+         
 2. Encapsulate third-party setup
    - Relocate bespoke dependency tweaks (libssh2 overrides, libarchive edits, etc.) into focused modules under cmake/deps/ (TODO).
    - Use configure_file() to materialize patch scripts and skip repeated work on reconfigure (TODO).
