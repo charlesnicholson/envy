@@ -2,6 +2,12 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 
 # Repository Guidelines
 
+## Envy Overview
+- Envy is a freeform package manager orchestrated via Lua scripts. “Freeform” means Envy stays unopinionated about what a package represents; authors compose packages entirely through verbs exposed in Lua.
+- Core verbs presently include `fetch`, `cache`, `deploy`, `asset` (locate cached assets), `check`, and `update` (ensure a project remains current). Build new flows out of these verbs instead of bolting on bespoke tooling.
+- A user-wide cache backs every invocation and can serve any number of projects under the user’s directories. It is optimized for large payloads such as arm-gcc, llvm-clang, or SEGGER J-Link bundles while still accommodating machine-global installs like Python or Homebrew on macOS.
+- The system is deeply parallelized; expect concurrent package resolution and ensure new automation preserves that efficiency.
+
 ## Environment Constraints
 - Operate strictly within this repository directory; do not modify files or state outside the project tree.
 - Never change the host environment (no system-wide config edits, package installs, symlinks, or file moves outside the repo).
