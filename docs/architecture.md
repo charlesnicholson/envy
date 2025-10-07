@@ -11,36 +11,53 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 ```
 ~/.cache/envy/
 ├── recipes/
-│   ├── community/          # Shared recipes from community sources
-│   │   └── {name}/
-│   │       └── {version}/
-│   │           ├── recipe.lua
-│   │           └── .envy-meta
-│   ├── builtin/            # Recipes embedded in envy executable
+│   ├── envy/               # Built-in recipes embedded in envy executable
 │   │   ├── .version
-│   │   └── {name}/
-│   │       └── {version}/
-│   │           └── recipe.lua
-│   └── local/              # Project-specific recipes
-│       └── {name}/
+│   │   ├── {name}.lua
+│   │   └── .envy-meta.{name}
+│   └── {namespace}/        # Third-party namespaced recipes (arm, gnu, cmake, etc.)
+│       ├── {name}.lua
+│       └── .envy-meta.{name}
 ├── deployed/
-│   └── {name}/
-│       └── {version}/
-│           └── {platform}-{arch}-sha256-{hash}/
-│               ├── .envy-complete
-│               ├── .envy-fingerprint.blake3
-│               └── [unpacked asset tree]
+│   └── {namespace}.{name}@{version}/
+│       └── {platform}-{arch}-sha256-{hash}/
+│           ├── .envy-complete
+│           ├── .envy-fingerprint.blake3
+│           └── [unpacked asset tree]
 └── locks/
-    ├── recipe.{namespace}.{name}.{version}.lock
-    ├── deployed.{name}.{version}.{platform}-{arch}-sha256-{hash}.lock
+    ├── recipe.{namespace}.{name}.lock
+    ├── deployed.{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}.lock
     └── builtin.extraction.lock
 ```
 
+**Project-local recipes** (reserved `local.*` namespace) live in the project directory tree and are never cached:
+```
+project/
+└── .envy/
+    └── recipes/
+        └── custom-tool.lua
+```
+
+### Recipe Organization
+
+**Namespaces:** All recipes must be namespaced (e.g., `envy.cmake`, `arm.gcc`, `gnu.binutils`). The `local.*` namespace is reserved for project-local recipes and is banned from the cache to prevent collisions.
+
+**Recipe naming:** Recipe files are named `{name}.lua` where `{name}` is unique within the namespace. Authors choose whether to create version-specific recipes (`gcc13.lua`, `gcc14.lua`) or version-agnostic recipes (`gcc.lua`) that handle multiple versions via runtime validation.
+
+**Recipe identity:** `{namespace}.{name}` uniquely identifies a recipe. Version is passed as a parameter when the recipe is invoked.
+
+**Recipe sources:**
+- **Project-local:** Referenced via `require("./path/to/recipe.lua")` in project manifest, never cached
+- **Remote:** Declared in manifest with URL and optional SHA256 hash, fetched and cached on demand
+- **Built-in:** Embedded in envy executable using `envy.*` namespace, extracted to cache on first run
+
 ### Cache Keys
 
-**Recipe identity:** `{namespace}.{name}.{version}` where namespace is one of `community`, `builtin`, or `local`.
+**Recipe identity:** `{namespace}.{name}` where namespace is any valid identifier except `local` (reserved for project-local recipes).
 
-**Deployment identity:** `{name}.{version}.{platform}-{arch}-sha256-{hash}` where:
+**Deployment identity:** `{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}` where:
+- `namespace.name` is the recipe identity
+- `version` is the specific version being deployed (e.g., `13.2.0`)
 - `platform` is `darwin`, `linux`, or `windows`
 - `arch` is `x86_64`, `arm64`, etc.
 - `hash` is the first 16 hex characters of the SHA256 of the fetched archive
@@ -101,26 +118,38 @@ User-initiated verification maps this file read-only and compares stored hashes 
 
 ### Recipe Metadata
 
-Each recipe directory contains `.envy-meta` file with:
-- `hash`: BLAKE3 hash of `recipe.lua` content
-- `source_url`: Where recipe was fetched from
+Each cached recipe has an associated `.envy-meta.{name}` file containing:
+- `hash`: SHA256 hash of the recipe file itself (e.g., `gcc.lua`)
+- `source_url`: Where recipe was fetched from (for remote recipes)
 - `fetched_at`: Unix timestamp of fetch
+- `verified`: Boolean indicating whether the recipe hash was verified against a user-provided hash
 
-Recipe hash is computed after fetching but before making available. Ensures recipe identity includes its content, not just name and version.
+Recipe hash is computed after fetching. This establishes the trust anchor for the recipe's integrity.
+
+### Recipe Security Model
+
+**Recipe verification:** When fetching remote recipes, the project manifest can specify an expected SHA256 hash. Envy verifies the downloaded recipe file against this hash before caching or executing. If no hash is provided, envy warns the user unless a flag is set in the manifest to allow unverified recipes.
+
+**Asset verification:** Recipes declare SHA256 hashes for the assets (tarballs, archives) they instruct envy to download. Envy verifies these hashes before extraction.
+
+**Trust chain:** Verifying the recipe file establishes the trust anchor. Asset hashes and deployment logic declared by a verified recipe are trusted transitively.
+
+**Dependency validation:** Non-local recipes are forbidden from depending on `local.*` recipes. Envy enforces this as an error.
 
 ### Built-in Recipe Extraction
 
-Envy executable embeds default recipes as compressed data. On first run or version upgrade, extract to `recipes/builtin/`. Use `builtin.extraction.lock` to coordinate extraction across concurrent first-run processes. Check `.version` file matches embedded version string before acquiring lock (fast path). After extraction, write `.version` file to prevent redundant work on subsequent runs.
+Envy executable embeds default recipes (using `envy.*` namespace) as compressed data. On first run or version upgrade, extract to `recipes/envy/`. Use `builtin.extraction.lock` to coordinate extraction across concurrent first-run processes. Check `.version` file matches embedded version string before acquiring lock (fast path). After extraction, write `.version` file to prevent redundant work on subsequent runs.
 
 ### Use Cases
 
 #### Use Case: First Deployment of Asset
 
-- Process checks `deployed/{name}/{version}/{platform}-{arch}-sha256-{hash}/.envy-complete`
+- Process checks `deployed/{namespace}.{name}@{version}/{platform}-{arch}-sha256-{hash}/.envy-complete`
 - Marker doesn't exist
-- Acquires exclusive lock on `deployed.{name}.{version}.{platform}-{arch}-sha256-{hash}.lock`
+- Acquires exclusive lock on `deployed.{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}.lock`
 - Creates `.inprogress/` staging directory
 - Downloads archive from URL specified in recipe
+- Verifies SHA256 hash against value declared in recipe (fails if mismatch)
 - Extracts archive into staging directory
 - Walks extracted tree and computes BLAKE3 of each file
 - Writes `.envy-fingerprint.blake3` with all hashes
@@ -135,8 +164,8 @@ Envy executable embeds default recipes as compressed data. On first run or versi
 - Process A acquires exclusive lock, begins download
 - Process B checks for `.envy-complete`, doesn't find it
 - Process B attempts shared lock acquisition, blocks
-- User sees "Waiting for {name} {version} deployment..."
-- Process A completes download, extraction, fingerprinting
+- User sees "Waiting for arm.gcc 13.2.0 deployment..."
+- Process A completes download, hash verification, extraction, fingerprinting
 - Process A writes `.envy-complete` and releases lock
 - Process B's shared lock acquisition succeeds immediately
 - Process B checks for `.envy-complete`, finds it
@@ -157,7 +186,7 @@ Envy executable embeds default recipes as compressed data. On first run or versi
 
 #### Use Case: Reading Deployed Asset
 
-- Process checks `deployed/{name}/{version}/{platform}-{arch}-sha256-{hash}/.envy-complete`
+- Process checks `deployed/{namespace}.{name}@{version}/{platform}-{arch}-sha256-{hash}/.envy-complete`
 - Marker exists
 - Process reads files from deployment directory
 - No locks acquired
@@ -165,7 +194,7 @@ Envy executable embeds default recipes as compressed data. On first run or versi
 
 #### Use Case: Verifying Deployed Asset Integrity
 
-- User runs `envy verify {name}`
+- User runs `envy verify arm.gcc`
 - Process checks for `.envy-complete` marker
 - Opens `.envy-fingerprint.blake3` read-only
 - Maps file into memory with `mmap`
@@ -174,30 +203,31 @@ Envy executable embeds default recipes as compressed data. On first run or versi
 - No locks acquired (immutable read)
 - Multiple processes can verify simultaneously
 
-#### Use Case: Fetching Community Recipe
+#### Use Case: Fetching Remote Recipe
 
-- Process checks `recipes/community/{name}/{version}/recipe.lua`
+- Manifest declares: `remote { namespace = "arm", name = "gcc", url = "...", sha256 = "e3b0c442..." }`
+- Process checks `recipes/arm/gcc.lua`
 - File doesn't exist
-- Attempts shared lock on `recipe.community.{name}.{version}.lock`
+- Attempts shared lock on `recipe.arm.gcc.lock`
 - Shared lock succeeds immediately (no one fetching)
 - Releases shared lock, acquires exclusive lock
-- Creates `.inprogress/` staging directory
-- Downloads `recipe.lua` from community repository
-- Computes BLAKE3 hash of recipe content
-- Writes `.envy-meta` with hash, source URL, timestamp
-- Atomically renames `.inprogress/` to final version directory
+- Downloads recipe file from URL
+- Computes SHA256 hash of downloaded file
+- Verifies hash matches manifest-declared hash (fails if mismatch or no hash with warning)
+- Writes recipe to `recipes/arm/gcc.lua`
+- Computes metadata hash and writes `.envy-meta.gcc` with hash, source URL, timestamp, verified flag
 - Releases lock
 - Recipe is now available for all processes
 
 #### Use Case: First Run - Extracting Built-in Recipes
 
-- Process checks `recipes/builtin/.version`
+- Process checks `recipes/envy/.version`
 - File doesn't exist or content doesn't match `ENVY_EMBEDDED_RECIPES_VERSION`
 - Attempts shared lock on `builtin.extraction.lock`
 - Shared lock succeeds, no `.version` match
 - Upgrades to exclusive lock
 - Extracts embedded recipes from executable data section
-- Writes each recipe to `recipes/builtin/{name}/{version}/recipe.lua`
+- Writes each recipe to `recipes/envy/{name}.lua` with corresponding `.envy-meta.{name}`
 - Writes `.version` file with current embedded version string
 - Releases lock
 - Subsequent runs hit fast path (version matches)
@@ -205,10 +235,30 @@ Envy executable embeds default recipes as compressed data. On first run or versi
 #### Use Case: Multiple Projects Using Same Toolchain
 
 - Project A in `/home/user/project-a/` runs `envy deploy`
-- Deploys `arm-gcc@13.2.0` to cache
+- Deploys `arm.gcc@13.2.0` to cache
 - Project B in `/home/user/project-b/` runs `envy deploy`
-- Requests same `arm-gcc@13.2.0`
+- Requests same `arm.gcc@13.2.0`
 - Checks cache, finds `.envy-complete` marker
 - Uses deployed toolchain immediately (lock-free)
 - Both projects reference same cache entry
 - Large toolchain stored once, shared across all projects under user account
+
+#### Use Case: Project-Local Recipe Development
+
+- Developer creates `project/.envy/recipes/custom-arm-variant.lua`
+- Project manifest includes: `require("./.envy/recipes/custom-arm-variant.lua")`
+- Envy loads recipe directly from project tree
+- Recipe uses `local.*` namespace or no namespace (never cached)
+- Multiple builds in same project can read recipe concurrently
+- Recipe is never written to `~/.cache/envy/`
+- Once tested, developer can publish as `mycompany.arm-variant.lua` to shared repository
+
+#### Use Case: Recipe Hash Mismatch
+
+- Manifest declares: `remote { namespace = "untrusted", name = "tool", url = "...", sha256 = "abc123..." }`
+- Process downloads recipe from URL
+- Computes SHA256: result is `def456...`
+- Mismatch detected: `def456...` ≠ `abc123...`
+- Envy errors: "Recipe integrity check failed for untrusted.tool. Expected abc123..., got def456..."
+- Recipe is NOT cached, NOT executed
+- User must verify URL and hash, update manifest if legitimate change
