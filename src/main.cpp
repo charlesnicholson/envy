@@ -229,8 +229,8 @@ void archive_copy_data(struct archive *source, struct archive *dest)
   }
 }
 
-void extract_archive(const std::filesystem::path &archive_path,
-                     const std::filesystem::path &destination)
+std::uint64_t extract_archive(const std::filesystem::path &archive_path,
+                              const std::filesystem::path &destination)
 {
   archive *reader = archive_read_new();
   if (!reader) {
@@ -258,6 +258,7 @@ void extract_archive(const std::filesystem::path &archive_path,
   }
 
   archive_entry *entry = nullptr;
+  std::uint64_t regular_files = 0;
   while (true) {
     const int r = archive_read_next_header(reader, &entry);
     if (r == ARCHIVE_EOF) {
@@ -309,12 +310,18 @@ void extract_archive(const std::filesystem::path &archive_path,
       archive_write_free(writer);
       throw std::runtime_error(message);
     }
+
+    if (archive_entry_filetype(entry) == AE_IFREG) {
+      ++regular_files;
+    }
   }
 
   archive_read_close(reader);
   archive_write_close(writer);
   archive_read_free(reader);
   archive_write_free(writer);
+
+  return regular_files;
 }
 
 std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::path &path)
@@ -414,33 +421,6 @@ std::string relative_display(const std::filesystem::path &path, const std::files
     }
   }
   return path.filename().generic_string();
-}
-
-std::uint64_t count_regular_files(const std::filesystem::path &root)
-{
-  std::uint64_t count = 0;
-  std::error_code ec;
-  for (std::filesystem::recursive_directory_iterator it(
-           root, std::filesystem::directory_options::follow_directory_symlink, ec), end;
-       it != end; it.increment(ec)) {
-    if (ec) {
-      throw std::runtime_error("Failed to iterate " + root.string() + ": " + ec.message());
-    }
-    std::error_code status_ec;
-    const auto status = std::filesystem::status(it->path(), status_ec);
-    if (status_ec) {
-      throw std::runtime_error("Failed to query status for " + it->path().string() +
-                               ": " + status_ec.message());
-    }
-    if (std::filesystem::is_regular_file(status)) {
-      ++count;
-    }
-  }
-  if (ec) {
-    throw std::runtime_error("Failed to finalize iteration for " + root.string() +
-                             ": " + ec.message());
-  }
-  return count;
 }
 
 std::filesystem::path download_s3_object(TempResourceManager &manager,
@@ -601,8 +581,7 @@ int lua_extract_to_temp(lua_State *L)
 
   try {
     const auto destination = g_temp_manager->create_directory();
-    extract_archive(archive, destination);
-    const auto count = count_regular_files(destination);
+    const auto count = extract_archive(archive, destination);
     std::cout << "[lua] Extracted " << count << " files" << std::endl;
 
     const auto sample_files = collect_first_regular_files(destination, 5);
@@ -626,9 +605,9 @@ int lua_extract_to_temp(lua_State *L)
   }
 }
 
-static constexpr char kLuaScript[] = R"(local bucket = assert(envy_bucket, "envy_bucket must be set")
-local key = assert(envy_key, "envy_key must be set")
-local region = envy_region or ""
+static constexpr char kLuaScript[] = R"(local bucket = assert(bucket, "bucket must be set")
+local key = assert(key, "key must be set")
+local region = region or ""
 
 local archive_path = download_s3_object(bucket, key, region)
 extract_to_temp(archive_path)
@@ -654,11 +633,11 @@ void run_lua_workflow(const std::string &bucket,
   lua_setglobal(state.get(), "extract_to_temp");
 
   lua_pushlstring(state.get(), bucket.c_str(), static_cast<lua_Integer>(bucket.size()));
-  lua_setglobal(state.get(), "envy_bucket");
+  lua_setglobal(state.get(), "bucket");
   lua_pushlstring(state.get(), key.c_str(), static_cast<lua_Integer>(key.size()));
-  lua_setglobal(state.get(), "envy_key");
+  lua_setglobal(state.get(), "key");
   lua_pushlstring(state.get(), region.c_str(), static_cast<lua_Integer>(region.size()));
-  lua_setglobal(state.get(), "envy_region");
+  lua_setglobal(state.get(), "region");
 
   if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
     const char *message = lua_tostring(state.get(), -1);
