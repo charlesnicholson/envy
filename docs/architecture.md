@@ -33,7 +33,7 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 **Project-local recipes** (reserved `local.*` namespace) live in the project directory tree and are never cached:
 ```
 project/
-└── .envy/
+└── envy/
     └── recipes/
         └── custom-tool.lua
 ```
@@ -245,8 +245,8 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 
 #### Use Case: Project-Local Recipe Development
 
-- Developer creates `project/.envy/recipes/custom-arm-variant.lua`
-- Project manifest includes: `require("./.envy/recipes/custom-arm-variant.lua")`
+- Developer creates `project/envy/recipes/custom-arm-variant.lua`
+- Project manifest includes: `require("./envy/recipes/custom-arm-variant.lua")`
 - Envy loads recipe directly from project tree
 - Recipe uses `local.*` namespace or no namespace (never cached)
 - Multiple builds in same project can read recipe concurrently
@@ -262,3 +262,202 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 - Envy errors: "Recipe integrity check failed for untrusted.tool. Expected abc123..., got def456..."
 - Recipe is NOT cached, NOT executed
 - User must verify URL and hash, update manifest if legitimate change
+
+### Example Project Manifests
+
+#### Example 1: Embedded Firmware Project
+
+```lua
+-- project/envy.lua
+
+-- Built-in recipe (already in cache from envy installation)
+recipe = "envy.cmake"
+version = "3.28.0"
+
+-- Remote recipe with verification
+recipe = "arm.gcc"
+version = "13.2.0"
+recipe_url = "https://github.com/arm/envy-recipes/raw/main/gcc.lua"
+recipe_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+config = {
+    target = "arm-none-eabi",
+    enable_lto = true,
+}
+
+-- Project-specific custom toolchain wrapper
+recipe = "local.company-wrapper"
+version = "1.0.0"
+recipe_file = "./envy/recipes/company-wrapper.lua"
+config = {
+    base_toolchain = "arm.gcc@13.2.0",
+    extra_flags = { "-mcpu=cortex-m4", "-mthumb" },
+}
+```
+
+#### Example 2: Cross-Platform Build Tools
+
+```lua
+-- project/envy.lua
+
+-- Multiple built-in packages
+recipe = "envy.cmake"
+version = "3.28.0"
+
+recipe = "envy.ninja"
+version = "1.11.1"
+
+-- Remote recipe from community maintainer
+recipe = "llvm.clang"
+version = "17.0.6"
+recipe_url = "https://recipes.llvm.org/clang.lua"
+recipe_sha256 = "a7c9f8b12e3d4c567890abcdef1234567890abcdef1234567890abcdef123456"
+
+-- Remote recipe from vendor
+recipe = "gnu.binutils"
+version = "2.41.0"
+recipe_url = "https://gnu.org/envy/binutils.lua"
+recipe_sha256 = "b8d7e9f0a1234567890abcdef1234567890abcdef1234567890abcdef123456"
+
+-- Project-local testing recipe (under development)
+recipe = "local.linker-script-gen"
+version = "2.1.0"
+recipe_file = "./envy/recipes/custom-linker-script-generator.lua"
+config = {
+    memory_layout = "./config/memory.yaml",
+}
+```
+
+#### Example 3: Unverified Remote Recipe (Development/Testing)
+
+```lua
+-- project/envy.lua
+
+-- Allow unverified recipes (not recommended for production)
+allow_unverified_recipes = true
+
+recipe = "envy.cmake"
+version = "3.28.0"
+
+-- Remote recipe without hash (will warn, but allowed due to config above)
+recipe = "experimental.new-tool"
+version = "0.1.0-alpha"
+recipe_url = "https://example.com/experimental/new-tool.lua"
+-- No recipe_sha256 provided - risky!
+
+-- Local development recipe
+recipe = "local.wrapper"
+version = "1.0.0"
+recipe_file = "./envy/recipes/wrapper.lua"
+```
+
+#### Example 4: Multi-Version Recipe Usage
+
+```lua
+-- project/envy.lua
+
+recipe = "envy.cmake"
+version = "3.28.0"
+
+-- Use version-agnostic recipe with different GCC versions
+-- (Recipe URL/hash declared once, used multiple times with different versions)
+recipe = "gnu.gcc"
+version = "13.2.0"
+recipe_url = "https://gnu.org/envy/gcc.lua"  -- Handles multiple GCC versions
+recipe_sha256 = "c9d0e1f2a3b4567890abcdef1234567890abcdef1234567890abcdef123456"
+config = {
+    variant = "native",
+}
+
+-- Cross-compilation toolchain (same recipe, different version)
+recipe = "gnu.gcc"
+version = "12.3.0"
+config = {
+    variant = "cross",
+    target = "aarch64-linux-gnu",
+}
+
+-- If we try unsupported version, recipe will assert with helpful message
+-- recipe = "gnu.gcc"
+-- version = "14.0.0"  -- Would error: "This recipe supports GCC 12.x-13.x. For GCC 14+, use gnu.gcc14"
+```
+
+These examples demonstrate:
+- **Built-in packages** (`envy.*`) are always available without specifying URL
+- **Remote packages** specify `recipe_url` and optional `recipe_sha256`
+- **Project-local packages** specify `recipe_file` and never touch the cache
+- **Version handling** can be flexible (recipe validates supported versions via assertions)
+- **Security model** allows unverified recipes with `allow_unverified_recipes = true`
+- **Mixed sources** can coexist in a single project
+- **Global variables** in manifest: each recipe declaration uses simple global assignments
+
+### Example Recipe Files
+
+#### Example Recipe: Version-Agnostic with Fetch Function
+
+```lua
+-- envy/recipes/arm-gcc.lua (or cached as arm/gcc.lua)
+
+namespace = "arm"
+name = "gcc"
+
+-- Fetch can be a function that processes the version parameter
+fetch = function(version)
+    -- Validate version
+    assert(version:match("^13%."), "This recipe only supports ARM GCC 13.x")
+
+    -- Construct download URL based on version
+    local base_url = "https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads"
+    local platform = get_platform()  -- Built-in function provided by envy
+    local arch = get_arch()          -- Built-in function provided by envy
+
+    return download {
+        url = string.format("%s/%s/arm-gnu-toolchain-%s-%s-%s-arm-none-eabi.tar.xz",
+                           base_url, version, version, platform, arch),
+        sha256 = lookup_hash(version, platform, arch),  -- Helper function in recipe
+    }
+end
+
+function lookup_hash(version, platform, arch)
+    local hashes = {
+        ["13.2.0"] = {
+            ["darwin-arm64"] = "a1b2c3d4e5f6...",
+            ["linux-x86_64"] = "b2c3d4e5f6a7...",
+        },
+        ["13.1.0"] = {
+            ["darwin-arm64"] = "c3d4e5f6a7b8...",
+            ["linux-x86_64"] = "d4e5f6a7b8c9...",
+        },
+    }
+
+    return hashes[version][platform .. "-" .. arch]
+           or error("No hash available for " .. version .. " on " .. platform .. "-" .. arch)
+end
+
+deploy = function(ctx)
+    ctx.extract_all()
+    ctx.add_to_path("bin")
+end
+```
+
+#### Example Recipe: Simple String Fetch
+
+```lua
+-- Cached as envy/cmake.lua
+
+namespace = "envy"
+name = "cmake"
+
+-- Fetch can be a simple string for static URLs
+fetch = "https://github.com/Kitware/CMake/releases/download/v${version}/cmake-${version}-${platform}-${arch}.tar.gz"
+
+-- Or a function that returns a string (envy will substitute variables)
+fetch = function(version)
+    assert(version:match("^3%.2[0-9]%."), "Only CMake 3.2x supported")
+    return "https://github.com/Kitware/CMake/releases/download/v${version}/cmake-${version}-${platform}-${arch}.tar.gz"
+end
+
+deploy = function(ctx)
+    ctx.extract_all()
+    ctx.add_to_path("bin")
+end
+```
