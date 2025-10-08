@@ -13,11 +13,10 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 ├── recipes/
 │   ├── envy/               # Built-in recipes embedded in envy executable
 │   │   ├── .version
-│   │   ├── {name}.lua
-│   │   └── .envy-meta.{name}
+│   │   └── {name}.lua      # No hash suffix (tied to envy binary version)
 │   └── {namespace}/        # Third-party namespaced recipes (arm, gnu, cmake, etc.)
-│       ├── {name}.lua
-│       └── .envy-meta.{name}
+│       ├── {name}-{hash8}.lua          # Recipe file with 8-char hash prefix
+│       └── .envy-meta.{name}-{hash8}   # Metadata: URL, fetch time, verified flag
 ├── deployed/
 │   └── {namespace}.{name}@{version}/
 │       └── {platform}-{arch}-sha256-{hash}/
@@ -25,7 +24,7 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 │           ├── .envy-fingerprint.blake3
 │           └── [unpacked asset tree]
 └── locks/
-    ├── recipe.{namespace}.{name}.lock
+    ├── recipe.{namespace}.{name}.{hash8}.lock
     ├── deployed.{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}.lock
     └── builtin.extraction.lock
 ```
@@ -42,18 +41,23 @@ project/
 
 **Namespaces:** All recipes must be namespaced (e.g., `envy.cmake`, `arm.gcc`, `gnu.binutils`). The `local.*` namespace is reserved for project-local recipes and is banned from the cache to prevent collisions.
 
-**Recipe naming:** Recipe files are named `{name}.lua` where `{name}` is unique within the namespace. Authors choose whether to create version-specific recipes (`gcc13.lua`, `gcc14.lua`) or version-agnostic recipes (`gcc.lua`) that handle multiple versions via runtime validation.
+**Recipe naming:** Cached remote recipes are named `{name}-{hash8}.lua` where `{hash8}` is the first 8 hexadecimal characters of the recipe's SHA256 hash. This allows multiple versions of the same recipe to coexist in the cache. Recipe authors use stable names (e.g., `gcc.lua`) and version their recipes through URL paths (Git tags, branches, or any hosting structure). Built-in recipes use `{name}.lua` without hash suffix since they're tied to the envy binary version.
 
-**Recipe identity:** `{namespace}.{name}` uniquely identifies a recipe. Version is passed as a parameter when the recipe is invoked.
+**Recipe identity:** A specific cached recipe is identified by `{namespace}.{name}-{hash8}`. The `@` symbol in package declarations always refers to the **asset version** (e.g., `arm.gcc@13.2.0` means "GCC version 13.2.0"), never the recipe version. Recipe versions are controlled by the URL and pinned by the SHA256 hash.
 
 **Recipe sources:**
-- **Project-local:** Referenced via `require("./path/to/recipe.lua")` in project manifest, never cached
-- **Remote:** Declared in manifest with URL and optional SHA256 hash, fetched and cached on demand
+- **Project-local:** Declared with `file` field in project manifest, never cached
+- **Remote:** Declared with `url` and `sha256` fields, fetched and cached with hash-based filename
 - **Built-in:** Embedded in envy executable using `envy.*` namespace, extracted to cache on first run
 
 ### Cache Keys
 
-**Recipe identity:** `{namespace}.{name}` where namespace is any valid identifier except `local` (reserved for project-local recipes).
+**Recipe cache key:** `{namespace}/{name}-{hash8}.lua` where:
+- `namespace` is any valid identifier except `local` (reserved for project-local recipes)
+- `name` is the recipe name (e.g., `gcc`, `cmake`)
+- `hash8` is the first 8 hexadecimal characters of the recipe file's SHA256 hash
+
+Multiple versions of the same recipe can coexist in the cache, distinguished by their content hash. The hash ensures immutability and allows recipe authors to version recipes via URL paths without naming conflicts. Built-in recipes use `{namespace}/{name}.lua` without hash suffix.
 
 **Deployment identity:** `{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}` where:
 - `namespace.name` is the recipe identity
@@ -118,13 +122,13 @@ User-initiated verification maps this file read-only and compares stored hashes 
 
 ### Recipe Metadata
 
-Each cached recipe has an associated `.envy-meta.{name}` file containing:
-- `hash`: SHA256 hash of the recipe file itself (e.g., `gcc.lua`)
-- `source_url`: Where recipe was fetched from (for remote recipes)
+Each cached remote recipe has an associated `.envy-meta.{name}-{hash8}` file containing:
+- `hash`: Full SHA256 hash of the recipe file
+- `source_url`: Where recipe was fetched from
 - `fetched_at`: Unix timestamp of fetch
 - `verified`: Boolean indicating whether the recipe hash was verified against a user-provided hash
 
-Recipe hash is computed after fetching. This establishes the trust anchor for the recipe's integrity.
+The hash suffix in both the recipe filename and metadata filename ensures each recipe version is immutable and independently tracked. The manifest-provided SHA256 hash establishes the trust anchor for the recipe's integrity.
 
 ### Recipe Security Model
 
@@ -205,19 +209,20 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 
 #### Use Case: Fetching Remote Recipe
 
-- Manifest declares: `remote { namespace = "arm", name = "gcc", url = "...", sha256 = "e3b0c442..." }`
-- Process checks `recipes/arm/gcc.lua`
+- Manifest declares: `{ recipe = "arm.gcc@13.2.0", url = "...", sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }`
+- Process computes hash8: first 8 hex chars of SHA256 → `e3b0c442`
+- Checks `recipes/arm/gcc-e3b0c442.lua`
 - File doesn't exist
-- Attempts shared lock on `recipe.arm.gcc.lock`
+- Attempts shared lock on `recipe.arm.gcc.e3b0c442.lock`
 - Shared lock succeeds immediately (no one fetching)
 - Releases shared lock, acquires exclusive lock
 - Downloads recipe file from URL
 - Computes SHA256 hash of downloaded file
-- Verifies hash matches manifest-declared hash (fails if mismatch or no hash with warning)
-- Writes recipe to `recipes/arm/gcc.lua`
-- Computes metadata hash and writes `.envy-meta.gcc` with hash, source URL, timestamp, verified flag
+- Verifies hash matches manifest-declared hash (fails if mismatch)
+- Writes recipe to `recipes/arm/gcc-e3b0c442.lua`
+- Writes `.envy-meta.gcc-e3b0c442` with full hash, source URL, timestamp, verified flag
 - Releases lock
-- Recipe is now available for all processes
+- Recipe is now available for all processes with matching hash
 
 #### Use Case: First Run - Extracting Built-in Recipes
 
@@ -227,10 +232,11 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 - Shared lock succeeds, no `.version` match
 - Upgrades to exclusive lock
 - Extracts embedded recipes from executable data section
-- Writes each recipe to `recipes/envy/{name}.lua` with corresponding `.envy-meta.{name}`
+- Writes each recipe to `recipes/envy/{name}.lua` (no hash suffix for built-ins)
 - Writes `.version` file with current embedded version string
 - Releases lock
 - Subsequent runs hit fast path (version matches)
+- Built-in recipes don't use hash suffixes since they're tied to the envy binary version
 
 #### Use Case: Multiple Projects Using Same Toolchain
 
@@ -246,16 +252,16 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 #### Use Case: Project-Local Recipe Development
 
 - Developer creates `project/envy/recipes/custom-arm-variant.lua`
-- Project manifest includes: `require("./envy/recipes/custom-arm-variant.lua")`
+- Project manifest includes: `{ recipe = "local.arm-variant@1.0.0", file = "./envy/recipes/custom-arm-variant.lua" }`
 - Envy loads recipe directly from project tree
-- Recipe uses `local.*` namespace or no namespace (never cached)
+- Recipe uses `local.*` namespace (never cached)
 - Multiple builds in same project can read recipe concurrently
 - Recipe is never written to `~/.cache/envy/`
-- Once tested, developer can publish as `mycompany.arm-variant.lua` to shared repository
+- Once tested, developer can publish to shared repository with URL + SHA256
 
 #### Use Case: Recipe Hash Mismatch
 
-- Manifest declares: `remote { namespace = "untrusted", name = "tool", url = "...", sha256 = "abc123..." }`
+- Manifest declares: `{ recipe = "untrusted.tool@1.0.0", url = "...", sha256 = "abc123..." }`
 - Process downloads recipe from URL
 - Computes SHA256: result is `def456...`
 - Mismatch detected: `def456...` ≠ `abc123...`
@@ -265,24 +271,30 @@ Envy executable embeds default recipes (using `envy.*` namespace) as compressed 
 
 ### Example Project Manifests
 
+Project manifests support multiple syntaxes for declaring packages:
+
+**Shorthand string syntax:** `"namespace.name@version"` expands to `{ recipe = "namespace.name", version = "version" }`
+
+**Table with `@` in recipe field:** `{ recipe = "namespace.name@version" }` expands to `{ recipe = "namespace.name", version = "version" }`
+
+**Explicit table syntax:** `{ recipe = "namespace.name", version = "version", ... }` is used as-is
+
+The `@` symbol in package declarations always refers to the **asset version**, never the recipe version. Recipe versions are controlled by the URL from which they're fetched, and the SHA256 hash pins the exact recipe implementation.
+
 #### Example 1: Embedded Firmware Project
 
 ```lua
 -- project/envy.lua
 
 packages = {
-    -- Built-in recipe (already in cache from envy installation)
-    {
-        recipe = "envy.cmake",
-        version = "3.28.0",
-    },
+    -- Built-in recipe (shorthand string syntax)
+    "envy.cmake@3.28.0",
 
     -- Remote recipe with verification
     {
-        recipe = "arm.gcc",
-        version = "13.2.0",
-        recipe_url = "https://github.com/arm/envy-recipes/raw/main/gcc.lua",
-        recipe_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        recipe = "arm.gcc@13.2.0",
+        url = "https://github.com/arm/envy-recipes/raw/v1.0/gcc.lua",
+        sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         config = {
             target = "arm-none-eabi",
             enable_lto = true,
@@ -291,9 +303,8 @@ packages = {
 
     -- Project-specific custom toolchain wrapper
     {
-        recipe = "local.company-wrapper",
-        version = "1.0.0",
-        recipe_file = "./envy/recipes/company-wrapper.lua",
+        recipe = "local.company-wrapper@1.0.0",
+        file = "./envy/recipes/company-wrapper.lua",
         config = {
             base_toolchain = "arm.gcc@13.2.0",
             extra_flags = { "-mcpu=cortex-m4", "-mthumb" },
@@ -308,38 +319,28 @@ packages = {
 -- project/envy.lua
 
 packages = {
-    -- Multiple built-in packages
-    {
-        recipe = "envy.cmake",
-        version = "3.28.0",
-    },
-
-    {
-        recipe = "envy.ninja",
-        version = "1.11.1",
-    },
+    -- Multiple built-in packages (shorthand syntax)
+    "envy.cmake@3.28.0",
+    "envy.ninja@1.11.1",
 
     -- Remote recipe from community maintainer
     {
-        recipe = "llvm.clang",
-        version = "17.0.6",
-        recipe_url = "https://recipes.llvm.org/clang.lua",
-        recipe_sha256 = "a7c9f8b12e3d4c567890abcdef1234567890abcdef1234567890abcdef123456",
+        recipe = "llvm.clang@17.0.6",
+        url = "https://recipes.llvm.org/clang.lua",
+        sha256 = "a7c9f8b12e3d4c567890abcdef1234567890abcdef1234567890abcdef123456",
     },
 
     -- Remote recipe from vendor
     {
-        recipe = "gnu.binutils",
-        version = "2.41.0",
-        recipe_url = "https://gnu.org/envy/binutils.lua",
-        recipe_sha256 = "b8d7e9f0a1234567890abcdef1234567890abcdef1234567890abcdef123456",
+        recipe = "gnu.binutils@2.41.0",
+        url = "https://gnu.org/envy/binutils.lua",
+        sha256 = "b8d7e9f0a1234567890abcdef1234567890abcdef1234567890abcdef123456",
     },
 
     -- Project-local testing recipe (under development)
     {
-        recipe = "local.linker-script-gen",
-        version = "2.1.0",
-        recipe_file = "./envy/recipes/custom-linker-script-generator.lua",
+        recipe = "local.linker-script-gen@2.1.0",
+        file = "./envy/recipes/custom-linker-script-generator.lua",
         config = {
             memory_layout = "./config/memory.yaml",
         },
@@ -356,24 +357,19 @@ packages = {
 allow_unverified_recipes = true
 
 packages = {
-    {
-        recipe = "envy.cmake",
-        version = "3.28.0",
-    },
+    "envy.cmake@3.28.0",
 
     -- Remote recipe without hash (will warn, but allowed due to config above)
     {
-        recipe = "experimental.new-tool",
-        version = "0.1.0-alpha",
-        recipe_url = "https://example.com/experimental/new-tool.lua",
-        -- No recipe_sha256 provided - risky!
+        recipe = "experimental.new-tool@0.1.0-alpha",
+        url = "https://example.com/experimental/new-tool.lua",
+        -- No sha256 provided - risky!
     },
 
     -- Local development recipe
     {
-        recipe = "local.wrapper",
-        version = "1.0.0",
-        recipe_file = "./envy/recipes/wrapper.lua",
+        recipe = "local.wrapper@1.0.0",
+        file = "./envy/recipes/wrapper.lua",
     },
 }
 ```
@@ -384,48 +380,45 @@ packages = {
 -- project/envy.lua
 
 packages = {
-    {
-        recipe = "envy.cmake",
-        version = "3.28.0",
-    },
+    "envy.cmake@3.28.0",
 
     -- Use version-agnostic recipe with different GCC versions
-    -- (Recipe URL/hash declared once, used multiple times with different versions)
     {
-        recipe = "gnu.gcc",
-        version = "13.2.0",
-        recipe_url = "https://gnu.org/envy/gcc.lua",  -- Handles multiple GCC versions
-        recipe_sha256 = "c9d0e1f2a3b4567890abcdef1234567890abcdef1234567890abcdef123456",
+        recipe = "gnu.gcc@13.2.0",
+        url = "https://gnu.org/envy/gcc.lua",  -- Handles multiple GCC versions
+        sha256 = "c9d0e1f2a3b4567890abcdef1234567890abcdef1234567890abcdef123456",
         config = {
             variant = "native",
         },
     },
 
-    -- Cross-compilation toolchain (same recipe, different version)
+    -- Cross-compilation toolchain (same recipe file, different asset version)
     {
-        recipe = "gnu.gcc",
-        version = "12.3.0",
-        recipe_url = "https://gnu.org/envy/gcc.lua",  -- Same recipe file
-        recipe_sha256 = "c9d0e1f2a3b4567890abcdef1234567890abcdef1234567890abcdef123456",
+        recipe = "gnu.gcc@12.3.0",
+        url = "https://gnu.org/envy/gcc.lua",  -- Same recipe file
+        sha256 = "c9d0e1f2a3b4567890abcdef1234567890abcdef1234567890abcdef123456",
         config = {
             variant = "cross",
             target = "aarch64-linux-gnu",
         },
     },
 
-    -- If we try unsupported version, recipe will assert with helpful message
+    -- If recipe needs to change for new GCC versions, author publishes new recipe version:
     -- {
-    --     recipe = "gnu.gcc",
-    --     version = "14.0.0",  -- Would error: "This recipe supports GCC 12.x-13.x. For GCC 14+, use gnu.gcc14"
+    --     recipe = "gnu.gcc@14.0.0",
+    --     url = "https://gnu.org/envy/gcc-v2.lua",  -- New recipe for GCC 14+
+    --     sha256 = "def456...",  -- Different hash = different cached recipe
     -- },
 }
 ```
 
 These examples demonstrate:
 - **Built-in packages** (`envy.*`) are always available without specifying URL
-- **Remote packages** specify `recipe_url` and optional `recipe_sha256`
-- **Project-local packages** specify `recipe_file` and never touch the cache
-- **Version handling** can be flexible (recipe validates supported versions via assertions)
+- **Remote packages** specify `url` and `sha256` fields
+- **Project-local packages** specify `file` field and never touch the cache
+- **Shorthand syntax** for simple cases: `"namespace.name@version"`
+- **Asset version** (after `@`) is what you want to deploy (e.g., GCC 13.2.0)
+- **Recipe version** controlled by URL path (e.g., `/v1.0/gcc.lua` vs `/v2.0/gcc.lua`)
 - **Security model** allows unverified recipes with `allow_unverified_recipes = true`
 - **Mixed sources** can coexist in a single project
 - **List structure** represents an unordered set of required packages
