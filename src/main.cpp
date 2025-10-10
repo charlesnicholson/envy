@@ -32,6 +32,7 @@
 #include <memory>
 #include <mutex>
 #include <openssl/crypto.h>
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <random>
 #include <sstream>
@@ -356,16 +357,19 @@ std::array<uint8_t, SHA256_DIGEST_LENGTH> compute_sha256_file(const std::filesys
     throw std::runtime_error("Failed to open " + path.string() + " for SHA256 hashing");
   }
 
-  SHA256_CTX ctx;
-  if (SHA256_Init(&ctx) != 1) {
-    throw std::runtime_error("SHA256_Init failed");
+  std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), &EVP_MD_CTX_free);
+  if (!ctx) {
+    throw std::runtime_error("EVP_MD_CTX_new failed");
+  }
+  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+    throw std::runtime_error("EVP_DigestInit_ex failed");
   }
 
   std::array<char, 1 << 15> buffer{};
   while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
     const auto read_bytes = static_cast<size_t>(input.gcount());
-    if (read_bytes > 0 && SHA256_Update(&ctx, buffer.data(), read_bytes) != 1) {
-      throw std::runtime_error("SHA256_Update failed for " + path.string());
+    if (read_bytes > 0 && EVP_DigestUpdate(ctx.get(), buffer.data(), read_bytes) != 1) {
+      throw std::runtime_error("EVP_DigestUpdate failed for " + path.string());
     }
   }
   if (input.bad()) {
@@ -373,8 +377,9 @@ std::array<uint8_t, SHA256_DIGEST_LENGTH> compute_sha256_file(const std::filesys
   }
 
   std::array<uint8_t, SHA256_DIGEST_LENGTH> digest{};
-  if (SHA256_Final(digest.data(), &ctx) != 1) {
-    throw std::runtime_error("SHA256_Final failed");
+  unsigned int written = 0;
+  if (EVP_DigestFinal_ex(ctx.get(), digest.data(), &written) != 1 || written != digest.size()) {
+    throw std::runtime_error("EVP_DigestFinal_ex failed");
   }
   return digest;
 }
