@@ -11,6 +11,7 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 ## Environment Constraints
 - Operate strictly within this repository directory; do not modify files or state outside the project tree.
 - Never change the host environment (no system-wide config edits, package installs, symlinks, or file moves outside the repo).
+- Never modify third-party code without the user's explicit approval; if such a change seems necessary, stop and ask first.
 
 ## Project Structure & Module Organization
 - `CMakeLists.txt` configures the C++20 test driver and pulls in all dependencies through `cmake/Dependencies.cmake`; do not add ad-hoc `FetchContent` calls elsewhere.

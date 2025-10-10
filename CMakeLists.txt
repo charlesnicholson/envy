@@ -21,7 +21,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_compile_definitions(_GNU_SOURCE)
+    add_compile_definitions(_POSIX_C_SOURCE=200809L)
     set(_envy_needs_link_groups ON)
 endif()
 
