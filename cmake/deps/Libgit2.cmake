@@ -1,4 +1,4 @@
-set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
+set(USE_HTTPS OpenSSL CACHE STRING "" FORCE)
 set(USE_SSH ON CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -46,9 +46,24 @@ foreach(_envy_git_target IN ITEMS libgit2package git2 libgit2)
     if(TARGET ${_envy_git_target})
         get_target_property(_envy_git_iface ${_envy_git_target} INTERFACE_LINK_LIBRARIES)
         if(_envy_git_iface)
-            list(REMOVE_ITEM _envy_git_iface libssh2::libssh2 "${LIBSSH2_LIBRARY}")
+            set(_envy_git_iface_filtered ${_envy_git_iface})
+            # Libgit2 exports OpenSSL/libssh2 both as targets and as raw archive paths; strip them so we don't pass duplicate libs downstream.
+            cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" "lib" "libssl.a" OUTPUT_VARIABLE _envy_openssl_ssl_lib)
+            cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" "lib" "libcrypto.a" OUTPUT_VARIABLE _envy_openssl_crypto_lib)
+            list(REMOVE_ITEM _envy_git_iface_filtered
+                libssh2::libssh2
+                "${LIBSSH2_LIBRARY}"
+                "${_envy_openssl_ssl_lib}"
+                "${_envy_openssl_crypto_lib}"
+                OpenSSL::SSL
+                OpenSSL::Crypto)
+            list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "libssh2\\\\.a$")
+            list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "openssl-build/.*/libssl\\\\.a$")
+            list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "openssl-build/.*/libcrypto\\\\.a$")
             set_target_properties(${_envy_git_target} PROPERTIES
-                INTERFACE_LINK_LIBRARIES "${_envy_git_iface}")
+                INTERFACE_LINK_LIBRARIES "${_envy_git_iface_filtered}")
+            unset(_envy_openssl_ssl_lib)
+            unset(_envy_openssl_crypto_lib)
         endif()
     endif()
 endforeach()
