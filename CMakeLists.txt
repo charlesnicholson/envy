@@ -20,6 +20,11 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_compile_definitions(_GNU_SOURCE)
+    set(_envy_needs_link_groups ON)
+endif()
+
 # Favor size-optimized release binaries by normalizing optimization flags
 set(_envy_size_opt "-Os")
 if(MSVC)
@@ -82,10 +87,21 @@ target_link_options(envy_cmake_test PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
 )
 
+if(_envy_needs_link_groups)
+    target_link_libraries(envy_cmake_test PRIVATE "-Wl,--start-group")
+endif()
+
 target_link_libraries(envy_cmake_test
     PRIVATE
         envy::thirdparty
+        libssh2::libssh2
 )
+
+if(_envy_needs_link_groups)
+    target_link_libraries(envy_cmake_test PRIVATE "-Wl,--end-group")
+endif()
+
+unset(_envy_needs_link_groups)
 
 add_dependencies(envy_cmake_test openssl)
 

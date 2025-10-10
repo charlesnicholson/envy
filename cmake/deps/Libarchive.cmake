@@ -55,16 +55,25 @@ if(TARGET archive)
     target_include_directories(archive INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(archive PRIVATE
+        HAVE_STRUCT_TM_TM_GMTOFF=1
+        HAVE_STRUCT_TM___TM_GMTOFF=0)
 elseif(TARGET libarchive)
     add_library(libarchive::libarchive ALIAS libarchive)
     target_include_directories(libarchive INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(libarchive PRIVATE
+        HAVE_STRUCT_TM_TM_GMTOFF=1
+        HAVE_STRUCT_TM___TM_GMTOFF=0)
 elseif(TARGET archive_static)
     add_library(libarchive::libarchive ALIAS archive_static)
     target_include_directories(archive_static INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(archive_static PRIVATE
+        HAVE_STRUCT_TM_TM_GMTOFF=1
+        HAVE_STRUCT_TM___TM_GMTOFF=0)
 else()
     message(FATAL_ERROR "libarchive target was not created by FetchContent")
 endif()

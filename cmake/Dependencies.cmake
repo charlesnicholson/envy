@@ -106,7 +106,6 @@ target_link_libraries(envy_thirdparty
         lua::lua
         blake3::blake3
         OpenSSL::SSL
-        libssh2::libssh2
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc
@@ -134,4 +133,6 @@ target_include_directories(envy_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${ENVY_AWSCRT_ROOT}/include>"
+    $<$<BOOL:${ENVY_LIBCURL_INCLUDE}>:$<BUILD_INTERFACE:${ENVY_LIBCURL_INCLUDE}>>
+    $<$<BOOL:${ENVY_LIBCURL_BINARY_INCLUDE}>:$<BUILD_INTERFACE:${ENVY_LIBCURL_BINARY_INCLUDE}>>
 )

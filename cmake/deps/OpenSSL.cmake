@@ -67,6 +67,20 @@ add_custom_command(
 add_custom_target(openssl ALL
     DEPENDS "${OPENSSL_BINARY}/lib/libssl.a" "${OPENSSL_BINARY}/lib/libcrypto.a")
 
+if(NOT EXISTS "${OPENSSL_BINARY}/lib/libssl.a" OR NOT EXISTS "${OPENSSL_BINARY}/lib/libcrypto.a")
+    message(STATUS "Bootstrapping OpenSSL binaries into ${OPENSSL_BINARY}")
+    execute_process(
+        COMMAND ${OPENSSL_MAKE_COMMAND} -j
+        WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+    execute_process(
+        COMMAND ${OPENSSL_MAKE_COMMAND} install_sw
+        WORKING_DIRECTORY "${openssl_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+endif()
+
 unset(_openssl_archive)
 unset(_openssl_archive_norm)
 unset(_openssl_url)
@@ -96,6 +110,19 @@ if(NOT TARGET OpenSSL::SSL)
     add_library(OpenSSL::SSL ALIAS openssl_ssl)
 endif()
 
+if(NOT TARGET AWS::crypto)
+    find_package(Threads REQUIRED)
+    add_library(AWS::crypto STATIC IMPORTED GLOBAL)
+    set_target_properties(AWS::crypto PROPERTIES
+        IMPORTED_LOCATION "${_OPENSSL_CRYPTO_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_OPENSSL_INCLUDE_DIR}"
+        INTERFACE_LINK_LIBRARIES "Threads::Threads")
+    add_dependencies(AWS::crypto openssl)
+endif()
+
 set(OPENSSL_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
 set(OPENSSL_CRYPTO_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
 set(OPENSSL_SSL_LIBRARY "${_OPENSSL_SSL_LIBRARY}" CACHE FILEPATH "" FORCE)
+set(crypto_INCLUDE_DIR "${_OPENSSL_INCLUDE_DIR}" CACHE PATH "" FORCE)
+set(crypto_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)
+set(crypto_STATIC_LIBRARY "${_OPENSSL_CRYPTO_LIBRARY}" CACHE FILEPATH "" FORCE)

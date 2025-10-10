@@ -24,6 +24,7 @@ if(NOT TARGET blake3::blake3)
         "${blake3_SOURCE_DIR}/c/blake3_portable.c"
     )
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)")
+        enable_language(ASM)
         list(APPEND BLAKE3_SOURCES
             "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_unix.S"
             "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_unix.S"
