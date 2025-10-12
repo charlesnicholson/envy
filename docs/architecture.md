@@ -122,25 +122,38 @@ end
 
 **Syntax:** Shorthand `"namespace.name@version"` expands to `{ recipe = "namespace.name@version" }`. Table syntax supports `url`, `sha256`, `file`, `options`.
 
+**Platform-specific packages:** Manifests are Lua scripts—use conditionals and `envy.join()` to combine common and OS-specific package lists.
+
 ```lua
 -- project/envy.lua
-packages = {
-    "envy.cmake@v1",  -- Built-in (shorthand)
-
+local common = {
     {  -- Remote with verification and options
         recipe = "arm.gcc@v2",
         url = "https://github.com/arm/recipes/gcc-v2.lua",
         sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         options = { version = "13.2.0", target = "arm-none-eabi" },
     },
-
     {  -- Project-local (development)
         recipe = "local.wrapper@v1",
         file = "./envy/recipes/wrapper.lua",
         options = { base = "arm.gcc@v2" },
     },
 }
+
+local darwin_packages = {
+    "envy.homebrew@v4",
+}
+
+local linux_packages = {
+    "system.apt@v1",
+}
+
+packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
+        or ENVY_PLATFORM == "linux" and envy.join(common, linux_packages)
+        or common
 ```
+
+**Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
 ## Platform-Specific Recipes
 
