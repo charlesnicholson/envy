@@ -203,3 +203,13 @@ local SUPPORTED = { darwin = { arm64 = true }, linux = { x86_64 = true } }
 assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
        "Unsupported platform: " .. ENVY_PLATFORM_ARCH)
 ```
+
+## Testing
+
+### Unit Tests
+
+Side-by-side with source: `src/cache/lock.cpp` + `src/cache/lock_test.cpp`. Doctest C++ single-file amalgamation; automatic registration. All test `.cpp` files compiled directly (no static archive) into `out/build/envy_unit_tests` executable. Runs as CMake build step; touches `out/build/envy_unit_tests.timestamp` on exit 0. Top-level targets: `envy` tool + test timestamp. `./build.sh` builds everything—tests run automatically.
+
+### Functional Tests
+
+Python 3.13+ stdlib only (`unittest`—no third-party deps). Located in `tests/functional/` flat (no subdirs). Parallel execution; each test uses isolated cache directory. Per-test cleanup via fixtures (context managers). Test recipes embedded as string literals in test code, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Recipes use filesystem `fetch` for speed; HTTP tests spawn local servers separately. Invocation TBD (`python3 -m unittest discover` or standalone runner). CI: GitHub Actions on Darwin/Linux/Windows × x64/arm64.
