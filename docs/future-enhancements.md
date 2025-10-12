@@ -2,12 +2,12 @@
 
 Potential enhancements not currently prioritized.
 
-## Recipe Dependency Version Ranges
+## Recipe Version Ranges
 
-Support semver ranges for dependencies to reduce recipe churn when dependencies receive bug fixes. Trades reproducibility for convenience.
+Support semver ranges for recipe dependencies to reduce churn when recipe bugs are fixed. Recipe versions must be semver-compliant to enable ranges.
 
 ```lua
-depends = { "vendor.library@^5.0.0" }  -- vs exact "vendor.library@5.0.0"
+depends = { "vendor.library@^2.0.0" }  -- Any 2.x recipe version
 ```
 
 ## Multi-File Recipes from Git Repositories
@@ -15,7 +15,7 @@ depends = { "vendor.library@^5.0.0" }  -- vs exact "vendor.library@5.0.0"
 Fetch multi-file recipes directly from Git repos instead of requiring pre-packaged archives. Requires Git runtime dependency.
 
 ```lua
-{ recipe = "vendor.gcc.v2@13.2.0", git = "https://github.com/vendor/recipes.git", ref = "v2.0" }
+{ recipe = "vendor.gcc@v2", git = "https://github.com/vendor/recipes.git", ref = "v2.0" }
 ```
 
 ## Recipe Mirroring and Offline Support
@@ -31,7 +31,7 @@ recipe_mirrors = { ["https://public.com/recipes/"] = "https://internal.corp/reci
 Mark recipes as deprecated with migration guidance. Envy warns users and suggests replacement.
 
 ```lua
-deprecated = { message = "Use arm.gcc.v2 instead", replacement = "arm.gcc.v2" }
+deprecated = { message = "Use arm.gcc@v2 instead", replacement = "arm.gcc@v2" }
 ```
 
 ## Cross-Platform Recipe Variants
