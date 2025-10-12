@@ -13,6 +13,10 @@ NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSIO
 - Never change the host environment (no system-wide config edits, package installs, symlinks, or file moves outside the repo).
 - Never modify third-party code without the user's explicit approval; if such a change seems necessary, stop and ask first.
 
+## Documentation Style
+- Future enhancement documents (e.g., `docs/future-enhancements.md`) should be concise. Each bullet point should be ~2 terse sentences and one pithy example.
+- Avoid verbose explanations of trade-offs, benefits, or implementation details unless they're critical to understanding the enhancement.
+
 ## Project Structure & Module Organization
 - `CMakeLists.txt` configures the C++20 test driver and pulls in all dependencies through `cmake/Dependencies.cmake`; do not add ad-hoc `FetchContent` calls elsewhere.
 - Avoid Git submodules—every vendored dependency must be fetched or mirrored through CMake so the repository remains lightweight and reproducible.
