@@ -13,10 +13,15 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 ├── recipes/
 │   ├── envy/               # Built-in recipes embedded in envy executable
 │   │   ├── .version
-│   │   └── {name}.lua      # No hash suffix (tied to envy binary version)
+│   │   ├── {name}.lua      # Single-file built-in recipes
+│   │   └── {name}/         # Multi-file built-in recipes
+│   │       └── recipe.lua
 │   └── {namespace}/        # Third-party namespaced recipes (arm, gnu, cmake, etc.)
-│       ├── {name}-{hash8}.lua          # Recipe file with 8-char hash prefix
-│       └── .envy-meta.{name}-{hash8}   # Metadata: URL, fetch time, verified flag
+│       ├── {name}-{hash8}.lua              # Single-file recipe
+│       ├── {name}-{hash8}/                 # Multi-file recipe (extracted archive)
+│       │   ├── recipe.lua
+│       │   └── [other recipe files]
+│       └── .envy-meta.{name}-{hash8}       # Metadata: URL, fetch time, verified flag
 ├── deployed/
 │   └── {namespace}.{name}@{version}/
 │       └── {platform}-{arch}-sha256-{hash}/
@@ -34,30 +39,50 @@ Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scr
 project/
 └── envy/
     └── recipes/
-        └── custom-tool.lua
+        ├── custom-tool.lua        # Single-file local recipe
+        └── complex-tool/          # Multi-file local recipe
+            ├── recipe.lua
+            └── helpers.lua
 ```
 
 ### Recipe Organization
 
 **Namespaces:** All recipes must be namespaced (e.g., `envy.cmake`, `arm.gcc`, `gnu.binutils`). The `local.*` namespace is reserved for project-local recipes and is banned from the cache to prevent collisions.
 
-**Recipe naming:** Cached remote recipes are named `{name}-{hash8}.lua` where `{hash8}` is the first 8 hexadecimal characters of the recipe's SHA256 hash. This allows multiple versions of the same recipe to coexist in the cache. Recipe authors use stable names (e.g., `gcc.lua`) and version their recipes through URL paths (Git tags, branches, or any hosting structure). Built-in recipes use `{name}.lua` without hash suffix since they're tied to the envy binary version.
+**Recipe formats:**
+- **Single-file recipes:** Most recipes are a single `.lua` file (e.g., `gcc.lua`). This is the default and preferred format for simple cases.
+- **Multi-file recipes:** Complex recipes requiring shared Lua helpers, patch files, or other assets can be distributed as archives (`.tar.gz`, `.tar.xz`, `.zip`). The archive is extracted to a directory in the cache.
+
+**Recipe naming:** Cached remote recipes are named `{name}-{hash8}.lua` for single-file recipes or `{name}-{hash8}/` for multi-file recipes, where `{hash8}` is the first 8 hexadecimal characters of the recipe artifact's SHA256 hash. For single files, this is the hash of the `.lua` file content. For archives, this is the hash of the archive file itself (as downloaded). This allows multiple versions of the same recipe to coexist in the cache. Recipe authors use stable names and version their recipes through URL paths. Built-in recipes use `{name}.lua` or `{name}/` without hash suffix since they're tied to the envy binary version.
 
 **Recipe identity:** A specific cached recipe is identified by `{namespace}.{name}-{hash8}`. The `@` symbol in package declarations always refers to the **asset version** (e.g., `arm.gcc@13.2.0` means "GCC version 13.2.0"), never the recipe version. Recipe versions are controlled by the URL and pinned by the SHA256 hash.
 
 **Recipe sources:**
-- **Project-local:** Declared with `file` field in project manifest, never cached
-- **Remote:** Declared with `url` and `sha256` fields, fetched and cached with hash-based filename
-- **Built-in:** Embedded in envy executable using `envy.*` namespace, extracted to cache on first run
+- **Project-local:** Declared with `file` field in project manifest, never cached. Can be single files or directories.
+- **Remote:** Declared with `url` and `sha256` fields, fetched and cached with hash-based filename. Can be single files or archives.
+- **Built-in:** Embedded in envy executable using `envy.*` namespace, extracted to cache on first run.
+
+**Multi-file recipe structure:** When a recipe is distributed as an archive, it must contain a `recipe.lua` entry point at the root:
+```
+gnu/gcc-{hash8}/
+├── recipe.lua           # Entry point (required)
+├── helpers.lua          # Shared Lua code
+├── checksums.lua        # Version/platform hash tables
+└── patches/
+    ├── fix-m1.patch
+    └── fix-glibc.patch
+```
+
+Envy detects archive format by file extension or content-type. The SHA256 hash in the manifest is computed from the archive file as downloaded. After verification, the archive is extracted to the cache and the recipe identity refers to the directory. All files in the archive are available to `recipe.lua` via relative paths or Lua's `require()` mechanism.
 
 ### Cache Keys
 
-**Recipe cache key:** `{namespace}/{name}-{hash8}.lua` where:
+**Recipe cache key:** `{namespace}/{name}-{hash8}.lua` or `{namespace}/{name}-{hash8}/` where:
 - `namespace` is any valid identifier except `local` (reserved for project-local recipes)
 - `name` is the recipe name (e.g., `gcc`, `cmake`)
-- `hash8` is the first 8 hexadecimal characters of the recipe file's SHA256 hash
+- `hash8` is the first 8 hexadecimal characters of the recipe artifact's SHA256 hash (file content for single-file recipes, archive file for multi-file recipes)
 
-Multiple versions of the same recipe can coexist in the cache, distinguished by their content hash. The hash ensures immutability and allows recipe authors to version recipes via URL paths without naming conflicts. Built-in recipes use `{namespace}/{name}.lua` without hash suffix.
+Multiple versions of the same recipe can coexist in the cache, distinguished by their content hash. The hash ensures immutability and allows recipe authors to version recipes via URL paths without naming conflicts. Built-in recipes use `{namespace}/{name}.lua` or `{namespace}/{name}/` without hash suffix.
 
 **Deployment identity:** `{namespace}.{name}@{version}.{platform}-{arch}-sha256-{hash}` where:
 - `namespace.name` is the recipe identity
@@ -123,12 +148,66 @@ User-initiated verification maps this file read-only and compares stored hashes 
 ### Recipe Metadata
 
 Each cached remote recipe has an associated `.envy-meta.{name}-{hash8}` file containing:
-- `hash`: Full SHA256 hash of the recipe file
+- `hash`: Full SHA256 hash of the recipe artifact (file or archive)
 - `source_url`: Where recipe was fetched from
 - `fetched_at`: Unix timestamp of fetch
 - `verified`: Boolean indicating whether the recipe hash was verified against a user-provided hash
 
 The hash suffix in both the recipe filename and metadata filename ensures each recipe version is immutable and independently tracked. The manifest-provided SHA256 hash establishes the trust anchor for the recipe's integrity.
+
+### Recipe Dependencies
+
+Recipes can declare dependencies on other recipes. Manifest authors only specify the recipes they directly need; transitive dependencies are resolved automatically from recipe declarations.
+
+**Dependency declaration in recipes:**
+
+```lua
+-- In vendor/python.lua recipe file
+namespace = "vendor"
+name = "python"
+
+-- Recipe declares its own dependencies
+depends = {
+    "envy.homebrew@4.0.0",
+}
+
+fetch = function(version)
+    -- Can access deployed dependencies via asset()
+    local brew_path = asset("envy.homebrew", "4.0.0")
+    -- ...
+end
+```
+
+**Dependency types:**
+
+- **Deployment dependencies:** Other recipes that must be deployed before this recipe can execute. Declared in the `depends` table.
+- **Lua dependencies:** Other recipes that provide shared Lua code via multi-file recipe bundles. Accessible via Lua's `require()` mechanism after dependency is resolved.
+
+**Dependency resolution:**
+
+1. Manifest specifies top-level recipes (e.g., `vendor.python@3.11.0`)
+2. Envy loads the recipe and inspects its `depends` table
+3. Each dependency is recursively resolved and deployed
+4. Topological sort ensures dependencies are deployed before dependents
+5. Cycles are detected and reported as errors (must be a DAG)
+
+**Security constraints:**
+
+- Non-local recipes (remote or built-in) cannot depend on `local.*` recipes
+- Envy enforces this at load time and fails with an error
+- Local recipes can depend on any recipe (local, remote, or built-in)
+
+**Example dependency chain:**
+
+```
+Project manifest requests: vendor.python@3.11.0
+  └─> vendor.python recipe depends on: envy.homebrew@4.0.0
+       └─> envy.homebrew recipe depends on: (none)
+
+Deployment order: envy.homebrew@4.0.0, then vendor.python@3.11.0
+```
+
+Manifest authors never see `envy.homebrew` - they only declare they want `vendor.python`, and the recipe handles its own requirements.
 
 ### Recipe Security Model
 
