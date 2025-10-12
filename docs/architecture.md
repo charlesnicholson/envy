@@ -72,6 +72,8 @@ Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 2. **Shared wait:** Attempt shared lock; if immediate success, upgrade to exclusive and work; if blocks, another process is working—wait then recheck
 3. **Exclusive work:** Create `.inprogress/` staging, download/extract/fingerprint, write `.envy-complete`, atomic rename to final path, release lock
 
+**Staging rationale:** `.inprogress/` stages in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) crash recovery—next worker finds/removes stale staging in predictable location; (3) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion. Current design trades download resumption (complex: HTTP ranges, partial extraction, verification) for simplicity—crashes mean restart from scratch. Lock release enables immediate retry by another process.
+
 ### BLAKE3 Fingerprints
 
 `.envy-fingerprint.blake3` stores BLAKE3 hash of every file in deployment. Binary format optimized for mmap: fixed header (magic/version/count/offsets), entry array (path offset/length, 32-byte hash, size, mtime), string table. User verification maps read-only, compares hashes without locks.
