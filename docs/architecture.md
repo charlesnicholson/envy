@@ -2,7 +2,7 @@
 
 ## Filesystem Cache
 
-Envy maintains a user-wide cache at `~/.cache/envy/` containing recipes (Lua scripts) and deployed assets (toolchains, SDKs). Cache entries are immutable once marked complete—enabling lock-free reads while using shared/exclusive locks only during creation.
+Envy maintains a user-wide cache at `~/.cache/envy/` (customizable) containing recipes (Lua scripts) and deployed assets (toolchains, SDKs). Cache entries are immutable once marked complete—enabling lock-free reads while using shared/exclusive locks only during creation.
 
 ### Directory Structure
 
