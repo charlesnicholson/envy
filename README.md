@@ -1,6 +1,6 @@
 # envy-cmake-test
 
-Static macOS test driver that bundles libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, BLAKE3, and the AWS SDK for C++ (S3-only) into a single executable using modern CMake. The goal is to build each dependency from source without Git submodules, link everything statically, and exercise the libraries in a unified smoke test.
+Static macOS test driver that bundles libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, BLAKE3, and the AWS SDK for C++ (S3-only) into a single executable using modern CMake. The goal is to build each dependency from source without Git submodules, link everything statically, and exercise the libraries.
 
 ## What is Envy?
 
@@ -25,13 +25,13 @@ Iterate with link-time optimization disabled to keep rebuilds fast:
 
 ```bash
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
-cmake --build out/build --target envy_cmake_test --parallel
+cmake --build out/build --target envy --parallel
 out/build/envy
 ```
 
 The helper script `./build.sh` at the project root handles this workflow for you: it lazily configures `out/build` if the cache is missing and always drives a full build. The build is quick enough that targeting individual binaries is unnecessary.
 
-CMake is used strictly for builds; there is no CTest integration. Run the resulting `out/build/envy` executable directly when you need a smoke pass.
+CMake is used strictly for builds; there is no CTest integration. Run the resulting `out/build/envy` executable directly to verify integration.
 
 ## CMake Layout
 
@@ -40,18 +40,18 @@ CMake is used strictly for builds; there is no CTest integration. Run the result
 - Shared utilities such as `EnvyFetchContent.cmake` and `DependencyPatches.cmake` provide the common job pools, cache wiring, and patch helpers that modules may reuse.
 - Patch scripts must be generated with `configure_file()` using templates in `cmake/templates/` so reconfigures stay idempotent and we avoid rewriting vendored sources multiple times.
 
-Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and smoke run without warnings or errors:
+Before declaring a task done, blow away the build tree and validate a clean configuration, full rebuild, and runtime verification without warnings or errors:
 
 ```bash
 rm -rf out
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
-cmake --build out/build --target envy_cmake_test --parallel
+cmake --build out/build --target envy --parallel
 out/build/envy
 ```
 
 Source files are formatted with 2-space indentation as enforced by the repository `.editorconfig`.
 
-`envy_cmake_test` resides in `out/build/envy` and runs a runtime smoke suite across every dependency.
+The `envy` executable resides in `out/build/envy` and exercises every dependency.
 
 All transient artifacts must land underneath `out/`. Cache vendored source trees, extracted archives, and any vendor installs inside `out/cache/third_party`; build logic must verify the required payloads exist there before initiating another fetch so we avoid re-downloading large dependencies. Configure and build into `out/build`, which holds the CMake cache, Ninja objects, and the final binaries. Deleting `out/build` forces a rebuild while preserving the dependency cache, while removing `out/` entirely restores the repository to a pristine state.
 

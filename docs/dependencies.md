@@ -51,7 +51,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## BLAKE3
 - Source: https://github.com/BLAKE3-team/BLAKE3 (tag `1.8.2`).
 - The C implementation is built directly with architecture-specific files added conditionally (x86-64 SIMD or ARM NEON). The exported target is `blake3::blake3` with headers under the `c/` directory.
-- Update the smoke tests if you adjust SIMD availability so we continue to hash test vectors along the most optimized path.
+- Update the runtime checks if you adjust SIMD availability so we continue to hash test vectors along the most optimized path.
 
 ## Runtime Probe
-`src/main.cpp` exercises each dependency in isolation to verify compile-time and runtime integration. The executable is meant as a smoke test and should remain fast (<1s) so we can re-run it during development and in CI.
+`src/main.cpp` exercises each dependency in isolation to verify compile-time and runtime integration. The executable should remain fast (<1s) so we can re-run it during development and in CI.
