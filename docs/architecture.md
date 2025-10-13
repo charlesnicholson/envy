@@ -11,10 +11,9 @@ Envy maintains a user-wide cache at `~/.cache/envy/` (customizable) containing r
 ├── recipes/
 │   ├── envy.cmake@v1.lua                   # Built-in single-file
 │   ├── arm.gcc@v2.lua                      # Remote single-file
-│   ├── gnu.binutils@v3/                    # Multi-file (extracted archive)
-│   │   ├── recipe.lua
-│   │   └── helpers.lua
-│   └── .envy-meta.arm.gcc@v2               # Metadata: URL, SHA256, fetch time
+│   └── gnu.binutils@v3/                    # Multi-file (extracted archive)
+│       ├── recipe.lua
+│       └── helpers.lua
 ├── deployed/
 │   └── {namespace}.{name}@{version}/
 │       └── {platform}-{arch}-sha256-{hash}/
