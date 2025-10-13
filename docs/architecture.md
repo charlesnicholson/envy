@@ -99,8 +99,7 @@ end
 deploy = function(ctx)
     local gcc_root = asset("arm.gcc@v2")  -- Access deployed dependency
     ctx.extract_all()
-    ctx.run("./configure", "--prefix=" .. ctx.install_dir,
-            "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
+    ctx.run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
     ctx.run("make", "-j" .. ctx.cores)
     ctx.run("make", "install")
 end
