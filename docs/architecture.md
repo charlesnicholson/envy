@@ -84,14 +84,17 @@ Recipes declare dependencies; transitive resolution is automatic. Manifest autho
 ```lua
 -- vendor.openocd@v3
 identity = "vendor.openocd@v3"
-depends = {
-    {
-        recipe = "arm.gcc@v2",
-        url = "https://github.com/arm/recipes/gcc-v2.lua",
-        sha256 = "a1b2c3d4...",
-        options = { version = "13.2.0" },
-    },
-}
+
+function make_depends(options)
+    return {
+        {
+            recipe = "arm.gcc@v2",
+            url = "https://github.com/arm/recipes/gcc-v2.lua",
+            sha256 = "a1b2c3d4...",
+            options = { version = options.armgcc_version or "13.2.0" },
+        },
+    }
+end
 
 deploy = function(ctx)
     local gcc_root = asset("arm.gcc@v2")  -- Access deployed dependency
