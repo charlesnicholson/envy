@@ -82,20 +82,24 @@ Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 Recipes declare dependencies; transitive resolution is automatic. Manifest authors specify only direct needs.
 
 ```lua
--- vendor.python@v2
-identity = "vendor.python@v2"
+-- vendor.openocd@v3
+identity = "vendor.openocd@v3"
 depends = {
     {
-        recipe = "envy.homebrew@v4",
-        url = "https://github.com/envy/recipes/homebrew-v4.lua",
+        recipe = "arm.gcc@v2",
+        url = "https://github.com/arm/recipes/gcc-v2.lua",
         sha256 = "a1b2c3d4...",
+        options = { version = "13.2.0" },
     },
 }
 
-fetch = function(options)
-    local brew_path = asset("envy.homebrew@v4")  -- Access deployed dependency
-    local version = options.version or "3.11.0"
-    -- Fetch logic...
+deploy = function(ctx)
+    local gcc_root = asset("arm.gcc@v2")  -- Access deployed dependency
+    ctx.extract_all()
+    ctx.run("./configure", "--prefix=" .. ctx.install_dir,
+            "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
+    ctx.run("make", "-j" .. ctx.cores)
+    ctx.run("make", "install")
 end
 ```
 
