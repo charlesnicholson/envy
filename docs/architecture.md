@@ -84,7 +84,13 @@ Recipes declare dependencies; transitive resolution is automatic. Manifest autho
 ```lua
 -- vendor.python@v2
 identity = "vendor.python@v2"
-depends = { "envy.homebrew@v4" }
+depends = {
+    {
+        recipe = "envy.homebrew@v4",
+        url = "https://github.com/envy/recipes/homebrew-v4.lua",
+        sha256 = "a1b2c3d4...",
+    },
+}
 
 fetch = function(options)
     local brew_path = asset("envy.homebrew@v4")  -- Access deployed dependency
