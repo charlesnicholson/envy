@@ -1,7 +1,5 @@
 # envy
 
-Static macOS test driver that bundles libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, BLAKE3, and the AWS SDK for C++ (S3-only) into a single executable using modern CMake. The goal is to build each dependency from source without Git submodules, link everything statically, and exercise the libraries.
-
 ## What is Envy?
 
 Envy is a freeform package manager driven by Lua scripts. “Freeform” means Envy remains unopinionated about what a package represents; authors describe packages entirely in terms of verbs exposed to Lua. Core verbs include `fetch`, `cache`, `deploy`, `asset` (for locating cached assets), `check`, and `update` (to ensure a project stays current). The runtime ships with a cache that defaults to being user-wide so any number of projects under a user’s workspace can share large payloads.
