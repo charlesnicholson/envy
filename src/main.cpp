@@ -37,6 +37,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <system_error>
 #include <string_view>
 #include <vector>
@@ -627,9 +628,139 @@ local archive_path = download_s3_object(bucket, key, region)
 extract_to_temp(archive_path)
 )";
 
+std::string format_git_error(int error_code)
+{
+  const git_error *error = git_error_last();
+  std::ostringstream oss;
+  oss << "libgit2 error (" << error_code << ')';
+  if (error && error->message) {
+    oss << ": " << error->message;
+  }
+  return oss.str();
+}
+
+void run_git_tls_probe(const std::string &url,
+                       const std::filesystem::path &workspace_root,
+                       std::mutex &console_mutex)
+{
+  git_libgit2_init();
+  git_repository *repo = nullptr;
+  git_remote *remote = nullptr;
+  const auto probe_dir = workspace_root / "out" / "cache" / "git_tls_probe";
+  std::error_code fs_ec;
+  std::filesystem::remove_all(probe_dir, fs_ec);
+  std::filesystem::create_directories(probe_dir, fs_ec);
+
+  try {
+    git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+    opts.flags = GIT_REPOSITORY_INIT_BARE;
+    const int init_result = git_repository_init_ext(&repo, probe_dir.string().c_str(), &opts);
+    if (init_result != 0) {
+      throw std::runtime_error(format_git_error(init_result));
+    }
+
+    if (git_remote_lookup(&remote, repo, "origin") == 0) {
+      git_remote_delete(repo, "origin");
+      git_remote_free(remote);
+      remote = nullptr;
+    }
+
+    const int create_result = git_remote_create(&remote, repo, "origin", url.c_str());
+    if (create_result != 0) {
+      throw std::runtime_error(format_git_error(create_result));
+    }
+
+    const int connect_result = git_remote_connect(remote, GIT_DIRECTION_FETCH, nullptr, nullptr, nullptr);
+    if (connect_result != 0) {
+      throw std::runtime_error(format_git_error(connect_result));
+    }
+
+    const git_remote_head **heads = nullptr;
+    size_t head_count = 0;
+    const int ls_result = git_remote_ls(&heads, &head_count, remote);
+    if (ls_result != 0) {
+      throw std::runtime_error(format_git_error(ls_result));
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(console_mutex);
+      std::cout << "[libgit2] Connected to " << url << " and enumerated " << head_count
+                << " refs" << std::endl;
+      if (head_count > 0 && heads[0] && heads[0]->name) {
+        std::cout << "  First ref: " << heads[0]->name << std::endl;
+      }
+    }
+
+    git_remote_disconnect(remote);
+  } catch (...) {
+    git_remote_free(remote);
+    git_repository_free(repo);
+    git_libgit2_shutdown();
+    std::filesystem::remove_all(probe_dir, fs_ec);
+    throw;
+  }
+
+  git_remote_free(remote);
+  git_repository_free(repo);
+  git_libgit2_shutdown();
+  std::filesystem::remove_all(probe_dir, fs_ec);
+}
+
+size_t curl_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+  auto *buffer = static_cast<std::vector<char> *>(userdata);
+  const size_t total = size * nmemb;
+  buffer->insert(buffer->end(), ptr, ptr + total);
+  return total;
+}
+
+void ensure_curl_initialized()
+{
+  static std::once_flag once;
+  std::call_once(once, [] {
+    const CURLcode init_result = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (init_result != CURLE_OK) {
+      throw std::runtime_error(std::string("curl_global_init failed: ") + curl_easy_strerror(init_result));
+    }
+  });
+}
+
+void run_curl_tls_probe(const std::string &url, std::mutex &console_mutex)
+{
+  ensure_curl_initialized();
+
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle(curl_easy_init(), &curl_easy_cleanup);
+  if (!handle) {
+    throw std::runtime_error("curl_easy_init failed");
+  }
+
+  std::vector<char> response;
+  curl_easy_setopt(handle.get(), CURLOPT_URL, url.c_str());
+  curl_easy_setopt(handle.get(), CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(handle.get(), CURLOPT_USERAGENT, "envy-tls-probe/1.0");
+  curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, curl_write_callback);
+  curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &response);
+  curl_easy_setopt(handle.get(), CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
+
+  const CURLcode perform_result = curl_easy_perform(handle.get());
+  long http_code = 0;
+  curl_easy_getinfo(handle.get(), CURLINFO_RESPONSE_CODE, &http_code);
+
+  if (perform_result != CURLE_OK) {
+    throw std::runtime_error(std::string("curl_easy_perform failed: ") + curl_easy_strerror(perform_result));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(console_mutex);
+    std::cout << "[libcurl] Downloaded " << response.size() << " bytes from " << url
+              << " (HTTP " << http_code << ')' << std::endl;
+  }
+}
+
 void run_lua_workflow(const std::string &bucket,
                       const std::string &key,
-                      const std::string &region)
+                      const std::string &region,
+                      std::mutex &console_mutex)
 {
   AwsApiGuard aws_guard;
   TempResourceManager temp_manager;
@@ -664,7 +795,10 @@ void run_lua_workflow(const std::string &bucket,
                              (message ? message : "unknown error"));
   }
 
-  std::cout << "Lua workflow completed successfully." << std::endl;
+  {
+    std::lock_guard<std::mutex> lock(console_mutex);
+    std::cout << "[Lua] Workflow completed successfully." << std::endl;
+  }
 }
 
 }  // namespace
@@ -732,16 +866,41 @@ int main(int argc, char **argv)
     const auto parts = parse_s3_uri(positional_args.front());
     const std::string region_arg = positional_args.size() >= 2 ? std::string(positional_args[1]) : std::string{};
 
+    std::mutex console_mutex;
+    const auto workspace_root = std::filesystem::current_path();
+    const std::string git_probe_url = "https://github.com/libgit2/libgit2.git";
+    const std::string curl_probe_url = "https://www.example.com/";
+
     tbb::task_arena arena;
     arena.execute([&] {
       tbb::flow::graph graph;
-      tbb::flow::continue_node<tbb::flow::continue_msg> runner(
-          graph,
-          [&](const tbb::flow::continue_msg &) {
-            run_lua_workflow(parts.bucket, parts.key, region_arg);
-          });
+      tbb::flow::broadcast_node<tbb::flow::continue_msg> kickoff(graph);
 
-      runner.try_put(tbb::flow::continue_msg{});
+      auto make_task = [&](auto &&fn) {
+        using Fn = std::decay_t<decltype(fn)>;
+        Fn task_fn = std::forward<decltype(fn)>(fn);
+        return tbb::flow::continue_node<tbb::flow::continue_msg>(
+            graph,
+            [task_fn = std::move(task_fn)](const tbb::flow::continue_msg &) mutable {
+              task_fn();
+            });
+      };
+
+      auto lua_task = make_task([&] {
+        run_lua_workflow(parts.bucket, parts.key, region_arg, console_mutex);
+      });
+      auto git_task = make_task([&] {
+        run_git_tls_probe(git_probe_url, workspace_root, console_mutex);
+      });
+      auto curl_task = make_task([&] {
+        run_curl_tls_probe(curl_probe_url, console_mutex);
+      });
+
+      tbb::flow::make_edge(kickoff, lua_task);
+      tbb::flow::make_edge(kickoff, git_task);
+      tbb::flow::make_edge(kickoff, curl_task);
+
+      kickoff.try_put(tbb::flow::continue_msg{});
       graph.wait_for_all();
     });
     return EXIT_SUCCESS;
