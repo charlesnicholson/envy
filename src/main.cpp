@@ -31,9 +31,8 @@
 #include <libssh2.h>
 #include <memory>
 #include <mutex>
-#include <openssl/crypto.h>
-#include <openssl/evp.h>
-#include <openssl/sha.h>
+#include <mbedtls/sha256.h>
+#include <mbedtls/version.h>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -350,36 +349,47 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
   return digest;
 }
 
-std::array<uint8_t, SHA256_DIGEST_LENGTH> compute_sha256_file(const std::filesystem::path &path)
+constexpr size_t kSha256DigestLength = 32;
+
+std::array<uint8_t, kSha256DigestLength> compute_sha256_file(const std::filesystem::path &path)
 {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     throw std::runtime_error("Failed to open " + path.string() + " for SHA256 hashing");
   }
 
-  std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(), &EVP_MD_CTX_free);
-  if (!ctx) {
-    throw std::runtime_error("EVP_MD_CTX_new failed");
-  }
-  if (EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
-    throw std::runtime_error("EVP_DigestInit_ex failed");
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  struct Sha256ContextGuard {
+    mbedtls_sha256_context *context;
+    ~Sha256ContextGuard()
+    {
+      if (context) {
+        mbedtls_sha256_free(context);
+      }
+    }
+  } guard{&ctx};
+  if (mbedtls_sha256_starts(&ctx, /*is224=*/0) != 0) {
+    throw std::runtime_error("mbedtls_sha256_starts failed");
   }
 
   std::array<char, 1 << 15> buffer{};
   while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
     const auto read_bytes = static_cast<size_t>(input.gcount());
-    if (read_bytes > 0 && EVP_DigestUpdate(ctx.get(), buffer.data(), read_bytes) != 1) {
-      throw std::runtime_error("EVP_DigestUpdate failed for " + path.string());
+    if (read_bytes > 0) {
+      const unsigned char *data = reinterpret_cast<const unsigned char *>(buffer.data());
+      if (mbedtls_sha256_update(&ctx, data, read_bytes) != 0) {
+        throw std::runtime_error("mbedtls_sha256_update failed for " + path.string());
+      }
     }
   }
   if (input.bad()) {
     throw std::runtime_error("Failed while reading " + path.string() + " for SHA256");
   }
 
-  std::array<uint8_t, SHA256_DIGEST_LENGTH> digest{};
-  unsigned int written = 0;
-  if (EVP_DigestFinal_ex(ctx.get(), digest.data(), &written) != 1 || written != digest.size()) {
-    throw std::runtime_error("EVP_DigestFinal_ex failed");
+  std::array<uint8_t, kSha256DigestLength> digest{};
+  if (mbedtls_sha256_finish(&ctx, digest.data()) != 0) {
+    throw std::runtime_error("mbedtls_sha256_finish failed");
   }
   return digest;
 }
@@ -671,7 +681,9 @@ void print_dependency_versions()
 
   std::cout << "  libcurl: " << LIBCURL_VERSION << std::endl;
   std::cout << "  libssh2: " << LIBSSH2_VERSION << std::endl;
-  std::cout << "  OpenSSL: " << OpenSSL_version(OPENSSL_VERSION) << std::endl;
+  std::array<char, 32> mbedtls_version{};
+  mbedtls_version_get_string_full(mbedtls_version.data());
+  std::cout << "  mbedTLS: " << mbedtls_version.data() << std::endl;
   std::cout << "  libarchive: " << archive_version_details() << std::endl;
   std::cout << "  Lua: " << LUA_RELEASE << std::endl;
   std::cout << "  oneTBB: " << TBB_runtime_version() << std::endl;

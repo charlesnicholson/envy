@@ -26,10 +26,10 @@ endif()
 # ---------------------------------------------------------------------------
 # Third-party version catalog
 # ---------------------------------------------------------------------------
-set(ENVY_OPENSSL_VERSION "3.6.0")
-set(ENVY_OPENSSL_ARCHIVE "openssl-${ENVY_OPENSSL_VERSION}.tar.gz")
-set(ENVY_OPENSSL_URL "https://www.openssl.org/source/${ENVY_OPENSSL_ARCHIVE}")
-set(ENVY_OPENSSL_SHA256 b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9)
+set(ENVY_MBEDTLS_VERSION "3.6.4")
+set(ENVY_MBEDTLS_ARCHIVE "mbedtls-${ENVY_MBEDTLS_VERSION}-easy-make-lib.tar.xz")
+set(ENVY_MBEDTLS_URL "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${ENVY_MBEDTLS_VERSION}/${ENVY_MBEDTLS_ARCHIVE}")
+set(ENVY_MBEDTLS_SHA256 6a7ed66b4aca38836f0eff8d8fba72992bf0c7326337608ef01de469fd8368bd)
 
 set(ENVY_LIBSSH2_VERSION "1.11.1")
 set(ENVY_LIBSSH2_ARCHIVE "libssh2-${ENVY_LIBSSH2_VERSION}.tar.gz")
@@ -84,7 +84,7 @@ endif()
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
-include("${CMAKE_CURRENT_LIST_DIR}/deps/OpenSSL.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libcurl.cmake")
@@ -105,7 +105,7 @@ target_link_libraries(envy_thirdparty
         libarchive::libarchive
         lua::lua
         blake3::blake3
-        OpenSSL::SSL
+        MbedTLS::mbedtls
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc

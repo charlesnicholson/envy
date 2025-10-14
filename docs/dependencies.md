@@ -14,21 +14,21 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## libgit2
 - Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
 - CMake options disable CLI and shared builds. The library exports as `envy::libgit2` and is consumed via the standard `git2` target.
-- `USE_HTTPS` is forced to `SecureTransport` and `USE_SSH` is enabled so HTTPS traffic rides the system TLS stack while SSH uses our bundled libssh2 build.
+- `USE_HTTPS` is pinned to `mbedTLS` with SSH enabled so HTTPS rides the bundled TLS stack while SSH flows through libssh2.
 
 ## libcurl
 - Source: https://github.com/curl/curl (tag `curl-8_16_0`).
-- Built with OpenSSL (using the in-tree static toolchain) and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined, and the TLS backend now aligns with the rest of the project.
-- On macOS the build points `CURL_CA_BUNDLE` at `/etc/ssl/cert.pem` so OpenSSL inherits the system trust store; adjust the corresponding cache entry if another path is required on your platform.
+- Built with mbedTLS and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined, and the TLS backend now aligns with the rest of the project.
+- On macOS the build points `CURL_CA_BUNDLE` at `/etc/ssl/cert.pem` so mbedTLS inherits the system trust store; adjust the corresponding cache entry if another path is required on your platform.
 
 ## libssh2
 - Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.1`).
-- Compiled as a static library with OpenSSL providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
+- Compiled as a static library with mbedTLS providing the cryptography backend and zlib compression enabled. The build exports as `libssh2::libssh2` and feeds both libgit2 and libcurl to provide SSH transport capabilities.
 
-## OpenSSL
-- Source: https://www.openssl.org/source/openssl-3.6.0.tar.gz.
-- Built via `ExternalProject_Add` invoking the upstream Configure script with `no-shared`, `no-tests`, and `no-apps` so we export static `OpenSSL::SSL`/`OpenSSL::Crypto` targets without shipping the CLI tooling. The install lands inside the build tree and a generated `OpenSSLConfig.cmake` allows other dependencies (libssh2) to `find_package` the bundled build.
-- The runtime probes use OpenSSL's `MD5` implementation to validate a known digest while also confirming TLS 1.3-capable libraries are present for consumers such as libssh2.
+## mbedTLS
+- Source: https://github.com/Mbed-TLS/mbedtls (tag `mbedtls-3.6.4`, easy-make archive).
+- Built via upstream CMake with tests/programs off; `envy_mbedtls_user_config.h` enables TLS 1.3 and smooths C89 consumers before exporting the static triplet.
+- A custom find-module surfaces the bundled build to libcurl and libssh2 so every TLS consumer links the same toolchain.
 
 ## Lua
 - Source: https://github.com/lua/lua (tag `v5.4.8`).

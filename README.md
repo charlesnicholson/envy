@@ -6,7 +6,7 @@ Envy is a freeform package manager driven by Lua scripts. “Freeform” means E
 
 The primary use cases revolve around staging sizeable toolchains—think arm-gcc, llvm-clang, or the SEGGER J-Link suites—but the same primitives can install machine-global software such as Python or even orchestrate Homebrew on macOS. Envy is deeply parallelized and tuned for efficient transfers and staging, letting high-throughput workflows share a single cache without blocking each other.
 
-The project prioritizes lean binaries and predictable performance: we use straightforward, well-understood concurrency primitives (via oneTBB) and avoid gratuitous template metaprogramming or other "clever" tricks that hurt readability and optimization. Every component is selected and configured to minimize size while retaining full HTTPS/SSH functionality, including high-speed MD5 hashing powered by OpenSSL for compatibility checks.
+The project prioritizes lean binaries and predictable performance: we use straightforward, well-understood concurrency primitives (via oneTBB) and avoid gratuitous template metaprogramming or other "clever" tricks that hurt readability and optimization. Every component is selected and configured to minimize size while retaining full HTTPS/SSH functionality, with TLS 1.3 and hashing implemented through mbedTLS.
 
 ## Requirements
 

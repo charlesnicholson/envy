@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 4.1.2)
 
 project(envy_cmake_test
     VERSION 0.1.0
-    DESCRIPTION "Static test driver bundling libgit2, libcurl (OpenSSL), libssh2, OpenSSL, Lua, oneTBB, libarchive, and BLAKE3"
+    DESCRIPTION "Static test driver bundling libgit2, libcurl (mbedTLS), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
+
+list(PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
 
 if(POLICY CMP0069)
     cmake_policy(SET CMP0069 NEW)
@@ -102,8 +104,6 @@ if(_envy_needs_link_groups)
 endif()
 
 unset(_envy_needs_link_groups)
-
-add_dependencies(envy_cmake_test openssl)
 
 target_include_directories(envy_cmake_test
     PRIVATE

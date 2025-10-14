@@ -1,0 +1,61 @@
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_MBEDTLS_ARCHIVE}" OUTPUT_VARIABLE _mbedtls_archive)
+set(_mbedtls_url "${ENVY_MBEDTLS_URL}")
+if(EXISTS "${_mbedtls_archive}")
+    file(TO_CMAKE_PATH "${_mbedtls_archive}" _mbedtls_archive_norm)
+    set(_mbedtls_url "file://${_mbedtls_archive_norm}")
+endif()
+
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
+set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "" FORCE)
+set(GEN_FILES OFF CACHE BOOL "" FORCE)
+
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "mbedtls-config" OUTPUT_VARIABLE _mbedtls_config_dir)
+file(MAKE_DIRECTORY "${_mbedtls_config_dir}")
+set(_mbedtls_user_config "${_mbedtls_config_dir}/envy_mbedtls_user_config.h")
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/../templates/mbedtls_user_config.h.in"
+    "${_mbedtls_user_config}"
+    @ONLY
+)
+set(MBEDTLS_USER_CONFIG_FILE "${_mbedtls_user_config}" CACHE PATH "" FORCE)
+
+FetchContent_Declare(mbedtls
+    URL ${_mbedtls_url}
+    URL_HASH SHA256=${ENVY_MBEDTLS_SHA256}
+)
+FetchContent_MakeAvailable(mbedtls)
+FetchContent_GetProperties(mbedtls)
+
+if(DEFINED mbedtls_SOURCE_DIR AND DEFINED mbedtls_BINARY_DIR)
+    set(ENVY_MBEDTLS_SOURCE_DIR "${mbedtls_SOURCE_DIR}" CACHE PATH "" FORCE)
+    set(ENVY_MBEDTLS_BINARY_DIR "${mbedtls_BINARY_DIR}" CACHE PATH "" FORCE)
+    set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+    cmake_path(APPEND mbedtls_BINARY_DIR "library" "libmbedcrypto.a" OUTPUT_VARIABLE _mbedcrypto_lib)
+    set(MBEDCRYPTO_LIBRARY "${_mbedcrypto_lib}" CACHE FILEPATH "" FORCE)
+    cmake_path(GET _mbedcrypto_lib PARENT_PATH _mbedtls_libdir)
+    set(MBEDTLS_INCLUDE_DIRS "${MBEDTLS_INCLUDE_DIR}" CACHE STRING "" FORCE)
+    set(MBEDTLS_LIBRARIES "${MBEDCRYPTO_LIBRARY}" CACHE STRING "" FORCE)
+    cmake_path(APPEND _mbedtls_libdir "libmbedtls.a" OUTPUT_VARIABLE _mbedtls_lib)
+    cmake_path(APPEND _mbedtls_libdir "libmbedx509.a" OUTPUT_VARIABLE _mbedx509_lib)
+    set(MBEDTLS_LIBRARY "${_mbedtls_lib}" CACHE FILEPATH "" FORCE)
+    set(MBEDX509_LIBRARY "${_mbedx509_lib}" CACHE FILEPATH "" FORCE)
+    set(MBEDTLS_LIBRARY_DIRS "" CACHE STRING "" FORCE)
+    set(MBEDTLS_LIBRARIES
+        "${MBEDTLS_LIBRARY}"
+        "${MBEDX509_LIBRARY}"
+        "${MBEDCRYPTO_LIBRARY}"
+        CACHE STRING "" FORCE)
+    unset(_mbedcrypto_lib)
+    unset(_mbedtls_libdir)
+    unset(_mbedtls_lib)
+    unset(_mbedx509_lib)
+endif()
+
+unset(_mbedtls_archive)
+unset(_mbedtls_archive_norm)
+unset(_mbedtls_url)
+unset(_mbedtls_config_dir)
+unset(_mbedtls_user_config)

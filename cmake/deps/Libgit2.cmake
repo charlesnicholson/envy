@@ -1,4 +1,4 @@
-set(USE_HTTPS OpenSSL CACHE STRING "" FORCE)
+set(USE_HTTPS mbedTLS CACHE STRING "" FORCE)
 set(USE_GSSAPI OFF CACHE BOOL "" FORCE)
 set(USE_SSH ON CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -30,6 +30,12 @@ if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR AND
 endif()
 
 add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
+foreach(_envy_libgit2_c_target IN ITEMS libgit2 libgit2package git2 http-parser ntlmclient ntlmclient_shared ntlmclient_static util)
+    if(TARGET ${_envy_libgit2_c_target})
+        set_property(TARGET ${_envy_libgit2_c_target} PROPERTY C_STANDARD 99)
+    endif()
+endforeach()
+unset(_envy_libgit2_c_target)
 if(TARGET libgit2package)
     add_library(envy::libgit2 ALIAS libgit2package)
     target_include_directories(libgit2package INTERFACE
@@ -48,23 +54,31 @@ foreach(_envy_git_target IN ITEMS libgit2package git2 libgit2)
         get_target_property(_envy_git_iface ${_envy_git_target} INTERFACE_LINK_LIBRARIES)
         if(_envy_git_iface)
             set(_envy_git_iface_filtered ${_envy_git_iface})
-            # Libgit2 exports OpenSSL/libssh2 both as targets and as raw archive paths; strip them so we don't pass duplicate libs downstream.
-            cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" "lib" "libssl.a" OUTPUT_VARIABLE _envy_openssl_ssl_lib)
-            cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "openssl-build" "lib" "libcrypto.a" OUTPUT_VARIABLE _envy_openssl_crypto_lib)
+            # Libgit2 exports libssh2 and TLS backends both as targets and as raw archive paths; strip them so we don't pass duplicate libs downstream.
             list(REMOVE_ITEM _envy_git_iface_filtered
                 libssh2::libssh2
                 "${LIBSSH2_LIBRARY}"
-                "${_envy_openssl_ssl_lib}"
-                "${_envy_openssl_crypto_lib}"
-                OpenSSL::SSL
-                OpenSSL::Crypto)
+                MbedTLS::mbedtls
+                MbedTLS::mbedx509
+                MbedTLS::mbedcrypto
+                mbedtls
+                mbedx509
+                mbedcrypto)
             list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "libssh2\\\\.a$")
-            list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "openssl-build/.*/libssl\\\\.a$")
-            list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "openssl-build/.*/libcrypto\\\\.a$")
+            if(DEFINED MBEDTLS_LIBRARIES)
+                foreach(_envy_mbed_lib IN LISTS MBEDTLS_LIBRARIES)
+                    list(REMOVE_ITEM _envy_git_iface_filtered "${_envy_mbed_lib}")
+                endforeach()
+            endif()
+            if(DEFINED MBEDTLS_LIBRARY_DIRS)
+                foreach(_envy_mbed_libdir IN LISTS MBEDTLS_LIBRARY_DIRS)
+                    list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "${_envy_mbed_libdir}/libmbedtls\\\\.a$")
+                    list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "${_envy_mbed_libdir}/libmbedx509\\\\.a$")
+                    list(FILTER _envy_git_iface_filtered EXCLUDE REGEX "${_envy_mbed_libdir}/libmbedcrypto\\\\.a$")
+                endforeach()
+            endif()
             set_target_properties(${_envy_git_target} PROPERTIES
                 INTERFACE_LINK_LIBRARIES "${_envy_git_iface_filtered}")
-            unset(_envy_openssl_ssl_lib)
-            unset(_envy_openssl_crypto_lib)
         endif()
     endif()
 endforeach()
