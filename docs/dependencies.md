@@ -53,5 +53,9 @@ All downloads, source trees, and install steps are redirected underneath the act
 - The C implementation is built directly with architecture-specific files added conditionally (x86-64 SIMD or ARM NEON). The exported target is `blake3::blake3` with headers under the `c/` directory.
 - Update the runtime checks if you adjust SIMD availability so we continue to hash test vectors along the most optimized path.
 
+## zlib
+- Source: https://zlib.net/zlib-1.3.1.tar.gz.
+- Built statically with upstream CMake—examples/tests off—and exported as `ZLIB::ZLIB` so libgit2, libssh2, and libcurl consume the same archive across every platform.
+
 ## Runtime Probe
 `src/main.cpp` exercises each dependency in isolation to verify compile-time and runtime integration. The executable should remain fast (<1s) so we can re-run it during development and in CI.
