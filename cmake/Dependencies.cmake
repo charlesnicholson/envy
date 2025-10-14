@@ -101,17 +101,21 @@ add_library(envy::thirdparty ALIAS envy_thirdparty)
 target_link_libraries(envy_thirdparty
     INTERFACE
         envy::libgit2
+        libssh2::libssh2
+        MbedTLS::mbedtls
+        MbedTLS::mbedx509
+        MbedTLS::mbedcrypto
+        ZLIB::ZLIB
+        ${RESOLV_LIBRARY}
+        CURL::libcurl
         TBB::tbb
         libarchive::libarchive
         lua::lua
         blake3::blake3
-        MbedTLS::mbedtls
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc
         aws-crt-cpp
-        ZLIB::ZLIB
-        ${RESOLV_LIBRARY}
 )
 
 if(APPLE)

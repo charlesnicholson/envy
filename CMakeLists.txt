@@ -24,7 +24,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
-    set(_envy_needs_link_groups ON)
 endif()
 
 # Favor size-optimized release binaries by normalizing optimization flags
@@ -89,21 +88,46 @@ target_link_options(envy_cmake_test PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
 )
 
-if(_envy_needs_link_groups)
-    target_link_libraries(envy_cmake_test PRIVATE "-Wl,--start-group")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(CMAKE_C_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE CACHE BOOL "" FORCE)
+    set(CMAKE_C_LINK_GROUP_USING_RESCAN
+        "LINKER:--start-group"
+        "LINKER:--end-group"
+        CACHE STRING "" FORCE
+    )
+    set(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE CACHE BOOL "" FORCE)
+    set(CMAKE_CXX_LINK_GROUP_USING_RESCAN
+        "LINKER:--start-group"
+        "LINKER:--end-group"
+        CACHE STRING "" FORCE
+    )
 endif()
 
 target_link_libraries(envy_cmake_test
     PRIVATE
         envy::thirdparty
-        libssh2::libssh2
 )
 
-if(_envy_needs_link_groups)
-    target_link_libraries(envy_cmake_test PRIVATE "-Wl,--end-group")
+if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
+    set(_envy_rescan_targets
+        envy::libgit2
+        libssh2::libssh2
+        CURL::libcurl
+        MbedTLS::mbedtls
+        MbedTLS::mbedx509
+        MbedTLS::mbedcrypto
+        ZLIB::ZLIB
+        ${RESOLV_LIBRARY}
+    )
+    list(REMOVE_DUPLICATES _envy_rescan_targets)
+    list(JOIN _envy_rescan_targets "," _envy_link_group)
+    target_link_libraries(envy_cmake_test
+        PRIVATE
+            "$<LINK_GROUP:RESCAN,${_envy_link_group}>"
+    )
+    unset(_envy_link_group)
+    unset(_envy_rescan_targets)
 endif()
-
-unset(_envy_needs_link_groups)
 
 target_include_directories(envy_cmake_test
     PRIVATE
