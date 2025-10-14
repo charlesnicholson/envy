@@ -1,5 +1,37 @@
 # Helper utilities for applying one-off patches to third-party sources.
 
+if(NOT DEFINED ENVY_PYTHON_LAUNCHER)
+    if(WIN32)
+        find_program(_envy_python_launcher py REQUIRED)
+        set(ENVY_PYTHON_ARGS "-3" CACHE INTERNAL "Arguments passed to the Python launcher" FORCE)
+    else()
+        find_program(_envy_python_launcher python3 REQUIRED)
+        set(ENVY_PYTHON_ARGS "" CACHE INTERNAL "Arguments passed to the Python interpreter" FORCE)
+    endif()
+    set(ENVY_PYTHON_LAUNCHER "${_envy_python_launcher}" CACHE INTERNAL "Python entrypoint for Envy CMake helpers" FORCE)
+    unset(_envy_python_launcher)
+endif()
+
+function(envy_run_python script)
+    if(NOT EXISTS "${script}")
+        message(FATAL_ERROR "Python script '${script}' not found")
+    endif()
+
+    set(_envy_python_command "${ENVY_PYTHON_LAUNCHER}")
+    if(ENVY_PYTHON_ARGS)
+        list(APPEND _envy_python_command ${ENVY_PYTHON_ARGS})
+    endif()
+    list(APPEND _envy_python_command "${script}")
+    if(ARGN)
+        list(APPEND _envy_python_command ${ARGN})
+    endif()
+
+    execute_process(COMMAND ${_envy_python_command}
+        COMMAND_ERROR_IS_FATAL ANY)
+
+    unset(_envy_python_command)
+endfunction()
+
 function(envy_patch_libssh2 source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -15,8 +47,7 @@ function(envy_patch_libssh2 source_dir binary_dir)
     set(LIBSSH2_CMAKELISTS "${_source_dir_norm}/CMakeLists.txt")
     configure_file("${_template}" "${_script}" @ONLY)
 
-    execute_process(COMMAND python3 "${_script}"
-        COMMAND_ERROR_IS_FATAL ANY)
+    envy_run_python("${_script}")
 
     file(REMOVE "${_script}")
     file(WRITE "${_stamp}" "patched\n")
@@ -49,8 +80,7 @@ function(envy_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh2
     set(LIBSSH2_BINARY "${libssh2_binary_dir}")
     configure_file("${_template}" "${_script}" @ONLY)
 
-    execute_process(COMMAND python3 "${_script}"
-        COMMAND_ERROR_IS_FATAL ANY)
+    envy_run_python("${_script}")
 
     file(REMOVE "${_script}")
     file(WRITE "${_stamp}" "patched\n")
@@ -84,8 +114,7 @@ function(envy_patch_libarchive_cmakelists source_dir binary_dir)
 
     configure_file("${_template}" "${_script}" @ONLY)
 
-    execute_process(COMMAND python3 "${_script}"
-        COMMAND_ERROR_IS_FATAL ANY)
+    envy_run_python("${_script}")
 
     file(REMOVE "${_script}")
     file(WRITE "${_stamp}" "patched\n")
