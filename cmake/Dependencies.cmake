@@ -132,7 +132,6 @@ target_compile_definitions(envy_thirdparty INTERFACE
 )
 
 target_include_directories(envy_thirdparty INTERFACE
-    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"

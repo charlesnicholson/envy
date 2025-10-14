@@ -32,7 +32,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 
 ## Lua
 - Source: https://github.com/lua/lua (tag `v5.4.8`).
-- Upstream Makefile is bypassed; we build `lua` as a static library directly with `add_library` and expose it as `lua::lua`. The helper header `include/lua.hpp` wraps the C headers for seamless C++ consumption.
+- Upstream Makefile is bypassed; we build `lua` as a static library directly with `add_library` and expose it as `lua::lua`. The application includes `lua.h`, `lauxlib.h`, and `lualib.h` directly from the embedded source tree.
 
 ## oneTBB
 - Source: https://github.com/oneapi-src/oneTBB (tag `v2022.2.0`).

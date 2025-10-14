@@ -66,11 +66,6 @@ add_executable(envy_cmake_test)
 target_sources(envy_cmake_test
     PRIVATE
         src/main.cpp
-    PUBLIC
-        FILE_SET public_headers TYPE HEADERS
-            BASE_DIRS "${PROJECT_SOURCE_DIR}/include"
-            FILES
-                include/lua.hpp
 )
 
 set_target_properties(envy_cmake_test PROPERTIES
@@ -128,8 +123,3 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     unset(_envy_link_group)
     unset(_envy_rescan_targets)
 endif()
-
-target_include_directories(envy_cmake_test
-    PRIVATE
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-)

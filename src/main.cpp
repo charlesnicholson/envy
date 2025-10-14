@@ -17,7 +17,11 @@
 
 #include <blake3.h>
 
-#include "lua.hpp"
+extern "C" {
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
+}
 
 #include <curl/curl.h>
 #include <array>
