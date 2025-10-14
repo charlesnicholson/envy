@@ -24,13 +24,31 @@ if(NOT TARGET blake3::blake3)
         "${blake3_SOURCE_DIR}/c/blake3_portable.c"
     )
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)")
-        enable_language(ASM)
-        list(APPEND BLAKE3_SOURCES
-            "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_unix.S"
-            "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_unix.S"
-            "${blake3_SOURCE_DIR}/c/blake3_avx2_x86-64_unix.S"
-            "${blake3_SOURCE_DIR}/c/blake3_avx512_x86-64_unix.S"
-        )
+        if(MSVC)
+            enable_language(ASM_MASM)
+            list(APPEND BLAKE3_SOURCES
+                "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_windows_msvc.asm"
+                "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_windows_msvc.asm"
+                "${blake3_SOURCE_DIR}/c/blake3_avx2_x86-64_windows_msvc.asm"
+                "${blake3_SOURCE_DIR}/c/blake3_avx512_x86-64_windows_msvc.asm"
+            )
+        elseif(WIN32)
+            enable_language(ASM)
+            list(APPEND BLAKE3_SOURCES
+                "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_windows_gnu.S"
+                "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_windows_gnu.S"
+                "${blake3_SOURCE_DIR}/c/blake3_avx2_x86-64_windows_gnu.S"
+                "${blake3_SOURCE_DIR}/c/blake3_avx512_x86-64_windows_gnu.S"
+            )
+        else()
+            enable_language(ASM)
+            list(APPEND BLAKE3_SOURCES
+                "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_unix.S"
+                "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_unix.S"
+                "${blake3_SOURCE_DIR}/c/blake3_avx2_x86-64_unix.S"
+                "${blake3_SOURCE_DIR}/c/blake3_avx512_x86-64_unix.S"
+            )
+        endif()
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
         list(APPEND BLAKE3_SOURCES "${blake3_SOURCE_DIR}/c/blake3_neon.c")
     endif()
