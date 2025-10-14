@@ -95,6 +95,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Zlib.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/CaBundle.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")

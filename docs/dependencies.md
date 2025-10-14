@@ -15,11 +15,12 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
 - CMake options disable CLI and shared builds. The library exports as `envy::libgit2` and is consumed via the standard `git2` target.
 - `USE_HTTPS` is pinned to `mbedTLS` with SSH enabled so HTTPS rides the bundled TLS stack while SSH flows through libssh2.
+- `CERT_LOCATION` targets the cached Mozilla bundle (`out/cache/third_party/cacert-*.pem`) so every platform reads the same trust anchors.
 
 ## libcurl
 - Source: https://github.com/curl/curl (tag `curl-8_16_0`).
 - Built with mbedTLS and libssh2 enabled alongside zlib; the curl CLI is disabled. Static consumers pick up the library via the `CURL::libcurl` alias with `CURL_STATICLIB` defined, and the TLS backend now aligns with the rest of the project.
-- On macOS the build points `CURL_CA_BUNDLE` at `/etc/ssl/cert.pem` so mbedTLS inherits the system trust store; adjust the corresponding cache entry if another path is required on your platform.
+- `CURL_CA_BUNDLE` reuses the same cached PEM bundle, keeping curl aligned with libgit2’s trust store.
 
 ## libssh2
 - Source: https://github.com/libssh2/libssh2 (tag `libssh2-1.11.1`).
