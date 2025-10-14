@@ -30,16 +30,15 @@ unset(_aws_sdk_archive_norm)
 unset(_aws_sdk_url)
 
 set(ENVY_AWSCRT_ROOT "${aws_sdk_SOURCE_DIR}/crt/aws-crt-cpp")
-set(_aws_crt_marker "${ENVY_AWSCRT_ROOT}/crt/aws-c-common/CMakeLists.txt")
-if(NOT EXISTS "${ENVY_AWSCRT_ROOT}/CMakeLists.txt" OR NOT EXISTS "${_aws_crt_marker}")
-    message(STATUS "[envy] Prefetching AWS CRT dependencies...")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND}
-            -Daws_sdk_SOURCE_DIR=${aws_sdk_SOURCE_DIR}
-            -Denvy_project_source_dir=${PROJECT_SOURCE_DIR}
-            -P "${PROJECT_SOURCE_DIR}/cmake/scripts/prefetch_aws_crt.cmake"
-        WORKING_DIRECTORY "${aws_sdk_SOURCE_DIR}"
-        COMMAND_ERROR_IS_FATAL ANY)
+execute_process(
+    COMMAND ${CMAKE_COMMAND}
+        -Daws_sdk_SOURCE_DIR=${aws_sdk_SOURCE_DIR}
+        -Denvy_thirdparty_cache_dir=${ENVY_THIRDPARTY_CACHE_DIR}
+        -P "${PROJECT_SOURCE_DIR}/cmake/scripts/prefetch_aws_crt.cmake"
+    WORKING_DIRECTORY "${aws_sdk_SOURCE_DIR}"
+    COMMAND_ERROR_IS_FATAL ANY)
+if(NOT EXISTS "${ENVY_AWSCRT_ROOT}/CMakeLists.txt")
+    message(FATAL_ERROR "AWS CRT prefetch failed: missing ${ENVY_AWSCRT_ROOT}/CMakeLists.txt")
 endif()
 
 set(_envy_prev_build_testing ${BUILD_TESTING})
@@ -57,4 +56,3 @@ if(TARGET aws-c-io)
 endif()
 set(BUILD_TESTING ${_envy_prev_build_testing} CACHE BOOL "Restart project testing flag" FORCE)
 unset(_envy_prev_build_testing)
-unset(_aws_crt_marker)

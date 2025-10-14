@@ -40,7 +40,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## AWS SDK
 - Source: https://github.com/aws/aws-sdk-cpp/archive/refs/tags/1.11.661.zip.
 - Built as static libraries with tests, CLI utilities, and non-essential components disabled so only `s3`, `sso`, and `sso-oidc` ship in the final bundle.
-- CRT dependencies are prefetched through `cmake/scripts/prefetch_aws_crt.cmake`, which adds the repo shims to `PATH` before invoking the upstream `prefetch_crt_dependency.sh`; reuse that script when updating SDK or CRT revisions.
+- CRT dependencies reuse AWS’s `prefetch_crt_dependency.sh`; our CMake prefetcher parses that manifest, downloads via `file(DOWNLOAD)`, and stages into `crt/aws-crt-cpp` so macOS/Linux/Windows share the same flow.
 
 ## libarchive
 - Source: https://github.com/libarchive/libarchive (tag `v3.8.1`).
