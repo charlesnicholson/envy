@@ -76,7 +76,13 @@ set(ENVY_ZLIB_ARCHIVE "zlib-${ENVY_ZLIB_VERSION}.tar.gz")
 set(ENVY_ZLIB_URL "https://zlib.net/${ENVY_ZLIB_ARCHIVE}")
 set(ENVY_ZLIB_SHA256 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23)
 
-find_library(RESOLV_LIBRARY resolv REQUIRED)
+set(PLATFORM_NETWORK_LIBS)
+if(WIN32)
+    set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32)
+else()
+    find_library(RESOLV_LIBRARY resolv REQUIRED)
+    set(PLATFORM_NETWORK_LIBS ${RESOLV_LIBRARY})
+endif()
 if(APPLE)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
     find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
@@ -111,7 +117,7 @@ target_link_libraries(envy_thirdparty
         MbedTLS::mbedx509
         MbedTLS::mbedcrypto
         ZLIB::ZLIB
-        ${RESOLV_LIBRARY}
+        ${PLATFORM_NETWORK_LIBS}
         CURL::libcurl
         TBB::tbb
         libarchive::libarchive

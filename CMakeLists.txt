@@ -112,8 +112,8 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
         MbedTLS::mbedx509
         MbedTLS::mbedcrypto
         ZLIB::ZLIB
-        ${RESOLV_LIBRARY}
     )
+    list(APPEND _envy_rescan_targets ${PLATFORM_NETWORK_LIBS})
     list(REMOVE_DUPLICATES _envy_rescan_targets)
     list(JOIN _envy_rescan_targets "," _envy_link_group)
     target_link_libraries(envy_cmake_test
