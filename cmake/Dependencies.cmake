@@ -78,7 +78,7 @@ set(ENVY_ZLIB_SHA256 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b7
 
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
-    set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32)
+    set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt)
 else()
     find_library(RESOLV_LIBRARY resolv REQUIRED)
     set(PLATFORM_NETWORK_LIBS ${RESOLV_LIBRARY})
@@ -95,7 +95,6 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Zlib.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/deps/CaBundle.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")

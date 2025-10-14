@@ -55,6 +55,15 @@ extern "C" {
 
 namespace {
 
+void set_env_var(const char *name, const char *value)
+{
+#ifdef _WIN32
+  _putenv_s(name, value);
+#else
+  ::setenv(name, value, 1);
+#endif
+}
+
 std::string to_hex(const uint8_t *data, size_t length)
 {
   std::ostringstream oss;
@@ -69,7 +78,7 @@ class AwsApiGuard {
  public:
   AwsApiGuard()
   {
-    ::setenv("AWS_SDK_LOAD_CONFIG", "1", 1);
+    set_env_var("AWS_SDK_LOAD_CONFIG", "1");
     options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
     options_.loggingOptions.logger_create_fn = []() {
       return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>("envy-cmake-test-logging");
