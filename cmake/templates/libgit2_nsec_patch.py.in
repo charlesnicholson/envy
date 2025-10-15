@@ -1,0 +1,63 @@
+import pathlib
+import re
+
+
+PROLOGUE = """include(FeatureSummary)
+
+set(_envy_stat_nsec_defs_was_set FALSE)
+if(DEFINED CMAKE_REQUIRED_DEFINITIONS)
+  set(_envy_stat_nsec_defs_was_set TRUE)
+  set(_envy_stat_nsec_old_defs "${CMAKE_REQUIRED_DEFINITIONS}")
+endif()
+set(_envy_stat_nsec_work_defs "${CMAKE_REQUIRED_DEFINITIONS}")
+list(REMOVE_ITEM _envy_stat_nsec_work_defs -D_POSIX_C_SOURCE=200809L)
+list(REMOVE_ITEM _envy_stat_nsec_work_defs -D_GNU_SOURCE)
+set(CMAKE_REQUIRED_DEFINITIONS "${_envy_stat_nsec_work_defs}")
+unset(_envy_stat_nsec_work_defs)
+set(_envy_stat_nsec_extra_defs)
+if(NOT APPLE)
+  list(APPEND _envy_stat_nsec_extra_defs -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE)
+endif()
+if(_envy_stat_nsec_extra_defs)
+  list(APPEND CMAKE_REQUIRED_DEFINITIONS ${_envy_stat_nsec_extra_defs})
+  list(REMOVE_DUPLICATES CMAKE_REQUIRED_DEFINITIONS)
+endif()
+
+"""
+
+EPILOGUE = """if(_envy_stat_nsec_defs_was_set)
+  set(CMAKE_REQUIRED_DEFINITIONS "${_envy_stat_nsec_old_defs}")
+else()
+  unset(CMAKE_REQUIRED_DEFINITIONS)
+endif()
+unset(_envy_stat_nsec_defs_was_set)
+unset(_envy_stat_nsec_old_defs)
+unset(_envy_stat_nsec_extra_defs)
+
+"""
+
+
+def patch_find_stat_nsec(path: pathlib.Path) -> None:
+    text = path.read_text()
+
+    marker = 'check_struct_has_member("struct stat" st_mtim "sys/types.h;sys/stat.h"\n'
+    if marker not in text:
+        raise SystemExit("Failed to locate struct stat probe marker in FindStatNsec.cmake")
+
+    _, after_marker = text.split(marker, 1)
+    rest = re.sub(
+        r'if\(_envy_stat_nsec_defs_was_set\)\n(?:.+\n)*?unset\(_envy_stat_nsec_extra_defs\)\n\n',
+        "",
+        after_marker,
+        flags=re.MULTILINE,
+    )
+
+    rest = rest.replace("add_feature_info", EPILOGUE + "add_feature_info", 1)
+    updated = PROLOGUE + marker + rest
+
+    if updated != text:
+        path.write_text(updated)
+
+
+FIND_STAT_NSEC = pathlib.Path(r"@FIND_STAT_NSEC@")
+patch_find_stat_nsec(FIND_STAT_NSEC)

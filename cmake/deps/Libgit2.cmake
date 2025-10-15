@@ -32,6 +32,9 @@ if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR AND
         DEFINED libssh2_SOURCE_DIR AND DEFINED libssh2_BINARY_DIR)
     envy_patch_libgit2_select("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}" "${libssh2_SOURCE_DIR}" "${libssh2_BINARY_DIR}")
 endif()
+if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR)
+    envy_patch_libgit2_nsec("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
+endif()
 
 add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
 foreach(_envy_libgit2_c_target IN ITEMS libgit2 libgit2package git2 http-parser ntlmclient ntlmclient_shared ntlmclient_static util)

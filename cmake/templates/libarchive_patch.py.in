@@ -2,8 +2,9 @@ import pathlib
 
 cmake_path = pathlib.Path(r"@LIBARCHIVE_CMAKELISTS@")
 text = cmake_path.read_text()
+updated = text
 
-updated = text.replace(
+updated = updated.replace(
     "CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12 FATAL_ERROR)",
     "cmake_minimum_required(VERSION 3.5)",
 )
@@ -11,6 +12,50 @@ updated = updated.replace(
     "cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)",
     "cmake_minimum_required(VERSION 3.5)",
 )
+
+if "set(_envy_libarchive_saved_includes" not in updated:
+    probe_marker = "CHECK_TYPE_SIZE(gid_t       GID_T)\n"
+    probe_insertion = (
+        "set(_envy_libarchive_saved_includes ${CMAKE_EXTRA_INCLUDE_FILES})\n"
+        "set(CMAKE_EXTRA_INCLUDE_FILES sys/types.h)\n"
+    )
+    if probe_marker in updated:
+        updated = updated.replace(probe_marker, probe_insertion + probe_marker, 1)
+
+    restore_marker = "CHECK_TYPE_SIZE(wchar_t     SIZEOF_WCHAR_T)\n"
+    restore_snippet = (
+        "if(_envy_libarchive_saved_includes)\n"
+        "  set(CMAKE_EXTRA_INCLUDE_FILES ${_envy_libarchive_saved_includes})\n"
+        "else()\n"
+        "  unset(CMAKE_EXTRA_INCLUDE_FILES)\n"
+        "endif()\n"
+        "unset(_envy_libarchive_saved_includes)\n\n"
+    )
+    if restore_marker in updated:
+        updated = updated.replace(restore_marker, restore_snippet + restore_marker, 1)
+
+id_block = (
+    "CHECK_TYPE_SIZE(id_t        ID_T)\n"
+    "IF(NOT HAVE_ID_T)\n"
+    "  IF(WIN32)\n"
+    "    SET(id_t \"short\")\n"
+    "  ELSE(WIN32)\n"
+    "    SET(id_t \"unsigned int\")\n"
+    "  ENDIF(WIN32)\n"
+    "ENDIF(NOT HAVE_ID_T)\n"
+    "#\n"
+)
+replacement_id_block = (
+    "CHECK_TYPE_SIZE(id_t        ID_T)\n"
+    "IF(NOT HAVE_ID_T)\n"
+    "  IF(WIN32)\n"
+    "    SET(id_t \"short\")\n"
+    "  ENDIF(WIN32)\n"
+    "ENDIF(NOT HAVE_ID_T)\n"
+    "#\n"
+)
+if id_block in updated:
+    updated = updated.replace(id_block, replacement_id_block, 1)
 
 if updated != text:
     cmake_path.write_text(updated)
