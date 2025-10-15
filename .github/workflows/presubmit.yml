@@ -42,14 +42,33 @@ jobs:
       - name: Smoke test
         run: ./out/build/envy -v
 
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.1.2'
+      - uses: actions/checkout@v5
+      - name: Configure and build
+        shell: cmd
+        run: build.bat
+      - name: Smoke test
+        shell: cmd
+        run: out\build\envy.exe -v
+
   all-checks-pass:
     timeout-minutes: 5
     needs:
       - build-linux
       - build-macos
+      - build-windows
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Fail with upstream jobs
         run: exit 1
-        if: (needs.build-linux.result != 'success') || (needs.build-macos.result != 'success')
+        if: (needs.build-linux.result != 'success') || (needs.build-macos.result != 'success') || (needs.build-windows.result != 'success')
