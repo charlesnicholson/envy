@@ -1,42 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 
-rem -----------------------------------------------------------------------------
-rem  Windows helper mirroring build.sh:
-rem    * Configures the preset-driven build if needed
-rem    * Reuses the cached preset marker to avoid redundant reconfigure cycles
-rem    * Builds the envy target via the same CMake preset
-rem  MSVC is required—bootstrap the Visual Studio environment before invoking
-rem  CMake so Ninja binds to cl.exe instead of the GNU toolchain that ships
-rem  with GitHub-hosted runners.
-rem -----------------------------------------------------------------------------
-
-rem Ensure we have a Visual Studio toolchain before doing anything else. The
-rem GitHub-hosted runners ship with multiple editions; prefer whatever vswhere
-rem reports, otherwise probe the common 2022 layout.
-
-set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-if exist "%VSWHERE%" (
-    for /f "usebackq tokens=* delims=" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath`) do (
-        set "VSINSTALLPATH=%%i"
-    )
+where cl >nul 2>&1
+if errorlevel 1 (
+    echo cl.exe not found on PATH. Please launch from a VS Developer Command Prompt or run vcvars64.bat first.
+    exit /b 1
 )
-
-if not defined VSINSTALLPATH (
-    for %%E in (Enterprise Professional Community BuildTools) do (
-        if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat" (
-            set "VSINSTALLPATH=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E"
-            goto :vs_found
-        )
-    )
-)
-
-if not defined VSINSTALLPATH goto :no_msvc
-
-:vs_found
-echo [build.bat] Using Visual Studio at: %VSINSTALLPATH%
-call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
-if errorlevel 1 goto :fail
 
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%.") do set "ROOT_DIR=%%~fI"
@@ -80,23 +49,6 @@ if errorlevel 1 goto :fail
 
 echo Build completed successfully.
 exit /b 0
-
-:no_msvc
-echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.
-echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.
-echo Attempted lookup using:
-echo   vswhere path: %VSWHERE%
-if exist "%VSWHERE%" (
-    echo   vswhere output:
-    "%VSWHERE%" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath
-) else (
-    echo   vswhere executable not found.
-)
-echo   Probed install roots:
-for %%E in (Enterprise Professional Community BuildTools) do (
-    echo     %ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E
-)
-exit /b 1
 
 :fail
 echo.
