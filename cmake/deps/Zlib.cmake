@@ -16,11 +16,6 @@ FetchContent_Declare(envy_zlib
 FetchContent_MakeAvailable(envy_zlib)
 FetchContent_GetProperties(envy_zlib)
 
-if(DEFINED envy_zlib_SOURCE_DIR)
-    set(ZLIB_INCLUDE_DIR "${envy_zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
-    set(ZLIB_INCLUDE_DIRS "${envy_zlib_SOURCE_DIR}" CACHE STRING "" FORCE)
-endif()
-
 if(DEFINED envy_zlib_BINARY_DIR)
     set(_envy_zlib_primary_target "")
     if(TARGET zlibstatic)
@@ -42,12 +37,22 @@ if(DEFINED envy_zlib_BINARY_DIR)
     unset(ZLIB_LIBRARIES CACHE)
 
     set(ZLIB_LIBRARY "$<TARGET_FILE:${_envy_zlib_primary_target}>" CACHE STRING "" FORCE)
+    if(DEFINED envy_zlib_SOURCE_DIR)
+        set(ZLIB_INCLUDE_DIR "${envy_zlib_BINARY_DIR}" CACHE PATH "" FORCE)
+        set(ZLIB_INCLUDE_DIRS "${envy_zlib_BINARY_DIR};${envy_zlib_SOURCE_DIR}" CACHE STRING "" FORCE)
+    endif()
+
     if(NOT TARGET ZLIB::ZLIB)
         add_library(ZLIB::ZLIB INTERFACE IMPORTED)
     endif()
-    set_target_properties(ZLIB::ZLIB PROPERTIES
-        INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target}
-        INTERFACE_INCLUDE_DIRECTORIES "${envy_zlib_SOURCE_DIR}")
+    if(DEFINED envy_zlib_SOURCE_DIR)
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target}
+            INTERFACE_INCLUDE_DIRECTORIES "${envy_zlib_BINARY_DIR};${envy_zlib_SOURCE_DIR}")
+    else()
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target})
+    endif()
 
     set(ZLIB_LIBRARIES "${ZLIB_LIBRARY}" CACHE STRING "" FORCE)
     set(ZLIB_VERSION_STRING "${ENVY_ZLIB_VERSION}" CACHE STRING "" FORCE)
