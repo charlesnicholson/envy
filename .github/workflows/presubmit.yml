@@ -1,0 +1,44 @@
+name: presubmit
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: presubmit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/checkout@v5
+      - name: Build
+        run: ./build.sh
+      - name: Smoke test
+        run: ./out/build/envy -v
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/checkout@v5
+      - name: Build
+        run: ./build.sh
+      - name: Smoke test
+        run: ./out/build/envy -v
+
+  all-checks-pass:
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux
+      - build-macos
+    steps:
+      - name: Done
+        run: echo "all checks completed"
