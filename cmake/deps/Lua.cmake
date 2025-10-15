@@ -60,7 +60,6 @@ if(NOT TARGET lua)
     target_include_directories(lua PUBLIC "${lua_SOURCE_DIR}" "${_lua_source_root}")
     target_compile_definitions(lua PRIVATE
         $<$<NOT:$<PLATFORM_ID:Windows>>:LUA_USE_POSIX>
-        $<$<PLATFORM_ID:Windows>:LUA_USE_WINDOWS>
         $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
     )
     set_target_properties(lua PROPERTIES

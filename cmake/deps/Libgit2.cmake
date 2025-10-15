@@ -108,6 +108,16 @@ foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-par
     endif()
 endforeach()
 
+if(DEFINED envy_zlib_SOURCE_DIR AND DEFINED envy_zlib_BINARY_DIR)
+    foreach(_envy_git_target IN ITEMS libgit2 libgit2package git2 util)
+        if(TARGET ${_envy_git_target})
+            target_include_directories(${_envy_git_target} PRIVATE
+                "${envy_zlib_SOURCE_DIR}"
+                "${envy_zlib_BINARY_DIR}")
+        endif()
+    endforeach()
+endif()
+
 unset(_libgit2_archive)
 unset(_libgit2_archive_norm)
 unset(_libgit2_url)

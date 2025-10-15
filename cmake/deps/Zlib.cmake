@@ -57,6 +57,10 @@ if(DEFINED envy_zlib_BINARY_DIR)
 
     set(ZLIB_LIBRARIES "${ZLIB_LIBRARY}" CACHE STRING "" FORCE)
     set(ZLIB_VERSION_STRING "${ENVY_ZLIB_VERSION}" CACHE STRING "" FORCE)
+
+    if(DEFINED envy_zlib_SOURCE_DIR AND EXISTS "${envy_zlib_BINARY_DIR}/zconf.h")
+        configure_file("${envy_zlib_BINARY_DIR}/zconf.h" "${envy_zlib_SOURCE_DIR}/zconf.h" COPYONLY)
+    endif()
 endif()
 
 unset(_envy_zlib_include_paths)
