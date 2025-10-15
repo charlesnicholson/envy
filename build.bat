@@ -6,6 +6,9 @@ rem  Windows helper mirroring build.sh:
 rem    * Configures the preset-driven build if needed
 rem    * Reuses the cached preset marker to avoid redundant reconfigure cycles
 rem    * Builds the envy target via the same CMake preset
+rem  MSVC is required—bootstrap the Visual Studio environment before invoking
+rem  CMake so Ninja binds to cl.exe instead of the GNU toolchain that ships
+rem  with GitHub-hosted runners.
 rem -----------------------------------------------------------------------------
 
 set "SCRIPT_DIR=%~dp0"
@@ -20,6 +23,26 @@ set "CACHE_DIR=%ROOT_DIR%\out\cache\third_party"
 set "BUILD_DIR=%ROOT_DIR%\out\build"
 set "CACHE_FILE=%BUILD_DIR%\CMakeCache.txt"
 set "PRESET_FILE=%BUILD_DIR%\.envy-preset"
+
+if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
+    for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath`) do (
+        set "VSINSTALLPATH=%%i"
+    )
+)
+
+if defined VSINSTALLPATH (
+    call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
+    if errorlevel 1 goto :fail
+) else (
+    set "VCVARSALL=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+    if exist "%VCVARSALL%" (
+        call "%VCVARSALL%" >nul
+        if errorlevel 1 goto :fail
+    ) else (
+        echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.&echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.
+        goto :fail
+    )
+)
 
 if not exist "%CACHE_DIR%" (
     mkdir "%CACHE_DIR%" || goto :fail
