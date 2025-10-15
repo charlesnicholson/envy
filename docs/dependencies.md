@@ -48,6 +48,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Source: https://github.com/libarchive/libarchive (tag `v3.8.1`).
 - Non-essential tools and compression backends are disabled so the build depends only on project-managed sources. The `archive` target is re-exported as `libarchive::libarchive` for consumers.
 - Keep changes to compression feature flags synchronized with `check_libarchive()` in `src/main.cpp` so the runtime probe reflects the configured capabilities.
+- Patch forces `sys/types.h` onto libarchive’s type-size probes so glibc exposes `id_t`/friends and config.h skips redefining them.
 
 ## BLAKE3
 - Source: https://github.com/BLAKE3-team/BLAKE3 (tag `1.8.2`).
