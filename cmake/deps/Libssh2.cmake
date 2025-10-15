@@ -69,11 +69,21 @@ endif()
 
 set(Libssh2_DIR "${libssh2_BINARY_DIR}" CACHE PATH "" FORCE)
 set(LIBSSH2_DIR "${libssh2_BINARY_DIR}" CACHE PATH "" FORCE)
-set(LIBSSH2_LIBRARY "${libssh2_BINARY_DIR}/src/libssh2.a" CACHE FILEPATH "" FORCE)
+find_library(_libssh2_resolved
+    NAMES libssh2 libssh2_static ssh2
+    PATHS "${libssh2_BINARY_DIR}/src"
+    NO_DEFAULT_PATH)
+if(NOT _libssh2_resolved)
+    message(FATAL_ERROR "Failed to locate compiled libssh2 archive in ${libssh2_BINARY_DIR}/src")
+endif()
+set(LIBSSH2_LIBRARY "${_libssh2_resolved}" CACHE FILEPATH "" FORCE)
 set(LIBSSH2_LIBRARIES "${LIBSSH2_LIBRARY}" CACHE STRING "" FORCE)
-set(LIBSSH2_LIBRARY_DIR "${libssh2_BINARY_DIR}/src" CACHE PATH "" FORCE)
+cmake_path(GET _libssh2_resolved PARENT_PATH _libssh2_parent_dir)
+set(LIBSSH2_LIBRARY_DIR "${_libssh2_parent_dir}" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIR "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 set(LIBSSH2_INCLUDE_DIRS "${libssh2_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+unset(_libssh2_resolved)
+unset(_libssh2_parent_dir)
 
 set(_envy_libssh2_actual "${_libssh2_primary_target}")
 if(_envy_libssh2_actual STREQUAL "libssh2::libssh2")

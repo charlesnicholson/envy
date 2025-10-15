@@ -63,9 +63,17 @@ if(TARGET libcurl_shared)
     set_target_properties(libcurl_shared PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 set(CURL_INCLUDE_DIR "${libcurl_SOURCE_DIR}/include" CACHE PATH "" FORCE)
-set(CURL_LIBRARY "${libcurl_BINARY_DIR}/lib/libcurl.a" CACHE FILEPATH "" FORCE)
+find_library(_envy_libcurl_archive
+    NAMES libcurl_a libcurl_imp libcurl curl
+    PATHS "${libcurl_BINARY_DIR}/lib" "${libcurl_BINARY_DIR}"
+    NO_DEFAULT_PATH)
+if(NOT _envy_libcurl_archive)
+    message(FATAL_ERROR "Failed to locate libcurl archive in ${libcurl_BINARY_DIR}")
+endif()
+set(CURL_LIBRARY "${_envy_libcurl_archive}" CACHE FILEPATH "" FORCE)
 set(CURL_LIBRARIES "${CURL_LIBRARY}" CACHE STRING "" FORCE)
 set(ENVY_LIBCURL_INCLUDE "${libcurl_SOURCE_DIR}/include")
 set(ENVY_LIBCURL_BINARY_INCLUDE "${libcurl_BINARY_DIR}/include")
 unset(_libssh2_primary_target)
+unset(_envy_libcurl_archive)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
