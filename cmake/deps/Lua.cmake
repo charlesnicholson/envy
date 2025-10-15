@@ -58,11 +58,17 @@ if(NOT TARGET lua)
     )
     add_library(lua STATIC ${LUA_CORE_SOURCES})
     target_include_directories(lua PUBLIC "${lua_SOURCE_DIR}" "${_lua_source_root}")
-    target_compile_definitions(lua PUBLIC LUA_COMPAT_5_3 LUA_USE_POSIX)
+    target_compile_definitions(lua PRIVATE
+        $<$<NOT:$<PLATFORM_ID:Windows>>:LUA_USE_POSIX>
+        $<$<PLATFORM_ID:Windows>:LUA_USE_WINDOWS>
+        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+    )
     set_target_properties(lua PROPERTIES
         C_STANDARD 99
         C_STANDARD_REQUIRED ON)
-    target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=c99>)
+    if(NOT MSVC)
+        target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:-std=c99>)
+    endif()
     add_library(lua::lua ALIAS lua)
     unset(_lua_source_root)
 endif()
