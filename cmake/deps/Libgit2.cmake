@@ -30,9 +30,13 @@ endif()
 
 if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR AND
         DEFINED libssh2_SOURCE_DIR AND DEFINED libssh2_BINARY_DIR)
+    # Upstream SelectSSH insists on pkg-config; patch it so our bundled
+    # libssh2 target is used directly when present.
     envy_patch_libgit2_select("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}" "${libssh2_SOURCE_DIR}" "${libssh2_BINARY_DIR}")
 endif()
 if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR)
+    # Adjust FindStatNsec to apply Linux feature flags without poisoning other
+    # platforms with strict POSIX macros.
     envy_patch_libgit2_nsec("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
 endif()
 

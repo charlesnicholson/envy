@@ -1,6 +1,11 @@
 import pathlib
 import re
 
+# Upstream libgit2 insists on discovering libssh2 through pkg-config even when
+# we vend the library via FetchContent. This patch short-circuits SelectSSH to
+# consume the in-tree libssh2 target when it exists, preserving our include
+# paths and avoiding redundant pkg-config lookups.
+
 select_path = pathlib.Path(r"@SELECT_PATH@")
 text = select_path.read_text()
 
