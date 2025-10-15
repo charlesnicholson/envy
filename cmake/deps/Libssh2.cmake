@@ -88,6 +88,11 @@ if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         target_compile_definitions(${_envy_libssh2_actual} PRIVATE _DEFAULT_SOURCE)
     endif()
+    if(DEFINED envy_zlib_SOURCE_DIR AND DEFINED envy_zlib_BINARY_DIR)
+        target_include_directories(${_envy_libssh2_actual} PRIVATE
+            "${envy_zlib_SOURCE_DIR}"
+            "${envy_zlib_BINARY_DIR}")
+    endif()
     if(MSVC)
         target_compile_options(${_envy_libssh2_actual} PRIVATE /wd4200 /wd4127)
     endif()
