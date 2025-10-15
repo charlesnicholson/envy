@@ -63,5 +63,15 @@ replacement_id_block = (
 if id_block in updated:
     updated = updated.replace(id_block, replacement_id_block, 1)
 
+iso_file = pathlib.Path(r"@LIBARCHIVE_SOURCE@/archive_write_set_format_iso9660.c")
+if iso_file.exists():
+    iso_text = iso_file.read_text()
+    if "envy override iso9660 tz" not in iso_text:
+        iso_text = iso_text.replace(
+            "#if defined(HAVE_STRUCT_TM_TM_GMTOFF)\n#define get_gmoffset(tm)\t((tm)->tm_gmtoff)\n#elif defined(HAVE_STRUCT_TM___TM_GMTOFF)\n#define get_gmoffset(tm)\t((tm)->__tm_gmtoff)\n#else",
+            "#if defined(_WIN32) && !defined(__CYGWIN__)\n#undef HAVE_STRUCT_TM_TM_GMTOFF\n#undef HAVE_STRUCT_TM___TM_GMTOFF\n#endif\n#if defined(HAVE_STRUCT_TM_TM_GMTOFF)\n#define get_gmoffset(tm)\t((tm)->tm_gmtoff)\n#elif defined(HAVE_STRUCT_TM___TM_GMTOFF)\n#define get_gmoffset(tm)\t((tm)->__tm_gmtoff)\n#else\n/* envy override iso9660 tz */",
+            1,
+        )
+        iso_file.write_text(iso_text)
 if updated != text:
     cmake_path.write_text(updated)

@@ -101,6 +101,7 @@ set(_envy_libgit2_warning_silencers
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-unused-but-set-parameter>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-single-bit-bitfield-constant-conversion>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-array-parameter>
+    $<$<COMPILE_LANG_AND_ID:C,MSVC>:/wd5287>
 )
 foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
     if(TARGET ${_libgit2_target})
