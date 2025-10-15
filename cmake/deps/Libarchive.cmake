@@ -22,6 +22,7 @@ set(ENABLE_CNG OFF CACHE BOOL "" FORCE)
 set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(LIBARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBARCHIVE_ARCHIVE}" OUTPUT_VARIABLE _libarchive_archive)
 set(_libarchive_url "${ENVY_LIBARCHIVE_URL}")
@@ -66,16 +67,19 @@ if(TARGET archive)
     target_include_directories(archive INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(archive INTERFACE LIBARCHIVE_STATIC)
 elseif(TARGET libarchive)
     add_library(libarchive::libarchive ALIAS libarchive)
     target_include_directories(libarchive INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(libarchive INTERFACE LIBARCHIVE_STATIC)
 elseif(TARGET archive_static)
     add_library(libarchive::libarchive ALIAS archive_static)
     target_include_directories(archive_static INTERFACE
         ${libarchive_SOURCE_DIR}/libarchive
         ${libarchive_BINARY_DIR}/libarchive)
+    target_compile_definitions(archive_static INTERFACE LIBARCHIVE_STATIC)
 else()
     message(FATAL_ERROR "libarchive target was not created by FetchContent")
 endif()

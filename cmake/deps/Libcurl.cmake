@@ -32,13 +32,13 @@ set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 
+set(_envy_zlib_real_target "")
 if(TARGET ZLIB::ZLIB)
-    get_target_property(_zlib_real_target ZLIB::ZLIB INTERFACE_LINK_LIBRARIES)
-    if(_zlib_real_target AND TARGET ${_zlib_real_target})
-        set(ZLIB_LIBRARY_RELEASE "$<TARGET_FILE:${_zlib_real_target}>" CACHE STRING "" FORCE)
-        set(ZLIB_LIBRARY_DEBUG "$<TARGET_FILE:${_zlib_real_target}>" CACHE STRING "" FORCE)
+    get_target_property(_envy_zlib_real_target ZLIB::ZLIB INTERFACE_LINK_LIBRARIES)
+    if(_envy_zlib_real_target AND TARGET ${_envy_zlib_real_target})
+        set(ZLIB_LIBRARY_RELEASE "$<TARGET_FILE:${_envy_zlib_real_target}>" CACHE STRING "" FORCE)
+        set(ZLIB_LIBRARY_DEBUG "$<TARGET_FILE:${_envy_zlib_real_target}>" CACHE STRING "" FORCE)
     endif()
-    unset(_zlib_real_target)
 endif()
 
 cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
@@ -48,11 +48,23 @@ if(EXISTS "${_curl_archive}")
     set(_curl_url "file://${_curl_archive_norm}")
 endif()
 
-FetchContent_Declare(libcurl
-    URL ${_curl_url}
-    URL_HASH SHA256=${ENVY_LIBCURL_SHA256}
-)
-FetchContent_MakeAvailable(libcurl)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "libcurl-src" OUTPUT_VARIABLE libcurl_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libcurl-build" OUTPUT_VARIABLE libcurl_BINARY_DIR)
+
+if(NOT EXISTS "${libcurl_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(libcurl
+        SOURCE_DIR "${libcurl_SOURCE_DIR}"
+        BINARY_DIR "${libcurl_BINARY_DIR}"
+        URL ${_curl_url}
+        URL_HASH SHA256=${ENVY_LIBCURL_SHA256}
+    )
+endif()
+
+if(DEFINED libcurl_SOURCE_DIR AND DEFINED libcurl_BINARY_DIR AND _envy_zlib_real_target)
+    envy_patch_libcurl_cmakelists("${libcurl_SOURCE_DIR}" "${libcurl_BINARY_DIR}" "${_envy_zlib_real_target}")
+endif()
+
+add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
 FetchContent_GetProperties(libcurl)
 unset(_curl_archive)
 unset(_curl_archive_norm)
@@ -102,4 +114,5 @@ unset(_envy_suffix_len)
 unset(_envy_name_len)
 unset(_envy_suffix_start)
 unset(_envy_libcurl_target)
+unset(_envy_zlib_real_target)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
