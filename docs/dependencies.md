@@ -15,6 +15,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 - Source: https://github.com/libgit2/libgit2 (tag `v1.9.1`).
 - CMake options disable CLI and shared builds. The library exports as `envy::libgit2` and is consumed via the standard `git2` target.
 - `USE_HTTPS` selects WinHTTP on Windows and mbedTLS elsewhere so HTTPS rides the platform-preferred backend while SSH flows through libssh2.
+- Patched `FindStatNsec.cmake` forces `_POSIX_C_SOURCE=200809L`/`_GNU_SOURCE` during feature probes so nanosecond detection stays lit on glibc toolchains.
 
 ## libcurl
 - Source: https://github.com/curl/curl (tag `curl-8_16_0`).

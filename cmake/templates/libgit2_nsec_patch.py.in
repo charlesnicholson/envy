@@ -1,0 +1,47 @@
+import pathlib
+
+
+def patch_find_stat_nsec(path: pathlib.Path) -> None:
+    text = path.read_text()
+    if "_envy_stat_nsec_defs_was_set" in text:
+        return
+
+    marker = "include(FeatureSummary)\n\n"
+    prologue = (
+        "include(FeatureSummary)\n\n"
+        "set(_envy_stat_nsec_defs_was_set FALSE)\n"
+        "if(DEFINED CMAKE_REQUIRED_DEFINITIONS)\n"
+        "  set(_envy_stat_nsec_defs_was_set TRUE)\n"
+        "  set(_envy_stat_nsec_old_defs \"${CMAKE_REQUIRED_DEFINITIONS}\")\n"
+        "endif()\n"
+        "set(_envy_stat_nsec_extra_defs -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE)\n"
+        "list(APPEND CMAKE_REQUIRED_DEFINITIONS ${_envy_stat_nsec_extra_defs})\n"
+        "list(REMOVE_DUPLICATES CMAKE_REQUIRED_DEFINITIONS)\n\n"
+    )
+    if marker not in text:
+        raise SystemExit("Failed to locate FeatureSummary include in FindStatNsec.cmake")
+
+    updated = text.replace(marker, prologue, 1)
+
+    epilogue_marker = "\nadd_feature_info"
+    epilogue = (
+        "\nif(_envy_stat_nsec_defs_was_set)\n"
+        "  set(CMAKE_REQUIRED_DEFINITIONS \"${_envy_stat_nsec_old_defs}\")\n"
+        "else()\n"
+        "  unset(CMAKE_REQUIRED_DEFINITIONS)\n"
+        "endif()\n"
+        "unset(_envy_stat_nsec_defs_was_set)\n"
+        "unset(_envy_stat_nsec_old_defs)\n"
+        "unset(_envy_stat_nsec_extra_defs)\n"
+        "\nadd_feature_info"
+    )
+
+    if epilogue_marker not in updated:
+        raise SystemExit("Failed to locate add_feature_info in FindStatNsec.cmake")
+
+    updated = updated.replace(epilogue_marker, epilogue, 1)
+    path.write_text(updated)
+
+
+FIND_STAT_NSEC = pathlib.Path(r"@FIND_STAT_NSEC@")
+patch_find_stat_nsec(FIND_STAT_NSEC)
