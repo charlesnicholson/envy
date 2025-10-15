@@ -11,6 +11,32 @@ rem  CMake so Ninja binds to cl.exe instead of the GNU toolchain that ships
 rem  with GitHub-hosted runners.
 rem -----------------------------------------------------------------------------
 
+# Ensure we have a Visual Studio toolchain before doing anything else. The
+# GitHub-hosted runners ship with multiple editions; prefer whatever vswhere
+# reports, otherwise probe the common 2022 layout.
+
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "%VSWHERE%" (
+    for /f "usebackq tokens=* delims=" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath`) do (
+        set "VSINSTALLPATH=%%i"
+    )
+)
+
+if not defined VSINSTALLPATH (
+    for %%E in (Enterprise Professional Community BuildTools) do (
+        if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E\VC\Auxiliary\Build\vcvars64.bat" (
+            set "VSINSTALLPATH=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E"
+            goto :vs_found
+        )
+    )
+)
+
+if not defined VSINSTALLPATH goto :no_msvc
+
+:vs_found
+call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
+if errorlevel 1 goto :fail
+
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%.") do set "ROOT_DIR=%%~fI"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
@@ -30,19 +56,7 @@ if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
     )
 )
 
-if defined VSINSTALLPATH (
-    call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
-    if errorlevel 1 goto :fail
-) else (
-    set "VCVARSALL=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-    if exist "%VCVARSALL%" (
-        call "%VCVARSALL%" >nul
-        if errorlevel 1 goto :fail
-    ) else (
-        echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.&echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.
-        goto :fail
-    )
-)
+
 
 if not exist "%CACHE_DIR%" (
     mkdir "%CACHE_DIR%" || goto :fail
@@ -72,6 +86,10 @@ if errorlevel 1 goto :fail
 
 echo Build completed successfully.
 exit /b 0
+
+:no_msvc
+echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.&echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.&echo Searched for vcvars64.bat but did not find it.
+exit /b 1
 
 :fail
 echo.
