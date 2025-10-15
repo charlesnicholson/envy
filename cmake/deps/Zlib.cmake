@@ -38,26 +38,28 @@ if(DEFINED envy_zlib_BINARY_DIR)
 
     set(ZLIB_LIBRARY "$<TARGET_FILE:${_envy_zlib_primary_target}>" CACHE STRING "" FORCE)
     if(DEFINED envy_zlib_SOURCE_DIR)
-        set(ZLIB_INCLUDE_DIR "${envy_zlib_BINARY_DIR}" CACHE PATH "" FORCE)
-        set(ZLIB_INCLUDE_DIRS "${envy_zlib_BINARY_DIR};${envy_zlib_SOURCE_DIR}" CACHE STRING "" FORCE)
+        set(ZLIB_INCLUDE_DIR "${envy_zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
+        set(ZLIB_INCLUDE_DIRS "${envy_zlib_SOURCE_DIR};${envy_zlib_BINARY_DIR}" CACHE STRING "" FORCE)
     endif()
 
     if(NOT TARGET ZLIB::ZLIB)
         add_library(ZLIB::ZLIB INTERFACE IMPORTED)
     endif()
+    set(_envy_zlib_include_paths "")
     if(DEFINED envy_zlib_SOURCE_DIR)
-        set_target_properties(ZLIB::ZLIB PROPERTIES
-            INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target}
-            INTERFACE_INCLUDE_DIRECTORIES "${envy_zlib_BINARY_DIR};${envy_zlib_SOURCE_DIR}")
-    else()
-        set_target_properties(ZLIB::ZLIB PROPERTIES
-            INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target})
+        list(APPEND _envy_zlib_include_paths "${envy_zlib_SOURCE_DIR}")
     endif()
+    list(APPEND _envy_zlib_include_paths "${envy_zlib_BINARY_DIR}")
+
+    set_target_properties(ZLIB::ZLIB PROPERTIES
+        INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target}
+        INTERFACE_INCLUDE_DIRECTORIES "${_envy_zlib_include_paths}")
 
     set(ZLIB_LIBRARIES "${ZLIB_LIBRARY}" CACHE STRING "" FORCE)
     set(ZLIB_VERSION_STRING "${ENVY_ZLIB_VERSION}" CACHE STRING "" FORCE)
 endif()
 
+unset(_envy_zlib_include_paths)
 unset(_envy_zlib_primary_target)
 unset(_envy_zlib_output_name)
 unset(_zlib_archive)
