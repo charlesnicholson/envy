@@ -130,6 +130,38 @@ unset(_binary_dir_norm)
 unset(LIBARCHIVE_CMAKELISTS)
 endfunction()
 
+function(envy_patch_aws_sdk_curl source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_awssdk_curl_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_sdk_curl.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_sdk_curl_patch.py.in")
+
+    set(AWS_CORE_CMAKELISTS "${_source_dir_norm}/src/aws-cpp-sdk-core/CMakeLists.txt")
+    if(NOT EXISTS "${AWS_CORE_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWS_CORE_CMAKELISTS)
+endfunction()
+
 function(envy_patch_libgit2_nsec source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
