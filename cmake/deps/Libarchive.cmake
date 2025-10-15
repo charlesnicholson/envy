@@ -43,7 +43,11 @@ if(NOT EXISTS "${libarchive_SOURCE_DIR}/CMakeLists.txt")
 endif()
 
 if(DEFINED libarchive_SOURCE_DIR AND DEFINED libarchive_BINARY_DIR)
-    set(HAVE_STRUCT_TM_TM_GMTOFF 1 CACHE INTERNAL "" FORCE)
+    if(NOT WIN32)
+        set(HAVE_STRUCT_TM_TM_GMTOFF 1 CACHE INTERNAL "" FORCE)
+    else()
+        set(HAVE_STRUCT_TM_TM_GMTOFF 0 CACHE INTERNAL "" FORCE)
+    endif()
     set(HAVE_STRUCT_TM___TM_GMTOFF 0 CACHE INTERNAL "" FORCE)
     # Ensure libarchive sees sys/types.h during type-size probes so Linux
     # builds inherit the platform definitions instead of redefining POSIX

@@ -31,6 +31,16 @@ set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+
+if(TARGET ZLIB::ZLIB)
+    get_target_property(_zlib_real_target ZLIB::ZLIB INTERFACE_LINK_LIBRARIES)
+    if(_zlib_real_target AND TARGET ${_zlib_real_target})
+        set(ZLIB_LIBRARY_RELEASE "$<TARGET_FILE:${_zlib_real_target}>" CACHE STRING "" FORCE)
+        set(ZLIB_LIBRARY_DEBUG "$<TARGET_FILE:${_zlib_real_target}>" CACHE STRING "" FORCE)
+    endif()
+    unset(_zlib_real_target)
+endif()
+
 cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
 set(_curl_url "${ENVY_LIBCURL_URL}")
 if(EXISTS "${_curl_archive}")
