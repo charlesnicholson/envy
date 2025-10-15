@@ -76,8 +76,7 @@ std::string to_hex(const uint8_t *data, size_t length)
 
 class AwsApiGuard {
  public:
-  AwsApiGuard()
-  {
+  AwsApiGuard() {
     set_env_var("AWS_SDK_LOAD_CONFIG", "1");
     options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
     options_.loggingOptions.logger_create_fn = []() {
@@ -89,10 +88,7 @@ class AwsApiGuard {
   AwsApiGuard(const AwsApiGuard &) = delete;
   AwsApiGuard &operator=(const AwsApiGuard &) = delete;
 
-  ~AwsApiGuard()
-  {
-    Aws::ShutdownAPI(options_);
-  }
+  ~AwsApiGuard() { Aws::ShutdownAPI(options_); }
 
  private:
   Aws::SDKOptions options_{};
@@ -123,14 +119,9 @@ std::filesystem::path create_temp_directory()
 class TempResourceManager {
  public:
   TempResourceManager() = default;
-
   TempResourceManager(const TempResourceManager &) = delete;
   TempResourceManager &operator=(const TempResourceManager &) = delete;
-
-  ~TempResourceManager()
-  {
-    cleanup();
-  }
+  ~TempResourceManager() { cleanup(); }
 
   std::filesystem::path create_directory()
   {
@@ -160,18 +151,13 @@ TempResourceManager *g_temp_manager = nullptr;
 
 class TempManagerScope {
  public:
-  explicit TempManagerScope(TempResourceManager &manager) : manager_(manager)
-  {
+  explicit TempManagerScope(TempResourceManager &manager) : manager_(manager) {
     g_temp_manager = &manager_;
   }
 
   TempManagerScope(const TempManagerScope &) = delete;
   TempManagerScope &operator=(const TempManagerScope &) = delete;
-
-  ~TempManagerScope()
-  {
-    g_temp_manager = nullptr;
-  }
+  ~TempManagerScope() { g_temp_manager = nullptr; }
 
  private:
   TempResourceManager &manager_;
@@ -220,8 +206,7 @@ std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
   return Aws::MakeShared<Aws::Auth::DefaultAWSCredentialsProviderChain>(kAllocationTag);
 }
 
-void archive_copy_data(struct archive *source, struct archive *dest)
-{
+void archive_copy_data(struct archive *source, struct archive *dest) {
   const void *buff = nullptr;
   size_t size = 0;
   la_int64_t offset = 0;

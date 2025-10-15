@@ -16,6 +16,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.1.2'
       - uses: actions/checkout@v5
       - name: Build
         run: ./build.sh
@@ -28,6 +32,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.1.2'
       - uses: actions/checkout@v5
       - name: Build
         run: ./build.sh
@@ -35,10 +43,13 @@ jobs:
         run: ./out/build/envy -v
 
   all-checks-pass:
-    runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - build-linux
       - build-macos
+    runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: Done
-        run: echo "all checks completed"
+      - name: Fail with upstream jobs
+        run: exit 1
+        if: (needs.build-linux.result != 'success') || (needs.build-macos.result != 'success')
