@@ -34,6 +34,7 @@ if not defined VSINSTALLPATH (
 if not defined VSINSTALLPATH goto :no_msvc
 
 :vs_found
+echo [build.bat] Using Visual Studio at: %VSINSTALLPATH%
 call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 goto :fail
 
@@ -81,7 +82,20 @@ echo Build completed successfully.
 exit /b 0
 
 :no_msvc
-echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.&echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.&echo Searched for vcvars64.bat but did not find it.
+echo Failed to locate Visual Studio toolchain. MSVC is required to build Envy.
+echo Install Visual Studio Build Tools with the "Desktop development with C++" workload.
+echo Attempted lookup using:
+echo   vswhere path: %VSWHERE%
+if exist "%VSWHERE%" (
+    echo   vswhere output:
+    "%VSWHERE%" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath
+) else (
+    echo   vswhere executable not found.
+)
+echo   Probed install roots:
+for %%E in (Enterprise Professional Community BuildTools) do (
+    echo     %ProgramFiles(x86)%\Microsoft Visual Studio\2022\%%E
+)
 exit /b 1
 
 :fail
