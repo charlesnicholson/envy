@@ -1,0 +1,19 @@
+import pathlib
+
+# Force AWS CRT projects to use the release (/MT) runtime even when building
+# Debug configurations so the toolchain never emits /MD or /MTd.
+
+aws_cflags_path = pathlib.Path(r"@AWS_CFLAGS_PATH@")
+text = aws_cflags_path.read_text()
+
+marker = "envy override static crt"
+if marker not in text:
+    text = text.replace(
+        'list(APPEND AWS_C_FLAGS "/MT$<$<CONFIG:Debug>:d>")',
+        'list(APPEND AWS_C_FLAGS "/MT") # envy override static crt',
+    )
+    text = text.replace(
+        'list(APPEND AWS_C_FLAGS "/MD$<$<CONFIG:Debug>:d>")',
+        'list(APPEND AWS_C_FLAGS "/MD") # envy override static crt',
+    )
+    aws_cflags_path.write_text(text)
