@@ -36,7 +36,7 @@ if(DEFINED envy_zlib_BINARY_DIR)
     unset(ZLIB_LIBRARY CACHE)
     unset(ZLIB_LIBRARIES CACHE)
 
-    set(ZLIB_LIBRARY "$<TARGET_FILE:${_envy_zlib_primary_target}>" CACHE STRING "" FORCE)
+    set(ZLIB_LIBRARY "${_envy_zlib_primary_target}" CACHE STRING "" FORCE)
     if(DEFINED envy_zlib_SOURCE_DIR)
         set(ZLIB_INCLUDE_DIR "${envy_zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
         set(ZLIB_INCLUDE_DIRS "${envy_zlib_SOURCE_DIR};${envy_zlib_BINARY_DIR}" CACHE STRING "" FORCE)
