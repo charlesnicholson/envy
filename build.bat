@@ -11,9 +11,9 @@ rem  CMake so Ninja binds to cl.exe instead of the GNU toolchain that ships
 rem  with GitHub-hosted runners.
 rem -----------------------------------------------------------------------------
 
-# Ensure we have a Visual Studio toolchain before doing anything else. The
-# GitHub-hosted runners ship with multiple editions; prefer whatever vswhere
-# reports, otherwise probe the common 2022 layout.
+rem Ensure we have a Visual Studio toolchain before doing anything else. The
+rem GitHub-hosted runners ship with multiple editions; prefer whatever vswhere
+rem reports, otherwise probe the common 2022 layout.
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if exist "%VSWHERE%" (
@@ -49,13 +49,6 @@ set "CACHE_DIR=%ROOT_DIR%\out\cache\third_party"
 set "BUILD_DIR=%ROOT_DIR%\out\build"
 set "CACHE_FILE=%BUILD_DIR%\CMakeCache.txt"
 set "PRESET_FILE=%BUILD_DIR%\.envy-preset"
-
-if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
-    for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.VC.Tools.x86.x64 -property installationPath`) do (
-        set "VSINSTALLPATH=%%i"
-    )
-)
-
 
 
 if not exist "%CACHE_DIR%" (
