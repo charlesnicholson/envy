@@ -45,6 +45,9 @@ endif()
 if(DEFINED libarchive_SOURCE_DIR AND DEFINED libarchive_BINARY_DIR)
     set(HAVE_STRUCT_TM_TM_GMTOFF 1 CACHE INTERNAL "" FORCE)
     set(HAVE_STRUCT_TM___TM_GMTOFF 0 CACHE INTERNAL "" FORCE)
+    # Ensure libarchive sees sys/types.h during type-size probes so Linux
+    # builds inherit the platform definitions instead of redefining POSIX
+    # aliases like id_t.
     envy_patch_libarchive_cmakelists("${libarchive_SOURCE_DIR}" "${libarchive_BINARY_DIR}")
 endif()
 

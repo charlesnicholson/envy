@@ -1,4 +1,7 @@
-# Helper utilities for applying one-off patches to third-party sources.
+# Helper utilities for patching third-party projects in-flight.  Each helper
+# script rewrites fragile upstream build logic just enough to fit Envy’s
+# monorepo layout without forking entire trees.  Keep the interventions
+# narrowly scoped and idempotent so reconfiguration remains safe.
 
 if(NOT DEFINED ENVY_PYTHON_LAUNCHER)
     if(WIN32)

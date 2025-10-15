@@ -1,5 +1,11 @@
 import pathlib
 
+# Libarchive’s stock CMake checks redeclare POSIX types when sys/types.h is not
+# explicitly included, which causes our Linux builds to redefine id_t while the
+# macOS SDK happily provides it already. This patch injects the missing include
+# context and prunes the Unix fallback so config.h mirrors the platform types
+# instead of stomping on them.
+
 cmake_path = pathlib.Path(r"@LIBARCHIVE_CMAKELISTS@")
 text = cmake_path.read_text()
 updated = text

@@ -1,6 +1,11 @@
 import pathlib
 import re
 
+# glibc only exposes the nanosecond members of struct stat when certain POSIX
+# macros are defined, but propagating those macros into macOS headers breaks the
+# build. This patch regenerates FindStatNsec.cmake so we temporarily add the
+# flags on Linux, strip any stale definitions the caller may have set, and
+# restore the prior state after the detection runs.
 
 PROLOGUE = """include(FeatureSummary)
 

@@ -1,5 +1,10 @@
 import pathlib
 
+# libssh2’s 3.1-era CMake scripts assume they are the top-level project, which
+# breaks when FetchContent reuses the source tree. We bump the policy baseline
+# and set CMAKE_SOURCE_DIR to the parent project so relative paths line up with
+# Envy’s build layout.
+
 cmake_path = pathlib.Path(r"@LIBSSH2_CMAKELISTS@")
 text = cmake_path.read_text()
 updated = text
