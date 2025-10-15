@@ -31,7 +31,7 @@ if(DEFINED envy_liblzma_BINARY_DIR)
     unset(LIBLZMA_LIBRARY CACHE)
     unset(LIBLZMA_LIBRARIES CACHE)
 
-    set(LIBLZMA_LIBRARY "$<TARGET_FILE:${_envy_liblzma_primary_target}>" CACHE STRING "" FORCE)
+    set(LIBLZMA_LIBRARY "${_envy_liblzma_primary_target}" CACHE STRING "" FORCE)
     if(DEFINED envy_liblzma_SOURCE_DIR)
         set(LIBLZMA_INCLUDE_DIR "${envy_liblzma_SOURCE_DIR}/src/liblzma/api" CACHE PATH "" FORCE)
         set(LIBLZMA_INCLUDE_DIRS "${LIBLZMA_INCLUDE_DIR}" CACHE STRING "" FORCE)

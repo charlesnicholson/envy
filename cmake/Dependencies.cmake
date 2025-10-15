@@ -129,6 +129,8 @@ target_link_libraries(envy_thirdparty
         MbedTLS::mbedx509
         MbedTLS::mbedcrypto
         ZLIB::ZLIB
+        LibLZMA::LibLZMA
+        BZip2::BZip2
         ${PLATFORM_NETWORK_LIBS}
         CURL::libcurl
         TBB::tbb
