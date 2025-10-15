@@ -43,10 +43,13 @@ jobs:
         run: ./out/build/envy -v
 
   all-checks-pass:
-    runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - build-linux
       - build-macos
+    runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: Done
-        run: echo "all checks completed"
+      - name: Fail with upstream jobs
+        run: exit 1
+        if: (needs.build-linux.result != 'success') || (needs.build-macos.result != 'success')
