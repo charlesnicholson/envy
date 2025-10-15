@@ -63,17 +63,30 @@ if(TARGET libcurl_shared)
     set_target_properties(libcurl_shared PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 set(CURL_INCLUDE_DIR "${libcurl_SOURCE_DIR}/include" CACHE PATH "" FORCE)
-find_library(_envy_libcurl_archive
-    NAMES libcurl_a libcurl_imp libcurl curl
-    PATHS "${libcurl_BINARY_DIR}/lib" "${libcurl_BINARY_DIR}"
-    NO_DEFAULT_PATH)
-if(NOT _envy_libcurl_archive)
-    message(FATAL_ERROR "Failed to locate libcurl archive in ${libcurl_BINARY_DIR}")
+set(_envy_libcurl_target libcurl)
+if(TARGET libcurl_static)
+    set(_envy_libcurl_target libcurl_static)
 endif()
+
+get_target_property(_envy_libcurl_output_name ${_envy_libcurl_target} OUTPUT_NAME)
+if(NOT _envy_libcurl_output_name)
+    if(_envy_libcurl_target STREQUAL "libcurl_static")
+        set(_envy_libcurl_output_name curl)
+    else()
+        set(_envy_libcurl_output_name ${_envy_libcurl_target})
+    endif()
+endif()
+
+cmake_path(APPEND libcurl_BINARY_DIR "lib"
+    "${CMAKE_STATIC_LIBRARY_PREFIX}${_envy_libcurl_output_name}${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    OUTPUT_VARIABLE _envy_libcurl_archive)
+
 set(CURL_LIBRARY "${_envy_libcurl_archive}" CACHE FILEPATH "" FORCE)
 set(CURL_LIBRARIES "${CURL_LIBRARY}" CACHE STRING "" FORCE)
 set(ENVY_LIBCURL_INCLUDE "${libcurl_SOURCE_DIR}/include")
 set(ENVY_LIBCURL_BINARY_INCLUDE "${libcurl_BINARY_DIR}/include")
 unset(_libssh2_primary_target)
 unset(_envy_libcurl_archive)
+unset(_envy_libcurl_output_name)
+unset(_envy_libcurl_target)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
