@@ -76,6 +76,16 @@ set(ENVY_ZLIB_ARCHIVE "zlib-${ENVY_ZLIB_VERSION}.tar.gz")
 set(ENVY_ZLIB_URL "https://zlib.net/${ENVY_ZLIB_ARCHIVE}")
 set(ENVY_ZLIB_SHA256 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23)
 
+set(ENVY_LIBLZMA_VERSION "5.8.1")
+set(ENVY_LIBLZMA_ARCHIVE "xz-${ENVY_LIBLZMA_VERSION}.tar.gz")
+set(ENVY_LIBLZMA_URL "https://github.com/tukaani-project/xz/releases/download/v${ENVY_LIBLZMA_VERSION}/${ENVY_LIBLZMA_ARCHIVE}")
+set(ENVY_LIBLZMA_SHA256 507825b599356c10dca1cd720c9d0d0c9d5400b9de300af00e4d1ea150795543)
+
+set(ENVY_LIBBZ2_VERSION "1.0.8")
+set(ENVY_LIBBZ2_ARCHIVE "bzip2-${ENVY_LIBBZ2_VERSION}.tar.gz")
+set(ENVY_LIBBZ2_URL "https://github.com/libarchive/bzip2/archive/refs/tags/bzip2-${ENVY_LIBBZ2_VERSION}.tar.gz")
+set(ENVY_LIBBZ2_SHA256 db106b740252669664fd8f3a1c69fe7f689d5cd4b132f82ba82b9afba27627df)
+
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
     set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt)
@@ -95,6 +105,8 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build dependencies as static libraries" FO
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency test targets" FORCE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Zlib.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Liblzma.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Libbz2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")
