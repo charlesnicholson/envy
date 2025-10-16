@@ -38,6 +38,7 @@ if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR)
     # Adjust FindStatNsec to apply Linux feature flags without poisoning other
     # platforms with strict POSIX macros.
     envy_patch_libgit2_nsec("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
+    envy_patch_libgit2_install("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
 endif()
 
 add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
