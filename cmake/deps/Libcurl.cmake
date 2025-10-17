@@ -31,6 +31,16 @@ set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+
+set(_envy_zlib_real_target "")
+if(TARGET ZLIB::ZLIB)
+    get_target_property(_envy_zlib_real_target ZLIB::ZLIB INTERFACE_LINK_LIBRARIES)
+    if(_envy_zlib_real_target AND TARGET ${_envy_zlib_real_target})
+        set(ZLIB_LIBRARY_RELEASE "$<TARGET_FILE:${_envy_zlib_real_target}>" CACHE STRING "" FORCE)
+        set(ZLIB_LIBRARY_DEBUG "$<TARGET_FILE:${_envy_zlib_real_target}>" CACHE STRING "" FORCE)
+    endif()
+endif()
+
 cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
 set(_curl_url "${ENVY_LIBCURL_URL}")
 if(EXISTS "${_curl_archive}")
@@ -38,11 +48,23 @@ if(EXISTS "${_curl_archive}")
     set(_curl_url "file://${_curl_archive_norm}")
 endif()
 
-FetchContent_Declare(libcurl
-    URL ${_curl_url}
-    URL_HASH SHA256=${ENVY_LIBCURL_SHA256}
-)
-FetchContent_MakeAvailable(libcurl)
+cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "libcurl-src" OUTPUT_VARIABLE libcurl_SOURCE_DIR)
+cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libcurl-build" OUTPUT_VARIABLE libcurl_BINARY_DIR)
+
+if(NOT EXISTS "${libcurl_SOURCE_DIR}/CMakeLists.txt")
+    FetchContent_Populate(libcurl
+        SOURCE_DIR "${libcurl_SOURCE_DIR}"
+        BINARY_DIR "${libcurl_BINARY_DIR}"
+        URL ${_curl_url}
+        URL_HASH SHA256=${ENVY_LIBCURL_SHA256}
+    )
+endif()
+
+if(DEFINED libcurl_SOURCE_DIR AND DEFINED libcurl_BINARY_DIR AND _envy_zlib_real_target)
+    envy_patch_libcurl_cmakelists("${libcurl_SOURCE_DIR}" "${libcurl_BINARY_DIR}" "${_envy_zlib_real_target}")
+endif()
+
+add_subdirectory(${libcurl_SOURCE_DIR} ${libcurl_BINARY_DIR})
 FetchContent_GetProperties(libcurl)
 unset(_curl_archive)
 unset(_curl_archive_norm)
@@ -56,6 +78,13 @@ if(TARGET libcurl_static)
     endif()
     set_target_properties(libcurl_static PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
+if(TARGET ZLIB::ZLIB)
+    if(NOT CMAKE_VERSION VERSION_LESS "3.21")
+        set_property(TARGET libcurl_static APPEND PROPERTY INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+    else()
+        target_link_libraries(libcurl_static INTERFACE ZLIB::ZLIB)
+    endif()
+endif()
 if(TARGET libcurl_shared)
     if(DEFINED _libssh2_primary_target)
         add_dependencies(libcurl_shared ${_libssh2_primary_target})
@@ -63,9 +92,27 @@ if(TARGET libcurl_shared)
     set_target_properties(libcurl_shared PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 set(CURL_INCLUDE_DIR "${libcurl_SOURCE_DIR}/include" CACHE PATH "" FORCE)
-set(CURL_LIBRARY "${libcurl_BINARY_DIR}/lib/libcurl.a" CACHE FILEPATH "" FORCE)
+set(_envy_libcurl_target libcurl)
+if(TARGET libcurl_static)
+    set(_envy_libcurl_target libcurl_static)
+endif()
+
+unset(CURL_LIBRARY CACHE)
+unset(CURL_LIBRARIES CACHE)
+
+set(CURL_LIBRARY "$<TARGET_FILE:${_envy_libcurl_target}>" CACHE STRING "" FORCE)
 set(CURL_LIBRARIES "${CURL_LIBRARY}" CACHE STRING "" FORCE)
 set(ENVY_LIBCURL_INCLUDE "${libcurl_SOURCE_DIR}/include")
 set(ENVY_LIBCURL_BINARY_INCLUDE "${libcurl_BINARY_DIR}/include")
 unset(_libssh2_primary_target)
+unset(_envy_libcurl_output_name)
+unset(_envy_libcurl_archive_name)
+unset(_envy_libcurl_prefix)
+unset(_envy_libcurl_suffix)
+unset(_envy_prefix_len)
+unset(_envy_suffix_len)
+unset(_envy_name_len)
+unset(_envy_suffix_start)
+unset(_envy_libcurl_target)
+unset(_envy_zlib_real_target)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)

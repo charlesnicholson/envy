@@ -16,11 +16,6 @@ FetchContent_Declare(envy_zlib
 FetchContent_MakeAvailable(envy_zlib)
 FetchContent_GetProperties(envy_zlib)
 
-if(DEFINED envy_zlib_SOURCE_DIR)
-    set(ZLIB_INCLUDE_DIR "${envy_zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
-    set(ZLIB_INCLUDE_DIRS "${envy_zlib_SOURCE_DIR}" CACHE STRING "" FORCE)
-endif()
-
 if(DEFINED envy_zlib_BINARY_DIR)
     set(_envy_zlib_primary_target "")
     if(TARGET zlibstatic)
@@ -38,25 +33,39 @@ if(DEFINED envy_zlib_BINARY_DIR)
         set(_envy_zlib_output_name z)
     endif()
 
-    cmake_path(APPEND envy_zlib_BINARY_DIR
-        "${CMAKE_STATIC_LIBRARY_PREFIX}${_envy_zlib_output_name}${CMAKE_STATIC_LIBRARY_SUFFIX}"
-        OUTPUT_VARIABLE _envy_zlib_archive_path)
+    unset(ZLIB_LIBRARY CACHE)
+    unset(ZLIB_LIBRARIES CACHE)
 
-    set(ZLIB_LIBRARY "${_envy_zlib_archive_path}" CACHE FILEPATH "" FORCE)
-    if(NOT TARGET ZLIB::ZLIB)
-        add_library(ZLIB::ZLIB STATIC IMPORTED GLOBAL)
+    set(ZLIB_LIBRARY "${_envy_zlib_primary_target}" CACHE STRING "" FORCE)
+    if(DEFINED envy_zlib_SOURCE_DIR)
+        set(ZLIB_INCLUDE_DIR "${envy_zlib_SOURCE_DIR}" CACHE PATH "" FORCE)
+        set(ZLIB_INCLUDE_DIRS "${envy_zlib_SOURCE_DIR};${envy_zlib_BINARY_DIR}" CACHE STRING "" FORCE)
     endif()
-    set_target_properties(ZLIB::ZLIB PROPERTIES
-        IMPORTED_LOCATION "${_envy_zlib_archive_path}"
-        INTERFACE_INCLUDE_DIRECTORIES "${envy_zlib_SOURCE_DIR}")
 
-    set(ZLIB_LIBRARIES ZLIB::ZLIB CACHE STRING "" FORCE)
+    if(NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB INTERFACE IMPORTED)
+    endif()
+    set(_envy_zlib_include_paths "")
+    if(DEFINED envy_zlib_SOURCE_DIR)
+        list(APPEND _envy_zlib_include_paths "${envy_zlib_SOURCE_DIR}")
+    endif()
+    list(APPEND _envy_zlib_include_paths "${envy_zlib_BINARY_DIR}")
+
+    set_target_properties(ZLIB::ZLIB PROPERTIES
+        INTERFACE_LINK_LIBRARIES ${_envy_zlib_primary_target}
+        INTERFACE_INCLUDE_DIRECTORIES "${_envy_zlib_include_paths}")
+
+    set(ZLIB_LIBRARIES "${ZLIB_LIBRARY}" CACHE STRING "" FORCE)
     set(ZLIB_VERSION_STRING "${ENVY_ZLIB_VERSION}" CACHE STRING "" FORCE)
+
+    if(DEFINED envy_zlib_SOURCE_DIR AND EXISTS "${envy_zlib_BINARY_DIR}/zconf.h")
+        configure_file("${envy_zlib_BINARY_DIR}/zconf.h" "${envy_zlib_SOURCE_DIR}/zconf.h" COPYONLY)
+    endif()
 endif()
 
+unset(_envy_zlib_include_paths)
 unset(_envy_zlib_primary_target)
 unset(_envy_zlib_output_name)
-unset(_envy_zlib_archive_path)
 unset(_zlib_archive)
 unset(_zlib_archive_norm)
 unset(_zlib_url)

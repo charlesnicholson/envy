@@ -111,6 +111,7 @@ function(envy_patch_libarchive_cmakelists source_dir binary_dir)
     set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libarchive_patch.py.in")
 
     set(LIBARCHIVE_CMAKELISTS "${_source_dir_norm}/CMakeLists.txt")
+    set(LIBARCHIVE_SOURCE "${_source_dir_norm}/libarchive")
     if(NOT EXISTS "${LIBARCHIVE_CMAKELISTS}")
         return()
     endif()
@@ -124,10 +125,109 @@ function(envy_patch_libarchive_cmakelists source_dir binary_dir)
 
     unset(_stamp)
     unset(_script)
-unset(_template)
-unset(_source_dir_norm)
-unset(_binary_dir_norm)
-unset(LIBARCHIVE_CMAKELISTS)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(LIBARCHIVE_CMAKELISTS)
+    unset(LIBARCHIVE_SOURCE)
+endfunction()
+
+function(envy_patch_aws_sdk_curl source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_awssdk_curl_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_sdk_curl.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_sdk_curl_patch.py.in")
+
+    set(AWS_CORE_CMAKELISTS "${_source_dir_norm}/src/aws-cpp-sdk-core/CMakeLists.txt")
+    if(NOT EXISTS "${AWS_CORE_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWS_CORE_CMAKELISTS)
+endfunction()
+
+function(envy_patch_aws_sdk_runtime source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_awssdk_runtime_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_sdk_runtime.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_sdk_runtime_patch.py.in")
+
+    set(AWS_CFLAGS_PATH "${_source_dir_norm}/crt/aws-crt-cpp/crt/aws-c-common/cmake/AwsCFlags.cmake")
+    if(NOT EXISTS "${AWS_CFLAGS_PATH}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWS_CFLAGS_PATH)
+endfunction()
+
+function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_libcurl_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_libcurl.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libcurl_patch.py.in")
+
+    set(LIBCURL_CMAKELISTS "${_source_dir_norm}/CMakeLists.txt")
+    set(ENVY_ZLIB_TARGET "${zlib_target}")
+    if(NOT EXISTS "${LIBCURL_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(LIBCURL_CMAKELISTS)
+    unset(ENVY_ZLIB_TARGET)
 endfunction()
 
 function(envy_patch_libgit2_nsec source_dir binary_dir)
@@ -160,4 +260,68 @@ function(envy_patch_libgit2_nsec source_dir binary_dir)
     unset(_source_dir_norm)
     unset(_binary_dir_norm)
     unset(FIND_STAT_NSEC)
+endfunction()
+
+function(envy_patch_libssh2_install source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_libssh2_install_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_libssh2_install.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libssh2_install_patch.py.in")
+
+    set(LIBSSH2_SRC_CMAKELISTS "${_source_dir_norm}/src/CMakeLists.txt")
+    if(NOT EXISTS "${LIBSSH2_SRC_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(LIBSSH2_SRC_CMAKELISTS)
+endfunction()
+
+function(envy_patch_libgit2_install source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_libgit2_install_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_libgit2_install.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libgit2_install_patch.py.in")
+
+    set(LIBGIT2_LIBGIT2_CMAKELISTS "${_source_dir_norm}/src/libgit2/CMakeLists.txt")
+    if(NOT EXISTS "${LIBGIT2_LIBGIT2_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(LIBGIT2_LIBGIT2_CMAKELISTS)
 endfunction()

@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""
+Patch libssh2 src/CMakeLists.txt to disable all install() and export() commands.
+This prevents CMake export errors when zlibstatic is not in an export set.
+"""
+import re
+from pathlib import Path
+
+src_cmake = Path(r"@LIBSSH2_SRC_CMAKELISTS@")
+if not src_cmake.exists():
+    print(f"libssh2 src/CMakeLists.txt not found at {src_cmake}")
+    exit(0)
+
+content = src_cmake.read_text(encoding='utf-8')
+original = content
+
+# Pattern to match multi-line install() and export() commands
+# Matches from install( or export( to the closing )
+def comment_cmake_commands(text, command):
+    """Comment out all occurrences of a CMake command (install or export)."""
+    lines = text.split('\n')
+    result = []
+    in_command = False
+    paren_depth = 0
+
+    for line in lines:
+        stripped = line.lstrip()
+
+        # Check if this line starts an install or export command
+        if not in_command and stripped.startswith(f'{command}('):
+            in_command = True
+            paren_depth = 0
+            # Comment out the line
+            result.append(re.sub(r'^(\s*)(.*)$', r'\1# ENVY_PATCHED: \2', line))
+            # Count parentheses on this line
+            paren_depth += line.count('(') - line.count(')')
+            if paren_depth <= 0:
+                in_command = False
+            continue
+
+        # If we're inside a command, comment out this line too
+        if in_command:
+            result.append(re.sub(r'^(\s*)(.*)$', r'\1# ENVY_PATCHED: \2', line))
+            paren_depth += line.count('(') - line.count(')')
+            if paren_depth <= 0:
+                in_command = False
+        else:
+            result.append(line)
+
+    return '\n'.join(result)
+
+# Comment out install() commands
+content = comment_cmake_commands(content, 'install')
+
+# Comment out export() commands
+content = comment_cmake_commands(content, 'export')
+
+if content != original:
+    src_cmake.write_text(content, encoding='utf-8')
+    print(f"Patched {src_cmake} to disable install/export commands")
+else:
+    print(f"No changes needed for {src_cmake}")

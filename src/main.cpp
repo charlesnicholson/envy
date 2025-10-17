@@ -1,3 +1,14 @@
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
+  #include <winsock2.h>
+  #include <windows.h>
+#endif
+
 #include <archive.h>
 #include <archive_entry.h>
 
@@ -23,7 +34,9 @@ extern "C" {
 #include <lualib.h>
 }
 
+#include <bzlib.h>
 #include <curl/curl.h>
+#include <lzma.h>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -821,6 +834,8 @@ void print_dependency_versions()
   std::cout << "  oneTBB: " << TBB_runtime_version() << std::endl;
   std::cout << "  BLAKE3: " << BLAKE3_VERSION_STRING << std::endl;
   std::cout << "  zlib: " << zlibVersion() << std::endl;
+  std::cout << "  bzip2: " << BZ2_bzlibVersion() << std::endl;
+  std::cout << "  liblzma: " << lzma_version_string() << std::endl;
   std::cout << "  AWS SDK for C++: " << Aws::Version::GetVersionString() << std::endl;
 
   Aws::Crt::ApiHandle crt_handle;

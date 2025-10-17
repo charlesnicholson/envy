@@ -38,6 +38,7 @@ if(DEFINED libgit2_SOURCE_DIR AND DEFINED libgit2_BINARY_DIR)
     # Adjust FindStatNsec to apply Linux feature flags without poisoning other
     # platforms with strict POSIX macros.
     envy_patch_libgit2_nsec("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
+    envy_patch_libgit2_install("${libgit2_SOURCE_DIR}" "${libgit2_BINARY_DIR}")
 endif()
 
 add_subdirectory(${libgit2_SOURCE_DIR} ${libgit2_BINARY_DIR})
@@ -101,12 +102,23 @@ set(_envy_libgit2_warning_silencers
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-unused-but-set-parameter>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-single-bit-bitfield-constant-conversion>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-array-parameter>
+    $<$<COMPILE_LANG_AND_ID:C,MSVC>:/wd5287>
 )
 foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
     if(TARGET ${_libgit2_target})
         target_compile_options(${_libgit2_target} PRIVATE ${_envy_libgit2_warning_silencers})
     endif()
 endforeach()
+
+if(DEFINED envy_zlib_SOURCE_DIR AND DEFINED envy_zlib_BINARY_DIR)
+    foreach(_envy_git_target IN ITEMS libgit2 libgit2package git2 util)
+        if(TARGET ${_envy_git_target})
+            target_include_directories(${_envy_git_target} PRIVATE
+                "${envy_zlib_SOURCE_DIR}"
+                "${envy_zlib_BINARY_DIR}")
+        endif()
+    endforeach()
+endif()
 
 unset(_libgit2_archive)
 unset(_libgit2_archive_norm)

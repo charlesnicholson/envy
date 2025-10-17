@@ -1,0 +1,28 @@
+import pathlib
+
+# libcurl's CMakeLists.txt hardcodes ZLIB::ZLIB in CURL_LIBS for pkg-config
+# generation, but our ZLIB::ZLIB is an INTERFACE IMPORTED target without a
+# LOCATION property, causing warnings. Replace it with the actual underlying
+# zlib target name.
+
+cmake_path = pathlib.Path(r"@LIBCURL_CMAKELISTS@")
+zlib_target = r"@ENVY_ZLIB_TARGET@"
+
+if not cmake_path.exists():
+    raise FileNotFoundError(f"libcurl CMakeLists.txt not found: {cmake_path}")
+
+if not zlib_target:
+    raise ValueError("ENVY_ZLIB_TARGET is not set")
+
+text = cmake_path.read_text()
+updated = text
+
+# Replace ZLIB::ZLIB with the actual target in CURL_LIBS
+marker = "  list(APPEND CURL_LIBS ZLIB::ZLIB)"
+replacement = f"  list(APPEND CURL_LIBS {zlib_target})"
+
+if marker in updated:
+    updated = updated.replace(marker, replacement, 1)
+
+if updated != text:
+    cmake_path.write_text(updated)

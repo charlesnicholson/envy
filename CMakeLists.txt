@@ -22,6 +22,32 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "" FORCE)
+    set(_envy_msvc_flag_vars
+        CMAKE_C_FLAGS
+        CMAKE_C_FLAGS_DEBUG
+        CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_RELWITHDEBINFO
+        CMAKE_C_FLAGS_MINSIZEREL
+        CMAKE_CXX_FLAGS
+        CMAKE_CXX_FLAGS_DEBUG
+        CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS_MINSIZEREL
+    )
+    foreach(_envy_flag_var IN LISTS _envy_msvc_flag_vars)
+        if(DEFINED ${_envy_flag_var})
+            string(REGEX REPLACE "/M[TD]d?" "" _envy_sanitized_flags "${${_envy_flag_var}}")
+            string(STRIP "${_envy_sanitized_flags}" _envy_sanitized_flags)
+            set(${_envy_flag_var} "${_envy_sanitized_flags}" CACHE STRING "" FORCE)
+        endif()
+    endforeach()
+    unset(_envy_msvc_flag_vars)
+    unset(_envy_flag_var)
+    unset(_envy_sanitized_flags)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
