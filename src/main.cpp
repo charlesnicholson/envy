@@ -34,6 +34,7 @@ extern "C" {
 #include <lualib.h>
 }
 
+#include <bzlib.h>
 #include <curl/curl.h>
 #include <lzma.h>
 #include <array>
@@ -833,6 +834,7 @@ void print_dependency_versions()
   std::cout << "  oneTBB: " << TBB_runtime_version() << std::endl;
   std::cout << "  BLAKE3: " << BLAKE3_VERSION_STRING << std::endl;
   std::cout << "  zlib: " << zlibVersion() << std::endl;
+  std::cout << "  bzip2: " << BZ2_bzlibVersion() << std::endl;
   std::cout << "  liblzma: " << lzma_version_string() << std::endl;
   std::cout << "  AWS SDK for C++: " << Aws::Version::GetVersionString() << std::endl;
 
