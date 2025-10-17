@@ -825,7 +825,27 @@ void print_dependency_versions()
   git_libgit2_version(&git_major, &git_minor, &git_revision);
   std::cout << "  libgit2: " << git_major << '.' << git_minor << '.' << git_revision << std::endl;
 
-  std::cout << "  libcurl: " << LIBCURL_VERSION << std::endl;
+  const curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
+  std::cout << "  libcurl: " << curl_info->version;
+  std::vector<std::string> curl_features;
+  if (curl_info->features & CURL_VERSION_ZSTD) {
+    curl_features.push_back("zstd");
+  }
+  if (curl_info->features & CURL_VERSION_BROTLI) {
+    curl_features.push_back("brotli");
+  }
+  if (curl_info->features & CURL_VERSION_LIBZ) {
+    curl_features.push_back("zlib");
+  }
+  if (!curl_features.empty()) {
+    std::cout << " (";
+    for (size_t i = 0; i < curl_features.size(); ++i) {
+      if (i > 0) std::cout << ", ";
+      std::cout << curl_features[i];
+    }
+    std::cout << ")";
+  }
+  std::cout << std::endl;
   std::cout << "  libssh2: " << LIBSSH2_VERSION << std::endl;
   std::array<char, 32> mbedtls_version{};
   mbedtls_version_get_string_full(mbedtls_version.data());

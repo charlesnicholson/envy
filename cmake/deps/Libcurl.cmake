@@ -25,12 +25,23 @@ set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(CURL_ENABLE_SSL ON CACHE BOOL "" FORCE)
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
 set(CURL_BROTLI OFF CACHE STRING "" FORCE)
-set(CURL_ZSTD OFF CACHE STRING "" FORCE)
+set(CURL_ZSTD ON CACHE STRING "" FORCE)
 set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
 set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+
+# Pre-configure zstd detection for libcurl - disable pkg-config path by
+# pre-setting ZSTD_INCLUDE_DIR/ZSTD_LIBRARY so FindZstd.cmake skips pkg-config
+# and parses the header file directly for version info
+if(DEFINED ZSTD_INCLUDE_DIR AND DEFINED ZSTD_LIBRARY)
+    # Unset any pkg-config results that might interfere
+    unset(ZSTD_FOUND CACHE)
+    unset(Zstd_FOUND CACHE)
+    unset(ZSTD_VERSION CACHE)
+    unset(Zstd_VERSION CACHE)
+endif()
 
 set(_envy_zlib_real_target "")
 if(TARGET ZLIB::ZLIB)
