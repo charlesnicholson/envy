@@ -28,10 +28,10 @@
   "buildPresets": [
     {
       "name": "release-lto-on",
-      "displayName": "Build envy_cmake_test (LTO On)",
+      "displayName": "Build envy (LTO On)",
       "configurePreset": "release-lto-on",
       "targets": [
-        "envy_cmake_test"
+        "envy"
       ],
       "jobs": 0
     }

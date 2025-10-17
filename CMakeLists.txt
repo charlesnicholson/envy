@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1.2)
 
-project(envy_cmake_test
+project(envy
     VERSION 0.1.0
     DESCRIPTION "Static test driver bundling libgit2, libcurl (mbedTLS), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
@@ -116,25 +116,21 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-add_executable(envy_cmake_test)
+add_executable(envy)
 
-target_sources(envy_cmake_test
+target_sources(envy
     PRIVATE
         src/main.cpp
 )
 
-set_target_properties(envy_cmake_test PROPERTIES
-    OUTPUT_NAME envy
-)
-
-target_compile_features(envy_cmake_test PRIVATE cxx_std_20)
-target_compile_options(envy_cmake_test PRIVATE
+target_compile_features(envy PRIVATE cxx_std_20)
+target_compile_options(envy PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
 )
-target_link_options(envy_cmake_test PRIVATE
+target_link_options(envy PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
 )
 
@@ -153,7 +149,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
-target_link_libraries(envy_cmake_test
+target_link_libraries(envy
     PRIVATE
         envy::thirdparty
 )
@@ -186,7 +182,7 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     endforeach()
     list(REMOVE_DUPLICATES _envy_rescan_expanded_targets)
     list(JOIN _envy_rescan_expanded_targets "," _envy_link_group)
-    target_link_libraries(envy_cmake_test
+    target_link_libraries(envy
         PRIVATE
             "$<LINK_GROUP:RESCAN,${_envy_link_group}>"
     )
