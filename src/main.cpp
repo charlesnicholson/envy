@@ -28,6 +28,8 @@
 
 #include <blake3.h>
 
+#include <CLI11.hpp>
+
 extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
@@ -864,6 +866,8 @@ void print_dependency_versions()
   const auto crt_version = crt_handle.GetCrtVersion();
   std::cout << "  AWS CRT: " << crt_version.major << '.' << crt_version.minor << '.'
             << crt_version.patch << std::endl;
+
+  std::cout << "  CLI11: " << CLI11_VERSION << std::endl;
 }
 
 int main(int argc, char **argv)

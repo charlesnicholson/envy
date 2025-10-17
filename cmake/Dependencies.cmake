@@ -91,6 +91,10 @@ set(ENVY_LIBZSTD_ARCHIVE "zstd-${ENVY_LIBZSTD_VERSION}.tar.gz")
 set(ENVY_LIBZSTD_URL "https://github.com/facebook/zstd/archive/refs/tags/v${ENVY_LIBZSTD_VERSION}.tar.gz")
 set(ENVY_LIBZSTD_SHA256 37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3)
 
+set(ENVY_CLI11_VERSION "2.5.0")
+set(ENVY_CLI11_URL "https://github.com/CLIUtils/CLI11/releases/download/v${ENVY_CLI11_VERSION}/CLI11.hpp")
+set(ENVY_CLI11_SHA256 4bf0a9490aa7209176ccda70544f95413e594d2207cca33c9cd18ded189a63a6)
+
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
     set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt)
@@ -122,6 +126,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/AwsSdk.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libarchive.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Blake3.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Lua.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/CLI11.cmake")
 
 # Aggregate -----------------------------------------------------------------
 add_library(envy_thirdparty INTERFACE)
@@ -143,6 +148,7 @@ target_link_libraries(envy_thirdparty
         libarchive::libarchive
         lua::lua
         blake3::blake3
+        CLI11::CLI11
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc
