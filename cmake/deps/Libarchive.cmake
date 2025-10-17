@@ -9,7 +9,7 @@ set(ENABLE_LZ4 OFF CACHE BOOL "" FORCE)
 set(ENABLE_LZMA ON CACHE BOOL "" FORCE)
 set(ENABLE_ZLIB ON CACHE BOOL "" FORCE)
 set(ENABLE_BZip2 ON CACHE BOOL "" FORCE)
-set(ENABLE_ZSTD OFF CACHE BOOL "" FORCE)
+set(ENABLE_ZSTD ON CACHE BOOL "" FORCE)
 set(ENABLE_LZO OFF CACHE BOOL "" FORCE)
 set(ENABLE_PCREPOSIX OFF CACHE BOOL "" FORCE)
 set(ENABLE_PCRE2POSIX OFF CACHE BOOL "" FORCE)
@@ -54,6 +54,14 @@ if(DEFINED libarchive_SOURCE_DIR AND DEFINED libarchive_BINARY_DIR)
     # builds inherit the platform definitions instead of redefining POSIX
     # aliases like id_t.
     envy_patch_libarchive_cmakelists("${libarchive_SOURCE_DIR}" "${libarchive_BINARY_DIR}")
+
+    # Pre-configure zstd detection for libarchive (CHECK_FUNCTION_EXISTS can't
+    # link against targets that haven't been built yet, so we hint the variables)
+    if(DEFINED ZSTD_LIBRARY AND DEFINED ZSTD_INCLUDE_DIR)
+        set(HAVE_LIBZSTD 1 CACHE INTERNAL "" FORCE)
+        set(HAVE_ZSTD_compressStream 1 CACHE INTERNAL "" FORCE)
+        set(HAVE_ZSTD_minCLevel 1 CACHE INTERNAL "" FORCE)
+    endif()
 endif()
 
 add_subdirectory(${libarchive_SOURCE_DIR} ${libarchive_BINARY_DIR})

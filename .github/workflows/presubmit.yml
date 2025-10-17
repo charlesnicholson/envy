@@ -16,15 +16,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '4.1.2'
+
       - uses: actions/checkout@v5
+
       - name: Build
-        run: ./build.sh
+        run: ./build.sh && strip out/build/envy
+
       - name: Smoke test
-        run: ./out/build/envy -v
+        run: ls -al out/build/envy && ./out/build/envy -v
 
   build-macos:
     runs-on: macos-latest
@@ -32,15 +36,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '4.1.2'
+
       - uses: actions/checkout@v5
+
       - name: Build
-        run: ./build.sh
+        run: ./build.sh && strip out/build/envy
+
       - name: Smoke test
-        run: ./out/build/envy -v
+        run: ls -al out/build/envy && ./out/build/envy -v
 
   build-windows:
     runs-on: windows-latest
@@ -64,7 +72,9 @@ jobs:
 
       - name: Smoke test
         shell: cmd
-        run: out\build\envy.exe -v
+        run: |
+          dir out\build\envy.exe
+          out\build\envy.exe -v
 
   all-checks-pass:
     timeout-minutes: 5
