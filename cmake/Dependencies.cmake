@@ -14,9 +14,9 @@ set_property(GLOBAL PROPERTY JOB_POOLS envy_fetch=4)
 
 # Persist fetched sources outside the build tree so deleting `out/build`
 # forces a rebuild while reusing cached downloads.
-cmake_path(APPEND PROJECT_SOURCE_DIR "out" "cache" "third_party" OUTPUT_VARIABLE ENVY_THIRDPARTY_CACHE_DIR)
-file(MAKE_DIRECTORY "${ENVY_THIRDPARTY_CACHE_DIR}")
-set(FETCHCONTENT_BASE_DIR "${ENVY_THIRDPARTY_CACHE_DIR}")
+cmake_path(APPEND PROJECT_SOURCE_DIR "out" "cache" OUTPUT_VARIABLE ENVY_CACHE_DIR)
+file(MAKE_DIRECTORY "${ENVY_CACHE_DIR}")
+set(FETCHCONTENT_BASE_DIR "${ENVY_CACHE_DIR}")
 
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 if(DEFINED ENV{ENVY_FETCH_FULLY_DISCONNECTED})

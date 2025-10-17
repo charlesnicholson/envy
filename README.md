@@ -51,6 +51,6 @@ Source files are formatted with 2-space indentation as enforced by the repositor
 
 The `envy` executable resides in `out/build/envy` and exercises every dependency.
 
-All transient artifacts must land underneath `out/`. Cache vendored source trees, extracted archives, and any vendor installs inside `out/cache/third_party`; build logic must verify the required payloads exist there before initiating another fetch so we avoid re-downloading large dependencies. Configure and build into `out/build`, which holds the CMake cache, Ninja objects, and the final binaries. Deleting `out/build` forces a rebuild while preserving the dependency cache, while removing `out/` entirely restores the repository to a pristine state.
+All transient artifacts must land underneath `out/`. Cache vendored source trees, extracted archives, and any vendor installs inside `out/cache`; build logic must verify the required payloads exist there before initiating another fetch so we avoid re-downloading large dependencies. Configure and build into `out/build`, which holds the CMake cache, Ninja objects, and the final binaries. Deleting `out/build` forces a rebuild while preserving the dependency cache, while removing `out/` entirely restores the repository to a pristine state.
 
 See `AGENTS.md` for contributor guidance and `docs/dependencies.md` for notes on configuring the bundled libraries.

@@ -1,6 +1,6 @@
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_ONETBB_ARCHIVE}" OUTPUT_VARIABLE _onetbb_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_ONETBB_ARCHIVE}" OUTPUT_VARIABLE _onetbb_archive)
 set(_onetbb_url "${ENVY_ONETBB_URL}")
 if(EXISTS "${_onetbb_archive}")
     file(TO_CMAKE_PATH "${_onetbb_archive}" _onetbb_archive_norm)

@@ -1,4 +1,4 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_ZLIB_ARCHIVE}" OUTPUT_VARIABLE _zlib_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_ZLIB_ARCHIVE}" OUTPUT_VARIABLE _zlib_archive)
 set(_zlib_url "${ENVY_ZLIB_URL}")
 if(EXISTS "${_zlib_archive}")
     file(TO_CMAKE_PATH "${_zlib_archive}" _zlib_archive_norm)

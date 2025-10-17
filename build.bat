@@ -15,7 +15,7 @@ set "CMAKE_BIN=%CMAKE%"
 if not defined CMAKE_BIN set "CMAKE_BIN=cmake"
 
 set "PRESET=release-lto-on"
-set "CACHE_DIR=%ROOT_DIR%\out\cache\third_party"
+set "CACHE_DIR=%ROOT_DIR%\out\cache"
 set "BUILD_DIR=%ROOT_DIR%\out\build"
 set "CACHE_FILE=%BUILD_DIR%\CMakeCache.txt"
 set "PRESET_FILE=%BUILD_DIR%\.envy-preset"

@@ -15,14 +15,14 @@ if(MSVC)
     set(AWS_STATIC_MSVC_RUNTIME_LIBRARY ON CACHE BOOL "" FORCE)
     set(STATIC_CRT ON CACHE BOOL "" FORCE)
 endif()
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_AWS_SDK_ARCHIVE}" OUTPUT_VARIABLE _aws_sdk_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_AWS_SDK_ARCHIVE}" OUTPUT_VARIABLE _aws_sdk_archive)
 set(_aws_sdk_url "${ENVY_AWS_SDK_URL}")
 if(EXISTS "${_aws_sdk_archive}")
     file(TO_CMAKE_PATH "${_aws_sdk_archive}" _aws_sdk_archive_norm)
     set(_aws_sdk_url "file://${_aws_sdk_archive_norm}")
 endif()
 
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "aws_sdk-src" OUTPUT_VARIABLE aws_sdk_SOURCE_DIR)
+cmake_path(APPEND ENVY_CACHE_DIR "aws_sdk-src" OUTPUT_VARIABLE aws_sdk_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "aws_sdk-build" OUTPUT_VARIABLE aws_sdk_BINARY_DIR)
 
 if(NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
@@ -42,7 +42,7 @@ set(ENVY_AWSCRT_ROOT "${aws_sdk_SOURCE_DIR}/crt/aws-crt-cpp")
 execute_process(
     COMMAND ${CMAKE_COMMAND}
         -Daws_sdk_SOURCE_DIR=${aws_sdk_SOURCE_DIR}
-        -Denvy_thirdparty_cache_dir=${ENVY_THIRDPARTY_CACHE_DIR}
+        -Denvy_cache_dir=${ENVY_CACHE_DIR}
         -P "${PROJECT_SOURCE_DIR}/cmake/scripts/prefetch_aws_crt.cmake"
     WORKING_DIRECTORY "${aws_sdk_SOURCE_DIR}"
     COMMAND_ERROR_IS_FATAL ANY)
