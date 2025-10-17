@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CMAKE_BIN="${CMAKE:-cmake}"
-CACHE_DIR="${ROOT_DIR}/out/cache/third_party"
+CACHE_DIR="${ROOT_DIR}/out/cache"
 BUILD_DIR="${ROOT_DIR}/out/build"
 PRESET="release-lto-on"
 

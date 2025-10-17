@@ -1,4 +1,4 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBLZMA_ARCHIVE}" OUTPUT_VARIABLE _liblzma_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_LIBLZMA_ARCHIVE}" OUTPUT_VARIABLE _liblzma_archive)
 set(_liblzma_url "${ENVY_LIBLZMA_URL}")
 if(EXISTS "${_liblzma_archive}")
     file(TO_CMAKE_PATH "${_liblzma_archive}" _liblzma_archive_norm)

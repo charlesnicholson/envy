@@ -4,8 +4,8 @@ if(NOT DEFINED aws_sdk_SOURCE_DIR)
   message(FATAL_ERROR "aws_sdk_SOURCE_DIR must be provided")
 endif()
 
-if(NOT DEFINED envy_thirdparty_cache_dir)
-  message(FATAL_ERROR "envy_thirdparty_cache_dir must be provided")
+if(NOT DEFINED envy_cache_dir)
+  message(FATAL_ERROR "envy_cache_dir must be provided")
 endif()
 
 set(_prefetch_script "${aws_sdk_SOURCE_DIR}/prefetch_crt_dependency.sh")
@@ -118,7 +118,7 @@ elseif(DEFINED ENV{ENVY_FETCH_FULLY_DISCONNECTED})
   endif()
 endif()
 
-cmake_path(APPEND envy_thirdparty_cache_dir "aws-crt" OUTPUT_VARIABLE _cache_root)
+cmake_path(APPEND envy_cache_dir "aws-crt" OUTPUT_VARIABLE _cache_root)
 file(MAKE_DIRECTORY "${_cache_root}")
 
 set(_main_archive "")

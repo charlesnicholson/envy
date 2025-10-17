@@ -1,4 +1,4 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBZSTD_ARCHIVE}" OUTPUT_VARIABLE _libzstd_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_LIBZSTD_ARCHIVE}" OUTPUT_VARIABLE _libzstd_archive)
 set(_libzstd_url "${ENVY_LIBZSTD_URL}")
 if(EXISTS "${_libzstd_archive}")
     file(TO_CMAKE_PATH "${_libzstd_archive}" _libzstd_archive_norm)

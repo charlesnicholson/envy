@@ -1,11 +1,11 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBBZ2_ARCHIVE}" OUTPUT_VARIABLE _libbz2_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_LIBBZ2_ARCHIVE}" OUTPUT_VARIABLE _libbz2_archive)
 set(_libbz2_url "${ENVY_LIBBZ2_URL}")
 if(EXISTS "${_libbz2_archive}")
     file(TO_CMAKE_PATH "${_libbz2_archive}" _libbz2_archive_norm)
     set(_libbz2_url "file://${_libbz2_archive_norm}")
 endif()
 
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "bzip2-src" OUTPUT_VARIABLE envy_libbz2_SOURCE_DIR)
+cmake_path(APPEND ENVY_CACHE_DIR "bzip2-src" OUTPUT_VARIABLE envy_libbz2_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "bzip2-build" OUTPUT_VARIABLE envy_libbz2_BINARY_DIR)
 
 if(NOT EXISTS "${envy_libbz2_SOURCE_DIR}/bzlib.h")

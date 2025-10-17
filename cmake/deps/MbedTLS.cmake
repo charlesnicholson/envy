@@ -1,4 +1,4 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_MBEDTLS_ARCHIVE}" OUTPUT_VARIABLE _mbedtls_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_MBEDTLS_ARCHIVE}" OUTPUT_VARIABLE _mbedtls_archive)
 set(_mbedtls_url "${ENVY_MBEDTLS_URL}")
 if(EXISTS "${_mbedtls_archive}")
     file(TO_CMAKE_PATH "${_mbedtls_archive}" _mbedtls_archive_norm)

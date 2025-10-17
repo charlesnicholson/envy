@@ -7,7 +7,7 @@ All downloads, source trees, and install steps are redirected underneath the act
 ## Build Workflow
 - `./build.sh` is the supported entry point and always drives the `release-lto-on` preset so local and IDE workflows stay aligned.
 - The preset keeps LTO enabled by default; run `cmake --preset release-lto-on` directly if you need manual control.
-- Presets share the fixed binary directory `out/build` and reuse the dependency cache under `out/cache/third_party` for predictable rebuilds.
+- Presets share the fixed binary directory `out/build` and reuse the dependency cache under `out/cache` for predictable rebuilds.
 - Set `ENVY_FETCH_FULLY_DISCONNECTED=ON` before running `./build.sh` to skip network checks and force reuse of cached third-party sources.
 - When adjusting third-party wiring, add helper scripts under `cmake/scripts/` so `cmake/Dependencies.cmake` remains declarative.
 

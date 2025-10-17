@@ -1,11 +1,11 @@
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_BLAKE3_ARCHIVE}" OUTPUT_VARIABLE _blake3_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_BLAKE3_ARCHIVE}" OUTPUT_VARIABLE _blake3_archive)
 set(_blake3_url "${ENVY_BLAKE3_URL}")
 if(EXISTS "${_blake3_archive}")
     file(TO_CMAKE_PATH "${_blake3_archive}" _blake3_archive_norm)
     set(_blake3_url "file://${_blake3_archive_norm}")
 endif()
 
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "blake3-src" OUTPUT_VARIABLE blake3_SOURCE_DIR)
+cmake_path(APPEND ENVY_CACHE_DIR "blake3-src" OUTPUT_VARIABLE blake3_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "blake3-build" OUTPUT_VARIABLE blake3_BINARY_DIR)
 
 if(NOT EXISTS "${blake3_SOURCE_DIR}/c/blake3.c")

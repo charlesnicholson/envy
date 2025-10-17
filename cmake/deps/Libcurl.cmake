@@ -52,14 +52,14 @@ if(TARGET ZLIB::ZLIB)
     endif()
 endif()
 
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
+cmake_path(APPEND ENVY_CACHE_DIR "${ENVY_LIBCURL_ARCHIVE}" OUTPUT_VARIABLE _curl_archive)
 set(_curl_url "${ENVY_LIBCURL_URL}")
 if(EXISTS "${_curl_archive}")
     file(TO_CMAKE_PATH "${_curl_archive}" _curl_archive_norm)
     set(_curl_url "file://${_curl_archive_norm}")
 endif()
 
-cmake_path(APPEND ENVY_THIRDPARTY_CACHE_DIR "libcurl-src" OUTPUT_VARIABLE libcurl_SOURCE_DIR)
+cmake_path(APPEND ENVY_CACHE_DIR "libcurl-src" OUTPUT_VARIABLE libcurl_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "libcurl-build" OUTPUT_VARIABLE libcurl_BINARY_DIR)
 
 if(NOT EXISTS "${libcurl_SOURCE_DIR}/CMakeLists.txt")
