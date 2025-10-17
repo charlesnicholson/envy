@@ -28,10 +28,8 @@ if not exist "%CACHE_DIR%" (
 set "need_configure=1"
 if exist "%CACHE_FILE%" (
     if exist "%PRESET_FILE%" (
-        set /p cached_preset=<"%PRESET_FILE%"
-        if /i "%cached_preset%"=="%PRESET%" (
-            set "need_configure=0"
-        )
+        for /f "usebackq delims=" %%P in ("%PRESET_FILE%") do set "cached_preset=%%P"
+        if /i "!cached_preset!"=="%PRESET%" set "need_configure=0"
     )
 )
 

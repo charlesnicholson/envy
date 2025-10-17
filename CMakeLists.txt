@@ -12,6 +12,11 @@ if(POLICY CMP0069)
     set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 endif()
 
+if(POLICY CMP0194)
+    cmake_policy(SET CMP0194 NEW)
+    set(CMAKE_POLICY_DEFAULT_CMP0194 NEW)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -23,6 +28,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 if(MSVC)
+    enable_language(ASM_MASM)
+    if(NOT CMAKE_ASM_MASM_COMPILER)
+        message(FATAL_ERROR "MASM assembler was not detected")
+    endif()
+    set(CMAKE_ASM_COMPILER "${CMAKE_ASM_MASM_COMPILER}" CACHE FILEPATH "" FORCE)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "" FORCE)
     set(_envy_msvc_flag_vars
         CMAKE_C_FLAGS
