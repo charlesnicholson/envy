@@ -1,5 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest.h>
+#include "doctest.h"
 
 // This file provides the main() entry point for doctest unit tests.
 // Individual test files should be compiled alongside this file into the
