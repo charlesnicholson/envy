@@ -1,12 +1,12 @@
 #ifdef _WIN32
-  #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-  #endif
-  #ifndef NOMINMAX
-    #define NOMINMAX
-  #endif
-  #include <winsock2.h>
-  #include <windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winsock2.h>
 #endif
 
 #include <archive.h>
@@ -14,11 +14,11 @@
 
 #include <aws/core/Aws.h>
 #include <aws/core/Version.h>
-#include <aws/core/platform/Environment.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <aws/core/auth/SSOCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <aws/core/http/HttpTypes.h>
+#include <aws/core/platform/Environment.h>
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/core/utils/logging/NullLogSystem.h>
 #include <aws/crt/Api.h>
@@ -36,32 +36,14 @@ extern "C" {
 #include <lualib.h>
 }
 
+#include <mbedtls/sha256.h>
+#include <mbedtls/version.h>
+
 #include <bzlib.h>
 #include <curl/curl.h>
 #include <lzma.h>
-#include <zstd.h>
-#include <array>
-#include <chrono>
-#include <cstdint>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <libssh2.h>
-#include <memory>
-#include <mutex>
-#include <mbedtls/sha256.h>
-#include <mbedtls/version.h>
-#include <random>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <type_traits>
-#include <system_error>
-#include <string_view>
-#include <vector>
 #include <zlib.h>
+#include <zstd.h>
 
 #include <git2.h>
 #include <oneapi/tbb/version.h>
@@ -69,10 +51,25 @@ extern "C" {
 #include <tbb/flow_graph.h>
 #include <tbb/task_arena.h>
 
+#include <libssh2.h>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <iomanip>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+
 namespace {
 
-void set_env_var(const char *name, const char *value)
-{
+void set_env_var(char const *name, char const *value) {
 #ifdef _WIN32
   _putenv_s(name, value);
 #else
@@ -80,8 +77,7 @@ void set_env_var(const char *name, const char *value)
 #endif
 }
 
-std::string to_hex(const uint8_t *data, size_t length)
-{
+std::string to_hex(uint8_t const *data, size_t length) {
   std::ostringstream oss;
   oss << std::hex << std::setfill('0');
   for (size_t i = 0; i < length; ++i) {
@@ -96,23 +92,25 @@ class AwsApiGuard {
     set_env_var("AWS_SDK_LOAD_CONFIG", "1");
     options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
     options_.loggingOptions.logger_create_fn = []() {
-      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>("envy-cmake-test-logging");
+      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>(
+          "envy-cmake-test-logging");
     };
     Aws::InitAPI(options_);
   }
 
-  AwsApiGuard(const AwsApiGuard &) = delete;
-  AwsApiGuard &operator=(const AwsApiGuard &) = delete;
+  AwsApiGuard(AwsApiGuard const &) = delete;
+  AwsApiGuard &operator=(AwsApiGuard const &) = delete;
 
-  ~AwsApiGuard() { Aws::ShutdownAPI(options_); }
+  ~AwsApiGuard() {
+    Aws::ShutdownAPI(options_);
+  }
 
  private:
   Aws::SDKOptions options_{};
 };
 
-std::filesystem::path create_temp_directory()
-{
-  const auto base = std::filesystem::temp_directory_path();
+std::filesystem::path create_temp_directory() {
+  auto const base = std::filesystem::temp_directory_path();
   if (!std::filesystem::exists(base)) {
     throw std::runtime_error("Temporary directory base does not exist");
   }
@@ -124,7 +122,7 @@ std::filesystem::path create_temp_directory()
   std::ostringstream name;
   name << "envy-cmake-test-" << std::hex << std::setw(16) << std::setfill('0')
        << dist(rng);
-  const auto candidate = base / name.str();
+  auto const candidate = base / name.str();
 
   std::error_code ec;
   std::filesystem::remove_all(candidate, ec);
@@ -135,20 +133,21 @@ std::filesystem::path create_temp_directory()
 class TempResourceManager {
  public:
   TempResourceManager() = default;
-  TempResourceManager(const TempResourceManager &) = delete;
-  TempResourceManager &operator=(const TempResourceManager &) = delete;
-  ~TempResourceManager() { cleanup(); }
+  TempResourceManager(TempResourceManager const &) = delete;
+  TempResourceManager &operator=(TempResourceManager const &) = delete;
+  ~TempResourceManager() {
+    cleanup();
+  }
 
-  std::filesystem::path create_directory()
-  {
+  std::filesystem::path create_directory() {
     auto dir = create_temp_directory();
     tracked_directories_.push_back(dir);
     return dir;
   }
 
-  void cleanup() noexcept
-  {
-    for (auto it = tracked_directories_.rbegin(); it != tracked_directories_.rend(); ++it) {
+  void cleanup() noexcept {
+    for (auto it = tracked_directories_.rbegin(); it != tracked_directories_.rend();
+         ++it) {
       std::error_code ec;
       std::filesystem::remove_all(*it, ec);
       if (ec) {
@@ -171,9 +170,11 @@ class TempManagerScope {
     g_temp_manager = &manager_;
   }
 
-  TempManagerScope(const TempManagerScope &) = delete;
-  TempManagerScope &operator=(const TempManagerScope &) = delete;
-  ~TempManagerScope() { g_temp_manager = nullptr; }
+  TempManagerScope(TempManagerScope const &) = delete;
+  TempManagerScope &operator=(TempManagerScope const &) = delete;
+  ~TempManagerScope() {
+    g_temp_manager = nullptr;
+  }
 
  private:
   TempResourceManager &manager_;
@@ -184,16 +185,16 @@ struct S3UriParts {
   std::string key;
 };
 
-S3UriParts parse_s3_uri(std::string_view uri)
-{
+S3UriParts parse_s3_uri(std::string_view uri) {
   static constexpr std::string_view kScheme = "s3://";
   if (!uri.starts_with(kScheme)) {
     throw std::invalid_argument("S3 URI must start with s3://");
   }
   std::string_view remainder = uri.substr(kScheme.size());
-  const auto slash = remainder.find('/');
+  auto const slash = remainder.find('/');
   if (slash == std::string_view::npos || slash == 0 || slash + 1 >= remainder.size()) {
-    throw std::invalid_argument("S3 URI must include bucket and key, e.g. s3://bucket/key");
+    throw std::invalid_argument(
+        "S3 URI must include bucket and key, e.g. s3://bucket/key");
   }
   S3UriParts parts;
   parts.bucket = std::string(remainder.substr(0, slash));
@@ -202,20 +203,22 @@ S3UriParts parse_s3_uri(std::string_view uri)
 }
 
 std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
-    const Aws::S3::S3ClientConfiguration &s3_config)
-{
-  static constexpr const char *kAllocationTag = "envy-cmake-test-sso";
-  const Aws::String profile_from_env = Aws::Environment::GetEnv("AWS_PROFILE");
-  const Aws::String profile = profile_from_env.empty() ? Aws::Auth::GetConfigProfileName() : profile_from_env;
+    Aws::S3::S3ClientConfiguration const &s3_config) {
+  static constexpr char const *kAllocationTag = "envy-cmake-test-sso";
+  Aws::String const profile_from_env = Aws::Environment::GetEnv("AWS_PROFILE");
+  Aws::String const profile =
+      profile_from_env.empty() ? Aws::Auth::GetConfigProfileName() : profile_from_env;
   try {
     auto client_config = Aws::MakeShared<Aws::Client::ClientConfiguration>(kAllocationTag);
-    *client_config = static_cast<const Aws::Client::ClientConfiguration &>(s3_config);
+    *client_config = static_cast<Aws::Client::ClientConfiguration const &>(s3_config);
     auto sso_provider = Aws::MakeShared<Aws::Auth::SSOCredentialsProvider>(
-        kAllocationTag, profile, std::static_pointer_cast<const Aws::Client::ClientConfiguration>(client_config));
+        kAllocationTag,
+        profile,
+        std::static_pointer_cast<Aws::Client::ClientConfiguration const>(client_config));
     std::cout << "[aws-sdk] Using AWS SSO credentials provider for profile '" << profile
               << "'." << std::endl;
     return sso_provider;
-  } catch (const std::exception &ex) {
+  } catch (std::exception const &ex) {
     std::cout << "[aws-sdk] AWS SSO provider initialization failed: " << ex.what()
               << "; falling back to default provider chain." << std::endl;
   }
@@ -223,11 +226,11 @@ std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
 }
 
 void archive_copy_data(struct archive *source, struct archive *dest) {
-  const void *buff = nullptr;
+  void const *buff = nullptr;
   size_t size = 0;
   la_int64_t offset = 0;
   while (true) {
-    const int r = archive_read_data_block(source, &buff, &size, &offset);
+    int const r = archive_read_data_block(source, &buff, &size, &offset);
     if (r == ARCHIVE_EOF) {
       break;
     }
@@ -235,7 +238,7 @@ void archive_copy_data(struct archive *source, struct archive *dest) {
       throw std::runtime_error(std::string("libarchive read error: ") +
                                archive_error_string(source));
     }
-    const int write_result = archive_write_data_block(dest, buff, size, offset);
+    int const write_result = archive_write_data_block(dest, buff, size, offset);
     if (write_result != ARCHIVE_OK) {
       throw std::runtime_error(std::string("libarchive write error: ") +
                                archive_error_string(dest));
@@ -243,9 +246,8 @@ void archive_copy_data(struct archive *source, struct archive *dest) {
   }
 }
 
-std::uint64_t extract_archive(const std::filesystem::path &archive_path,
-                              const std::filesystem::path &destination)
-{
+std::uint64_t extract_archive(std::filesystem::path const &archive_path,
+                              std::filesystem::path const &destination) {
   archive *reader = archive_read_new();
   if (!reader) {
     throw std::runtime_error("libarchive read allocation failed");
@@ -258,12 +260,14 @@ std::uint64_t extract_archive(const std::filesystem::path &archive_path,
     archive_read_free(reader);
     throw std::runtime_error("libarchive write allocation failed");
   }
-  archive_write_disk_set_options(writer, ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
-                                         ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
+  archive_write_disk_set_options(writer,
+                                 ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
+                                     ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
   archive_write_disk_set_standard_lookup(writer);
 
-  if (archive_read_open_filename(reader, archive_path.string().c_str(), 10240) != ARCHIVE_OK) {
-    const std::string message = std::string("libarchive failed to open ") +
+  if (archive_read_open_filename(reader, archive_path.string().c_str(), 10240) !=
+      ARCHIVE_OK) {
+    std::string const message = std::string("libarchive failed to open ") +
                                 archive_path.string() + ": " +
                                 archive_error_string(reader);
     archive_write_free(writer);
@@ -274,13 +278,13 @@ std::uint64_t extract_archive(const std::filesystem::path &archive_path,
   archive_entry *entry = nullptr;
   std::uint64_t regular_files = 0;
   while (true) {
-    const int r = archive_read_next_header(reader, &entry);
+    int const r = archive_read_next_header(reader, &entry);
     if (r == ARCHIVE_EOF) {
       break;
     }
     if (r != ARCHIVE_OK) {
-      const std::string message = std::string("libarchive failed to read header: ") +
-                                  archive_error_string(reader);
+      std::string const message =
+          std::string("libarchive failed to read header: ") + archive_error_string(reader);
       archive_read_close(reader);
       archive_write_close(writer);
       archive_read_free(reader);
@@ -288,22 +292,22 @@ std::uint64_t extract_archive(const std::filesystem::path &archive_path,
       throw std::runtime_error(message);
     }
 
-    const char *entry_path = archive_entry_pathname(entry);
-    const std::filesystem::path full_path = destination / (entry_path ? entry_path : "");
-    const auto parent = full_path.parent_path();
+    char const *entry_path = archive_entry_pathname(entry);
+    std::filesystem::path const full_path = destination / (entry_path ? entry_path : "");
+    auto const parent = full_path.parent_path();
     if (!parent.empty()) {
       std::filesystem::create_directories(parent);
     }
-    const std::string full_path_str = full_path.string();
+    std::string const full_path_str = full_path.string();
     archive_entry_copy_pathname(entry, full_path_str.c_str());
-    if (const char *hardlink = archive_entry_hardlink(entry)) {
-      const auto hardlink_full = (destination / hardlink).string();
+    if (char const *hardlink = archive_entry_hardlink(entry)) {
+      auto const hardlink_full = (destination / hardlink).string();
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());
     }
 
     int write_header_result = archive_write_header(writer, entry);
     if (write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
-      const std::string message = std::string("libarchive failed to write header: ") +
+      std::string const message = std::string("libarchive failed to write header: ") +
                                   archive_error_string(writer);
       archive_read_close(reader);
       archive_write_close(writer);
@@ -316,7 +320,7 @@ std::uint64_t extract_archive(const std::filesystem::path &archive_path,
       archive_copy_data(reader, writer);
     }
     if (archive_write_finish_entry(writer) != ARCHIVE_OK) {
-      const std::string message = std::string("libarchive failed to finish entry: ") +
+      std::string const message = std::string("libarchive failed to finish entry: ") +
                                   archive_error_string(writer);
       archive_read_close(reader);
       archive_write_close(writer);
@@ -338,8 +342,8 @@ std::uint64_t extract_archive(const std::filesystem::path &archive_path,
   return regular_files;
 }
 
-std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::path &path)
-{
+std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(
+    std::filesystem::path const &path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     throw std::runtime_error("Failed to open " + path.string() + " for BLAKE3 hashing");
@@ -350,7 +354,7 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
 
   std::array<char, 1 << 15> buffer{};
   while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
-    const auto read_bytes = static_cast<size_t>(input.gcount());
+    auto const read_bytes = static_cast<size_t>(input.gcount());
     if (read_bytes > 0) {
       blake3_hasher_update(&hasher, buffer.data(), read_bytes);
     }
@@ -366,8 +370,8 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(const std::filesystem::p
 
 constexpr size_t kSha256DigestLength = 32;
 
-std::array<uint8_t, kSha256DigestLength> compute_sha256_file(const std::filesystem::path &path)
-{
+std::array<uint8_t, kSha256DigestLength> compute_sha256_file(
+    std::filesystem::path const &path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     throw std::runtime_error("Failed to open " + path.string() + " for SHA256 hashing");
@@ -377,22 +381,21 @@ std::array<uint8_t, kSha256DigestLength> compute_sha256_file(const std::filesyst
   mbedtls_sha256_init(&ctx);
   struct Sha256ContextGuard {
     mbedtls_sha256_context *context;
-    ~Sha256ContextGuard()
-    {
+    ~Sha256ContextGuard() {
       if (context) {
         mbedtls_sha256_free(context);
       }
     }
-  } guard{&ctx};
+  } guard{ &ctx };
   if (mbedtls_sha256_starts(&ctx, /*is224=*/0) != 0) {
     throw std::runtime_error("mbedtls_sha256_starts failed");
   }
 
   std::array<char, 1 << 15> buffer{};
   while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
-    const auto read_bytes = static_cast<size_t>(input.gcount());
+    auto const read_bytes = static_cast<size_t>(input.gcount());
     if (read_bytes > 0) {
-      const unsigned char *data = reinterpret_cast<const unsigned char *>(buffer.data());
+      unsigned char const *data = reinterpret_cast<unsigned char const *>(buffer.data());
       if (mbedtls_sha256_update(&ctx, data, read_bytes) != 0) {
         throw std::runtime_error("mbedtls_sha256_update failed for " + path.string());
       }
@@ -409,42 +412,44 @@ std::array<uint8_t, kSha256DigestLength> compute_sha256_file(const std::filesyst
   return digest;
 }
 
-std::vector<std::filesystem::path> collect_first_regular_files(const std::filesystem::path &root,
-                                                               std::size_t max_count)
-{
+std::vector<std::filesystem::path> collect_first_regular_files(
+    std::filesystem::path const &root,
+    std::size_t max_count) {
   std::vector<std::filesystem::path> files;
   files.reserve(max_count);
 
   std::error_code ec;
-  for (std::filesystem::recursive_directory_iterator it(
-           root, std::filesystem::directory_options::follow_directory_symlink, ec), end;
-       it != end && files.size() < max_count; it.increment(ec)) {
+  for (std::filesystem::recursive_directory_iterator
+           it(root, std::filesystem::directory_options::follow_directory_symlink, ec),
+       end;
+       it != end && files.size() < max_count;
+       it.increment(ec)) {
     if (ec) {
       throw std::runtime_error("Failed to iterate " + root.string() + ": " + ec.message());
     }
     std::error_code status_ec;
-    const auto status = std::filesystem::status(it->path(), status_ec);
+    auto const status = std::filesystem::status(it->path(), status_ec);
     if (status_ec) {
-      throw std::runtime_error("Failed to query status for " + it->path().string() +
-                               ": " + status_ec.message());
+      throw std::runtime_error("Failed to query status for " + it->path().string() + ": " +
+                               status_ec.message());
     }
     if (std::filesystem::is_regular_file(status)) {
       files.push_back(it->path());
     }
   }
   if (ec) {
-    throw std::runtime_error("Failed to finalize iteration for " + root.string() +
-                             ": " + ec.message());
+    throw std::runtime_error("Failed to finalize iteration for " + root.string() + ": " +
+                             ec.message());
   }
   return files;
 }
 
-std::string relative_display(const std::filesystem::path &path, const std::filesystem::path &base)
-{
+std::string relative_display(std::filesystem::path const &path,
+                             std::filesystem::path const &base) {
   std::error_code ec;
-  const auto rel = std::filesystem::relative(path, base, ec);
+  auto const rel = std::filesystem::relative(path, base, ec);
   if (!ec) {
-    const auto normalized = rel.lexically_normal();
+    auto const normalized = rel.lexically_normal();
     if (!normalized.empty()) {
       return normalized.generic_string();
     }
@@ -453,10 +458,9 @@ std::string relative_display(const std::filesystem::path &path, const std::files
 }
 
 std::filesystem::path download_s3_object(TempResourceManager &manager,
-                                         const std::string &bucket,
-                                         const std::string &key,
-                                         const std::string &region)
-{
+                                         std::string const &bucket,
+                                         std::string const &key,
+                                         std::string const &region) {
   if (bucket.empty()) {
     throw std::runtime_error("S3 bucket name must not be empty");
   }
@@ -464,12 +468,12 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     throw std::runtime_error("S3 object key must not be empty");
   }
 
-  const auto temp_dir = manager.create_directory();
-  const auto file_name = std::filesystem::path(key).filename();
+  auto const temp_dir = manager.create_directory();
+  auto const file_name = std::filesystem::path(key).filename();
   if (file_name.empty()) {
     throw std::runtime_error("S3 object key does not contain a filename");
   }
-  const auto destination = temp_dir / file_name;
+  auto const destination = temp_dir / file_name;
 
   Aws::S3::S3ClientConfiguration config;
   if (!region.empty()) {
@@ -480,7 +484,7 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
   config.connectTimeoutMs = 3000;
   config.requestTimeoutMs = 30000;
 
-  const auto credentials_provider = select_credentials_provider(config);
+  auto const credentials_provider = select_credentials_provider(config);
   Aws::S3::S3Client client(credentials_provider, nullptr, config);
 
   long long expected_size = -1;
@@ -488,7 +492,7 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     Aws::S3::Model::HeadObjectRequest head_request;
     head_request.SetBucket(bucket.c_str());
     head_request.SetKey(key.c_str());
-    const auto head_outcome = client.HeadObject(head_request);
+    auto const head_outcome = client.HeadObject(head_request);
     if (head_outcome.IsSuccess()) {
       expected_size = head_outcome.GetResult().GetContentLength();
     }
@@ -503,39 +507,41 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     long long downloaded = 0;
     std::chrono::steady_clock::time_point last_update = std::chrono::steady_clock::now();
   };
-  const auto progress_state = std::make_shared<ProgressState>();
+  auto const progress_state = std::make_shared<ProgressState>();
 
-  request.SetDataReceivedEventHandler([progress_state, expected_size](const Aws::Http::HttpRequest *,
-                                                                      Aws::Http::HttpResponse *,
-                                                                      long long bytes_transferred) {
-    if (bytes_transferred <= 0) {
-      return;
-    }
-    std::lock_guard<std::mutex> lock(progress_state->mutex);
-    progress_state->downloaded += bytes_transferred;
-    const auto now = std::chrono::steady_clock::now();
-    if (now - progress_state->last_update < std::chrono::milliseconds(200)) {
-      return;
-    }
-    progress_state->last_update = now;
-    std::cout << '\r';
-    if (expected_size > 0) {
-      const double percent = static_cast<double>(progress_state->downloaded) * 100.0 /
-                             static_cast<double>(expected_size);
-      const double clamped = percent > 100.0 ? 100.0 : percent;
-      std::cout << "[aws-sdk] Download progress: " << std::fixed << std::setprecision(1)
-                << clamped << "%";
-    } else {
-      const double mebibytes = static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
-      std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2) << mebibytes
-                << " MiB";
-    }
-    std::cout << std::flush;
-  });
+  request.SetDataReceivedEventHandler(
+      [progress_state, expected_size](Aws::Http::HttpRequest const *,
+                                      Aws::Http::HttpResponse *,
+                                      long long bytes_transferred) {
+        if (bytes_transferred <= 0) {
+          return;
+        }
+        std::lock_guard<std::mutex> lock(progress_state->mutex);
+        progress_state->downloaded += bytes_transferred;
+        auto const now = std::chrono::steady_clock::now();
+        if (now - progress_state->last_update < std::chrono::milliseconds(200)) {
+          return;
+        }
+        progress_state->last_update = now;
+        std::cout << '\r';
+        if (expected_size > 0) {
+          double const percent = static_cast<double>(progress_state->downloaded) * 100.0 /
+                                 static_cast<double>(expected_size);
+          double const clamped = percent > 100.0 ? 100.0 : percent;
+          std::cout << "[aws-sdk] Download progress: " << std::fixed
+                    << std::setprecision(1) << clamped << "%";
+        } else {
+          double const mebibytes =
+              static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
+          std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
+                    << mebibytes << " MiB";
+        }
+        std::cout << std::flush;
+      });
 
-  const auto download_start = std::chrono::steady_clock::now();
+  auto const download_start = std::chrono::steady_clock::now();
   auto outcome = client.GetObject(request);
-  const auto download_end = std::chrono::steady_clock::now();
+  auto const download_end = std::chrono::steady_clock::now();
 
   {
     std::lock_guard<std::mutex> lock(progress_state->mutex);
@@ -544,16 +550,17 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
       if (expected_size > 0) {
         std::cout << "[aws-sdk] Download progress: 100.0%";
       } else {
-        const double mebibytes = static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
-        std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2) << mebibytes
-                  << " MiB";
+        double const mebibytes =
+            static_cast<double>(progress_state->downloaded) / (1024.0 * 1024.0);
+        std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
+                  << mebibytes << " MiB";
       }
       std::cout << std::string(10, ' ') << '\n';
     }
   }
 
   if (!outcome.IsSuccess()) {
-    const auto &error = outcome.GetError();
+    auto const &error = outcome.GetError();
     throw std::runtime_error("S3 GetObject failed: " + error.GetMessage());
   }
 
@@ -568,19 +575,19 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     throw std::runtime_error("Failed while writing S3 object to " + destination.string());
   }
 
-  const auto sha256 = compute_sha256_file(destination);
-  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(download_end - download_start);
+  auto const sha256 = compute_sha256_file(destination);
+  auto const elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(download_end - download_start);
   std::cout << "[aws-sdk] Downloaded s3://" << bucket << '/' << key << " to "
             << destination << " in " << std::fixed << std::setprecision(3)
             << static_cast<double>(elapsed.count()) / 1000.0 << "s" << std::endl;
-  std::cout << "[aws-sdk] SHA256(" << destination.filename() << ") = "
-            << to_hex(sha256.data(), sha256.size()) << std::endl;
+  std::cout << "[aws-sdk] SHA256(" << destination.filename()
+            << ") = " << to_hex(sha256.data(), sha256.size()) << std::endl;
   return destination;
 }
 
-int lua_download_s3_object(lua_State *L)
-{
-  const int argc = lua_gettop(L);
+int lua_download_s3_object(lua_State *L) {
+  int const argc = lua_gettop(L);
   if (argc < 2 || argc > 3) {
     return luaL_error(L, "download_s3_object expects bucket, key, [region]");
   }
@@ -588,48 +595,47 @@ int lua_download_s3_object(lua_State *L)
     return luaL_error(L, "temporary resource manager is not initialized");
   }
 
-  const std::string bucket = luaL_checkstring(L, 1);
-  const std::string key = luaL_checkstring(L, 2);
-  const std::string region = argc >= 3 ? luaL_checkstring(L, 3) : "";
+  std::string const bucket = luaL_checkstring(L, 1);
+  std::string const key = luaL_checkstring(L, 2);
+  std::string const region = argc >= 3 ? luaL_checkstring(L, 3) : "";
 
   try {
-    const auto archive_path = download_s3_object(*g_temp_manager, bucket, key, region);
+    auto const archive_path = download_s3_object(*g_temp_manager, bucket, key, region);
     lua_pushstring(L, archive_path.string().c_str());
     return 1;
-  } catch (const std::exception &ex) {
+  } catch (std::exception const &ex) {
     return luaL_error(L, "download_s3_object failed: %s", ex.what());
   }
 }
 
-int lua_extract_to_temp(lua_State *L)
-{
-  const std::string archive = luaL_checkstring(L, 1);
+int lua_extract_to_temp(lua_State *L) {
+  std::string const archive = luaL_checkstring(L, 1);
   if (!g_temp_manager) {
     return luaL_error(L, "temporary resource manager is not initialized");
   }
 
   try {
-    const auto destination = g_temp_manager->create_directory();
-    const auto count = extract_archive(archive, destination);
+    auto const destination = g_temp_manager->create_directory();
+    auto const count = extract_archive(archive, destination);
     std::cout << "[lua] Extracted " << count << " files" << std::endl;
 
-    const auto sample_files = collect_first_regular_files(destination, 5);
+    auto const sample_files = collect_first_regular_files(destination, 5);
     if (sample_files.empty()) {
       std::cout << "[lua] No regular files discovered in archive." << std::endl;
     } else {
       std::size_t index = 1;
-      for (const auto &file_path : sample_files) {
-        const auto digest = compute_blake3_file(file_path);
+      for (auto const &file_path : sample_files) {
+        auto const digest = compute_blake3_file(file_path);
         std::cout << "[lua] BLAKE3 sample " << index++ << ": "
-                  << relative_display(file_path, destination)
-                  << " => " << to_hex(digest.data(), digest.size()) << std::endl;
+                  << relative_display(file_path, destination) << " => "
+                  << to_hex(digest.data(), digest.size()) << std::endl;
       }
     }
 
     lua_pushstring(L, destination.string().c_str());
     lua_pushinteger(L, static_cast<lua_Integer>(count));
     return 2;
-  } catch (const std::exception &ex) {
+  } catch (std::exception const &ex) {
     return luaL_error(L, "extract_to_temp failed: %s", ex.what());
   }
 }
@@ -642,9 +648,8 @@ local archive_path = download_s3_object(bucket, key, region)
 extract_to_temp(archive_path)
 )";
 
-std::string format_git_error(int error_code)
-{
-  const git_error *error = git_error_last();
+std::string format_git_error(int error_code) {
+  git_error const *error = git_error_last();
   std::ostringstream oss;
   oss << "libgit2 error (" << error_code << ')';
   if (error && error->message) {
@@ -653,14 +658,13 @@ std::string format_git_error(int error_code)
   return oss.str();
 }
 
-void run_git_tls_probe(const std::string &url,
-                       const std::filesystem::path &workspace_root,
-                       std::mutex &console_mutex)
-{
+void run_git_tls_probe(std::string const &url,
+                       std::filesystem::path const &workspace_root,
+                       std::mutex &console_mutex) {
   git_libgit2_init();
   git_repository *repo = nullptr;
   git_remote *remote = nullptr;
-  const auto probe_dir = workspace_root / "out" / "cache" / "git_tls_probe";
+  auto const probe_dir = workspace_root / "out" / "cache" / "git_tls_probe";
   std::error_code fs_ec;
   std::filesystem::remove_all(probe_dir, fs_ec);
   std::filesystem::create_directories(probe_dir, fs_ec);
@@ -668,7 +672,8 @@ void run_git_tls_probe(const std::string &url,
   try {
     git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
     opts.flags = GIT_REPOSITORY_INIT_BARE;
-    const int init_result = git_repository_init_ext(&repo, probe_dir.string().c_str(), &opts);
+    int const init_result =
+        git_repository_init_ext(&repo, probe_dir.string().c_str(), &opts);
     if (init_result != 0) {
       throw std::runtime_error(format_git_error(init_result));
     }
@@ -679,19 +684,20 @@ void run_git_tls_probe(const std::string &url,
       remote = nullptr;
     }
 
-    const int create_result = git_remote_create(&remote, repo, "origin", url.c_str());
+    int const create_result = git_remote_create(&remote, repo, "origin", url.c_str());
     if (create_result != 0) {
       throw std::runtime_error(format_git_error(create_result));
     }
 
-    const int connect_result = git_remote_connect(remote, GIT_DIRECTION_FETCH, nullptr, nullptr, nullptr);
+    int const connect_result =
+        git_remote_connect(remote, GIT_DIRECTION_FETCH, nullptr, nullptr, nullptr);
     if (connect_result != 0) {
       throw std::runtime_error(format_git_error(connect_result));
     }
 
-    const git_remote_head **heads = nullptr;
+    git_remote_head const **heads = nullptr;
     size_t head_count = 0;
-    const int ls_result = git_remote_ls(&heads, &head_count, remote);
+    int const ls_result = git_remote_ls(&heads, &head_count, remote);
     if (ls_result != 0) {
       throw std::runtime_error(format_git_error(ls_result));
     }
@@ -720,30 +726,29 @@ void run_git_tls_probe(const std::string &url,
   std::filesystem::remove_all(probe_dir, fs_ec);
 }
 
-size_t curl_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
-{
+size_t curl_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata) {
   auto *buffer = static_cast<std::vector<char> *>(userdata);
-  const size_t total = size * nmemb;
+  size_t const total = size * nmemb;
   buffer->insert(buffer->end(), ptr, ptr + total);
   return total;
 }
 
-void ensure_curl_initialized()
-{
+void ensure_curl_initialized() {
   static std::once_flag once;
   std::call_once(once, [] {
-    const CURLcode init_result = curl_global_init(CURL_GLOBAL_DEFAULT);
+    CURLcode const init_result = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (init_result != CURLE_OK) {
-      throw std::runtime_error(std::string("curl_global_init failed: ") + curl_easy_strerror(init_result));
+      throw std::runtime_error(std::string("curl_global_init failed: ") +
+                               curl_easy_strerror(init_result));
     }
   });
 }
 
-void run_curl_tls_probe(const std::string &url, std::mutex &console_mutex)
-{
+void run_curl_tls_probe(std::string const &url, std::mutex &console_mutex) {
   ensure_curl_initialized();
 
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle(curl_easy_init(), &curl_easy_cleanup);
+  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle(curl_easy_init(),
+                                                             &curl_easy_cleanup);
   if (!handle) {
     throw std::runtime_error("curl_easy_init failed");
   }
@@ -756,12 +761,13 @@ void run_curl_tls_probe(const std::string &url, std::mutex &console_mutex)
   curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &response);
   curl_easy_setopt(handle.get(), CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
 
-  const CURLcode perform_result = curl_easy_perform(handle.get());
+  CURLcode const perform_result = curl_easy_perform(handle.get());
   long http_code = 0;
   curl_easy_getinfo(handle.get(), CURLINFO_RESPONSE_CODE, &http_code);
 
   if (perform_result != CURLE_OK) {
-    throw std::runtime_error(std::string("curl_easy_perform failed: ") + curl_easy_strerror(perform_result));
+    throw std::runtime_error(std::string("curl_easy_perform failed: ") +
+                             curl_easy_strerror(perform_result));
   }
 
   {
@@ -771,11 +777,10 @@ void run_curl_tls_probe(const std::string &url, std::mutex &console_mutex)
   }
 }
 
-void run_lua_workflow(const std::string &bucket,
-                      const std::string &key,
-                      const std::string &region,
-                      std::mutex &console_mutex)
-{
+void run_lua_workflow(std::string const &bucket,
+                      std::string const &key,
+                      std::string const &region,
+                      std::mutex &console_mutex) {
   AwsApiGuard aws_guard;
   TempResourceManager temp_manager;
   TempManagerScope manager_scope(temp_manager);
@@ -799,12 +804,12 @@ void run_lua_workflow(const std::string &bucket,
   lua_setglobal(state.get(), "region");
 
   if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
-    const char *message = lua_tostring(state.get(), -1);
+    char const *message = lua_tostring(state.get(), -1);
     throw std::runtime_error(std::string("Failed to load Lua script: ") +
                              (message ? message : "unknown error"));
   }
   if (lua_pcall(state.get(), 0, LUA_MULTRET, 0) != LUA_OK) {
-    const char *message = lua_tostring(state.get(), -1);
+    char const *message = lua_tostring(state.get(), -1);
     throw std::runtime_error(std::string("Lua script execution failed: ") +
                              (message ? message : "unknown error"));
   }
@@ -817,17 +822,17 @@ void run_lua_workflow(const std::string &bucket,
 
 }  // namespace
 
-void print_dependency_versions()
-{
+void print_dependency_versions() {
   std::cout << "Third-party component versions:" << std::endl;
 
   int git_major = 0;
   int git_minor = 0;
   int git_revision = 0;
   git_libgit2_version(&git_major, &git_minor, &git_revision);
-  std::cout << "  libgit2: " << git_major << '.' << git_minor << '.' << git_revision << std::endl;
+  std::cout << "  libgit2: " << git_major << '.' << git_minor << '.' << git_revision
+            << std::endl;
 
-  const curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
+  curl_version_info_data const *curl_info = curl_version_info(CURLVERSION_NOW);
   std::cout << "  libcurl: " << curl_info->version;
   std::vector<std::string> curl_features;
   if (curl_info->features & CURL_VERSION_ZSTD) {
@@ -863,21 +868,20 @@ void print_dependency_versions()
   std::cout << "  AWS SDK for C++: " << Aws::Version::GetVersionString() << std::endl;
 
   Aws::Crt::ApiHandle crt_handle;
-  const auto crt_version = crt_handle.GetCrtVersion();
+  auto const crt_version = crt_handle.GetCrtVersion();
   std::cout << "  AWS CRT: " << crt_version.major << '.' << crt_version.minor << '.'
             << crt_version.patch << std::endl;
 
   std::cout << "  CLI11: " << CLI11_VERSION << std::endl;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   bool show_versions = false;
   std::vector<std::string_view> positional_args;
   positional_args.reserve(static_cast<size_t>(argc));
 
   for (int i = 1; i < argc; ++i) {
-    const std::string_view arg{argv[i]};
+    std::string_view const arg{ argv[i] };
     if (arg == "-v") {
       show_versions = true;
     } else if (!arg.empty() && arg.front() == '-') {
@@ -902,13 +906,14 @@ int main(int argc, char **argv)
   }
 
   try {
-    const auto parts = parse_s3_uri(positional_args.front());
-    const std::string region_arg = positional_args.size() >= 2 ? std::string(positional_args[1]) : std::string{};
+    auto const parts = parse_s3_uri(positional_args.front());
+    std::string const region_arg =
+        positional_args.size() >= 2 ? std::string(positional_args[1]) : std::string{};
 
     std::mutex console_mutex;
-    const auto workspace_root = std::filesystem::current_path();
-    const std::string git_probe_url = "https://github.com/libgit2/libgit2.git";
-    const std::string curl_probe_url = "https://www.example.com/";
+    auto const workspace_root = std::filesystem::current_path();
+    std::string const git_probe_url = "https://github.com/libgit2/libgit2.git";
+    std::string const curl_probe_url = "https://www.example.com/";
 
     tbb::task_arena arena;
     arena.execute([&] {
@@ -920,20 +925,17 @@ int main(int argc, char **argv)
         Fn task_fn = std::forward<decltype(fn)>(fn);
         return tbb::flow::continue_node<tbb::flow::continue_msg>(
             graph,
-            [task_fn = std::move(task_fn)](const tbb::flow::continue_msg &) mutable {
+            [task_fn = std::move(task_fn)](tbb::flow::continue_msg const &) mutable {
               task_fn();
             });
       };
 
-      auto lua_task = make_task([&] {
-        run_lua_workflow(parts.bucket, parts.key, region_arg, console_mutex);
-      });
-      auto git_task = make_task([&] {
-        run_git_tls_probe(git_probe_url, workspace_root, console_mutex);
-      });
-      auto curl_task = make_task([&] {
-        run_curl_tls_probe(curl_probe_url, console_mutex);
-      });
+      auto lua_task = make_task(
+          [&] { run_lua_workflow(parts.bucket, parts.key, region_arg, console_mutex); });
+      auto git_task = make_task(
+          [&] { run_git_tls_probe(git_probe_url, workspace_root, console_mutex); });
+      auto curl_task =
+          make_task([&] { run_curl_tls_probe(curl_probe_url, console_mutex); });
 
       tbb::flow::make_edge(kickoff, lua_task);
       tbb::flow::make_edge(kickoff, git_task);
@@ -943,7 +945,7 @@ int main(int argc, char **argv)
       graph.wait_for_all();
     });
     return EXIT_SUCCESS;
-  } catch (const std::exception &ex) {
+  } catch (std::exception const &ex) {
     std::cerr << "Execution failed: " << ex.what() << '\n';
     return EXIT_FAILURE;
   }
