@@ -190,3 +190,31 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     unset(_envy_rescan_targets)
     unset(_envy_rescan_expanded_targets)
 endif()
+
+# Unit tests ---------------------------------------------------------------
+add_executable(envy_unit_tests)
+
+target_sources(envy_unit_tests
+    PRIVATE
+        src/unit_test_main.cpp
+)
+
+target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
+target_link_libraries(envy_unit_tests
+    PRIVATE
+        doctest::doctest
+)
+
+# Run tests and create timestamp on success
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
+    COMMAND envy_unit_tests
+    COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
+    DEPENDS envy_unit_tests
+    COMMENT "Running unit tests"
+    VERBATIM
+)
+
+add_custom_target(run_unit_tests ALL
+    DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
+)

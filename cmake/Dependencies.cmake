@@ -127,6 +127,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/Libarchive.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Blake3.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Lua.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/CLI11.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Doctest.cmake")
 
 # Aggregate -----------------------------------------------------------------
 add_library(envy_thirdparty INTERFACE)
