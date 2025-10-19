@@ -749,11 +749,11 @@ void run_lua_workflow(std::string const &bucket,
 
 }  // anonymous namespace
 
-cmd_playground::cmd_playground(cmd_playground::config cfg)
-    : config_{ std::move(cfg) } {}
+cmd_playground::cmd_playground(cmd_playground::cfg cfg)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_playground::schedule(tbb::flow::graph &g) {
-  auto const parts{ parse_s3_uri(config_.s3_uri) };
+  auto const parts{ parse_s3_uri(cfg_.s3_uri) };
 
   // Initialize state members
   workspace_root_ = std::filesystem::current_path();
@@ -766,7 +766,7 @@ void cmd_playground::schedule(tbb::flow::graph &g) {
   kickoff_.emplace(g);
 
   lua_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_lua_workflow(bucket_, key_, config_.region, console_mutex_);
+    run_lua_workflow(bucket_, key_, cfg_.region, console_mutex_);
   });
 
   git_task_.emplace(g, [this](tbb::flow::continue_msg const &) {

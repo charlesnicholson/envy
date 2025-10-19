@@ -4,21 +4,21 @@
 #include "oneapi/tbb/flow_graph.h"
 
 TEST_CASE("cmd_version constructor accepts config") {
-  envy::cmd_version::config cfg;
+  envy::cmd_version::cfg cfg;
   envy::cmd_version cmd{ cfg };
   CHECK_NOTHROW(cmd.get_config());
 }
 
-TEST_CASE("cmd_version config has correct command_type_t typedef") {
-  using config_type = envy::cmd_version::config;
+TEST_CASE("cmd_version config exposes cmd_t alias") {
+  using config_type = envy::cmd_version::cfg;
   using expected_command = envy::cmd_version;
-  using actual_command = config_type::command_type_t;
+  using actual_command = config_type::cmd_t;
 
   CHECK(std::is_same_v<actual_command, expected_command>);
 }
 
 TEST_CASE("cmd_version schedule is callable") {
-  envy::cmd_version::config cfg;
+  envy::cmd_version::cfg cfg;
   envy::cmd_version cmd{ cfg };
 
   tbb::flow::graph g;

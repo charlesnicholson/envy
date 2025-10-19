@@ -13,23 +13,23 @@ class cmd {
   virtual ~cmd() = default;
   virtual void schedule(tbb::flow::graph &g) = 0;
 
-  template <typename config_type>
-  static ptr_t create(config_type const &cfg);
+  template <typename config>
+  static ptr_t create(config const &cfg);
 
  protected:
   cmd() = default;
 };
 
 // Command configs inherit from this for factory creation.
-template <typename command_type>
+template <typename command>
 struct cmd_cfg {
-  using command_type_t = command_type;
+  using cmd_t = command;
 };
 
-template <typename config_type>
-cmd::ptr_t cmd::create(config_type const &cfg) {
-  using command_type = typename config_type::command_type_t;
-  return std::make_unique<command_type>(cfg);
+template <typename config>
+cmd::ptr_t cmd::create(config const &cfg) {
+  using command_t = typename config::cmd_t;
+  return std::make_unique<command_t>(cfg);
 }
 
 }  // namespace envy

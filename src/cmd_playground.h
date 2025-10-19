@@ -13,19 +13,18 @@ namespace envy {
 
 class cmd_playground : public cmd {
  public:
-  struct config : cmd_cfg<cmd_playground> {
+  struct cfg : cmd_cfg<cmd_playground> {
     std::string s3_uri;
     std::string region;
   };
 
-  explicit cmd_playground(config cfg);
+  explicit cmd_playground(cfg cfg);
 
   void schedule(tbb::flow::graph &g) override;
-
-  config const &get_config() const { return config_; }
+  cfg const &get_config() const { return cfg_; }
 
  private:
-  config config_;
+  cfg cfg_;
 
   std::mutex console_mutex_;
   std::filesystem::path workspace_root_;

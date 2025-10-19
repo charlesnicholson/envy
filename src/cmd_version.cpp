@@ -28,13 +28,17 @@ extern "C" {
 #include <string>
 #include <vector>
 
+#ifndef ENVY_VERSION_STR
+#error "ENVY_VERSION_STR must be defined by the build system"
+#endif
+
 namespace envy {
 
-cmd_version::cmd_version(cmd_version::config cfg) : config_{ std::move(cfg) } {}
+cmd_version::cmd_version(cmd_version::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_version::schedule(tbb::flow::graph &g) {
   node_.emplace(g, [](tbb::flow::continue_msg const &) {
-    std::cout << "envy version 0.1.0\n\n";
+    std::cout << "envy version " << ENVY_VERSION_STR << "\n\n";
     std::cout << "Third-party component versions:\n";
 
     int git_major{ 0 };
