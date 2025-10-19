@@ -27,6 +27,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(MSVC)
     enable_language(ASM_MASM)
     if(NOT CMAKE_ASM_MASM_COMPILER)
@@ -121,6 +123,11 @@ add_executable(envy)
 target_sources(envy
     PRIVATE
         src/main.cpp
+        src/cli.cpp
+        src/cmd.cpp
+        src/cmd_lua.cpp
+        src/cmd_playground.cpp
+        src/cmd_version.cpp
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
@@ -197,12 +204,22 @@ add_executable(envy_unit_tests)
 target_sources(envy_unit_tests
     PRIVATE
         src/unit_test_main.cpp
+        src/cli.cpp
+        src/cmd.cpp
+        src/cmd_lua.cpp
+        src/cmd_version.cpp
+        src/cmd_playground.cpp
+        src/cli_tests.cpp
+        src/cmd_tests.cpp
+        src/cmd_lua_tests.cpp
+        src/cmd_version_tests.cpp
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
 target_link_libraries(envy_unit_tests
     PRIVATE
         doctest::doctest
+        envy::thirdparty
 )
 
 # Run tests and create timestamp on success

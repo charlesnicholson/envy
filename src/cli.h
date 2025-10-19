@@ -1,9 +1,5 @@
 #pragma once
 
-#include "command.h"
+#include "cmd.h"
 
-namespace envy {
-
-command::ptr_t cli_parse(int argc, char **argv);
-
-}  // namespace envy
+namespace envy { cmd::ptr_t cli_parse(int argc, char **argv); }
