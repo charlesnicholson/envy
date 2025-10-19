@@ -2,6 +2,10 @@
 
 #include "command.h"
 
+#include "tbb/flow_graph.h"
+
+#include <optional>
+
 namespace envy {
 
 class version_command : public command {
@@ -13,6 +17,8 @@ class version_command : public command {
 
  private:
   config config_;
+
+  std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> node_;
 };
 
 }  // namespace envy
