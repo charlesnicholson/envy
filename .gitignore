@@ -14,6 +14,9 @@ build/
 */Makefile
 */cmake_install.cmake
 
+# Temporary files created by dependency builds
+libssh2.pc.in
+
 # Misc
 *.o
 *.obj

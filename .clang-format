@@ -10,13 +10,16 @@ IncludeBlocks: Preserve
 
 AlignAfterOpenBracket: Align
 AlignEscapedNewlines: DontAlign
-AllowShortBlocksOnASingleLine: Empty
-AllowShortCaseLabelsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
+AllowShortNamespacesOnASingleLine: true
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AlwaysBreakAfterReturnType: None
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLambdasOnASingleLine: All
 
 BinPackArguments: false
 BinPackParameters: false
