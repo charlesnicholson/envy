@@ -1,24 +1,26 @@
 #pragma once
 
-namespace tbb::flow {
-class graph;
-}
+#include <memory>
+
+namespace tbb::flow { class graph; }
 
 namespace envy {
 
-class Command {
+class command {
  public:
-  virtual ~Command() = default;
-  virtual void Schedule(tbb::flow::graph &g) = 0;
+  using ptr_t = std::unique_ptr<command>;
+
+  virtual ~command() = default;
+  virtual void schedule(tbb::flow::graph &g) = 0;
 
  protected:
-  Command() = default;
+  command() = default;
 };
 
 // Command configs inherit from this for factory creation.
-template <typename CommandType_>
-struct CommandConfig {
-  using CommandType = CommandType_;
+template <typename command_type>
+struct command_cfg {
+  using command_type_t = command_type;
 };
 
 }  // namespace envy

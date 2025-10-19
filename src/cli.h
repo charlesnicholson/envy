@@ -1,10 +1,9 @@
 #pragma once
 
-#include <memory>
+#include "command.h"
 
 namespace envy {
 
-class Command;
-std::unique_ptr<Command> ParseCommandLine(int argc, char **argv);
+command::ptr_t cli_parse(int argc, char **argv);
 
 }  // namespace envy
