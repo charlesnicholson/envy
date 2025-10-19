@@ -30,9 +30,6 @@
       "name": "release-lto-on",
       "displayName": "Build envy (LTO On)",
       "configurePreset": "release-lto-on",
-      "targets": [
-        "envy"
-      ],
       "jobs": 0
     }
   ]
