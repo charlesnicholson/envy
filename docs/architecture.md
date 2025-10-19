@@ -281,10 +281,14 @@ namespace envy::tui {
   int create_progress(progress_config cfg);
   void update_progress(int handle, float percent);
   void complete_progress(int handle);
+
+  // Rendering control (for interactive subprocess handoff)
+  void pause_rendering();   // Stop render loop, clear progress bars
+  void resume_rendering();  // Restart render loop
 }
 ```
 
-**Implementation:** Single log queue protected by mutex. Workers format messages via `vsnprintf`, append to queue. Progress state stored in retained-mode map—workers update percentage via handle whenever desired. Main thread drains log queue at 16ms intervals, always flushes logs, renders current progress state at 16ms (TTY) or 1024ms (non-TTY). Atomic bool for shutdown coordination. Non-TTY mode skips ANSI codes.
+**Implementation:** Flat namespace with module-internal state (global mutexes, queues, atomics)—avoids singleton boilerplate while maintaining single logical instance. Single log queue protected by mutex. Workers format messages via `vsnprintf`, append to queue. Progress state stored in retained-mode map—workers update percentage via handle whenever desired. Main thread drains log queue at 16ms intervals, always flushes logs, renders current progress state at 16ms (TTY) or 1024ms (non-TTY). Atomic bools for shutdown and pause coordination. Non-TTY mode skips ANSI codes.
 
 ### Interactive Input & Process Spawning
 
