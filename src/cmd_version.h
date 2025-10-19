@@ -1,6 +1,6 @@
 #pragma once
 
-#include "command.h"
+#include "cmd.h"
 
 #include "tbb/flow_graph.h"
 
@@ -8,12 +8,14 @@
 
 namespace envy {
 
-class version_command : public command {
+class cmd_version : public cmd {
  public:
-  struct config : command_cfg<version_command> {};
+  struct config : cmd_cfg<cmd_version> {};
 
-  explicit version_command(config cfg);
+  explicit cmd_version(config cfg);
   void schedule(tbb::flow::graph &g) override;
+
+  config const &get_config() const { return config_; }
 
  private:
   config config_;

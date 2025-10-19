@@ -1,31 +1,32 @@
 #pragma once
 
-#include "command.h"
+#include "cmd.h"
 
 #include "tbb/flow_graph.h"
 
 #include <filesystem>
-#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 
 namespace envy {
 
-class playground_command : public command {
+class cmd_playground : public cmd {
  public:
-  struct config : command_cfg<playground_command> {
+  struct config : cmd_cfg<cmd_playground> {
     std::string s3_uri;
     std::string region;
   };
 
-  explicit playground_command(config cfg);
+  explicit cmd_playground(config cfg);
 
   void schedule(tbb::flow::graph &g) override;
+
+  config const &get_config() const { return config_; }
 
  private:
   config config_;
 
-  // State that must outlive schedule() until graph completes
   std::mutex console_mutex_;
   std::filesystem::path workspace_root_;
   std::string git_probe_url_;

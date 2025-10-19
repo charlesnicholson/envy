@@ -1,4 +1,4 @@
-#include "version_command.h"
+#include "cmd_version.h"
 
 #include "CLI11.hpp"
 #include "archive.h"
@@ -29,9 +29,9 @@ extern "C" {
 
 namespace envy {
 
-version_command::version_command(config cfg) : config_{ std::move(cfg) } {}
+cmd_version::cmd_version(cmd_version::config cfg) : config_{ std::move(cfg) } {}
 
-void version_command::schedule(tbb::flow::graph &g) {
+void cmd_version::schedule(tbb::flow::graph &g) {
   node_.emplace(g, [](tbb::flow::continue_msg const &) {
     std::cout << "envy version 0.1.0\n\n";
     std::cout << "Third-party component versions:\n";

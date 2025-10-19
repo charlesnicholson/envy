@@ -1,19 +1,22 @@
 #pragma once
 
+#include "cmd.h"
+
 #include <filesystem>
-#include "command.h"
 
 namespace envy {
 
-class lua_command : public command {
+class cmd_lua : public cmd {
  public:
-  struct config : command_cfg<lua_command> {
+  struct config : cmd_cfg<cmd_lua> {
     std::filesystem::path script_path;
   };
 
-  explicit lua_command(config cfg);
+  explicit cmd_lua(config cfg);
 
   void schedule(tbb::flow::graph &g) override;
+
+  config const &get_config() const { return config_; }
 
  private:
   config config_;

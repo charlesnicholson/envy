@@ -1,4 +1,4 @@
-#include "playground_command.h"
+#include "cmd_playground.h"
 
 #include "archive.h"
 #include "archive_entry.h"
@@ -759,9 +759,10 @@ void run_lua_workflow(std::string const &bucket,
 
 }  // anonymous namespace
 
-playground_command::playground_command(config cfg) : config_{ std::move(cfg) } {}
+cmd_playground::cmd_playground(cmd_playground::config cfg)
+    : config_{ std::move(cfg) } {}
 
-void playground_command::schedule(tbb::flow::graph &g) {
+void cmd_playground::schedule(tbb::flow::graph &g) {
   auto const parts{ parse_s3_uri(config_.s3_uri) };
 
   // Initialize state members
