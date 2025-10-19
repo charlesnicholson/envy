@@ -284,7 +284,7 @@ namespace envy::tui {
 }
 ```
 
-**Implementation:** Separate log and progress command queues protected by mutexes. Workers format messages via `vsnprintf`, append to queue. Main thread drains both queues at 16ms intervals—always flushes logs; conditionally renders progress based on TTY status and interval. Atomic bool for shutdown coordination. Non-TTY mode skips ANSI codes, throttles progress to 1024ms to avoid log spam.
+**Implementation:** Single log queue protected by mutex. Workers format messages via `vsnprintf`, append to queue. Progress state stored in retained-mode map—workers update percentage via handle whenever desired. Main thread drains log queue at 16ms intervals, always flushes logs, renders current progress state at 16ms (TTY) or 1024ms (non-TTY). Atomic bool for shutdown coordination. Non-TTY mode skips ANSI codes.
 
 ### Interactive Input & Process Spawning
 
