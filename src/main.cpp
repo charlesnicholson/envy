@@ -231,7 +231,7 @@ void archive_copy_data(struct archive *source, struct archive *dest) {
                                archive_error_string(source));
     }
     la_ssize_t const write_result{ archive_write_data_block(dest, buff, size, offset) };
-    if (write_result != ARCHIVE_OK) {
+    if (write_result < 0) {
       throw std::runtime_error(std::string("libarchive write error: ") +
                                archive_error_string(dest));
     }
