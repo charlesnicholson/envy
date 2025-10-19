@@ -23,11 +23,11 @@ Iterate with link-time optimization disabled to keep rebuilds fast:
 
 ```bash
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=OFF
-cmake --build out/build --target envy --parallel
+cmake --build out/build --parallel
 out/build/envy
 ```
 
-The helper script `./build.sh` at the project root handles this workflow for you: it lazily configures `out/build` if the cache is missing and always drives a full build. The build is quick enough that targeting individual binaries is unnecessary.
+The helper script `./build.sh` at the project root handles this workflow for you: it lazily configures `out/build` if the cache is missing and always drives a full build. The build is quick enough that targeting individual binaries is unnecessary. Unless you are debugging a specific target, run `./build.sh` (or `./build.bat` on Windows) to validate changes so both `envy` and the unit tests compile.
 
 CMake is used strictly for builds; there is no CTest integration. Run the resulting `out/build/envy` executable directly to verify integration.
 
@@ -43,7 +43,7 @@ Before declaring a task done, blow away the build tree and validate a clean conf
 ```bash
 rm -rf out
 cmake -S . -B out/build -G Ninja -D CMAKE_BUILD_TYPE=Release -D ENABLE_LTO=ON
-cmake --build out/build --target envy --parallel
+cmake --build out/build --parallel
 out/build/envy
 ```
 
