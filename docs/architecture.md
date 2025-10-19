@@ -270,11 +270,14 @@ namespace envy::tui {
   void shutdown();                            // Signal exit, flush queues
   bool is_tty();                              // Expose isatty(STDERR_FILENO)
 
-  // Logging (thread-safe, printf-style)
+  // Logging to stderr (thread-safe, printf-style, queued)
   void debug(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
   void info(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
   void warn(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
   void error(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+
+  // Stdout (direct write, bypasses TUI, never queued)
+  void print_stdout(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
   // Progress (thread-safe, retained-mode handles)
   struct progress_config { std::string label; /* style, type, etc. */ };
@@ -285,6 +288,9 @@ namespace envy::tui {
   // Rendering control (for interactive subprocess handoff)
   void pause_rendering();   // Stop render loop, clear progress bars
   void resume_rendering();  // Restart render loop
+
+  // Output redirection (for testing)
+  void set_output_handler(std::function<void(std::string_view)> fn);
 }
 ```
 
