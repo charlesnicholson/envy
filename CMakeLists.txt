@@ -166,19 +166,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         find_program(CMAKE_STRIP NAMES strip)
     endif()
     if(CMAKE_STRIP)
-        set(_envy_strip_args)
-        if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-            set(_envy_strip_args -x)
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-            set(_envy_strip_args --strip-all)
-        endif()
         add_custom_command(
             TARGET envy POST_BUILD
-            COMMAND "${CMAKE_STRIP}" ${_envy_strip_args} "$<TARGET_FILE:envy>"
+            COMMAND "${CMAKE_STRIP}" "$<TARGET_FILE:envy>"
             COMMENT "Stripping envy executable"
             VERBATIM
         )
-        unset(_envy_strip_args)
     endif()
 endif()
 
