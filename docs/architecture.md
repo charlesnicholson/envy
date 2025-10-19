@@ -37,7 +37,9 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
-## Recipe Organization
+## Recipes
+
+### Organization
 
 **Identity:** Recipes are namespaced with version: `arm.gcc@v2`, `gnu.binutils@v3`. The `@` symbol denotes **recipe version**, not asset version. Asset versions come from `options` in manifest. Multiple recipe versions coexist; `local.*` namespace reserved for project-local recipes.
 
@@ -52,7 +54,7 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Integrity:** Remote recipes require SHA256 hash in manifest. Envy verifies before caching/executing. Mismatch causes hard failure.
 
-## Recipe Dependencies
+### Dependencies
 
 Recipes declare dependencies; transitive resolution is automatic. Manifest authors specify only direct needs.
 
@@ -227,6 +229,84 @@ local SUPPORTED = { darwin = { arm64 = true }, linux = { x86_64 = true } }
 assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
        "Unsupported platform: " .. ENVY_PLATFORM_ARCH)
 ```
+
+## TUI / Output
+
+### Stream Semantics
+
+**Stdout:** Machine-readable output only—`envy hash`, `envy lua --eval`, future asset path queries. Never logs, progress, or diagnostics.
+
+**Stderr:** All human communication—logs, progress bars, warnings, errors. Thread-safe queue-based rendering.
+
+### Log Formatting
+
+**Plain mode** (`init(std::nullopt)`): Clean output, no timestamps/severity prefixes. Threshold = info.
+```
+Fetching gcc-13.2.0.tar.xz...
+Warning: Recipe deprecated
+Error: SHA256 mismatch
+```
+
+**Structured mode** (explicit `--verbose` flag): Timestamps + severity on all messages.
+```
+[2024-10-19 12:34:56.123] [DEBUG] Cache miss for arm.gcc@v2
+[2024-10-19 12:34:56.234] [INFO] Fetching gcc-13.2.0.tar.xz...
+[2024-10-19 12:34:56.789] [WARN] Recipe deprecated
+```
+
+### Thread Model
+
+Main thread runs TUI render loop; TBB workers push to thread-safe queues. Uniform 16ms log refresh; progress refresh at 16ms (TTY) or 1024ms (non-TTY). Workers call `tui::is_tty()` to choose progress bar style (animated vs. periodic snapshots). Progress library handles ANSI clear/redraw; TUI owns timing and queue orchestration.
+
+### API Surface
+
+```cpp
+namespace envy::tui {
+  enum class level { debug, info, warn, error };
+
+  // Lifecycle
+  void init(std::optional<level> threshold);  // nullopt = plain mode
+  void run();                                 // Blocking render loop
+  void shutdown();                            // Signal exit, flush queues
+  bool is_tty();                              // Expose isatty(STDERR_FILENO)
+
+  // Logging to stderr (thread-safe, printf-style, queued)
+  void debug(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+  void info(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+  void warn(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+  void error(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+
+  // Stdout (direct write, bypasses TUI, never queued)
+  void print_stdout(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+
+  // Progress (thread-safe, retained-mode handles)
+  struct progress_config { std::string label; /* style, type, etc. */ };
+  int create_progress(progress_config cfg);
+  void update_progress(int handle, float percent);
+  void complete_progress(int handle);
+
+  // Rendering control (for interactive subprocess handoff)
+  void pause_rendering();   // Stop render loop, clear progress bars
+  void resume_rendering();  // Restart render loop
+
+  // Output redirection (for testing)
+  void set_output_handler(std::function<void(std::string_view)> fn);
+}
+```
+
+**Implementation:** Flat namespace with module-internal state (global mutexes, queues, atomics)—avoids singleton boilerplate while maintaining single logical instance. Single log queue protected by mutex. Workers format messages via `vsnprintf`, append to queue. Progress state stored in retained-mode map—workers update percentage via handle whenever desired. Main thread drains log queue at 16ms intervals, always flushes logs, renders current progress state at 16ms (TTY) or 1024ms (non-TTY). Atomic bools for shutdown and pause coordination. Non-TTY mode skips ANSI codes.
+
+### Interactive Input & Process Spawning
+
+**REPL mode** (`envy lua`): TUI runs in interactive mode—logs bypass queue, go straight to stderr via `fprintf`. No render loop, no progress bars.
+
+**Recipe process execution:** Three modes via `ctx` API:
+
+- **`run_capture(cmd, args)`** — Stdout/stderr piped to string, returned to Lua. Stdin closed. No TUI interaction (silent checks like `brew list | grep foo`).
+- **`run(cmd, args)`** — Stdout/stderr piped line-by-line to `tui::info()`. Stdin closed. No TUI pause (build output appears as logs).
+- **`run_interactive(cmd, args)`** — Stdin/stdout/stderr inherited. TUI calls `pause_rendering()`, clears progress bars, waits for subprocess exit, calls `resume_rendering()`. Render loop idles on atomic flag.
+
+**Platform abstraction:** Unix uses `fork()`/`execvp()`/`pipe()`/`dup2()`. Windows uses `CreateProcess()`/`STARTUPINFO` with redirected handles. Both hide behind `envy::process` interface. Terminal control via `isatty()`/`_isatty()` + ANSI escape codes (Windows 10+ `ENABLE_VIRTUAL_TERMINAL_PROCESSING` via `SetConsoleMode`).
 
 ## Testing
 
