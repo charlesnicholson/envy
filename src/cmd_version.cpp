@@ -1,4 +1,5 @@
 #include "cmd_version.h"
+#include "platform_windows.h"
 
 #include "CLI11.hpp"
 #include "archive.h"
