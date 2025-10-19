@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 4.1.2)
 
+set(ENVY_VERSION "0.0.0")
+
 project(envy
-    VERSION 0.1.0
+    VERSION ${ENVY_VERSION}
     DESCRIPTION "Static test driver bundling libgit2, libcurl (mbedTLS), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
     LANGUAGES C CXX)
 
@@ -137,6 +139,7 @@ target_compile_options(envy PRIVATE
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
 )
+target_compile_definitions(envy PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_link_options(envy PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
 )
@@ -161,7 +164,8 @@ target_link_libraries(envy
         envy::thirdparty
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     if(NOT CMAKE_STRIP)
         find_program(CMAKE_STRIP NAMES strip)
     endif()
@@ -230,6 +234,7 @@ target_sources(envy_unit_tests
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
+target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_link_libraries(envy_unit_tests
     PRIVATE
         doctest::doctest
