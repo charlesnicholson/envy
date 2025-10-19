@@ -9,11 +9,9 @@
 int main(int argc, char **argv) {
   try {
     auto cmd{ envy::cli_parse(argc, argv) };
-
     if (!cmd) { return EXIT_FAILURE; }
 
-    tbb::task_arena arena;
-    arena.execute([&] {
+    tbb::task_arena().execute([&] {
       tbb::flow::graph graph;
       cmd->schedule(graph);
       graph.wait_for_all();
