@@ -161,6 +161,27 @@ target_link_libraries(envy
         envy::thirdparty
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(NOT CMAKE_STRIP)
+        find_program(CMAKE_STRIP NAMES strip)
+    endif()
+    if(CMAKE_STRIP)
+        set(_envy_strip_args)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set(_envy_strip_args -x)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set(_envy_strip_args --strip-all)
+        endif()
+        add_custom_command(
+            TARGET envy POST_BUILD
+            COMMAND "${CMAKE_STRIP}" ${_envy_strip_args} "$<TARGET_FILE:envy>"
+            COMMENT "Stripping envy executable"
+            VERBATIM
+        )
+        unset(_envy_strip_args)
+    endif()
+endif()
+
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
         envy::libgit2

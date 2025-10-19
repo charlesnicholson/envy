@@ -30,7 +30,7 @@ extern "C" {
 
 namespace envy {
 
-cmd_version::cmd_version(cmd_version::config cfg) : config_{ std::move(cfg) } {}
+cmd_version::cmd_version(cmd_version::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_version::schedule(tbb::flow::graph &g) {
   node_.emplace(g, [](tbb::flow::continue_msg const &) {

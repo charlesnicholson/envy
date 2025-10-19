@@ -10,16 +10,15 @@ namespace envy {
 
 class cmd_version : public cmd {
  public:
-  struct config : cmd_cfg<cmd_version> {};
+  struct cfg : cmd_cfg<cmd_version> {};
 
-  explicit cmd_version(config cfg);
+  explicit cmd_version(cfg cfg);
+
   void schedule(tbb::flow::graph &g) override;
-
-  config const &get_config() const { return config_; }
+  cfg const &get_config() const { return cfg_; }
 
  private:
-  config config_;
-
+  cfg cfg_;
   std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> node_;
 };
 
