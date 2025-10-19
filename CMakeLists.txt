@@ -121,6 +121,11 @@ add_executable(envy)
 target_sources(envy
     PRIVATE
         src/main.cpp
+        src/cli.cpp
+        src/command.cpp
+        src/lua_command.cpp
+        src/playground_command.cpp
+        src/version_command.cpp
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
@@ -197,12 +202,22 @@ add_executable(envy_unit_tests)
 target_sources(envy_unit_tests
     PRIVATE
         src/unit_test_main.cpp
+        src/cli.cpp
+        src/command.cpp
+        src/lua_command.cpp
+        src/version_command.cpp
+        src/playground_command.cpp
+        src/cli_tests.cpp
+        src/command_tests.cpp
+        src/lua_command_tests.cpp
+        src/version_command_tests.cpp
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
 target_link_libraries(envy_unit_tests
     PRIVATE
         doctest::doctest
+        envy::thirdparty
 )
 
 # Run tests and create timestamp on success
