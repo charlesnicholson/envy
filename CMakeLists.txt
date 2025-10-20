@@ -130,6 +130,7 @@ target_sources(envy
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
+        src/tui.cpp
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
@@ -231,6 +232,8 @@ target_sources(envy_unit_tests
         src/cmd_tests.cpp
         src/cmd_lua_tests.cpp
         src/cmd_version_tests.cpp
+        src/tui_tests.cpp
+        src/tui.cpp
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)

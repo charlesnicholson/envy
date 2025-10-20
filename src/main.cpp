@@ -1,21 +1,31 @@
 #include "cli.h"
+#include "tui.h"
 
 #include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
 
 #include <cstdlib>
 #include <iostream>
+#include <variant>
 
 int main(int argc, char **argv) {
+  envy::tui::init();
+
   try {
-    auto cmd{ envy::cli_parse(argc, argv) };
-    if (!cmd) { return EXIT_FAILURE; }
+    auto args_opt{ envy::cli_parse(argc, argv) };
+    if (!args_opt) { return EXIT_FAILURE; }
+
+    auto args{ std::move(*args_opt) };
+    auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
+                         args.cmd_cfg) };
+
+    envy::tui::scope tui_scope{ args.verbosity };
 
     tbb::task_arena().execute([&cmd]() {
       tbb::flow::graph graph;
       cmd->schedule(graph);
       graph.wait_for_all();
-      cmd.reset(); // graph must outlive nodes owned by command
+      cmd.reset();  // graph must outlive nodes owned by command
     });
 
     return EXIT_SUCCESS;

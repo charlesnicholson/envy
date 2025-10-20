@@ -1,7 +1,16 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 
-// This file provides the main() entry point for doctest unit tests.
-// Individual test files should be compiled alongside this file into the
-// envy_unit_tests executable. Test files use doctest's automatic registration
-// via TEST_CASE() macros.
+#include "tui.h"
+
+#include <string_view>
+
+int main(int argc, char **argv) {
+  doctest::Context context;
+  context.applyCommandLine(argc, argv);
+
+  envy::tui::init();
+  envy::tui::set_output_handler([](std::string_view) {});
+
+  return context.run();
+}
