@@ -2,6 +2,7 @@
 #include "cmd_lua.h"
 #include "cmd_playground.h"
 #include "cmd_version.h"
+#include "tui.h"
 
 #include "CLI11.hpp"
 
@@ -12,21 +13,18 @@
 namespace envy {
 namespace {
 
-using cmd_cfg_t = std::variant<cmd_lua::cfg, cmd_playground::cfg, cmd_version::cfg>;
-
-cmd::ptr_t create_command(cmd_cfg_t const &cfg) {
-  return std::visit([](auto &&cfg) -> cmd::ptr_t { return cmd::create(cfg); }, cfg);
-}
-
 }  // anonymous namespace
 
-cmd::ptr_t cli_parse(int argc, char **argv) {
+std::optional<cli_args> cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
 
   bool show_version{ false };
   app.add_flag("-v,--version", show_version, "Show version information");
 
-  std::optional<cmd_cfg_t> cmd_cfg;
+  bool verbose{ false };
+  app.add_flag("--verbose", verbose, "Enable structured verbose logging");
+
+  std::optional<cli_args::cmd_cfg_t> cmd_cfg;
 
   // Lua subcommand
   cmd_lua::cfg lua_cfg{};
@@ -48,20 +46,26 @@ cmd::ptr_t cli_parse(int argc, char **argv) {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
     std::cout << app.help() << '\n';
-    return nullptr;
+    return std::nullopt;
   } catch (CLI::ParseError const &e) {
     std::cerr << e.what() << '\n';
-    return nullptr;
+    return std::nullopt;
   }
 
-  if (show_version) { return cmd::create(cmd_version::cfg{}); }
-
-  if (!cmd_cfg) {
-    std::cerr << app.help() << "\n";
-    return nullptr;
+  cli_args args{};
+  if (show_version) {
+    args.cmd_cfg = cmd_version::cfg{};
+  } else {
+    if (!cmd_cfg) {
+      std::cerr << app.help() << "\n";
+      return std::nullopt;
+    }
+    args.cmd_cfg = *cmd_cfg;
   }
 
-  return create_command(*cmd_cfg);
+  if (verbose) { args.verbosity = tui::level::DEBUG; }
+
+  return args;
 }
 
 }  // namespace envy

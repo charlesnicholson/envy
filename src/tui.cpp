@@ -277,4 +277,19 @@ void set_output_handler(std::function<void(std::string_view)> handler) {
   s_tui.output_handler = std::move(handler);
 }
 
+scope::scope(std::optional<level> threshold) {
+  if (!s_tui.initialized) { return; }
+  run(std::move(threshold));
+  active = true;
+}
+
+scope::~scope() {
+  if (!active) { return; }
+  try {
+    shutdown();
+  } catch (...) {
+    // destructor must not throw
+  }
+}
+
 }  // namespace envy::tui

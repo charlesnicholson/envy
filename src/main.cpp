@@ -6,18 +6,20 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <variant>
 
 int main(int argc, char **argv) {
   envy::tui::init();
 
   try {
-    auto cmd{ envy::cli_parse(argc, argv) };
-    if (!cmd) { return EXIT_FAILURE; }
+    auto args_opt{ envy::cli_parse(argc, argv) };
+    if (!args_opt) { return EXIT_FAILURE; }
 
-    struct tui_scope {
-      tui_scope() { envy::tui::run(std::nullopt); }
-      ~tui_scope() { envy::tui::shutdown(); }
-    } scope;
+    auto args{ std::move(*args_opt) };
+    auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
+                         args.cmd_cfg) };
+
+    envy::tui::scope tui_scope{ args.verbosity };
 
     tbb::task_arena().execute([&cmd]() {
       tbb::flow::graph graph;

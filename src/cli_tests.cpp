@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -27,9 +28,9 @@ TEST_CASE("cli_parse: no arguments") {
   std::vector<std::string> args{"envy"};
   auto argv{make_argv(args)};
 
-  auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+  auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-  CHECK(cmd == nullptr);
+  CHECK_FALSE(parsed.has_value());
 }
 
 TEST_CASE("cli_parse: cmd_version") {
@@ -37,20 +38,20 @@ TEST_CASE("cli_parse: cmd_version") {
     std::vector<std::string> args{"envy", "-v"};
     auto argv{make_argv(args)};
 
-    auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(cmd != nullptr);
-    CHECK(dynamic_cast<envy::cmd_version*>(cmd.get()) != nullptr);
+    REQUIRE(parsed.has_value());
+    CHECK(std::holds_alternative<envy::cmd_version::cfg>(parsed->cmd_cfg));
   }
 
   SUBCASE("--version flag") {
     std::vector<std::string> args{"envy", "--version"};
     auto argv{make_argv(args)};
 
-    auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(cmd != nullptr);
-    CHECK(dynamic_cast<envy::cmd_version*>(cmd.get()) != nullptr);
+    REQUIRE(parsed.has_value());
+    CHECK(std::holds_alternative<envy::cmd_version::cfg>(parsed->cmd_cfg));
   }
 }
 
@@ -66,15 +67,15 @@ TEST_CASE("cli_parse: cmd_lua") {
     std::vector<std::string> args{"envy", "lua", temp_path.string()};
     auto argv{make_argv(args)};
 
-    auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
     // Clean up temp file
     std::filesystem::remove(temp_path);
 
-    REQUIRE(cmd != nullptr);
-    auto* lua_cmd{dynamic_cast<envy::cmd_lua*>(cmd.get())};
-    REQUIRE(lua_cmd != nullptr);
-    CHECK(lua_cmd->get_config().script_path == temp_path);
+    REQUIRE(parsed.has_value());
+    auto const* cfg{std::get_if<envy::cmd_lua::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->script_path == temp_path);
   }
 }
 
@@ -83,25 +84,35 @@ TEST_CASE("cli_parse: cmd_playground") {
     std::vector<std::string> args{"envy", "playground", "s3://bucket/key"};
     auto argv{make_argv(args)};
 
-    auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(cmd != nullptr);
-    auto* playground_cmd{dynamic_cast<envy::cmd_playground*>(cmd.get())};
-    REQUIRE(playground_cmd != nullptr);
-    CHECK(playground_cmd->get_config().s3_uri == "s3://bucket/key");
-    CHECK(playground_cmd->get_config().region.empty());
+    REQUIRE(parsed.has_value());
+    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->s3_uri == "s3://bucket/key");
+    CHECK(cfg->region.empty());
   }
 
   SUBCASE("s3_uri with region") {
     std::vector<std::string> args{"envy", "playground", "s3://bucket/key", "us-west-2"};
     auto argv{make_argv(args)};
 
-    auto cmd{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(cmd != nullptr);
-    auto* playground_cmd{dynamic_cast<envy::cmd_playground*>(cmd.get())};
-    REQUIRE(playground_cmd != nullptr);
-    CHECK(playground_cmd->get_config().s3_uri == "s3://bucket/key");
-    CHECK(playground_cmd->get_config().region == "us-west-2");
+    REQUIRE(parsed.has_value());
+    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->s3_uri == "s3://bucket/key");
+    CHECK(cfg->region == "us-west-2");
   }
+}
+
+TEST_CASE("cli_parse: verbose flag") {
+  std::vector<std::string> args{"envy", "--verbose", "playground", "s3://bucket/key"};
+  auto argv{make_argv(args)};
+
+  auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+
+  REQUIRE(parsed.has_value());
+  CHECK(parsed->verbosity == envy::tui::level::DEBUG);
 }
