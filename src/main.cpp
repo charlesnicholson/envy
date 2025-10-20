@@ -12,19 +12,13 @@ int main(int argc, char **argv) {
   envy::tui::init();
 
   try {
-    auto args_opt{ envy::cli_parse(argc, argv) };
-    if (!args_opt) { return EXIT_FAILURE; }
+    auto args{ envy::cli_parse(argc, argv) };
+    if (!args) { return EXIT_FAILURE; }
 
-    auto args{ std::move(*args_opt) };
+    envy::tui::scope tui_scope{ args->verbosity };
+
     auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
-                         args.cmd_cfg) };
-
-    envy::tui::scope tui_scope{ args.verbosity };
-
-    struct tui_scope {
-      tui_scope() { envy::tui::run(std::nullopt); }
-      ~tui_scope() { envy::tui::shutdown(); }
-    } scope;
+                         args->cmd_cfg) };
 
     tbb::task_arena().execute([&cmd]() {
       tbb::flow::graph graph;
