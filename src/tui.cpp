@@ -284,12 +284,7 @@ scope::scope(std::optional<level> threshold) {
 }
 
 scope::~scope() {
-  if (!active) { return; }
-  try {
-    shutdown();
-  } catch (...) {
-    // destructor must not throw
-  }
+  if (active) { shutdown(); }
 }
 
 }  // namespace envy::tui
