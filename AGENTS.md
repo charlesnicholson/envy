@@ -25,6 +25,8 @@ Formatting: respect `.clang-format` (Google base)—2-space indent, K&R braces, 
 Naming: functions/types snake_case, constants kPascalCase, enum values SCREAMING_SNAKE, everything in `envy` (no sub-namespaces).
 Initialization & includes: brace-init new vars; use `=` only for reassignment; `<>` for STL/OS headers, `""` for envy/third-party; order local → third-party → STL with blank lines.
 Structure: favor value types over heap; keep headers self-contained; declare inline members in-class, define out-of-line right below; avoid ad-hoc FetchContent.
+Atomics: default to `memory_order_seq_cst`; only tighten semantics when correctness demands it.
+Formatting: prefer stdio-style (`snprintf`, `fprintf`) over iostream/stringstream unless streaming APIs are mandatory.
 
 ## Testing Guidelines & Performance Philosophy
 Focused tests via lightweight harnesses outside CTest—CMake builds only. Tests fast (<1s), clean allocations (`git_libgit2_shutdown`, `curl_easy_cleanup`, `archive_write_free`). Diagnose via `out/build/envy`; document repro in PR/docs. Optimize for small binaries, high runtime performance—simple cache-friendly structures, thread-aware algorithms (oneTBB), no excessive template metaprogramming. Use bundled mbedTLS for hashing (e.g., SHA-256) over bespoke code.

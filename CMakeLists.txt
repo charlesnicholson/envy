@@ -232,6 +232,7 @@ target_sources(envy_unit_tests
         src/cmd_tests.cpp
         src/cmd_lua_tests.cpp
         src/cmd_version_tests.cpp
+        src/tui_tests.cpp
         src/tui.cpp
 )
 
