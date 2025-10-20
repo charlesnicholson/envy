@@ -79,7 +79,7 @@ TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
 
   REQUIRE(messages.size() == 1);
   auto const &line{ messages[0] };
-  CHECK(line.find("[INFO ") != std::string::npos);
+  CHECK(line.find("[INF") != std::string::npos);
   CHECK(line.rfind("structured 7") == line.size() - std::string("structured 7").size());
 }
 
@@ -92,9 +92,9 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
   CHECK_NOTHROW(envy::tui::shutdown());
 
   REQUIRE(messages.size() == 2);
-  CHECK(messages[0].find("WARN") != std::string::npos);
+  CHECK(messages[0].find("WRN") != std::string::npos);
   CHECK(messages[0].find("warn") != std::string::npos);
-  CHECK(messages[1].find("ERROR") != std::string::npos);
+  CHECK(messages[1].find("ERR") != std::string::npos);
   CHECK(messages[1].find("error") != std::string::npos);
 
   messages.clear();
@@ -103,6 +103,6 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
   envy::tui::info("info");
   CHECK_NOTHROW(envy::tui::shutdown());
   REQUIRE(messages.size() == 1);
-  CHECK(messages[0].find("INFO") != std::string::npos);
+  CHECK(messages[0].find("INF") != std::string::npos);
   CHECK(messages[0].find("info") != std::string::npos);
 }

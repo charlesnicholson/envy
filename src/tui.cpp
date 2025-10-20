@@ -16,7 +16,7 @@
 
 using envy::tui::level;
 
-constexpr std::size_t kSeverityLabelWidth{ 5 };
+constexpr std::size_t kSeverityLabelWidth{ 3 };
 
 constexpr std::chrono::milliseconds kRefreshIntervalMs{ 16 };
 
@@ -78,10 +78,10 @@ void worker_thread() {
 
 std::string_view level_to_string(level value) {
   switch (value) {
-    case level::DEBUG: return "DEBUG";
-    case level::INFO: return "INFO";
-    case level::WARN: return "WARN";
-    case level::ERROR: return "ERROR";
+    case level::DEBUG: return "DBG";
+    case level::INFO: return "INF";
+    case level::WARN: return "WRN";
+    case level::ERROR: return "ERR";
   }
 
   return "UNKNOWN";
@@ -275,6 +275,21 @@ void set_output_handler(std::function<void(std::string_view)> handler) {
 
   std::lock_guard<std::mutex> lock{ s_tui.mutex };
   s_tui.output_handler = std::move(handler);
+}
+
+scope::scope(std::optional<level> threshold) {
+  if (!s_tui.initialized) { return; }
+  run(std::move(threshold));
+  active = true;
+}
+
+scope::~scope() {
+  if (!active) { return; }
+  try {
+    shutdown();
+  } catch (...) {
+    // destructor must not throw
+  }
 }
 
 }  // namespace envy::tui
