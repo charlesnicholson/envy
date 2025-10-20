@@ -21,6 +21,11 @@ int main(int argc, char **argv) {
 
     envy::tui::scope tui_scope{ args.verbosity };
 
+    struct tui_scope {
+      tui_scope() { envy::tui::run(std::nullopt); }
+      ~tui_scope() { envy::tui::shutdown(); }
+    } scope;
+
     tbb::task_arena().execute([&cmd]() {
       tbb::flow::graph graph;
       cmd->schedule(graph);
