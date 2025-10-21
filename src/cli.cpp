@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "cmd_extract.h"
 #include "cmd_lua.h"
 #include "cmd_playground.h"
 #include "cmd_version.h"
@@ -21,6 +22,15 @@ cli_args cli_parse(int argc, char **argv) {
   app.add_flag("--verbose", verbose, "Enable structured verbose logging");
 
   std::optional<cli_args::cmd_cfg_t> cmd_cfg;
+
+  // Extract subcommand
+  cmd_extract::cfg extract_cfg{};
+  auto *extract{ app.add_subcommand("extract", "Extract archive to destination") };
+  extract->add_option("archive", extract_cfg.archive_path, "Archive file to extract")
+      ->required()
+      ->check(CLI::ExistingFile);
+  extract->add_option("destination", extract_cfg.destination, "Destination directory (defaults to current directory)");
+  extract->callback([&cmd_cfg, &extract_cfg] { cmd_cfg = extract_cfg; });
 
   // Lua subcommand
   cmd_lua::cfg lua_cfg{};
