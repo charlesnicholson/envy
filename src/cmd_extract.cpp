@@ -42,7 +42,6 @@ std::uint64_t extract_archive(std::filesystem::path const &archive_path,
 
   archive_entry *entry{ nullptr };
   std::uint64_t file_count{ 0 };
-  std::uint64_t directory_count{ 0 };
 
   while (true) {
     int const r{ archive_read_next_header(reader, &entry) };
@@ -139,11 +138,7 @@ std::uint64_t extract_archive(std::filesystem::path const &archive_path,
     }
 
     mode_t const filetype{ archive_entry_filetype(entry) };
-    if (filetype == AE_IFREG) {
-      ++file_count;
-    } else if (filetype == AE_IFDIR) {
-      ++directory_count;
-    }
+    if (filetype == AE_IFREG) { ++file_count; }
   }
 
   archive_read_close(reader);
