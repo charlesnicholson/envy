@@ -31,6 +31,8 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_package(Python3 3.13 EXACT REQUIRED COMPONENTS Interpreter)
+
 if(MSVC)
     enable_language(ASM_MASM)
     if(NOT CMAKE_ASM_MASM_COMPILER)
@@ -272,3 +274,29 @@ add_custom_command(
 add_custom_target(run_unit_tests ALL
     DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
 )
+
+set(ENVY_FUNCTIONAL_TEST_DIR "${PROJECT_SOURCE_DIR}/functional_tests")
+file(GLOB ENVY_FUNCTIONAL_TEST_SOURCES CONFIGURE_DEPENDS
+    "${ENVY_FUNCTIONAL_TEST_DIR}/*.py"
+)
+set(ENVY_FUNCTIONAL_TEST_TIMESTAMP "${CMAKE_CURRENT_BINARY_DIR}/envy_functional_tests.timestamp")
+
+add_custom_command(
+    OUTPUT "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
+    COMMAND "${Python3_EXECUTABLE}" -m functional_tests
+    COMMAND "${CMAKE_COMMAND}" -E touch "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
+    DEPENDS envy ${ENVY_FUNCTIONAL_TEST_SOURCES}
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    COMMENT "Running functional tests"
+    VERBATIM
+)
+
+add_custom_target(run_functional_tests ALL
+    DEPENDS "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
+)
+
+add_dependencies(run_functional_tests envy run_unit_tests)
+
+unset(ENVY_FUNCTIONAL_TEST_DIR)
+unset(ENVY_FUNCTIONAL_TEST_SOURCES)
+unset(ENVY_FUNCTIONAL_TEST_TIMESTAMP)

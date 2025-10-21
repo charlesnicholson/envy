@@ -82,27 +82,37 @@ void setup_lua_environment(lua_State *L) {
 cmd_lua::cmd_lua(cmd_lua::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_lua::schedule(tbb::flow::graph &g) {
-  node_.emplace(g, [script_path = cfg_.script_path](tbb::flow::continue_msg const &) {
+  succeeded_ = true;
+
+  node_.emplace(g, [this](tbb::flow::continue_msg const &) {
+    auto const script_path{ cfg_.script_path };
     lua_State *L{ luaL_newstate() };
     if (!L) {
       tui::error("Failed to create Lua state");
+      succeeded_ = false;
       return;
     }
 
     setup_lua_environment(L);
 
-    if (luaL_loadfile(L, script_path.string().c_str()) != LUA_OK) {
+    if (int const load_status{ luaL_loadfile(L, script_path.string().c_str()) }; load_status != LUA_OK) {
       char const *err{ lua_tostring(L, -1) };
-      tui::error("Failed to load %s: %s",
-                 script_path.string().c_str(),
-                 err ? err : "unknown error");
+      if (load_status == LUA_ERRFILE) {
+        tui::error("Failed to open %s: %s",
+                   script_path.string().c_str(),
+                   err ? err : "unknown error");
+      } else {
+        tui::error("%s", err ? err : "unknown error");
+      }
+      succeeded_ = false;
       lua_close(L);
       return;
     }
 
     if (lua_pcall(L, 0, LUA_MULTRET, 0) != LUA_OK) {
       char const *err{ lua_tostring(L, -1) };
-      tui::error("Script error: %s", err ? err : "unknown error");
+      tui::error("%s", err ? err : "unknown error");
+      succeeded_ = false;
       lua_close(L);
       return;
     }

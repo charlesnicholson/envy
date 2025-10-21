@@ -30,14 +30,16 @@ int main(int argc, char **argv) {
     auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
                          *args.cmd_cfg) };
 
-    tbb::task_arena().execute([&cmd]() {
+    bool command_succeeded{ false };
+    tbb::task_arena().execute([&cmd, &command_succeeded]() {
       tbb::flow::graph graph;
       cmd->schedule(graph);
       graph.wait_for_all();
+      command_succeeded = cmd->succeeded();
       cmd.reset();  // graph must outlive nodes owned by command
     });
 
-    return EXIT_SUCCESS;
+    return command_succeeded ? EXIT_SUCCESS : EXIT_FAILURE;
   } catch (std::exception const &ex) {
     std::cerr << "Execution failed: " << ex.what() << '\n';
     return EXIT_FAILURE;
