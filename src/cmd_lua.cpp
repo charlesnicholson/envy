@@ -27,54 +27,30 @@ int lua_print_override(lua_State *L) {
   return 0;
 }
 
-int lua_envy_debug(lua_State *L) {
-  char const *msg{ luaL_checkstring(L, 1) };
-  tui::debug("%s", msg);
+template <void tui_func(char const *, ...)>
+int lua_print_tui(lua_State *lua) {
+  char const *msg{ luaL_checkstring(lua, 1) };
+  tui_func("%s", msg);
   return 0;
 }
 
-int lua_envy_info(lua_State *L) {
-  char const *msg{ luaL_checkstring(L, 1) };
-  tui::info("%s", msg);
-  return 0;
-}
+void setup_lua_environment(lua_State *lua) {
+  luaL_openlibs(lua);
 
-int lua_envy_warn(lua_State *L) {
-  char const *msg{ luaL_checkstring(L, 1) };
-  tui::warn("%s", msg);
-  return 0;
-}
-
-int lua_envy_error(lua_State *L) {
-  char const *msg{ luaL_checkstring(L, 1) };
-  tui::error("%s", msg);
-  return 0;
-}
-
-int lua_envy_stdout(lua_State *L) {
-  char const *msg{ luaL_checkstring(L, 1) };
-  tui::print_stdout("%s", msg);
-  return 0;
-}
-
-void setup_lua_environment(lua_State *L) {
-  luaL_openlibs(L);
-
-  lua_pushcfunction(L, lua_print_override);
-  lua_setglobal(L, "print");
-
-  lua_newtable(L);
-  lua_pushcfunction(L, lua_envy_debug);
-  lua_setfield(L, -2, "debug");
-  lua_pushcfunction(L, lua_envy_info);
-  lua_setfield(L, -2, "info");
-  lua_pushcfunction(L, lua_envy_warn);
-  lua_setfield(L, -2, "warn");
-  lua_pushcfunction(L, lua_envy_error);
-  lua_setfield(L, -2, "error");
-  lua_pushcfunction(L, lua_envy_stdout);
-  lua_setfield(L, -2, "stdout");
-  lua_setglobal(L, "envy");
+  lua_pushcfunction(lua, lua_print_override);
+  lua_setglobal(lua, "print");
+  lua_newtable(lua);
+  lua_pushcfunction(lua, lua_print_tui<tui::debug>);
+  lua_setfield(lua, -2, "debug");
+  lua_pushcfunction(lua, lua_print_tui<tui::info>);
+  lua_setfield(lua, -2, "info");
+  lua_pushcfunction(lua, lua_print_tui<tui::warn>);
+  lua_setfield(lua, -2, "warn");
+  lua_pushcfunction(lua, lua_print_tui<tui::error>);
+  lua_setfield(lua, -2, "error");
+  lua_pushcfunction(lua, lua_print_tui<tui::print_stdout>);
+  lua_setfield(lua, -2, "stdout");
+  lua_setglobal(lua, "envy");
 }
 
 }  // anonymous namespace
