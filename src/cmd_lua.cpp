@@ -7,20 +7,23 @@ extern "C" {
 #include "lualib.h"
 }
 
-#include <cstdio>
+#include <sstream>
 
 namespace envy {
 namespace {
 
 int lua_print_override(lua_State *L) {
   int argc{ lua_gettop(L) };
+  std::ostringstream oss;
 
   for (int i{ 1 }; i <= argc; ++i) {
+    if (i > 1) { oss << '\t'; }
     char const *str{ luaL_tolstring(L, i, nullptr) };
-    if (str) { tui::info("%s", str); }
+    if (str) { oss << str; }
     lua_pop(L, 1);
   }
 
+  tui::info("%s", oss.str().c_str());
   return 0;
 }
 

@@ -15,7 +15,7 @@ class cmd_version : public cmd {
   explicit cmd_version(cfg cfg);
 
   void schedule(tbb::flow::graph &g) override;
-  cfg const &get_config() const { return cfg_; }
+  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
