@@ -8,12 +8,8 @@
 
 #include <iostream>
 #include <optional>
-#include <variant>
 
 namespace envy {
-namespace {
-
-}  // anonymous namespace
 
 std::optional<cli_args> cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
@@ -32,7 +28,7 @@ std::optional<cli_args> cli_parse(int argc, char **argv) {
   lua->add_option("script", lua_cfg.script_path, "Lua script file to execute")
       ->required()
       ->check(CLI::ExistingFile);
-  lua->callback([&cmd_cfg, &lua_cfg]() { cmd_cfg = lua_cfg; });
+  lua->callback([&cmd_cfg, &lua_cfg] { cmd_cfg = lua_cfg; });
 
   // Playground subcommand
   cmd_playground::cfg playground_cfg{};
@@ -40,7 +36,7 @@ std::optional<cli_args> cli_parse(int argc, char **argv) {
   playground->add_option("s3_uri", playground_cfg.s3_uri, "S3 URI (s3://bucket/key)")
       ->required();
   playground->add_option("region", playground_cfg.region, "AWS region (optional)");
-  playground->callback([&cmd_cfg, &playground_cfg]() { cmd_cfg = playground_cfg; });
+  playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });
 
   try {
     app.parse(argc, argv);

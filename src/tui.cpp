@@ -17,7 +17,6 @@
 using envy::tui::level;
 
 constexpr std::size_t kSeverityLabelWidth{ 3 };
-
 constexpr std::chrono::milliseconds kRefreshIntervalMs{ 16 };
 
 struct tui {
@@ -172,6 +171,9 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
   buffer.resize(offset + static_cast<std::size_t>(written));
   if (buffer.empty()) { return; }
+
+  // Ensure message ends with newline
+  if (buffer.back() != '\n') { buffer.push_back('\n'); }
 
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };

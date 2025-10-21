@@ -6,7 +6,7 @@
 TEST_CASE("cmd_version constructor accepts config") {
   envy::cmd_version::cfg cfg;
   envy::cmd_version cmd{ cfg };
-  CHECK_NOTHROW(cmd.get_config());
+  CHECK_NOTHROW(cmd.get_cfg());
 }
 
 TEST_CASE("cmd_version config exposes cmd_t alias") {
