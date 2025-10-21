@@ -12,15 +12,14 @@ extern "C" {
 namespace envy {
 namespace {
 
-int lua_print_override(lua_State *L) {
-  int argc{ lua_gettop(L) };
+int lua_print_override(lua_State *lua) {
+  int argc{ lua_gettop(lua) };
   std::ostringstream oss;
 
   for (int i{ 1 }; i <= argc; ++i) {
     if (i > 1) { oss << '\t'; }
-    char const *str{ luaL_tolstring(L, i, nullptr) };
-    if (str) { oss << str; }
-    lua_pop(L, 1);
+    if (auto str{ luaL_tolstring(lua, i, nullptr) }; str) { oss << str; }
+    lua_pop(lua, 1);
   }
 
   tui::info("%s", oss.str().c_str());
@@ -29,8 +28,7 @@ int lua_print_override(lua_State *L) {
 
 template <void tui_func(char const *, ...)>
 int lua_print_tui(lua_State *lua) {
-  char const *msg{ luaL_checkstring(lua, 1) };
-  tui_func("%s", msg);
+  tui_func("%s", luaL_checkstring(lua, 1));
   return 0;
 }
 
