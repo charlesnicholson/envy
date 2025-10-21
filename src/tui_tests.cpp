@@ -66,10 +66,10 @@ TEST_CASE_FIXTURE(captured_output, "tui unstructured logs are raw messages") {
   CHECK_NOTHROW(envy::tui::shutdown());
 
   REQUIRE(messages.size() == 4);
-  CHECK(messages[0] == "hello world");
-  CHECK(messages[1] == "value 42");
-  CHECK(messages[2] == "three 3");
-  CHECK(messages[3] == "boom");
+  CHECK(messages[0] == "hello world\n");
+  CHECK(messages[1] == "value 42\n");
+  CHECK(messages[2] == "three 3\n");
+  CHECK(messages[3] == "boom\n");
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
@@ -80,7 +80,7 @@ TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
   REQUIRE(messages.size() == 1);
   auto const &line{ messages[0] };
   CHECK(line.find("[INF") != std::string::npos);
-  CHECK(line.rfind("structured 7") == line.size() - std::string("structured 7").size());
+  CHECK(line.rfind("structured 7\n") == line.size() - std::string("structured 7\n").size());
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {

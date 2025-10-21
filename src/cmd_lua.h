@@ -2,7 +2,10 @@
 
 #include "cmd.h"
 
+#include "tbb/flow_graph.h"
+
 #include <filesystem>
+#include <optional>
 
 namespace envy {
 
@@ -19,6 +22,7 @@ class cmd_lua : public cmd {
 
  private:
   cfg cfg_;
+  std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> node_;
 };
 
 }  // namespace envy
