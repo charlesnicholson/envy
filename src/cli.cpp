@@ -59,7 +59,7 @@ std::optional<cli_args> cli_parse(int argc, char **argv) {
     args.cmd_cfg = *cmd_cfg;
   }
 
-  if (verbose) { args.verbosity = tui::level::DEBUG; }
+  if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
 
   return args;
 }

@@ -77,12 +77,11 @@ void worker_thread() {
 
 std::string_view level_to_string(level value) {
   switch (value) {
-    case level::DEBUG: return "DBG";
-    case level::INFO: return "INF";
-    case level::WARN: return "WRN";
-    case level::ERROR: return "ERR";
+    case level::TUI_DEBUG: return "DBG";
+    case level::TUI_INFO: return "INF";
+    case level::TUI_WARN: return "WRN";
+    case level::TUI_ERROR: return "ERR";
   }
-
   return "UNKNOWN";
 }
 
@@ -177,7 +176,7 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };
-    if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
     s_tui.messages.push(std::move(buffer));
   }
 
@@ -228,28 +227,28 @@ bool is_tty() { return false; }
 void debug(char const *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  log_formatted(level::DEBUG, fmt, args);
+  log_formatted(level::TUI_DEBUG, fmt, args);
   va_end(args);
 }
 
 void info(char const *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  log_formatted(level::INFO, fmt, args);
+  log_formatted(level::TUI_INFO, fmt, args);
   va_end(args);
 }
 
 void warn(char const *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  log_formatted(level::WARN, fmt, args);
+  log_formatted(level::TUI_WARN, fmt, args);
   va_end(args);
 }
 
 void error(char const *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  log_formatted(level::ERROR, fmt, args);
+  log_formatted(level::TUI_ERROR, fmt, args);
   va_end(args);
 }
 

@@ -114,5 +114,5 @@ TEST_CASE("cli_parse: verbose flag") {
   auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
   REQUIRE(parsed.has_value());
-  CHECK(parsed->verbosity == envy::tui::level::DEBUG);
+  CHECK(parsed->verbosity == envy::tui::level::TUI_DEBUG);
 }

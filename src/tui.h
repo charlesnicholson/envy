@@ -12,7 +12,8 @@
 
 namespace envy::tui {
 
-enum class level { DEBUG, INFO, WARN, ERROR };
+// Logging levels renamed with TUI_ prefix to avoid collisions with external macros (DOCTEST, system headers).
+enum class level { TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
 
 void init();
 void set_output_handler(std::function<void(std::string_view)> handler);
