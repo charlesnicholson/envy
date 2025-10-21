@@ -129,6 +129,7 @@ target_sources(envy
         src/main.cpp
         src/cli.cpp
         src/cmd.cpp
+        src/cmd_extract.cpp
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
@@ -226,11 +227,13 @@ target_sources(envy_unit_tests
         src/unit_test_main.cpp
         src/cli.cpp
         src/cmd.cpp
+        src/cmd_extract.cpp
         src/cmd_lua.cpp
         src/cmd_version.cpp
         src/cmd_playground.cpp
         src/cli_tests.cpp
         src/cmd_tests.cpp
+        src/cmd_extract_tests.cpp
         src/cmd_lua_tests.cpp
         src/cmd_version_tests.cpp
         src/tui_tests.cpp

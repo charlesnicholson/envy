@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cmd_extract.h"
 #include "cmd_lua.h"
 #include "cmd_playground.h"
 #include "cmd_version.h"
@@ -12,7 +13,8 @@
 namespace envy {
 
 struct cli_args {
-  using cmd_cfg_t = std::variant<cmd_lua::cfg, cmd_playground::cfg, cmd_version::cfg>;
+  using cmd_cfg_t =
+      std::variant<cmd_extract::cfg, cmd_lua::cfg, cmd_playground::cfg, cmd_version::cfg>;
 
   std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
