@@ -33,3 +33,6 @@ libssh2.pc.in
 *.mod
 *.dir
 *.log
+
+**/__pycache__/**
+*.pyc

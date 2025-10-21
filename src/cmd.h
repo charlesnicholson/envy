@@ -13,11 +13,14 @@ class cmd {
   virtual ~cmd() = default;
   virtual void schedule(tbb::flow::graph &g) = 0;
 
+  bool succeeded() const { return succeeded_; }
+
   template <typename config>
   static ptr_t create(config const &cfg);
 
  protected:
   cmd() = default;
+  bool succeeded_{ true };
 };
 
 // Command configs inherit from this for factory creation.
