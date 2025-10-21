@@ -139,6 +139,8 @@ target_compile_options(envy PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
+    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
 )
 target_compile_definitions(envy PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_link_options(envy PRIVATE
@@ -207,12 +209,9 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
         endif()
     endforeach()
     list(REMOVE_DUPLICATES _envy_rescan_expanded_targets)
-    list(JOIN _envy_rescan_expanded_targets "," _envy_link_group)
-    target_link_libraries(envy
-        PRIVATE
-            "$<LINK_GROUP:RESCAN,${_envy_link_group}>"
-    )
-    unset(_envy_link_group)
+    list(JOIN _envy_rescan_expanded_targets "," _envy_link_group_entries)
+    set(_envy_rescan_link_group "$<LINK_GROUP:RESCAN,${_envy_link_group_entries}>")
+    unset(_envy_link_group_entries)
     unset(_envy_rescan_targets)
     unset(_envy_rescan_expanded_targets)
 endif()
@@ -238,11 +237,27 @@ target_sources(envy_unit_tests
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
+target_compile_options(envy_unit_tests PRIVATE
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
+    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
+)
 target_link_libraries(envy_unit_tests
     PRIVATE
         doctest::doctest
         envy::thirdparty
 )
+
+if(DEFINED _envy_rescan_link_group)
+    foreach(_envy_target IN ITEMS envy envy_unit_tests)
+        if(TARGET ${_envy_target})
+            target_link_libraries(${_envy_target}
+                PRIVATE
+                    "${_envy_rescan_link_group}"
+            )
+        endif()
+    endforeach()
+    unset(_envy_rescan_link_group)
+endif()
 
 # Run tests and create timestamp on success
 add_custom_command(
