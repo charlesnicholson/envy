@@ -19,7 +19,7 @@ TEST_CASE("tui allows handler changes while idle") {
 TEST_CASE("tui enforces run/shutdown sequencing") {
   auto const handler{ [](std::string_view) {} };
   CHECK_NOTHROW(envy::tui::set_output_handler(handler));
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::INFO));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_INFO));
   CHECK_NOTHROW(envy::tui::shutdown());
 
   CHECK_NOTHROW(envy::tui::run(std::nullopt));
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(captured_output, "tui unstructured logs are raw messages") {
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::DEBUG));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG));
   envy::tui::info("structured %d", 7);
   CHECK_NOTHROW(envy::tui::shutdown());
 
@@ -84,7 +84,7 @@ TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::WARN));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_WARN));
   envy::tui::debug("debug");
   envy::tui::info("info");
   envy::tui::warn("warn");
@@ -98,7 +98,7 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
   CHECK(messages[1].find("error") != std::string::npos);
 
   messages.clear();
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::INFO));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_INFO));
   envy::tui::debug("debug");
   envy::tui::info("info");
   CHECK_NOTHROW(envy::tui::shutdown());
