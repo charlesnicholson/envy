@@ -6,6 +6,7 @@
 #include "tui.h"
 
 #include <optional>
+#include <string>
 #include <variant>
 
 namespace envy {
@@ -13,10 +14,11 @@ namespace envy {
 struct cli_args {
   using cmd_cfg_t = std::variant<cmd_lua::cfg, cmd_playground::cfg, cmd_version::cfg>;
 
-  cmd_cfg_t cmd_cfg;
+  std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
+  std::string cli_output;
 };
 
-std::optional<cli_args> cli_parse(int argc, char **argv);
+cli_args cli_parse(int argc, char **argv);
 
 }  // namespace envy

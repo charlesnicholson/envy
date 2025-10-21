@@ -11,7 +11,7 @@
 
 namespace envy {
 
-std::optional<cli_args> cli_parse(int argc, char **argv) {
+cli_args cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
 
   bool show_version{ false };
@@ -38,23 +38,27 @@ std::optional<cli_args> cli_parse(int argc, char **argv) {
   playground->add_option("region", playground_cfg.region, "AWS region (optional)");
   playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });
 
+  cli_args args{};
+
   try {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
-    std::cout << app.help() << '\n';
-    return std::nullopt;
+    args.cli_output = app.help() + "\n";
+    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+    return args;
   } catch (CLI::ParseError const &e) {
-    std::cerr << e.what() << '\n';
-    return std::nullopt;
+    args.cli_output = std::string(e.what()) + "\n";
+    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+    return args;
   }
 
-  cli_args args{};
   if (show_version) {
     args.cmd_cfg = cmd_version::cfg{};
   } else {
     if (!cmd_cfg) {
-      std::cerr << app.help() << "\n";
-      return std::nullopt;
+      args.cli_output = app.help() + "\n";
+      if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+      return args;
     }
     args.cmd_cfg = *cmd_cfg;
   }

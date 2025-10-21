@@ -13,12 +13,22 @@ int main(int argc, char **argv) {
 
   try {
     auto args{ envy::cli_parse(argc, argv) };
-    if (!args) { return EXIT_FAILURE; }
 
-    envy::tui::scope tui_scope{ args->verbosity };
+    envy::tui::scope tui_scope{ args.verbosity };
+
+    if (!args.cli_output.empty()) {
+      if (args.cmd_cfg.has_value()) {
+        envy::tui::info("%s", args.cli_output.c_str());
+      } else {
+        envy::tui::error("%s", args.cli_output.c_str());
+        return EXIT_FAILURE;
+      }
+    }
+
+    if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
 
     auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
-                         args->cmd_cfg) };
+                         *args.cmd_cfg) };
 
     tbb::task_arena().execute([&cmd]() {
       tbb::flow::graph graph;
