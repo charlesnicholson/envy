@@ -30,7 +30,8 @@ TEST_CASE("cli_parse: no arguments") {
 
   auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-  CHECK_FALSE(parsed.has_value());
+  CHECK_FALSE(parsed.cmd_cfg.has_value());
+  CHECK_FALSE(parsed.cli_output.empty());
 }
 
 TEST_CASE("cli_parse: cmd_version") {
@@ -40,8 +41,8 @@ TEST_CASE("cli_parse: cmd_version") {
 
     auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(parsed.has_value());
-    CHECK(std::holds_alternative<envy::cmd_version::cfg>(parsed->cmd_cfg));
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
   }
 
   SUBCASE("--version flag") {
@@ -50,8 +51,8 @@ TEST_CASE("cli_parse: cmd_version") {
 
     auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(parsed.has_value());
-    CHECK(std::holds_alternative<envy::cmd_version::cfg>(parsed->cmd_cfg));
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
   }
 }
 
@@ -72,8 +73,8 @@ TEST_CASE("cli_parse: cmd_lua") {
     // Clean up temp file
     std::filesystem::remove(temp_path);
 
-    REQUIRE(parsed.has_value());
-    auto const* cfg{std::get_if<envy::cmd_lua::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const* cfg{std::get_if<envy::cmd_lua::cfg>(&*parsed.cmd_cfg)};
     REQUIRE(cfg != nullptr);
     CHECK(cfg->script_path == temp_path);
   }
@@ -86,8 +87,8 @@ TEST_CASE("cli_parse: cmd_playground") {
 
     auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(parsed.has_value());
-    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
     REQUIRE(cfg != nullptr);
     CHECK(cfg->s3_uri == "s3://bucket/key");
     CHECK(cfg->region.empty());
@@ -99,8 +100,8 @@ TEST_CASE("cli_parse: cmd_playground") {
 
     auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(parsed.has_value());
-    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&parsed->cmd_cfg)};
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
     REQUIRE(cfg != nullptr);
     CHECK(cfg->s3_uri == "s3://bucket/key");
     CHECK(cfg->region == "us-west-2");
@@ -113,6 +114,6 @@ TEST_CASE("cli_parse: verbose flag") {
 
   auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-  REQUIRE(parsed.has_value());
-  CHECK(parsed->verbosity == envy::tui::level::TUI_DEBUG);
+  REQUIRE(parsed.cmd_cfg.has_value());
+  CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
 }
