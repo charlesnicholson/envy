@@ -46,7 +46,7 @@ file_lock::~file_lock() {
 
 }  // namespace envy
 
-#else  // POSIX (Linux, macOS, etc.)
+#else  // POSIX-ish
 
 #include <fcntl.h>
 #include <unistd.h>
