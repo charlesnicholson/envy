@@ -6,14 +6,15 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <unordered_set>
 #include <stdexcept>
 #include <string>
 
 namespace envy {
 namespace {
 
-std::uint64_t extract_archive(std::filesystem::path const &archive_path,
-                              std::filesystem::path const &destination) {
+void extract_archive(std::filesystem::path const &archive_path,
+                     std::filesystem::path const &destination) {
   archive *reader{ archive_read_new() };
   if (!reader) { throw std::runtime_error("libarchive read allocation failed"); }
 
@@ -102,9 +103,9 @@ std::uint64_t extract_archive(std::filesystem::path const &archive_path,
 
     if (archive_entry_size(entry) > 0) {
       char buffer[8192];
-      ssize_t bytes_read{ 0 };
+      la_ssize_t bytes_read{ 0 };
       while ((bytes_read = archive_read_data(reader, buffer, sizeof(buffer))) > 0) {
-        ssize_t bytes_written{ archive_write_data(writer, buffer, bytes_read) };
+        la_ssize_t bytes_written{ archive_write_data(writer, buffer, static_cast<size_t>(bytes_read)) };
         if (bytes_written < 0) {
           std::string const message{ std::string("Failed to write entry data: ") +
                                      archive_error_string(writer) };
@@ -136,9 +137,7 @@ std::uint64_t extract_archive(std::filesystem::path const &archive_path,
       archive_write_free(writer);
       throw std::runtime_error(message);
     }
-
-    mode_t const filetype{ archive_entry_filetype(entry) };
-    if (filetype == AE_IFREG) { ++file_count; }
+    // File counting deferred to post-extraction traversal.
   }
 
   archive_read_close(reader);
@@ -146,7 +145,7 @@ std::uint64_t extract_archive(std::filesystem::path const &archive_path,
   archive_read_free(reader);
   archive_write_free(writer);
 
-  return file_count;
+  return;
 }
 
 }  // anonymous namespace
@@ -193,7 +192,19 @@ void cmd_extract::schedule(tbb::flow::graph &g) {
                 cfg_.archive_path.filename().string().c_str(),
                 destination.string().c_str());
 
-      std::uint64_t const file_count{ extract_archive(cfg_.archive_path, destination) };
+      extract_archive(cfg_.archive_path, destination);
+
+      // Determine root of extracted tree (tar archives may have leading directory)
+      std::filesystem::path base{ destination / "root" };
+      if (!std::filesystem::exists(base)) { base = destination; }
+
+      std::uint64_t file_count{ 0 };
+      for (auto const &entry : std::filesystem::recursive_directory_iterator(base)) {
+        if (!entry.is_regular_file()) { continue; }
+        auto const name = entry.path().filename().string();
+        if (name.rfind("._", 0) == 0) { continue; }
+        ++file_count;
+      }
 
       tui::info("Extracted %llu files", static_cast<unsigned long long>(file_count));
       succeeded_ = true;

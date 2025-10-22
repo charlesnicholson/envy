@@ -19,6 +19,8 @@ struct cli_args {
   std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
   std::string cli_output;
+
+  cli_args() : verbosity{ tui::level::TUI_DEBUG } {}
 };
 
 cli_args cli_parse(int argc, char **argv);

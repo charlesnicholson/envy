@@ -51,8 +51,14 @@ TEST_CASE("cmd_extract config archive path can be relative") {
 
 TEST_CASE("cmd_extract config archive path can be absolute") {
   envy::cmd_extract::cfg cfg;
+  // Use platform-appropriate absolute path forms.
+#ifdef _WIN32
+  cfg.archive_path = "C:/absolute/path/archive.7z";
+  cfg.destination = "C:/absolute/path/destination";
+#else
   cfg.archive_path = "/absolute/path/archive.7z";
   cfg.destination = "/absolute/path/destination";
+#endif
 
   CHECK(cfg.archive_path.is_absolute());
   CHECK(cfg.destination.is_absolute());
