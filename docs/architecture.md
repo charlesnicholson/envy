@@ -37,6 +37,35 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
+### Overrides
+
+Manifests can override recipe sources globally. Useful for mirrors, internal caches, or local development.
+
+```lua
+-- project/envy.lua
+overrides = {
+  ["arm.gcc@v2"] = {
+    url = "https://internal-mirror.company/recipes/arm-gcc-v2.lua",
+    sha256 = "a1b2c3d4e5f6..."
+  },
+  ["gnu.binutils@v3"] = {
+    file = "./local-recipes/binutils.lua"  -- Local development
+  }
+}
+
+packages = {
+  "arm.gcc@v2",  -- Will use overridden source
+  {
+    recipe = "vendor.openocd@v3",
+    url = "https://example.com/openocd.lua",
+    sha256 = "..."
+    -- openocd's dependency on arm.gcc@v2 will also use overridden source
+  }
+}
+```
+
+**Semantics:** Overrides apply to all recipe references (manifest packages + transitive dependencies). Override source replaces original source; options unchanged. Conflicting overrides for same recipe error at manifest validation.
+
 ## Recipes
 
 ### Organization
@@ -129,20 +158,17 @@ project/envy/recipes/
 
 Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 
-**Lock types:**
-- **Exclusive:** Held during cache entry creation (download/extract/fingerprint). Blocks all other acquisitions.
-- **Shared:** Multiple holders allowed. Used for waiting or coordination.
-
 **Implementation:**
-- Linux/macOS: POSIX `fcntl` (`F_SETLK`/`F_SETLKW`, `F_RDLCK`/`F_WRLCK`)
-- Windows: `LockFileEx`/`UnlockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK` flag
+- Linux/macOS: POSIX `fcntl(F_SETLKW)` with `F_WRLCK` (exclusive, blocking)
+- Windows: `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK` (exclusive, blocking)
 
 **Patterns:**
 1. **Lock-free read:** Check `.envy-complete`, use immediately if present
-2. **Shared wait:** Attempt shared lock; if immediate success, upgrade to exclusive and work; if blocks, another process is working—wait then recheck
-3. **Exclusive work:** Create `.inprogress/` staging, download/extract/fingerprint, write `.envy-complete`, atomic rename to final path, release lock
+2. **Exclusive creation:** Acquire exclusive lock (blocks until available), check `.envy-complete` again (another process may have finished while waiting), create if still missing
 
-**Staging rationale:** `.inprogress/` stages in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) crash recovery—next worker finds/removes stale staging in predictable location; (3) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion. Current design trades download resumption (complex: HTTP ranges, partial extraction, verification) for simplicity—crashes mean restart from scratch. Lock release enables immediate retry by another process.
+**Staging:** `.inprogress/` directory created adjacent to final entry path for multi-file assets. Located in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion; (3) predictable location for cleanup. Staging path: `{entry_path}.inprogress/`.
+
+**Crash recovery:** Stale `.inprogress/` directories cleaned up lazily per-entry when lock is acquired. Before creating new staging, check if `{entry_path}.inprogress/` exists and remove it. No cache-wide scanning required—cleanup happens only for the specific entry being worked on.
 
 ### BLAKE3 Fingerprints
 

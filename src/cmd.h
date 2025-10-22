@@ -1,12 +1,14 @@
 #pragma once
 
+#include "util.h"
+
 #include "oneapi/tbb/flow_graph.h"
 
 #include <memory>
 
 namespace envy {
 
-class cmd {
+class cmd : unmovable {
  public:
   using ptr_t = std::unique_ptr<cmd>;
 
