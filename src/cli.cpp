@@ -1,13 +1,8 @@
 #include "cli.h"
-#include "cmd_extract.h"
-#include "cmd_lua.h"
-#include "cmd_playground.h"
-#include "cmd_version.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
 
-#include <iostream>
 #include <optional>
 
 namespace envy {
@@ -15,13 +10,14 @@ namespace envy {
 cli_args cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
 
-  bool show_version{ false };
-  app.add_flag("-v,--version", show_version, "Show version information");
-
   bool verbose{ false };
-  app.add_flag("--verbose", verbose, "Enable structured verbose logging");
+  app.add_flag("-v,--verbose", verbose, "Enable structured verbose logging");
 
   std::optional<cli_args::cmd_cfg_t> cmd_cfg;
+
+  // Version subcommand
+  auto *version{ app.add_subcommand("version", "Show version information") };
+  version->callback([&cmd_cfg] { cmd_cfg = cmd_version::cfg{}; });
 
   // Extract subcommand
   cmd_extract::cfg extract_cfg{};
@@ -29,7 +25,9 @@ cli_args cli_parse(int argc, char **argv) {
   extract->add_option("archive", extract_cfg.archive_path, "Archive file to extract")
       ->required()
       ->check(CLI::ExistingFile);
-  extract->add_option("destination", extract_cfg.destination, "Destination directory (defaults to current directory)");
+  extract->add_option("destination",
+                      extract_cfg.destination,
+                      "Destination directory (defaults to current directory)");
   extract->callback([&cmd_cfg, &extract_cfg] { cmd_cfg = extract_cfg; });
 
   // Lua subcommand
@@ -50,30 +48,30 @@ cli_args cli_parse(int argc, char **argv) {
 
   cli_args args{};
 
+  auto const apply_verbosity{ [&args, &verbose] {
+    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+  } };
+
   try {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
-    args.cli_output = app.help() + "\n";
-    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+    args.cli_output = app.help();
+    apply_verbosity();
     return args;
   } catch (CLI::ParseError const &e) {
-    args.cli_output = std::string(e.what()) + "\n";
-    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+    args.cli_output = std::string(e.what());
+    apply_verbosity();
     return args;
   }
 
-  if (show_version) {
-    args.cmd_cfg = cmd_version::cfg{};
-  } else {
-    if (!cmd_cfg) {
-      args.cli_output = app.help() + "\n";
-      if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
-      return args;
-    }
-    args.cmd_cfg = *cmd_cfg;
+  if (!cmd_cfg) {
+    args.cli_output = app.help();
+    apply_verbosity();
+    return args;
   }
 
-  if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
+  args.cmd_cfg = *cmd_cfg;
+  apply_verbosity();
 
   return args;
 }

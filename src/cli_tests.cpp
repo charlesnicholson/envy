@@ -34,26 +34,14 @@ TEST_CASE("cli_parse: no arguments") {
   CHECK_FALSE(parsed.cli_output.empty());
 }
 
-TEST_CASE("cli_parse: cmd_version") {
-  SUBCASE("-v flag") {
-    std::vector<std::string> args{"envy", "-v"};
-    auto argv{make_argv(args)};
+TEST_CASE("cli_parse: cmd_version subcommand") {
+  std::vector<std::string> args{"envy", "version"};
+  auto argv{make_argv(args)};
 
-    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+  auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-    REQUIRE(parsed.cmd_cfg.has_value());
-    CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
-  }
-
-  SUBCASE("--version flag") {
-    std::vector<std::string> args{"envy", "--version"};
-    auto argv{make_argv(args)};
-
-    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
-
-    REQUIRE(parsed.cmd_cfg.has_value());
-    CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
-  }
+  REQUIRE(parsed.cmd_cfg.has_value());
+  CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
 }
 
 TEST_CASE("cli_parse: cmd_lua") {
@@ -108,12 +96,35 @@ TEST_CASE("cli_parse: cmd_playground") {
   }
 }
 
-TEST_CASE("cli_parse: verbose flag") {
-  std::vector<std::string> args{"envy", "--verbose", "playground", "s3://bucket/key"};
-  auto argv{make_argv(args)};
+TEST_CASE("cli_parse: verbose flags") {
+  SUBCASE("-v alias") {
+    std::vector<std::string> args{"envy", "-v", "playground", "s3://bucket/key"};
+    auto argv{make_argv(args)};
 
-  auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
 
-  REQUIRE(parsed.cmd_cfg.has_value());
-  CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
+  }
+
+  SUBCASE("--verbose long option") {
+    std::vector<std::string> args{"envy", "--verbose", "playground", "s3://bucket/key"};
+    auto argv{make_argv(args)};
+
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
+  }
+
+  SUBCASE("-v without command emits help") {
+    std::vector<std::string> args{"envy", "-v"};
+    auto argv{make_argv(args)};
+
+    auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
+  }
 }

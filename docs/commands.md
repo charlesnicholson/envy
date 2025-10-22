@@ -4,10 +4,14 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 
 ## Global Flags
 
-**`-v`, `--version`** — Print envy version and all third-party component versions.
+**`-v`, `--verbose`** — Enable structured logging; adds timestamps and severity tags.
 **`-h`, `--help`, `help`** — Print top-level help summarizing available subcommands. Subcommands also support `--help` for detailed usage.
 
 ## Subcommands
+
+### Meta
+
+**`envy version`** — Print envy version and third-party component versions.
 
 ### Utilities
 
