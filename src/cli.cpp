@@ -11,7 +11,13 @@ cli_args cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
 
   bool verbose{ false };
-  app.add_flag("-v,--verbose", verbose, "Enable structured verbose logging");
+  app.add_flag("--verbose", verbose, "Enable structured verbose logging");
+
+  // Support version flags (-v / --version) triggering version command directly.
+  bool version_flag_short{ false };
+  bool version_flag_long{ false };
+  app.add_flag("-v", version_flag_short, "Show version information (alias for version subcommand)");
+  app.add_flag("--version", version_flag_long, "Show version information (alias for version subcommand)");
 
   std::optional<cli_args::cmd_cfg_t> cmd_cfg;
 
@@ -46,33 +52,30 @@ cli_args cli_parse(int argc, char **argv) {
   playground->add_option("region", playground_cfg.region, "AWS region (optional)");
   playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });
 
-  cli_args args{};
-
-  auto const apply_verbosity{ [&args, &verbose] {
-    if (verbose) { args.verbosity = tui::level::TUI_DEBUG; }
-  } };
+  cli_args args{}; 
 
   try {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
     args.cli_output = app.help();
-    apply_verbosity();
-    return args;
+    return args;  
   } catch (CLI::ParseError const &e) {
     args.cli_output = std::string(e.what());
-    apply_verbosity();
+    return args;  
+  }
+
+  if (version_flag_short || version_flag_long) {
+    args.cmd_cfg = cmd_version::cfg{};
     return args;
   }
 
   if (!cmd_cfg) {
     args.cli_output = app.help();
-    apply_verbosity();
     return args;
   }
 
   args.cmd_cfg = *cmd_cfg;
-  apply_verbosity();
-
+  if (!verbose) { args.verbosity = tui::level::TUI_INFO; }
   return args;
 }
 

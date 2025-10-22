@@ -5,7 +5,6 @@
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
 #include <mutex>
 #include <optional>
