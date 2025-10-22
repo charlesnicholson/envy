@@ -247,7 +247,7 @@ Warning: Recipe deprecated
 Error: SHA256 mismatch
 ```
 
-**Structured mode** (explicit `--verbose` flag): Timestamps + severity on all messages.
+**Structured mode** (explicit `-v/--verbose` flag): Timestamps + severity on all messages.
 ```
 [2024-10-19 12:34:56.123] [DEBUG] Cache miss for arm.gcc@v2
 [2024-10-19 12:34:56.234] [INFO] Fetching gcc-13.2.0.tar.xz...

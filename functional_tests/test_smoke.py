@@ -18,7 +18,7 @@ class EnvyBinarySmokeTest(unittest.TestCase):
     env = os.environ.copy()
     env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
     result = subprocess.run(
-        [str(self._envy_binary), "--version"],
+        [str(self._envy_binary), "version"],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
