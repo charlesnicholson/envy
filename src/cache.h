@@ -11,9 +11,9 @@ namespace envy {
 
 class cache {
  public:
-  class scoped_lock : unmovable {
+  class scoped_asset_lock : unmovable {
    public:
-    ~scoped_lock();
+    ~scoped_asset_lock();
 
     // optional working dir for assets, atomically renamed to cache dir in commit_staging.
     // lives in a special location in the cache, same volume, etc.
@@ -26,12 +26,12 @@ class cache {
     std::filesystem::path entry_dir_;
     file_lock lock_;
 
-    scoped_lock(std::filesystem::path entry_dir, file_lock lock);
+    scoped_asset_lock(std::filesystem::path entry_dir, file_lock lock);
   };
 
   struct ensure_result {
-    std::filesystem::path path;       // asset path
-    std::optional<scoped_lock> lock;  // if valid, locked for installation.
+    std::filesystem::path path;             // asset path
+    std::optional<scoped_asset_lock> lock;  // if valid, locked for installation.
   };
 
   explicit cache(std::optional<std::filesystem::path> root = std::nullopt);
