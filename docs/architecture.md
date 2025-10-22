@@ -166,6 +166,8 @@ Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 1. **Lock-free read:** Check `.envy-complete`, use immediately if present
 2. **Exclusive creation:** Acquire exclusive lock (blocks until available), check `.envy-complete` again (another process may have finished while waiting), create if still missing
 
+**Lock file lifecycle:** Lock files (`locks/{recipe|deployed}.*.lock`) created on first lock acquisition, deleted when work completes—`cache::scoped_asset_lock` destructor or `commit_staging()` unlinks after writing `.envy-complete`. Lock-free reads never need lock files; they exist only during active deployment.
+
 **Staging:** `.inprogress/` directory created adjacent to final entry path for multi-file assets. Located in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion; (3) predictable location for cleanup. Staging path: `{entry_path}.inprogress/`.
 
 **Crash recovery:** Stale `.inprogress/` directories cleaned up lazily per-entry when lock is acquired. Before creating new staging, check if `{entry_path}.inprogress/` exists and remove it. No cache-wide scanning required—cleanup happens only for the specific entry being worked on.

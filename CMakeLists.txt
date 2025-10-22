@@ -133,6 +133,7 @@ target_sources(envy
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
+        src/file_lock.cpp
         src/tui.cpp
 )
 
