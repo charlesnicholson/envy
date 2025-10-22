@@ -6,66 +6,78 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <unordered_set>
 #include <stdexcept>
 #include <string>
 
 namespace envy {
 namespace {
 
-void extract_archive(std::filesystem::path const &archive_path,
-                     std::filesystem::path const &destination) {
-  archive *reader{ archive_read_new() };
-  if (!reader) { throw std::runtime_error("libarchive read allocation failed"); }
+struct archive_reader {
+  archive *a{ archive_read_new() };
 
-  archive_read_support_filter_all(reader);
-  archive_read_support_format_all(reader);
-
-  archive *writer{ archive_write_disk_new() };
-  if (!writer) {
-    archive_read_free(reader);
-    throw std::runtime_error("libarchive write allocation failed");
+  archive_reader() {
+    if (!a) { throw std::runtime_error("libarchive read allocation failed"); }
+    archive_read_support_filter_all(a);
+    archive_read_support_format_all(a);
   }
 
-  archive_write_disk_set_options(writer,
-                                 ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
-                                     ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
-  archive_write_disk_set_standard_lookup(writer);
+  ~archive_reader() {
+    if (a) {
+      archive_read_close(a);
+      archive_read_free(a);
+    }
+  }
 
-  if (archive_read_open_filename(reader, archive_path.string().c_str(), 10240) !=
+  archive_reader(archive_reader const &) = delete;
+  archive_reader &operator=(archive_reader const &) = delete;
+};
+
+struct archive_writer {
+  archive *a{ archive_write_disk_new() };
+
+  archive_writer() {
+    if (!a) { throw std::runtime_error("libarchive write allocation failed"); }
+    archive_write_disk_set_options(a,
+                                   ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
+                                       ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
+    archive_write_disk_set_standard_lookup(a);
+  }
+
+  ~archive_writer() {
+    if (a) {
+      archive_write_close(a);
+      archive_write_free(a);
+    }
+  }
+
+  archive_writer(archive_writer const &) = delete;
+  archive_writer &operator=(archive_writer const &) = delete;
+};
+
+void extract_archive(std::filesystem::path const &archive_path,
+                     std::filesystem::path const &destination) {
+  archive_reader reader;
+  archive_writer writer;
+
+  if (archive_read_open_filename(reader.a, archive_path.string().c_str(), 10240) !=
       ARCHIVE_OK) {
-    std::string const message{ std::string("Failed to open archive: ") +
-                               archive_error_string(reader) };
-    archive_write_free(writer);
-    archive_read_free(reader);
-    throw std::runtime_error(message);
+    throw std::runtime_error(std::string("Failed to open archive: ") +
+                             archive_error_string(reader.a));
   }
 
   archive_entry *entry{ nullptr };
-  std::uint64_t file_count{ 0 };
 
   while (true) {
-    int const r{ archive_read_next_header(reader, &entry) };
+    int const r{ archive_read_next_header(reader.a, &entry) };
     if (r == ARCHIVE_EOF) { break; }
 
     if (r != ARCHIVE_OK) {
-      std::string const message{ std::string("Failed to read archive header: ") +
-                                 archive_error_string(reader) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
+      throw std::runtime_error(std::string("Failed to read archive header: ") +
+                               archive_error_string(reader.a));
     }
 
     char const *entry_path{ archive_entry_pathname(entry) };
-    if (!entry_path) {
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error("Archive entry has null pathname");
-    }
+    if (!entry_path) { throw std::runtime_error("Archive entry has null pathname"); }
 
     std::filesystem::path const full_path{ destination / entry_path };
     auto const parent{ full_path.parent_path() };
@@ -73,10 +85,6 @@ void extract_archive(std::filesystem::path const &archive_path,
       std::error_code ec;
       std::filesystem::create_directories(parent, ec);
       if (ec) {
-        archive_read_close(reader);
-        archive_write_close(writer);
-        archive_read_free(reader);
-        archive_write_free(writer);
         throw std::runtime_error("Failed to create directory " + parent.string() + ": " +
                                  ec.message());
       }
@@ -90,62 +98,35 @@ void extract_archive(std::filesystem::path const &archive_path,
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());
     }
 
-    int write_header_result{ archive_write_header(writer, entry) };
+    int write_header_result{ archive_write_header(writer.a, entry) };
     if (write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
-      std::string const message{ std::string("Failed to write entry header: ") +
-                                 archive_error_string(writer) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
+      throw std::runtime_error(std::string("Failed to write entry header: ") +
+                               archive_error_string(writer.a));
     }
 
     if (archive_entry_size(entry) > 0) {
       char buffer[8192];
       la_ssize_t bytes_read{ 0 };
-      while ((bytes_read = archive_read_data(reader, buffer, sizeof(buffer))) > 0) {
-        la_ssize_t bytes_written{ archive_write_data(writer, buffer, static_cast<size_t>(bytes_read)) };
-        if (bytes_written < 0) {
-          std::string const message{ std::string("Failed to write entry data: ") +
-                                     archive_error_string(writer) };
-          archive_read_close(reader);
-          archive_write_close(writer);
-          archive_read_free(reader);
-          archive_write_free(writer);
-          throw std::runtime_error(message);
+      while ((bytes_read = archive_read_data(reader.a, buffer, sizeof(buffer))) > 0) {
+        if (la_ssize_t const bytes_written{
+                archive_write_data(writer.a, buffer, static_cast<size_t>(bytes_read)) };
+            bytes_written < 0) {
+          throw std::runtime_error(std::string("Failed to write entry data: ") +
+                                   archive_error_string(writer.a));
         }
       }
 
       if (bytes_read < 0) {
-        std::string const message{ std::string("Failed to read entry data: ") +
-                                   archive_error_string(reader) };
-        archive_read_close(reader);
-        archive_write_close(writer);
-        archive_read_free(reader);
-        archive_write_free(writer);
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::string("Failed to read entry data: ") +
+                                 archive_error_string(reader.a));
       }
     }
 
-    if (archive_write_finish_entry(writer) != ARCHIVE_OK) {
-      std::string const message{ std::string("Failed to finish entry: ") +
-                                 archive_error_string(writer) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
+    if (archive_write_finish_entry(writer.a) != ARCHIVE_OK) {
+      throw std::runtime_error(std::string("Failed to finish entry: ") +
+                               archive_error_string(writer.a));
     }
-    // File counting deferred to post-extraction traversal.
   }
-
-  archive_read_close(reader);
-  archive_write_close(writer);
-  archive_read_free(reader);
-  archive_write_free(writer);
-
-  return;
 }
 
 }  // anonymous namespace
