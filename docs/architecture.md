@@ -37,6 +37,35 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
+### Overrides
+
+Manifests can override recipe sources globally. Useful for mirrors, internal caches, or local development.
+
+```lua
+-- project/envy.lua
+overrides = {
+  ["arm.gcc@v2"] = {
+    url = "https://internal-mirror.company/recipes/arm-gcc-v2.lua",
+    sha256 = "a1b2c3d4e5f6..."
+  },
+  ["gnu.binutils@v3"] = {
+    file = "./local-recipes/binutils.lua"  -- Local development
+  }
+}
+
+packages = {
+  "arm.gcc@v2",  -- Will use overridden source
+  {
+    recipe = "vendor.openocd@v3",
+    url = "https://example.com/openocd.lua",
+    sha256 = "..."
+    -- openocd's dependency on arm.gcc@v2 will also use overridden source
+  }
+}
+```
+
+**Semantics:** Overrides apply to all recipe references (manifest packages + transitive dependencies). Override source replaces original source; options unchanged. Conflicting overrides for same recipe error at manifest validation.
+
 ## Recipes
 
 ### Organization

@@ -2,6 +2,32 @@
 
 Potential enhancements not currently prioritized.
 
+## Manifest Transform Hooks
+
+Beyond declarative overrides, allow manifests to programmatically transform recipe specifications. Provides maximum flexibility for complex scenarios.
+
+```lua
+-- project/envy.lua
+function transform_recipe(spec)
+  -- Redirect all recipes to internal mirror
+  if spec.url and spec.url:match("^https://example.com/") then
+    spec.url = spec.url:gsub("^https://example.com/", "https://internal-mirror.company/")
+  end
+
+  -- Force specific version for security
+  if spec.recipe == "openssl.lib@v3" then
+    spec.options = spec.options or {}
+    spec.options.version = "3.0.12"  -- Known secure version
+  end
+
+  return spec
+end
+
+packages = { "openssl.lib@v3", "curl.tool@v2" }
+```
+
+**Considerations:** Hook executes during manifest validation. Applied to all recipe specs (packages + transitive dependencies) before override resolution. Must be pure function (no side effects). Ordering: transform → override → validation.
+
 ## Recipe Version Ranges
 
 Support semver ranges for recipe dependencies to reduce churn when recipe bugs are fixed. Recipe versions must be semver-compliant to enable ranges.
