@@ -9,34 +9,37 @@
 
 namespace envy {
 
-class cache {
+class cache : unmovable {
  public:
-  class scoped_asset_lock : unmovable {
+  class scoped_entry_lock : unmovable {
    public:
-    ~scoped_asset_lock();
+    ~scoped_entry_lock();
 
-    // optional working dir for assets, atomically renamed to cache dir in commit_staging.
-    // lives in a special location in the cache, same volume, etc.
-    std::optional<std::filesystem::path> create_staging();
+    std::filesystem::path create_staging();
     void commit_staging(std::filesystem::path const &staging_dir);
+    void mark_complete();
 
    private:
     friend class cache;
 
     std::filesystem::path entry_dir_;
+    std::filesystem::path lock_path_;
     file_lock lock_;
+    bool completed_{ false };
 
-    scoped_asset_lock(std::filesystem::path entry_dir, file_lock lock);
-  };
-
-  struct ensure_result {
-    std::filesystem::path path;             // asset path
-    std::optional<scoped_asset_lock> lock;  // if valid, locked for installation.
+    scoped_entry_lock(std::filesystem::path entry_dir,
+                      std::filesystem::path lock_path,
+                      file_lock lock);
   };
 
   explicit cache(std::optional<std::filesystem::path> root = std::nullopt);
 
-  std::filesystem::path const &root() const { return root_; }
+  std::filesystem::path const &root() const;
+
+  struct ensure_result {
+    std::filesystem::path path;             // asset path
+    std::optional<scoped_entry_lock> lock;  // if valid, locked for installation.
+  };
 
   ensure_result ensure_asset(std::string_view identity,
                              std::string_view platform,

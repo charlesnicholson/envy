@@ -127,6 +127,7 @@ add_executable(envy)
 target_sources(envy
     PRIVATE
         src/main.cpp
+        src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
         src/cmd_extract.cpp
@@ -134,6 +135,7 @@ target_sources(envy
         src/cmd_playground.cpp
         src/cmd_version.cpp
         src/file_lock.cpp
+        src/platform.cpp
         src/tui.cpp
 )
 
@@ -226,12 +228,14 @@ add_executable(envy_unit_tests)
 target_sources(envy_unit_tests
     PRIVATE
         src/unit_test_main.cpp
+        src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
         src/cmd_extract.cpp
         src/cmd_lua.cpp
         src/cmd_version.cpp
         src/cmd_playground.cpp
+        src/platform.cpp
         src/cli_tests.cpp
         src/cmd_tests.cpp
         src/cmd_extract_tests.cpp
