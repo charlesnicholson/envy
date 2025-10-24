@@ -13,7 +13,7 @@ namespace envy {
 cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
                                             path stage_dir,
                                             path lock_path,
-                                            file_lock::ptr_t lock)
+                                            file_lock_ptr lock)
     : entry_dir_{ std::move(entry_dir) },
       stage_dir_{ std::move(stage_dir) },
       lock_path_{ std::move(lock_path) },
@@ -34,7 +34,7 @@ void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
                                                                path staging_dir,
                                                                path lock_path,
-                                                               file_lock::ptr_t lock) {
+                                                               file_lock_ptr lock) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
                                        std::move(staging_dir),
                                        std::move(lock_path),
@@ -67,7 +67,7 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
   if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
 
   std::filesystem::create_directories(locks_dir());
-  auto lock{ file_lock::make(lock_path) };
+  auto lock{ std::make_unique<file_lock>(lock_path) };
 
   // re-check (other envy may have finished while we waited)
   if (is_entry_complete(entry_dir)) {

@@ -16,18 +16,18 @@ class cache : unmovable {
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
     using path = std::filesystem::path;
 
-    static ptr_t make(path entry_dir, path stage_dir, path lock_path, file_lock::ptr_t l);
+    static ptr_t make(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
     ~scoped_entry_lock();
 
     void mark_complete();
 
    private:
-    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path, file_lock::ptr_t l);
+    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
 
     path entry_dir_;
     path stage_dir_;
     path lock_path_;
-    file_lock::ptr_t lock_;
+    file_lock_ptr lock_;
     bool completed_{ false };
   };
 
