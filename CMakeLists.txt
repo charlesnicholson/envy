@@ -287,6 +287,7 @@ target_sources(envy_unit_tests
         src/cmd_lua.cpp
         src/cmd_version.cpp
         src/cmd_playground.cpp
+        src/file_lock.cpp
         src/platform.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
