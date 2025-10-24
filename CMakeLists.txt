@@ -348,7 +348,10 @@ add_custom_command(
     OUTPUT "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
     COMMAND "${Python3_EXECUTABLE}" -m functional_tests
     COMMAND "${CMAKE_COMMAND}" -E touch "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
-    DEPENDS envy ${ENVY_FUNCTIONAL_TEST_SOURCES}
+    DEPENDS
+        envy
+        envy_functional_tester
+        ${ENVY_FUNCTIONAL_TEST_SOURCES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running functional tests"
     VERBATIM
@@ -358,7 +361,7 @@ add_custom_target(run_functional_tests ALL
     DEPENDS "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
 )
 
-add_dependencies(run_functional_tests envy run_unit_tests)
+add_dependencies(run_functional_tests envy envy_functional_tester run_unit_tests)
 
 unset(ENVY_FUNCTIONAL_TEST_DIR)
 unset(ENVY_FUNCTIONAL_TEST_SOURCES)

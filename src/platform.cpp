@@ -116,11 +116,11 @@ std::intptr_t lock_file(std::filesystem::path const &path) {
                             "Failed to open lock file: " + path.string());
   }
 
-  struct flock fl{ .l_start = 0,
+  struct flock fl{ .l_type = F_WRLCK,
+                   .l_whence = SEEK_SET,
+                   .l_start = 0,
                    .l_len = 0,
-                   .l_pid = 0,
-                   .l_type = F_WRLCK,
-                   .l_whence = SEEK_SET };
+                   .l_pid = 0 };
 
   if (::fcntl(fd, F_SETLKW, &fl) == -1) {
     int const err{ errno };
