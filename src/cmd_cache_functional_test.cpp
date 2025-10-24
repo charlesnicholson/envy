@@ -82,7 +82,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
                                            ("deployed." + entry_name + ".lock") };
 
           // Determine result state
-          bool locked{ result.lock.has_value() };
+          bool locked{ result.lock != nullptr };
           bool fast_path{ !locked };
 
           // Signal/wait after lock acquired if requested
@@ -108,7 +108,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           }
 
           // Mark complete if we got the lock
-          if (result.lock.has_value()) { result.lock->mark_complete(); }
+          if (result.lock) { result.lock->mark_complete(); }
 
           // Output result
           cache_test_result output{ locked,
@@ -158,7 +158,7 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
                                            ("recipe." + cfg_.identity + ".lock") };
 
           // Determine result state
-          bool locked{ result.lock.has_value() };
+          bool locked{ result.lock != nullptr };
           bool fast_path{ !locked };
 
           // Signal/wait after lock acquired if requested
@@ -184,7 +184,7 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
           }
 
           // Mark complete if we got the lock
-          if (result.lock.has_value()) { result.lock->mark_complete(); }
+          if (result.lock) { result.lock->mark_complete(); }
 
           // Output result
           cache_test_result output{ locked,

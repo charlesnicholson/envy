@@ -18,12 +18,10 @@ TEST_CASE("cache is_entry_complete") {
   CHECK_FALSE(envy::cache::is_entry_complete("test_data/cache/nonexistent"));
 }
 
-TEST_CASE("scoped_entry_lock move semantics") {
-  // Moveable but not copyable
-  CHECK(std::is_move_constructible_v<envy::cache::scoped_entry_lock>);
-  CHECK(std::is_move_assignable_v<envy::cache::scoped_entry_lock>);
-  CHECK(std::is_nothrow_move_constructible_v<envy::cache::scoped_entry_lock>);
-  CHECK(std::is_nothrow_move_assignable_v<envy::cache::scoped_entry_lock>);
+TEST_CASE("scoped_entry_lock is unmovable") {
+  // Neither movable nor copyable (uses unique_ptr for transfer)
+  CHECK_FALSE(std::is_move_constructible_v<envy::cache::scoped_entry_lock>);
+  CHECK_FALSE(std::is_move_assignable_v<envy::cache::scoped_entry_lock>);
   CHECK_FALSE(std::is_copy_constructible_v<envy::cache::scoped_entry_lock>);
   CHECK_FALSE(std::is_copy_assignable_v<envy::cache::scoped_entry_lock>);
 }

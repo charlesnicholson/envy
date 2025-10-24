@@ -4,35 +4,31 @@
 #include "util.h"
 
 #include <filesystem>
-#include <optional>
+#include <memory>
 #include <string_view>
 
 namespace envy {
 
 class cache : unmovable {
  public:
-  class scoped_entry_lock : uncopyable {
+  class scoped_entry_lock : unmovable {
    public:
+    using ptr_t = std::unique_ptr<scoped_entry_lock>;
+    using path = std::filesystem::path;
+
+    static ptr_t make(path entry_dir, path staging_dir, path lock_path, file_lock lock);
     ~scoped_entry_lock();
-    scoped_entry_lock(scoped_entry_lock &&other) noexcept;
-    scoped_entry_lock &operator=(scoped_entry_lock &&other) noexcept;
 
     void mark_complete();
 
    private:
-    friend class cache;
+    scoped_entry_lock(path entry_dir, path staging_dir, path lock_path, file_lock lock);
 
-    std::filesystem::path entry_dir_;
-    std::filesystem::path staging_dir_;
-    std::filesystem::path lock_path_;
+    path entry_dir_;
+    path staging_dir_;
+    path lock_path_;
     file_lock lock_;
     bool completed_{ false };
-    bool moved_from_{ false };
-
-    scoped_entry_lock(std::filesystem::path entry_dir,
-                      std::filesystem::path staging_dir,
-                      std::filesystem::path lock_path,
-                      file_lock lock);
   };
 
   explicit cache(std::optional<std::filesystem::path> root = std::nullopt);
@@ -40,8 +36,8 @@ class cache : unmovable {
   std::filesystem::path const &root() const;
 
   struct ensure_result {
-    std::filesystem::path path;  // staging path if locked, final path if complete
-    std::optional<scoped_entry_lock> lock;  // if present, locked for installation
+    std::filesystem::path path;     // staging path if locked, final path if complete
+    scoped_entry_lock::ptr_t lock;  // if present, locked for installation
   };
 
   ensure_result ensure_asset(std::string_view identity,
