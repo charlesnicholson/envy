@@ -16,18 +16,18 @@ class cache : unmovable {
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
     using path = std::filesystem::path;
 
-    static ptr_t make(path entry_dir, path staging_dir, path lock_path, file_lock lock);
+    static ptr_t make(path entry_dir, path stage_dir, path lock_path, file_lock::ptr_t l);
     ~scoped_entry_lock();
 
     void mark_complete();
 
    private:
-    scoped_entry_lock(path entry_dir, path staging_dir, path lock_path, file_lock lock);
+    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path, file_lock::ptr_t l);
 
     path entry_dir_;
-    path staging_dir_;
+    path stage_dir_;
     path lock_path_;
-    file_lock lock_;
+    file_lock::ptr_t lock_;
     bool completed_{ false };
   };
 
@@ -36,7 +36,7 @@ class cache : unmovable {
   std::filesystem::path const &root() const;
 
   struct ensure_result {
-    std::filesystem::path path;     // staging path if locked, final path if complete
+    std::filesystem::path path;     // stage path if locked, final path if complete
     scoped_entry_lock::ptr_t lock;  // if present, locked for installation
   };
 

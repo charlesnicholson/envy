@@ -69,6 +69,8 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
   }
 }
 
+[[noreturn]] void terminate_process() { ::TerminateProcess(::GetCurrentProcess(), 1); }
+
 }  // namespace envy::platform
 
 #else  // POSIX
@@ -142,6 +144,8 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
                             "Failed to rename " + from.string() + " to " + to.string());
   }
 }
+
+[[noreturn]] void terminate_process() { std::abort(); }
 
 }  // namespace envy::platform
 

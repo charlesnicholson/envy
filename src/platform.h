@@ -20,4 +20,6 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
 std::optional<std::filesystem::path> get_default_cache_root();
 char const *get_default_cache_root_env_vars();
 
+[[noreturn]] void terminate_process();
+
 }  // namespace envy::platform

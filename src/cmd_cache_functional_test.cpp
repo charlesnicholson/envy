@@ -1,6 +1,7 @@
 #include "cmd_cache_functional_test.h"
 
 #include "cache.h"
+#include "platform.h"
 #include "tui.h"
 
 #include <chrono>
@@ -92,7 +93,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           // Crash injection for testing
           if (cfg_.crash_after_ms >= 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.crash_after_ms));
-            std::abort();
+            platform::terminate_process();
           }
 
           // Fail before complete for testing
@@ -168,7 +169,7 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
           // Crash injection for testing
           if (cfg_.crash_after_ms >= 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.crash_after_ms));
-            std::abort();
+            platform::terminate_process();
           }
 
           // Fail before complete for testing

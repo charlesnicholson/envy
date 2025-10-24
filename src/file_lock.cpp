@@ -2,8 +2,6 @@
 
 #include "platform.h"
 
-#include <utility>
-
 namespace envy {
 
 file_lock::file_lock(std::filesystem::path const &path)
@@ -11,17 +9,8 @@ file_lock::file_lock(std::filesystem::path const &path)
 
 file_lock::~file_lock() { platform::unlock_file(handle_); }
 
-file_lock::file_lock(file_lock &&other) noexcept : handle_{ other.handle_ } {
-  other.handle_ = platform::kInvalidLockHandle;
-}
-
-file_lock &file_lock::operator=(file_lock &&other) noexcept {
-  if (this != &other) {
-    platform::unlock_file(handle_);
-    handle_ = other.handle_;
-    other.handle_ = platform::kInvalidLockHandle;
-  }
-  return *this;
+file_lock::ptr_t file_lock::make(std::filesystem::path const &path) {
+  return std::make_unique<file_lock>(path);
 }
 
 }  // namespace envy

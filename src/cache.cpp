@@ -11,20 +11,21 @@ using path = std::filesystem::path;
 namespace envy {
 
 cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
-                                            path staging_dir,
+                                            path stage_dir,
                                             path lock_path,
-                                            file_lock lock)
+                                            file_lock::ptr_t lock)
     : entry_dir_{ std::move(entry_dir) },
-      staging_dir_{ std::move(staging_dir) },
+      stage_dir_{ std::move(stage_dir) },
       lock_path_{ std::move(lock_path) },
       lock_{ std::move(lock) } {}
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
   if (completed_) {
-    std::ofstream{ staging_dir_ / ".envy-complete" }.close();
-    platform::atomic_rename(staging_dir_, entry_dir_);
+    std::ofstream{ stage_dir_ / ".envy-complete" }.close();
+    platform::atomic_rename(stage_dir_, entry_dir_);
   }
 
+  lock_.reset();  // Close lock handle before deleting lock file (Windows compatibility)
   std::filesystem::remove(lock_path_);
 }
 
@@ -33,7 +34,7 @@ void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
                                                                path staging_dir,
                                                                path lock_path,
-                                                               file_lock lock) {
+                                                               file_lock::ptr_t lock) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
                                        std::move(staging_dir),
                                        std::move(lock_path),
@@ -66,10 +67,11 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
   if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
 
   std::filesystem::create_directories(locks_dir());
-  file_lock lock{ lock_path };
+  auto lock{ file_lock::make(lock_path) };
 
   // re-check (other envy may have finished while we waited)
   if (is_entry_complete(entry_dir)) {
+    lock.reset();  // Close lock before deleting lock file (Windows compatibility)
     std::filesystem::remove(lock_path);
     return { entry_dir, nullptr };
   }
