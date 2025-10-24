@@ -11,23 +11,26 @@ namespace envy {
 
 class cache : unmovable {
  public:
-  class scoped_entry_lock : unmovable {
+  class scoped_entry_lock : uncopyable {
    public:
     ~scoped_entry_lock();
+    scoped_entry_lock(scoped_entry_lock &&other) noexcept;
+    scoped_entry_lock &operator=(scoped_entry_lock &&other) noexcept;
 
-    std::filesystem::path create_staging();
-    void commit_staging(std::filesystem::path const &staging_dir);
     void mark_complete();
 
    private:
     friend class cache;
 
     std::filesystem::path entry_dir_;
+    std::filesystem::path staging_dir_;
     std::filesystem::path lock_path_;
     file_lock lock_;
     bool completed_{ false };
+    bool moved_from_{ false };
 
     scoped_entry_lock(std::filesystem::path entry_dir,
+                      std::filesystem::path staging_dir,
                       std::filesystem::path lock_path,
                       file_lock lock);
   };
@@ -37,8 +40,8 @@ class cache : unmovable {
   std::filesystem::path const &root() const;
 
   struct ensure_result {
-    std::filesystem::path path;             // asset path
-    std::optional<scoped_entry_lock> lock;  // if valid, locked for installation.
+    std::filesystem::path path;  // staging path if locked, final path if complete
+    std::optional<scoped_entry_lock> lock;  // if present, locked for installation
   };
 
   ensure_result ensure_asset(std::string_view identity,
@@ -48,6 +51,8 @@ class cache : unmovable {
 
   ensure_result ensure_recipe(std::string_view identity);
 
+  static bool is_entry_complete(std::filesystem::path const &entry_dir);
+
  private:
   std::filesystem::path root_;
 
@@ -55,12 +60,8 @@ class cache : unmovable {
   std::filesystem::path assets_dir() const;
   std::filesystem::path locks_dir() const;
 
-  static bool is_entry_complete(std::filesystem::path const &entry_dir);
-
-  std::filesystem::path get_lock_path(std::string_view identity,
-                                      std::string_view platform,
-                                      std::string_view arch,
-                                      std::string_view hash_prefix) const;
+  ensure_result ensure_entry(std::filesystem::path const &entry_dir,
+                             std::filesystem::path const &lock_path);
 };
 
 }  // namespace envy

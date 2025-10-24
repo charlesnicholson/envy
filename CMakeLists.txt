@@ -188,6 +188,58 @@ if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 
+# Functional tester executable -----------------------------------------------
+add_executable(envy_functional_tester)
+
+target_sources(envy_functional_tester
+    PRIVATE
+        src/main.cpp
+        src/cache.cpp
+        src/cli.cpp
+        src/cmd.cpp
+        src/cmd_extract.cpp
+        src/cmd_lua.cpp
+        src/cmd_playground.cpp
+        src/cmd_version.cpp
+        src/cmd_cache_functional_test.cpp
+        src/file_lock.cpp
+        src/platform.cpp
+        src/tui.cpp
+)
+
+target_compile_features(envy_functional_tester PRIVATE cxx_std_20)
+target_compile_definitions(envy_functional_tester PRIVATE
+    ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+    ENVY_FUNCTIONAL_TESTER=1
+)
+target_compile_options(envy_functional_tester PRIVATE
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
+    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
+)
+target_link_options(envy_functional_tester PRIVATE
+    $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
+)
+target_link_libraries(envy_functional_tester
+    PRIVATE
+        envy::thirdparty
+)
+
+if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
+    if(CMAKE_STRIP)
+        add_custom_command(
+            TARGET envy_functional_tester POST_BUILD
+            COMMAND "${CMAKE_STRIP}" "$<TARGET_FILE:envy_functional_tester>"
+            COMMENT "Stripping envy_functional_tester executable"
+            VERBATIM
+        )
+    endif()
+endif()
+
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
         envy::libgit2
@@ -236,6 +288,7 @@ target_sources(envy_unit_tests
         src/cmd_version.cpp
         src/cmd_playground.cpp
         src/platform.cpp
+        src/cache_tests.cpp
         src/cli_tests.cpp
         src/cmd_tests.cpp
         src/cmd_extract_tests.cpp
@@ -258,7 +311,7 @@ target_link_libraries(envy_unit_tests
 )
 
 if(DEFINED _envy_rescan_link_group)
-    foreach(_envy_target IN ITEMS envy envy_unit_tests)
+    foreach(_envy_target IN ITEMS envy envy_functional_tester envy_unit_tests)
         if(TARGET ${_envy_target})
             target_link_libraries(${_envy_target}
                 PRIVATE
@@ -275,6 +328,7 @@ add_custom_command(
     COMMAND envy_unit_tests
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
     DEPENDS envy_unit_tests
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running unit tests"
     VERBATIM
 )

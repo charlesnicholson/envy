@@ -166,9 +166,11 @@ Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 1. **Lock-free read:** Check `.envy-complete`, use immediately if present
 2. **Exclusive creation:** Acquire exclusive lock (blocks until available), check `.envy-complete` again (another process may have finished while waiting), create if still missing
 
-**Lock file lifecycle:** Lock files (`locks/{recipe|deployed}.*.lock`) created on first lock acquisition, deleted when work completes—`cache::scoped_asset_lock` destructor unlinks after writing `.envy-complete`. Caller must invoke `mark_complete()` on success; destructor writes marker only if marked. Exception before `mark_complete()` leaves entry incomplete—no marker written. Lock-free reads never need lock files; they exist only during active deployment.
+**Lock file lifecycle:** Lock files (`locks/{recipe|deployed}.*.lock`) created on first lock acquisition, deleted when work completes—`cache::scoped_entry_lock` destructor unlinks after committing staging. Caller must invoke `mark_complete()` on success; destructor commits and writes `.envy-complete` only if marked. Exception before `mark_complete()` leaves entry incomplete—no marker written, staging abandoned. Lock-free reads never need lock files; they exist only during active deployment.
 
-**Staging:** `.inprogress/` directory created adjacent to final entry path for multi-file assets. Located in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion; (3) predictable location for cleanup. Staging path: `{entry_path}.inprogress/`.
+**Staging (automatic):** `.inprogress/` directory created automatically when lock acquired—clients never call `create_staging()`. Path returned in `ensure_result` is staging directory when locked. Located in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion; (3) predictable location for cleanup. Staging path: `{entry_path}.inprogress/`. Staging mandatory for all entries (single-file and multi-file)—uniform API, zero rename overhead compared to fetch/extract costs.
+
+**Commit (automatic):** Destructor commits staging via `platform::atomic_rename()` if `mark_complete()` called. Marker written to staging before commit—appears atomically with directory. Clients never call `commit_staging()`; entirely internal.
 
 **Crash recovery:** Stale `.inprogress/` directories cleaned up lazily per-entry when lock is acquired. Before creating new staging, check if `{entry_path}.inprogress/` exists and remove it. No cache-wide scanning required—cleanup happens only for the specific entry being worked on.
 
@@ -186,11 +188,11 @@ Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
 
 ## Use Cases
 
-**First deployment:** Check `.envy-complete` (missing) → acquire exclusive lock → stage in `.inprogress/` → download → verify SHA256 → extract → compute BLAKE3 fingerprints → write `.envy-complete` → atomic rename → release lock. Future reads lock-free.
+**First deployment:** Check `.envy-complete` (missing) → acquire exclusive lock → staging auto-created, path returned → download → verify SHA256 → extract to path → compute BLAKE3 fingerprints → call `mark_complete()` → destructor writes `.envy-complete` to staging + atomic rename → release lock. Future reads lock-free.
 
-**Concurrent deployment:** Process A acquires exclusive, begins work. Process B blocks on shared lock, waits. A completes, writes `.envy-complete`, releases. B unblocks, finds `.envy-complete`, proceeds lock-free. No duplicate download.
+**Concurrent deployment:** Process A acquires exclusive, begins work. Process B blocks on lock, waits. A completes, destructor commits. B unblocks, rechecks `.envy-complete` (now present), returns final path immediately. No duplicate download.
 
-**Crash recovery:** Process A crashes mid-extraction. OS releases lock. Process B acquires exclusive, removes stale `.inprogress/`, completes normally.
+**Crash recovery:** Process A crashes mid-extraction. OS releases lock, destructor never runs. Process B acquires exclusive, removes stale `.inprogress/`, creates fresh staging, completes normally.
 
 **Multi-project sharing:** Projects A and B both request `arm.gcc@v2` with `options.version="13.2.0"`. Same deployment key → cache hit → zero duplication.
 
@@ -344,4 +346,10 @@ Side-by-side with source: `src/cache/lock.cpp` + `src/cache/lock_test.cpp`. Doct
 
 ### Functional Tests
 
-Python 3.13+ stdlib only (`unittest`—no third-party deps). Located in `tests/functional/` flat (no subdirs). Parallel execution; each test uses isolated cache directory. Per-test cleanup via fixtures (context managers). Test recipes embedded as string literals in test code, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Recipes use filesystem `fetch` for speed; HTTP tests spawn local servers separately. Invocation TBD (`python3 -m unittest discover` or standalone runner). CI: GitHub Actions on Darwin/Linux/Windows × x64/arm64.
+Python 3.13+ stdlib only (`unittest`—no third-party deps). Located in `functional_tests/` flat (no subdirs). Parallel execution; each test uses isolated cache directory via `ENVY_TEST_ID` environment variable. Per-test cleanup via fixtures (context managers).
+
+**Cache testing:** Uses `envy_functional_tester` binary—production `envy` with additional testing commands conditionally compiled via `ENVY_FUNCTIONAL_TESTER=1` define. Same `main.cpp`, same CLI11 parsing, same TBB async execution. Tests invoke cache C++ API directly via CLI without requiring Lua recipes/manifests. Barrier synchronization (`--barrier-signal`, `--barrier-wait`) enables deterministic concurrency testing via filesystem coordination. Key-value output format (`locked=true\npath=/foo/bar\n...`) provides observability without JSON library dependency. Commands: `envy_functional_tester cache ensure-asset <identity> <platform> <arch> <hash>`, `envy_functional_tester cache ensure-recipe <identity>`. Flags: `--cache-root`, `--test-id`, `--barrier-signal`, `--barrier-wait`, `--crash-after`, `--fail-before-complete`.
+
+**Recipe testing (future):** Test recipes embedded as string literals, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Recipes use filesystem `fetch` for speed; HTTP tests spawn local servers separately.
+
+**CI:** GitHub Actions on Darwin/Linux/Windows × x64/arm64.
