@@ -52,6 +52,51 @@ cli_args cli_parse(int argc, char **argv) {
   playground->add_option("region", playground_cfg.region, "AWS region (optional)");
   playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });
 
+#ifdef ENVY_FUNCTIONAL_TESTER
+  // Cache testing subcommands
+  auto *cache{ app.add_subcommand("cache", "Cache testing commands") };
+
+  // cache ensure-asset
+  cmd_cache_ensure_asset::cfg asset_cfg{};
+  auto *ensure_asset{ cache->add_subcommand("ensure-asset", "Test asset cache entry") };
+  ensure_asset->add_option("identity", asset_cfg.identity, "Asset identity")->required();
+  ensure_asset->add_option("platform", asset_cfg.platform, "Platform (darwin/linux/windows)")
+      ->required();
+  ensure_asset->add_option("arch", asset_cfg.arch, "Architecture (arm64/x86_64)")->required();
+  ensure_asset->add_option("hash_prefix", asset_cfg.hash_prefix, "Hash prefix")->required();
+  ensure_asset->add_option("--cache-root", asset_cfg.cache_root, "Cache root directory");
+  ensure_asset->add_option("--test-id", asset_cfg.test_id, "Test ID for barrier isolation");
+  ensure_asset->add_option("--barrier-dir", asset_cfg.barrier_dir, "Barrier directory");
+  ensure_asset->add_option("--barrier-signal", asset_cfg.barrier_signal, "Barrier to signal before lock");
+  ensure_asset->add_option("--barrier-wait", asset_cfg.barrier_wait, "Barrier to wait for before lock");
+  ensure_asset->add_option("--barrier-signal-after", asset_cfg.barrier_signal_after, "Barrier to signal after lock");
+  ensure_asset->add_option("--barrier-wait-after", asset_cfg.barrier_wait_after, "Barrier to wait for after lock");
+  ensure_asset->add_option("--crash-after", asset_cfg.crash_after_ms, "Crash after N milliseconds");
+  ensure_asset->add_flag("--fail-before-complete",
+                         asset_cfg.fail_before_complete,
+                         "Exit without marking complete");
+  ensure_asset->callback([&cmd_cfg, &asset_cfg] { cmd_cfg = asset_cfg; });
+
+  // cache ensure-recipe
+  cmd_cache_ensure_recipe::cfg recipe_cfg{};
+  auto *ensure_recipe{ cache->add_subcommand("ensure-recipe", "Test recipe cache entry") };
+  ensure_recipe->add_option("identity", recipe_cfg.identity, "Recipe identity")->required();
+  ensure_recipe->add_option("--cache-root", recipe_cfg.cache_root, "Cache root directory");
+  ensure_recipe->add_option("--test-id", recipe_cfg.test_id, "Test ID for barrier isolation");
+  ensure_recipe->add_option("--barrier-dir", recipe_cfg.barrier_dir, "Barrier directory");
+  ensure_recipe->add_option("--barrier-signal", recipe_cfg.barrier_signal, "Barrier to signal before lock");
+  ensure_recipe->add_option("--barrier-wait", recipe_cfg.barrier_wait, "Barrier to wait for before lock");
+  ensure_recipe->add_option("--barrier-signal-after", recipe_cfg.barrier_signal_after, "Barrier to signal after lock");
+  ensure_recipe->add_option("--barrier-wait-after", recipe_cfg.barrier_wait_after, "Barrier to wait for after lock");
+  ensure_recipe->add_option("--crash-after",
+                            recipe_cfg.crash_after_ms,
+                            "Crash after N milliseconds");
+  ensure_recipe->add_flag("--fail-before-complete",
+                          recipe_cfg.fail_before_complete,
+                          "Exit without marking complete");
+  ensure_recipe->callback([&cmd_cfg, &recipe_cfg] { cmd_cfg = recipe_cfg; });
+#endif
+
   cli_args args{}; 
 
   try {

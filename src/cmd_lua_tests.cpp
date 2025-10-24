@@ -71,35 +71,35 @@ struct lua_test_fixture {
 }  // namespace
 
 TEST_CASE_FIXTURE(lua_test_fixture, "lua print with single arg") {
-  run_script("../../test_data/lua/print_single.lua");
+  run_script("test_data/lua/print_single.lua");
   auto script_output{ filter_output() };
   REQUIRE(script_output.size() >= 1);
   CHECK(script_output[0] == "hello\n");
 }
 
 TEST_CASE_FIXTURE(lua_test_fixture, "lua print with multiple args uses tabs") {
-  run_script("../../test_data/lua/print_multiple.lua");
+  run_script("test_data/lua/print_multiple.lua");
   auto script_output{ filter_output() };
   REQUIRE(script_output.size() >= 1);
   CHECK(script_output[0] == "a\tb\tc\n");
 }
 
 TEST_CASE_FIXTURE(lua_test_fixture, "lua print with mixed types uses tabs") {
-  run_script("../../test_data/lua/print_mixed_types.lua");
+  run_script("test_data/lua/print_mixed_types.lua");
   auto script_output{ filter_output() };
   REQUIRE(script_output.size() >= 1);
   CHECK(script_output[0] == "value\t42\ttrue\tnil\n");
 }
 
 TEST_CASE_FIXTURE(lua_test_fixture, "envy.info outputs to tui") {
-  run_script("../../test_data/lua/envy_info.lua");
+  run_script("test_data/lua/envy_info.lua");
   auto script_output{ filter_output() };
   REQUIRE(script_output.size() >= 1);
   CHECK(script_output[0] == "test message\n");
 }
 
 TEST_CASE_FIXTURE(lua_test_fixture, "envy.warn outputs to tui") {
-  run_script("../../test_data/lua/envy_warn.lua");
+  run_script("test_data/lua/envy_warn.lua");
 
   std::vector<std::string> script_output;
   for (auto const &msg : messages) {

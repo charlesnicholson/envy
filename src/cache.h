@@ -4,39 +4,42 @@
 #include "util.h"
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string_view>
 
 namespace envy {
 
-class cache {
+class cache : unmovable {
  public:
-  class scoped_asset_lock : unmovable {
+  class scoped_entry_lock : unmovable {
    public:
-    ~scoped_asset_lock();
+    using ptr_t = std::unique_ptr<scoped_entry_lock>;
+    using path = std::filesystem::path;
 
-    // optional working dir for assets, atomically renamed to cache dir in commit_staging.
-    // lives in a special location in the cache, same volume, etc.
-    std::optional<std::filesystem::path> create_staging();
-    void commit_staging(std::filesystem::path const &staging_dir);
+    static ptr_t make(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
+    ~scoped_entry_lock();
+
+    void mark_complete();
 
    private:
-    friend class cache;
+    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
 
-    std::filesystem::path entry_dir_;
-    file_lock lock_;
-
-    scoped_asset_lock(std::filesystem::path entry_dir, file_lock lock);
-  };
-
-  struct ensure_result {
-    std::filesystem::path path;             // asset path
-    std::optional<scoped_asset_lock> lock;  // if valid, locked for installation.
+    path entry_dir_;
+    path stage_dir_;
+    path lock_path_;
+    file_lock_ptr lock_;
+    bool completed_{ false };
   };
 
   explicit cache(std::optional<std::filesystem::path> root = std::nullopt);
 
-  std::filesystem::path const &root() const { return root_; }
+  std::filesystem::path const &root() const;
+
+  struct ensure_result {
+    std::filesystem::path path;     // stage path if locked, final path if complete
+    scoped_entry_lock::ptr_t lock;  // if present, locked for installation
+  };
 
   ensure_result ensure_asset(std::string_view identity,
                              std::string_view platform,
@@ -45,6 +48,8 @@ class cache {
 
   ensure_result ensure_recipe(std::string_view identity);
 
+  static bool is_entry_complete(std::filesystem::path const &entry_dir);
+
  private:
   std::filesystem::path root_;
 
@@ -52,12 +57,8 @@ class cache {
   std::filesystem::path assets_dir() const;
   std::filesystem::path locks_dir() const;
 
-  static bool is_entry_complete(std::filesystem::path const &entry_dir);
-
-  std::filesystem::path get_lock_path(std::string_view identity,
-                                      std::string_view platform,
-                                      std::string_view arch,
-                                      std::string_view hash_prefix) const;
+  ensure_result ensure_entry(std::filesystem::path const &entry_dir,
+                             std::filesystem::path const &lock_path);
 };
 
 }  // namespace envy
