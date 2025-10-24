@@ -61,12 +61,13 @@ TEST_CASE("cli_parse: cmd_extract") {
   SUBCASE("archive and destination") {
     // Create temporary test archive
     auto temp_archive{std::filesystem::temp_directory_path() / "cli_test_archive.tar.gz"};
+    auto temp_dest{std::filesystem::temp_directory_path() / "cli_test_dest"};
     {
       std::ofstream temp_file{temp_archive};
       temp_file << "fake archive\n";
     }
 
-    std::vector<std::string> args{"envy", "extract", temp_archive.string(), "/tmp/dest"};
+    std::vector<std::string> args{"envy", "extract", temp_archive.string(), temp_dest.string()};
     auto argv{make_argv(args)};
 
     auto parsed{envy::cli_parse(static_cast<int>(args.size()), argv.data())};
@@ -78,7 +79,7 @@ TEST_CASE("cli_parse: cmd_extract") {
     auto const* cfg{std::get_if<envy::cmd_extract::cfg>(&*parsed.cmd_cfg)};
     REQUIRE(cfg != nullptr);
     CHECK(cfg->archive_path == temp_archive);
-    CHECK(cfg->destination == "/tmp/dest");
+    CHECK(cfg->destination == temp_dest);
   }
 
   SUBCASE("archive without destination") {
