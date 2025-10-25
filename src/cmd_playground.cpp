@@ -5,9 +5,9 @@
 #include "fetch.h"
 #include "git2.h"
 #include "sha256.h"
-#include "tui.h"
 #include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
+#include "tui.h"
 
 extern "C" {
 #include "lauxlib.h"
@@ -185,12 +185,14 @@ std::string relative_display(std::filesystem::path const &path,
 
 std::string infer_download_name(std::string_view uri) {
   auto const query_pos{ uri.find_first_of("?#") };
-  std::string_view trimmed{ query_pos == std::string_view::npos ? uri
-                                                                : uri.substr(0, query_pos) };
+  std::string_view trimmed{ query_pos == std::string_view::npos
+                                ? uri
+                                : uri.substr(0, query_pos) };
 
   auto const last_sep{ trimmed.find_last_of("/\\") };
-  std::string_view tail{ last_sep == std::string_view::npos ? trimmed
-                                                            : trimmed.substr(last_sep + 1) };
+  std::string_view tail{ last_sep == std::string_view::npos
+                             ? trimmed
+                             : trimmed.substr(last_sep + 1) };
 
   if (tail.empty() || tail == "." || tail == "..") { return "download"; }
   return std::string{ tail };
@@ -287,7 +289,8 @@ int lua_download_resource(lua_State *L) {
   }
 
   std::string const uri{ luaL_checkstring(L, 1) };
-  std::string const region{ (argc >= 2 && !lua_isnil(L, 2)) ? luaL_checkstring(L, 2) : "" };
+  std::string const region{ (argc >= 2 && !lua_isnil(L, 2)) ? luaL_checkstring(L, 2)
+                                                            : "" };
 
   try {
     auto const archive_path{ download_resource(*g_temp_manager, uri, region) };
@@ -428,13 +431,10 @@ void run_fetch_tls_probe(std::string const &url,
   auto const destination{ probe_dir / "probe.bin" };
 
   try {
-    fetch_request request{ .source = url,
-                           .destination = destination,
-                           .file_root = std::nullopt,
-                           .progress = {} };
-
-    auto const result{ fetch(request) };
-
+    auto const result{ fetch(fetch_request{ .source = url,
+                                            .destination = destination,
+                                            .file_root = std::nullopt,
+                                            .progress = {} }) };
     std::uintmax_t bytes{ 0 };
     std::error_code size_ec;
     if (auto const size = std::filesystem::file_size(result.resolved_destination, size_ec);
@@ -507,7 +507,9 @@ void cmd_playground::schedule(tbb::flow::graph &g) {
   git_probe_url_ = "https://github.com/libgit2/libgit2.git";
   curl_probe_url_ = "https://www.example.com/";
   source_uri_ = cfg_.uri;
-  if (source_uri_.empty()) { throw std::runtime_error("Playground URI must not be empty"); }
+  if (source_uri_.empty()) {
+    throw std::runtime_error("Playground URI must not be empty");
+  }
 
   // Create nodes and store them in command object
   kickoff_.emplace(g);
