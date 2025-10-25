@@ -102,19 +102,12 @@ std::tm make_local_tm(std::time_t time) {
 void log_formatted(level severity, char const *fmt, va_list args) {
   if (!s_tui.initialized || fmt == nullptr) { return; }
 
-  std::optional<level> threshold_snapshot;
-  bool structured_snapshot{ false };
-  {
-    std::lock_guard<std::mutex> lock{ s_tui.mutex };
-    threshold_snapshot = s_tui.level_threshold;
-    structured_snapshot = s_tui.structured;
-    if (threshold_snapshot && severity < *threshold_snapshot) { return; }
-  }
+  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
 
   char prefix_buf[96]{};
   std::size_t prefix_len{ 0 };
 
-  if (structured_snapshot) {
+  if (s_tui.structured) {
     auto const now{ std::chrono::system_clock::now() };
     auto const seconds{ std::chrono::time_point_cast<std::chrono::seconds>(now) };
     auto const millis{
@@ -128,19 +121,15 @@ void log_formatted(level severity, char const *fmt, va_list args) {
                       sizeof timestamp_buf,
                       "%Y-%m-%d %H:%M:%S",
                       &local_tm) != 0) {
-      auto const label{ level_to_string(severity) };
-
       int const written_prefix{ std::snprintf(prefix_buf,
                                               sizeof prefix_buf,
                                               "[%s.%03lld] [%-*s] ",
                                               timestamp_buf,
                                               static_cast<long long>(millis),
                                               static_cast<int>(kSeverityLabelWidth),
-                                              label.data()) };
+                                              level_to_string(severity).data()) };
 
-      if (written_prefix > 0) {
-        prefix_len = static_cast<std::size_t>(written_prefix);
-      }
+      if (written_prefix > 0) { prefix_len = static_cast<std::size_t>(written_prefix); }
     }
   }
 
@@ -171,12 +160,10 @@ void log_formatted(level severity, char const *fmt, va_list args) {
   buffer.resize(offset + static_cast<std::size_t>(written));
   if (buffer.empty()) { return; }
 
-  // Ensure message ends with newline
-  if (buffer.back() != '\n') { buffer.push_back('\n'); }
+  buffer.push_back('\n');
 
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };
-    if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
     s_tui.messages.push(std::move(buffer));
   }
 
@@ -187,13 +174,13 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
 namespace envy::tui {
 
-void init(bool structured_logging) {
+void init() {
   if (s_tui.initialized) {
     throw std::logic_error{ "envy::tui::init called more than once" };
   }
 
   s_tui.level_threshold = std::nullopt;
-  s_tui.structured = structured_logging;
+  s_tui.structured = false;
   s_tui.initialized = true;
 }
 

@@ -16,8 +16,12 @@ cli_args cli_parse(int argc, char **argv) {
   // Support version flags (-v / --version) triggering version command directly.
   bool version_flag_short{ false };
   bool version_flag_long{ false };
-  app.add_flag("-v", version_flag_short, "Show version information (alias for version subcommand)");
-  app.add_flag("--version", version_flag_long, "Show version information (alias for version subcommand)");
+  app.add_flag("-v",
+               version_flag_short,
+               "Show version information (alias for version subcommand)");
+  app.add_flag("--version",
+               version_flag_long,
+               "Show version information (alias for version subcommand)");
 
   std::optional<cli_args::cmd_cfg_t> cmd_cfg;
 
@@ -72,18 +76,33 @@ cli_args cli_parse(int argc, char **argv) {
   cmd_cache_ensure_asset::cfg asset_cfg{};
   auto *ensure_asset{ cache->add_subcommand("ensure-asset", "Test asset cache entry") };
   ensure_asset->add_option("identity", asset_cfg.identity, "Asset identity")->required();
-  ensure_asset->add_option("platform", asset_cfg.platform, "Platform (darwin/linux/windows)")
+  ensure_asset
+      ->add_option("platform", asset_cfg.platform, "Platform (darwin/linux/windows)")
       ->required();
-  ensure_asset->add_option("arch", asset_cfg.arch, "Architecture (arm64/x86_64)")->required();
-  ensure_asset->add_option("hash_prefix", asset_cfg.hash_prefix, "Hash prefix")->required();
+  ensure_asset->add_option("arch", asset_cfg.arch, "Architecture (arm64/x86_64)")
+      ->required();
+  ensure_asset->add_option("hash_prefix", asset_cfg.hash_prefix, "Hash prefix")
+      ->required();
   ensure_asset->add_option("--cache-root", asset_cfg.cache_root, "Cache root directory");
-  ensure_asset->add_option("--test-id", asset_cfg.test_id, "Test ID for barrier isolation");
+  ensure_asset->add_option("--test-id",
+                           asset_cfg.test_id,
+                           "Test ID for barrier isolation");
   ensure_asset->add_option("--barrier-dir", asset_cfg.barrier_dir, "Barrier directory");
-  ensure_asset->add_option("--barrier-signal", asset_cfg.barrier_signal, "Barrier to signal before lock");
-  ensure_asset->add_option("--barrier-wait", asset_cfg.barrier_wait, "Barrier to wait for before lock");
-  ensure_asset->add_option("--barrier-signal-after", asset_cfg.barrier_signal_after, "Barrier to signal after lock");
-  ensure_asset->add_option("--barrier-wait-after", asset_cfg.barrier_wait_after, "Barrier to wait for after lock");
-  ensure_asset->add_option("--crash-after", asset_cfg.crash_after_ms, "Crash after N milliseconds");
+  ensure_asset->add_option("--barrier-signal",
+                           asset_cfg.barrier_signal,
+                           "Barrier to signal before lock");
+  ensure_asset->add_option("--barrier-wait",
+                           asset_cfg.barrier_wait,
+                           "Barrier to wait for before lock");
+  ensure_asset->add_option("--barrier-signal-after",
+                           asset_cfg.barrier_signal_after,
+                           "Barrier to signal after lock");
+  ensure_asset->add_option("--barrier-wait-after",
+                           asset_cfg.barrier_wait_after,
+                           "Barrier to wait for after lock");
+  ensure_asset->add_option("--crash-after",
+                           asset_cfg.crash_after_ms,
+                           "Crash after N milliseconds");
   ensure_asset->add_flag("--fail-before-complete",
                          asset_cfg.fail_before_complete,
                          "Exit without marking complete");
@@ -92,14 +111,25 @@ cli_args cli_parse(int argc, char **argv) {
   // cache ensure-recipe
   cmd_cache_ensure_recipe::cfg recipe_cfg{};
   auto *ensure_recipe{ cache->add_subcommand("ensure-recipe", "Test recipe cache entry") };
-  ensure_recipe->add_option("identity", recipe_cfg.identity, "Recipe identity")->required();
+  ensure_recipe->add_option("identity", recipe_cfg.identity, "Recipe identity")
+      ->required();
   ensure_recipe->add_option("--cache-root", recipe_cfg.cache_root, "Cache root directory");
-  ensure_recipe->add_option("--test-id", recipe_cfg.test_id, "Test ID for barrier isolation");
+  ensure_recipe->add_option("--test-id",
+                            recipe_cfg.test_id,
+                            "Test ID for barrier isolation");
   ensure_recipe->add_option("--barrier-dir", recipe_cfg.barrier_dir, "Barrier directory");
-  ensure_recipe->add_option("--barrier-signal", recipe_cfg.barrier_signal, "Barrier to signal before lock");
-  ensure_recipe->add_option("--barrier-wait", recipe_cfg.barrier_wait, "Barrier to wait for before lock");
-  ensure_recipe->add_option("--barrier-signal-after", recipe_cfg.barrier_signal_after, "Barrier to signal after lock");
-  ensure_recipe->add_option("--barrier-wait-after", recipe_cfg.barrier_wait_after, "Barrier to wait for after lock");
+  ensure_recipe->add_option("--barrier-signal",
+                            recipe_cfg.barrier_signal,
+                            "Barrier to signal before lock");
+  ensure_recipe->add_option("--barrier-wait",
+                            recipe_cfg.barrier_wait,
+                            "Barrier to wait for before lock");
+  ensure_recipe->add_option("--barrier-signal-after",
+                            recipe_cfg.barrier_signal_after,
+                            "Barrier to signal after lock");
+  ensure_recipe->add_option("--barrier-wait-after",
+                            recipe_cfg.barrier_wait_after,
+                            "Barrier to wait for after lock");
   ensure_recipe->add_option("--crash-after",
                             recipe_cfg.crash_after_ms,
                             "Crash after N milliseconds");
@@ -109,29 +139,14 @@ cli_args cli_parse(int argc, char **argv) {
   ensure_recipe->callback([&cmd_cfg, &recipe_cfg] { cmd_cfg = recipe_cfg; });
 #endif
 
-  cli_args args{}; 
+  cli_args args{};
 
   try {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
     args.cli_output = app.help();
-    return args;  
-  } catch (CLI::ParseError const &e) {
-    args.cli_output = std::string(e.what());
-    return args;  
-  }
+  } catch (CLI::ParseError const &e) { args.cli_output = std::string(e.what()); }
 
-  if (version_flag_short || version_flag_long) {
-    args.cmd_cfg = cmd_version::cfg{};
-    return args;
-  }
-
-  if (!cmd_cfg) {
-    args.cli_output = app.help();
-    return args;
-  }
-
-  args.cmd_cfg = *cmd_cfg;
   if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;
     args.structured_logging = true;
@@ -139,6 +154,18 @@ cli_args cli_parse(int argc, char **argv) {
     args.verbosity = tui::level::TUI_INFO;
     args.structured_logging = false;
   }
+
+  if (version_flag_short || version_flag_long) {
+    args.cmd_cfg = cmd_version::cfg{};
+    return args;
+  }
+
+  if (cmd_cfg) {
+    args.cmd_cfg = *cmd_cfg;
+  } else if (args.cli_output.empty()) {
+    args.cli_output = app.help();
+  }
+
   return args;
 }
 
