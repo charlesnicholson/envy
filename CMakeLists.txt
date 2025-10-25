@@ -137,6 +137,7 @@ target_sources(envy
         src/cmd_version.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
@@ -209,6 +210,7 @@ target_sources(envy_functional_tester
         src/cmd_cache_functional_test.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
@@ -298,6 +300,7 @@ target_sources(envy_unit_tests
         src/cmd_playground.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
@@ -308,6 +311,7 @@ target_sources(envy_unit_tests
         src/cmd_lua_tests.cpp
         src/cmd_version_tests.cpp
         src/fetch_tests.cpp
+        src/sha256_tests.cpp
         src/tui_tests.cpp
         src/tui.cpp
 )

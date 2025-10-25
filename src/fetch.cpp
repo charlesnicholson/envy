@@ -195,7 +195,13 @@ fetch_result fetch(fetch_request const &request) {
     case fetch_scheme::S3: {
       auto resolved_destination{
           detail::prepare_destination(request.destination) };
-      aws_s3_download(trimmed, resolved_destination, request.progress);
+      s3_download_request s3_request{
+        .uri = std::string{ trimmed },
+        .destination = resolved_destination,
+        .region = request.region,
+        .progress = request.progress,
+      };
+      aws_s3_download(s3_request);
       return fetch_result{
         .scheme = scheme,
         .resolved_source = std::filesystem::path{ std::string{ trimmed } },

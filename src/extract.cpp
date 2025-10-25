@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace envy {
 namespace {
@@ -65,8 +66,8 @@ void ensure_directory(std::filesystem::path const &path) {
 }  // namespace
 
 std::uint64_t extract(std::filesystem::path const &archive_path,
-             std::filesystem::path const &destination,
-             extract_progress_cb_t const &progress) {
+                      std::filesystem::path const &destination,
+                      extract_progress_cb_t const &progress) {
   archive_reader reader;
   archive_writer writer;
 
@@ -104,8 +105,6 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       std::string const hardlink_full{ (destination / hardlink).string() };
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());
     }
-
-    bool const skip_count = full_path.filename().string().rfind("._", 0) == 0;
 
     if (progress && !progress(extract_progress{ .bytes_processed = processed,
                                                 .total_bytes = std::nullopt,
@@ -154,6 +153,7 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
                                archive_error_string(writer.handle));
     }
 
+    bool const skip_count{ full_path.filename().string().rfind("._", 0) == 0 };
     if (archive_entry_filetype(entry) == AE_IFREG && !skip_count) { ++files_extracted; }
   }
 
