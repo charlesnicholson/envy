@@ -8,6 +8,5 @@
 namespace envy {
 std::filesystem::path libcurl_download(std::string_view url,
                                        std::filesystem::path const &destination,
-                                       fetch_progress_cb_t const &progress);
+                                       fetch_progress_cb_t const &progress = {});
 }  // namespace envy
-

@@ -38,12 +38,13 @@ void libcurl_ensure_initialized() {
 std::filesystem::path libcurl_download(std::string_view url,
                                        std::filesystem::path const &destination,
                                        fetch_progress_cb_t const &progress) {
-  (void)progress;  // Progress integration pending.
   libcurl_ensure_initialized();
 
   std::string const url_copy{ url };
 
-  if (destination.empty()) { throw std::invalid_argument("libcurl_download: destination is empty"); }
+  if (destination.empty()) {
+    throw std::invalid_argument("libcurl_download: destination is empty");
+  }
 
   std::filesystem::path resolved_destination{ destination };
   if (!resolved_destination.is_absolute()) {
@@ -86,7 +87,30 @@ std::filesystem::path libcurl_download(std::string_view url,
   setopt(CURLOPT_USERAGENT, kDefaultUserAgent);
   setopt(CURLOPT_WRITEFUNCTION, curl_write_file);
   setopt(CURLOPT_WRITEDATA, &output);
-  setopt(CURLOPT_NOPROGRESS, 1L);  // Progress handling will be wired in later.
+  setopt(CURLOPT_NOPROGRESS, progress ? 0L : 1L);
+
+  if (progress) {
+    setopt(
+        CURLOPT_XFERINFOFUNCTION,
+        +[](void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t, curl_off_t)
+            -> int {
+          fetch_transfer_progress const transfer{
+            .transferred = static_cast<std::uint64_t>(dlnow),
+            .total =
+                dltotal
+                    ? std::optional<std::uint64_t>{ static_cast<std::uint64_t>(dltotal) }
+                    : std::nullopt
+          };
+
+          return (*static_cast<fetch_progress_cb_t const *>(clientp))(
+                     fetch_progress_t{ std::in_place_type<fetch_transfer_progress>,
+                                       transfer })
+                     ? 0
+                     : 1;
+        });
+
+    setopt(CURLOPT_XFERINFODATA, &progress);
+  }
 
   CURLcode const perform_result{ curl_easy_perform(handle.get()) };
   if (perform_result != CURLE_OK) {
@@ -108,4 +132,3 @@ std::filesystem::path libcurl_download(std::string_view url,
 }
 
 }  // namespace envy
-

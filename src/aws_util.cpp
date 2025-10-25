@@ -115,7 +115,6 @@ void aws_s3_download(std::string_view s3_uri,
 
   auto result = outcome.GetResultWithOwnership();
   auto &body_stream = result.GetBody();
-  auto const content_length = result.GetContentLength();
 
   std::ofstream output{ destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
@@ -126,7 +125,9 @@ void aws_s3_download(std::string_view s3_uri,
   std::array<char, kBufferSize> buffer{};
   std::uint64_t written{ 0 };
   std::optional<std::uint64_t> total_bytes;
-  if (content_length >= 0) { total_bytes = static_cast<std::uint64_t>(content_length); }
+  if (auto const len{ result.GetContentLength() }; len >= 0) {
+    total_bytes = static_cast<std::uint64_t>(len);
+  }
 
   while (body_stream) {
     body_stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
