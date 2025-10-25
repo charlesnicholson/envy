@@ -28,18 +28,26 @@ extern "C" {
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace envy {
 namespace {
 
-std::string to_hex(uint8_t const *data, size_t length) {
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0');
+constexpr char kHexDigits[]{ "0123456789abcdef" };
+
+template <typename Byte>
+std::string to_hex(Byte const *data, size_t length) {
+  static_assert(std::is_integral_v<Byte> && sizeof(Byte) == 1,
+                "to_hex expects 1-byte integral values");
+
+  std::string hex(length * 2, '\0');
   for (size_t i{ 0 }; i < length; ++i) {
-    oss << std::setw(2) << static_cast<int>(data[i]);
+    auto const value{ static_cast<unsigned>(data[i]) };
+    hex[2 * i] = kHexDigits[(value >> 4) & 0xF];
+    hex[2 * i + 1] = kHexDigits[value & 0xF];
   }
-  return oss.str();
+  return hex;
 }
 
 std::filesystem::path create_temp_directory() {
@@ -262,8 +270,7 @@ std::filesystem::path download_resource(TempResourceManager &manager,
             uri.c_str(),
             result.resolved_destination.string().c_str(),
             elapsed_seconds);
-  auto const digest_hex =
-      to_hex(reinterpret_cast<uint8_t const *>(sha256_digest.data()), sha256_digest.size());
+  auto const digest_hex = to_hex(sha256_digest.data(), sha256_digest.size());
   auto const filename_str{ result.resolved_destination.filename().string() };
   tui::info("[fetch] SHA256(%s) = %s", filename_str.c_str(), digest_hex.c_str());
 
