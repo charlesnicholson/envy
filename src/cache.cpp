@@ -10,14 +10,11 @@ using path = std::filesystem::path;
 
 namespace envy {
 
-cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
-                                            path stage_dir,
-                                            path lock_path,
-                                            file_lock_ptr lock)
+cache::scoped_entry_lock::scoped_entry_lock(path entry_dir, path stage_dir, path lock_path)
     : entry_dir_{ std::move(entry_dir) },
       stage_dir_{ std::move(stage_dir) },
       lock_path_{ std::move(lock_path) },
-      lock_{ std::move(lock) } {}
+      lock_handle_{ platform::lock_file(lock_path_) } {}
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
   if (completed_) {
@@ -25,20 +22,21 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     platform::atomic_rename(stage_dir_, entry_dir_);
   }
 
-  lock_.reset();  // Close lock handle before deleting lock file (Windows compatibility)
+  if (lock_handle_ != platform::kInvalidLockHandle) {
+    platform::unlock_file(lock_handle_);
+    lock_handle_ = platform::kInvalidLockHandle;
+  }
   std::filesystem::remove(lock_path_);
 }
 
 void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
-                                                               path staging_dir,
-                                                               path lock_path,
-                                                               file_lock_ptr lock) {
+                                                               path stage_dir,
+                                                               path lock_path) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
-                                       std::move(staging_dir),
-                                       std::move(lock_path),
-                                       std::move(lock) } };
+                                       std::move(stage_dir),
+                                       std::move(lock_path) } };
 }
 
 cache::cache(std::optional<std::filesystem::path> root) {
@@ -67,21 +65,16 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
   if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
 
   std::filesystem::create_directories(locks_dir());
-  auto lock{ std::make_unique<file_lock>(lock_path) };
+  path const stage{ entry_dir.string() + ".inprogress" };
+  if (std::filesystem::exists(stage)) { std::filesystem::remove_all(stage); }
+  std::filesystem::create_directories(stage);
+
+  auto lock{ scoped_entry_lock::make(entry_dir, stage, lock_path) };
 
   // re-check (other envy may have finished while we waited)
-  if (is_entry_complete(entry_dir)) {
-    lock.reset();  // Close lock before deleting lock file (Windows compatibility)
-    std::filesystem::remove(lock_path);
-    return { entry_dir, nullptr };
-  }
+  if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
 
-  path const staging{ entry_dir.string() + ".inprogress" };
-  if (std::filesystem::exists(staging)) { std::filesystem::remove_all(staging); }
-  std::filesystem::create_directories(staging);
-
-  return { staging,
-           scoped_entry_lock::make(entry_dir, staging, lock_path, std::move(lock)) };
+  return { stage, std::move(lock) };
 }
 
 cache::ensure_result cache::ensure_asset(std::string_view identity,

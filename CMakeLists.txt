@@ -131,10 +131,13 @@ target_sources(envy
         src/cli.cpp
         src/cmd.cpp
         src/cmd_extract.cpp
+        src/cmd_fetch.cpp
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
-        src/file_lock.cpp
+        src/aws_util.cpp
+        src/fetch.cpp
+        src/libcurl_util.cpp
         src/platform.cpp
         src/tui.cpp
 )
@@ -198,11 +201,14 @@ target_sources(envy_functional_tester
         src/cli.cpp
         src/cmd.cpp
         src/cmd_extract.cpp
+        src/cmd_fetch.cpp
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
         src/cmd_cache_functional_test.cpp
-        src/file_lock.cpp
+        src/aws_util.cpp
+        src/fetch.cpp
+        src/libcurl_util.cpp
         src/platform.cpp
         src/tui.cpp
 )
@@ -284,10 +290,13 @@ target_sources(envy_unit_tests
         src/cli.cpp
         src/cmd.cpp
         src/cmd_extract.cpp
+        src/cmd_fetch.cpp
         src/cmd_lua.cpp
         src/cmd_version.cpp
         src/cmd_playground.cpp
-        src/file_lock.cpp
+        src/aws_util.cpp
+        src/fetch.cpp
+        src/libcurl_util.cpp
         src/platform.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
@@ -295,6 +304,7 @@ target_sources(envy_unit_tests
         src/cmd_extract_tests.cpp
         src/cmd_lua_tests.cpp
         src/cmd_version_tests.cpp
+        src/fetch_tests.cpp
         src/tui_tests.cpp
         src/tui.cpp
 )

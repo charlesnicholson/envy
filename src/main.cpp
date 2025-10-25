@@ -1,3 +1,4 @@
+#include "aws_util.h"
 #include "cli.h"
 #include "tui.h"
 
@@ -14,7 +15,9 @@ int main(int argc, char **argv) {
   try {
     auto args{ envy::cli_parse(argc, argv) };
 
-    envy::tui::scope tui_scope{ args.verbosity };
+    envy::aws_shutdown_guard aws_guard;
+
+    envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };
 
     if (!args.cli_output.empty()) {
       if (args.cmd_cfg.has_value()) {

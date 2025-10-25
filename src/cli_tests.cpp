@@ -1,5 +1,6 @@
 #include "cli.h"
 #include "cmd_extract.h"
+#include "cmd_fetch.h"
 #include "cmd_lua.h"
 #include "cmd_playground.h"
 #include "cmd_version.h"
@@ -106,6 +107,46 @@ TEST_CASE("cli_parse: cmd_extract") {
   }
 }
 
+TEST_CASE("cli_parse: cmd_fetch") {
+  SUBCASE("basic fetch command") {
+    std::vector<std::string> args{
+      "envy", "fetch", "https://example.com/archive.tar.gz", "/tmp/local.tar.gz"
+    };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_fetch::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->source == "https://example.com/archive.tar.gz");
+    CHECK(cfg->destination == std::filesystem::path("/tmp/local.tar.gz"));
+    CHECK_FALSE(cfg->manifest_root.has_value());
+  }
+
+  SUBCASE("fetch with manifest root") {
+    std::vector<std::string> args{
+      "envy",
+      "fetch",
+      "file://relative/path/tool.tar.gz",
+      "/tmp/tool.tar.gz",
+      "--manifest-root",
+      "/workspace"
+    };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_fetch::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->source == "file://relative/path/tool.tar.gz");
+    CHECK(cfg->destination == std::filesystem::path("/tmp/tool.tar.gz"));
+    REQUIRE(cfg->manifest_root.has_value());
+    CHECK(*cfg->manifest_root == std::filesystem::path("/workspace"));
+  }
+}
+
 TEST_CASE("cli_parse: cmd_lua") {
   SUBCASE("with script path") {
     // Create temporary test file
@@ -139,9 +180,12 @@ TEST_CASE("cli_parse: cmd_playground") {
 
   REQUIRE(parsed.cmd_cfg.has_value());
   auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
-    REQUIRE(cfg != nullptr);
-    CHECK(cfg->s3_uri == "s3://bucket/key");
-    CHECK(cfg->region.empty());
+  REQUIRE(cfg != nullptr);
+  CHECK(cfg->s3_uri == "s3://bucket/key");
+  CHECK(cfg->region.empty());
+  REQUIRE(parsed.verbosity.has_value());
+  CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
+  CHECK_FALSE(parsed.structured_logging);
   }
 
   SUBCASE("s3_uri with region") {
@@ -152,9 +196,12 @@ TEST_CASE("cli_parse: cmd_playground") {
 
   REQUIRE(parsed.cmd_cfg.has_value());
   auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
-    REQUIRE(cfg != nullptr);
-    CHECK(cfg->s3_uri == "s3://bucket/key");
-    CHECK(cfg->region == "us-west-2");
+  REQUIRE(cfg != nullptr);
+  CHECK(cfg->s3_uri == "s3://bucket/key");
+  CHECK(cfg->region == "us-west-2");
+  REQUIRE(parsed.verbosity.has_value());
+  CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
+  CHECK_FALSE(parsed.structured_logging);
   }
 }
 
@@ -167,4 +214,5 @@ TEST_CASE("cli_parse: verbose flag") {
   REQUIRE(parsed.cmd_cfg.has_value());
   REQUIRE(parsed.verbosity.has_value());
   CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
+  CHECK(parsed.structured_logging);
 }

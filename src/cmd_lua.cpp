@@ -18,7 +18,7 @@ int lua_print_override(lua_State *lua) {
 
   for (int i{ 1 }; i <= argc; ++i) {
     if (i > 1) { oss << '\t'; }
-    if (auto str{ luaL_tolstring(lua, i, nullptr) }; str) { oss << str; }
+    if (auto str{ luaL_tolstring(lua, i, nullptr) }) { oss << str; }
     lua_pop(lua, 1);
   }
 
@@ -87,7 +87,7 @@ void cmd_lua::schedule(tbb::flow::graph &g) {
       }
 
       if (lua_pcall(lua, 0, LUA_MULTRET, 0) != LUA_OK) {
-        char const *err{ lua_tostring(lua, -1) };
+        auto err{ lua_tostring(lua, -1) };
         tui::error("%s", err ? err : "unknown error");
         succeeded_ = false;
         break;

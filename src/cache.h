@@ -1,6 +1,6 @@
 #pragma once
 
-#include "file_lock.h"
+#include "platform.h"
 #include "util.h"
 
 #include <filesystem>
@@ -12,32 +12,33 @@ namespace envy {
 
 class cache : unmovable {
  public:
+  using path = std::filesystem::path;
+
   class scoped_entry_lock : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
-    using path = std::filesystem::path;
 
-    static ptr_t make(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
+    static ptr_t make(path entry_dir, path stage_dir, path lock_path);
     ~scoped_entry_lock();
 
     void mark_complete();
 
    private:
-    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path, file_lock_ptr lock);
+    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path);
 
     path entry_dir_;
     path stage_dir_;
     path lock_path_;
-    file_lock_ptr lock_;
+    platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
     bool completed_{ false };
   };
 
-  explicit cache(std::optional<std::filesystem::path> root = std::nullopt);
+  explicit cache(std::optional<path> root = std::nullopt);
 
-  std::filesystem::path const &root() const;
+  path const &root() const;
 
   struct ensure_result {
-    std::filesystem::path path;     // stage path if locked, final path if complete
+    path path;                      // stage path if locked, final path if complete
     scoped_entry_lock::ptr_t lock;  // if present, locked for installation
   };
 
@@ -51,14 +52,13 @@ class cache : unmovable {
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 
  private:
-  std::filesystem::path root_;
+  path root_;
 
-  std::filesystem::path recipes_dir() const;
-  std::filesystem::path assets_dir() const;
-  std::filesystem::path locks_dir() const;
+  path recipes_dir() const;
+  path assets_dir() const;
+  path locks_dir() const;
 
-  ensure_result ensure_entry(std::filesystem::path const &entry_dir,
-                             std::filesystem::path const &lock_path);
+  ensure_result ensure_entry(path const &entry_dir, path const &lock_path);
 };
 
 }  // namespace envy

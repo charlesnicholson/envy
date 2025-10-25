@@ -182,8 +182,7 @@ void cmd_extract::schedule(tbb::flow::graph &g) {
       std::uint64_t file_count{ 0 };
       for (auto const &entry : std::filesystem::recursive_directory_iterator(base)) {
         if (!entry.is_regular_file()) { continue; }
-        auto const name = entry.path().filename().string();
-        if (name.rfind("._", 0) == 0) { continue; }
+        if (entry.path().filename().string().rfind("._", 0) == 0) { continue; }
         ++file_count;
       }
 

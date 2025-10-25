@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(captured_output, "tui unstructured logs are raw messages") {
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, true));
   envy::tui::info("structured %d", 7);
   CHECK_NOTHROW(envy::tui::shutdown());
 
@@ -84,7 +84,7 @@ TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_WARN));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_WARN, true));
   envy::tui::debug("debug");
   envy::tui::info("info");
   envy::tui::warn("warn");
@@ -98,7 +98,7 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
   CHECK(messages[1].find("error") != std::string::npos);
 
   messages.clear();
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_INFO));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_INFO, true));
   envy::tui::debug("debug");
   envy::tui::info("info");
   CHECK_NOTHROW(envy::tui::shutdown());
