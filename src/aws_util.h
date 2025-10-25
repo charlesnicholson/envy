@@ -1,7 +1,8 @@
 #pragma once
 
 #include <filesystem>
-#include <string_view>
+#include <optional>
+#include <string>
 
 #include "fetch_progress.h"
 #include "util.h"
@@ -11,9 +12,14 @@ namespace envy {
 void aws_init();
 void aws_shutdown();
 
-void aws_s3_download(std::string_view s3_uri,
-                     std::filesystem::path const &destination,
-                     fetch_progress_cb_t const &progress = {});
+struct s3_download_request {
+  std::string uri;
+  std::filesystem::path destination;
+  std::optional<std::string> region;
+  fetch_progress_cb_t progress{};
+};
+
+void aws_s3_download(s3_download_request const &request);
 
 class aws_shutdown_guard : unmovable {
  public:

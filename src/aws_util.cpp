@@ -15,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace envy {
 namespace {
@@ -77,25 +78,26 @@ void aws_shutdown() {
 
 aws_shutdown_guard::~aws_shutdown_guard() { aws_shutdown(); }
 
-void aws_s3_download(std::string_view s3_uri,
-                     std::filesystem::path const &destination,
-                     fetch_progress_cb_t const &progress) {
+void aws_s3_download(s3_download_request const &request) {
   aws_init();
 
-  if (destination.empty()) {
+  if (request.destination.empty()) {
     throw std::invalid_argument("aws_s3_download: destination path is empty");
   }
 
-  auto const parts{ parse_s3_uri(s3_uri) };
+  auto const parts{ parse_s3_uri(request.uri) };
 
   Aws::Client::ClientConfiguration config;
+  if (request.region && !request.region->empty()) {
+    config.region = Aws::String(request.region->c_str());
+  }
   Aws::S3::S3Client s3_client{ config };
 
-  Aws::S3::Model::GetObjectRequest request;
-  request.SetBucket(Aws::String(parts.bucket.c_str()));
-  request.SetKey(Aws::String(parts.key.c_str()));
+  Aws::S3::Model::GetObjectRequest get_request;
+  get_request.SetBucket(Aws::String(parts.bucket.c_str()));
+  get_request.SetKey(Aws::String(parts.key.c_str()));
 
-  auto outcome{ s3_client.GetObject(request) };
+  auto outcome{ s3_client.GetObject(get_request) };
   if (!outcome.IsSuccess()) {
     auto const &error{ outcome.GetError() };
     throw std::runtime_error(std::string("aws_s3_download: GetObject failed: ") +
@@ -103,7 +105,7 @@ void aws_s3_download(std::string_view s3_uri,
                              error.GetMessage().c_str());
   }
 
-  auto const parent{ destination.parent_path() };
+  auto const parent{ request.destination.parent_path() };
   if (!parent.empty()) {
     std::error_code ec;
     std::filesystem::create_directories(parent, ec);
@@ -116,7 +118,7 @@ void aws_s3_download(std::string_view s3_uri,
   auto result = outcome.GetResultWithOwnership();
   auto &body_stream = result.GetBody();
 
-  std::ofstream output{ destination, std::ios::binary | std::ios::trunc };
+  std::ofstream output{ request.destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
     throw std::runtime_error("aws_s3_download: failed to open destination file");
   }
@@ -140,10 +142,10 @@ void aws_s3_download(std::string_view s3_uri,
     }
 
     written += count;
-    if (progress) {
+    if (request.progress) {
       fetch_transfer_progress transfer{ written, total_bytes };
       fetch_progress_t payload{ std::in_place_type<fetch_transfer_progress>, transfer };
-      if (!progress(payload)) {
+      if (!request.progress(payload)) {
         throw std::runtime_error("aws_s3_download: aborted by progress callback");
       }
     }

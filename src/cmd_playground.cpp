@@ -1,13 +1,11 @@
 #include "cmd_playground.h"
 
-#include "aws_util.h"
 #include "blake3.h"
 #include "extract.h"
 #include "fetch.h"
-#include "fetch_progress.h"
 #include "git2.h"
-#include "mbedtls/sha256.h"
-#include "platform.h"
+#include "sha256.h"
+#include "tui.h"
 #include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
 
@@ -22,13 +20,15 @@ extern "C" {
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <iomanip>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace envy {
 namespace {
@@ -82,7 +82,9 @@ class TempResourceManager {
       std::error_code ec;
       std::filesystem::remove_all(*it, ec);
       if (ec) {
-        std::cerr << "[cleanup] Failed to remove " << *it << ": " << ec.message() << '\n';
+        auto const path_str{ it->string() };
+        auto const message{ ec.message() };
+        tui::warn("[cleanup] Failed to remove %s: %s", path_str.c_str(), message.c_str());
       }
     }
     tracked_directories_.clear();
@@ -108,28 +110,6 @@ class TempManagerScope {
   TempResourceManager &manager_;
 };
 
-struct S3UriParts {
-  std::string bucket;
-  std::string key;
-};
-
-S3UriParts parse_s3_uri(std::string_view uri) {
-  static constexpr std::string_view kScheme{ "s3://" };
-  if (!uri.starts_with(kScheme)) {
-    throw std::invalid_argument("S3 URI must start with s3://");
-  }
-  std::string_view remainder{ uri.substr(kScheme.size()) };
-  auto const slash{ remainder.find('/') };
-  if (slash == std::string_view::npos || slash == 0 || slash + 1 >= remainder.size()) {
-    throw std::invalid_argument(
-        "S3 URI must include bucket and key, e.g. s3://bucket/key");
-  }
-  S3UriParts parts;
-  parts.bucket = std::string(remainder.substr(0, slash));
-  parts.key = std::string(remainder.substr(slash + 1));
-  return parts;
-}
-
 std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(
     std::filesystem::path const &path) {
   std::ifstream input{ path, std::ios::binary };
@@ -151,48 +131,6 @@ std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(
 
   std::array<uint8_t, BLAKE3_OUT_LEN> digest{};
   blake3_hasher_finalize(&hasher, digest.data(), digest.size());
-  return digest;
-}
-
-constexpr size_t kSha256DigestLength{ 32 };
-
-std::array<uint8_t, kSha256DigestLength> compute_sha256_file(
-    std::filesystem::path const &path) {
-  std::ifstream input{ path, std::ios::binary };
-  if (!input) {
-    throw std::runtime_error("Failed to open " + path.string() + " for SHA256 hashing");
-  }
-
-  mbedtls_sha256_context ctx;
-  mbedtls_sha256_init(&ctx);
-  struct Sha256ContextGuard {
-    mbedtls_sha256_context *context;
-    ~Sha256ContextGuard() {
-      if (context) { mbedtls_sha256_free(context); }
-    }
-  } guard{ &ctx };
-  if (mbedtls_sha256_starts(&ctx, /*is224=*/0) != 0) {
-    throw std::runtime_error("mbedtls_sha256_starts failed");
-  }
-
-  std::array<char, 1 << 15> buffer{};
-  while (input.read(buffer.data(), buffer.size()) || input.gcount() > 0) {
-    auto const read_bytes{ static_cast<size_t>(input.gcount()) };
-    if (read_bytes > 0) {
-      unsigned char const *data{ reinterpret_cast<unsigned char const *>(buffer.data()) };
-      if (mbedtls_sha256_update(&ctx, data, read_bytes) != 0) {
-        throw std::runtime_error("mbedtls_sha256_update failed for " + path.string());
-      }
-    }
-  }
-  if (input.bad()) {
-    throw std::runtime_error("Failed while reading " + path.string() + " for SHA256");
-  }
-
-  std::array<uint8_t, kSha256DigestLength> digest{};
-  if (mbedtls_sha256_finish(&ctx, digest.data()) != 0) {
-    throw std::runtime_error("mbedtls_sha256_finish failed");
-  }
   return digest;
 }
 
@@ -237,21 +175,27 @@ std::string relative_display(std::filesystem::path const &path,
   return path.filename().generic_string();
 }
 
-std::filesystem::path download_s3_object(TempResourceManager &manager,
-                                         std::string const &bucket,
-                                         std::string const &key,
-                                         std::string const &region) {
-  if (bucket.empty()) { throw std::runtime_error("S3 bucket name must not be empty"); }
-  if (key.empty()) { throw std::runtime_error("S3 object key must not be empty"); }
+std::string infer_download_name(std::string_view uri) {
+  auto const query_pos{ uri.find_first_of("?#") };
+  std::string_view trimmed{ query_pos == std::string_view::npos ? uri
+                                                                : uri.substr(0, query_pos) };
+
+  auto const last_sep{ trimmed.find_last_of("/\\") };
+  std::string_view tail{ last_sep == std::string_view::npos ? trimmed
+                                                            : trimmed.substr(last_sep + 1) };
+
+  if (tail.empty() || tail == "." || tail == "..") { return "download"; }
+  return std::string{ tail };
+}
+
+std::filesystem::path download_resource(TempResourceManager &manager,
+                                        std::string const &uri,
+                                        std::string const &region) {
+  if (uri.empty()) { throw std::runtime_error("Download URI must not be empty"); }
 
   auto const temp_dir{ manager.create_directory() };
-  auto const file_name{ std::filesystem::path(key).filename() };
-  if (file_name.empty()) {
-    throw std::runtime_error("S3 object key does not contain a filename");
-  }
-  auto const destination{ temp_dir / file_name };
-
-  if (!region.empty()) { platform::set_env_var("AWS_REGION", region.c_str()); }
+  auto const file_name{ infer_download_name(uri) };
+  auto destination{ temp_dir / std::filesystem::path{ file_name } };
 
   struct progress_state {
     std::mutex mutex;
@@ -275,74 +219,75 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     if (now - state->last_emit < std::chrono::milliseconds(200)) { return true; }
     state->last_emit = now;
 
-    std::cout << '\r';
     if (transfer->total && *transfer->total > 0) {
       double const percent{ static_cast<double>(transfer->transferred) * 100.0 /
                             static_cast<double>(*transfer->total) };
       double const clamped{ percent > 100.0 ? 100.0 : percent };
-      std::cout << "[aws-sdk] Download progress: " << std::fixed << std::setprecision(1)
-                << clamped << "%";
+      tui::info("[fetch] Download progress: %.1f%%", clamped);
     } else {
       double const mebibytes{ static_cast<double>(transfer->transferred) /
                               (1024.0 * 1024.0) };
-      std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
-                << mebibytes << " MiB";
+      tui::info("[fetch] Downloaded %.2f MiB", mebibytes);
     }
-    std::cout << std::flush;
     return true;
   };
 
-  std::string const s3_uri = "s3://" + bucket + '/' + key;
-  aws_s3_download(s3_uri, destination, progress_cb);
+  fetch_request request{ .source = uri,
+                         .destination = destination,
+                         .file_root = std::nullopt,
+                         .progress = progress_cb };
+  if (!region.empty()) { request.region = region; }
+
+  auto const result{ fetch(request) };
 
   {
     std::lock_guard<std::mutex> lock{ state->mutex };
     if (state->transferred > 0) {
-      std::cout << '\r';
       if (state->total && *state->total > 0) {
-        std::cout << "[aws-sdk] Download progress: 100.0%";
+        tui::info("[fetch] Download progress: 100.0%%");
       } else {
         double const mebibytes{ static_cast<double>(state->transferred) /
                                 (1024.0 * 1024.0) };
-        std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
-                  << mebibytes << " MiB";
+        tui::info("[fetch] Downloaded %.2f MiB", mebibytes);
       }
-      std::cout << std::string(10, ' ') << '\n';
     }
   }
 
   auto const elapsed{ std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - start_time) };
 
-  auto const sha256{ compute_sha256_file(destination) };
-  std::cout << "[aws-sdk] Downloaded s3://" << bucket << '/' << key << " to "
-            << destination << " in " << std::fixed << std::setprecision(3)
-            << static_cast<double>(elapsed.count()) / 1000.0 << "s\n";
-  std::cout << "[aws-sdk] SHA256(" << destination.filename()
-            << ") = " << to_hex(sha256.data(), sha256.size()) << '\n';
+  auto const sha256_digest{ sha256(result.resolved_destination) };
+  double const elapsed_seconds{ static_cast<double>(elapsed.count()) / 1000.0 };
+  tui::info("[fetch] Downloaded %s to %s in %.3fs",
+            uri.c_str(),
+            result.resolved_destination.string().c_str(),
+            elapsed_seconds);
+  auto const digest_hex =
+      to_hex(reinterpret_cast<uint8_t const *>(sha256_digest.data()), sha256_digest.size());
+  auto const filename_str{ result.resolved_destination.filename().string() };
+  tui::info("[fetch] SHA256(%s) = %s", filename_str.c_str(), digest_hex.c_str());
 
-  return destination;
+  return result.resolved_destination;
 }
 
-int lua_download_s3_object(lua_State *L) {
+int lua_download_resource(lua_State *L) {
   int const argc{ lua_gettop(L) };
-  if (argc < 2 || argc > 3) {
-    return luaL_error(L, "download_s3_object expects bucket, key, [region]");
+  if (argc < 1 || argc > 2) {
+    return luaL_error(L, "download_resource expects uri[, region]");
   }
   if (!g_temp_manager) {
     return luaL_error(L, "temporary resource manager is not initialized");
   }
 
-  std::string const bucket{ luaL_checkstring(L, 1) };
-  std::string const key{ luaL_checkstring(L, 2) };
-  std::string const region{ argc >= 3 ? luaL_checkstring(L, 3) : "" };
+  std::string const uri{ luaL_checkstring(L, 1) };
+  std::string const region{ (argc >= 2 && !lua_isnil(L, 2)) ? luaL_checkstring(L, 2) : "" };
 
   try {
-    auto const archive_path{ download_s3_object(*g_temp_manager, bucket, key, region) };
+    auto const archive_path{ download_resource(*g_temp_manager, uri, region) };
     lua_pushstring(L, archive_path.string().c_str());
     return 1;
   } catch (std::exception const &ex) {
-    return luaL_error(L, "download_s3_object failed: %s", ex.what());
+    return luaL_error(L, "download_resource failed: %s", ex.what());
   }
 }
 
@@ -355,18 +300,22 @@ int lua_extract_to_temp(lua_State *L) {
   try {
     auto const destination{ g_temp_manager->create_directory() };
     auto const count{ extract(archive, destination) };
-    std::cout << "[lua] Extracted " << count << " files\n";
+    tui::info("[lua] Extracted %llu files", static_cast<unsigned long long>(count));
 
     auto const sample_files{ collect_first_regular_files(destination, 5) };
     if (sample_files.empty()) {
-      std::cout << "[lua] No regular files discovered in archive.\n";
+      tui::info("[lua] No regular files discovered in archive.");
     } else {
       std::size_t index{ 1 };
       for (auto const &file_path : sample_files) {
         auto const digest{ compute_blake3_file(file_path) };
-        std::cout << "[lua] BLAKE3 sample " << index++ << ": "
-                  << relative_display(file_path, destination) << " => "
-                  << to_hex(digest.data(), digest.size()) << '\n';
+        auto const relative{ relative_display(file_path, destination) };
+        auto const digest_hex{ to_hex(digest.data(), digest.size()) };
+        auto const sample_index{ static_cast<unsigned long long>(index++) };
+        tui::info("[lua] BLAKE3 sample %llu: %s => %s",
+                  sample_index,
+                  relative.c_str(),
+                  digest_hex.c_str());
       }
     }
 
@@ -378,11 +327,10 @@ int lua_extract_to_temp(lua_State *L) {
   }
 }
 
-static constexpr char kLuaScript[]{ R"(local bucket = assert(bucket, "bucket must be set")
-local key = assert(key, "key must be set")
+static constexpr char kLuaScript[]{ R"(local uri = assert(uri, "uri must be set")
 local region = region or ""
 
-local archive_path = download_s3_object(bucket, key, region)
+local archive_path = download_resource(uri, region)
 extract_to_temp(archive_path)
 )" };
 
@@ -436,10 +384,11 @@ void run_git_tls_probe(std::string const &url,
 
     {
       std::lock_guard<std::mutex> lock{ console_mutex };
-      std::cout << "[libgit2] Connected to " << url << " and enumerated " << head_count
-                << " refs\n";
+      tui::info("[libgit2] Connected to %s and enumerated %llu refs",
+                url.c_str(),
+                static_cast<unsigned long long>(head_count));
       if (head_count > 0 && heads[0] && heads[0]->name) {
-        std::cout << "  First ref: " << heads[0]->name << '\n';
+        tui::info("  First ref: %s", heads[0]->name);
       }
     }
 
@@ -488,8 +437,9 @@ void run_fetch_tls_probe(std::string const &url,
 
     {
       std::lock_guard<std::mutex> lock{ console_mutex };
-      std::cout << "[fetch] Downloaded " << static_cast<unsigned long long>(bytes)
-                << " bytes from " << url << '\n';
+      tui::info("[fetch] Downloaded %llu bytes from %s",
+                static_cast<unsigned long long>(bytes),
+                url.c_str());
     }
   } catch (...) {
     std::error_code cleanup_ec;
@@ -503,8 +453,7 @@ void run_fetch_tls_probe(std::string const &url,
   std::filesystem::remove_all(probe_dir, cleanup_ec);
 }
 
-void run_lua_workflow(std::string const &bucket,
-                      std::string const &key,
+void run_lua_workflow(std::string const &uri,
                       std::string const &region,
                       std::mutex &console_mutex) {
   TempResourceManager temp_manager;
@@ -514,15 +463,13 @@ void run_lua_workflow(std::string const &bucket,
   if (!state) { throw std::runtime_error("luaL_newstate returned null"); }
   luaL_openlibs(state.get());
 
-  lua_pushcfunction(state.get(), lua_download_s3_object);
-  lua_setglobal(state.get(), "download_s3_object");
+  lua_pushcfunction(state.get(), lua_download_resource);
+  lua_setglobal(state.get(), "download_resource");
   lua_pushcfunction(state.get(), lua_extract_to_temp);
   lua_setglobal(state.get(), "extract_to_temp");
 
-  lua_pushlstring(state.get(), bucket.c_str(), static_cast<lua_Integer>(bucket.size()));
-  lua_setglobal(state.get(), "bucket");
-  lua_pushlstring(state.get(), key.c_str(), static_cast<lua_Integer>(key.size()));
-  lua_setglobal(state.get(), "key");
+  lua_pushlstring(state.get(), uri.c_str(), static_cast<lua_Integer>(uri.size()));
+  lua_setglobal(state.get(), "uri");
   lua_pushlstring(state.get(), region.c_str(), static_cast<lua_Integer>(region.size()));
   lua_setglobal(state.get(), "region");
 
@@ -539,7 +486,7 @@ void run_lua_workflow(std::string const &bucket,
 
   {
     std::lock_guard<std::mutex> lock{ console_mutex };
-    std::cout << "[Lua] Workflow completed successfully.\n";
+    tui::info("[Lua] Workflow completed successfully.");
   }
 }
 
@@ -548,20 +495,18 @@ void run_lua_workflow(std::string const &bucket,
 cmd_playground::cmd_playground(cmd_playground::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_playground::schedule(tbb::flow::graph &g) {
-  auto const parts{ parse_s3_uri(cfg_.s3_uri) };
-
   // Initialize state members
   workspace_root_ = std::filesystem::current_path();
   git_probe_url_ = "https://github.com/libgit2/libgit2.git";
   curl_probe_url_ = "https://www.example.com/";
-  bucket_ = parts.bucket;
-  key_ = parts.key;
+  source_uri_ = cfg_.uri;
+  if (source_uri_.empty()) { throw std::runtime_error("Playground URI must not be empty"); }
 
   // Create nodes and store them in command object
   kickoff_.emplace(g);
 
   lua_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_lua_workflow(bucket_, key_, cfg_.region, console_mutex_);
+    run_lua_workflow(source_uri_, cfg_.region, console_mutex_);
   });
 
   git_task_.emplace(g, [this](tbb::flow::continue_msg const &) {

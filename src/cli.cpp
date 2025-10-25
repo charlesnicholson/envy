@@ -63,7 +63,7 @@ cli_args cli_parse(int argc, char **argv) {
   // Playground subcommand
   cmd_playground::cfg playground_cfg{};
   auto *playground{ app.add_subcommand("playground", "Run S3/Git/Curl playground demo") };
-  playground->add_option("s3_uri", playground_cfg.s3_uri, "S3 URI (s3://bucket/key)")
+  playground->add_option("uri", playground_cfg.uri, "Resource URI (s3/http/file/...)")
       ->required();
   playground->add_option("region", playground_cfg.region, "AWS region (optional)");
   playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });

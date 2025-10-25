@@ -172,7 +172,7 @@ TEST_CASE("cli_parse: cmd_lua") {
 }
 
 TEST_CASE("cli_parse: cmd_playground") {
-  SUBCASE("s3_uri only") {
+  SUBCASE("uri only") {
     std::vector<std::string> args{"envy", "playground", "s3://bucket/key"};
     auto argv{make_argv(args)};
 
@@ -181,14 +181,14 @@ TEST_CASE("cli_parse: cmd_playground") {
   REQUIRE(parsed.cmd_cfg.has_value());
   auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
   REQUIRE(cfg != nullptr);
-  CHECK(cfg->s3_uri == "s3://bucket/key");
+  CHECK(cfg->uri == "s3://bucket/key");
   CHECK(cfg->region.empty());
   REQUIRE(parsed.verbosity.has_value());
   CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
   CHECK_FALSE(parsed.structured_logging);
   }
 
-  SUBCASE("s3_uri with region") {
+  SUBCASE("uri with region") {
     std::vector<std::string> args{"envy", "playground", "s3://bucket/key", "us-west-2"};
     auto argv{make_argv(args)};
 
@@ -197,7 +197,7 @@ TEST_CASE("cli_parse: cmd_playground") {
   REQUIRE(parsed.cmd_cfg.has_value());
   auto const* cfg{std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg)};
   REQUIRE(cfg != nullptr);
-  CHECK(cfg->s3_uri == "s3://bucket/key");
+  CHECK(cfg->uri == "s3://bucket/key");
   CHECK(cfg->region == "us-west-2");
   REQUIRE(parsed.verbosity.has_value());
   CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);

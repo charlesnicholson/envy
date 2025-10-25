@@ -13,8 +13,8 @@ namespace envy {
 
 class cmd_playground : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_playground> {
-    std::string s3_uri;
+ struct cfg : cmd_cfg<cmd_playground> {
+    std::string uri;
     std::string region;
   };
 
@@ -30,8 +30,7 @@ class cmd_playground : public cmd {
   std::filesystem::path workspace_root_;
   std::string git_probe_url_;
   std::string curl_probe_url_;
-  std::string bucket_;
-  std::string key_;
+  std::string source_uri_;
 
   std::optional<tbb::flow::broadcast_node<tbb::flow::continue_msg>> kickoff_;
   std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> lua_task_;

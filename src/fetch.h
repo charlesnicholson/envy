@@ -15,6 +15,7 @@ struct fetch_request {
   std::string source;
   std::filesystem::path destination;
   std::optional<std::filesystem::path> file_root;
+  std::optional<std::string> region;
   fetch_progress_cb_t progress{};
 };
 
