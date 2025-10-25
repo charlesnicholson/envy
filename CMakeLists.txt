@@ -135,6 +135,7 @@ target_sources(envy
         src/cmd_lua.cpp
         src/cmd_playground.cpp
         src/cmd_version.cpp
+        src/extract.cpp
         src/aws_util.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -206,6 +207,7 @@ target_sources(envy_functional_tester
         src/cmd_playground.cpp
         src/cmd_version.cpp
         src/cmd_cache_functional_test.cpp
+        src/extract.cpp
         src/aws_util.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -294,6 +296,7 @@ target_sources(envy_unit_tests
         src/cmd_lua.cpp
         src/cmd_version.cpp
         src/cmd_playground.cpp
+        src/extract.cpp
         src/aws_util.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
