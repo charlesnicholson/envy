@@ -142,7 +142,7 @@ TEST_CASE("fetch: empty source rejects") {
 
 TEST_CASE("fetch: unsupported scheme throws") {
   envy::fetch_request request{
-    .source = "s3://bucket/object",
+    .source = "foo://bucket/object",
     .destination = std::filesystem::path("ignored"),
     .file_root = std::nullopt,
     .progress = {}

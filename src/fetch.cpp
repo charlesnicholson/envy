@@ -1,15 +1,13 @@
 #include "fetch.h"
 
 #include "libcurl_util.h"
+#include "aws_util.h"
 
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
-#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 
 namespace envy {
 namespace detail {
@@ -125,6 +123,29 @@ std::filesystem::path resolve_local_source(
   return resolved.lexically_normal();
 }
 
+std::filesystem::path prepare_destination(std::filesystem::path destination) {
+  if (destination.empty()) {
+    throw std::invalid_argument("fetch: destination path is empty");
+  }
+
+  if (!destination.is_absolute()) {
+    destination = std::filesystem::absolute(destination);
+  }
+  destination = destination.lexically_normal();
+
+  std::error_code ec;
+  auto const parent{ destination.parent_path() };
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      throw std::runtime_error("fetch: failed to create destination parent: " +
+                               parent.string() + ": " + ec.message());
+    }
+  }
+
+  return destination;
+}
+
 }  // namespace detail
 
 fetch_scheme fetch_classify(std::string_view uri) {
@@ -169,6 +190,16 @@ fetch_result fetch(fetch_request const &request) {
         .resolved_source = std::filesystem::path{ std::string{ trimmed } },
         .resolved_destination =
             libcurl_download(trimmed, request.destination, request.progress)
+      };
+    }
+    case fetch_scheme::S3: {
+      auto resolved_destination{
+          detail::prepare_destination(request.destination) };
+      aws_s3_download(trimmed, resolved_destination, request.progress);
+      return fetch_result{
+        .scheme = scheme,
+        .resolved_source = std::filesystem::path{ std::string{ trimmed } },
+        .resolved_destination = std::move(resolved_destination),
       };
     }
 

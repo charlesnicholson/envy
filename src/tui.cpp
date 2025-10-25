@@ -8,7 +8,6 @@
 #include <cstring>
 #include <ctime>
 #include <mutex>
-#include <optional>
 #include <queue>
 #include <stdexcept>
 #include <string>

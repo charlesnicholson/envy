@@ -3,18 +3,10 @@
 
 #include "archive.h"
 #include "archive_entry.h"
-#include "aws/core/Aws.h"
-#include "aws/core/auth/AWSCredentialsProviderChain.h"
-#include "aws/core/auth/SSOCredentialsProvider.h"
-#include "aws/core/client/ClientConfiguration.h"
-#include "aws/core/http/HttpTypes.h"
-#include "aws/core/platform/Environment.h"
-#include "aws/core/utils/logging/LogLevel.h"
-#include "aws/core/utils/logging/NullLogSystem.h"
-#include "aws/s3/S3Client.h"
-#include "aws/s3/model/GetObjectRequest.h"
-#include "aws/s3/model/HeadObjectRequest.h"
+#include "aws_util.h"
 #include "blake3.h"
+#include "fetch_progress.h"
+#include "platform.h"
 #include "fetch.h"
 #include "git2.h"
 #include "mbedtls/sha256.h"
@@ -43,14 +35,6 @@ extern "C" {
 namespace envy {
 namespace {
 
-void set_env_var(char const *name, char const *value) {
-#ifdef _WIN32
-  _putenv_s(name, value);
-#else
-  ::setenv(name, value, 1);
-#endif
-}
-
 std::string to_hex(uint8_t const *data, size_t length) {
   std::ostringstream oss;
   oss << std::hex << std::setfill('0');
@@ -59,27 +43,6 @@ std::string to_hex(uint8_t const *data, size_t length) {
   }
   return oss.str();
 }
-
-class AwsApiGuard {
- public:
-  AwsApiGuard() {
-    set_env_var("AWS_SDK_LOAD_CONFIG", "1");
-    options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
-    options_.loggingOptions.logger_create_fn = []() {
-      return Aws::MakeShared<Aws::Utils::Logging::NullLogSystem>(
-          "envy-playground-logging");
-    };
-    Aws::InitAPI(options_);
-  }
-
-  AwsApiGuard(AwsApiGuard const &) = delete;
-  AwsApiGuard &operator=(AwsApiGuard const &) = delete;
-
-  ~AwsApiGuard() { Aws::ShutdownAPI(options_); }
-
- private:
-  Aws::SDKOptions options_{};
-};
 
 std::filesystem::path create_temp_directory() {
   auto const base{ std::filesystem::temp_directory_path() };
@@ -167,30 +130,6 @@ S3UriParts parse_s3_uri(std::string_view uri) {
   parts.bucket = std::string(remainder.substr(0, slash));
   parts.key = std::string(remainder.substr(slash + 1));
   return parts;
-}
-
-std::shared_ptr<Aws::Auth::AWSCredentialsProvider> select_credentials_provider(
-    Aws::S3::S3ClientConfiguration const &s3_config) {
-  static constexpr char const *kAllocationTag{ "envy-playground-sso" };
-  Aws::String const profile_from_env{ Aws::Environment::GetEnv("AWS_PROFILE") };
-  Aws::String const profile{ profile_from_env.empty() ? Aws::Auth::GetConfigProfileName()
-                                                      : profile_from_env };
-  try {
-    auto client_config{ Aws::MakeShared<Aws::Client::ClientConfiguration>(
-        kAllocationTag) };
-    *client_config = static_cast<Aws::Client::ClientConfiguration const &>(s3_config);
-    auto sso_provider{ Aws::MakeShared<Aws::Auth::SSOCredentialsProvider>(
-        kAllocationTag,
-        profile,
-        std::static_pointer_cast<Aws::Client::ClientConfiguration const>(client_config)) };
-    std::cout << "[aws-sdk] Using AWS SSO credentials provider for profile '" << profile
-              << "'.\n";
-    return sso_provider;
-  } catch (std::exception const &ex) {
-    std::cout << "[aws-sdk] AWS SSO provider initialization failed: " << ex.what()
-              << "; falling back to default provider chain.\n";
-  }
-  return Aws::MakeShared<Aws::Auth::DefaultAWSCredentialsProviderChain>(kAllocationTag);
 }
 
 void archive_copy_data(struct archive *source, struct archive *dest) {
@@ -419,76 +358,58 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
   }
   auto const destination{ temp_dir / file_name };
 
-  Aws::S3::S3ClientConfiguration config;
-  if (!region.empty()) { config.region = region.c_str(); }
-  config.scheme = Aws::Http::Scheme::HTTPS;
-  config.verifySSL = true;
-  config.connectTimeoutMs = 3000;
-  config.requestTimeoutMs = 30000;
+  if (!region.empty()) { platform::set_env_var("AWS_REGION", region.c_str()); }
 
-  auto const credentials_provider{ select_credentials_provider(config) };
-  Aws::S3::S3Client client{ credentials_provider, nullptr, config };
-
-  long long expected_size{ -1 };
-  {
-    Aws::S3::Model::HeadObjectRequest head_request;
-    head_request.SetBucket(bucket.c_str());
-    head_request.SetKey(key.c_str());
-    auto const head_outcome{ client.HeadObject(head_request) };
-    if (head_outcome.IsSuccess()) {
-      expected_size = head_outcome.GetResult().GetContentLength();
-    }
-  }
-
-  Aws::S3::Model::GetObjectRequest request;
-  request.SetBucket(bucket.c_str());
-  request.SetKey(key.c_str());
-
-  struct ProgressState {
+  struct progress_state {
     std::mutex mutex;
-    long long downloaded{ 0 };
-    std::chrono::steady_clock::time_point last_update{ std::chrono::steady_clock::now() };
+    std::chrono::steady_clock::time_point last_emit{ std::chrono::steady_clock::now() };
+    std::uint64_t transferred{ 0 };
+    std::optional<std::uint64_t> total;
   };
-  auto const progress_state{ std::make_shared<ProgressState>() };
+  auto const state{ std::make_shared<progress_state>() };
 
-  request.SetDataReceivedEventHandler(
-      [progress_state, expected_size](Aws::Http::HttpRequest const *,
-                                      Aws::Http::HttpResponse *,
-                                      long long bytes_transferred) {
-        if (bytes_transferred <= 0) { return; }
-        std::lock_guard<std::mutex> lock{ progress_state->mutex };
-        progress_state->downloaded += bytes_transferred;
-        auto const now{ std::chrono::steady_clock::now() };
-        if (now - progress_state->last_update < std::chrono::milliseconds(200)) { return; }
-        progress_state->last_update = now;
-        std::cout << '\r';
-        if (expected_size > 0) {
-          double const percent{ static_cast<double>(progress_state->downloaded) * 100.0 /
-                                static_cast<double>(expected_size) };
-          double const clamped{ percent > 100.0 ? 100.0 : percent };
-          std::cout << "[aws-sdk] Download progress: " << std::fixed
-                    << std::setprecision(1) << clamped << "%";
-        } else {
-          double const mebibytes{ static_cast<double>(progress_state->downloaded) /
-                                  (1024.0 * 1024.0) };
-          std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
-                    << mebibytes << " MiB";
-        }
-        std::cout << std::flush;
-      });
+  auto const start_time{ std::chrono::steady_clock::now() };
 
-  auto const download_start{ std::chrono::steady_clock::now() };
-  auto outcome{ client.GetObject(request) };
-  auto const download_end{ std::chrono::steady_clock::now() };
+  auto progress_cb = [state](fetch_progress_t const &payload) -> bool {
+    auto const *transfer = std::get_if<fetch_transfer_progress>(&payload);
+    if (!transfer) { return true; }
+
+    std::lock_guard<std::mutex> lock{ state->mutex };
+    state->transferred = transfer->transferred;
+    state->total = transfer->total;
+
+    auto const now{ std::chrono::steady_clock::now() };
+    if (now - state->last_emit < std::chrono::milliseconds(200)) { return true; }
+    state->last_emit = now;
+
+    std::cout << '\r';
+    if (transfer->total && *transfer->total > 0) {
+      double const percent{ static_cast<double>(transfer->transferred) * 100.0 /
+                            static_cast<double>(*transfer->total) };
+      double const clamped{ percent > 100.0 ? 100.0 : percent };
+      std::cout << "[aws-sdk] Download progress: " << std::fixed << std::setprecision(1)
+                << clamped << "%";
+    } else {
+      double const mebibytes{ static_cast<double>(transfer->transferred) /
+                              (1024.0 * 1024.0) };
+      std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
+                << mebibytes << " MiB";
+    }
+    std::cout << std::flush;
+    return true;
+  };
+
+  std::string const s3_uri = "s3://" + bucket + '/' + key;
+  aws_s3_download(s3_uri, destination, progress_cb);
 
   {
-    std::lock_guard<std::mutex> lock{ progress_state->mutex };
-    if (progress_state->downloaded > 0) {
+    std::lock_guard<std::mutex> lock{ state->mutex };
+    if (state->transferred > 0) {
       std::cout << '\r';
-      if (expected_size > 0) {
+      if (state->total && *state->total > 0) {
         std::cout << "[aws-sdk] Download progress: 100.0%";
       } else {
-        double const mebibytes{ static_cast<double>(progress_state->downloaded) /
+        double const mebibytes{ static_cast<double>(state->transferred) /
                                 (1024.0 * 1024.0) };
         std::cout << "[aws-sdk] Downloaded " << std::fixed << std::setprecision(2)
                   << mebibytes << " MiB";
@@ -497,30 +418,16 @@ std::filesystem::path download_s3_object(TempResourceManager &manager,
     }
   }
 
-  if (!outcome.IsSuccess()) {
-    auto const &error{ outcome.GetError() };
-    throw std::runtime_error("S3 GetObject failed: " + error.GetMessage());
-  }
-
-  auto result{ outcome.GetResultWithOwnership() };
-  std::ofstream output{ destination, std::ios::binary };
-  if (!output) {
-    throw std::runtime_error("Failed to open " + destination.string() + " for writing");
-  }
-  output << result.GetBody().rdbuf();
-  output.flush();
-  if (!output) {
-    throw std::runtime_error("Failed while writing S3 object to " + destination.string());
-  }
+  auto const elapsed{ std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start_time) };
 
   auto const sha256{ compute_sha256_file(destination) };
-  auto const elapsed{ std::chrono::duration_cast<std::chrono::milliseconds>(
-      download_end - download_start) };
   std::cout << "[aws-sdk] Downloaded s3://" << bucket << '/' << key << " to "
             << destination << " in " << std::fixed << std::setprecision(3)
             << static_cast<double>(elapsed.count()) / 1000.0 << "s\n";
   std::cout << "[aws-sdk] SHA256(" << destination.filename()
             << ") = " << to_hex(sha256.data(), sha256.size()) << '\n';
+
   return destination;
 }
 
@@ -708,7 +615,6 @@ void run_lua_workflow(std::string const &bucket,
                       std::string const &key,
                       std::string const &region,
                       std::mutex &console_mutex) {
-  AwsApiGuard aws_guard;
   TempResourceManager temp_manager;
   TempManagerScope manager_scope{ temp_manager };
 

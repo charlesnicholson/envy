@@ -1,6 +1,8 @@
 #include "platform.h"
 
 #include <cstdlib>
+#include <stdexcept>
+#include <string>
 #include <system_error>
 
 #ifdef _WIN32
@@ -8,6 +10,8 @@
 #include "platform_windows.h"
 
 namespace envy::platform {
+
+const file_lock_handle_t kInvalidLockHandle = 0;
 
 std::optional<std::filesystem::path> get_default_cache_root() {
   if (char const *local_app_data{ std::getenv("LOCALAPPDATA") }) {
@@ -23,7 +27,17 @@ std::optional<std::filesystem::path> get_default_cache_root() {
 
 char const *get_default_cache_root_env_vars() { return "LOCALAPPDATA or USERPROFILE"; }
 
-std::intptr_t lock_file(std::filesystem::path const &path) {
+void set_env_var(char const *name, char const *value) {
+  if (name == nullptr || value == nullptr) {
+    throw std::invalid_argument("set_env_var: null name or value");
+  }
+
+  if (::_putenv_s(name, value) != 0) {
+    throw std::runtime_error(std::string("set_env_var: failed to set ") + name);
+  }
+}
+
+file_lock_handle_t lock_file(std::filesystem::path const &path) {
   HANDLE const h{ ::CreateFileW(path.c_str(),
                                 GENERIC_READ | GENERIC_WRITE,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -50,7 +64,7 @@ std::intptr_t lock_file(std::filesystem::path const &path) {
   return reinterpret_cast<std::intptr_t>(h);
 }
 
-void unlock_file(std::intptr_t handle) {
+void unlock_file(file_lock_handle_t handle) {
   if (handle != kInvalidLockHandle) {
     HANDLE h{ reinterpret_cast<HANDLE>(handle) };
     OVERLAPPED ovlp{ 0 };
@@ -82,6 +96,8 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
 
 namespace envy::platform {
 
+const file_lock_handle_t kInvalidLockHandle = -1;
+
 std::optional<std::filesystem::path> get_default_cache_root() {
 #ifdef __APPLE__
   if (char const *home{ std::getenv("HOME") }) {
@@ -106,6 +122,16 @@ char const *get_default_cache_root_env_vars() {
 #else
   return "XDG_CACHE_HOME or HOME";
 #endif
+}
+
+void set_env_var(char const *name, char const *value) {
+  if (name == nullptr || value == nullptr) {
+    throw std::invalid_argument("set_env_var: null name or value");
+  }
+
+  if (::setenv(name, value, 1) != 0) {
+    throw std::runtime_error(std::string("set_env_var: failed to set ") + name);
+  }
 }
 
 std::intptr_t lock_file(std::filesystem::path const &path) {
