@@ -1,15 +1,13 @@
 #include "cmd_playground.h"
-#include "platform_windows.h"
 
-#include "archive.h"
-#include "archive_entry.h"
 #include "aws_util.h"
 #include "blake3.h"
-#include "fetch_progress.h"
-#include "platform.h"
+#include "extract.h"
 #include "fetch.h"
+#include "fetch_progress.h"
 #include "git2.h"
 #include "mbedtls/sha256.h"
+#include "platform.h"
 #include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
 
@@ -130,111 +128,6 @@ S3UriParts parse_s3_uri(std::string_view uri) {
   parts.bucket = std::string(remainder.substr(0, slash));
   parts.key = std::string(remainder.substr(slash + 1));
   return parts;
-}
-
-void archive_copy_data(struct archive *source, struct archive *dest) {
-  void const *buff{ nullptr };
-  size_t size{ 0 };
-  la_int64_t offset{ 0 };
-  while (true) {
-    int const r{ archive_read_data_block(source, &buff, &size, &offset) };
-    if (r == ARCHIVE_EOF) { break; }
-    if (r != ARCHIVE_OK) {
-      throw std::runtime_error(std::string("libarchive read error: ") +
-                               archive_error_string(source));
-    }
-    la_ssize_t const write_result{ archive_write_data_block(dest, buff, size, offset) };
-    if (write_result < 0) {
-      throw std::runtime_error(std::string("libarchive write error: ") +
-                               archive_error_string(dest));
-    }
-  }
-}
-
-std::uint64_t extract_archive(std::filesystem::path const &archive_path,
-                              std::filesystem::path const &destination) {
-  archive *reader{ archive_read_new() };
-  if (!reader) { throw std::runtime_error("libarchive read allocation failed"); }
-  archive_read_support_filter_all(reader);
-  archive_read_support_format_all(reader);
-
-  archive *writer{ archive_write_disk_new() };
-  if (!writer) {
-    archive_read_free(reader);
-    throw std::runtime_error("libarchive write allocation failed");
-  }
-  archive_write_disk_set_options(writer,
-                                 ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
-                                     ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
-  archive_write_disk_set_standard_lookup(writer);
-
-  if (archive_read_open_filename(reader, archive_path.string().c_str(), 10240) !=
-      ARCHIVE_OK) {
-    std::string const message{ std::string("libarchive failed to open ") +
-                               archive_path.string() + ": " +
-                               archive_error_string(reader) };
-    archive_write_free(writer);
-    archive_read_free(reader);
-    throw std::runtime_error(message);
-  }
-
-  archive_entry *entry{ nullptr };
-  std::uint64_t regular_files{ 0 };
-  while (true) {
-    int const r{ archive_read_next_header(reader, &entry) };
-    if (r == ARCHIVE_EOF) { break; }
-    if (r != ARCHIVE_OK) {
-      std::string const message{ std::string("libarchive failed to read header: ") +
-                                 archive_error_string(reader) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
-    }
-
-    char const *entry_path{ archive_entry_pathname(entry) };
-    std::filesystem::path const full_path{ destination / (entry_path ? entry_path : "") };
-    auto const parent{ full_path.parent_path() };
-    if (!parent.empty()) { std::filesystem::create_directories(parent); }
-    std::string const full_path_str{ full_path.string() };
-    archive_entry_copy_pathname(entry, full_path_str.c_str());
-    if (char const *hardlink{ archive_entry_hardlink(entry) }) {
-      auto const hardlink_full{ (destination / hardlink).string() };
-      archive_entry_copy_hardlink(entry, hardlink_full.c_str());
-    }
-
-    int write_header_result{ archive_write_header(writer, entry) };
-    if (write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
-      std::string const message{ std::string("libarchive failed to write header: ") +
-                                 archive_error_string(writer) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
-    }
-
-    if (archive_entry_size(entry) > 0) { archive_copy_data(reader, writer); }
-    if (archive_write_finish_entry(writer) != ARCHIVE_OK) {
-      std::string const message{ std::string("libarchive failed to finish entry: ") +
-                                 archive_error_string(writer) };
-      archive_read_close(reader);
-      archive_write_close(writer);
-      archive_read_free(reader);
-      archive_write_free(writer);
-      throw std::runtime_error(message);
-    }
-
-    if (archive_entry_filetype(entry) == AE_IFREG) { ++regular_files; }
-  }
-
-  archive_read_close(reader);
-  archive_write_close(writer);
-  archive_read_free(reader);
-  archive_write_free(writer);
-
-  return regular_files;
 }
 
 std::array<uint8_t, BLAKE3_OUT_LEN> compute_blake3_file(
@@ -461,7 +354,7 @@ int lua_extract_to_temp(lua_State *L) {
 
   try {
     auto const destination{ g_temp_manager->create_directory() };
-    auto const count{ extract_archive(archive, destination) };
+    auto const count{ extract(archive, destination) };
     std::cout << "[lua] Extracted " << count << " files\n";
 
     auto const sample_files{ collect_first_regular_files(destination, 5) };
@@ -572,18 +465,17 @@ void run_fetch_tls_probe(std::string const &url,
   std::error_code probe_ec;
   std::filesystem::create_directories(probe_dir, probe_ec);
   if (probe_ec) {
-    throw std::runtime_error("Failed to create fetch probe directory: " + probe_ec.message());
+    throw std::runtime_error("Failed to create fetch probe directory: " +
+                             probe_ec.message());
   }
 
   auto const destination{ probe_dir / "probe.bin" };
 
   try {
-    fetch_request request{
-      .source = url,
-      .destination = destination,
-      .file_root = std::nullopt,
-      .progress = {}
-    };
+    fetch_request request{ .source = url,
+                           .destination = destination,
+                           .file_root = std::nullopt,
+                           .progress = {} };
 
     auto const result{ fetch(request) };
 
@@ -653,8 +545,7 @@ void run_lua_workflow(std::string const &bucket,
 
 }  // anonymous namespace
 
-cmd_playground::cmd_playground(cmd_playground::cfg cfg)
-    : cfg_{ std::move(cfg) } {}
+cmd_playground::cmd_playground(cmd_playground::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_playground::schedule(tbb::flow::graph &g) {
   auto const parts{ parse_s3_uri(cfg_.s3_uri) };

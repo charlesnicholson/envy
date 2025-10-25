@@ -14,8 +14,8 @@ struct extract_progress {
 
 using extract_progress_cb_t = std::function<bool(extract_progress const &)>;
 
-void extract(std::filesystem::path const &archive_path,
-             std::filesystem::path const &destination,
-             extract_progress_cb_t const &progress = {});
+std::uint64_t extract(std::filesystem::path const &archive_path,
+                      std::filesystem::path const &destination,
+                      extract_progress_cb_t const &progress = {});
 
 }  // namespace envy
