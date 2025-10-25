@@ -15,7 +15,7 @@
 #include "aws/s3/model/GetObjectRequest.h"
 #include "aws/s3/model/HeadObjectRequest.h"
 #include "blake3.h"
-#include "curl/curl.h"
+#include "fetch.h"
 #include "git2.h"
 #include "mbedtls/sha256.h"
 #include "tbb/flow_graph.h"
@@ -29,6 +29,7 @@ extern "C" {
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -657,53 +658,50 @@ void run_git_tls_probe(std::string const &url,
   std::filesystem::remove_all(probe_dir, fs_ec);
 }
 
-size_t curl_write_callback(char *ptr, size_t size, size_t nmemb, void *userdata) {
-  auto *buffer{ static_cast<std::vector<char> *>(userdata) };
-  size_t const total{ size * nmemb };
-  buffer->insert(buffer->end(), ptr, ptr + total);
-  return total;
-}
+void run_fetch_tls_probe(std::string const &url,
+                         std::filesystem::path const &workspace_root,
+                         std::mutex &console_mutex) {
+  auto const probe_dir{ workspace_root / "out" / "cache" / "fetch_tls_probe" };
+  std::error_code probe_ec;
+  std::filesystem::create_directories(probe_dir, probe_ec);
+  if (probe_ec) {
+    throw std::runtime_error("Failed to create fetch probe directory: " + probe_ec.message());
+  }
 
-void ensure_curl_initialized() {
-  static std::once_flag once;
-  std::call_once(once, [] {
-    CURLcode const init_result{ curl_global_init(CURL_GLOBAL_DEFAULT) };
-    if (init_result != CURLE_OK) {
-      throw std::runtime_error(std::string("curl_global_init failed: ") +
-                               curl_easy_strerror(init_result));
+  auto const destination{ probe_dir / "probe.bin" };
+
+  try {
+    fetch_request request{
+      .source = url,
+      .destination = destination,
+      .file_root = std::nullopt,
+      .progress = {}
+    };
+
+    auto const result{ fetch(request) };
+
+    std::uintmax_t bytes{ 0 };
+    std::error_code size_ec;
+    if (auto const size = std::filesystem::file_size(result.resolved_destination, size_ec);
+        !size_ec) {
+      bytes = size;
     }
-  });
-}
 
-void run_curl_tls_probe(std::string const &url, std::mutex &console_mutex) {
-  ensure_curl_initialized();
-
-  std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle{ curl_easy_init(),
-                                                              &curl_easy_cleanup };
-  if (!handle) { throw std::runtime_error("curl_easy_init failed"); }
-
-  std::vector<char> response;
-  curl_easy_setopt(handle.get(), CURLOPT_URL, url.c_str());
-  curl_easy_setopt(handle.get(), CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(handle.get(), CURLOPT_USERAGENT, "envy-tls-probe/1.0");
-  curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, curl_write_callback);
-  curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &response);
-  curl_easy_setopt(handle.get(), CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
-
-  CURLcode const perform_result{ curl_easy_perform(handle.get()) };
-  long http_code{ 0 };
-  curl_easy_getinfo(handle.get(), CURLINFO_RESPONSE_CODE, &http_code);
-
-  if (perform_result != CURLE_OK) {
-    throw std::runtime_error(std::string("curl_easy_perform failed: ") +
-                             curl_easy_strerror(perform_result));
+    {
+      std::lock_guard<std::mutex> lock{ console_mutex };
+      std::cout << "[fetch] Downloaded " << static_cast<unsigned long long>(bytes)
+                << " bytes from " << url << '\n';
+    }
+  } catch (...) {
+    std::error_code cleanup_ec;
+    std::filesystem::remove(destination, cleanup_ec);
+    std::filesystem::remove_all(probe_dir, cleanup_ec);
+    throw;
   }
 
-  {
-    std::lock_guard<std::mutex> lock{ console_mutex };
-    std::cout << "[libcurl] Downloaded " << response.size() << " bytes from " << url
-              << " (HTTP " << http_code << ")\n";
-  }
+  std::error_code cleanup_ec;
+  std::filesystem::remove(destination, cleanup_ec);
+  std::filesystem::remove_all(probe_dir, cleanup_ec);
 }
 
 void run_lua_workflow(std::string const &bucket,
@@ -774,7 +772,7 @@ void cmd_playground::schedule(tbb::flow::graph &g) {
   });
 
   curl_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_curl_tls_probe(curl_probe_url_, console_mutex_);
+    run_fetch_tls_probe(curl_probe_url_, workspace_root_, console_mutex_);
   });
 
   tbb::flow::make_edge(*kickoff_, *lua_task_);

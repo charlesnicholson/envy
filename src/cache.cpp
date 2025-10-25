@@ -32,11 +32,11 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
 void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
-                                                               path staging_dir,
+                                                               path stage_dir,
                                                                path lock_path,
                                                                file_lock_ptr lock) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
-                                       std::move(staging_dir),
+                                       std::move(stage_dir),
                                        std::move(lock_path),
                                        std::move(lock) } };
 }
@@ -76,12 +76,11 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
     return { entry_dir, nullptr };
   }
 
-  path const staging{ entry_dir.string() + ".inprogress" };
-  if (std::filesystem::exists(staging)) { std::filesystem::remove_all(staging); }
-  std::filesystem::create_directories(staging);
+  path const stage{ entry_dir.string() + ".inprogress" };
+  if (std::filesystem::exists(stage)) { std::filesystem::remove_all(stage); }
+  std::filesystem::create_directories(stage);
 
-  return { staging,
-           scoped_entry_lock::make(entry_dir, staging, lock_path, std::move(lock)) };
+  return { stage, scoped_entry_lock::make(entry_dir, stage, lock_path, std::move(lock)) };
 }
 
 cache::ensure_result cache::ensure_asset(std::string_view identity,

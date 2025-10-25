@@ -15,9 +15,9 @@ namespace envy::tui {
 // Logging levels renamed with TUI_ prefix to avoid collisions with external macros (DOCTEST, system headers).
 enum class level { TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
 
-void init();
+void init(bool structured_logging = false);
 void set_output_handler(std::function<void(std::string_view)> handler);
-void run(std::optional<level> threshold = std::nullopt);
+void run(std::optional<level> threshold = std::nullopt, bool structured_logging = false);
 void shutdown();
 
 void debug(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
@@ -32,7 +32,8 @@ void pause_rendering();
 void resume_rendering();
 
 struct scope {  // raii helper
-  explicit scope(std::optional<level> threshold = std::nullopt);
+  explicit scope(std::optional<level> threshold = std::nullopt,
+                 bool structured_logging = false);
   ~scope();
 
  private:

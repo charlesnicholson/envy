@@ -36,6 +36,18 @@ cli_args cli_parse(int argc, char **argv) {
                       "Destination directory (defaults to current directory)");
   extract->callback([&cmd_cfg, &extract_cfg] { cmd_cfg = extract_cfg; });
 
+  // Fetch subcommand
+  cmd_fetch::cfg fetch_cfg{};
+  auto *fetch{ app.add_subcommand("fetch", "Download resource to local file") };
+  fetch->add_option("source", fetch_cfg.source, "Source URI (http/https/git/etc.)")
+      ->required();
+  fetch->add_option("destination", fetch_cfg.destination, "Destination file path")
+      ->required();
+  fetch->add_option("--manifest-root",
+                    fetch_cfg.manifest_root,
+                    "Manifest root for resolving relative file URIs");
+  fetch->callback([&cmd_cfg, &fetch_cfg] { cmd_cfg = fetch_cfg; });
+
   // Lua subcommand
   cmd_lua::cfg lua_cfg{};
   auto *lua{ app.add_subcommand("lua", "Execute Lua script") };
@@ -120,7 +132,13 @@ cli_args cli_parse(int argc, char **argv) {
   }
 
   args.cmd_cfg = *cmd_cfg;
-  if (!verbose) { args.verbosity = tui::level::TUI_INFO; }
+  if (verbose) {
+    args.verbosity = tui::level::TUI_DEBUG;
+    args.structured_logging = true;
+  } else {
+    args.verbosity = tui::level::TUI_INFO;
+    args.structured_logging = false;
+  }
   return args;
 }
 

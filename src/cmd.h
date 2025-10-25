@@ -33,8 +33,7 @@ struct cmd_cfg {
 
 template <typename config>
 cmd::ptr_t cmd::create(config const &cfg) {
-  using command_t = typename config::cmd_t;
-  return std::make_unique<command_t>(cfg);
+  return std::make_unique<typename config::cmd_t>(cfg);
 }
 
 }  // namespace envy

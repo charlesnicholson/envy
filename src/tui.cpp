@@ -28,6 +28,7 @@ struct tui {
   std::condition_variable cv;
   std::atomic_bool stop_requested{ false };
   std::optional<envy::tui::level> level_threshold;
+  bool structured{ false };
   bool initialized{ false };
 } s_tui{};
 
@@ -102,16 +103,18 @@ void log_formatted(level severity, char const *fmt, va_list args) {
   if (!s_tui.initialized || fmt == nullptr) { return; }
 
   std::optional<level> threshold_snapshot;
+  bool structured_snapshot{ false };
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };
     threshold_snapshot = s_tui.level_threshold;
+    structured_snapshot = s_tui.structured;
     if (threshold_snapshot && severity < *threshold_snapshot) { return; }
   }
 
   char prefix_buf[96]{};
   std::size_t prefix_len{ 0 };
 
-  if (threshold_snapshot) {
+  if (structured_snapshot) {
     auto const now{ std::chrono::system_clock::now() };
     auto const seconds{ std::chrono::time_point_cast<std::chrono::seconds>(now) };
     auto const millis{
@@ -137,11 +140,7 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
       if (written_prefix > 0) {
         prefix_len = static_cast<std::size_t>(written_prefix);
-      } else {
-        threshold_snapshot.reset();
       }
-    } else {
-      threshold_snapshot.reset();
     }
   }
 
@@ -177,7 +176,7 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };
-  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+    if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
     s_tui.messages.push(std::move(buffer));
   }
 
@@ -188,16 +187,17 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
 namespace envy::tui {
 
-void init() {
+void init(bool structured_logging) {
   if (s_tui.initialized) {
     throw std::logic_error{ "envy::tui::init called more than once" };
   }
 
   s_tui.level_threshold = std::nullopt;
+  s_tui.structured = structured_logging;
   s_tui.initialized = true;
 }
 
-void run(std::optional<level> threshold) {
+void run(std::optional<level> threshold, bool structured_logging) {
   if (!s_tui.initialized) {
     throw std::logic_error{ "envy::tui::run called before init" };
   }
@@ -207,6 +207,7 @@ void run(std::optional<level> threshold) {
   }
 
   s_tui.level_threshold = std::move(threshold);
+  s_tui.structured = structured_logging;
   s_tui.stop_requested = false;
   s_tui.worker = std::thread{ worker_thread };
 }
@@ -279,9 +280,9 @@ void set_output_handler(std::function<void(std::string_view)> handler) {
   s_tui.output_handler = std::move(handler);
 }
 
-scope::scope(std::optional<level> threshold) {
+scope::scope(std::optional<level> threshold, bool structured_logging) {
   if (!s_tui.initialized) { return; }
-  run(std::move(threshold));
+  run(std::move(threshold), structured_logging);
   active = true;
 }
 

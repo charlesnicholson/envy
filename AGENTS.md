@@ -22,7 +22,7 @@ Configuration fixed: only `CMAKE_BUILD_TYPE` and `ENABLE_LTO` vary—no addition
 
 ## Coding Style & Naming Conventions
 Formatting: respect `.clang-format` (Google base)—2-space indent, K&R braces, 91-col ceiling, pointers right-aligned, short constructs allowed single-line.
-Naming: functions/types snake_case, constants kPascalCase, enum values SCREAMING_SNAKE, everything in `envy` (no sub-namespaces).
+Naming: functions/types snake_case, constants kPascalCase, enum values SCREAMING_SNAKE (all uppercase), everything in `envy` (no sub-namespaces).
 Initialization & includes: brace-init new vars; use `=` only for reassignment; `<>` for STL/OS headers, `""` for envy/third-party; order local → third-party → STL with blank lines.
 Structure: favor value types over heap; keep headers self-contained; declare inline members in-class, define out-of-line right below; avoid ad-hoc FetchContent.
 Atomics: default to `memory_order_seq_cst`; only tighten semantics when correctness demands it.
