@@ -5,31 +5,46 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 
 using path = std::filesystem::path;
 
 namespace envy {
 
+namespace {
+
+void remove_all_noexcept(path const &target) {
+  std::error_code ec;
+  std::filesystem::remove_all(target, ec);
+}
+
+}  // namespace
+
 cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
                                             path install_dir,
                                             path stage_dir,
+                                            path fetch_dir,
                                             path lock_path)
     : entry_dir_{ std::move(entry_dir) },
       install_dir_{ std::move(install_dir) },
       stage_dir_{ std::move(stage_dir) },
+      fetch_dir_{ std::move(fetch_dir) },
       lock_path_{ std::move(lock_path) },
       lock_handle_{ platform::lock_file(lock_path_) } {}
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
   if (completed_) {
-    std::filesystem::remove_all(stage_dir_);
-    std::filesystem::remove_all(entry_dir_ / "asset");
-    platform::atomic_rename(install_dir_, entry_dir_ / "asset");
-    std::filesystem::remove_all(entry_dir_ / ".work");
+    remove_all_noexcept(stage_dir_);
+    remove_all_noexcept(fetch_dir_);
+    remove_all_noexcept(asset_dir());
+    platform::atomic_rename(install_dir_, asset_dir());
+    remove_all_noexcept(fetch_dir_.parent_path());
     std::ofstream{ entry_dir_ / ".envy-complete" }.close();
   } else {
-    std::filesystem::remove_all(install_dir_);
-    std::filesystem::remove_all(stage_dir_);
+    remove_all_noexcept(install_dir_);
+    remove_all_noexcept(stage_dir_);
+    remove_all_noexcept(fetch_dir_);
+    remove_all_noexcept(fetch_dir_.parent_path());
   }
 
   if (lock_handle_ != platform::kInvalidLockHandle) {
@@ -44,10 +59,12 @@ void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
                                                                path install_dir,
                                                                path stage_dir,
+                                                               path fetch_dir,
                                                                path lock_path) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
                                        std::move(install_dir),
                                        std::move(stage_dir),
+                                       std::move(fetch_dir),
                                        std::move(lock_path) } };
 }
 
@@ -76,6 +93,7 @@ path cache::locks_dir() const { return root_ / "locks"; }
 cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock_path) {
   ensure_result result{};
   result.entry_path = entry_dir;
+  result.asset_path = entry_dir / "asset";
 
   if (is_entry_complete(entry_dir)) { return result; }
 
@@ -87,15 +105,9 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
   path const fetch_dir{ work_dir / "fetch" };
   path const stage_dir{ work_dir / "stage" };
 
-  std::filesystem::remove_all(install_dir);
-  std::filesystem::create_directories(install_dir);
-
-  std::filesystem::create_directories(work_dir);
-  std::filesystem::create_directories(fetch_dir);
-  std::filesystem::remove_all(stage_dir);
-  std::filesystem::create_directories(stage_dir);
-
-  auto lock{ scoped_entry_lock::make(entry_dir, install_dir, stage_dir, lock_path) };
+  auto lock{
+    scoped_entry_lock::make(entry_dir, install_dir, stage_dir, fetch_dir, lock_path)
+  };
 
   // Re-check (other envy may have finished while we waited)
   if (is_entry_complete(entry_dir)) {
@@ -103,10 +115,12 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
     return result;
   }
 
-  result.install_path = install_dir;
-  result.work_path = work_dir;
-  result.fetch_path = fetch_dir;
-  result.staging_path = stage_dir;
+  remove_all_noexcept(install_dir);
+  remove_all_noexcept(work_dir);
+  std::filesystem::create_directories(install_dir);
+  std::filesystem::create_directories(fetch_dir);
+  std::filesystem::create_directories(stage_dir);
+
   result.lock = std::move(lock);
   return result;
 }

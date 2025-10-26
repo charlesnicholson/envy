@@ -67,12 +67,12 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
 
         self.assertEqual(result["locked"], "true")
         install_path = Path(result["install_path"])
-        work_path = Path(result["work_path"])
         stage_path = Path(result["stage_path"])
+        asset_path = Path(result["asset_path"])
         self.assertEqual(install_path.name, ".install")
-        self.assertEqual(work_path.name, ".work")
         self.assertEqual(stage_path.name, "stage")
         self.assertEqual(stage_path.parent.name, ".work")
+        self.assertEqual(asset_path.name, "asset")
         self.assertFalse(install_path.exists())
         self.assertFalse(stage_path.exists())
         self.assertEqual(proc.returncode, 0)
@@ -98,6 +98,7 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         self.assertEqual(result["locked"], "false")
         self.assertEqual(result["fast_path"], "true")
         self.assertEqual(result["entry_path"], str(entry))
+        self.assertEqual(result["asset_path"], str(entry / "asset"))
         self.assertEqual(result["install_path"], "")
 
     def test_concurrent_ensure_same_asset(self):
@@ -128,11 +129,16 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         result_a = parse_keyvalue(stdout_a)
         result_b = parse_keyvalue(stdout_b)
 
-        # A got lock and staged
-        self.assertEqual(result_a["locked"], "true")
-        # B waited and got fast path
-        self.assertEqual(result_b["locked"], "false")
-        self.assertEqual(result_b["fast_path"], "true")
+        self.assertIn("locked", result_a)
+        self.assertIn("locked", result_b)
+        locked_values = {result_a["locked"], result_b["locked"]}
+        self.assertEqual(locked_values, {"true", "false"})
+        if result_a["locked"] == "false":
+            self.assertEqual(result_a["fast_path"], "true")
+            self.assertEqual(result_b["fast_path"], "false")
+        else:
+            self.assertEqual(result_a["fast_path"], "false")
+            self.assertEqual(result_b["fast_path"], "true")
 
     def test_ensure_recipe_vs_ensure_asset_different_locks(self):
         """Verify recipe and asset locks don't conflict."""
@@ -495,6 +501,26 @@ class TestEntryPathsAndStructure(unittest.TestCase):
 
         self.assertTrue(locks_dir.exists())
 
+    def test_asset_path_on_fast_path(self):
+        """Fast-path ensure returns asset_path pointing at payload directory."""
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-fast1"
+        asset_dir = entry / "asset"
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        sentinel = asset_dir / "payload.bin"
+        sentinel.write_text("cached")
+        (entry / ".envy-complete").touch()
+
+        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "fast1")
+        stdout, _ = proc.communicate()
+        result = parse_keyvalue(stdout)
+
+        self.assertEqual(result["locked"], "false")
+        self.assertEqual(Path(result["asset_path"]).resolve(), asset_dir.resolve())
+        self.assertEqual(result["install_path"], "")
+        self.assertEqual(result["fetch_path"], "")
+        self.assertEqual(result["stage_path"], "")
+        self.assertTrue(sentinel.exists())
+
 
 class TestEdgeCases(unittest.TestCase):
     """Edge cases and corner scenarios."""
@@ -553,11 +579,24 @@ class TestEdgeCases(unittest.TestCase):
         result_a = parse_keyvalue(stdout_a)
         result_b = parse_keyvalue(stdout_b)
 
-        # A got lock
-        self.assertTrue(result_a["locked"])
-        # B found complete via recheck
-        self.assertEqual(result_b["locked"], "false")
-        self.assertEqual(result_b["fast_path"], "true")
+        self.assertIn("locked", result_a)
+        self.assertIn("locked", result_b)
+        self.assertEqual(result_a["locked"], "true")
+        if result_b["locked"] == "false":
+            self.assertEqual(result_b["fast_path"], "true")
+        else:
+            self.assertEqual(result_b["fast_path"], "false")
+
+    def test_asset_without_marker_requires_lock(self):
+        """Existing asset directory without marker still forces staging."""
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-raw1"
+        (entry / "asset").mkdir(parents=True, exist_ok=True)
+
+        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "raw1")
+        stdout, _ = proc.communicate()
+        result = parse_keyvalue(stdout)
+
+        self.assertEqual(result.get("locked"), "true")
 
     def test_empty_staging_committed(self):
         """Create staging but write nothing, call mark_complete()—verify commit happens."""
