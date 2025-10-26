@@ -22,7 +22,7 @@ class test_barrier {
   void signal(std::string const &name) {
     if (name.empty()) { return; }
     std::filesystem::path marker{ barrier_dir_ / name };
-    std::ofstream{ marker }.close();
+    platform::touch_file(marker);
   }
 
   void wait(std::string const &name) {

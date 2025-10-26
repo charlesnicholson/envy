@@ -83,6 +83,24 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
   }
 }
 
+void touch_file(std::filesystem::path const &path) {
+  HANDLE const h{ ::CreateFileW(path.c_str(),
+                                GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr,
+                                CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr) };
+
+  if (h == INVALID_HANDLE_VALUE) {
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "Failed to touch file: " + path.string());
+  }
+
+  ::CloseHandle(h);
+}
+
 [[noreturn]] void terminate_process() { ::TerminateProcess(::GetCurrentProcess(), 1); }
 
 }  // namespace envy::platform
@@ -169,6 +187,16 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
                             std::system_category(),
                             "Failed to rename " + from.string() + " to " + to.string());
   }
+}
+
+void touch_file(std::filesystem::path const &path) {
+  int const fd{ ::open(path.c_str(), O_CREAT | O_WRONLY, 0644) };
+  if (fd == -1) {
+    throw std::system_error(errno,
+                            std::system_category(),
+                            "Failed to touch file: " + path.string());
+  }
+  ::close(fd);
 }
 
 [[noreturn]] void terminate_process() { std::abort(); }

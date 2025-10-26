@@ -1,6 +1,7 @@
 #include "cache.h"
 
 #include "doctest.h"
+#include "platform.h"
 
 #include <filesystem>
 #include <fstream>
@@ -79,12 +80,85 @@ TEST_CASE("ensure_asset fast path when marker present") {
   auto asset_dir = entry_dir / "asset";
   std::filesystem::create_directories(asset_dir);
   std::ofstream{ asset_dir / "existing.txt" } << "cached";
-  std::ofstream{ entry_dir / ".envy-complete" }.close();
+  envy::platform::touch_file(entry_dir / ".envy-complete");
 
   auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock == nullptr);
   CHECK(result.asset_path == asset_dir);
   CHECK(std::filesystem::exists(result.asset_path / "existing.txt"));
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("mark_fetch_complete creates sentinel") {
+  auto root = make_temp_root();
+  envy::cache c{ root };
+
+  auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  REQUIRE(result.lock != nullptr);
+
+  CHECK_FALSE(result.lock->is_fetch_complete());
+  result.lock->mark_fetch_complete();
+  CHECK(result.lock->is_fetch_complete());
+  CHECK(std::filesystem::exists(result.lock->fetch_dir() / ".envy-complete"));
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("fetch_dir preserved when marked complete") {
+  auto root = make_temp_root();
+  envy::cache c{ root };
+
+  // First acquisition: populate fetch/ and mark complete
+  {
+    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    auto fetch_file = result.lock->fetch_dir() / "payload.tar.gz";
+    std::ofstream{ fetch_file } << "large download";
+    result.lock->mark_fetch_complete();
+  }
+
+  // Second acquisition: verify fetch/ survived
+  {
+    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    CHECK(result.lock->is_fetch_complete());
+    auto fetch_file = result.lock->fetch_dir() / "payload.tar.gz";
+    CHECK(std::filesystem::exists(fetch_file));
+
+    std::ifstream ifs{ fetch_file };
+    std::string content{ std::istreambuf_iterator<char>{ ifs }, {} };
+    CHECK(content == "large download");
+  }
+
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("fetch_dir wiped when not marked complete") {
+  auto root = make_temp_root();
+  envy::cache c{ root };
+
+  // First acquisition: populate fetch/ but don't mark complete (simulates crash)
+  {
+    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    auto fetch_file = result.lock->fetch_dir() / "partial.tar.gz";
+    std::ofstream{ fetch_file } << "incomplete";
+    // Note: intentionally not calling mark_fetch_complete()
+  }
+
+  // Second acquisition: verify fetch/ was wiped
+  {
+    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    CHECK_FALSE(result.lock->is_fetch_complete());
+    auto fetch_file = result.lock->fetch_dir() / "partial.tar.gz";
+    CHECK_FALSE(std::filesystem::exists(fetch_file));
+  }
 
   std::filesystem::remove_all(root);
 }

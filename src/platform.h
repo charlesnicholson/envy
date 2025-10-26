@@ -12,6 +12,7 @@ file_lock_handle_t lock_file(std::filesystem::path const &path);
 void unlock_file(file_lock_handle_t handle);
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to);
+void touch_file(std::filesystem::path const &path);
 
 std::optional<std::filesystem::path> get_default_cache_root();
 char const *get_default_cache_root_env_vars();

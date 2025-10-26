@@ -18,35 +18,26 @@ class cache : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
 
-    static ptr_t make(path entry_dir,
-                      path install_dir,
-                      path stage_dir,
-                      path fetch_dir,
-                      path lock_path);
+    static ptr_t make(path entry_dir, path lock_path);
     ~scoped_entry_lock();
 
     void mark_complete();
+    void mark_fetch_complete();
+    bool is_fetch_complete() const;
 
-    path const &install_dir() const { return install_dir_; }
-    path const &stage_dir() const { return stage_dir_; }
-    path const &fetch_dir() const { return fetch_dir_; }
+    path install_dir() const;
+    path stage_dir() const;
+    path fetch_dir() const;
+    path work_dir() const;
 
    private:
-    scoped_entry_lock(path entry_dir,
-                      path install_dir,
-                      path stage_dir,
-                      path fetch_dir,
-                      path lock_path);
+    scoped_entry_lock(path entry_dir, path lock_path);
+    path asset_dir() const;
 
     path entry_dir_;
-    path install_dir_;
-    path stage_dir_;
-    path fetch_dir_;
     path lock_path_;
     platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
     bool completed_{ false };
-
-    path asset_dir() const { return entry_dir_ / "asset"; }
   };
 
   explicit cache(std::optional<path> root = std::nullopt);
