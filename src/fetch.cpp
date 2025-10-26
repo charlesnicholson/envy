@@ -1,7 +1,7 @@
 #include "fetch.h"
 
-#include "libcurl_util.h"
 #include "aws_util.h"
+#include "libcurl_util.h"
 
 #include <algorithm>
 #include <cctype>
@@ -128,9 +128,7 @@ std::filesystem::path prepare_destination(std::filesystem::path destination) {
     throw std::invalid_argument("fetch: destination path is empty");
   }
 
-  if (!destination.is_absolute()) {
-    destination = std::filesystem::absolute(destination);
-  }
+  if (!destination.is_absolute()) { destination = std::filesystem::absolute(destination); }
   destination = destination.lexically_normal();
 
   std::error_code ec;
@@ -193,8 +191,7 @@ fetch_result fetch(fetch_request const &request) {
       };
     }
     case fetch_scheme::S3: {
-      auto resolved_destination{
-          detail::prepare_destination(request.destination) };
+      auto resolved_destination{ detail::prepare_destination(request.destination) };
       s3_download_request s3_request{
         .uri = std::string{ trimmed },
         .destination = resolved_destination,

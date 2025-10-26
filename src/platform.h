@@ -7,7 +7,7 @@
 namespace envy::platform {
 
 using file_lock_handle_t = std::intptr_t;
-extern const file_lock_handle_t kInvalidLockHandle;
+extern file_lock_handle_t const kInvalidLockHandle;
 file_lock_handle_t lock_file(std::filesystem::path const &path);
 void unlock_file(file_lock_handle_t handle);
 
