@@ -121,116 +121,11 @@ end
 
 **Discovery:** Search upward from CWD for `envy.lua`, stop at filesystem root or git boundary.
 
-**Execution:** Run manifest in fresh `lua_state` with envy globals (`ENVY_PLATFORM`, `ENVY_ARCH`, `envy.join()`, etc.). Extract `packages` table and optional `overrides` table.
+**Execution:** Run manifest in fresh `lua_state` with envy globals (`ENVY_PLATFORM`, `ENVY_ARCH`, `envy.join()`, etc.). Extract `packages` table and optional `overrides` table, normalize shorthand strings into full tables, validate duplicates and conflicting sources.
 
-**Normalization:** Expand shorthand strings (`"arm.gcc@v2"`) to full table form (`{ recipe = "arm.gcc@v2" }`).
+### Resolution Summary
 
-**Validation:** Check for duplicates (same recipe+options), conflicting sources (same identity+options, different url/sha256), malformed entries.
-
-### Resolution: Two-Phase Algorithm
-
-**Phase 1: Parallel Recipe Acquisition**
-
-Fetch all recipes (including transitive dependencies) into cache using TBB task parallelism:
-
-```cpp
-tbb::concurrent_hash_map<recipe_key, fs::path> recipe_cache;
-tbb::concurrent_set<resolved_key> seen;
-
-fetch_recipes(pkg, overrides, task_group):
-  key = (pkg.identity, pkg.options)
-  if !seen.insert(key): return
-
-  task_group.run([=] {
-    src = apply_overrides(pkg, overrides)
-    recipe_key = (pkg.identity, src.sha256)
-
-    path = cache::ensure_recipe(pkg.identity, src.sha256, src.url)
-    recipe_cache.insert(recipe_key, path)
-
-    recipe = execute_recipe(new_lua_state(), path)
-    if recipe.make_depends:
-      for dep in recipe.make_depends(pkg.options):
-        fetch_recipes(dep, overrides + recipe.overrides, task_group)
-  })
-```
-
-Each recipe spawns TBB task. `cache::ensure_recipe` handles lock contention—first task fetches, others wait and hit cache. Different recipes fetch concurrently. Local recipes (`local.*`) never cached, loaded directly from project tree.
-
-**Phase 2: Serial Dependency Resolution**
-
-Build resolved recipe graph via imperative DFS. Fast (milliseconds) since all recipes cached:
-
-```cpp
-map<resolved_key, resolved_recipe> visited;
-set<resolved_key> visiting;  // Cycle detection
-vector<error> errors;
-
-resolved_recipe* resolve(pkg, overrides):
-  key = (pkg.identity, pkg.options)
-  if visited.contains(key): return &visited[key]
-
-  if visiting.contains(key):
-    errors.push_back("Cycle detected")
-    return nullptr
-  visiting.insert(key)
-
-  src = apply_overrides(pkg, overrides)
-  path = recipe_cache[(pkg.identity, src.sha256)]
-
-  recipe = execute_recipe(new_lua_state(), path)
-  verbs = introspect_verbs(recipe)  // Check which verbs implemented
-
-  deps = []
-  if recipe.make_depends:
-    for dep in recipe.make_depends(pkg.options):
-      if dep.needed_by && !verbs.contains(dep.needed_by):
-        errors.push_back("needed_by='{dep.needed_by}' but no such verb")
-
-      deps.push_back(resolve(dep, overrides + recipe.overrides))
-
-  visiting.erase(key)
-  visited[key] = {identity, options, verbs, deps, recipe}
-  return &visited[key]
-```
-
-**Node uniqueness:** Graph node = `(recipe_identity, options)`. Same recipe with different options yields different nodes, different cache keys, different deployments. Same recipe with identical options merges to single node regardless of which dependents reference it.
-
-**Override semantics:** Manifest overrides trump all. Recipe can override its dependencies' sources and options via `overrides` table in `make_depends()`. Overrides flow down: child sees parent's overrides plus parent's new declarations.
-
-**Cycle detection:** Track `visiting` set during DFS. Back-edge (revisiting node in current path) indicates cycle. Accumulate errors, report batch at end.
-
-**Validation:** Verify `needed_by` references implemented verb. Collect errors during resolution, fail after full traversal to report all issues at once.
-
-### Verb Dependencies
-
-Recipes declare which verb needs each dependency completed:
-
-```lua
-make_depends = function(options)
-  return {
-    {
-      recipe = "envy.artifactory@v1",
-      options = { version = "2.50.0" },
-      needed_by = "fetch"  -- jfrog CLI needed before I can fetch
-    },
-    {
-      recipe = "arm.gcc@v2",
-      options = { version = "13.2.0" },
-      needed_by = "build"  -- gcc needed before I can build
-    },
-    {
-      recipe = "envy.python@v3",
-      options = { version = "3.13" }
-      -- No needed_by: must complete before I start ANY verb
-    }
-  }
-end
-```
-
-**Semantics:** `needed_by = "build"` means dependency fully completes (all its verbs: fetch → build → install → deploy) before this recipe's `build` starts. No `needed_by` field = dependency completes before this recipe's first verb (most conservative). Error if `needed_by` references unimplemented verb.
-
-**Rationale:** Tools like Artifactory's `jf` CLI needed for fetch; compilers like gcc needed for build. Explicit control enables fetch parallelism while respecting real constraints.
+**Unified resolver:** Single recursive step fetches the recipe, evaluates its `dependencies` table/function, memoizes the node by `(identity, options)`, parallelizes child work via oneTBB, and enforces cycles, security policy, and `needed_by` checks while materializing the DAG. See `docs/recipe_resolution.md` for the detailed contract.
 
 ## Filesystem Cache
 
