@@ -12,6 +12,7 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 ### Meta
 
 **`envy version`** — Print envy version and third-party component versions.
+**`envy licenses`** — Emit envy’s license followed by every bundled third-party license; canonical source for compliance exports.
 
 ### Utilities
 
