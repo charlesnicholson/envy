@@ -14,12 +14,13 @@
 │   └── gnu.binutils@v3/
 │       ├── recipe.lua
 │       └── helpers.lua
-├── assets/                       # Fully materialized assets
+├── assets/                       # Asset entries (one per identity/options/platform)
 │   └── {namespace}.{name}@{version}/
 │       └── {platform}-{arch}-sha256-{hash}/
 │           ├── .envy-complete
 │           ├── .envy-fingerprint.blake3
-│           └── [asset tree]
+│           ├── .staging/         # Publish-ready tree (renamed into place on success)
+│           └── .work/            # Download/build workspace (cleared after success)
 └── locks/
     └── {recipe|asset}.*.lock
 ```
@@ -34,9 +35,9 @@
   1. Lock-free read: check `.envy-complete`; if present, return path immediately.
   2. Exclusive creation: grab lock, re-check marker (someone else may have finished), proceed if still missing.
 - Lock files (`locks/...`) exist only while holding the lock—`cache::scoped_entry_lock` destroys them after `mark_complete()`.
-- Staging directory `{entry}.inprogress/` appears automatically on lock acquisition; lives inside cache for atomic rename + locality. Never created by callers.
-- Commit writes marker inside staging, performs `platform::atomic_rename()`, and only then releases the lock.
-- Crash recovery: next locker deletes stale `.inprogress/` before starting fresh work; no global sweeps.
+- Acquisition ensures both `assets/{entry}.staging/` and `assets/{entry}.work/` exist. The `.work/` directory hosts downloads/build artifacts; `.staging/` holds only the final install prefix.
+- Commit writes marker inside `.staging/`, removes transient build products under `.work/`, renames `.staging/` to the final asset directory, and only then releases the lock.
+- Crash recovery: next locker blows away stale `.staging/` and, unless a fetch marker says otherwise, resets `.work/` before retrying downloads; no global sweeps.
 
 ## Integrity & Verification
 - Recipes: manifest must supply SHA256; envy verifies before caching/executing. Optional opt-out via `allow_unverified_recipes`.
@@ -45,8 +46,8 @@
 - BLAKE3 fingerprint file captures every asset payload (mmap-friendly header, entry table, string blob) so verification tools compare without locks.
 
 ## Operational Scenarios
-1. **First asset install**: miss → lock → staging → download → verify → extract → fingerprint → `mark_complete()` → atomic rename → release → future reads go lock-free.
+1. **First asset install**: miss → lock → bootstrap `.work/` + `.staging/` → download/build inside `.work/` → install into `.staging/` → fingerprint → `mark_complete()` → atomic rename → wipe `.work/` → release → future reads go lock-free.
 2. **Concurrent asset install**: waiter blocks on lock; when creator finishes, waiter rechecks `.envy-complete` and returns final path without recaching.
-3. **Crash recovery**: crash leaves staging; next locker removes stale directory and restarts work.
+3. **Crash recovery**: crash leaves `.staging/` (and maybe `.work/`); next locker deletes stale `.staging/`, optionally reuses `.work/` if fetch markers are valid, otherwise re-downloads.
 4. **Multi-project sharing**: identical `(identity, options, platform, hash)` reuses the same asset directory; no duplication.
 5. **Recipe collision**: mismatched SHA256 triggers hard failure with instruction to bump recipe version.
