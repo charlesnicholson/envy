@@ -22,7 +22,7 @@ class test_barrier {
   void signal(std::string const &name) {
     if (name.empty()) { return; }
     std::filesystem::path marker{ barrier_dir_ / name };
-    std::ofstream{ marker }.close();
+    platform::touch_file(marker);
   }
 
   void wait(std::string const &name) {
@@ -43,8 +43,8 @@ std::string cache_test_result::to_keyvalue() const {
   oss << "locked=" << (locked ? "true" : "false") << '\n';
   oss << "fast_path=" << (fast_path ? "true" : "false") << '\n';
   oss << "entry_path=" << entry_path.string() << '\n';
+  oss << "asset_path=" << asset_path.string() << '\n';
   oss << "install_path=" << install_path.string() << '\n';
-  oss << "work_path=" << work_path.string() << '\n';
   oss << "fetch_path=" << fetch_path.string() << '\n';
   oss << "stage_path=" << stage_path.string() << '\n';
   oss << "lock_file=" << lock_file.string() << '\n';
@@ -102,30 +102,36 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           // Fail before complete for testing
           if (cfg_.fail_before_complete) {
             succeeded_ = false;
-            cache_test_result output{ locked,
-                                      fast_path,
-                                      result.entry_path,
-                                      result.install_path,
-                                      result.work_path,
-                                      result.fetch_path,
-                                      result.staging_path,
-                                      lock_file };
-            tui::print_stdout("%s", output.to_keyvalue().c_str());
-            return;
+          cache_test_result output{};
+          output.locked = locked;
+          output.fast_path = fast_path;
+          output.entry_path = result.entry_path;
+          output.asset_path = result.asset_path;
+          if (result.lock) {
+            output.install_path = result.lock->install_dir();
+            output.fetch_path = result.lock->fetch_dir();
+            output.stage_path = result.lock->stage_dir();
           }
+          output.lock_file = lock_file;
+          tui::print_stdout("%s", output.to_keyvalue().c_str());
+          return;
+        }
 
-          // Mark complete if we got the lock
+        // Mark complete if we got the lock
           if (result.lock) { result.lock->mark_complete(); }
 
           // Output result
-          cache_test_result output{ locked,
-                                    fast_path,
-                                    result.entry_path,
-                                    result.install_path,
-                                    result.work_path,
-                                    result.fetch_path,
-                                    result.staging_path,
-                                    lock_file };
+          cache_test_result output{};
+          output.locked = locked;
+          output.fast_path = fast_path;
+          output.entry_path = result.entry_path;
+          output.asset_path = result.asset_path;
+          if (result.lock) {
+            output.install_path = result.lock->install_dir();
+            output.fetch_path = result.lock->fetch_dir();
+            output.stage_path = result.lock->stage_dir();
+          }
+          output.lock_file = lock_file;
           tui::print_stdout("%s", output.to_keyvalue().c_str());
 
           succeeded_ = true;
@@ -184,14 +190,17 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
           // Fail before complete for testing
           if (cfg_.fail_before_complete) {
             succeeded_ = false;
-            cache_test_result output{ locked,
-                                      fast_path,
-                                      result.entry_path,
-                                      result.install_path,
-                                      result.work_path,
-                                      result.fetch_path,
-                                      result.staging_path,
-                                      lock_file };
+            cache_test_result output{};
+            output.locked = locked;
+            output.fast_path = fast_path;
+            output.entry_path = result.entry_path;
+            output.asset_path = result.asset_path;
+            if (result.lock) {
+              output.install_path = result.lock->install_dir();
+              output.fetch_path = result.lock->fetch_dir();
+              output.stage_path = result.lock->stage_dir();
+            }
+            output.lock_file = lock_file;
             tui::print_stdout("%s", output.to_keyvalue().c_str());
             return;
           }
@@ -200,14 +209,17 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
           if (result.lock) { result.lock->mark_complete(); }
 
           // Output result
-          cache_test_result output{ locked,
-                                    fast_path,
-                                    result.entry_path,
-                                    result.install_path,
-                                    result.work_path,
-                                    result.fetch_path,
-                                    result.staging_path,
-                                    lock_file };
+          cache_test_result output{};
+          output.locked = locked;
+          output.fast_path = fast_path;
+          output.entry_path = result.entry_path;
+          output.asset_path = result.asset_path;
+          if (result.lock) {
+            output.install_path = result.lock->install_dir();
+            output.fetch_path = result.lock->fetch_dir();
+            output.stage_path = result.lock->stage_dir();
+          }
+          output.lock_file = lock_file;
           tui::print_stdout("%s", output.to_keyvalue().c_str());
 
           succeeded_ = true;

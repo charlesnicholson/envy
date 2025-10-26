@@ -37,9 +37,9 @@
   1. Lock-free read: check `.envy-complete`; if present, return path immediately.
   2. Exclusive creation: grab lock, re-check marker (someone else may have finished), proceed if still missing.
 - Lock files (`locks/...`) exist only while holding the lock—`cache::scoped_entry_lock` destroys them after `mark_complete()`.
-- Acquisition ensures `assets/{entry}.install/` and `assets/{entry}.work/` exist. The workspace owns `fetch/` (durable) and `stage/` (ephemeral) subdirectories.
-- On success Envy atomically renames `.install/` to `asset/`, fingerprints the payload into `.envy-fingerprint.blake3`, deletes `.work/`, and finally touches `.envy-complete`.
-- Crash recovery: next locker deletes stale `.install/`, recreates `work/stage/`, and either reuses or discards `work/fetch/` based on the stored marker; no cache-wide sweeps required.
+- Acquisition ensures `assets/{entry}.install/` and `assets/{entry}.work/` exist. The workspace owns `fetch/` (durable) and `stage/` (ephemeral) subdirectories. Recipes call `mark_fetch_complete()` once a fetch succeeds; this drops a `.envy-complete` sentinel inside `work/fetch/` so later attempts can reuse the payload.
+- On success Envy atomically renames `.install/` to `asset/`, fingerprints the payload into `.envy-fingerprint.blake3`, deletes `.work/`, and touches `entry/.envy-complete`.
+- Crash recovery: next locker deletes stale `.install/`, recreates `work/stage/`, and either reuses or discards `work/fetch/` based on the fetch sentinel (`mark_fetch_complete()` present = reuse, otherwise refetch); no cache-wide sweeps required.
 
 ## Integrity & Verification
 - Recipes: manifest must supply SHA256; envy verifies before caching/executing. Optional opt-out via `allow_unverified_recipes`.
@@ -48,7 +48,7 @@
 - BLAKE3 fingerprint file captures every asset payload (mmap-friendly header, entry table, string blob) so verification tools compare without locks.
 
 ## Operational Scenarios
-1. **First asset install**: miss → lock → create `.install/` + `.work/` → download into `work/fetch/` → stage sources in `work/stage/` → write payload into `.install/` → rename to `asset/` → fingerprint `asset/` → delete `.work/` → touch `.envy-complete` → release.
+1. **First asset install**: miss → lock → create `.install/` + `.work/` → download into `work/fetch/` → `mark_fetch_complete()` on success → stage sources in `work/stage/` → write payload into `.install/` → rename to `asset/` → fingerprint `asset/` → delete `.work/` → touch entry `.envy-complete` → release.
 2. **Concurrent asset install**: waiter blocks on lock; when creator finishes, waiter rechecks `.envy-complete` and returns final path without recaching.
 3. **Crash recovery**: crash leaves `.install/` (and maybe `.work/`); next locker deletes stale `.install/`, conditionally reuses `work/fetch/`, and restarts staging.
 4. **Multi-project sharing**: identical `(identity, options, platform, hash)` reuses the same asset directory; no duplication.
