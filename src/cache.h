@@ -18,15 +18,16 @@ class cache : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
 
-    static ptr_t make(path entry_dir, path stage_dir, path lock_path);
+    static ptr_t make(path entry_dir, path install_dir, path stage_dir, path lock_path);
     ~scoped_entry_lock();
 
     void mark_complete();
 
    private:
-    scoped_entry_lock(path entry_dir, path stage_dir, path lock_path);
+    scoped_entry_lock(path entry_dir, path install_dir, path stage_dir, path lock_path);
 
     path entry_dir_;
+    path install_dir_;
     path stage_dir_;
     path lock_path_;
     platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
@@ -38,8 +39,12 @@ class cache : unmovable {
   path const &root() const;
 
   struct ensure_result {
-    path path;                      // stage path if locked, final path if complete
-    scoped_entry_lock::ptr_t lock;  // if present, locked for installation
+    path entry_path;                // final asset path (contains metadata + asset/)
+    path install_path;              // entry/.install directory while locked
+    path work_path;                 // entry/.work root while locked
+    path fetch_path;                // entry/.work/fetch (empty if not locked)
+    path staging_path;              // entry/.work/stage (empty if not locked)
+    scoped_entry_lock::ptr_t lock;  // if present, lock held for installation
   };
 
   ensure_result ensure_asset(std::string_view identity,

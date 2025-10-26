@@ -10,8 +10,11 @@ namespace envy {
 struct cache_test_result {
   bool locked;
   bool fast_path;
-  std::filesystem::path path;
   std::filesystem::path entry_path;
+  std::filesystem::path install_path;
+  std::filesystem::path work_path;
+  std::filesystem::path fetch_path;
+  std::filesystem::path stage_path;
   std::filesystem::path lock_file;
 
   std::string to_keyvalue() const;

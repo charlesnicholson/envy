@@ -35,6 +35,13 @@
 - Verbs remain in the preserved `lua_state` sandbox; when the executor needs a verb it inspects the table by name, determines whether it is a string (built-in helper) or function, and dispatches accordingly.
 - String verbs resolve to built-in handlers at call time; function verbs receive a `verb_ctx` mirroring the dependency `ctx` but exposing execution helpers (extract, cache access, process launching).
 
+## Workspace Phases
+- **Fetch** populates the durable workspace root (`assets/<entry>/.work/fetch/`) and may be specified as a table (declarative archive/git download) or function (custom logic). Skipping the table and leaving the verb undefined triggers Envy’s default.
+- **Stage** prepares the build staging area (`assets/<entry>/.work/stage/`). By default Envy unpacks archives into this directory and deep-copies (or reflinks) git checkouts so the durable fetch tree stays pristine. Declarative tables tweak the behaviour (copy mode, strip rules, etc.); functions receive both fetch and stage directories. Authors may set `fetch_into_work_dir=true` to opt out of reuse—Envy fetches directly into the stage directory and wipes it between runs.
+- **Build** runs toolchains against the staging directory. Envy guarantees the staging directory starts empty each attempt and the install directory (`assets/<entry>/.install/`) is ready to receive build outputs.
+- **Install** writes final artifacts into `.install/`; once `mark_complete()` fires, Envy renames `.install/` to `asset/`, fingerprints the payload, deletes the workspace, and finally touches `.envy-complete`.
+- The runtime exposes `ctx.fetch_dir()`, `ctx.staging_dir()`, and `ctx.install_dir()` to Lua so recipes can orchestrate each phase without managing cache bookkeeping directly.
+
 ## Example Walkthrough
 
 ### Manifest & Recipes
@@ -130,11 +137,11 @@ Resolution fan-out (tasks spawn left-to-right; dashed edges reuse existing futur
 
 Recipe execution phase (verbs scheduled after resolution completes):
 ```
-           exec:toolchain(fetch→build→deploy)
-             /             |              \
- exec:compiler      exec:runtime     exec:tools
+           exec:toolchain(fetch→stage→build→install)
+             /                   |                 \
+ exec:compiler           exec:runtime       exec:tools
         |                 |
- exec:binutils      exec:zlib
+exec:binutils      exec:zlib
 
 exec:cli --depends--> exec:toolchain
     |

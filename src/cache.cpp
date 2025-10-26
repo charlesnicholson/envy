@@ -10,16 +10,26 @@ using path = std::filesystem::path;
 
 namespace envy {
 
-cache::scoped_entry_lock::scoped_entry_lock(path entry_dir, path stage_dir, path lock_path)
+cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
+                                            path install_dir,
+                                            path stage_dir,
+                                            path lock_path)
     : entry_dir_{ std::move(entry_dir) },
+      install_dir_{ std::move(install_dir) },
       stage_dir_{ std::move(stage_dir) },
       lock_path_{ std::move(lock_path) },
       lock_handle_{ platform::lock_file(lock_path_) } {}
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
   if (completed_) {
-    std::ofstream{ stage_dir_ / ".envy-complete" }.close();
-    platform::atomic_rename(stage_dir_, entry_dir_);
+    std::filesystem::remove_all(stage_dir_);
+    std::filesystem::remove_all(entry_dir_ / "asset");
+    platform::atomic_rename(install_dir_, entry_dir_ / "asset");
+    std::filesystem::remove_all(entry_dir_ / ".work");
+    std::ofstream{ entry_dir_ / ".envy-complete" }.close();
+  } else {
+    std::filesystem::remove_all(install_dir_);
+    std::filesystem::remove_all(stage_dir_);
   }
 
   if (lock_handle_ != platform::kInvalidLockHandle) {
@@ -32,9 +42,11 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
 void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
+                                                               path install_dir,
                                                                path stage_dir,
                                                                path lock_path) {
   return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
+                                       std::move(install_dir),
                                        std::move(stage_dir),
                                        std::move(lock_path) } };
 }
@@ -62,20 +74,41 @@ path cache::assets_dir() const { return root_ / "assets"; }
 path cache::locks_dir() const { return root_ / "locks"; }
 
 cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock_path) {
-  if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
+  ensure_result result{};
+  result.entry_path = entry_dir;
+
+  if (is_entry_complete(entry_dir)) { return result; }
 
   std::filesystem::create_directories(locks_dir());
+  std::filesystem::create_directories(entry_dir);
 
-  path const stage{ entry_dir.string() + ".inprogress" };
-  if (std::filesystem::exists(stage)) { std::filesystem::remove_all(stage); }
-  std::filesystem::create_directories(stage);
+  path const install_dir{ entry_dir / ".install" };
+  path const work_dir{ entry_dir / ".work" };
+  path const fetch_dir{ work_dir / "fetch" };
+  path const stage_dir{ work_dir / "stage" };
 
-  auto lock{ scoped_entry_lock::make(entry_dir, stage, lock_path) };
+  std::filesystem::remove_all(install_dir);
+  std::filesystem::create_directories(install_dir);
 
-  // re-check (other envy may have finished while we waited)
-  if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
+  std::filesystem::create_directories(work_dir);
+  std::filesystem::create_directories(fetch_dir);
+  std::filesystem::remove_all(stage_dir);
+  std::filesystem::create_directories(stage_dir);
 
-  return { stage, std::move(lock) };
+  auto lock{ scoped_entry_lock::make(entry_dir, install_dir, stage_dir, lock_path) };
+
+  // Re-check (other envy may have finished while we waited)
+  if (is_entry_complete(entry_dir)) {
+    lock.reset();
+    return result;
+  }
+
+  result.install_path = install_dir;
+  result.work_path = work_dir;
+  result.fetch_path = fetch_dir;
+  result.staging_path = stage_dir;
+  result.lock = std::move(lock);
+  return result;
 }
 
 cache::ensure_result cache::ensure_asset(std::string_view identity,

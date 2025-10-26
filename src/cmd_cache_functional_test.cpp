@@ -42,8 +42,11 @@ std::string cache_test_result::to_keyvalue() const {
   std::ostringstream oss;
   oss << "locked=" << (locked ? "true" : "false") << '\n';
   oss << "fast_path=" << (fast_path ? "true" : "false") << '\n';
-  oss << "path=" << path.string() << '\n';
   oss << "entry_path=" << entry_path.string() << '\n';
+  oss << "install_path=" << install_path.string() << '\n';
+  oss << "work_path=" << work_path.string() << '\n';
+  oss << "fetch_path=" << fetch_path.string() << '\n';
+  oss << "stage_path=" << stage_path.string() << '\n';
   oss << "lock_file=" << lock_file.string() << '\n';
   return oss.str();
 }
@@ -101,8 +104,11 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
             succeeded_ = false;
             cache_test_result output{ locked,
                                       fast_path,
-                                      result.path,
-                                      c.root() / "assets" / entry_name,
+                                      result.entry_path,
+                                      result.install_path,
+                                      result.work_path,
+                                      result.fetch_path,
+                                      result.staging_path,
                                       lock_file };
             tui::print_stdout("%s", output.to_keyvalue().c_str());
             return;
@@ -114,8 +120,11 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           // Output result
           cache_test_result output{ locked,
                                     fast_path,
-                                    result.path,
-                                    c.root() / "assets" / entry_name,
+                                    result.entry_path,
+                                    result.install_path,
+                                    result.work_path,
+                                    result.fetch_path,
+                                    result.staging_path,
                                     lock_file };
           tui::print_stdout("%s", output.to_keyvalue().c_str());
 
@@ -177,8 +186,11 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
             succeeded_ = false;
             cache_test_result output{ locked,
                                       fast_path,
-                                      result.path,
-                                      c.root() / "recipes" / (cfg_.identity + ".lua"),
+                                      result.entry_path,
+                                      result.install_path,
+                                      result.work_path,
+                                      result.fetch_path,
+                                      result.staging_path,
                                       lock_file };
             tui::print_stdout("%s", output.to_keyvalue().c_str());
             return;
@@ -190,8 +202,11 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
           // Output result
           cache_test_result output{ locked,
                                     fast_path,
-                                    result.path,
-                                    c.root() / "recipes" / (cfg_.identity + ".lua"),
+                                    result.entry_path,
+                                    result.install_path,
+                                    result.work_path,
+                                    result.fetch_path,
+                                    result.staging_path,
                                     lock_file };
           tui::print_stdout("%s", output.to_keyvalue().c_str());
 
