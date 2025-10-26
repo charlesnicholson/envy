@@ -60,7 +60,8 @@ struct lua_test_fixture {
   std::vector<std::string> filter_output() const {
     std::vector<std::string> script_output;
     for (auto const &msg : messages) {
-      if (msg.find("Failed") == std::string::npos && msg.find("error") == std::string::npos) {
+      if (msg.find("Failed") == std::string::npos &&
+          msg.find("error") == std::string::npos) {
         script_output.push_back(msg);
       }
     }
@@ -103,9 +104,7 @@ TEST_CASE_FIXTURE(lua_test_fixture, "envy.warn outputs to tui") {
 
   std::vector<std::string> script_output;
   for (auto const &msg : messages) {
-    if (msg.find("Failed") == std::string::npos) {
-      script_output.push_back(msg);
-    }
+    if (msg.find("Failed") == std::string::npos) { script_output.push_back(msg); }
   }
 
   REQUIRE(script_output.size() >= 1);

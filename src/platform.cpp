@@ -11,7 +11,7 @@
 
 namespace envy::platform {
 
-const file_lock_handle_t kInvalidLockHandle = 0;
+file_lock_handle_t const kInvalidLockHandle = 0;
 
 std::optional<std::filesystem::path> get_default_cache_root() {
   if (char const *local_app_data{ std::getenv("LOCALAPPDATA") }) {
@@ -114,7 +114,7 @@ void touch_file(std::filesystem::path const &path) {
 
 namespace envy::platform {
 
-const file_lock_handle_t kInvalidLockHandle = -1;
+file_lock_handle_t const kInvalidLockHandle = -1;
 
 std::optional<std::filesystem::path> get_default_cache_root() {
 #ifdef __APPLE__

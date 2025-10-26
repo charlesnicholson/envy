@@ -60,11 +60,10 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
       [this](tbb::flow::continue_msg) {
         try {
           // Set up barrier coordination
-          std::filesystem::path barrier_dir{
-            cfg_.barrier_dir.empty()
-                ? std::filesystem::temp_directory_path() / ("envy-barrier-" + cfg_.test_id)
-                : cfg_.barrier_dir
-          };
+          std::filesystem::path barrier_dir{ cfg_.barrier_dir.empty()
+                                                 ? std::filesystem::temp_directory_path() /
+                                                       ("envy-barrier-" + cfg_.test_id)
+                                                 : cfg_.barrier_dir };
           test_barrier barrier{ barrier_dir };
 
           // Signal barrier first if requested (before starting work)
@@ -102,22 +101,22 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           // Fail before complete for testing
           if (cfg_.fail_before_complete) {
             succeeded_ = false;
-          cache_test_result output{};
-          output.locked = locked;
-          output.fast_path = fast_path;
-          output.entry_path = result.entry_path;
-          output.asset_path = result.asset_path;
-          if (result.lock) {
-            output.install_path = result.lock->install_dir();
-            output.fetch_path = result.lock->fetch_dir();
-            output.stage_path = result.lock->stage_dir();
+            cache_test_result output{};
+            output.locked = locked;
+            output.fast_path = fast_path;
+            output.entry_path = result.entry_path;
+            output.asset_path = result.asset_path;
+            if (result.lock) {
+              output.install_path = result.lock->install_dir();
+              output.fetch_path = result.lock->fetch_dir();
+              output.stage_path = result.lock->stage_dir();
+            }
+            output.lock_file = lock_file;
+            tui::print_stdout("%s", output.to_keyvalue().c_str());
+            return;
           }
-          output.lock_file = lock_file;
-          tui::print_stdout("%s", output.to_keyvalue().c_str());
-          return;
-        }
 
-        // Mark complete if we got the lock
+          // Mark complete if we got the lock
           if (result.lock) { result.lock->mark_complete(); }
 
           // Output result
@@ -152,11 +151,10 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
       [this](tbb::flow::continue_msg) {
         try {
           // Set up barrier coordination
-          std::filesystem::path barrier_dir{
-            cfg_.barrier_dir.empty()
-                ? std::filesystem::temp_directory_path() / ("envy-barrier-" + cfg_.test_id)
-                : cfg_.barrier_dir
-          };
+          std::filesystem::path barrier_dir{ cfg_.barrier_dir.empty()
+                                                 ? std::filesystem::temp_directory_path() /
+                                                       ("envy-barrier-" + cfg_.test_id)
+                                                 : cfg_.barrier_dir };
           test_barrier barrier{ barrier_dir };
 
           // Signal barrier first if requested (before starting work)

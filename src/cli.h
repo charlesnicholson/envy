@@ -18,16 +18,16 @@ namespace envy {
 
 struct cli_args {
   using cmd_cfg_t = std::variant<cmd_extract::cfg,
-                                  cmd_fetch::cfg,
-                                  cmd_lua::cfg,
-                                  cmd_playground::cfg,
-                                  cmd_version::cfg
+                                 cmd_fetch::cfg,
+                                 cmd_lua::cfg,
+                                 cmd_playground::cfg,
+                                 cmd_version::cfg
 #ifdef ENVY_FUNCTIONAL_TESTER
-                                  ,
-                                  cmd_cache_ensure_asset::cfg,
-                                  cmd_cache_ensure_recipe::cfg
+                                 ,
+                                 cmd_cache_ensure_asset::cfg,
+                                 cmd_cache_ensure_recipe::cfg
 #endif
-                                  >;
+                                 >;
 
   std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
