@@ -66,17 +66,28 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         result = parse_keyvalue(stdout)
 
         self.assertEqual(result["locked"], "true")
-        self.assertIn(".inprogress", result["path"])
+        install_path = Path(result["install_path"])
+        work_path = Path(result["work_path"])
+        stage_path = Path(result["stage_path"])
+        self.assertEqual(install_path.name, ".install")
+        self.assertEqual(work_path.name, ".work")
+        self.assertEqual(stage_path.name, "stage")
+        self.assertEqual(stage_path.parent.name, ".work")
+        self.assertFalse(install_path.exists())
+        self.assertFalse(stage_path.exists())
         self.assertEqual(proc.returncode, 0)
 
         # Verify filesystem state
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-a1b2c3d4"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-a1b2c3d4"
         self.assertTrue((entry / ".envy-complete").exists())
+        self.assertTrue((entry / "asset").exists())
+        self.assertFalse((entry / ".work").exists())
+        self.assertTrue((entry / "asset").exists())
 
     def test_ensure_asset_already_complete(self):
         """Request complete asset, returns final path immediately without lock."""
         # Pre-populate cache
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-complete1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-complete1"
         entry.mkdir(parents=True)
         (entry / ".envy-complete").touch()
 
@@ -86,7 +97,8 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
 
         self.assertEqual(result["locked"], "false")
         self.assertEqual(result["fast_path"], "true")
-        self.assertEqual(result["path"], str(entry))
+        self.assertEqual(result["entry_path"], str(entry))
+        self.assertEqual(result["install_path"], "")
 
     def test_concurrent_ensure_same_asset(self):
         """Two processes request same asset—one stages, other blocks then finds complete."""
@@ -192,13 +204,13 @@ class TestStagingAndCommit(unittest.TestCase):
         self.assertEqual(result["locked"], "true")
 
         # After completion, staging should be renamed to final directory
-        final_dir = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-staging1"
-        staging = (
-            self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-staging1.inprogress"
-        )
+        final_dir = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-staging1"
+        staging = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-staging1" / ".install"
 
         self.assertTrue((final_dir / ".envy-complete").exists())
-        self.assertFalse(staging.exists())  # Staging renamed away
+        self.assertFalse(staging.exists())
+        self.assertTrue((final_dir / "asset").exists())
+        self.assertFalse((final_dir / ".work").exists())
 
     def test_mark_complete_commits_on_exit(self):
         """Call mark_complete(), verify staging renamed and marker written."""
@@ -209,12 +221,12 @@ class TestStagingAndCommit(unittest.TestCase):
         self.assertEqual(result["locked"], "true")
 
         # Verify committed
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-commit1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-commit1"
         self.assertTrue((entry / ".envy-complete").exists())
-        staging = (
-            self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-commit1.inprogress"
-        )
+        staging = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-commit1" / ".install"
         self.assertFalse(staging.exists())
+        self.assertTrue((entry / "asset").exists())
+        self.assertFalse((entry / ".work").exists())
 
     def test_no_mark_complete_abandons_staging(self):
         """Lock destructs without mark_complete(), staging abandoned."""
@@ -229,7 +241,7 @@ class TestStagingAndCommit(unittest.TestCase):
         proc.communicate()  # Wait and close pipes
 
         # Entry should NOT be complete
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-abandon1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-abandon1"
         self.assertFalse((entry / ".envy-complete").exists())
 
     def test_staging_atomic_rename(self):
@@ -272,7 +284,7 @@ class TestCrashRecovery(unittest.TestCase):
         )
 
     def test_stale_inprogress_cleaned(self):
-        """Kill process mid-staging, next ensure removes stale .inprogress."""
+        """Kill process mid-staging, next ensure removes stale .install."""
         # Process A crashes after acquiring lock
         proc_a = self.run_cache_cmd(
             "ensure-asset",
@@ -290,7 +302,7 @@ class TestCrashRecovery(unittest.TestCase):
 
         # Verify stale staging exists
         staging = (
-            self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-crash1.inprogress"
+            self.cache_root / "assets" / "gcc.darwin-arm64-sha256-crash1" / ".install"
         )
         self.assertTrue(staging.exists())
 
@@ -304,7 +316,7 @@ class TestCrashRecovery(unittest.TestCase):
         self.assertEqual(result_b["locked"], "true")
         self.assertFalse(staging.exists())  # Cleaned
 
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-crash1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-crash1"
         self.assertTrue((entry / ".envy-complete").exists())
 
     def test_lock_released_on_crash(self):
@@ -397,7 +409,7 @@ class TestLockFileLifecycle(unittest.TestCase):
         lock_file = (
             self.cache_root
             / "locks"
-            / "deployed.gcc.darwin-arm64-sha256-lockfile1.lock"
+            / "assets.gcc.darwin-arm64-sha256-lockfile1.lock"
         )
         self.assertTrue(lock_file.exists())
 
@@ -409,12 +421,12 @@ class TestLockFileLifecycle(unittest.TestCase):
         self.assertFalse(lock_file.exists())
 
     def test_lock_file_naming_asset(self):
-        """Verify asset lock path matches deployed.{identity}.{platform}-{arch}-sha256-{hash}.lock."""
+        """Verify asset lock path matches assets.{identity}.{platform}-{arch}-sha256-{hash}.lock."""
         proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "abc123")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
-        expected_lock = "deployed.gcc.darwin-arm64-sha256-abc123.lock"
+        expected_lock = "assets.gcc.darwin-arm64-sha256-abc123.lock"
         self.assertIn(expected_lock, result.get("lock_file", ""))
 
     def test_lock_file_naming_recipe(self):
@@ -454,13 +466,13 @@ class TestEntryPathsAndStructure(unittest.TestCase):
         )
 
     def test_asset_entry_path_structure(self):
-        """Verify asset path is deployed/{identity}.{platform}-{arch}-sha256-{hash}/."""
+        """Verify asset path is assets/{identity}.{platform}-{arch}-sha256-{hash}/."""
         proc = self.run_cache_cmd("ensure-asset", "gcc", "linux", "x86_64", "deadbeef")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         expected_path = (
-            self.cache_root / "deployed" / "gcc.linux-x86_64-sha256-deadbeef"
+            self.cache_root / "assets" / "gcc.linux-x86_64-sha256-deadbeef"
         )
         self.assertEqual(result["entry_path"], str(expected_path))
 
@@ -557,7 +569,7 @@ class TestEdgeCases(unittest.TestCase):
         self.assertTrue(result["locked"])
 
         # Entry should be complete even though no files staged
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-empty1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-empty1"
         self.assertTrue((entry / ".envy-complete").exists())
 
     def test_multiple_assets_same_identity_different_platforms(self):
@@ -674,7 +686,7 @@ class TestSubprocessConcurrency(unittest.TestCase):
 
         # Verify stale staging
         staging = (
-            self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-sigkill1.inprogress"
+            self.cache_root / "assets" / "gcc.darwin-arm64-sha256-sigkill1" / ".install"
         )
         self.assertTrue(staging.exists())
 
@@ -688,7 +700,7 @@ class TestSubprocessConcurrency(unittest.TestCase):
         self.assertEqual(result_b["locked"], "true")
         self.assertFalse(staging.exists())
 
-        entry = self.cache_root / "deployed" / "gcc.darwin-arm64-sha256-sigkill1"
+        entry = self.cache_root / "assets" / "gcc.darwin-arm64-sha256-sigkill1"
         self.assertTrue((entry / ".envy-complete").exists())
 
 
