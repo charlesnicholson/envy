@@ -58,13 +58,14 @@ bool cache::is_entry_complete(path const &entry_dir) {
 }
 
 path cache::recipes_dir() const { return root_ / "recipes"; }
-path cache::assets_dir() const { return root_ / "deployed"; }
+path cache::assets_dir() const { return root_ / "assets"; }
 path cache::locks_dir() const { return root_ / "locks"; }
 
 cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock_path) {
   if (is_entry_complete(entry_dir)) { return { entry_dir, nullptr }; }
 
   std::filesystem::create_directories(locks_dir());
+
   path const stage{ entry_dir.string() + ".inprogress" };
   if (std::filesystem::exists(stage)) { std::filesystem::remove_all(stage); }
   std::filesystem::create_directories(stage);
@@ -81,16 +82,19 @@ cache::ensure_result cache::ensure_asset(std::string_view identity,
                                          std::string_view platform,
                                          std::string_view arch,
                                          std::string_view hash_prefix) {
-  std::ostringstream oss;
-  oss << identity << "." << platform << "-" << arch << "-sha256-" << hash_prefix;
-  path const entry_dir{ assets_dir() / oss.str() };
+  std::string const entry{ [&] {
+    std::ostringstream oss;
+    oss << identity << "." << platform << "-" << arch << "-sha256-" << hash_prefix;
+    return oss.str();
+  }() };
 
-  oss.str("");
-  oss << "deployed." << identity << "." << platform << "-" << arch << "-sha256-"
-      << hash_prefix << ".lock";
-  path const lock_path{ locks_dir() / oss.str() };
+  std::string const lock{ [&] {
+    std::ostringstream oss;
+    oss << "assets." << entry << ".lock";
+    return oss.str();
+  }() };
 
-  return ensure_entry(entry_dir, lock_path);
+  return ensure_entry(assets_dir() / entry, locks_dir() / lock);
 }
 
 cache::ensure_result cache::ensure_recipe(std::string_view identity) {

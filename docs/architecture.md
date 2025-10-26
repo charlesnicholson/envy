@@ -103,7 +103,7 @@ function make_depends(options)
 end
 
 deploy = function(ctx)
-    local gcc_root = asset("arm.gcc@v2")  -- Access deployed dependency
+    local gcc_root = asset("arm.gcc@v2")  -- Access cached asset
     ctx.extract_all()
     ctx.run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
     ctx.run("make", "-j" .. ctx.cores)
@@ -129,86 +129,7 @@ end
 
 ## Filesystem Cache
 
-Envy maintains a user-wide cache at `~/.cache/envy/` (customizable) containing recipes (Lua scripts) and deployed assets (toolchains, SDKs). Cache entries are immutable once marked complete—enabling lock-free reads while using shared/exclusive locks only during creation.
-
-### Directory Structure
-
-```
-~/.cache/envy/
-├── recipes/
-│   ├── envy.cmake@v1.lua                   # Built-in single-file
-│   ├── arm.gcc@v2.lua                      # Remote single-file
-│   └── gnu.binutils@v3/                    # Multi-file (extracted archive)
-│       ├── recipe.lua
-│       └── helpers.lua
-├── deployed/
-│   └── {namespace}.{name}@{version}/
-│       └── {platform}-{arch}-sha256-{hash}/
-│           ├── .envy-complete
-│           ├── .envy-fingerprint.blake3
-│           └── [unpacked asset tree]
-└── locks/
-    └── {recipe|deployed}.*.lock
-```
-
-**Project-local recipes** (`local.*` namespace) live in project tree, never cached:
-```
-project/envy/recipes/
-├── local.tool@v1.lua
-└── local.complex@v2/
-    ├── recipe.lua
-    └── helpers.lua
-```
-
-### Cache Keys
-
-**Recipe:** `{namespace}.{name}@{version}.lua` or `{namespace}.{name}@{version}/`
-
-**Deployment:** `{namespace}.{name}@{recipe_version}.{platform}-{arch}-sha256-{hash}` where `hash` is first 16 hex chars of archive SHA256. Key is deterministic before download, enabling early lock acquisition.
-
-### Immutability & Locking
-
-Once `.envy-complete` exists, entry is immutable. Future reads are lock-free.
-
-**Implementation:**
-- Linux/macOS: POSIX `fcntl(F_SETLKW)` with `F_WRLCK` (exclusive, blocking)
-- Windows: `LockFileEx` with `LOCKFILE_EXCLUSIVE_LOCK` (exclusive, blocking)
-
-**Patterns:**
-1. **Lock-free read:** Check `.envy-complete`, use immediately if present
-2. **Exclusive creation:** Acquire exclusive lock (blocks until available), check `.envy-complete` again (another process may have finished while waiting), create if still missing
-
-**Lock file lifecycle:** Lock files (`locks/{recipe|deployed}.*.lock`) created on first lock acquisition, deleted when work completes—`cache::scoped_entry_lock` destructor unlinks after committing staging. Caller must invoke `mark_complete()` on success; destructor commits and writes `.envy-complete` only if marked. Exception before `mark_complete()` leaves entry incomplete—no marker written, staging abandoned. Lock-free reads never need lock files; they exist only during active deployment.
-
-**Staging (automatic):** `.inprogress/` directory created automatically when lock acquired—clients never call `create_staging()`. Path returned in `ensure_result` is staging directory when locked. Located in cache directory (not OS temp) for three reasons: (1) atomic rename requires same filesystem—OS temp often different mount, forcing slow recursive copy; (2) disk locality—large toolchains (1-10GB) extract on cache filesystem avoiding temp partition exhaustion; (3) predictable location for cleanup. Staging path: `{entry_path}.inprogress/`. Staging mandatory for all entries (single-file and multi-file)—uniform API, zero rename overhead compared to fetch/extract costs.
-
-**Commit (automatic):** Destructor commits staging via `platform::atomic_rename()` if `mark_complete()` called. Marker written to staging before commit—appears atomically with directory. Clients never call `commit_staging()`; entirely internal.
-
-**Crash recovery:** Stale `.inprogress/` directories cleaned up lazily per-entry when lock is acquired. Before creating new staging, check if `{entry_path}.inprogress/` exists and remove it. No cache-wide scanning required—cleanup happens only for the specific entry being worked on.
-
-### BLAKE3 Fingerprints
-
-`.envy-fingerprint.blake3` stores BLAKE3 hash of every file in deployment. Binary format optimized for mmap: fixed header (magic/version/count/offsets), entry array (path offset/length, 32-byte hash, size, mtime), string table. User verification maps read-only, compares hashes without locks.
-
-### Security Model
-
-**Recipe verification:** Manifest provides SHA256; envy verifies before cache/execute. Missing hash warns unless `allow_unverified_recipes = true`.
-
-**Asset verification:** Recipes declare SHA256 for downloads; envy verifies before extraction.
-
-**Trust chain:** Verified recipe establishes trust anchor. Assets/logic declared by verified recipe are trusted transitively.
-
-## Use Cases
-
-**First deployment:** Check `.envy-complete` (missing) → acquire exclusive lock → staging auto-created, path returned → download → verify SHA256 → extract to path → compute BLAKE3 fingerprints → call `mark_complete()` → destructor writes `.envy-complete` to staging + atomic rename → release lock. Future reads lock-free.
-
-**Concurrent deployment:** Process A acquires exclusive, begins work. Process B blocks on lock, waits. A completes, destructor commits. B unblocks, rechecks `.envy-complete` (now present), returns final path immediately. No duplicate download.
-
-**Crash recovery:** Process A crashes mid-extraction. OS releases lock, destructor never runs. Process B acquires exclusive, removes stale `.inprogress/`, creates fresh staging, completes normally.
-
-**Multi-project sharing:** Projects A and B both request `arm.gcc@v2` with `options.version="13.2.0"`. Same deployment key → cache hit → zero duplication.
-
-**Recipe collision:** Projects A and B declare `arm.gcc@v2` with different SHA256 hashes. First to run caches recipe. Second project loads, computes hash, detects mismatch, errors: "Recipe integrity failed. Author should publish new version (e.g., arm.gcc@v3)."
+Cache layout, locking, verification, and recovery live in `docs/cache.md`.
 
 ## Platform-Specific Recipes
 

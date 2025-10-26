@@ -80,7 +80,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           std::string entry_name{ cfg_.identity + "." + cfg_.platform + "-" + cfg_.arch +
                                   "-sha256-" + cfg_.hash_prefix };
           std::filesystem::path lock_file{ c.root() / "locks" /
-                                           ("deployed." + entry_name + ".lock") };
+                                           ("assets." + entry_name + ".lock") };
 
           // Determine result state
           bool locked{ result.lock != nullptr };
@@ -102,7 +102,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
             cache_test_result output{ locked,
                                       fast_path,
                                       result.path,
-                                      c.root() / "deployed" / entry_name,
+                                      c.root() / "assets" / entry_name,
                                       lock_file };
             tui::print_stdout("%s", output.to_keyvalue().c_str());
             return;
@@ -115,7 +115,7 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
           cache_test_result output{ locked,
                                     fast_path,
                                     result.path,
-                                    c.root() / "deployed" / entry_name,
+                                    c.root() / "assets" / entry_name,
                                     lock_file };
           tui::print_stdout("%s", output.to_keyvalue().c_str());
 
