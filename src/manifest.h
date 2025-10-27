@@ -1,5 +1,4 @@
-#ifndef ENVY_MANIFEST_H_
-#define ENVY_MANIFEST_H_
+#pragma once
 
 #include <optional>
 #include <string>
@@ -39,4 +38,3 @@ struct manifest {
 
 }  // namespace envy
 
-#endif  // ENVY_MANIFEST_H_
