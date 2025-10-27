@@ -1,9 +1,7 @@
 #include "cmd_version.h"
-#include "platform_windows.h"
 
 #include "CLI11.hpp"
 #include "archive.h"
-#include "aws/core/Aws.h"
 #include "aws/core/Version.h"
 #include "aws/crt/Api.h"
 #include "blake3.h"
