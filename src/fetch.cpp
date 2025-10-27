@@ -71,29 +71,28 @@ bool is_drive_letter_path(std::string_view path) {
 }
 
 std::string strip_file_scheme(std::string_view uri) {
-  std::string candidate{ uri.substr(7) };
+  std::string cand{ uri.substr(7) };
 
-  if (!candidate.empty() && candidate[0] == '/' && candidate.size() >= 3 &&
-      std::isalpha(static_cast<unsigned char>(candidate[1])) && candidate[2] == ':') {
-    candidate.erase(candidate.begin());
-    return candidate;
+  if (!cand.empty() && cand[0] == '/' && cand.size() >= 3 &&
+      std::isalpha(static_cast<unsigned char>(cand[1])) && cand[2] == ':') {
+    cand.erase(cand.begin());
+    return cand;
   }
 
-  if (is_drive_letter_path(candidate)) { return candidate; }
+  if (is_drive_letter_path(cand)) { return cand; }
 
-  if (!candidate.empty() && candidate[0] == '/' && candidate.size() > 1 &&
-      candidate[1] == '/') {
-    return candidate;
+  if (!cand.empty() && cand[0] == '/' && cand.size() > 1 && cand[1] == '/') {
+    return cand;
   }
 
-  auto const slash{ candidate.find('/') };
-  if (slash == std::string::npos) { return candidate; }
+  auto const slash{ cand.find('/') };
+  if (slash == std::string::npos) { return cand; }
 
-  std::string_view const host{ std::string_view{ candidate }.substr(0, slash) };
-  std::string_view const tail{ std::string_view{ candidate }.substr(slash) };
+  std::string_view const host{ std::string_view{ cand }.substr(0, slash) };
+  std::string_view const tail{ std::string_view{ cand }.substr(slash) };
 
   if (host.empty() || iequals(host, "localhost")) { return std::string{ tail }; }
-  if (host.find(':') != std::string_view::npos) { return candidate; }
+  if (host.find(':') != std::string_view::npos) { return cand; }
 
   return std::string{ "//" }.append(host).append(tail);
 }
@@ -191,14 +190,12 @@ fetch_result fetch(fetch_request const &request) {
       };
     }
     case fetch_scheme::S3: {
-      auto resolved_destination{ detail::prepare_destination(request.destination) };
-      s3_download_request s3_request{
-        .uri = std::string{ trimmed },
-        .destination = resolved_destination,
-        .region = request.region,
-        .progress = request.progress,
-      };
-      aws_s3_download(s3_request);
+      auto const resolved_destination{ detail::prepare_destination(request.destination) };
+
+      aws_s3_download(s3_download_request{ .uri = std::string{ trimmed },
+                                           .destination = resolved_destination,
+                                           .region = request.region,
+                                           .progress = request.progress });
       return fetch_result{
         .scheme = scheme,
         .resolved_source = std::filesystem::path{ std::string{ trimmed } },

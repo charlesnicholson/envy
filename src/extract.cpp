@@ -15,8 +15,7 @@ namespace envy {
 namespace {
 
 struct archive_reader : unmovable {
-  archive_reader() {
-    handle = archive_read_new();
+  archive_reader() : handle(archive_read_new()) {
     if (!handle) { throw std::runtime_error("archive_read_new failed"); }
     archive_read_support_filter_all(handle);
     archive_read_support_format_all(handle);
@@ -33,8 +32,7 @@ struct archive_reader : unmovable {
 };
 
 struct archive_writer : unmovable {
-  archive_writer() {
-    handle = archive_write_disk_new();
+  archive_writer() : handle(archive_write_disk_new()) {
     if (!handle) { throw std::runtime_error("archive_write_disk_new failed"); }
     archive_write_disk_set_options(handle,
                                    ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
@@ -53,7 +51,7 @@ struct archive_writer : unmovable {
 };
 
 void ensure_directory(std::filesystem::path const &path) {
-  auto const dir = path.parent_path();
+  auto const dir{ path.parent_path() };
   if (dir.empty()) { return; }
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -112,8 +110,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       throw std::runtime_error("extract: aborted by progress callback");
     }
 
-    int write_header_result{ archive_write_header(writer.handle, entry) };
-    if (write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
+    if (int const write_header_result{ archive_write_header(writer.handle, entry) };
+        write_header_result != ARCHIVE_OK && write_header_result != ARCHIVE_WARN) {
       throw std::runtime_error(std::string("Failed to write entry header: ") +
                                archive_error_string(writer.handle));
     }
