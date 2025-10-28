@@ -1,18 +1,18 @@
 #include "cmd_playground.h"
 
-#include "blake3.h"
 #include "extract.h"
 #include "fetch.h"
-#include "git2.h"
+#include "lua_util.h"
 #include "sha256.h"
+#include "tui.h"
+
+#include "blake3.h"
+#include "git2.h"
 #include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
-#include "tui.h"
 
 extern "C" {
 #include "lauxlib.h"
-#include "lua.h"
-#include "lualib.h"
 }
 
 #include <array>
@@ -34,12 +34,12 @@ extern "C" {
 namespace envy {
 namespace {
 
-constexpr char kHexDigits[]{ "0123456789abcdef" };
-
 template <typename Byte>
 std::string to_hex(Byte const *data, size_t length) {
   static_assert(std::is_integral_v<Byte> && sizeof(Byte) == 1,
                 "to_hex expects 1-byte integral values");
+
+  static constexpr char kHexDigits[]{ "0123456789abcdef" };
 
   std::string hex(length * 2, '\0');
   for (size_t i{ 0 }; i < length; ++i) {
@@ -466,9 +466,8 @@ void run_lua_workflow(std::string const &uri,
   TempResourceManager temp_manager;
   TempManagerScope manager_scope{ temp_manager };
 
-  std::unique_ptr<lua_State, decltype(&lua_close)> state{ luaL_newstate(), &lua_close };
-  if (!state) { throw std::runtime_error("luaL_newstate returned null"); }
-  luaL_openlibs(state.get());
+  auto state{ lua_make() };
+  if (!state) { throw std::runtime_error("lua_make returned null"); }
 
   lua_pushcfunction(state.get(), lua_download_resource);
   lua_setglobal(state.get(), "download_resource");
@@ -480,15 +479,8 @@ void run_lua_workflow(std::string const &uri,
   lua_pushlstring(state.get(), region.c_str(), static_cast<lua_Integer>(region.size()));
   lua_setglobal(state.get(), "region");
 
-  if (luaL_loadstring(state.get(), kLuaScript) != LUA_OK) {
-    char const *message{ lua_tostring(state.get(), -1) };
-    throw std::runtime_error(std::string("Failed to load Lua script: ") +
-                             (message ? message : "unknown error"));
-  }
-  if (lua_pcall(state.get(), 0, LUA_MULTRET, 0) != LUA_OK) {
-    char const *message{ lua_tostring(state.get(), -1) };
-    throw std::runtime_error(std::string("Lua script execution failed: ") +
-                             (message ? message : "unknown error"));
+  if (!lua_run_string(state, kLuaScript)) {
+    throw std::runtime_error("Lua script execution failed");
   }
 
   {

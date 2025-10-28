@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -30,11 +31,10 @@ using recipe_override = std::variant<package_source::remote, package_source::loc
 struct manifest {
   std::vector<package_source> packages;
   std::unordered_map<std::string, recipe_override> overrides;  // recipe -> override
-  std::string manifest_path;                                   // Absolute path to envy.lua
+  std::filesystem::path manifest_path;                         // Absolute path to envy.lua
 
-  static std::optional<std::string> discover();
-  static manifest load(std::string const &path);
+  static std::optional<std::filesystem::path> discover();
+  static manifest load(std::filesystem::path const &path);
 };
 
 }  // namespace envy
-

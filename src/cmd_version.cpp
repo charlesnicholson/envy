@@ -35,7 +35,7 @@ namespace envy {
 cmd_version::cmd_version(cmd_version::cfg cfg) : cfg_{ std::move(cfg) } {}
 
 void cmd_version::schedule(tbb::flow::graph &g) {
-  node_.emplace(g, [](tbb::flow::continue_msg const &) {
+  node_.emplace(g, [this](tbb::flow::continue_msg const &) {
     tui::info("envy version %s", ENVY_VERSION_STR);
     tui::info("");
     tui::info("Third-party component versions:");
@@ -87,6 +87,8 @@ void cmd_version::schedule(tbb::flow::graph &g) {
               static_cast<unsigned>(crt_version.patch));
 
     tui::info("  CLI11: %s", CLI11_VERSION);
+
+    succeeded_ = true;
   });
 
   node_->try_put(tbb::flow::continue_msg{});
