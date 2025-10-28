@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Patch libssh2 src/CMakeLists.txt to disable all install() and export() commands.
-This prevents CMake export errors when zlibstatic is not in an export set.
+Libssh2's install/export blocks clash with FetchContent usage because the
+generated export set references zlibstatic, which Envy does not install.
+Comment those commands so libssh2 stays local to the build and avoids
+poisoning the superproject's install/export targets.
 """
 import re
 from pathlib import Path

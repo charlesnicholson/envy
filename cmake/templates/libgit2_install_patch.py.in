@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Patch libgit2 src/libgit2/CMakeLists.txt to disable all install() and export() commands.
-This prevents CMake export errors when zlibstatic is not in an export set.
+Libgit2's install/export rules assume a standalone project and force CMake to
+emit export() entries for third-party libs (zlibstatic) that our build never
+exports. Comment every install()/export() so FetchContent integration keeps
+libgit2 private to Envy's tree without polluting the parent install graph.
 """
 import re
 from pathlib import Path

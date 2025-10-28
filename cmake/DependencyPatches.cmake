@@ -35,6 +35,8 @@ function(envy_run_python script)
     unset(_envy_python_command)
 endfunction()
 
+# Patch libssh2’s top-level CMakeLists so it stops assuming it owns the
+# superproject: bump the policy floor and pin CMAKE_SOURCE_DIR back to Envy.
 function(envy_patch_libssh2 source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -62,6 +64,8 @@ function(envy_patch_libssh2 source_dir binary_dir)
     unset(_binary_dir_norm)
 endfunction()
 
+# Rewrite libgit2’s SelectSSH helper to prefer our in-tree libssh2 target over
+# pkg-config, keeping headers/libpaths consistent with the fetched dependency.
 function(envy_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh2_source_dir libssh2_binary_dir)
     set(_source_dir_norm "${libgit2_source_dir}")
     set(_binary_dir_norm "${libgit2_binary_dir}")
@@ -98,6 +102,8 @@ function(envy_patch_libgit2_select libgit2_source_dir libgit2_binary_dir libssh2
     unset(LIBSSH2_BINARY)
 endfunction()
 
+# Fix libarchive feature probes that clobber POSIX types by injecting the
+# right include context and trimming unsafe fallbacks.
 function(envy_patch_libarchive_cmakelists source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -132,6 +138,8 @@ function(envy_patch_libarchive_cmakelists source_dir binary_dir)
     unset(LIBARCHIVE_SOURCE)
 endfunction()
 
+# Guard AWS SDK’s curl capability probe against generator expressions so it
+# stays compatible with the libcurl target we fetch locally.
 function(envy_patch_aws_sdk_curl source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -164,6 +172,8 @@ function(envy_patch_aws_sdk_curl source_dir binary_dir)
     unset(AWS_CORE_CMAKELISTS)
 endfunction()
 
+# Force AWS CRT to stick with the static MSVC runtime regardless of build
+# type to match Envy’s global toolchain expectations.
 function(envy_patch_aws_sdk_runtime source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -196,6 +206,42 @@ function(envy_patch_aws_sdk_runtime source_dir binary_dir)
     unset(AWS_CFLAGS_PATH)
 endfunction()
 
+# Replace aws_prebuild_dependency() in aws-crt-cpp so aws-lc builds during
+# the normal compile phase instead of at configure-time.
+function(envy_patch_aws_crt_disable_prebuild source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_awssdk_crt_prebuild_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_crt_disable_prebuild.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_crt_disable_prebuild_patch.py.in")
+
+    set(AWSCRT_CMAKELISTS "${_source_dir_norm}/crt/aws-crt-cpp/CMakeLists.txt")
+    if(NOT EXISTS "${AWSCRT_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWSCRT_CMAKELISTS)
+endfunction()
+
+# Make libcurl’s pkg-config metadata reference the actual zlib target we
+# build instead of the abstract ZLIB::ZLIB alias.
 function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -230,6 +276,8 @@ function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)
     unset(ENVY_ZLIB_TARGET)
 endfunction()
 
+# Ensure libgit2’s FindStatNsec handles glibc’s macro requirements without
+# disturbing macOS headers by toggling the defines around the probe.
 function(envy_patch_libgit2_nsec source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -262,6 +310,8 @@ function(envy_patch_libgit2_nsec source_dir binary_dir)
     unset(FIND_STAT_NSEC)
 endfunction()
 
+# Strip libssh2 install()/export() commands so FetchContent doesn’t try to
+# publish its private artifacts into the parent install set.
 function(envy_patch_libssh2_install source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
@@ -294,6 +344,8 @@ function(envy_patch_libssh2_install source_dir binary_dir)
     unset(LIBSSH2_SRC_CMAKELISTS)
 endfunction()
 
+# Strip libgit2 install()/export() calls for the same reason—keep it scoped
+# to Envy’s build tree with no accidental installs.
 function(envy_patch_libgit2_install source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")
