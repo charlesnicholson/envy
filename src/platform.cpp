@@ -46,10 +46,10 @@ file_lock_handle_t lock_file(std::filesystem::path const &path) {
                                   OPEN_ALWAYS,
                                   FILE_ATTRIBUTE_NORMAL,
                                   nullptr) };
-    DWORD const err{ ::GetLastError() };
 
     if (h != INVALID_HANDLE_VALUE) { return reinterpret_cast<std::intptr_t>(h); }
 
+    DWORD const err{ ::GetLastError() };
     if (err == ERROR_SHARING_VIOLATION) {
       ::Sleep(250);
       continue;
