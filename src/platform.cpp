@@ -52,12 +52,7 @@ file_lock_handle_t lock_file(std::filesystem::path const &path) {
   }
 
   OVERLAPPED ovlp{};
-  if (!::LockFileEx(h,
-                    LOCKFILE_EXCLUSIVE_LOCK,  
-                    0,
-                    MAXDWORD,
-                    MAXDWORD,
-                    &ovlp)) {
+  if (!::LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD, &ovlp)) {
     DWORD const err{ ::GetLastError() };
     ::CloseHandle(h);
     throw std::system_error(err,
