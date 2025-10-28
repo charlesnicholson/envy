@@ -59,6 +59,8 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
       g,
       [this](tbb::flow::continue_msg) {
         try {
+          // Emit initial state so tests always have locked key even if we crash before output later.
+          tui::print_stdout("locked=false\nfast_path=false\n");
           // Set up barrier coordination
           std::filesystem::path barrier_dir{ cfg_.barrier_dir.empty()
                                                  ? std::filesystem::temp_directory_path() /
@@ -137,6 +139,10 @@ void cmd_cache_ensure_asset::schedule(tbb::flow::graph &g) {
         } catch (std::exception const &ex) {
           tui::error("Cache ensure-asset failed: %s", ex.what());
           succeeded_ = false;
+          cache_test_result output{};
+          output.locked = false;
+          output.fast_path = false;
+          tui::print_stdout("%serror=%s\n", output.to_keyvalue().c_str(), ex.what());
         }
       }) };
   node->try_put(tbb::flow::continue_msg{});
@@ -150,6 +156,7 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
       g,
       [this](tbb::flow::continue_msg) {
         try {
+          tui::print_stdout("locked=false\nfast_path=false\n");
           // Set up barrier coordination
           std::filesystem::path barrier_dir{ cfg_.barrier_dir.empty()
                                                  ? std::filesystem::temp_directory_path() /
@@ -224,6 +231,10 @@ void cmd_cache_ensure_recipe::schedule(tbb::flow::graph &g) {
         } catch (std::exception const &ex) {
           tui::error("Cache ensure-recipe failed: %s", ex.what());
           succeeded_ = false;
+          cache_test_result output{};
+          output.locked = false;
+          output.fast_path = false;
+          tui::print_stdout("%serror=%s\n", output.to_keyvalue().c_str(), ex.what());
         }
       }) };
   node->try_put(tbb::flow::continue_msg{});

@@ -101,7 +101,8 @@ TEST_CASE("mark_fetch_complete creates sentinel") {
   result.lock->mark_fetch_complete();
   CHECK(result.lock->is_fetch_complete());
   CHECK(std::filesystem::exists(result.lock->fetch_dir() / ".envy-complete"));
-
+  // Release lock before removing root on Windows to prevent removal errors.
+  result.lock.reset();
   std::filesystem::remove_all(root);
 }
 
