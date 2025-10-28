@@ -7,6 +7,16 @@
 #include <stdexcept>
 #include <vector>
 
+namespace {
+
+struct file_closer {
+  void operator()(std::FILE *file) const noexcept {
+    if (file) { static_cast<void>(std::fclose(file)); }
+  }
+};
+
+}  // namespace
+
 namespace envy {
 
 std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
@@ -35,7 +45,7 @@ std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
     throw std::runtime_error("sha256: failed to open file: " + file_path.string());
   }
 
-  std::unique_ptr<std::FILE, decltype(&std::fclose)> file(raw_file, &std::fclose);
+  std::unique_ptr<std::FILE, file_closer> file(raw_file);
 
   std::vector<unsigned char> buffer(1024 * 1024);
   while (true) {
