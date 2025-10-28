@@ -1,6 +1,12 @@
 #pragma once
 
+#include <concepts>
+
 namespace envy {
+
+template <typename T, typename... Types>
+concept one_of = (std::same_as<T, Types> || ...);
+
 struct uncopyable {
   uncopyable() = default;
   uncopyable(uncopyable &&) = default;

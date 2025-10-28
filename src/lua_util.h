@@ -1,5 +1,7 @@
 #pragma once
 
+#include "util.h"
+
 extern "C" {
 #include "lua.h"
 }
@@ -39,12 +41,26 @@ struct lua_value {
   bool is_number() const;
   bool is_string() const;
   bool is_table() const;
+
+  template <typename T>
+    requires one_of<T, std::monostate, bool, int64_t, double, std::string, lua_table>
+  T const *get() const;
 };
 
 lua_value lua_stack_to_value(lua_State *L, int index);
 std::optional<lua_value> lua_global_to_value(lua_State *L, char const *name);
+std::optional<std::vector<lua_value>> lua_global_to_array(lua_State *L, char const *name);
 
 void value_to_lua_stack(lua_State *L, lua_value const &val);
 void value_to_lua_global(lua_State *L, char const *name, lua_value const &val);
+
+// implementation details
+
+template <typename T>
+  requires one_of<T, std::monostate, bool, int64_t, double, std::string, lua_table>
+T const *lua_value::get() const {
+  if (!std::holds_alternative<T>(v)) { return nullptr; }
+  return &std::get<T>(v);
+}
 
 }  // namespace envy

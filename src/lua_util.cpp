@@ -242,6 +242,60 @@ std::optional<lua_value> lua_global_to_value(lua_State *L, char const *name) {
   return result;
 }
 
+std::optional<std::vector<lua_value>> lua_global_to_array(lua_State *L, char const *name) {
+  lua_getglobal(L, name);
+
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    return std::nullopt;
+  }
+
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    throw std::runtime_error(std::string{ "Global '" } + name + "' is not a table");
+  }
+
+  // First pass: check for any non-numeric keys
+  lua_pushnil(L);
+  while (lua_next(L, -2) != 0) {
+    if (lua_type(L, -2) != LUA_TNUMBER) {
+      lua_pop(L, 3);  //  value, key, table
+      throw std::runtime_error(std::string{ "Table '" } + name +
+                               "' contains non-numeric keys");
+    }
+    lua_pop(L, 1);  // pop value, keep key for next iteration
+  }
+
+  // Count total elements in table
+  lua_pushnil(L);
+  lua_Integer const total_count{ [&] {
+    lua_Integer ttl;
+    for (ttl = 0; lua_next(L, -2); ++ttl) { lua_pop(L, 1); }
+    return ttl;
+  }() };
+
+  // Extract consecutive indices starting at 1
+  std::vector<lua_value> result;
+  result.reserve(total_count);
+
+  for (lua_Integer i{ 1 }; i <= total_count; ++i) {
+    lua_pushinteger(L, i);
+    lua_gettable(L, -2);
+
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 2);  // pop nil and table
+      throw std::runtime_error(std::string{ "Table '" } + name +
+                               "' is sparse (has gaps in numeric indices)");
+    }
+
+    result.push_back(lua_stack_to_value(L, -1));
+    lua_pop(L, 1);
+  }
+
+  lua_pop(L, 1);  // pop table
+  return result;
+}
+
 void value_to_lua_stack(lua_State *L, lua_value const &val) {
   static_assert(
       std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);
