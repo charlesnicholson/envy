@@ -22,7 +22,7 @@ class cmd : unmovable {
 
  protected:
   cmd() = default;
-  bool succeeded_{ true };
+  bool succeeded_{ false };
 };
 
 // Command configs inherit from this for factory creation.

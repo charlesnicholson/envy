@@ -1,42 +1,32 @@
-#ifndef ENVY_MANIFEST_H_
-#define ENVY_MANIFEST_H_
+#pragma once
 
+#include "recipe.h"
+
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
 namespace envy {
 
-struct package_source {
-  struct remote {
-    std::string url;
-    std::string sha256;
-  };
-
-  struct local {
-    std::string file;
-  };
-
-  std::string recipe;  // "namespace.name@version"
-  std::variant<remote, local> source;
-  std::unordered_map<std::string, std::string> options;  // Key-value pairs
+// Manifest-level recipe specification (identity + source + options)
+struct recipe_spec {
+  std::string identity;                                     // "namespace.name@version"
+  recipe::source_t source;                                  // remote_source or local_source
+  std::unordered_map<std::string, std::string> options;    // Key-value pairs
 };
 
-bool operator==(package_source const &lhs, package_source const &rhs);
-
-using recipe_override = std::variant<package_source::remote, package_source::local>;
+// Override just specifies alternate source (no options)
+using recipe_override = std::variant<recipe::remote_source, recipe::local_source>;
 
 struct manifest {
-  std::vector<package_source> packages;
-  std::unordered_map<std::string, recipe_override> overrides;  // recipe -> override
-  std::string manifest_path;                                   // Absolute path to envy.lua
+  std::vector<recipe_spec> packages;
+  std::unordered_map<std::string, recipe_override> overrides;  // recipe identity -> override
+  std::filesystem::path manifest_path;                         // Absolute path to envy.lua
 
-  static std::optional<std::string> discover();
-  static manifest load(std::string const &path);
+  static std::optional<std::filesystem::path> discover();
+  static manifest load(std::filesystem::path const &path);
 };
 
 }  // namespace envy
-
-#endif  // ENVY_MANIFEST_H_
