@@ -13,6 +13,7 @@ extern "C" {
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 namespace envy {
 
