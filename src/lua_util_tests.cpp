@@ -43,10 +43,10 @@ TEST_CASE("lua_make loads standard libraries") {
   lua_pop(L.get(), 1);
 }
 
-TEST_CASE("lua_add_tui creates envy table") {
+TEST_CASE("lua_add_envy creates envy table") {
   auto L{ envy::lua_make() };
   REQUIRE(L != nullptr);
-  envy::lua_add_tui(L);
+  envy::lua_add_envy(L);
 
   lua_getglobal(L.get(), "envy");
   REQUIRE(lua_istable(L.get(), -1));
@@ -77,17 +77,17 @@ TEST_CASE("lua_add_tui creates envy table") {
   lua_pop(L.get(), 2);
 }
 
-TEST_CASE("lua_add_tui overrides print function") {
+TEST_CASE("lua_add_envy overrides print function") {
   auto L{ envy::lua_make() };
   REQUIRE(L != nullptr);
-  envy::lua_add_tui(L);
+  envy::lua_add_envy(L);
 
   lua_getglobal(L.get(), "print");
   CHECK(lua_isfunction(L.get(), -1));
   lua_pop(L.get(), 1);
 }
 
-TEST_CASE("lua_make without TUI has standard print") {
+TEST_CASE("lua_make without lua_add_envy has standard print") {
   auto L{ envy::lua_make() };
   REQUIRE(L != nullptr);
 
@@ -99,6 +99,124 @@ TEST_CASE("lua_make without TUI has standard print") {
   lua_getglobal(L.get(), "envy");
   CHECK(lua_isnil(L.get(), -1));
   lua_pop(L.get(), 1);
+}
+
+TEST_CASE("lua_add_envy sets ENVY_PLATFORM global") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  lua_getglobal(L.get(), "ENVY_PLATFORM");
+  REQUIRE(lua_isstring(L.get(), -1));
+
+  char const *platform{ lua_tostring(L.get(), -1) };
+  REQUIRE(platform != nullptr);
+
+#if defined(__APPLE__) && defined(__MACH__)
+  CHECK(std::string{ platform } == "darwin");
+#elif defined(__linux__)
+  CHECK(std::string{ platform } == "linux");
+#elif defined(_WIN32)
+  CHECK(std::string{ platform } == "windows");
+#else
+  CHECK(std::string{ platform } == "unknown");
+#endif
+
+  lua_pop(L.get(), 1);
+}
+
+TEST_CASE("lua_add_envy sets ENVY_ARCH global") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  lua_getglobal(L.get(), "ENVY_ARCH");
+  REQUIRE(lua_isstring(L.get(), -1));
+
+  char const *arch{ lua_tostring(L.get(), -1) };
+  REQUIRE(arch != nullptr);
+
+#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__arm64__)
+  CHECK(std::string{ arch } == "arm64");
+#elif defined(__x86_64__)
+  CHECK(std::string{ arch } == "x86_64");
+#endif
+#elif defined(__linux__)
+#if defined(__aarch64__)
+  CHECK(std::string{ arch } == "aarch64");
+#elif defined(__x86_64__)
+  CHECK(std::string{ arch } == "x86_64");
+#elif defined(__i386__)
+  CHECK(std::string{ arch } == "i386");
+#endif
+#elif defined(_WIN32)
+#if defined(_M_ARM64)
+  CHECK(std::string{ arch } == "arm64");
+#elif defined(_M_X64) || defined(_M_AMD64)
+  CHECK(std::string{ arch } == "x86_64");
+#elif defined(_M_IX86)
+  CHECK(std::string{ arch } == "x86");
+#endif
+#endif
+
+  lua_pop(L.get(), 1);
+}
+
+TEST_CASE("lua_add_envy sets ENVY_PLATFORM_ARCH global") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  lua_getglobal(L.get(), "ENVY_PLATFORM_ARCH");
+  REQUIRE(lua_isstring(L.get(), -1));
+
+  char const *platform_arch{ lua_tostring(L.get(), -1) };
+  REQUIRE(platform_arch != nullptr);
+
+  std::string const result{ platform_arch };
+
+#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__arm64__)
+  CHECK(result == "darwin-arm64");
+#elif defined(__x86_64__)
+  CHECK(result == "darwin-x86_64");
+#endif
+#elif defined(__linux__)
+#if defined(__aarch64__)
+  CHECK(result == "linux-aarch64");
+#elif defined(__x86_64__)
+  CHECK(result == "linux-x86_64");
+#elif defined(__i386__)
+  CHECK(result == "linux-i386");
+#endif
+#elif defined(_WIN32)
+#if defined(_M_ARM64)
+  CHECK(result == "windows-arm64");
+#elif defined(_M_X64) || defined(_M_AMD64)
+  CHECK(result == "windows-x86_64");
+#elif defined(_M_IX86)
+  CHECK(result == "windows-x86");
+#endif
+#endif
+
+  lua_pop(L.get(), 1);
+}
+
+TEST_CASE("lua_add_envy allows Lua scripts to access platform info") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    assert(type(ENVY_PLATFORM) == 'string')
+    assert(type(ENVY_ARCH) == 'string')
+    assert(type(ENVY_PLATFORM_ARCH) == 'string')
+
+    -- Verify combined format
+    expected = ENVY_PLATFORM .. '-' .. ENVY_ARCH
+    assert(ENVY_PLATFORM_ARCH == expected)
+  )"));
 }
 
 TEST_CASE("lua_run_string executes simple script") {
@@ -604,7 +722,8 @@ TEST_CASE("value_to_lua_stack pushes nested table") {
   REQUIRE(L != nullptr);
 
   envy::lua_table inner;
-  inner["nested_key"] = envy::lua_value{ envy::lua_variant{ std::string{ "nested_value" } } };
+  inner["nested_key"] =
+      envy::lua_value{ envy::lua_variant{ std::string{ "nested_value" } } };
 
   envy::lua_table outer;
   outer["outer_key"] = envy::lua_value{ envy::lua_variant{ std::move(inner) } };

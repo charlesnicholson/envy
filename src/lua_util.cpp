@@ -47,18 +47,64 @@ lua_state_ptr lua_make() {
   return { L, lua_close };
 }
 
-void lua_add_tui(lua_state_ptr const &state) {
+void lua_add_envy(lua_state_ptr const &state) {
   lua_State *L{ state.get() };
   if (!L) {
-    tui::error("lua_add_tui called with null state");
+    tui::error("lua_add_envy called with null state");
     return;
   }
 
-  // Override print to use tui::info
+  // Platform detection
+  char const *platform{ nullptr };
+  char const *arch{ nullptr };
+
+#if defined(__APPLE__) && defined(__MACH__)
+  platform = "darwin";
+#if defined(__arm64__)
+  arch = "arm64";
+#elif defined(__x86_64__)
+  arch = "x86_64";
+#else
+  arch = "unknown";
+#endif
+#elif defined(__linux__)
+  platform = "linux";
+#if defined(__aarch64__)
+  arch = "aarch64";
+#elif defined(__x86_64__)
+  arch = "x86_64";
+#elif defined(__i386__)
+  arch = "i386";
+#else
+  arch = "unknown";
+#endif
+#elif defined(_WIN32)
+  platform = "windows";
+#if defined(_M_ARM64)
+  arch = "arm64";
+#elif defined(_M_X64) || defined(_M_AMD64)
+  arch = "x86_64";
+#elif defined(_M_IX86)
+  arch = "x86";
+#else
+  arch = "unknown";
+#endif
+#else
+  platform = "unknown";
+  arch = "unknown";
+#endif
+  std::string const platform_arch{ std::string{ platform } + "-" + arch };
+
+  lua_pushstring(L, platform);
+  lua_setglobal(L, "ENVY_PLATFORM");
+  lua_pushstring(L, arch);
+  lua_setglobal(L, "ENVY_ARCH");
+  lua_pushlstring(L, platform_arch.c_str(), platform_arch.size());
+  lua_setglobal(L, "ENVY_PLATFORM_ARCH");
+
   lua_pushcfunction(L, lua_print_override);
   lua_setglobal(L, "print");
 
-  // Create envy table with logging + stdout
   lua_newtable(L);
   lua_pushcfunction(L, lua_print_tui<tui::debug>);
   lua_setfield(L, -2, "debug");
