@@ -9,6 +9,9 @@ namespace envy {
 
 cli_args cli_parse(int argc, char **argv) {
   CLI::App app{ "envy - freeform package manager" };
+  // Disable Windows-style '/' option prefixes so absolute POSIX-style paths
+  // like "/tmp/file" are treated as positional arguments on Windows.
+  app.allow_windows_style_options(false);
 
   bool verbose{ false };
   app.add_flag("--verbose", verbose, "Enable structured verbose logging");

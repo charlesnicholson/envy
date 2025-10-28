@@ -1,5 +1,9 @@
 #include "cmd_version.h"
 
+#ifdef _WIN32
+#include "platform_windows.h"  // Provides winsock2 + lean windows definitions
+#endif
+
 #include "CLI11.hpp"
 #include "archive.h"
 #include "aws/core/Version.h"
