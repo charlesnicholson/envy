@@ -38,32 +38,41 @@ void set_env_var(char const *name, char const *value) {
 }
 
 file_lock_handle_t lock_file(std::filesystem::path const &path) {
-  for (;;) {
-    HANDLE const h{ ::CreateFileW(path.c_str(),
-                                  GENERIC_READ | GENERIC_WRITE,
-                                  0,  // no sharing (exclusive ownership)
-                                  nullptr,
-                                  OPEN_ALWAYS,
-                                  FILE_ATTRIBUTE_NORMAL,
-                                  nullptr) };
-
-    if (h != INVALID_HANDLE_VALUE) { return reinterpret_cast<std::intptr_t>(h); }
-
-    DWORD const err{ ::GetLastError() };
-    if (err == ERROR_SHARING_VIOLATION) {
-      ::Sleep(250);
-      continue;
-    }
-
-    throw std::system_error(err,
+  HANDLE const h{ ::CreateFileW(path.c_str(),
+                                GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr,
+                                OPEN_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr) };
+  if (h == INVALID_HANDLE_VALUE) {
+    throw std::system_error(::GetLastError(),
                             std::system_category(),
                             "Failed to open lock file: " + path.string());
   }
+
+  OVERLAPPED ovlp{};
+  if (!::LockFileEx(h,
+                    LOCKFILE_EXCLUSIVE_LOCK,  
+                    0,
+                    MAXDWORD,
+                    MAXDWORD,
+                    &ovlp)) {
+    DWORD const err{ ::GetLastError() };
+    ::CloseHandle(h);
+    throw std::system_error(err,
+                            std::system_category(),
+                            "Failed to acquire file lock: " + path.string());
+  }
+  return reinterpret_cast<std::intptr_t>(h);
 }
 
 void unlock_file(file_lock_handle_t handle) {
   if (handle != kInvalidLockHandle) {
-    ::CloseHandle(reinterpret_cast<HANDLE>(handle));
+    HANDLE const h{ reinterpret_cast<HANDLE>(handle) };
+    OVERLAPPED ovlp{};
+    ::UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ovlp);
+    ::CloseHandle(h);
   }
 }
 
