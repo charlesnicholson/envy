@@ -1,7 +1,5 @@
 #include "manifest.h"
 
-#include <filesystem>
-
 namespace envy {
 
 std::optional<std::filesystem::path> manifest::discover() {

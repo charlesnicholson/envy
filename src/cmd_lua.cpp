@@ -1,7 +1,5 @@
 #include "cmd_lua.h"
-
 #include "lua_util.h"
-#include "tui.h"
 
 namespace envy {
 
