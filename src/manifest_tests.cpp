@@ -640,34 +640,6 @@ TEST_CASE("manifest::load errors on override without url or file") {
       std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on duplicate package") {
-  char const *script{ R"(
-    packages = {
-      "arm.gcc@v2",
-      "arm.gcc@v2"
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Duplicate package entry: arm.gcc@v2",
-      std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on duplicate with same options") {
-  char const *script{ R"(
-    packages = {
-      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } },
-      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } }
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Duplicate package entry: arm.gcc@v2",
-      std::runtime_error);
-}
-
 TEST_CASE("manifest::load allows same identity with different options") {
   char const *script{ R"(
     packages = {
@@ -681,33 +653,17 @@ TEST_CASE("manifest::load allows same identity with different options") {
   REQUIRE(m.packages.size() == 2);
 }
 
-TEST_CASE("manifest::load errors on conflicting sources") {
+TEST_CASE("manifest::load allows duplicate packages") {
   char const *script{ R"(
     packages = {
-      { recipe = "arm.gcc@v2", url = "https://example.com/a.lua", sha256 = "abc" },
-      { recipe = "arm.gcc@v2", url = "https://example.com/b.lua", sha256 = "def" }
+      "arm.gcc@v2",
+      "arm.gcc@v2"
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Conflicting sources for package: arm.gcc@v2",
-      std::runtime_error);
-}
-
-TEST_CASE("manifest::load allows same source multiple times") {
-  char const *script{ R"(
-    packages = {
-      { recipe = "arm.gcc@v2", url = "https://example.com/gcc.lua", sha256 = "abc" },
-      { recipe = "arm.gcc@v2", url = "https://example.com/gcc.lua", sha256 = "abc" }
-    }
-  )" };
-
-  // Should throw as duplicate, not conflicting sources
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Duplicate package entry: arm.gcc@v2",
-      std::runtime_error);
+  // Should not throw - duplicates are allowed, resolved during recipe resolution
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+  REQUIRE(m.packages.size() == 2);
 }
 
 TEST_CASE("manifest::load errors on Lua syntax error") {

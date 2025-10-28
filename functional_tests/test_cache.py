@@ -558,17 +558,17 @@ class TestEdgeCases(unittest.TestCase):
 
     def test_recheck_after_lock_wait(self):
         """Process B waits on lock, A completes while waiting, B rechecks and finds complete."""
-        # Process A: signal before work, complete freely
+        # Process A: signal after acquiring lock, complete freely
         proc_a = self.run_cache_cmd(
             "ensure-asset",
             "gcc",
             "darwin",
             "arm64",
             "recheck1",
-            barrier_signal="a_ready",
+            barrier_signal_after="a_ready",
         )
 
-        # Process B: wait for A to start, then attempt (will find complete)
+        # Process B: wait for A to acquire lock, then attempt (will find complete)
         proc_b = self.run_cache_cmd(
             "ensure-asset", "gcc", "darwin", "arm64", "recheck1", barrier_wait="a_ready"
         )

@@ -242,12 +242,12 @@ std::optional<lua_value> lua_global_to_value(lua_State *L, char const *name) {
   return result;
 }
 
-std::vector<lua_value> lua_global_to_array(lua_State *L, char const *name) {
+std::optional<std::vector<lua_value>> lua_global_to_array(lua_State *L, char const *name) {
   lua_getglobal(L, name);
 
   if (lua_isnil(L, -1)) {
     lua_pop(L, 1);
-    return {};
+    return std::nullopt;
   }
 
   if (!lua_istable(L, -1)) {
