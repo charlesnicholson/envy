@@ -23,10 +23,12 @@ void remove_all_noexcept(path const &target) {
 
 }  // namespace
 
-cache::scoped_entry_lock::scoped_entry_lock(path entry_dir, path lock_path)
+cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
+                                           path lock_path,
+                                           platform::file_lock_handle_t prelocked_handle)
     : entry_dir_{ std::move(entry_dir) },
       lock_path_{ std::move(lock_path) },
-      lock_handle_{ platform::lock_file(lock_path_) } {
+      lock_handle_{ prelocked_handle } {
   remove_all_noexcept(install_dir());
 
   // Conditionally preserve fetch/ if marked complete
@@ -57,8 +59,11 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
 }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
-                                                               path lock_path) {
-  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir), std::move(lock_path) } };
+                                                               path lock_path,
+                                                               platform::file_lock_handle_t lock_handle) {
+  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
+                                       std::move(lock_path),
+                                       lock_handle } };
 }
 
 cache::path cache::scoped_entry_lock::install_dir() const {
@@ -113,11 +118,14 @@ cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock
   std::filesystem::create_directories(locks_dir());
   std::filesystem::create_directories(entry_dir);
 
-  auto lock{ scoped_entry_lock::make(entry_dir, lock_path) };
+  platform::file_lock_handle_t h { platform::lock_file(lock_path)};
 
-  if (is_entry_complete(entry_dir)) { return result; }  // we waited, other envy finished.
+  if (is_entry_complete(entry_dir)) { // we lost a race but the work completed.
+    platform::unlock_file(h);  
+    return result;
+  }
 
-  result.lock = std::move(lock);
+  result.lock = scoped_entry_lock::make(entry_dir, lock_path, h);
   return result;
 }
 
