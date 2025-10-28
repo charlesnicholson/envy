@@ -12,7 +12,7 @@ void cmd_lua::schedule(tbb::flow::graph &g) {
       succeeded_ = false;
       return;
     }
-    lua_add_tui(L);
+    lua_add_envy(L);
     succeeded_ = lua_run_file(L, cfg_.script_path);
   });
 
