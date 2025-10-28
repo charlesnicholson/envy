@@ -786,3 +786,349 @@ TEST_CASE("round-trip: stack to value to stack") {
     assert(copied.config.opt2 == 'b')
   )"));
 }
+
+// lua_global_to_array tests ----------------------------------------------
+
+TEST_CASE("lua_global_to_array extracts empty array") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = {}"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+  CHECK(result.empty());
+}
+
+TEST_CASE("lua_global_to_array extracts single element array") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { 'foo' }"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+
+  REQUIRE(result.size() == 1);
+  CHECK(result[0].is_string());
+  CHECK(std::get<std::string>(result[0].v) == "foo");
+}
+
+TEST_CASE("lua_global_to_array extracts multiple element array") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { 'foo', 'bar', 'baz' }"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+
+  REQUIRE(result.size() == 3);
+  CHECK(std::get<std::string>(result[0].v) == "foo");
+  CHECK(std::get<std::string>(result[1].v) == "bar");
+  CHECK(std::get<std::string>(result[2].v) == "baz");
+}
+
+TEST_CASE("lua_global_to_array extracts mixed type array") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { 'text', 42, true, 3.14 }"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+
+  REQUIRE(result.size() == 4);
+  CHECK(result[0].is_string());
+  CHECK(std::get<std::string>(result[0].v) == "text");
+  CHECK(result[1].is_integer());
+  CHECK(std::get<int64_t>(result[1].v) == 42);
+  CHECK(result[2].is_bool());
+  CHECK(std::get<bool>(result[2].v) == true);
+  CHECK(result[3].is_number());
+  CHECK(std::get<double>(result[3].v) == doctest::Approx(3.14));
+}
+
+TEST_CASE("lua_global_to_array extracts array with nested tables") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, R"(
+    arr = {
+      { name = 'first' },
+      { name = 'second' }
+    }
+  )"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+
+  REQUIRE(result.size() == 2);
+  REQUIRE(result[0].is_table());
+  REQUIRE(result[1].is_table());
+
+  auto const &table0{ std::get<envy::lua_table>(result[0].v) };
+  auto const &table1{ std::get<envy::lua_table>(result[1].v) };
+
+  CHECK(std::get<std::string>(table0.at("name").v) == "first");
+  CHECK(std::get<std::string>(table1.at("name").v) == "second");
+}
+
+TEST_CASE("lua_global_to_array returns empty for nonexistent global") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  auto const result{ envy::lua_global_to_array(L.get(), "nonexistent") };
+  CHECK(result.empty());
+}
+
+TEST_CASE("lua_global_to_array returns empty for nil global") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = nil"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+  CHECK(result.empty());
+}
+
+TEST_CASE("lua_global_to_array errors on non-table global") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = 'not a table'"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Global 'arr' is not a table",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on number global") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = 123"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Global 'arr' is not a table",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on table with string keys") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { foo = 'bar' }"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Table 'arr' contains non-numeric keys",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on mixed array and hash table") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { 'foo', 'bar', platform = 'darwin' }"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Table 'arr' contains non-numeric keys",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on sparse array with gap") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { [1] = 'foo', [3] = 'bar' }"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Table 'arr' is sparse (has gaps in numeric indices)",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on array starting at 0") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { [0] = 'foo', [1] = 'bar' }"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Table 'arr' is sparse (has gaps in numeric indices)",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array errors on array starting at 2") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { [2] = 'foo', [3] = 'bar' }"));
+  CHECK_THROWS_WITH_AS(envy::lua_global_to_array(L.get(), "arr"),
+                       "Table 'arr' is sparse (has gaps in numeric indices)",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_global_to_array accepts consecutive array from 1") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "arr = { [1] = 'foo', [2] = 'bar', [3] = 'baz' }"));
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+
+  REQUIRE(result.size() == 3);
+  CHECK(std::get<std::string>(result[0].v) == "foo");
+  CHECK(std::get<std::string>(result[1].v) == "bar");
+  CHECK(std::get<std::string>(result[2].v) == "baz");
+}
+
+TEST_CASE("lua_global_to_array handles large array") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, R"(
+    arr = {}
+    for i = 1, 100 do
+      arr[i] = 'item' .. i
+    end
+  )"));
+
+  auto const result{ envy::lua_global_to_array(L.get(), "arr") };
+  REQUIRE(result.size() == 100);
+
+  for (size_t i = 0; i < 100; ++i) {
+    CHECK(result[i].is_string());
+    std::string expected{ "item" };
+    expected += std::to_string(i + 1);
+    CHECK(std::get<std::string>(result[i].v) == expected);
+  }
+}
+
+// lua_value::get<T>() tests ----------------------------------------------
+
+TEST_CASE("lua_value::get<std::monostate>() returns pointer for nil") {
+  envy::lua_value val{ envy::lua_variant{ std::monostate{} } };
+
+  auto const *result{ val.get<std::monostate>() };
+  REQUIRE(result != nullptr);
+}
+
+TEST_CASE("lua_value::get<std::monostate>() returns nullptr for non-nil") {
+  envy::lua_value val{ envy::lua_variant{ true } };
+
+  auto const *result{ val.get<std::monostate>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<bool>() returns pointer for bool") {
+  envy::lua_value val{ envy::lua_variant{ true } };
+
+  auto const *result{ val.get<bool>() };
+  REQUIRE(result != nullptr);
+  CHECK(*result == true);
+}
+
+TEST_CASE("lua_value::get<bool>() returns nullptr for non-bool") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 42 } } };
+
+  auto const *result{ val.get<bool>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<int64_t>() returns pointer for integer") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 42 } } };
+
+  auto const *result{ val.get<int64_t>() };
+  REQUIRE(result != nullptr);
+  CHECK(*result == 42);
+}
+
+TEST_CASE("lua_value::get<int64_t>() returns nullptr for non-integer") {
+  envy::lua_value val{ envy::lua_variant{ 3.14 } };
+
+  auto const *result{ val.get<int64_t>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<double>() returns pointer for double") {
+  envy::lua_value val{ envy::lua_variant{ 3.14 } };
+
+  auto const *result{ val.get<double>() };
+  REQUIRE(result != nullptr);
+  CHECK(*result == doctest::Approx(3.14));
+}
+
+TEST_CASE("lua_value::get<double>() returns nullptr for non-double") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 42 } } };
+
+  auto const *result{ val.get<double>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<std::string>() returns pointer for string") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "hello" } } };
+
+  auto const *result{ val.get<std::string>() };
+  REQUIRE(result != nullptr);
+  CHECK(*result == "hello");
+}
+
+TEST_CASE("lua_value::get<std::string>() returns nullptr for non-string") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 42 } } };
+
+  auto const *result{ val.get<std::string>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<lua_table>() returns pointer for table") {
+  envy::lua_table table;
+  table["key"] = envy::lua_value{ envy::lua_variant{ std::string{ "value" } } };
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+
+  auto const *result{ val.get<envy::lua_table>() };
+  REQUIRE(result != nullptr);
+  CHECK(result->size() == 1);
+  CHECK(result->count("key") == 1);
+}
+
+TEST_CASE("lua_value::get<lua_table>() returns nullptr for non-table") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "not a table" } } };
+
+  auto const *result{ val.get<envy::lua_table>() };
+  CHECK(result == nullptr);
+}
+
+TEST_CASE("lua_value::get<T>() works with all variant types") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, R"(
+    values = {
+      true,
+      42,
+      3.14,
+      "text",
+      { nested = "table" }
+    }
+  )"));
+
+  auto const result{ envy::lua_global_to_array(L.get(), "values") };
+  REQUIRE(result.size() == 5);
+
+  // bool
+  CHECK(result[0].get<bool>() != nullptr);
+  CHECK(result[0].get<int64_t>() == nullptr);
+
+  // int64_t
+  CHECK(result[1].get<int64_t>() != nullptr);
+  CHECK(*result[1].get<int64_t>() == 42);
+  CHECK(result[1].get<double>() == nullptr);
+
+  // double
+  CHECK(result[2].get<double>() != nullptr);
+  CHECK(*result[2].get<double>() == doctest::Approx(3.14));
+  CHECK(result[2].get<std::string>() == nullptr);
+
+  // string
+  CHECK(result[3].get<std::string>() != nullptr);
+  CHECK(*result[3].get<std::string>() == "text");
+  CHECK(result[3].get<envy::lua_table>() == nullptr);
+
+  // table
+  CHECK(result[4].get<envy::lua_table>() != nullptr);
+  CHECK(result[4].get<std::monostate>() == nullptr);
+}
+
+TEST_CASE("lua_value::get<T>() pointer remains valid") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "persistent" } } };
+
+  auto const *ptr1{ val.get<std::string>() };
+  auto const *ptr2{ val.get<std::string>() };
+
+  REQUIRE(ptr1 != nullptr);
+  REQUIRE(ptr2 != nullptr);
+  CHECK(ptr1 == ptr2);  // Same address
+  CHECK(*ptr1 == "persistent");
+}

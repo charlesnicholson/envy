@@ -26,7 +26,7 @@ struct manifest {
   std::filesystem::path manifest_path;                         // Absolute path to envy.lua
 
   static std::optional<std::filesystem::path> discover();
-  static manifest load(std::filesystem::path const &path);
+  static manifest load(char const *script, std::filesystem::path const &manifest_path);
 };
 
 }  // namespace envy

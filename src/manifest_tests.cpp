@@ -136,3 +136,590 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
   }
   fs::remove_all(temp_root);
 }
+
+// load tests -------------------------------------------------
+
+TEST_CASE("manifest::load parses simple string package") {
+  char const *script{ R"(
+    packages = { "arm.gcc@v2" }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 1);
+  CHECK(m.packages[0].identity == "arm.gcc@v2");
+  CHECK(std::holds_alternative<envy::recipe::builtin_source>(m.packages[0].source));
+  CHECK(m.packages[0].options.empty());
+}
+
+TEST_CASE("manifest::load parses multiple string packages") {
+  char const *script{ R"(
+    packages = {
+      "arm.gcc@v2",
+      "gnu.binutils@v3",
+      "vendor.openocd@v1"
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 3);
+  CHECK(m.packages[0].identity == "arm.gcc@v2");
+  CHECK(m.packages[1].identity == "gnu.binutils@v3");
+  CHECK(m.packages[2].identity == "vendor.openocd@v1");
+}
+
+TEST_CASE("manifest::load parses table package with remote source") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        url = "https://example.com/gcc.lua",
+        sha256 = "abc123"
+      }
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 1);
+  CHECK(m.packages[0].identity == "arm.gcc@v2");
+
+  auto const *remote{ std::get_if<envy::recipe::remote_source>(&m.packages[0].source) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->url == "https://example.com/gcc.lua");
+  CHECK(remote->sha256 == "abc123");
+}
+
+TEST_CASE("manifest::load parses table package with local source") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "local.wrapper@v1",
+        file = "./recipes/wrapper.lua"
+      }
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/project/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 1);
+  CHECK(m.packages[0].identity == "local.wrapper@v1");
+
+  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  REQUIRE(local != nullptr);
+  CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
+}
+
+TEST_CASE("manifest::load parses table package with options") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        options = {
+          version = "13.2.0",
+          target = "arm-none-eabi"
+        }
+      }
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 1);
+  CHECK(m.packages[0].identity == "arm.gcc@v2");
+  REQUIRE(m.packages[0].options.size() == 2);
+  CHECK(m.packages[0].options.at("version") == "13.2.0");
+  CHECK(m.packages[0].options.at("target") == "arm-none-eabi");
+}
+
+TEST_CASE("manifest::load parses mixed string and table packages") {
+  char const *script{ R"(
+    packages = {
+      "envy.homebrew@v4",
+      {
+        recipe = "arm.gcc@v2",
+        url = "https://example.com/gcc.lua",
+        sha256 = "abc123",
+        options = { version = "13.2.0" }
+      },
+      "gnu.make@v1"
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 3);
+  CHECK(m.packages[0].identity == "envy.homebrew@v4");
+  CHECK(m.packages[1].identity == "arm.gcc@v2");
+  CHECK(m.packages[2].identity == "gnu.make@v1");
+}
+
+TEST_CASE("manifest::load parses overrides with remote source") {
+  char const *script{ R"(
+    packages = { "arm.gcc@v2" }
+    overrides = {
+      ["arm.gcc@v2"] = {
+        url = "https://mirror.example/gcc.lua",
+        sha256 = "def456"
+      }
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.overrides.size() == 1);
+  auto const it{ m.overrides.find("arm.gcc@v2") };
+  REQUIRE(it != m.overrides.end());
+
+  auto const *remote{ std::get_if<envy::recipe::remote_source>(&it->second) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->url == "https://mirror.example/gcc.lua");
+  CHECK(remote->sha256 == "def456");
+}
+
+TEST_CASE("manifest::load parses overrides with local source") {
+  char const *script{ R"(
+    packages = { "arm.gcc@v2" }
+    overrides = {
+      ["arm.gcc@v2"] = {
+        file = "./local/gcc.lua"
+      }
+    }
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/project/envy.lua")) };
+
+  REQUIRE(m.overrides.size() == 1);
+  auto const it{ m.overrides.find("arm.gcc@v2") };
+  REQUIRE(it != m.overrides.end());
+
+  auto const *local{ std::get_if<envy::recipe::local_source>(&it->second) };
+  REQUIRE(local != nullptr);
+  CHECK(local->file_path == fs::path("/project/local/gcc.lua"));
+}
+
+TEST_CASE("manifest::load allows platform conditionals") {
+  char const *script{ R"(
+    packages = {}
+    if ENVY_PLATFORM == "darwin" then
+      packages = { "envy.homebrew@v4" }
+    elseif ENVY_PLATFORM == "linux" then
+      packages = { "system.apt@v1" }
+    end
+  )" };
+
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  // Should have exactly one package based on current platform
+  REQUIRE(m.packages.size() == 1);
+#if defined(__APPLE__) && defined(__MACH__)
+  CHECK(m.packages[0].identity == "envy.homebrew@v4");
+#elif defined(__linux__)
+  CHECK(m.packages[0].identity == "system.apt@v1");
+#endif
+}
+
+TEST_CASE("manifest::load stores manifest path") {
+  char const *script{ "packages = {}" };
+
+  auto const m{
+    envy::manifest::load(script, fs::path("/some/project/envy.lua"))
+  };
+
+  CHECK(m.manifest_path == fs::path("/some/project/envy.lua"));
+}
+
+TEST_CASE("manifest::load resolves relative file paths") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "local.tool@v1",
+        file = "../sibling/tool.lua"
+      }
+    }
+  )" };
+
+  auto const m{
+    envy::manifest::load(script, fs::path("/project/sub/envy.lua"))
+  };
+
+  REQUIRE(m.packages.size() == 1);
+  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  REQUIRE(local != nullptr);
+  CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
+}
+
+// Error cases ------------------------------------------------------------
+
+TEST_CASE("manifest::load errors on missing packages global") {
+  char const *script{ "-- no packages" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Manifest must define 'packages' global",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-table packages") {
+  char const *script{ "packages = 'not a table'" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Global 'packages' is not a table",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on invalid package entry type") {
+  char const *script{ "packages = { 123 }" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package entry must be string or table",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on missing recipe field") {
+  char const *script{ R"(
+    packages = {
+      { url = "https://example.com/foo.lua" }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package table missing required 'recipe' field",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-string recipe field") {
+  char const *script{ R"(
+    packages = {
+      { recipe = 123 }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package 'recipe' field must be string",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on invalid recipe identity format") {
+  char const *script{ R"(
+    packages = { "invalid-no-at-sign" }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Invalid recipe identity format: invalid-no-at-sign",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on identity missing namespace") {
+  char const *script{ R"(
+    packages = { "gcc@v2" }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Invalid recipe identity format: gcc@v2",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on identity missing version") {
+  char const *script{ R"(
+    packages = { "arm.gcc@" }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Invalid recipe identity format: arm.gcc@",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on both url and file") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        url = "https://example.com/gcc.lua",
+        file = "./local.lua"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package cannot specify both 'url' and 'file'",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on url without sha256") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        url = "https://example.com/gcc.lua"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package with 'url' must specify 'sha256'",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-string url") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        url = 123,
+        sha256 = "abc"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package 'url' field must be string",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-string sha256") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        url = "https://example.com/gcc.lua",
+        sha256 = 123
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package 'sha256' field must be string",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-string file") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "local.tool@v1",
+        file = 123
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package 'file' field must be string",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-table options") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        options = "not a table"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Package 'options' field must be table",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-string option value") {
+  char const *script{ R"(
+    packages = {
+      {
+        recipe = "arm.gcc@v2",
+        options = { version = 123 }
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Option value for 'version' must be string",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-table overrides") {
+  char const *script{ R"(
+    packages = {}
+    overrides = "not a table"
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "'overrides' must be a table",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on invalid override identity") {
+  char const *script{ R"(
+    packages = {}
+    overrides = {
+      ["invalid"] = { file = "./local.lua" }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Invalid override identity format: invalid",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on non-table override entry") {
+  char const *script{ R"(
+    packages = {}
+    overrides = {
+      ["arm.gcc@v2"] = "not a table"
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Override entry must be table",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on override with both url and file") {
+  char const *script{ R"(
+    packages = {}
+    overrides = {
+      ["arm.gcc@v2"] = {
+        url = "https://example.com/gcc.lua",
+        file = "./local.lua"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Override cannot specify both 'url' and 'file'",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on override url without sha256") {
+  char const *script{ R"(
+    packages = {}
+    overrides = {
+      ["arm.gcc@v2"] = {
+        url = "https://example.com/gcc.lua"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Override with 'url' must specify 'sha256'",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on override without url or file") {
+  char const *script{ R"(
+    packages = {}
+    overrides = {
+      ["arm.gcc@v2"] = {}
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Override must specify 'url'+'sha256' or 'file'",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on duplicate package") {
+  char const *script{ R"(
+    packages = {
+      "arm.gcc@v2",
+      "arm.gcc@v2"
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Duplicate package entry: arm.gcc@v2",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on duplicate with same options") {
+  char const *script{ R"(
+    packages = {
+      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } },
+      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Duplicate package entry: arm.gcc@v2",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load allows same identity with different options") {
+  char const *script{ R"(
+    packages = {
+      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } },
+      { recipe = "arm.gcc@v2", options = { version = "12.0.0" } }
+    }
+  )" };
+
+  // Should not throw
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+  REQUIRE(m.packages.size() == 2);
+}
+
+TEST_CASE("manifest::load errors on conflicting sources") {
+  char const *script{ R"(
+    packages = {
+      { recipe = "arm.gcc@v2", url = "https://example.com/a.lua", sha256 = "abc" },
+      { recipe = "arm.gcc@v2", url = "https://example.com/b.lua", sha256 = "def" }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Conflicting sources for package: arm.gcc@v2",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load allows same source multiple times") {
+  char const *script{ R"(
+    packages = {
+      { recipe = "arm.gcc@v2", url = "https://example.com/gcc.lua", sha256 = "abc" },
+      { recipe = "arm.gcc@v2", url = "https://example.com/gcc.lua", sha256 = "abc" }
+    }
+  )" };
+
+  // Should throw as duplicate, not conflicting sources
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Duplicate package entry: arm.gcc@v2",
+      std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on Lua syntax error") {
+  char const *script{ "packages = { this is not valid lua }" };
+
+  CHECK_THROWS_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                  std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on Lua runtime error") {
+  char const *script{ "error('intentional error')" };
+
+  CHECK_THROWS_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                  std::runtime_error);
+}
