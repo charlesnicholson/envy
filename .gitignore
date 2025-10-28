@@ -1,4 +1,17 @@
+# macOS Finder cruft
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows Explorer cruft
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
 # CMake build artifacts
 CMakeCache.txt
 CMakeFiles/
