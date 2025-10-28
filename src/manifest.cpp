@@ -28,10 +28,4 @@ manifest manifest::load(std::filesystem::path const &path) {
   return m;
 }
 
-bool operator==(package_source const &lhs, package_source const &rhs) {
-  // TODO: Implement deep comparison
-  return lhs.recipe == rhs.recipe && lhs.source.index() == rhs.source.index() &&
-         lhs.options == rhs.options;
-}
-
 }  // namespace envy

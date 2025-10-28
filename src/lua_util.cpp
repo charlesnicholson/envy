@@ -123,4 +123,117 @@ bool lua_run_string(lua_state_ptr const &state, char const *script) {
   return true;
 }
 
+lua_value::lua_value() : v{ std::monostate{} } {}
+lua_value::lua_value(lua_variant var) : v{ std::move(var) } {}
+
+bool lua_value::is_nil() const { return std::holds_alternative<std::monostate>(v); }
+bool lua_value::is_bool() const { return std::holds_alternative<bool>(v); }
+bool lua_value::is_integer() const { return std::holds_alternative<int64_t>(v); }
+bool lua_value::is_number() const { return std::holds_alternative<double>(v); }
+bool lua_value::is_string() const { return std::holds_alternative<std::string>(v); }
+bool lua_value::is_table() const { return std::holds_alternative<lua_table>(v); }
+
+lua_value lua_stack_to_value(lua_State *L, int index) {
+  int const type{ lua_type(L, index) };
+
+  switch (type) {
+    case LUA_TNIL: return lua_value{};
+
+    case LUA_TBOOLEAN:
+      return lua_value{ lua_variant{ static_cast<bool>(lua_toboolean(L, index)) } };
+
+    case LUA_TNUMBER:
+      if (lua_isinteger(L, index)) {
+        return lua_value{ lua_variant{ lua_tointeger(L, index) } };
+      } else {
+        return lua_value{ lua_variant{ lua_tonumber(L, index) } };
+      }
+
+    case LUA_TSTRING: {
+      size_t len{ 0 };
+      char const *str{ lua_tolstring(L, index, &len) };
+      return lua_value{ lua_variant{ std::string{ str, len } } };
+    }
+
+    case LUA_TTABLE: {
+      lua_table table;
+
+      // Normalize negative indices to positive (lua_next requires positive)
+      int const abs_index{ index < 0 ? lua_gettop(L) + index + 1 : index };
+
+      lua_pushnil(L);  // First key
+      while (lua_next(L, abs_index) != 0) {
+        // Key at -2, value at -1
+
+        // Only process string keys
+        if (lua_type(L, -2) == LUA_TSTRING) {
+          size_t key_len{ 0 };
+          char const *key_str{ lua_tolstring(L, -2, &key_len) };
+          std::string key{ key_str, key_len };
+
+          // Recursively convert value
+          lua_value value{ lua_stack_to_value(L, -1) };
+          table[std::move(key)] = std::move(value);
+        }
+
+        lua_pop(L, 1);  // Remove value, keep key for next iteration
+      }
+
+      return lua_value{ lua_variant{ std::move(table) } };
+    }
+
+    default: return lua_value{};  // (function, userdata, thread, lightuserdata) return nil
+  }
+}
+
+std::optional<lua_value> lua_global_to_value(lua_State *L, char const *name) {
+  lua_getglobal(L, name);
+  std::optional<lua_value> const result{
+    lua_isnil(L, -1) ? std::nullopt : std::optional{ lua_stack_to_value(L, -1) }
+  };
+
+  lua_pop(L, 1);
+  return result;
+}
+
+void value_to_lua_stack(lua_State *L, lua_value const &val) {
+  static_assert(
+      std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);
+  static_assert(std::is_same_v<std::variant_alternative_t<1, lua_variant>, bool>);
+  static_assert(std::is_same_v<std::variant_alternative_t<2, lua_variant>, int64_t>);
+  static_assert(std::is_same_v<std::variant_alternative_t<3, lua_variant>, double>);
+  static_assert(std::is_same_v<std::variant_alternative_t<4, lua_variant>, std::string>);
+  static_assert(std::is_same_v<std::variant_alternative_t<5, lua_variant>, lua_table>);
+
+  switch (val.v.index()) {
+    case 0: lua_pushnil(L); break;
+    case 1: lua_pushboolean(L, std::get<bool>(val.v)); break;
+    case 2: lua_pushinteger(L, std::get<int64_t>(val.v)); break;
+    case 3: lua_pushnumber(L, std::get<double>(val.v)); break;
+
+    case 4: {
+      auto const &str{ std::get<std::string>(val.v) };
+      lua_pushlstring(L, str.data(), str.size());
+      break;
+    }
+
+    case 5: {
+      auto const &table{ std::get<lua_table>(val.v) };
+      lua_createtable(L, 0, static_cast<int>(table.size()));
+
+      for (auto const &[key, value] : table) {
+        lua_pushlstring(L, key.data(), key.size());
+        value_to_lua_stack(L, value);  // Recursive
+        lua_settable(L, -3);
+      }
+      break;
+    }
+  }
+}
+
+void value_to_lua_global(lua_State *L, char const *name, lua_value const &val) {
+  value_to_lua_stack(L, val);
+  lua_setglobal(L, name);
+}
+
 }  // namespace envy
