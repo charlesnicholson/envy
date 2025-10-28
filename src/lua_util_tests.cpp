@@ -43,9 +43,10 @@ TEST_CASE("lua_make loads standard libraries") {
   lua_pop(L.get(), 1);
 }
 
-TEST_CASE("lua_make creates envy table") {
+TEST_CASE("lua_add_tui creates envy table") {
   auto L{ envy::lua_make() };
   REQUIRE(L != nullptr);
+  envy::lua_add_tui(L);
 
   lua_getglobal(L.get(), "envy");
   REQUIRE(lua_istable(L.get(), -1));
@@ -76,12 +77,27 @@ TEST_CASE("lua_make creates envy table") {
   lua_pop(L.get(), 2);
 }
 
-TEST_CASE("lua_make overrides print function") {
+TEST_CASE("lua_add_tui overrides print function") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_tui(L);
+
+  lua_getglobal(L.get(), "print");
+  CHECK(lua_isfunction(L.get(), -1));
+  lua_pop(L.get(), 1);
+}
+
+TEST_CASE("lua_make without TUI has standard print") {
   auto L{ envy::lua_make() };
   REQUIRE(L != nullptr);
 
   lua_getglobal(L.get(), "print");
   CHECK(lua_isfunction(L.get(), -1));
+  lua_pop(L.get(), 1);
+
+  // Should not have envy table
+  lua_getglobal(L.get(), "envy");
+  CHECK(lua_isnil(L.get(), -1));
   lua_pop(L.get(), 1);
 }
 

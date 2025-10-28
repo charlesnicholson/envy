@@ -469,6 +469,8 @@ void run_lua_workflow(std::string const &uri,
   auto state{ lua_make() };
   if (!state) { throw std::runtime_error("lua_make returned null"); }
 
+  lua_add_tui(state);
+
   lua_pushcfunction(state.get(), lua_download_resource);
   lua_setglobal(state.get(), "download_resource");
   lua_pushcfunction(state.get(), lua_extract_to_temp);
