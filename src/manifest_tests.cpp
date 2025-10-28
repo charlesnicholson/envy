@@ -306,6 +306,8 @@ TEST_CASE("manifest::load allows platform conditionals") {
       packages = { "envy.homebrew@v4" }
     elseif ENVY_PLATFORM == "linux" then
       packages = { "system.apt@v1" }
+    elseif ENVY_PLATFORM == "windows" then
+      packages = { "system.choco@v1" }
     end
   )" };
 
@@ -317,6 +319,8 @@ TEST_CASE("manifest::load allows platform conditionals") {
   CHECK(m.packages[0].identity == "envy.homebrew@v4");
 #elif defined(__linux__)
   CHECK(m.packages[0].identity == "system.apt@v1");
+#elif defined(_WIN32)
+  CHECK(m.packages[0].identity == "system.choco@v1");
 #endif
 }
 
