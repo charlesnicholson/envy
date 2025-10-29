@@ -164,8 +164,18 @@ uri_info uri_classify(std::string_view value) {
                ? uri_scheme::LOCAL_FILE_ABSOLUTE
                : uri_scheme::LOCAL_FILE_RELATIVE;
 
-  // Normalize to Windows preferred separators
-  local_source = local_path.make_preferred().string();
+  // Only convert POSIX-style absolute paths (/path) to backslashes
+  // Preserve original separators for drive letters (C:/) and UNC (\\server or //server)
+  if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE && !local_path.has_root_name() && has_leading_slash) {
+    // This is a POSIX-style path like "/tmp" - convert to backslashes for Windows
+    std::string converted;
+    converted.reserve(local_source.size());
+    for (char ch : local_source) {
+      converted.push_back(ch == '/' ? '\\' : ch);
+    }
+    local_source = std::move(converted);
+  }
+  // Otherwise preserve the original string as-is
 #else
   scheme = std::filesystem::path{ local_source }.is_absolute() ? uri_scheme::LOCAL_FILE_ABSOLUTE
                                                                : uri_scheme::LOCAL_FILE_RELATIVE;
