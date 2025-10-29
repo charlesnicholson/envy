@@ -1,7 +1,6 @@
 #include "cmd_extract.h"
 
 #include "doctest.h"
-#include "oneapi/tbb/flow_graph.h"
 
 #include <filesystem>
 
@@ -21,14 +20,14 @@ TEST_CASE("cmd_extract config exposes cmd_t alias") {
   CHECK(std::is_same_v<actual_command, expected_command>);
 }
 
-TEST_CASE("cmd_extract schedule is callable") {
+TEST_CASE("cmd_extract execute is callable") {
   envy::cmd_extract::cfg cfg;
   cfg.archive_path = "/tmp/test.tar.gz";
   cfg.destination = "/tmp";
   envy::cmd_extract cmd{ cfg };
 
-  tbb::flow::graph g;
-  CHECK_NOTHROW(cmd.schedule(g));
+  // Will fail because file doesn't exist, but verifies execute() is callable
+  cmd.execute();
 }
 
 TEST_CASE("cmd_extract config stores archive path") {

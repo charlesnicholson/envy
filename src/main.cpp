@@ -2,7 +2,6 @@
 #include "cli.h"
 #include "tui.h"
 
-#include "tbb/flow_graph.h"
 #include "tbb/task_arena.h"
 
 #include <cstdlib>
@@ -33,13 +32,7 @@ int main(int argc, char **argv) {
                          *args.cmd_cfg) };
 
     bool ok{ false };
-    tbb::task_arena().execute([&cmd, &ok]() {
-      tbb::flow::graph graph;
-      cmd->schedule(graph);
-      graph.wait_for_all();
-      ok = cmd->succeeded();
-      cmd.reset();  // graph must outlive nodes owned by command
-    });
+    tbb::task_arena().execute([&cmd, &ok]() { ok = cmd->execute(); });
 
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   } catch (std::exception const &ex) {

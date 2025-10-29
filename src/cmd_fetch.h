@@ -2,8 +2,6 @@
 
 #include "cmd.h"
 
-#include "tbb/flow_graph.h"
-
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -20,12 +18,11 @@ class cmd_fetch : public cmd {
 
   explicit cmd_fetch(cfg cfg);
 
-  void schedule(tbb::flow::graph &g) override;
+  bool execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> node_;
 };
 
 }  // namespace envy

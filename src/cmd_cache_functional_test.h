@@ -39,7 +39,7 @@ class cmd_cache_ensure_asset : public cmd {
   };
 
   explicit cmd_cache_ensure_asset(cfg const &config);
-  void schedule(tbb::flow::graph &g) override;
+  bool execute() override;
 
  private:
   cfg cfg_;
@@ -61,7 +61,7 @@ class cmd_cache_ensure_recipe : public cmd {
   };
 
   explicit cmd_cache_ensure_recipe(cfg const &config);
-  void schedule(tbb::flow::graph &g) override;
+  bool execute() override;
 
  private:
   cfg cfg_;

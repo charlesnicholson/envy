@@ -1,7 +1,6 @@
 #include "cmd_version.h"
 
 #include "doctest.h"
-#include "oneapi/tbb/flow_graph.h"
 
 TEST_CASE("cmd_version constructor accepts config") {
   envy::cmd_version::cfg cfg;
@@ -17,10 +16,9 @@ TEST_CASE("cmd_version config exposes cmd_t alias") {
   CHECK(std::is_same_v<actual_command, expected_command>);
 }
 
-TEST_CASE("cmd_version schedule is callable") {
+TEST_CASE("cmd_version execute is callable") {
   envy::cmd_version::cfg cfg;
   envy::cmd_version cmd{ cfg };
 
-  tbb::flow::graph g;
-  cmd.schedule(g);
+  CHECK(cmd.execute());
 }

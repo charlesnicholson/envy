@@ -2,8 +2,6 @@
 
 #include "util.h"
 
-#include "oneapi/tbb/flow_graph.h"
-
 #include <memory>
 
 namespace envy {
@@ -13,16 +11,13 @@ class cmd : unmovable {
   using ptr_t = std::unique_ptr<cmd>;
 
   virtual ~cmd() = default;
-  virtual void schedule(tbb::flow::graph &g) = 0;
-
-  bool succeeded() const { return succeeded_; }
+  virtual bool execute() = 0;
 
   template <typename config>
   static ptr_t create(config const &cfg);
 
  protected:
   cmd() = default;
-  bool succeeded_{ false };
 };
 
 // Command configs inherit from this for factory creation.

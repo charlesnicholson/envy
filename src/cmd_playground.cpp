@@ -495,36 +495,50 @@ void run_lua_workflow(std::string const &uri,
 
 cmd_playground::cmd_playground(cmd_playground::cfg cfg) : cfg_{ std::move(cfg) } {}
 
-void cmd_playground::schedule(tbb::flow::graph &g) {
-  // Initialize state members
-  workspace_root_ = std::filesystem::current_path();
-  git_probe_url_ = "https://github.com/libgit2/libgit2.git";
-  curl_probe_url_ = "https://www.example.com/";
-  source_uri_ = cfg_.uri;
-  if (source_uri_.empty()) {
-    throw std::runtime_error("Playground URI must not be empty");
-  }
+bool cmd_playground::execute() {
+  if (cfg_.uri.empty()) { throw std::runtime_error("Playground URI must not be empty"); }
 
-  // Create nodes and store them in command object
-  kickoff_.emplace(g);
+  // Local state for parallel tasks
+  std::mutex console_mutex;
+  auto const workspace_root{ std::filesystem::current_path() };
+  std::string const git_probe_url{ "https://github.com/libgit2/libgit2.git" };
+  std::string const curl_probe_url{ "https://www.example.com/" };
+  std::string const source_uri{ cfg_.uri };
 
-  lua_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_lua_workflow(source_uri_, cfg_.region, console_mutex_);
-  });
+  // Create local graph for parallel execution
+  tbb::flow::graph g;
 
-  git_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_git_tls_probe(git_probe_url_, workspace_root_, console_mutex_);
-  });
+  tbb::flow::broadcast_node<tbb::flow::continue_msg> kickoff{ g };
 
-  curl_task_.emplace(g, [this](tbb::flow::continue_msg const &) {
-    run_fetch_tls_probe(curl_probe_url_, workspace_root_, console_mutex_);
-  });
+  tbb::flow::continue_node<tbb::flow::continue_msg> lua_task{
+    g,
+    [&](tbb::flow::continue_msg const &) {
+      run_lua_workflow(source_uri, cfg_.region, console_mutex);
+    }
+  };
 
-  tbb::flow::make_edge(*kickoff_, *lua_task_);
-  tbb::flow::make_edge(*kickoff_, *git_task_);
-  tbb::flow::make_edge(*kickoff_, *curl_task_);
+  tbb::flow::continue_node<tbb::flow::continue_msg> git_task{
+    g,
+    [&](tbb::flow::continue_msg const &) {
+      run_git_tls_probe(git_probe_url, workspace_root, console_mutex);
+    }
+  };
 
-  kickoff_->try_put(tbb::flow::continue_msg{});
+  tbb::flow::continue_node<tbb::flow::continue_msg> curl_task{
+    g,
+    [&](tbb::flow::continue_msg const &) {
+      run_fetch_tls_probe(curl_probe_url, workspace_root, console_mutex);
+    }
+  };
+
+  tbb::flow::make_edge(kickoff, lua_task);
+  tbb::flow::make_edge(kickoff, git_task);
+  tbb::flow::make_edge(kickoff, curl_task);
+
+  kickoff.try_put(tbb::flow::continue_msg{});
+  g.wait_for_all();
+
+  return true;
 }
 
 }  // namespace envy

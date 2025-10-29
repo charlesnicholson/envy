@@ -148,6 +148,39 @@ exec:cli --depends--> exec:toolchain
 exec:shared
 ```
 
+## Command Integration
+
+Commands invoke resolution via blocking API hiding oneTBB implementation:
+
+```cpp
+resolved_graph_ptr resolve_recipes(
+  std::vector<package_spec> const& packages,
+  cache& c
+);
+```
+
+Implementation uses `task_group` for parallel fork-join resolution; callers block until complete. Commands run inside `task_arena` established by main—resolver's internal `task_group` shares that arena's thread pool. Commands can call `resolve_recipes()` from any context: direct invocation from `execute()`, inside custom `flow::graph` nodes, or within `task_group` tasks. TBB's work-stealing scheduler handles nested blocking without deadlock.
+
+After resolution completes, commands typically call blocking verb execution helper:
+
+```cpp
+void ensure_assets(resolved_graph const& graph);
+```
+
+This constructs a `flow::graph` modeling verb-level dependencies (fetch→stage→build→install per recipe, with inter-recipe edges based on resolved dependencies), executes the DAG via `wait_for_all()`, then returns. Commands then perform sequential post-processing (validation, summaries, script generation).
+
+**Pattern:**
+```cpp
+bool cmd_install::execute() {
+  auto resolved = resolve_recipes(manifest_->packages());  // Parallel, blocks
+  ensure_assets(resolved);                                  // Parallel, blocks
+  print_summary(resolved);                                  // Sequential
+  return true;
+}
+```
+
+Both helpers encapsulate parallelism—commands treat them as synchronous operations returning when work completes.
+
 ## Future Hooks
 - Deterministic memo entries enable offline caching of resolution DAGs.
 - Shared futures provide a single choke point for tracing, metrics, or progress notifications without touching Lua.

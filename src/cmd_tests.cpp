@@ -1,7 +1,6 @@
 #include "cmd.h"
 
 #include "doctest.h"
-#include "oneapi/tbb/flow_graph.h"
 
 namespace {
 
@@ -9,7 +8,7 @@ class test_cmd : public envy::cmd {
  public:
   struct cfg : envy::cmd_cfg<test_cmd> {};
   explicit test_cmd(cfg) {}
-  void schedule(tbb::flow::graph &) override {}
+  bool execute() override { return true; }
 };
 
 }  // namespace
