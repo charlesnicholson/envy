@@ -212,7 +212,9 @@ std::filesystem::path uri_resolve_local_file_relative(
 
     // Path with root directory but no drive (e.g., "\tmp") - add current drive
     if (!p.has_root_name() && p.has_root_directory()) {
-      resolved = std::filesystem::current_path().root_name() / p.relative_path();
+      auto drive = std::filesystem::current_path().root_name().string();
+      // Concatenate drive with the path that includes root directory
+      resolved = std::filesystem::path(drive + raw_path);
     } else {
       resolved = p;
     }
