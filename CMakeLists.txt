@@ -144,6 +144,7 @@ target_sources(envy
         src/libcurl_util.cpp
         src/platform.cpp
         src/tui.cpp
+        src/uri.cpp
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
@@ -218,6 +219,7 @@ target_sources(envy_functional_tester
         src/libcurl_util.cpp
         src/platform.cpp
         src/tui.cpp
+        src/uri.cpp
 )
 
 target_compile_features(envy_functional_tester PRIVATE cxx_std_20)
@@ -319,6 +321,8 @@ target_sources(envy_unit_tests
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
         src/sha256_tests.cpp
+        src/uri.cpp
+        src/uri_tests.cpp
         src/tui_tests.cpp
         src/tui.cpp
 )
