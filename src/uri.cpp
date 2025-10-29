@@ -155,28 +155,17 @@ uri_info uri_classify(std::string_view value) {
 
   uri_scheme scheme{};
 #ifdef _WIN32
-  auto is_drive_letter = [](std::string const &s) {
-    return s.size() >= 2 && std::isalpha(static_cast<unsigned char>(s[0])) && s[1] == ':';
-  };
-  auto is_unc_like = [](std::string const &s) {
-    return s.size() >= 2 && s[0] == '/' && s[1] == '/';
-  };
-  // Treat leading single '/' (POSIX style) and leading '\\' as absolute on Windows too.
-  bool absoluteish = std::filesystem::path{ local_source }.is_absolute() ||
-                     (!local_source.empty() && (local_source[0] == '/' || local_source[0] == '\\'));
-  scheme = absoluteish ? uri_scheme::LOCAL_FILE_ABSOLUTE : uri_scheme::LOCAL_FILE_RELATIVE;
+  std::filesystem::path local_path{ local_source };
 
-  if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
-    // Convert POSIX-style absolute (/path/...) to backslashes except the solitary root "/".
-    if (!local_source.empty() && local_source[0] == '/' && local_source.size() > 1 &&
-        !is_unc_like(local_source)) {
-      for (auto &ch : local_source) {
-        if (ch == '/') ch = '\\';
-      }
-    }
-    // Leave drive-letter paths (C:/ or C:\) as-is to preserve forward slashes per tests.
-    // Leave UNC forward-slash form (//server/share) and backslash form (\\server\share) unchanged.
-  }
+  // On Windows, treat paths with leading slash as absolute (will be mapped to current drive)
+  bool has_leading_slash = !local_source.empty() &&
+                          (local_source[0] == '/' || local_source[0] == '\\');
+  scheme = (local_path.is_absolute() || has_leading_slash)
+               ? uri_scheme::LOCAL_FILE_ABSOLUTE
+               : uri_scheme::LOCAL_FILE_RELATIVE;
+
+  // Normalize to Windows preferred separators
+  local_source = local_path.make_preferred().string();
 #else
   scheme = std::filesystem::path{ local_source }.is_absolute() ? uri_scheme::LOCAL_FILE_ABSOLUTE
                                                                : uri_scheme::LOCAL_FILE_RELATIVE;
@@ -208,49 +197,14 @@ std::filesystem::path uri_resolve_local_file_relative(
     resolved = std::filesystem::absolute(base / resolved);
   }
 #ifdef _WIN32
-  else {
-    // Handle POSIX-style absolute canonical paths (leading '/') that were converted to backslashes
-    // earlier and now look like "\\tmp\\...". Map these to the current drive root to produce an
-    // absolute Windows path matching test expectations (e.g., C:\\tmp\\...).
-    if (!raw_path.empty() && (raw_path[0] == '\\' || raw_path[0] == '/')) {
-      bool is_unc = false;
-      if (raw_path.size() >= 2) {
-        // raw_path may be in canonical form with backslashes converted earlier only for POSIX style.
-        // Recognize both //server/share and \\server\share patterns.
-        if ((raw_path[0] == '/' && raw_path[1] == '/') ||
-            (raw_path[0] == '\\' && raw_path[1] == '\\')) {
-          is_unc = true;
-        }
-      }
-      if (is_unc) {
-        // If it's UNC, normalize to backslash form and keep as-is relative to network root.
-        std::string unc{ raw_path };
-        for (auto &ch : unc) {
-          if (ch == '/') ch = '\\';
-        }
-        resolved = std::filesystem::path(unc);
-        return resolved.lexically_normal();
-      }
-      // Determine current drive (e.g., C:) from current_path.
-      auto const current = std::filesystem::current_path();
-      std::string drive_prefix;
-      if (current.has_root_name()) {
-        drive_prefix = current.root_name().string(); // e.g., "C:"
-      } else {
-        drive_prefix = "C:"; // Fallback; unlikely but safe default.
-      }
-      // If raw_path is just a single slash/backslash treat as root of drive.
-      if (raw_path.size() == 1) {
-        resolved = std::filesystem::path(drive_prefix + "\\");
-      } else {
-        // Strip leading slashes/backslashes.
-        size_t first_non = 0;
-        while (first_non < raw_path.size() && (raw_path[first_non] == '/' || raw_path[first_non] == '\\')) {
-          ++first_non;
-        }
-        auto tail = raw_path.substr(first_non);
-        resolved = std::filesystem::path(drive_prefix + "\\" + tail);
-      }
+  else if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
+    std::filesystem::path p{ raw_path };
+
+    // Path with root directory but no drive (e.g., "\tmp") - add current drive
+    if (!p.has_root_name() && p.has_root_directory()) {
+      resolved = std::filesystem::current_path().root_name() / p.relative_path();
+    } else {
+      resolved = p;
     }
   }
 #endif
