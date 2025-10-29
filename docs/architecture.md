@@ -127,6 +127,45 @@ end
 
 **Unified resolver:** Single recursive step fetches the recipe, evaluates its `dependencies` table/function, memoizes the node by `(identity, options)`, parallelizes child work via oneTBB, and enforces cycles, security policy, and `needed_by` checks while materializing the DAG. See `docs/recipe_resolution.md` for the detailed contract.
 
+## Command Execution Model
+
+Commands implement `bool execute()` with no oneTBB types in their interface. Main wraps execution inside `tbb::task_arena().execute()` establishing a shared thread pool for all parallel operations.
+
+**Simple commands:** Ignore parallelism—just do synchronous work and return success/failure.
+
+**Recipe commands:** Call blocking helpers (`resolve_recipes()`, `ensure_assets()`) that encapsulate parallel implementation via `task_group` (resolution) and `flow::graph` (verb DAG execution). After parallel phases complete, commands perform sequential post-processing (validation, summary printing, shell script generation).
+
+**Custom parallel commands:** Create local `flow::graph` or `task_group` when needed—all TBB operations share the arena's thread pool via work-stealing scheduler.
+
+**Nested execution:** Commands freely call blocking parallel helpers from any context—direct invocation, inside `task_group` tasks, or within `flow::graph` node lambdas. TBB's cooperative scheduler handles blocking without deadlock; when a task waits on inner parallel work, other threads steal pending tasks. This composition works naturally because all TBB primitives (`task_group`, `flow::graph`, `parallel_invoke`) share the single task arena established by main.
+
+**Lifetime:** Stack-scoped TBB graphs in `execute()` naturally satisfy lifetime requirements—nodes complete before function returns, so no dangling references. Commands destroyed after `execute()` completes.
+
+**Example patterns:**
+```cpp
+// Simple command
+bool cmd_version::execute() {
+  tui::info("envy version %s", ENVY_VERSION_STR);
+  return true;
+}
+
+// Recipe command with blocking helpers
+bool cmd_install::execute() {
+  auto resolved = resolve_recipes(manifest_->packages());  // Parallel internally
+  ensure_assets(resolved);                                  // Parallel internally
+  print_summary(resolved);                                  // Sequential
+  return true;
+}
+
+// Custom parallel command
+bool cmd_complex::execute() {
+  tbb::flow::graph g;
+  // Build custom DAG topology...
+  g.wait_for_all();
+  return finalize_results();
+}
+```
+
 ## Filesystem Cache
 
 Cache layout, locking, verification, and recovery live in `docs/cache.md`.

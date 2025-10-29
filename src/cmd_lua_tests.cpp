@@ -2,7 +2,6 @@
 #include "tui.h"
 
 #include "doctest.h"
-#include "oneapi/tbb/flow_graph.h"
 
 #include <filesystem>
 #include <string>
@@ -23,13 +22,13 @@ TEST_CASE("cmd_lua config exposes cmd_t alias") {
   CHECK(std::is_same_v<actual_command, expected_command>);
 }
 
-TEST_CASE("cmd_lua schedule is callable") {
+TEST_CASE("cmd_lua execute is callable") {
   envy::cmd_lua::cfg cfg;
   cfg.script_path = "/tmp/test.lua";
   envy::cmd_lua cmd{ cfg };
 
-  tbb::flow::graph g;
-  cmd.schedule(g);  // Should not throw
+  // Will fail because file doesn't exist, but verifies execute() is callable
+  cmd.execute();
 }
 
 namespace {
@@ -51,9 +50,7 @@ struct lua_test_fixture {
     envy::cmd_lua::cfg cfg;
     cfg.script_path = script_path;
     envy::cmd_lua cmd{ cfg };
-    tbb::flow::graph g;
-    cmd.schedule(g);
-    g.wait_for_all();
+    cmd.execute();
     envy::tui::shutdown();
   }
 

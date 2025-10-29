@@ -2,10 +2,6 @@
 
 #include "cmd.h"
 
-#include "tbb/flow_graph.h"
-
-#include <optional>
-
 namespace envy {
 
 class cmd_version : public cmd {
@@ -14,12 +10,11 @@ class cmd_version : public cmd {
 
   explicit cmd_version(cfg cfg);
 
-  void schedule(tbb::flow::graph &g) override;
+  bool execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  std::optional<tbb::flow::continue_node<tbb::flow::continue_msg>> node_;
 };
 
 }  // namespace envy
