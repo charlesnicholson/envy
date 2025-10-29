@@ -33,15 +33,11 @@ TEST_CASE("classify_uri detects git via suffix") {
   expect_uri("git@github.com:org/repo.git",
              envy::uri_scheme::GIT,
              "git@github.com:org/repo.git");
-  expect_uri("relative/repo.git",
-             envy::uri_scheme::GIT,
-             "relative/repo.git");
+  expect_uri("relative/repo.git", envy::uri_scheme::GIT, "relative/repo.git");
 }
 
 TEST_CASE("classify_uri detects explicit git schemes") {
-  expect_uri("git://example.com/repo",
-             envy::uri_scheme::GIT,
-             "git://example.com/repo");
+  expect_uri("git://example.com/repo", envy::uri_scheme::GIT, "git://example.com/repo");
   expect_uri("git+ssh://example.com/repo",
              envy::uri_scheme::GIT,
              "git+ssh://example.com/repo");
@@ -69,9 +65,7 @@ TEST_CASE("classify_uri detects ftp schemes") {
 }
 
 TEST_CASE("classify_uri detects s3 and ssh transports") {
-  expect_uri("s3://bucket/object",
-             envy::uri_scheme::S3,
-             "s3://bucket/object");
+  expect_uri("s3://bucket/object", envy::uri_scheme::S3, "s3://bucket/object");
   expect_uri("ssh://user@host/path/file.tar.gz",
              envy::uri_scheme::SSH,
              "ssh://user@host/path/file.tar.gz");
@@ -84,12 +78,21 @@ TEST_CASE("classify_uri detects s3 and ssh transports") {
 }
 
 TEST_CASE("classify_uri detects local file schemes") {
+#ifdef _WIN32
+  expect_uri("file:///tmp/archive.tar.gz",
+             envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
+             "\\tmp\\archive.tar.gz");
+  expect_uri("file://localhost/tmp/archive.tar.gz",
+             envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
+             "\\tmp\\archive.tar.gz");
+#else
   expect_uri("file:///tmp/archive.tar.gz",
              envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
              "/tmp/archive.tar.gz");
   expect_uri("file://localhost/tmp/archive.tar.gz",
              envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
              "/tmp/archive.tar.gz");
+#endif
 #ifdef _WIN32
   expect_uri("file:///C:/toolchains/gcc.tar.xz",
              envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
@@ -120,9 +123,15 @@ TEST_CASE("classify_uri detects local file schemes") {
 }
 
 TEST_CASE("classify_uri detects local file paths") {
+#ifdef _WIN32
+  expect_uri("/absolute/path/archive.tar.gz",
+             envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
+             "\\absolute\\path\\archive.tar.gz");
+#else
   expect_uri("/absolute/path/archive.tar.gz",
              envy::uri_scheme::LOCAL_FILE_ABSOLUTE,
              "/absolute/path/archive.tar.gz");
+#endif
   expect_uri("relative/path/archive.tar.gz",
              envy::uri_scheme::LOCAL_FILE_RELATIVE,
              "relative/path/archive.tar.gz");
@@ -165,12 +174,8 @@ TEST_CASE("classify_uri handles whitespace and unknown schemes") {
   expect_uri("unknown://example.com/resource",
              envy::uri_scheme::UNKNOWN,
              "unknown://example.com/resource");
-  expect_uri("",
-             envy::uri_scheme::UNKNOWN,
-             "");
-  expect_uri("   ",
-             envy::uri_scheme::UNKNOWN,
-             "");
+  expect_uri("", envy::uri_scheme::UNKNOWN, "");
+  expect_uri("   ", envy::uri_scheme::UNKNOWN, "");
 }
 
 TEST_CASE("resolve_local_uri resolves relative paths with manifest root") {
