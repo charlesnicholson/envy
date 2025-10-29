@@ -114,29 +114,42 @@ uri_info uri_classify(std::string_view value) {
   if (canonical.empty()) { return uri_info{ uri_scheme::UNKNOWN, std::move(canonical) }; }
 
   auto const path_segment{ strip_query_and_fragment(canonical) };
-  if (iends_with(path_segment, ".git")) { return uri_info{ uri_scheme::GIT, std::move(canonical) }; }
-
+  if (iends_with(path_segment, ".git")) {
+    return uri_info{ uri_scheme::GIT, std::move(canonical) };
+  }
   if (istarts_with(canonical, "git://") || istarts_with(canonical, "git+ssh://")) {
     return uri_info{ uri_scheme::GIT, std::move(canonical) };
   }
-
-  if (istarts_with(canonical, "s3://")) { return uri_info{ uri_scheme::S3, std::move(canonical) }; }
-  if (istarts_with(canonical, "https://")) { return uri_info{ uri_scheme::HTTPS, std::move(canonical) }; }
-  if (istarts_with(canonical, "http://")) { return uri_info{ uri_scheme::HTTP, std::move(canonical) }; }
-  if (istarts_with(canonical, "ftps://")) { return uri_info{ uri_scheme::FTPS, std::move(canonical) }; }
-  if (istarts_with(canonical, "ftp://")) { return uri_info{ uri_scheme::FTP, std::move(canonical) }; }
+  if (istarts_with(canonical, "s3://")) {
+    return uri_info{ uri_scheme::S3, std::move(canonical) };
+  }
+  if (istarts_with(canonical, "https://")) {
+    return uri_info{ uri_scheme::HTTPS, std::move(canonical) };
+  }
+  if (istarts_with(canonical, "http://")) {
+    return uri_info{ uri_scheme::HTTP, std::move(canonical) };
+  }
+  if (istarts_with(canonical, "ftps://")) {
+    return uri_info{ uri_scheme::FTPS, std::move(canonical) };
+  }
+  if (istarts_with(canonical, "ftp://")) {
+    return uri_info{ uri_scheme::FTP, std::move(canonical) };
+  }
   if (istarts_with(canonical, "scp://") || istarts_with(canonical, "ssh://")) {
     return uri_info{ uri_scheme::SSH, std::move(canonical) };
   }
-
-  if (looks_like_scp_uri(canonical)) { return uri_info{ uri_scheme::SSH, std::move(canonical) }; }
+  if (looks_like_scp_uri(canonical)) {
+    return uri_info{ uri_scheme::SSH, std::move(canonical) };
+  }
 
   std::string local_source{};
 
   if (istarts_with(canonical, "file://")) {
     local_source = strip_file_scheme(canonical);
   } else {
-    if (canonical.find("://") != std::string_view::npos) { return uri_info{ uri_scheme::UNKNOWN, std::move(canonical) }; }
+    if (canonical.find("://") != std::string_view::npos) {
+      return uri_info{ uri_scheme::UNKNOWN, std::move(canonical) };
+    }
     local_source = canonical;
   }
 
