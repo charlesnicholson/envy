@@ -64,7 +64,8 @@ TEST_CASE("manifest::discover traverses through submodule (.git file)") {
   // Verify .git is a file (submodule), not directory
   auto git_file{ test_root / "repo" / "submodule" / ".git" };
   if (!fs::exists(git_file)) {
-    // Fixture absent on this platform; create a placeholder .git file to emulate submodule boundary.
+    // Fixture absent on this platform; create a placeholder .git file to emulate submodule
+    // boundary.
     std::ofstream f{ git_file };
     f << "gitdir: ../.git/modules/submodule";
   }
@@ -327,9 +328,7 @@ TEST_CASE("manifest::load allows platform conditionals") {
 TEST_CASE("manifest::load stores manifest path") {
   char const *script{ "packages = {}" };
 
-  auto const m{
-    envy::manifest::load(script, fs::path("/some/project/envy.lua"))
-  };
+  auto const m{ envy::manifest::load(script, fs::path("/some/project/envy.lua")) };
 
   CHECK(m.manifest_path == fs::path("/some/project/envy.lua"));
 }
@@ -344,9 +343,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
     }
   )" };
 
-  auto const m{
-    envy::manifest::load(script, fs::path("/project/sub/envy.lua"))
-  };
+  auto const m{ envy::manifest::load(script, fs::path("/project/sub/envy.lua")) };
 
   REQUIRE(m.packages.size() == 1);
   auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
@@ -359,28 +356,25 @@ TEST_CASE("manifest::load resolves relative file paths") {
 TEST_CASE("manifest::load errors on missing packages global") {
   char const *script{ "-- no packages" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Manifest must define 'packages' global",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Manifest must define 'packages' global",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-table packages") {
   char const *script{ "packages = 'not a table'" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Global 'packages' is not a table",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Global 'packages' is not a table",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on invalid package entry type") {
   char const *script{ "packages = { 123 }" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package entry must be string or table",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package entry must be string or table",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on missing recipe field") {
@@ -390,10 +384,9 @@ TEST_CASE("manifest::load errors on missing recipe field") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package table missing required 'recipe' field",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package table missing required 'recipe' field",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-string recipe field") {
@@ -403,10 +396,9 @@ TEST_CASE("manifest::load errors on non-string recipe field") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package 'recipe' field must be string",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package 'recipe' field must be string",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on invalid recipe identity format") {
@@ -414,10 +406,9 @@ TEST_CASE("manifest::load errors on invalid recipe identity format") {
     packages = { "invalid-no-at-sign" }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Invalid recipe identity format: invalid-no-at-sign",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Invalid recipe identity format: invalid-no-at-sign",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on identity missing namespace") {
@@ -425,10 +416,9 @@ TEST_CASE("manifest::load errors on identity missing namespace") {
     packages = { "gcc@v2" }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Invalid recipe identity format: gcc@v2",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Invalid recipe identity format: gcc@v2",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on identity missing version") {
@@ -436,10 +426,9 @@ TEST_CASE("manifest::load errors on identity missing version") {
     packages = { "arm.gcc@" }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Invalid recipe identity format: arm.gcc@",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Invalid recipe identity format: arm.gcc@",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on both url and file") {
@@ -453,10 +442,9 @@ TEST_CASE("manifest::load errors on both url and file") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package cannot specify both 'url' and 'file'",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package cannot specify both 'url' and 'file'",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on url without sha256") {
@@ -469,10 +457,9 @@ TEST_CASE("manifest::load errors on url without sha256") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package with 'url' must specify 'sha256'",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package with 'url' must specify 'sha256'",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-string url") {
@@ -486,10 +473,9 @@ TEST_CASE("manifest::load errors on non-string url") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package 'url' field must be string",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package 'url' field must be string",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-string sha256") {
@@ -503,10 +489,9 @@ TEST_CASE("manifest::load errors on non-string sha256") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package 'sha256' field must be string",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package 'sha256' field must be string",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-string file") {
@@ -519,10 +504,9 @@ TEST_CASE("manifest::load errors on non-string file") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package 'file' field must be string",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package 'file' field must be string",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-table options") {
@@ -535,10 +519,9 @@ TEST_CASE("manifest::load errors on non-table options") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Package 'options' field must be table",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package 'options' field must be table",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-string option value") {
@@ -551,10 +534,9 @@ TEST_CASE("manifest::load errors on non-string option value") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Option value for 'version' must be string",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Option value for 'version' must be string",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-table overrides") {
@@ -563,10 +545,9 @@ TEST_CASE("manifest::load errors on non-table overrides") {
     overrides = "not a table"
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "'overrides' must be a table",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "'overrides' must be a table",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on invalid override identity") {
@@ -577,10 +558,9 @@ TEST_CASE("manifest::load errors on invalid override identity") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Invalid override identity format: invalid",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Invalid override identity format: invalid",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on non-table override entry") {
@@ -591,10 +571,9 @@ TEST_CASE("manifest::load errors on non-table override entry") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Override entry must be table",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Override entry must be table",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on override with both url and file") {
@@ -608,10 +587,9 @@ TEST_CASE("manifest::load errors on override with both url and file") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Override cannot specify both 'url' and 'file'",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Override cannot specify both 'url' and 'file'",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on override url without sha256") {
@@ -624,10 +602,9 @@ TEST_CASE("manifest::load errors on override url without sha256") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Override with 'url' must specify 'sha256'",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Override with 'url' must specify 'sha256'",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on override without url or file") {
@@ -638,10 +615,9 @@ TEST_CASE("manifest::load errors on override without url or file") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Override must specify 'url'+'sha256' or 'file'",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Override must specify 'url'+'sha256' or 'file'",
+                       std::runtime_error);
 }
 
 TEST_CASE("manifest::load allows same identity with different options") {
@@ -671,15 +647,13 @@ TEST_CASE("manifest::load allows duplicate packages") {
 }
 
 TEST_CASE("manifest::load errors on Lua syntax error") {
-  char const *script{ "packages = { this is not valid lua }" };
-
-  CHECK_THROWS_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+  CHECK_THROWS_AS(envy::manifest::load("packages = { this is not valid lua }",
+                                       fs::path("/fake/envy.lua")),
                   std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on Lua runtime error") {
-  char const *script{ "error('intentional error')" };
-
-  CHECK_THROWS_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                  std::runtime_error);
+  CHECK_THROWS_AS(
+      envy::manifest::load("error('intentional error')", fs::path("/fake/envy.lua")),
+      std::runtime_error);
 }
