@@ -51,9 +51,10 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     if (recipe_it == table->end()) {
       throw std::runtime_error("Package table missing required 'recipe' field");
     }
-    auto const *recipe_str{ recipe_it->second.get<std::string>() };
-    if (!recipe_str) { throw std::runtime_error("Package 'recipe' field must be string"); }
-    return *recipe_str;
+    if (auto const *recipe_str{ recipe_it->second.get<std::string>() }) {
+      return *recipe_str;
+    }
+    throw std::runtime_error("Package 'recipe' field must be string");
   }();
 
   std::string ns, name, ver;
@@ -68,8 +69,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     throw std::runtime_error("Package cannot specify both 'url' and 'file'");
   }
 
-  if (url_it != table->end()) {
-    // Remote source
+  if (url_it != table->end()) {  // Remote source
     if (auto const *url{ url_it->second.get<std::string>() }) {
       auto const sha256_it{ table->find("sha256") };
       if (sha256_it == table->end()) {
@@ -83,8 +83,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     } else {
       throw std::runtime_error("Package 'url' field must be string");
     }
-  } else if (file_it != table->end()) {
-    // Local source
+  } else if (file_it != table->end()) {  // Local source
     if (auto const *file{ file_it->second.get<std::string>() }) {
       spec.source = recipe::local_source{ .file_path = [&] {
         std::filesystem::path p{ *file };
