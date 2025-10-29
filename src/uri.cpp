@@ -157,28 +157,25 @@ uri_info uri_classify(std::string_view value) {
 #ifdef _WIN32
   std::filesystem::path local_path{ local_source };
 
-  // On Windows, treat paths with leading slash as absolute (will be mapped to current drive)
-  bool has_leading_slash = !local_source.empty() &&
-                          (local_source[0] == '/' || local_source[0] == '\\');
+  // On Windows, paths with leading slash are absolute (mapped to current drive)
+  bool has_leading_slash{ !local_source.empty() &&
+                          (local_source[0] == '/' || local_source[0] == '\\') };
   scheme = (local_path.is_absolute() || has_leading_slash)
                ? uri_scheme::LOCAL_FILE_ABSOLUTE
                : uri_scheme::LOCAL_FILE_RELATIVE;
 
   // Only convert POSIX-style absolute paths (/path) to backslashes
   // Preserve original separators for drive letters (C:/) and UNC (\\server or //server)
-  if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE && !local_path.has_root_name() && has_leading_slash) {
+  if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE && !local_path.has_root_name() &&
+      has_leading_slash) {
     // This is a POSIX-style path like "/tmp" - convert to backslashes for Windows
-    std::string converted;
-    converted.reserve(local_source.size());
-    for (char ch : local_source) {
-      converted.push_back(ch == '/' ? '\\' : ch);
-    }
-    local_source = std::move(converted);
+    std::ranges::replace(local_source, '/', '\\');
   }
   // Otherwise preserve the original string as-is
 #else
-  scheme = std::filesystem::path{ local_source }.is_absolute() ? uri_scheme::LOCAL_FILE_ABSOLUTE
-                                                               : uri_scheme::LOCAL_FILE_RELATIVE;
+  scheme = std::filesystem::path{ local_source }.is_absolute()
+               ? uri_scheme::LOCAL_FILE_ABSOLUTE
+               : uri_scheme::LOCAL_FILE_RELATIVE;
 #endif
   return uri_info{ scheme, std::move(local_source) };
 }
