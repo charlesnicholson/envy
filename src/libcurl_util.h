@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fetch_progress.h"
+#include "fetch.h"
 
 #include <filesystem>
 #include <string_view>
