@@ -1,11 +1,11 @@
 #pragma once
 
+#include "fetch.h"
+#include "util.h"
+
 #include <filesystem>
 #include <optional>
 #include <string>
-
-#include "fetch_progress.h"
-#include "util.h"
 
 namespace envy {
 
