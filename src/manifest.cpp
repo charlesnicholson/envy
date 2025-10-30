@@ -26,96 +26,6 @@ bool parse_identity(std::string const &identity,
   return !out_namespace.empty() && !out_name.empty() && !out_version.empty();
 }
 
-recipe_cfg parse_recipe_cfg(lua_value const &recipe_cfg_lua,
-                            std::filesystem::path const &base_path) {
-  recipe_cfg cfg;
-
-  //  "namespace.name@version"
-  if (auto const *str{ recipe_cfg_lua.get<std::string>() }) {
-    cfg.identity = *str;
-
-    std::string ns, name, ver;
-    if (!parse_identity(cfg.identity, ns, name, ver)) {
-      throw std::runtime_error("Invalid recipe identity format: " + cfg.identity);
-    }
-
-    cfg.source = recipe::builtin_source{};
-    return cfg;
-  }
-
-  auto const *table{ recipe_cfg_lua.get<lua_table>() };
-  if (!table) { throw std::runtime_error("Package entry must be string or table"); }
-
-  cfg.identity = [&] {
-    auto const recipe_it{ table->find("recipe") };
-    if (recipe_it == table->end()) {
-      throw std::runtime_error("Package table missing required 'recipe' field");
-    }
-    if (auto const *recipe_str{ recipe_it->second.get<std::string>() }) {
-      return *recipe_str;
-    }
-    throw std::runtime_error("Package 'recipe' field must be string");
-  }();
-
-  std::string ns, name, ver;
-  if (!parse_identity(cfg.identity, ns, name, ver)) {
-    throw std::runtime_error("Invalid recipe identity format: " + cfg.identity);
-  }
-
-  auto const url_it{ table->find("url") };
-  auto const file_it{ table->find("file") };
-
-  if (url_it != table->end() && file_it != table->end()) {
-    throw std::runtime_error("Package cannot specify both 'url' and 'file'");
-  }
-
-  if (url_it != table->end()) {  // Remote source
-    if (auto const *url{ url_it->second.get<std::string>() }) {
-      auto const sha256_it{ table->find("sha256") };
-      if (sha256_it == table->end()) {
-        throw std::runtime_error("Package with 'url' must specify 'sha256'");
-      }
-      if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-        cfg.source = recipe::remote_source{ .url = *url, .sha256 = *sha256 };
-      } else {
-        throw std::runtime_error("Package 'sha256' field must be string");
-      }
-    } else {
-      throw std::runtime_error("Package 'url' field must be string");
-    }
-  } else if (file_it != table->end()) {  // Local source
-    if (auto const *file{ file_it->second.get<std::string>() }) {
-      cfg.source = recipe::local_source{ .file_path = [&] {
-        std::filesystem::path p{ *file };
-        if (p.is_relative()) { p = base_path.parent_path() / p; }
-        return p.lexically_normal();
-      }() };
-    } else {
-      throw std::runtime_error("Package 'file' field must be string");
-    }
-  } else {
-    // No source specified, assume builtin
-    cfg.source = recipe::builtin_source{};
-  }
-
-  auto const options_it{ table->find("options") };
-  if (options_it != table->end()) {
-    if (auto const *options_table{ options_it->second.get<lua_table>() }) {
-      for (auto const &[key, val] : *options_table) {
-        if (auto const *val_str{ val.get<std::string>() }) {
-          cfg.options[key] = *val_str;
-        } else {
-          throw std::runtime_error("Option value for '" + key + "' must be string");
-        }
-      }
-    } else {
-      throw std::runtime_error("Package 'options' field must be table");
-    }
-  }
-
-  return cfg;
-}
-
 recipe_override parse_override(lua_value const &entry,
                                std::filesystem::path const &base_path) {
   auto const *table{ entry.get<lua_table>() };
@@ -135,7 +45,7 @@ recipe_override parse_override(lua_value const &entry,
         throw std::runtime_error("Override with 'url' must specify 'sha256'");
       }
       if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-        return recipe::remote_source{ .url = *url, .sha256 = *sha256 };
+        return recipe::cfg::remote_source{ .url = *url, .sha256 = *sha256 };
       } else {
         throw std::runtime_error("Override 'sha256' field must be string");
       }
@@ -146,11 +56,9 @@ recipe_override parse_override(lua_value const &entry,
 
   if (file_it != table->end()) {
     if (auto const *file{ file_it->second.get<std::string>() }) {
-      return recipe::local_source{ .file_path = [&] {
-        std::filesystem::path p{ *file };
-        if (p.is_relative()) { p = base_path.parent_path() / p; }
-        return p.lexically_normal();
-      }() };
+      std::filesystem::path p{ *file };
+      if (p.is_relative()) { p = base_path.parent_path() / p; }
+      return recipe::cfg::local_source{ .file_path = p.lexically_normal() };
     } else {
       throw std::runtime_error("Override 'file' field must be string");
     }
@@ -197,7 +105,7 @@ manifest manifest::load(char const *script, std::filesystem::path const &manifes
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
 
   for (auto const &package : *packages) {
-    m.packages.push_back(parse_recipe_cfg(package, manifest_path));
+    m.packages.push_back(recipe::cfg::parse(package, manifest_path));
   }
 
   auto overrides{ lua_global_to_value(state.get(), "overrides") };

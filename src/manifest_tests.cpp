@@ -149,7 +149,7 @@ TEST_CASE("manifest::load parses simple string package") {
 
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
-  CHECK(std::holds_alternative<envy::recipe::builtin_source>(m.packages[0].source));
+  CHECK(std::holds_alternative<envy::recipe::cfg::builtin_source>(m.packages[0].source));
   CHECK(m.packages[0].options.empty());
 }
 
@@ -186,7 +186,7 @@ TEST_CASE("manifest::load parses table package with remote source") {
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe::remote_source>(&m.packages[0].source) };
+  auto const *remote{ std::get_if<envy::recipe::cfg::remote_source>(&m.packages[0].source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -207,7 +207,7 @@ TEST_CASE("manifest::load parses table package with local source") {
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "local.wrapper@v1");
 
-  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe::cfg::local_source>(&m.packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
 }
@@ -273,7 +273,7 @@ TEST_CASE("manifest::load parses overrides with remote source") {
   auto const it{ m.overrides.find("arm.gcc@v2") };
   REQUIRE(it != m.overrides.end());
 
-  auto const *remote{ std::get_if<envy::recipe::remote_source>(&it->second) };
+  auto const *remote{ std::get_if<envy::recipe::cfg::remote_source>(&it->second) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://mirror.example/gcc.lua");
   CHECK(remote->sha256 == "def456");
@@ -295,7 +295,7 @@ TEST_CASE("manifest::load parses overrides with local source") {
   auto const it{ m.overrides.find("arm.gcc@v2") };
   REQUIRE(it != m.overrides.end());
 
-  auto const *local{ std::get_if<envy::recipe::local_source>(&it->second) };
+  auto const *local{ std::get_if<envy::recipe::cfg::local_source>(&it->second) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/local/gcc.lua"));
 }
@@ -346,7 +346,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
   auto const m{ envy::manifest::load(script, fs::path("/project/sub/envy.lua")) };
 
   REQUIRE(m.packages.size() == 1);
-  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe::cfg::local_source>(&m.packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -373,7 +373,7 @@ TEST_CASE("manifest::load errors on invalid package entry type") {
   char const *script{ "packages = { 123 }" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package entry must be string or table",
+                       "Recipe entry must be string or table",
                        std::runtime_error);
 }
 
@@ -385,7 +385,7 @@ TEST_CASE("manifest::load errors on missing recipe field") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package table missing required 'recipe' field",
+                       "Recipe table missing required 'recipe' field",
                        std::runtime_error);
 }
 
@@ -397,7 +397,7 @@ TEST_CASE("manifest::load errors on non-string recipe field") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package 'recipe' field must be string",
+                       "Recipe 'recipe' field must be string",
                        std::runtime_error);
 }
 
@@ -443,7 +443,7 @@ TEST_CASE("manifest::load errors on both url and file") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package cannot specify both 'url' and 'file'",
+                       "Recipe cannot specify both 'url' and 'file'",
                        std::runtime_error);
 }
 
@@ -458,7 +458,7 @@ TEST_CASE("manifest::load errors on url without sha256") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package with 'url' must specify 'sha256'",
+                       "Recipe with 'url' must specify 'sha256'",
                        std::runtime_error);
 }
 
@@ -474,7 +474,7 @@ TEST_CASE("manifest::load errors on non-string url") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package 'url' field must be string",
+                       "Recipe 'url' field must be string",
                        std::runtime_error);
 }
 
@@ -490,7 +490,7 @@ TEST_CASE("manifest::load errors on non-string sha256") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package 'sha256' field must be string",
+                       "Recipe 'sha256' field must be string",
                        std::runtime_error);
 }
 
@@ -505,7 +505,7 @@ TEST_CASE("manifest::load errors on non-string file") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package 'file' field must be string",
+                       "Recipe 'file' field must be string",
                        std::runtime_error);
 }
 
@@ -520,7 +520,7 @@ TEST_CASE("manifest::load errors on non-table options") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Package 'options' field must be table",
+                       "Recipe 'options' field must be table",
                        std::runtime_error);
 }
 

@@ -18,7 +18,9 @@ class cache : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
 
-  static ptr_t make(path entry_dir, path lock_path, platform::file_lock_handle_t lock_handle);
+    static ptr_t make(path entry_dir,
+                      path lock_path,
+                      platform::file_lock_handle_t lock_handle);
     ~scoped_entry_lock();
 
     void mark_complete();
@@ -31,7 +33,9 @@ class cache : unmovable {
     path work_dir() const;
 
    private:
-  scoped_entry_lock(path entry_dir, path lock_path, platform::file_lock_handle_t lock_handle);
+    scoped_entry_lock(path entry_dir,
+                      path lock_path,
+                      platform::file_lock_handle_t lock_handle);
     path asset_dir() const;
 
     path entry_dir_;

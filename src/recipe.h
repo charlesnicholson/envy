@@ -5,44 +5,53 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
 namespace envy {
 
-class cache;
+class lua_value;
 
 class recipe : unmovable {
  public:
-  struct builtin_source {};
+  // Recipe configuration (identity + source + options)
+  struct cfg {
+    struct builtin_source {};
 
-  struct remote_source {
-    std::string url;
-    std::string sha256;
-    std::filesystem::path cached_path(cache const &cache) const;
+    struct remote_source {
+      std::string url;
+      std::string sha256;
+    };
+
+    struct local_source {
+      std::filesystem::path file_path;
+    };
+
+    using source_t = std::variant<builtin_source, remote_source, local_source>;
+
+    std::string identity;  // "namespace.name@version"
+    source_t source;
+    std::unordered_map<std::string, std::string> options;
+
+    static cfg parse(lua_value const &lua_val, std::filesystem::path const &base_path);
   };
 
-  struct local_source {
-    std::filesystem::path file_path;
-  };
+  explicit recipe(cfg cfg);
 
-  using source_t = std::variant<builtin_source, remote_source, local_source>;
-
-  recipe(std::string identity, source_t src);
-
-  std::string const &identity() const { return identity_; }
+  cfg const &config() const { return cfg_; }
+  std::string const &identity() const { return cfg_.identity; }
   std::string_view namespace_name() const;
   std::string_view name() const;
   std::string_view version() const;
 
-  source_t const &source() const { return source_; }
+  cfg::source_t const &source() const { return cfg_.source; }
 
   std::vector<recipe const *> const &dependencies() const { return dependencies_; }
   void add_dependency(recipe const *dep);
 
  private:
-  std::string identity_;
-  source_t source_;
+  cfg cfg_;
   std::vector<recipe const *> dependencies_;
 };
 
