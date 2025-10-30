@@ -37,35 +37,6 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
-### Overrides
-
-Manifests can override recipe sources globally. Useful for mirrors, internal caches, or local development.
-
-```lua
--- project/envy.lua
-overrides = {
-  ["arm.gcc@v2"] = {
-    url = "https://internal-mirror.company/recipes/arm-gcc-v2.lua",
-    sha256 = "a1b2c3d4e5f6..."
-  },
-  ["gnu.binutils@v3"] = {
-    file = "./local-recipes/binutils.lua"  -- Local development
-  }
-}
-
-packages = {
-  "arm.gcc@v2",  -- Will use overridden source
-  {
-    recipe = "vendor.openocd@v3",
-    url = "https://example.com/openocd.lua",
-    sha256 = "..."
-    -- openocd's dependency on arm.gcc@v2 will also use overridden source
-  }
-}
-```
-
-**Semantics:** Overrides apply to all recipe references (manifest packages + transitive dependencies). Override source replaces original source; options unchanged. Conflicting overrides for same recipe error at manifest validation.
-
 ## Recipes
 
 ### Organization
@@ -83,31 +54,53 @@ packages = {
 
 **Integrity:** Remote recipes require SHA256 hash in manifest. Envy verifies before caching/executing. Mismatch causes hard failure.
 
+### Verbs
+
+Recipes define verbs describing how to acquire, validate, and install packages:
+
+- **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`.envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
+- **`fetch`** — Acquire source materials. Can be declarative table (archive URL + hash) or function with custom logic.
+- **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
+- **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
+- **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
+
+**Example with check verb:**
+```lua
+-- python.interpreter@v3
+check = "python3 --version"  -- System package manager wrapper
+
+install = function(ctx)
+  if ctx.platform == "darwin" then
+    ctx:run("brew install python3")
+  elseif ctx.platform == "linux" then
+    ctx:run("apt-get install python3")
+  end
+end
+```
+
 ### Dependencies
 
 Recipes declare dependencies; transitive resolution is automatic. Manifest authors specify only direct needs.
 
 ```lua
 -- vendor.openocd@v3
-identity = "vendor.openocd@v3"
+dependencies = {
+  {
+    recipe = "arm.gcc@v2",
+    url = "https://github.com/arm/recipes/gcc-v2.lua",
+    sha256 = "a1b2c3d4...",
+    options = { version = "13.2.0" },
+  },
+}
 
-function make_depends(options)
-    return {
-        {
-            recipe = "arm.gcc@v2",
-            url = "https://github.com/arm/recipes/gcc-v2.lua",
-            sha256 = "a1b2c3d4...",
-            options = { version = options.armgcc_version or "13.2.0" },
-        },
-    }
+build = function(ctx)
+  local gcc_root = ctx:asset("arm.gcc@v2")
+  ctx:run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
+  ctx:run("make", "-j" .. ctx.cores)
 end
 
-deploy = function(ctx)
-    local gcc_root = asset("arm.gcc@v2")  -- Access cached asset
-    ctx.extract_all()
-    ctx.run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
-    ctx.run("make", "-j" .. ctx.cores)
-    ctx.run("make", "install")
+install = function(ctx)
+  ctx:run("make", "install")
 end
 ```
 
@@ -121,7 +114,7 @@ end
 
 **Discovery:** Search upward from CWD for `envy.lua`, stop at filesystem root or git boundary.
 
-**Execution:** Run manifest in fresh `lua_state` with envy globals (`ENVY_PLATFORM`, `ENVY_ARCH`, `envy.join()`, etc.). Extract `packages` table and optional `overrides` table, normalize shorthand strings into full tables, validate duplicates and conflicting sources.
+**Execution:** Run manifest in fresh `lua_state` with envy globals (`ENVY_PLATFORM`, `ENVY_ARCH`, `envy.join()`, etc.). Extract `packages` table, normalize shorthand strings into full tables, validate duplicates and conflicting sources.
 
 ### Resolution Summary
 
@@ -182,29 +175,30 @@ Recipes run only on host platform—no cross-deployment. Single recipe file adap
 
 **Single-file with conditionals:**
 ```lua
-identity = "arm.gcc@v2"
+fetch = function(ctx)
+  local version = ctx.options.version or "13.2.0"
+  local hashes = {
+    ["13.2.0"] = {
+      ["darwin-arm64"] = "a1b2...", ["linux-x86_64"] = "c3d4...",
+    },
+  }
 
-fetch = function(options)
-    local version = options.version or "13.2.0"
-    local hashes = {
-        ["13.2.0"] = {
-            ["darwin-arm64"] = "a1b2...", ["linux-x86_64"] = "c3d4...",
-        },
-    }
-
-    return {
-        url = string.format("https://arm.com/gcc-%s-%s-%s.tar.xz",
-                           version, ENVY_PLATFORM, ENVY_ARCH),
-        sha256 = hashes[version][ENVY_PLATFORM_ARCH],
-    }
+  return {
+    url = string.format("https://arm.com/gcc-%s-%s-%s.tar.xz",
+                       version, ENVY_PLATFORM, ENVY_ARCH),
+    sha256 = hashes[version][ENVY_PLATFORM_ARCH],
+  }
 end
 
-deploy = function(ctx)
-    ctx.extract_all()
-    ctx.add_to_path("bin")
-    if ENVY_PLATFORM == "darwin" then
-        ctx.fixup_macos_rpaths()
-    end
+stage = function(ctx)
+  ctx:extract_all()
+end
+
+install = function(ctx)
+  ctx:add_to_path("bin")
+  if ENVY_PLATFORM == "darwin" then
+    ctx:fixup_macos_rpaths()
+  end
 end
 ```
 
@@ -219,10 +213,10 @@ arm.gcc@v2/
 
 ```lua
 -- recipe.lua
-identity = "arm.gcc@v2"
 local impl = require(ENVY_PLATFORM)  -- Loads darwin.lua or linux.lua
-fetch = function(opts) return impl.fetch(opts, require("checksums")) end
-deploy = impl.deploy
+fetch = function(ctx) return impl.fetch(ctx, require("checksums")) end
+stage = impl.stage
+install = impl.install
 ```
 
 **Platform validation:**

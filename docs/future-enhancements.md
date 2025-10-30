@@ -2,6 +2,37 @@
 
 Potential enhancements not currently prioritized.
 
+## Recipe Source Overrides
+
+Allow manifests to override recipe sources globally. Useful for pointing to mirrors, local forks, or air-gapped environments.
+
+```lua
+-- project/envy.lua
+packages = { "vendor.gcc@v2" }
+
+overrides = {
+  ["vendor.gcc@v2"] = {
+    url = "https://internal-mirror.company/gcc.lua",
+    sha256 = "abc123...",
+  },
+  ["local.wrapper@v1"] = {
+    file = "./envy/recipes/wrapper.lua",  -- local override
+  },
+}
+```
+
+**Semantics:**
+- Overrides apply to all recipe references (manifest packages + transitive dependencies)
+- Override specifies alternate source (url+sha256 or file); options remain from original cfg
+- Applied before fetching/loading, affects cache key for remote recipes
+- Non-local recipes cannot override to local sources (security boundary)
+
+**Implementation notes:**
+- `manifest` struct gains `std::unordered_map<std::string, recipe_override>` member
+- `recipe_override = std::variant<recipe::cfg::remote_source, recipe::cfg::local_source>`
+- Resolver consults override map when processing each `recipe::cfg`, substitutes source before fetch
+- Parse override table during `manifest::load`, validate identity format
+
 ## Manifest Transform Hooks
 
 Beyond declarative overrides, allow manifests to programmatically transform recipe specifications. Provides maximum flexibility for complex scenarios.

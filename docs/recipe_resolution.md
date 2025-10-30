@@ -5,15 +5,14 @@
 - **Instantiation**: `(identity, options)` uniquely describes a graph node; options originate from manifests or parent recipes.
 - **Memoization key**: Canonical string `"identity{key1=val1,key2=val2}"` with options sorted lexicographically. Empty options omit braces. String keys enable trivial hashing, debuggability, and future serialization.
 - **Dependencies field**: Recipe may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to a plain Lua table before recursion continues.
-- **Recipe object**: Resolved node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs (`fetch`, `stage`, `build`, `install`) query this state at execution time.
+- **Recipe object**: Resolved node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs (`check`, `fetch`, `stage`, `build`, `install`) query this state at execution time.
 
 ## Resolver Contract
-1. Apply manifest overrides to source before fetching—overrides affect cache key for remote recipes.
-2. Determine source: builtin (extract from binary), remote (fetch+verify via cache using sha256 key), local (direct load from filesystem).
-3. Load Lua chunk once per `(identity, options)`; create `recipe` object with cfg + lua_state.
-4. Evaluate `dependencies` field producing plain table. Static tables copied; functions receive read-only `ctx` (options, platform, arch). Parse each dependency via `recipe::cfg::parse`.
-5. Apply overrides to child sources; schedule child resolutions via task_group; parent waits after spawning all children.
-6. Assemble resolved `recipe` object (cfg, lua_state, dependency pointers) when children complete; publish to shared map keyed by canonical string.
+1. Determine source: builtin (extract from binary), remote (fetch+verify via cache using sha256 key), local (direct load from filesystem).
+2. Load Lua chunk once per `(identity, options)`; create `recipe` object with cfg + lua_state.
+3. Evaluate `dependencies` field producing plain table. Static tables copied; functions receive read-only `ctx` (options, platform, arch). Parse each dependency via `recipe::cfg::parse`.
+4. Schedule child resolutions via task_group; parent waits after spawning all children.
+5. Assemble resolved `recipe` object (cfg, lua_state, dependency pointers) when children complete; publish to shared map keyed by canonical string.
 
 ## Concurrency & Memoization
 - `unordered_map<string, shared_ptr<promise<recipe>>>` tracks in-flight nodes keyed by canonical string. First thread allocates promise, runs resolution, fulfills with `shared_ptr<recipe>`; later threads wait on shared future.
@@ -34,9 +33,10 @@
 - Errors aggregate inside the promise; parents collect child failures and rethrow a summarized exception. The resolver never hides partial graphs.
 - Diagnostics record identity, dependency, optional cycle path, and a terse message; higher layers map these into CLI output or TUI panes.
 
-## Verb Normalization
+## Verb Execution
 - Verbs remain in the preserved `lua_state` sandbox; when the executor needs a verb it inspects the table by name, determines whether it is a string (built-in helper) or function, and dispatches accordingly.
-- String verbs resolve to built-in handlers at call time; function verbs receive a `verb_ctx` mirroring the dependency `ctx` but exposing execution helpers (extract, cache access, process launching).
+- **`check`** verb (optional): Runs before any installation work. String form executes as shell command (exit 0 = satisfied); function form returns boolean. If absent, checks cache marker (`.envy-complete`). Enables wrapping system package managers without cache involvement.
+- String verbs resolve to built-in handlers at call time; function verbs receive a `verb_ctx` exposing execution helpers (extract, cache access, process launching, dependency asset access).
 
 ## Workspace Phases
 - **Fetch** populates the durable workspace root (`assets/<entry>/.work/fetch/`) and may be specified as a table (declarative archive/git download) or function (custom logic). Skipping the table and leaving the verb undefined triggers Envy’s default.
@@ -59,22 +59,12 @@ packages = {
   },
   "local.cli@v1",
 }
-
-overrides = {
-  ["vendor.compiler@v3"] = {
-    url = "https://mirror.example/compiler.lua",
-    sha256 = "2222...bbbb",
-  },
-  ["vendor.runtime@v2"] = {
-    file = "./envy/recipes/runtime.lua",  -- direct project override
-  },
-}
 ```
 
 Key recipes (all previously uncached):
-- `vendor.toolchain@v1` (remote): `dependencies = function(ctx)` returns compiler/runtime/tools based on `ctx.options.variant`. Emits tool overrides for `"full"`.
-- `vendor.compiler@v3` (remote, overridden URL): `dependencies = { "vendor.binutils@v2" }`.
-- `vendor.runtime@v2` (project-local override): dynamic dependency on `vendor.zlib@v1` when `ctx.options.enable_zlib` flag is true (default).
+- `vendor.toolchain@v1` (remote): `dependencies = function(ctx)` returns compiler/runtime/tools based on `ctx.options.variant`.
+- `vendor.compiler@v3` (remote): `dependencies = { "vendor.binutils@v2" }`.
+- `vendor.runtime@v2` (remote): dynamic dependency on `vendor.zlib@v1` when `ctx.options.enable_zlib` flag is true (default).
 - `vendor.tools@v1` (remote archive): static table of helper utilities.
 - `local.cli@v1` (project-local): depends on `"vendor.toolchain@v1"` and `"local.shared@v1"`.
 - `local.shared@v1` (project-local): no dependencies.
@@ -83,9 +73,9 @@ Key recipes (all previously uncached):
 1. Root task submits `resolve("vendor.toolchain@v1", {variant="full",arch="x86_64"})` and `resolve("local.cli@v1", {})`.
 2. Toolchain resolver acquires promise slot, downloads `toolchain.lua` into `~/.cache/envy/recipes/vendor.toolchain@v1.lua`, loads Lua, evaluates `dependencies(ctx)` → `{ compiler@v3(opt), runtime@v2(opt), tools@v1 }`.
 3. Resolver spawns three child tasks concurrently: compiler, runtime, tools.
-4. Compiler task hits manifest override, fetches mirrored `compiler.lua`, caches it, evaluates dependencies (static table), spawns `vendor.binutils@v2`.
-5. Binutils fetches original source, caches archive, has no children → promise fulfills.
-6. Runtime task detects local override, loads `./envy/recipes/runtime.lua` without touching cache, runs dynamic dependencies (returns `{ vendor.zlib@v1 }`), spawns zlib.
+4. Compiler task fetches `compiler.lua`, caches it, evaluates dependencies (static table), spawns `vendor.binutils@v2`.
+5. Binutils fetches source, caches it, has no children → promise fulfills.
+6. Runtime task fetches `runtime.lua`, runs dynamic dependencies (returns `{ vendor.zlib@v1 }`), spawns zlib.
 7. Zlib fetches remote script, caches file, no children → fulfills; runtime promise resolves.
 8. Tools task downloads archive recipe, caches directory, static dependencies empty → resolves.
 9. Toolchain waits for three futures, records pointers, fulfills promise with retained Lua state.
@@ -158,7 +148,6 @@ Commands invoke resolution via blocking API:
 ```cpp
 std::vector<std::shared_ptr<recipe>> resolve_recipes(
   std::vector<recipe::cfg> const& packages,
-  std::unordered_map<std::string, recipe_override> const& overrides,
   cache& c
 );
 ```
@@ -176,9 +165,9 @@ Constructs `flow::graph` modeling verb dependencies (fetch→stage→build→ins
 **Pattern:**
 ```cpp
 bool cmd_install::execute() {
-  auto roots{ resolve_recipes(manifest_.packages, manifest_.overrides, cache_) };  // Parallel
-  ensure_assets(roots);                                                             // Parallel
-  print_summary(roots);                                                             // Sequential
+  auto roots{ resolve_recipes(manifest_.packages, cache_) };  // Parallel
+  ensure_assets(roots);                                        // Parallel
+  print_summary(roots);                                        // Sequential
   return true;
 }
 ```
