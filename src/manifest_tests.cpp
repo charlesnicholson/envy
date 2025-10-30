@@ -256,50 +256,6 @@ TEST_CASE("manifest::load parses mixed string and table packages") {
   CHECK(m.packages[2].identity == "gnu.make@v1");
 }
 
-TEST_CASE("manifest::load parses overrides with remote source") {
-  char const *script{ R"(
-    packages = { "arm.gcc@v2" }
-    overrides = {
-      ["arm.gcc@v2"] = {
-        url = "https://mirror.example/gcc.lua",
-        sha256 = "def456"
-      }
-    }
-  )" };
-
-  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
-
-  REQUIRE(m.overrides.size() == 1);
-  auto const it{ m.overrides.find("arm.gcc@v2") };
-  REQUIRE(it != m.overrides.end());
-
-  auto const *remote{ std::get_if<envy::recipe::cfg::remote_source>(&it->second) };
-  REQUIRE(remote != nullptr);
-  CHECK(remote->url == "https://mirror.example/gcc.lua");
-  CHECK(remote->sha256 == "def456");
-}
-
-TEST_CASE("manifest::load parses overrides with local source") {
-  char const *script{ R"(
-    packages = { "arm.gcc@v2" }
-    overrides = {
-      ["arm.gcc@v2"] = {
-        file = "./local/gcc.lua"
-      }
-    }
-  )" };
-
-  auto const m{ envy::manifest::load(script, fs::path("/project/envy.lua")) };
-
-  REQUIRE(m.overrides.size() == 1);
-  auto const it{ m.overrides.find("arm.gcc@v2") };
-  REQUIRE(it != m.overrides.end());
-
-  auto const *local{ std::get_if<envy::recipe::cfg::local_source>(&it->second) };
-  REQUIRE(local != nullptr);
-  CHECK(local->file_path == fs::path("/project/local/gcc.lua"));
-}
-
 TEST_CASE("manifest::load allows platform conditionals") {
   char const *script{ R"(
     packages = {}
@@ -536,87 +492,6 @@ TEST_CASE("manifest::load errors on non-string option value") {
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
                        "Option value for 'version' must be string",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on non-table overrides") {
-  char const *script{ R"(
-    packages = {}
-    overrides = "not a table"
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "'overrides' must be a table",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on invalid override identity") {
-  char const *script{ R"(
-    packages = {}
-    overrides = {
-      ["invalid"] = { file = "./local.lua" }
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Invalid override identity format: invalid",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on non-table override entry") {
-  char const *script{ R"(
-    packages = {}
-    overrides = {
-      ["arm.gcc@v2"] = "not a table"
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Override entry must be table",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on override with both url and file") {
-  char const *script{ R"(
-    packages = {}
-    overrides = {
-      ["arm.gcc@v2"] = {
-        url = "https://example.com/gcc.lua",
-        file = "./local.lua"
-      }
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Override cannot specify both 'url' and 'file'",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on override url without sha256") {
-  char const *script{ R"(
-    packages = {}
-    overrides = {
-      ["arm.gcc@v2"] = {
-        url = "https://example.com/gcc.lua"
-      }
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Override with 'url' must specify 'sha256'",
-                       std::runtime_error);
-}
-
-TEST_CASE("manifest::load errors on override without url or file") {
-  char const *script{ R"(
-    packages = {}
-    overrides = {
-      ["arm.gcc@v2"] = {}
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Override must specify 'url'+'sha256' or 'file'",
                        std::runtime_error);
 }
 
