@@ -26,27 +26,27 @@ bool parse_identity(std::string const &identity,
   return !out_namespace.empty() && !out_name.empty() && !out_version.empty();
 }
 
-recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
-                              std::filesystem::path const &base_path) {
-  recipe_spec spec;
+recipe_cfg parse_recipe_cfg(lua_value const &recipe_cfg_lua,
+                            std::filesystem::path const &base_path) {
+  recipe_cfg cfg;
 
   //  "namespace.name@version"
-  if (auto const *str{ recipe_spec_lua.get<std::string>() }) {
-    spec.identity = *str;
+  if (auto const *str{ recipe_cfg_lua.get<std::string>() }) {
+    cfg.identity = *str;
 
     std::string ns, name, ver;
-    if (!parse_identity(spec.identity, ns, name, ver)) {
-      throw std::runtime_error("Invalid recipe identity format: " + spec.identity);
+    if (!parse_identity(cfg.identity, ns, name, ver)) {
+      throw std::runtime_error("Invalid recipe identity format: " + cfg.identity);
     }
 
-    spec.source = recipe::builtin_source{};
-    return spec;
+    cfg.source = recipe::builtin_source{};
+    return cfg;
   }
 
-  auto const *table{ recipe_spec_lua.get<lua_table>() };
+  auto const *table{ recipe_cfg_lua.get<lua_table>() };
   if (!table) { throw std::runtime_error("Package entry must be string or table"); }
 
-  spec.identity = [&] {
+  cfg.identity = [&] {
     auto const recipe_it{ table->find("recipe") };
     if (recipe_it == table->end()) {
       throw std::runtime_error("Package table missing required 'recipe' field");
@@ -58,8 +58,8 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
   }();
 
   std::string ns, name, ver;
-  if (!parse_identity(spec.identity, ns, name, ver)) {
-    throw std::runtime_error("Invalid recipe identity format: " + spec.identity);
+  if (!parse_identity(cfg.identity, ns, name, ver)) {
+    throw std::runtime_error("Invalid recipe identity format: " + cfg.identity);
   }
 
   auto const url_it{ table->find("url") };
@@ -76,7 +76,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
         throw std::runtime_error("Package with 'url' must specify 'sha256'");
       }
       if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-        spec.source = recipe::remote_source{ .url = *url, .sha256 = *sha256 };
+        cfg.source = recipe::remote_source{ .url = *url, .sha256 = *sha256 };
       } else {
         throw std::runtime_error("Package 'sha256' field must be string");
       }
@@ -85,7 +85,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     }
   } else if (file_it != table->end()) {  // Local source
     if (auto const *file{ file_it->second.get<std::string>() }) {
-      spec.source = recipe::local_source{ .file_path = [&] {
+      cfg.source = recipe::local_source{ .file_path = [&] {
         std::filesystem::path p{ *file };
         if (p.is_relative()) { p = base_path.parent_path() / p; }
         return p.lexically_normal();
@@ -95,7 +95,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     }
   } else {
     // No source specified, assume builtin
-    spec.source = recipe::builtin_source{};
+    cfg.source = recipe::builtin_source{};
   }
 
   auto const options_it{ table->find("options") };
@@ -103,7 +103,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     if (auto const *options_table{ options_it->second.get<lua_table>() }) {
       for (auto const &[key, val] : *options_table) {
         if (auto const *val_str{ val.get<std::string>() }) {
-          spec.options[key] = *val_str;
+          cfg.options[key] = *val_str;
         } else {
           throw std::runtime_error("Option value for '" + key + "' must be string");
         }
@@ -113,7 +113,7 @@ recipe_spec parse_recipe_spec(lua_value const &recipe_spec_lua,
     }
   }
 
-  return spec;
+  return cfg;
 }
 
 recipe_override parse_override(lua_value const &entry,
@@ -197,7 +197,7 @@ manifest manifest::load(char const *script, std::filesystem::path const &manifes
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
 
   for (auto const &package : *packages) {
-    m.packages.push_back(parse_recipe_spec(package, manifest_path));
+    m.packages.push_back(parse_recipe_cfg(package, manifest_path));
   }
 
   auto overrides{ lua_global_to_value(state.get(), "overrides") };
