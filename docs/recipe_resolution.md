@@ -3,19 +3,22 @@
 ## Core Model
 - **Identity**: `namespace.name@version` plus optional SHA256 for remote/bundled sources.
 - **Instantiation**: `(identity, options)` uniquely describes a graph node; options originate from manifests or parent recipes.
+- **Memoization key**: Canonical string `"identity{key1=val1,key2=val2}"` with options sorted lexicographically. Empty options omit braces. String keys enable trivial hashing, debuggability, and future serialization.
 - **Dependencies field**: Recipe may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to a plain Lua table before recursion continues.
+- **Recipe object**: Resolved node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs (`fetch`, `stage`, `build`, `install`) query this state at execution time.
 
 ## Resolver Contract
-1. Determine source via manifest overrides, recipe-local overrides, or built-in tables.
-2. Fetch (or reuse cached) recipe source; load Lua chunk once per `(identity, options)` using a memo locked by that key.
-3. Evaluate the `dependencies` field, producing a fresh table. Static tables are copied; functions receive a read-only `ctx` exposing `ctx.options`, `ctx.platform`, `ctx.arch`, and helper shims (e.g., `ctx:manifest_option("zstd")`).
-4. Schedule child resolutions immediately using oneTBB task groups; parents wait only after spawning every child.
-5. Assemble and publish the resolved node (dependency pointers plus the retained `lua_state`) when all child futures complete; propagate any accumulated errors to callers. Verbs stay inside that sandbox and are queried later during execution.
+1. Apply manifest overrides to source before fetching—overrides affect cache key for remote recipes.
+2. Determine source: builtin (extract from binary), remote (fetch+verify via cache using sha256 key), local (direct load from filesystem).
+3. Load Lua chunk once per `(identity, options)`; create `recipe` object with cfg + lua_state.
+4. Evaluate `dependencies` field producing plain table. Static tables copied; functions receive read-only `ctx` (options, platform, arch). Parse each dependency via `recipe::cfg::parse`.
+5. Apply overrides to child sources; schedule child resolutions via task_group; parent waits after spawning all children.
+6. Assemble resolved `recipe` object (cfg, lua_state, dependency pointers) when children complete; publish to shared map keyed by canonical string.
 
 ## Concurrency & Memoization
-- `tbb::concurrent_hash_map<resolved_key, std::shared_ptr<promise>>` tracks in-flight nodes. First thread allocates the promise, runs resolution, and fulfills or rejects it; later threads wait on the shared future.
-- Recursion uses `task_group.run()` to exploit depth-first parallelism while preserving determinism. Fetch latency and Lua execution overlap naturally.
-- Dependency tables cache inside the promise payload to avoid re-running Lua after the initial evaluation.
+- `unordered_map<string, shared_ptr<promise<recipe>>>` tracks in-flight nodes keyed by canonical string. First thread allocates promise, runs resolution, fulfills with `shared_ptr<recipe>`; later threads wait on shared future.
+- Recursion uses `task_group.run()` for depth-first parallelism. Fetch latency and Lua execution overlap naturally across independent branches.
+- Each resolved `recipe` is a `shared_ptr` enabling safe sharing across the DAG without copies. Installation phase references these same objects for verb execution.
 
 ## Dependency Function Semantics
 - `ctx` is immutable; no filesystem, network, or global mutation allowed. It exists solely to read options and construct child tables.
@@ -91,10 +94,10 @@ Key recipes (all previously uncached):
 12. CLI waits, stores child pointers, fulfills. All promises resolved; DAG ready.
 
 ### Runtime Data Structures
-- `promise_map`: `concurrent_hash_map<resolved_key, shared_ptr<promise>>` holding in-flight nodes; keys include both manifest roots and transitive entries.
-- `task_group`: per-root recursion group managing outstanding TBB tasks.
-- `dependency_cache`: stored inside each promise payload (copy of normalized dependency table).
-- `resolved_graph`: `unordered_map<resolved_key, resolved_recipe>` published on promise fulfillment; each entry stores identity, options, child pointers, and the `lua_state`.
+- `promise_map`: `unordered_map<string, shared_ptr<promise<recipe>>>` holding in-flight nodes; canonical string keys cover both manifest roots and transitive entries.
+- `task_group`: single group managing all resolution tasks across entire DAG.
+- `recipe`: resolved node containing `cfg` (identity, source, options), `lua_state_ptr` (verb execution sandbox), and `vector<shared_ptr<recipe>>` dependencies.
+- Output: `vector<shared_ptr<recipe>>` of manifest roots; full DAG reachable via dependency traversal. Installation phase uses these shared pointers directly.
 
 ### Final Resolved Graph
 ```
@@ -150,36 +153,35 @@ exec:shared
 
 ## Command Integration
 
-Commands invoke resolution via blocking API hiding oneTBB implementation:
+Commands invoke resolution via blocking API:
 
 ```cpp
-resolved_graph_ptr resolve_recipes(
-  std::vector<package_spec> const& packages,
+std::vector<std::shared_ptr<recipe>> resolve_recipes(
+  std::vector<recipe::cfg> const& packages,
+  std::unordered_map<std::string, recipe_override> const& overrides,
   cache& c
 );
 ```
 
-Implementation uses `task_group` for parallel fork-join resolution; callers block until complete. Commands run inside `task_arena` established by main—resolver's internal `task_group` shares that arena's thread pool. Commands can call `resolve_recipes()` from any context: direct invocation from `execute()`, inside custom `flow::graph` nodes, or within `task_group` tasks. TBB's work-stealing scheduler handles nested blocking without deadlock.
+Returns manifest root recipes; full DAG reachable via `recipe::dependencies()`. Implementation uses `task_group` for parallel fork-join resolution. Commands run inside `task_arena` established by main—resolver shares that thread pool. TBB's work-stealing scheduler handles nested blocking without deadlock.
 
-After resolution completes, commands typically call blocking verb execution helper:
+After resolution, commands invoke blocking verb execution helper:
 
 ```cpp
-void ensure_assets(resolved_graph const& graph);
+void ensure_assets(std::vector<std::shared_ptr<recipe>> const& roots);
 ```
 
-This constructs a `flow::graph` modeling verb-level dependencies (fetch→stage→build→install per recipe, with inter-recipe edges based on resolved dependencies), executes the DAG via `wait_for_all()`, then returns. Commands then perform sequential post-processing (validation, summaries, script generation).
+Constructs `flow::graph` modeling verb dependencies (fetch→stage→build→install per recipe, with inter-recipe edges from `recipe::dependencies()`), executes via `wait_for_all()`. Each node queries its `recipe` object's Lua state for verb implementations at execution time.
 
 **Pattern:**
 ```cpp
 bool cmd_install::execute() {
-  auto resolved = resolve_recipes(manifest_->packages());  // Parallel, blocks
-  ensure_assets(resolved);                                  // Parallel, blocks
-  print_summary(resolved);                                  // Sequential
+  auto roots{ resolve_recipes(manifest_.packages, manifest_.overrides, cache_) };  // Parallel
+  ensure_assets(roots);                                                             // Parallel
+  print_summary(roots);                                                             // Sequential
   return true;
 }
 ```
-
-Both helpers encapsulate parallelism—commands treat them as synchronous operations returning when work completes.
 
 ## Future Hooks
 - Deterministic memo entries enable offline caching of resolution DAGs.

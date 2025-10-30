@@ -15,7 +15,6 @@ class lua_value;
 
 class recipe : unmovable {
  public:
-  // Recipe configuration (identity + source + options)
   struct cfg {
     struct builtin_source {};
 
