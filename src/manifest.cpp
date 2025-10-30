@@ -108,11 +108,9 @@ manifest manifest::load(char const *script, std::filesystem::path const &manifes
     m.packages.push_back(recipe::cfg::parse(package, manifest_path));
   }
 
-  auto overrides{ lua_global_to_value(state.get(), "overrides") };
-  if (overrides) {
+  if (auto overrides{ lua_global_to_value(state.get(), "overrides") }) {
     if (auto const *overrides_table{ overrides->get<lua_table>() }) {
       for (auto const &[identity, val] : *overrides_table) {
-        // Validate identity format
         std::string ns, name, ver;
         if (!parse_identity(identity, ns, name, ver)) {
           throw std::runtime_error("Invalid override identity format: " + identity);
