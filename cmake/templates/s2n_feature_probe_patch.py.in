@@ -1,0 +1,97 @@
+import pathlib
+
+# Ensure s2n feature probes use the same libcrypto headers as the actual build.
+# Without this tweak CMake falls back to system OpenSSL headers, detects
+# provider support, and enables EVP_MD_fetch() even when aws-lc is in use.
+
+s2n_cmakelists = pathlib.Path(r"@S2N_CMAKELISTS@")
+text = s2n_cmakelists.read_text()
+
+marker = "# envy feature probe include patch v2"
+if marker not in text:
+    original = """    try_compile(
+        IS_AVAILABLE
+        ${CMAKE_BINARY_DIR}
+        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
+        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
+        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
+        COMPILE_DEFINITIONS -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}
+        ${ARGN}
+        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
+    )
+"""
+    legacy = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch
+    if(DEFINED crypto_INCLUDE_DIR AND NOT "${crypto_INCLUDE_DIR}" STREQUAL "")
+        foreach(_envy_crypto_dir IN LISTS crypto_INCLUDE_DIR)
+            list(APPEND _envy_probe_compile_defs -I "${_envy_crypto_dir}")
+        endforeach()
+    endif()
+    try_compile(
+        IS_AVAILABLE
+        ${CMAKE_BINARY_DIR}
+        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
+        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
+        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
+        COMPILE_DEFINITIONS ${_envy_probe_compile_defs}
+        ${ARGN}
+        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
+    )
+    unset(_envy_probe_compile_defs)
+
+"""
+    replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch v2
+    set(_envy_probe_include_dirs "")
+    if(TARGET ${LINK_LIB})
+        get_target_property(_envy_probe_include_dirs ${LINK_LIB} INTERFACE_INCLUDE_DIRECTORIES)
+    endif()
+    if(NOT _envy_probe_include_dirs AND DEFINED crypto_INCLUDE_DIR AND NOT "${crypto_INCLUDE_DIR}" STREQUAL "")
+        set(_envy_probe_include_dirs "${crypto_INCLUDE_DIR}")
+    endif()
+    set(_envy_probe_had_include FALSE)
+    if(_envy_probe_include_dirs)
+        foreach(_envy_crypto_dir IN LISTS _envy_probe_include_dirs)
+            set(_envy_clean_dir "${_envy_crypto_dir}")
+            if(_envy_clean_dir MATCHES "\\$<BUILD_INTERFACE:([^>]+)>")
+                string(REGEX REPLACE ".*\\$<BUILD_INTERFACE:([^>]+)>.*" "\\1" _envy_clean_dir "${_envy_clean_dir}")
+            elseif(_envy_clean_dir MATCHES "\\$<INSTALL_INTERFACE:([^>]+)>")
+                set(_envy_clean_dir "")
+            elseif(_envy_clean_dir MATCHES "^\\$<")
+                set(_envy_clean_dir "")
+            endif()
+            if(_envy_clean_dir)
+                list(APPEND _envy_probe_compile_defs -I "${_envy_clean_dir}")
+                set(_envy_probe_had_include TRUE)
+            endif()
+        endforeach()
+    endif()
+    if(NOT _envy_probe_had_include)
+        set(_envy_probe_fallback "${CMAKE_CURRENT_LIST_DIR}/../aws-lc/include")
+        if(EXISTS "${_envy_probe_fallback}/openssl/evp.h")
+            list(APPEND _envy_probe_compile_defs -I "${_envy_probe_fallback}")
+            set(_envy_probe_had_include TRUE)
+        endif()
+        unset(_envy_probe_fallback)
+    endif()
+    try_compile(
+        IS_AVAILABLE
+        ${CMAKE_BINARY_DIR}
+        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
+        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
+        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
+        COMPILE_DEFINITIONS ${_envy_probe_compile_defs}
+        ${ARGN}
+        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
+    )
+    unset(_envy_probe_had_include)
+    unset(_envy_clean_dir)
+    unset(_envy_probe_include_dirs)
+    unset(_envy_probe_compile_defs)
+
+"""
+    if original in text:
+        text = text.replace(original, replacement, 1)
+    elif legacy in text:
+        text = text.replace(legacy, replacement, 1)
+    else:
+        raise RuntimeError("s2n feature probe try_compile block not found")
+    s2n_cmakelists.write_text(text)

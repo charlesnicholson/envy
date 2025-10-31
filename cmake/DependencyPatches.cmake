@@ -240,6 +240,40 @@ function(envy_patch_aws_crt_disable_prebuild source_dir binary_dir)
     unset(AWSCRT_CMAKELISTS)
 endfunction()
 
+# Ensure s2n's feature probes include aws-lc headers instead of falling back
+# to system OpenSSL when evaluating libcrypto capabilities.
+function(envy_patch_s2n_feature_probes source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_s2n_feature_probe_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_s2n_feature_probes.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/s2n_feature_probe_patch.py.in")
+
+    set(S2N_CMAKELISTS "${_source_dir_norm}/crt/aws-crt-cpp/crt/s2n/CMakeLists.txt")
+    if(NOT EXISTS "${S2N_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(S2N_CMAKELISTS)
+endfunction()
+
 # Make libcurl’s pkg-config metadata reference the actual zlib target we
 # build instead of the abstract ZLIB::ZLIB alias.
 function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)
