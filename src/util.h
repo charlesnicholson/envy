@@ -18,4 +18,13 @@ struct unmovable {
   unmovable(unmovable const &) = delete;
   unmovable &operator=(unmovable const &) = delete;
 };
+
+template <typename... Ts>
+struct overload : Ts... {
+  using Ts::operator()...;
+};
+
+template <typename... Ts>
+overload(Ts...) -> overload<Ts...>;
+
 }  // namespace envy
