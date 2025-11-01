@@ -260,7 +260,7 @@ recipe *recipe_resolve_one(resolver &r, recipe::cfg const &cfg) {
       bool const allow_local_deps{ cfg.is_local() };
       dep_cfgs.reserve(deps_array->size());
       for (auto const &dep_val : *deps_array) {
-        auto dep_cfg{ recipe::cfg::parse(dep_val, recipe_path) };
+        auto dep_cfg{ recipe::cfg::parse(dep_val, recipe_path.parent_path()) };
         if (!allow_local_deps && dep_cfg.identity.starts_with("local.")) {
           throw std::runtime_error("Non-local recipe cannot depend on local recipe: " +
                                    dep_cfg.identity);
