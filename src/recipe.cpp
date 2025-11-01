@@ -233,17 +233,17 @@ recipe *recipe_resolve_one(resolver &r, recipe::cfg const &cfg) {
 
   try {  // Load recipe file
     auto const recipe_path{ std::visit(
-        overload{ [&](recipe::cfg::remote_source const &remote) -> std::filesystem::path {
-                   return r.cache_.ensure_recipe(cfg.identity).entry_path;
-                 },
-                  [&](recipe::cfg::local_source const &local) -> std::filesystem::path {
-                    auto const uri_info{ uri_classify(local.file_path.string()) };
-                    if (uri_info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-                      return uri_resolve_local_file_relative(local.file_path.string(),
-                                                             std::nullopt);
-                    }
-                    return local.file_path;
-                  } },
+        match{ [&](recipe::cfg::remote_source const &remote) -> std::filesystem::path {
+                return r.cache_.ensure_recipe(cfg.identity).entry_path;
+              },
+               [&](recipe::cfg::local_source const &local) -> std::filesystem::path {
+                 auto const uri_info{ uri_classify(local.file_path.string()) };
+                 if (uri_info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+                   return uri_resolve_local_file_relative(local.file_path.string(),
+                                                          std::nullopt);
+                 }
+                 return local.file_path;
+               } },
         cfg.source) };
 
     auto lua_state{ lua_make() };

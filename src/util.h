@@ -20,11 +20,11 @@ struct unmovable {
 };
 
 template <typename... Ts>
-struct overload : Ts... {
+struct match : Ts... {
   using Ts::operator()...;
 };
 
 template <typename... Ts>
-overload(Ts...) -> overload<Ts...>;
+match(Ts...) -> match<Ts...>;
 
 }  // namespace envy
