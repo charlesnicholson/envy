@@ -18,4 +18,13 @@ struct unmovable {
   unmovable(unmovable const &) = delete;
   unmovable &operator=(unmovable const &) = delete;
 };
+
+template <typename... Ts>
+struct match : Ts... {
+  using Ts::operator()...;
+};
+
+template <typename... Ts>
+match(Ts...) -> match<Ts...>;
+
 }  // namespace envy

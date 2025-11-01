@@ -44,7 +44,6 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 **Identity:** Recipes are namespaced with version: `arm.gcc@v2`, `gnu.binutils@v3`. The `@` symbol denotes **recipe version**, not asset version. Asset versions come from `options` in manifest. Multiple recipe versions coexist; `local.*` namespace reserved for project-local recipes.
 
 **Sources:**
-- **Built-in:** Embedded in binary (`envy.*` namespace), extracted to cache on first run
 - **Remote:** Fetched from `url`, verified via `sha256`, cached
 - **Project-local:** Loaded from `file` path, never cached
 

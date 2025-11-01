@@ -142,23 +142,23 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
 
 TEST_CASE("manifest::load parses simple string package") {
   char const *script{ R"(
-    packages = { "arm.gcc@v2" }
+    packages = { { recipe = "arm.gcc@v2", file = "/fake/r.lua" } }
   )" };
 
   auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
-  CHECK(std::holds_alternative<envy::recipe::cfg::builtin_source>(m.packages[0].source));
+  CHECK(m.packages[0].is_local());
   CHECK(m.packages[0].options.empty());
 }
 
 TEST_CASE("manifest::load parses multiple string packages") {
   char const *script{ R"(
     packages = {
-      "arm.gcc@v2",
-      "gnu.binutils@v3",
-      "vendor.openocd@v1"
+      { recipe = "arm.gcc@v2", file = "/fake/r.lua" },
+      { recipe = "gnu.binutils@v3", file = "/fake/r.lua" },
+      { recipe = "vendor.openocd@v1", file = "/fake/r.lua" }
     }
   )" };
 
@@ -216,7 +216,7 @@ TEST_CASE("manifest::load parses table package with options") {
   char const *script{ R"(
     packages = {
       {
-        recipe = "arm.gcc@v2",
+        recipe = "arm.gcc@v2", file = "/fake/r.lua",
         options = {
           version = "13.2.0",
           target = "arm-none-eabi"
@@ -237,14 +237,14 @@ TEST_CASE("manifest::load parses table package with options") {
 TEST_CASE("manifest::load parses mixed string and table packages") {
   char const *script{ R"(
     packages = {
-      "envy.homebrew@v4",
+      { recipe = "envy.homebrew@v4", file = "/fake/r.lua" },
       {
         recipe = "arm.gcc@v2",
         url = "https://example.com/gcc.lua",
         sha256 = "abc123",
         options = { version = "13.2.0" }
       },
-      "gnu.make@v1"
+      { recipe = "gnu.make@v1", file = "/fake/r.lua" }
     }
   )" };
 
@@ -260,11 +260,11 @@ TEST_CASE("manifest::load allows platform conditionals") {
   char const *script{ R"(
     packages = {}
     if ENVY_PLATFORM == "darwin" then
-      packages = { "envy.homebrew@v4" }
+      packages = { { recipe = "envy.homebrew@v4", file = "/fake/r.lua" } }
     elseif ENVY_PLATFORM == "linux" then
-      packages = { "system.apt@v1" }
+      packages = { { recipe = "system.apt@v1", file = "/fake/r.lua" } }
     elseif ENVY_PLATFORM == "windows" then
-      packages = { "system.choco@v1" }
+      packages = { { recipe = "system.choco@v1", file = "/fake/r.lua" } }
     end
   )" };
 
@@ -359,7 +359,7 @@ TEST_CASE("manifest::load errors on non-string recipe field") {
 
 TEST_CASE("manifest::load errors on invalid recipe identity format") {
   char const *script{ R"(
-    packages = { "invalid-no-at-sign" }
+    packages = { { recipe = "invalid-no-at-sign", file = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -369,7 +369,7 @@ TEST_CASE("manifest::load errors on invalid recipe identity format") {
 
 TEST_CASE("manifest::load errors on identity missing namespace") {
   char const *script{ R"(
-    packages = { "gcc@v2" }
+    packages = { { recipe = "gcc@v2", file = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -379,7 +379,7 @@ TEST_CASE("manifest::load errors on identity missing namespace") {
 
 TEST_CASE("manifest::load errors on identity missing version") {
   char const *script{ R"(
-    packages = { "arm.gcc@" }
+    packages = { { recipe = "arm.gcc@", file = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -470,6 +470,7 @@ TEST_CASE("manifest::load errors on non-table options") {
     packages = {
       {
         recipe = "arm.gcc@v2",
+        file = "/fake/r.lua",
         options = "not a table"
       }
     }
@@ -484,7 +485,7 @@ TEST_CASE("manifest::load errors on non-string option value") {
   char const *script{ R"(
     packages = {
       {
-        recipe = "arm.gcc@v2",
+        recipe = "arm.gcc@v2", file = "/fake/r.lua",
         options = { version = 123 }
       }
     }
@@ -498,8 +499,8 @@ TEST_CASE("manifest::load errors on non-string option value") {
 TEST_CASE("manifest::load allows same identity with different options") {
   char const *script{ R"(
     packages = {
-      { recipe = "arm.gcc@v2", options = { version = "13.2.0" } },
-      { recipe = "arm.gcc@v2", options = { version = "12.0.0" } }
+      { recipe = "arm.gcc@v2", file = "/fake/r.lua", options = { version = "13.2.0" } },
+      { recipe = "arm.gcc@v2", file = "/fake/r.lua", options = { version = "12.0.0" } }
     }
   )" };
 
@@ -511,8 +512,8 @@ TEST_CASE("manifest::load allows same identity with different options") {
 TEST_CASE("manifest::load allows duplicate packages") {
   char const *script{ R"(
     packages = {
-      "arm.gcc@v2",
-      "arm.gcc@v2"
+      { recipe = "arm.gcc@v2", file = "/fake/r.lua" },
+      { recipe = "arm.gcc@v2", file = "/fake/r.lua" }
     }
   )" };
 

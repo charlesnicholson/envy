@@ -8,7 +8,7 @@
 - **Recipe object**: Resolved node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs (`check`, `fetch`, `stage`, `build`, `install`) query this state at execution time.
 
 ## Resolver Contract
-1. Determine source: builtin (extract from binary), remote (fetch+verify via cache using sha256 key), local (direct load from filesystem).
+1. Determine source: remote (fetch+verify via cache using sha256 key), local (direct load from filesystem).
 2. Load Lua chunk once per `(identity, options)`; create `recipe` object with cfg + lua_state.
 3. Evaluate `dependencies` field producing plain table. Static tables copied; functions receive read-only `ctx` (options, platform, arch). Parse each dependency via `recipe::cfg::parse`.
 4. Schedule child resolutions via task_group; parent waits after spawning all children.

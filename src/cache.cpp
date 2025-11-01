@@ -11,24 +11,72 @@ using path = std::filesystem::path;
 
 namespace envy {
 
+struct cache_impl {
+  path root_;
+
+  path recipes_dir() const { return root_ / "recipes"; }
+  path assets_dir() const { return root_ / "assets"; }
+  path locks_dir() const { return root_ / "locks"; }
+};
+
+struct cache::impl : cache_impl {};
+
+struct cache::scoped_entry_lock::impl {
+  path entry_dir_;
+  path lock_path_;
+  platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
+  bool completed_{ false };
+
+  path asset_dir() const { return entry_dir_ / "asset"; }
+};
+
+}  // namespace envy
+
 namespace {
 
 void remove_all_noexcept(path const &target) {
   std::error_code ec;
   std::filesystem::remove_all(target, ec);
   if (ec) {
-    tui::error("Failed to remove %s: %s", target.string().c_str(), ec.message().c_str());
+    envy::tui::error("Failed to remove %s: %s",
+                     target.string().c_str(),
+                     ec.message().c_str());
   }
+}
+
+envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
+                                        path const &entry_dir,
+                                        path const &lock_path) {
+  envy::cache::ensure_result result{ entry_dir, entry_dir / "asset", nullptr };
+
+  if (envy::cache::is_entry_complete(entry_dir)) { return result; }
+
+  std::filesystem::create_directories(impl.locks_dir());
+  std::filesystem::create_directories(entry_dir);
+
+  envy::platform::file_lock_handle_t h{ envy::platform::lock_file(lock_path) };
+
+  if (envy::cache::is_entry_complete(entry_dir)) {
+    envy::platform::unlock_file(h);
+    return result;
+  }
+
+  result.lock = envy::cache::scoped_entry_lock::make(entry_dir, lock_path, h);
+  return result;
 }
 
 }  // namespace
 
+namespace envy {
+
 cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
-                                           path lock_path,
-                                           platform::file_lock_handle_t prelocked_handle)
-    : entry_dir_{ std::move(entry_dir) },
-      lock_path_{ std::move(lock_path) },
-      lock_handle_{ prelocked_handle } {
+                                            path lock_path,
+                                            platform::file_lock_handle_t prelocked_handle)
+    : m{ std::make_unique<impl>() } {
+  m->entry_dir_ = std::move(entry_dir);
+  m->lock_path_ = std::move(lock_path);
+  m->lock_handle_ = prelocked_handle;
+
   remove_all_noexcept(install_dir());
 
   // Conditionally preserve fetch/ if marked complete
@@ -44,33 +92,34 @@ cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
 }
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
-  if (completed_) {
-    remove_all_noexcept(asset_dir());
-    platform::atomic_rename(install_dir(), asset_dir());
+  if (m->completed_) {
+    remove_all_noexcept(m->asset_dir());
+    platform::atomic_rename(install_dir(), m->asset_dir());
     remove_all_noexcept(work_dir());
-    platform::touch_file(entry_dir_ / ".envy-complete");
+    platform::touch_file(m->entry_dir_ / ".envy-complete");
   } else {
     remove_all_noexcept(install_dir());
     remove_all_noexcept(stage_dir());
   }
 
-  platform::unlock_file(lock_handle_);
-  std::filesystem::remove(lock_path_);
+  platform::unlock_file(m->lock_handle_);
+  std::filesystem::remove(m->lock_path_);
 }
 
-cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(path entry_dir,
-                                                               path lock_path,
-                                                               platform::file_lock_handle_t lock_handle) {
-  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
-                                       std::move(lock_path),
-                                       lock_handle } };
+cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
+    path entry_dir,
+    path lock_path,
+    platform::file_lock_handle_t lock_handle) {
+  return ptr_t{
+    new scoped_entry_lock{ std::move(entry_dir), std::move(lock_path), lock_handle }
+  };
 }
 
 cache::path cache::scoped_entry_lock::install_dir() const {
-  return entry_dir_ / ".install";
+  return m->entry_dir_ / ".install";
 }
 
-void cache::scoped_entry_lock::mark_complete() { completed_ = true; }
+void cache::scoped_entry_lock::mark_complete() { m->completed_ = true; }
 
 void cache::scoped_entry_lock::mark_fetch_complete() {
   std::filesystem::create_directories(fetch_dir());
@@ -83,12 +132,11 @@ bool cache::scoped_entry_lock::is_fetch_complete() const {
 
 cache::path cache::scoped_entry_lock::stage_dir() const { return work_dir() / "stage"; }
 cache::path cache::scoped_entry_lock::fetch_dir() const { return work_dir() / "fetch"; }
-cache::path cache::scoped_entry_lock::asset_dir() const { return entry_dir_ / "asset"; }
-cache::path cache::scoped_entry_lock::work_dir() const { return entry_dir_ / ".work"; }
+cache::path cache::scoped_entry_lock::work_dir() const { return m->entry_dir_ / ".work"; }
 
-cache::cache(std::optional<std::filesystem::path> root) {
+cache::cache(std::optional<std::filesystem::path> root) : m{ std::make_unique<impl>() } {
   if (std::optional<path> maybe_root{ root ? root : platform::get_default_cache_root() }) {
-    root_ = *maybe_root;
+    m->root_ = *maybe_root;
     return;
   }
 
@@ -98,35 +146,12 @@ cache::cache(std::optional<std::filesystem::path> root) {
   throw std::runtime_error(oss.str());
 }
 
-path const &cache::root() const { return root_; }
+cache::~cache() = default;
+
+path const &cache::root() const { return m->root_; }
 
 bool cache::is_entry_complete(path const &entry_dir) {
   return std::filesystem::exists(entry_dir / ".envy-complete");
-}
-
-path cache::recipes_dir() const { return root_ / "recipes"; }
-path cache::assets_dir() const { return root_ / "assets"; }
-path cache::locks_dir() const { return root_ / "locks"; }
-
-cache::ensure_result cache::ensure_entry(path const &entry_dir, path const &lock_path) {
-  ensure_result result{};
-  result.entry_path = entry_dir;
-  result.asset_path = entry_dir / "asset";
-
-  if (is_entry_complete(entry_dir)) { return result; }
-
-  std::filesystem::create_directories(locks_dir());
-  std::filesystem::create_directories(entry_dir);
-
-  platform::file_lock_handle_t h { platform::lock_file(lock_path)};
-
-  if (is_entry_complete(entry_dir)) { // we lost a race but the work completed.
-    platform::unlock_file(h);  
-    return result;
-  }
-
-  result.lock = scoped_entry_lock::make(entry_dir, lock_path, h);
-  return result;
 }
 
 cache::ensure_result cache::ensure_asset(std::string_view identity,
@@ -141,13 +166,14 @@ cache::ensure_result cache::ensure_asset(std::string_view identity,
 
   std::string const lock{ "assets." + entry + ".lock" };
 
-  return ensure_entry(assets_dir() / entry, locks_dir() / lock);
+  return ensure_entry(*m, m->assets_dir() / entry, m->locks_dir() / lock);
 }
 
 cache::ensure_result cache::ensure_recipe(std::string_view identity) {
   std::string const id{ identity };
-  return ensure_entry(recipes_dir() / (id + ".lua"),
-                      locks_dir() / ("recipe." + id + ".lock"));
+  return ensure_entry(*m,
+                      m->recipes_dir() / (id + ".lua"),
+                      m->locks_dir() / ("recipe." + id + ".lock"));
 }
 
 }  // namespace envy

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "lua_util.h"
 #include "util.h"
 
 #include <filesystem>
+#include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -11,13 +14,9 @@
 
 namespace envy {
 
-class lua_value;
-
 class recipe : unmovable {
  public:
   struct cfg {
-    struct builtin_source {};
-
     struct remote_source {
       std::string url;
       std::string sha256;
@@ -27,31 +26,43 @@ class recipe : unmovable {
       std::filesystem::path file_path;
     };
 
-    using source_t = std::variant<builtin_source, remote_source, local_source>;
+    using source_t = std::variant<remote_source, local_source>;
 
     std::string identity;  // "namespace.name@version"
     source_t source;
     std::unordered_map<std::string, std::string> options;
 
     static cfg parse(lua_value const &lua_val, std::filesystem::path const &base_path);
+
+    bool is_remote() const;
+    bool is_local() const;
   };
 
-  explicit recipe(cfg cfg);
+  recipe(cfg cfg, lua_state_ptr lua_state, std::vector<recipe *> dependencies);
+  ~recipe();
 
-  cfg const &config() const { return cfg_; }
-  std::string const &identity() const { return cfg_.identity; }
+  cfg const &config() const;
+  std::string const &identity() const;
   std::string_view namespace_name() const;
   std::string_view name() const;
   std::string_view version() const;
 
-  cfg::source_t const &source() const { return cfg_.source; }
+  cfg::source_t const &source() const;
+  lua_State *lua_state() const;
 
-  std::vector<recipe const *> const &dependencies() const { return dependencies_; }
-  void add_dependency(recipe const *dep);
+  std::vector<recipe *> const &dependencies() const;
 
  private:
-  cfg cfg_;
-  std::vector<recipe const *> dependencies_;
+  struct impl;
+  std::unique_ptr<impl> m;
 };
+
+struct resolution_result {
+  std::set<std::unique_ptr<recipe>> recipes;
+  std::vector<recipe *> roots;
+};
+
+class cache;
+resolution_result recipe_resolve(std::vector<recipe::cfg> const &packages, cache &c);
 
 }  // namespace envy

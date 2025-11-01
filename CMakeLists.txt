@@ -329,6 +329,7 @@ target_sources(envy_unit_tests
         src/uri_tests.cpp
         src/tui_tests.cpp
         src/tui.cpp
+        src/util_tests.cpp
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
