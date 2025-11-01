@@ -1,5 +1,6 @@
 #include "recipe.h"
 
+#include "cache.h"
 #include "doctest.h"
 #include "lua_util.h"
 
@@ -83,7 +84,8 @@ TEST_CASE("recipe::cfg::parse resolves relative file paths") {
 
 TEST_CASE("recipe::cfg::parse parses table with options") {
   auto lua_val{ lua_eval(
-      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = '13.2.0', target = "
+      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = "
+      "'13.2.0', target = "
       "'arm-none-eabi' } }") };
 
   auto const cfg{ envy::recipe::cfg::parse(lua_val, fs::path("/fake")) };
@@ -95,7 +97,8 @@ TEST_CASE("recipe::cfg::parse parses table with options") {
 }
 
 TEST_CASE("recipe::cfg::parse parses table with empty options") {
-  auto lua_val{ lua_eval("result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = {} }") };
+  auto lua_val{ lua_eval(
+      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = {} }") };
 
   auto const cfg{ envy::recipe::cfg::parse(lua_val, fs::path("/fake")) };
 
@@ -125,7 +128,8 @@ TEST_CASE("recipe::cfg::parse parses table with all fields") {
 // Error cases ----------------------------------------------------------------
 
 TEST_CASE("recipe::cfg::parse errors on invalid identity format") {
-  auto lua_val{ lua_eval("result = { recipe = 'invalid-no-at-sign', file = '/fake/r.lua' }") };
+  auto lua_val{ lua_eval(
+      "result = { recipe = 'invalid-no-at-sign', file = '/fake/r.lua' }") };
 
   CHECK_THROWS_WITH_AS(envy::recipe::cfg::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: invalid-no-at-sign",
@@ -244,7 +248,9 @@ TEST_CASE("recipe::cfg::parse errors on non-string file") {
 }
 
 TEST_CASE("recipe::cfg::parse errors on non-table options") {
-  auto lua_val{ lua_eval("result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = 'not a table' }") };
+  auto lua_val{ lua_eval(
+      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = 'not a table' "
+      "}") };
 
   CHECK_THROWS_WITH_AS(envy::recipe::cfg::parse(lua_val, fs::path("/fake")),
                        "Recipe 'options' field must be table",
@@ -253,9 +259,63 @@ TEST_CASE("recipe::cfg::parse errors on non-table options") {
 
 TEST_CASE("recipe::cfg::parse errors on non-string option value") {
   auto lua_val{ lua_eval(
-      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = 123 } }") };
+      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = 123 "
+      "} }") };
 
   CHECK_THROWS_WITH_AS(envy::recipe::cfg::parse(lua_val, fs::path("/fake")),
                        "Option value for 'version' must be string",
+                       std::runtime_error);
+}
+
+// recipe_resolve tests -------------------------------------------------------
+
+namespace {
+
+struct tmp_dir_cleanup {
+  fs::path dir_;
+  explicit tmp_dir_cleanup(std::string const &suffix)
+      : dir_{ fs::temp_directory_path() / ("envy_test_cache_" + suffix) } {
+    fs::remove_all(dir_);
+  }
+  ~tmp_dir_cleanup() { fs::remove_all(dir_); }
+  fs::path const &path() const { return dir_; }
+};
+
+}  // namespace
+
+TEST_CASE("recipe_resolve: simple recipe with no dependencies") {
+  tmp_dir_cleanup tmp{ "simple" };
+  envy::cache c{ tmp.path() };
+
+  std::vector<envy::recipe::cfg> packages;
+  packages.push_back(envy::recipe::cfg{
+      .identity = "local.simple@1.0.0",
+      .source =
+          envy::recipe::cfg::local_source{ .file_path = "test_data/recipes/simple.lua" },
+      .options = {} });
+
+  auto result{ envy::recipe_resolve(packages, c) };
+
+  CHECK(result.roots.size() == 1);
+  CHECK(result.roots[0]->identity() == "local.simple@1.0.0");
+  CHECK(result.roots[0]->dependencies().empty());
+}
+
+TEST_CASE("recipe_resolve: validates local.* must have local source") {
+  tmp_dir_cleanup tmp{ "validate" };
+  envy::cache c{ tmp.path() };
+
+  std::vector<envy::recipe::cfg> packages;
+  packages.push_back(envy::recipe::cfg{
+      .identity = "local.fake@1.0.0",
+      .source =
+          envy::recipe::cfg::remote_source{
+              .url = "https://example.com/fake.lua",
+              .sha256 =
+                  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+      .options = {} });
+
+  CHECK_THROWS_WITH_AS(envy::recipe_resolve(packages, c),
+                       doctest::Contains("Recipe 'local.*' must have local source"),
                        std::runtime_error);
 }

@@ -149,7 +149,7 @@ TEST_CASE("manifest::load parses simple string package") {
 
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
-  CHECK(std::holds_alternative<envy::recipe::cfg::local_source>(m.packages[0].source));
+  CHECK(m.packages[0].is_local());
   CHECK(m.packages[0].options.empty());
 }
 

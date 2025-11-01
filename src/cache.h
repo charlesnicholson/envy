@@ -36,15 +36,13 @@ class cache : unmovable {
     scoped_entry_lock(path entry_dir,
                       path lock_path,
                       platform::file_lock_handle_t lock_handle);
-    path asset_dir() const;
 
-    path entry_dir_;
-    path lock_path_;
-    platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
-    bool completed_{ false };
+    struct impl;
+    std::unique_ptr<impl> m;
   };
 
   explicit cache(std::optional<path> root = std::nullopt);
+  ~cache();
 
   path const &root() const;
 
@@ -64,13 +62,8 @@ class cache : unmovable {
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 
  private:
-  path root_;
-
-  path recipes_dir() const;
-  path assets_dir() const;
-  path locks_dir() const;
-
-  ensure_result ensure_entry(path const &entry_dir, path const &lock_path);
+  struct impl;
+  std::unique_ptr<impl> m;
 };
 
 }  // namespace envy

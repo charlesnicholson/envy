@@ -1,18 +1,29 @@
 #include "recipe.h"
 
+#include "cache.h"
 #include "lua_util.h"
 #include "tui.h"
 #include "uri.h"
 
+#include "tbb/concurrent_hash_map.h"
 #include "tbb/task_group.h"
 
 #include <algorithm>
-#include <mutex>
 #include <stdexcept>
 #include <unordered_map>
+#include <vector>
 
 namespace envy {
+
+struct recipe::impl {
+  cfg cfg_;
+  lua_state_ptr lua_state_;
+  std::vector<recipe *> dependencies_;
+};
+
 namespace {
+
+thread_local std::vector<std::string> resolution_stack;
 
 bool parse_identity(std::string const &identity,
                     std::string &out_namespace,
@@ -115,32 +126,50 @@ recipe::cfg recipe::cfg::parse(lua_value const &lua_val,
   return result;
 }
 
+bool recipe::cfg::is_remote() const {
+  return std::holds_alternative<remote_source>(source);
+}
+
+bool recipe::cfg::is_local() const { return std::holds_alternative<local_source>(source); }
+
 recipe::recipe(cfg cfg, lua_state_ptr lua_state, std::vector<recipe *> dependencies)
-    : cfg_{ std::move(cfg) },
-      lua_state_{ std::move(lua_state) },
-      dependencies_{ std::move(dependencies) } {}
+    : m{ std::make_unique<impl>(std::move(cfg),
+                                std::move(lua_state),
+                                std::move(dependencies)) } {}
+
+recipe::~recipe() = default;
+
+recipe::cfg const &recipe::config() const { return m->cfg_; }
+
+std::string const &recipe::identity() const { return m->cfg_.identity; }
 
 std::string_view recipe::namespace_name() const {
-  auto const dot_pos{ cfg_.identity.find('.') };
+  auto const dot_pos{ m->cfg_.identity.find('.') };
   if (dot_pos == std::string::npos) { return {}; }
-  return std::string_view{ cfg_.identity.data(), dot_pos };
+  return std::string_view{ m->cfg_.identity.data(), dot_pos };
 }
 
 std::string_view recipe::name() const {
-  auto const dot_pos{ cfg_.identity.find('.') };
-  auto const at_pos{ cfg_.identity.find('@') };
+  auto const dot_pos{ m->cfg_.identity.find('.') };
+  auto const at_pos{ m->cfg_.identity.find('@') };
   if (dot_pos == std::string::npos || at_pos == std::string::npos || dot_pos >= at_pos) {
     return {};
   }
-  return std::string_view{ cfg_.identity.data() + dot_pos + 1, at_pos - dot_pos - 1 };
+  return std::string_view{ m->cfg_.identity.data() + dot_pos + 1, at_pos - dot_pos - 1 };
 }
 
 std::string_view recipe::version() const {
-  auto const at_pos{ cfg_.identity.find('@') };
-  if (at_pos == std::string::npos || at_pos == cfg_.identity.size() - 1) { return {}; }
-  return std::string_view{ cfg_.identity.data() + at_pos + 1,
-                           cfg_.identity.size() - at_pos - 1 };
+  auto const at_pos{ m->cfg_.identity.find('@') };
+  if (at_pos == std::string::npos || at_pos == m->cfg_.identity.size() - 1) { return {}; }
+  return std::string_view{ m->cfg_.identity.data() + at_pos + 1,
+                           m->cfg_.identity.size() - at_pos - 1 };
 }
+
+recipe::cfg::source_t const &recipe::source() const { return m->cfg_.source; }
+
+lua_State *recipe::lua_state() const { return m->lua_state_.get(); }
+
+std::vector<recipe *> const &recipe::dependencies() const { return m->dependencies_; }
 
 namespace {
 
@@ -163,97 +192,119 @@ std::string make_canonical_key(
 }
 
 void validate_recipe_source(recipe::cfg const &cfg) {
-  if (cfg.identity.starts_with("local.") &&
-      !std::holds_alternative<recipe::cfg::local_source>(cfg.source)) {
+  if (cfg.identity.starts_with("local.") && !cfg.is_local()) {
     throw std::runtime_error("Recipe 'local.*' must have local source: " + cfg.identity);
   }
 }
 
+using memo_map_t = tbb::concurrent_hash_map<std::string, recipe *>;
+
 struct resolver {
   cache &cache_;
-  std::mutex mutex_;
-  std::unordered_map<std::string, recipe *> memo_;
+  memo_map_t memo_;
+  std::mutex storage_mutex_;
   std::set<std::unique_ptr<recipe>> storage_;
 };
 
-recipe *recipe_resolve_one(resolver &r,
-                           recipe::cfg const &cfg,
-                           tbb::task_group &tg,
-                           std::vector<std::string> stack) {
+recipe *recipe_resolve_one(resolver &r, recipe::cfg const &cfg) {
   auto const key{ make_canonical_key(cfg.identity, cfg.options) };
 
-  {  // Check memo
-    std::lock_guard lock{ r.mutex_ };
-    if (auto const it{ r.memo_.find(key) }; it != r.memo_.end()) { return it->second; }
+  // Try to insert placeholder - if already exists, wait and return
+  memo_map_t::accessor acc;
+  if (!r.memo_.insert(acc, key)) {
+    return acc->second;  // other is resolving or has resolved, block until value available
   }
 
-  if (std::ranges::find(stack, key) != stack.end()) {  // Cycle detection
-    throw std::runtime_error("Dependency cycle detected: " + key);
-  }
-  stack.push_back(key);
+  // Winner: acc holds write lock, proceed to resolve
+  acc->second = nullptr;  // Placeholder while we resolve
+  acc.release();          // Release lock so we don't block memo reads during resolution
 
-  // Load recipe file
-  auto lua_state{ lua_make() };
-  lua_add_envy(lua_state);
-
-  auto const recipe_path{ std::visit(
-      [&](auto const &source) -> std::filesystem::path {
-        using T = std::decay_t<decltype(source)>;
-        if constexpr (std::is_same_v<T, recipe::cfg::remote_source>) {
-          return r.cache_.ensure_recipe(cfg.identity).entry_path;
-        } else {  // local_source
-          auto const uri_info{ uri_classify(source.file_path.string()) };
-          if (uri_info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-            return uri_resolve_local_file_relative(source.file_path.string(),
-                                                   std::nullopt);
-          }
-          return source.file_path;
-        }
-      },
-      cfg.source) };
-
-  if (!lua_run_file(lua_state, recipe_path)) {
-    throw std::runtime_error("Failed to load recipe: " + cfg.identity);
-  }
-
-  // Extract and validate dependencies
-  std::vector<recipe::cfg> dep_cfgs;
-
-  if (auto const deps_array{ lua_global_to_array(lua_state.get(), "dependencies") }) {
-    auto const is_local{ std::holds_alternative<recipe::cfg::local_source>(cfg.source) };
-    for (auto const &dep_val : *deps_array) {
-      auto dep_cfg{ recipe::cfg::parse(dep_val, std::filesystem::path{}) };
-      validate_recipe_source(dep_cfg);
-      if (!is_local && dep_cfg.identity.starts_with("local.")) {
-        throw std::runtime_error("Non-local recipe cannot depend on local recipe: " +
-                                 dep_cfg.identity);
-      }
-      dep_cfgs.push_back(std::move(dep_cfg));
+  // Cycle detection
+  if (std::ranges::find(resolution_stack, key) != resolution_stack.end()) {
+    std::string cycle_path{ key };
+    for (auto it{ resolution_stack.rbegin() }; it != resolution_stack.rend(); ++it) {
+      cycle_path += " -> " + *it;
+      if (*it == key) break;
     }
+    r.memo_.erase(key);  // Remove placeholder
+    throw std::runtime_error("Dependency cycle detected: " + cycle_path);
   }
+  resolution_stack.push_back(key);
 
-  // Resolve children in parallel
-  std::vector<recipe *> children(dep_cfgs.size());
-  for (size_t i{}; i < dep_cfgs.size(); ++i) {
-    tg.run([&, i, dep_cfg = dep_cfgs[i], stack]() {
-      children[i] = recipe_resolve_one(r, dep_cfg, tg, stack);
-    });
+  try {  // Load recipe file
+    auto const recipe_path{ std::visit(
+        [&](auto const &source) -> std::filesystem::path {
+          using T = std::decay_t<decltype(source)>;
+          if constexpr (std::is_same_v<T, recipe::cfg::remote_source>) {
+            return r.cache_.ensure_recipe(cfg.identity).entry_path;
+          } else {  // local_source
+            auto const uri_info{ uri_classify(source.file_path.string()) };
+            if (uri_info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+              return uri_resolve_local_file_relative(source.file_path.string(),
+                                                     std::nullopt);
+            }
+            return source.file_path;
+          }
+        },
+        cfg.source) };
+
+    auto lua_state{ lua_make() };
+    lua_add_envy(lua_state);
+
+    if (!lua_run_file(lua_state, recipe_path)) {
+      throw std::runtime_error("Failed to load recipe: " + cfg.identity);
+    }
+
+    // Extract and validate dependencies
+    std::vector<recipe::cfg> dep_cfgs;
+
+    if (auto const deps_array{ lua_global_to_array(lua_state.get(), "dependencies") }) {
+      bool const allow_local_deps{ cfg.is_local() };
+      dep_cfgs.reserve(deps_array->size());
+      for (auto const &dep_val : *deps_array) {
+        auto dep_cfg{ recipe::cfg::parse(dep_val, recipe_path) };
+        if (!allow_local_deps && dep_cfg.identity.starts_with("local.")) {
+          throw std::runtime_error("Non-local recipe cannot depend on local recipe: " +
+                                   dep_cfg.identity);
+        }
+        dep_cfgs.push_back(std::move(dep_cfg));
+      }
+    }
+
+    // Resolve children in parallel using nested task_group
+    std::vector<recipe *> children(dep_cfgs.size());
+    tbb::task_group child_tg;
+    for (size_t i{}; i < dep_cfgs.size(); ++i) {
+      child_tg.run([&, i, dep_cfg = dep_cfgs[i]]() {
+        children[i] = recipe_resolve_one(r, dep_cfg);
+      });
+    }
+    child_tg.wait();
+
+    // Pop from stack before storing
+    resolution_stack.pop_back();
+
+    // Store recipe
+    auto recipe_ptr{
+      std::make_unique<recipe>(cfg, std::move(lua_state), std::move(children))
+    };
+    recipe *result{ recipe_ptr.get() };
+
+    {
+      std::lock_guard lock{ r.storage_mutex_ };
+      r.storage_.insert(std::move(recipe_ptr));
+    }
+
+    // Update memo with resolved recipe (unblocks waiters)
+    memo_map_t::accessor write_acc;
+    if (r.memo_.find(write_acc, key)) { write_acc->second = result; }
+
+    return result;
+  } catch (...) {
+    resolution_stack.pop_back();
+    r.memo_.erase(key);  // Remove placeholder on error
+    throw;
   }
-  tg.wait();
-
-  // Store and memoize
-  auto recipe_ptr{
-    std::make_unique<recipe>(cfg, std::move(lua_state), std::move(children))
-  };
-  recipe *result{ recipe_ptr.get() };
-
-  {
-    std::lock_guard lock{ r.mutex_ };
-    r.storage_.insert(std::move(recipe_ptr));
-    r.memo_[key] = result;
-  }
-
-  return result;
 }
 
 }  // namespace
@@ -266,7 +317,7 @@ resolution_result recipe_resolve(std::vector<recipe::cfg> const &packages, cache
   std::vector<recipe *> roots(packages.size());
 
   for (size_t i{}; i < packages.size(); ++i) {
-    tg.run([&, i]() { roots[i] = recipe_resolve_one(r, packages[i], tg, {}); });
+    tg.run([&, i]() { roots[i] = recipe_resolve_one(r, packages[i]); });
   }
   tg.wait();
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cache.h"
 #include "lua_util.h"
 #include "util.h"
 
@@ -34,25 +33,28 @@ class recipe : unmovable {
     std::unordered_map<std::string, std::string> options;
 
     static cfg parse(lua_value const &lua_val, std::filesystem::path const &base_path);
+
+    bool is_remote() const;
+    bool is_local() const;
   };
 
   recipe(cfg cfg, lua_state_ptr lua_state, std::vector<recipe *> dependencies);
+  ~recipe();
 
-  cfg const &config() const { return cfg_; }
-  std::string const &identity() const { return cfg_.identity; }
+  cfg const &config() const;
+  std::string const &identity() const;
   std::string_view namespace_name() const;
   std::string_view name() const;
   std::string_view version() const;
 
-  cfg::source_t const &source() const { return cfg_.source; }
-  lua_State *lua_state() const { return lua_state_.get(); }
+  cfg::source_t const &source() const;
+  lua_State *lua_state() const;
 
-  std::vector<recipe *> const &dependencies() const { return dependencies_; }
+  std::vector<recipe *> const &dependencies() const;
 
  private:
-  cfg cfg_;
-  lua_state_ptr lua_state_;
-  std::vector<recipe *> dependencies_;
+  struct impl;
+  std::unique_ptr<impl> m;
 };
 
 struct resolution_result {
@@ -60,6 +62,7 @@ struct resolution_result {
   std::vector<recipe *> roots;
 };
 
+class cache;
 resolution_result recipe_resolve(std::vector<recipe::cfg> const &packages, cache &c);
 
 }  // namespace envy
