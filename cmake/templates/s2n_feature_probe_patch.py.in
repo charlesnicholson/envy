@@ -118,7 +118,7 @@ endfunction()
 endif()
 
 """
-    match_minimum = re.search(r"cmake_minimum_required\(VERSION[^\n]*\)\n", text)
+    match_minimum = re.search(r"(?im)^\\s*cmake_minimum_required\\s*\\([^)]*\\)\\s*$", text)
     if not match_minimum:
         raise RuntimeError("failed to locate cmake_minimum_required for helper insertion")
     insert_at = match_minimum.end()
