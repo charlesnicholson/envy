@@ -124,9 +124,6 @@ endif()
     insert_at = match_minimum.end()
     text = text[:insert_at] + helper_block + text[insert_at:]
 
-if "# envy feature probe include patch v4" in text:
-    s2n_cmakelists.write_text(text)
-    raise SystemExit(0)
 
 replacement = """    envy_s2n_prepare_probe(${LINK_LIB} ${PROBE_NAME} _envy_probe_compile_defs _envy_sanitized_includes _envy_probe_link_libs _envy_saved_includes) # envy feature probe include patch v4
     try_compile(
