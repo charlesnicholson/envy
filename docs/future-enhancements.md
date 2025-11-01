@@ -2,6 +2,10 @@
 
 Potential enhancements not currently prioritized.
 
+## Built-in Recipes
+
+Embed recipes in the envy binary itself (e.g., `envy.*` namespace), extracted to cache on first run. Useful for bootstrapping common toolchains without external dependencies, but adds binary size and complexity. Needs clear use case before implementation.
+
 ## Recipe Source Overrides
 
 Allow manifests to override recipe sources globally. Useful for pointing to mirrors, local forks, or air-gapped environments.
