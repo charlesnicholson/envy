@@ -1,16 +1,23 @@
 import pathlib
 import re
 
-# Ensure s2n feature probes use aws-lc headers and strip generator expressions so
-# Ninja's `-t recompact` never encounters raw '$' tokens in try_compile builds.
+# Ensure s2n feature probes use aws-lc headers, sanitize generator expressions,
+# and avoid injecting raw '$' tokens into Ninja try_compile invocations.
 
 s2n_cmakelists = pathlib.Path(r"@S2N_CMAKELISTS@")
 text = s2n_cmakelists.read_text()
 
-replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch v3
+helper_marker = "# envy s2n probe helpers v1"
+if helper_marker not in text:
+    helper_block = """
+# envy s2n probe helpers v1
+if(NOT COMMAND envy_s2n_prepare_probe)
+function(envy_s2n_prepare_probe LINK_LIB PROBE_NAME OUT_COMPILE_DEFS OUT_SANITIZED_INCLUDES OUT_LINK_LIBS OUT_SAVED_INCLUDES)
+    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch helpers
     set(_envy_probe_include_dirs "")
     set(_envy_probe_link_libs "")
     set(_envy_sanitized_includes "")
+    set(_envy_probe_link_location "")
     if(TARGET ${LINK_LIB})
         get_target_property(_envy_probe_include_dirs ${LINK_LIB} INTERFACE_INCLUDE_DIRECTORIES)
         get_target_property(_envy_target_type ${LINK_LIB} TYPE)
@@ -32,9 +39,6 @@ replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}"
     endif()
     if(NOT _envy_probe_include_dirs AND DEFINED crypto_INCLUDE_DIR AND NOT "${crypto_INCLUDE_DIR}" STREQUAL "")
         set(_envy_probe_include_dirs "${crypto_INCLUDE_DIR}")
-    endif()
-    if(NOT _envy_probe_link_libs)
-        list(APPEND _envy_probe_link_libs ${LINK_LIB})
     endif()
     set(_envy_probe_had_include FALSE)
     if(_envy_probe_include_dirs)
@@ -72,7 +76,6 @@ replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}"
             list(APPEND _envy_sanitized_includes "${_envy_probe_fallback}")
             set(_envy_probe_had_include TRUE)
         endif()
-        unset(_envy_probe_fallback)
     endif()
     list(FILTER _envy_probe_compile_defs EXCLUDE REGEX "\\$<")
     foreach(_envy_def IN LISTS _envy_probe_compile_defs)
@@ -80,18 +83,52 @@ replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}"
             message(FATAL_ERROR "s2n feature probe sanitizer missed generator expression: ${_envy_def}")
         endif()
     endforeach()
-    if(DEFINED ENV{ENVY_DEBUG_S2N_PROBES})
-        file(APPEND "${CMAKE_BINARY_DIR}/envy_s2n_probe_debug.log" "${PROBE_NAME}: ${_envy_probe_compile_defs}\n")
+    if(NOT _envy_probe_link_libs)
+        list(APPEND _envy_probe_link_libs ${LINK_LIB})
     endif()
     if(TARGET ${LINK_LIB})
-        if(DEFINED _envy_sanitized_includes)
+        if(_envy_sanitized_includes)
             list(REMOVE_DUPLICATES _envy_sanitized_includes)
         endif()
         get_target_property(_envy_saved_includes ${LINK_LIB} INTERFACE_INCLUDE_DIRECTORIES)
         if(_envy_sanitized_includes)
             set_target_properties(${LINK_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_envy_sanitized_includes}")
         endif()
+    else()
+        set(_envy_saved_includes "")
     endif()
+    if(DEFINED ENV{ENVY_DEBUG_S2N_PROBES})
+        file(APPEND "${CMAKE_BINARY_DIR}/envy_s2n_probe_debug.log" "${PROBE_NAME}: defs=${_envy_probe_compile_defs} includes=${_envy_sanitized_includes} link=${_envy_probe_link_libs}\n")
+    endif()
+    set(${OUT_COMPILE_DEFS} "${_envy_probe_compile_defs}" PARENT_SCOPE)
+    set(${OUT_SANITIZED_INCLUDES} "${_envy_sanitized_includes}" PARENT_SCOPE)
+    set(${OUT_LINK_LIBS} "${_envy_probe_link_libs}" PARENT_SCOPE)
+    set(${OUT_SAVED_INCLUDES} "${_envy_saved_includes}" PARENT_SCOPE)
+endfunction()
+
+function(envy_s2n_restore_probe LINK_LIB SAVED_INCLUDES)
+    if(TARGET ${LINK_LIB})
+        if("${SAVED_INCLUDES}" STREQUAL "" OR "${SAVED_INCLUDES}" STREQUAL "NOTFOUND")
+            set_target_properties(${LINK_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
+        else()
+            set_target_properties(${LINK_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SAVED_INCLUDES}")
+        endif()
+    endif()
+endfunction()
+endif()
+
+"""
+    match_minimum = re.search(r"cmake_minimum_required\(VERSION[^\n]*\)\n", text)
+    if not match_minimum:
+        raise RuntimeError("failed to locate cmake_minimum_required for helper insertion")
+    insert_at = match_minimum.end()
+    text = text[:insert_at] + helper_block + text[insert_at:]
+
+if "# envy feature probe include patch v4" in text:
+    s2n_cmakelists.write_text(text)
+    raise SystemExit(0)
+
+replacement = """    envy_s2n_prepare_probe(${LINK_LIB} ${PROBE_NAME} _envy_probe_compile_defs _envy_sanitized_includes _envy_probe_link_libs _envy_saved_includes) # envy feature probe include patch v4
     try_compile(
         IS_AVAILABLE
         ${CMAKE_BINARY_DIR}
@@ -102,37 +139,60 @@ replacement = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}"
         ${ARGN}
         OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
     )
-    unset(_envy_probe_had_include)
-    unset(_envy_clean_dir)
-    unset(_envy_probe_include_dirs)
+    envy_s2n_restore_probe(${LINK_LIB} "${_envy_saved_includes}")
     unset(_envy_probe_compile_defs)
-    if(TARGET ${LINK_LIB})
-        if(DEFINED _envy_saved_includes AND NOT _envy_saved_includes STREQUAL "NOTFOUND")
-            set_target_properties(${LINK_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_envy_saved_includes}")
-        else()
-            set_target_properties(${LINK_LIB} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
-        endif()
-    endif()
-    unset(_envy_saved_includes)
-    unset(_envy_sanitized_includes)
-    unset(_envy_target_type)
-    unset(_envy_binary_dir)
-    unset(_envy_output_name)
     unset(_envy_probe_link_libs)
-    unset(_envy_probe_link_location)
+    unset(_envy_sanitized_includes)
+    unset(_envy_saved_includes)
 
 """
 
-pattern = re.compile(
+legacy_pattern = re.compile(
     r"    set\(_envy_probe_compile_defs[^#]*# envy feature probe include patch[^\n]*\n"
     r".*?"
-    r"    unset\(_envy_probe_compile_defs\)\n",
+    r"    unset\(_envy_probe_link_location\)\n",
     re.DOTALL,
 )
 
-match = pattern.search(text)
-if not match:
-    raise RuntimeError("s2n feature probe block not found")
+match = legacy_pattern.search(text)
+if match:
+    text = text[:match.start()] + replacement + text[match.end():]
+else:
+    original = """    try_compile(
+        IS_AVAILABLE
+        ${CMAKE_BINARY_DIR}
+        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
+        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
+        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
+        COMPILE_DEFINITIONS -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}
+        ${ARGN}
+        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
+    )
+"""
+    legacy = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch
+    if(DEFINED crypto_INCLUDE_DIR AND NOT "${crypto_INCLUDE_DIR}" STREQUAL "")
+        foreach(_envy_crypto_dir IN LISTS crypto_INCLUDE_DIR)
+            list(APPEND _envy_probe_compile_defs -I "${_envy_crypto_dir}")
+        endforeach()
+    endif()
+    try_compile(
+        IS_AVAILABLE
+        ${CMAKE_BINARY_DIR}
+        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
+        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
+        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
+        COMPILE_DEFINITIONS ${_envy_probe_compile_defs}
+        ${ARGN}
+        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
+    )
+    unset(_envy_probe_compile_defs)
 
-new_text = text[:match.start()] + replacement + text[match.end():]
-s2n_cmakelists.write_text(new_text)
+"""
+    if original in text:
+        text = text.replace(original, replacement, 1)
+    elif legacy in text:
+        text = text.replace(legacy, replacement, 1)
+    else:
+        raise RuntimeError("s2n feature probe block not found")
+
+s2n_cmakelists.write_text(text)
