@@ -7,10 +7,19 @@ import re
 s2n_cmakelists = pathlib.Path(r"@S2N_CMAKELISTS@")
 text = s2n_cmakelists.read_text()
 
-helper_marker = "# envy s2n probe helpers v1"
+helper_markers = ("# envy s2n probe helpers", "# envy s2n probe helpers v1")
+for marker in helper_markers[1:]:
+    if marker in text:
+        text = text.replace(marker, helper_markers[0], 1)
+
+helper_marker = helper_markers[0]
+if helper_marker in text and "envy_s2n_prepare_probe(" in text:
+    s2n_cmakelists.write_text(text)
+    raise SystemExit(0)
+
 if helper_marker not in text:
     helper_block = """
-# envy s2n probe helpers v1
+# envy s2n probe helpers
 if(NOT COMMAND envy_s2n_prepare_probe)
 function(envy_s2n_prepare_probe LINK_LIB PROBE_NAME OUT_COMPILE_DEFS OUT_SANITIZED_INCLUDES OUT_LINK_LIBS OUT_SAVED_INCLUDES)
     set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch helpers
@@ -118,14 +127,15 @@ endfunction()
 endif()
 
 """
-    match_minimum = re.search(r"(?im)^\\s*cmake_minimum_required\\s*\\([^)]*\\)\\s*$", text)
-    if not match_minimum:
-        raise RuntimeError("failed to locate cmake_minimum_required for helper insertion")
-    insert_at = match_minimum.end()
+    helper_anchor = re.search(r"(?m)^function\(feature_probe PROBE_NAME\)", text)
+    if not helper_anchor:
+        raise RuntimeError("failed to locate s2n_add_features for helper insertion")
+    insert_at = helper_anchor.start()
     text = text[:insert_at] + helper_block + text[insert_at:]
 
 
-replacement = """    envy_s2n_prepare_probe(${LINK_LIB} ${PROBE_NAME} _envy_probe_compile_defs _envy_sanitized_includes _envy_probe_link_libs _envy_saved_includes) # envy feature probe include patch v4
+replacement = """    # Try to compile the probe with the given flags
+    envy_s2n_prepare_probe(${LINK_LIB} ${PROBE_NAME} _envy_probe_compile_defs _envy_sanitized_includes _envy_probe_link_libs _envy_saved_includes) # envy feature probe include patch
     try_compile(
         IS_AVAILABLE
         ${CMAKE_BINARY_DIR}
@@ -151,45 +161,40 @@ legacy_pattern = re.compile(
     re.DOTALL,
 )
 
-match = legacy_pattern.search(text)
-if match:
-    text = text[:match.start()] + replacement + text[match.end():]
-else:
-    original = """    try_compile(
-        IS_AVAILABLE
-        ${CMAKE_BINARY_DIR}
-        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
-        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
-        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
-        COMPILE_DEFINITIONS -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}
-        ${ARGN}
-        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
-    )
-"""
-    legacy = """    set(_envy_probe_compile_defs -I "${CMAKE_CURRENT_LIST_DIR}" -include "${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h" -c ${GLOBAL_FLAGS} ${PROBE_FLAGS}) # envy feature probe include patch
-    if(DEFINED crypto_INCLUDE_DIR AND NOT "${crypto_INCLUDE_DIR}" STREQUAL "")
-        foreach(_envy_crypto_dir IN LISTS crypto_INCLUDE_DIR)
-            list(APPEND _envy_probe_compile_defs -I "${_envy_crypto_dir}")
-        endforeach()
-    endif()
-    try_compile(
-        IS_AVAILABLE
-        ${CMAKE_BINARY_DIR}
-        SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/features/${PROBE_NAME}.c"
-        LINK_LIBRARIES ${LINK_LIB} ${OS_LIBS}
-        CMAKE_FLAGS ${ADDITIONAL_FLAGS}
-        COMPILE_DEFINITIONS ${_envy_probe_compile_defs}
-        ${ARGN}
-        OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
-    )
-    unset(_envy_probe_compile_defs)
+patched = False
+simple_pattern = re.compile(
+    r"    # Try to compile the probe with the given flags\n"
+    r"    try_compile\(\n"
+    r"(?:        .*\n)+?"
+    r"    \)\n",
+    re.MULTILINE,
+)
 
-"""
-    if original in text:
-        text = text.replace(original, replacement, 1)
-    elif legacy in text:
-        text = text.replace(legacy, replacement, 1)
-    else:
-        raise RuntimeError("s2n feature probe block not found")
+match_simple = simple_pattern.search(text)
+if match_simple:
+    text = text[:match_simple.start()] + replacement + text[match_simple.end():]
+    patched = True
+
+probe_patch_pattern = re.compile(
+    r"    set\(_envy_probe_compile_defs -I \"\${CMAKE_CURRENT_LIST_DIR}\" -include \"\${CMAKE_CURRENT_LIST_DIR}/utils/s2n_prelude.h\" -c \${GLOBAL_FLAGS} \${PROBE_FLAGS}\) # envy feature probe include patch[^\n]*\n"
+    r"(?:    .*\n)*?"
+    r"    unset\(_envy_probe_compile_defs\)\n",
+    re.DOTALL,
+)
+
+if not patched:
+    match_probe_patch = probe_patch_pattern.search(text)
+    if match_probe_patch:
+        text = text[:match_probe_patch.start()] + replacement + text[match_probe_patch.end():]
+        patched = True
+
+if not patched:
+    match = legacy_pattern.search(text)
+    if match:
+        text = text[:match.start()] + replacement + text[match.end():]
+        patched = True
+
+if not patched:
+    raise RuntimeError("s2n feature probe block not found")
 
 s2n_cmakelists.write_text(text)
