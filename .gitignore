@@ -19,6 +19,7 @@ cmake_install.cmake
 Makefile
 compile_commands.json
 Testing/
+__cmake_systeminformation/
 
 # Local build directories
 out/
