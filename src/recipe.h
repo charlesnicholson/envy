@@ -6,12 +6,10 @@
 
 #include <filesystem>
 #include <memory>
-#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <variant>
-#include <vector>
 
 namespace envy {
 
@@ -34,9 +32,7 @@ class recipe : unmovable {
       std::optional<std::string> subdir;
     };
 
-    struct fetch_function {
-      std::string lua_code;  // Serialized Lua function
-    };
+    struct fetch_function {};  // Recipe defines custom fetch()
 
     using source_t = std::variant<remote_source, local_source, git_source, fetch_function>;
 
@@ -53,7 +49,7 @@ class recipe : unmovable {
     bool has_fetch_function() const;
   };
 
-  recipe(cfg cfg, lua_state_ptr lua_state, std::vector<recipe *> dependencies);
+  recipe(cfg cfg, lua_state_ptr lua_state);
   ~recipe();
 
   cfg const &config() const;
@@ -65,19 +61,9 @@ class recipe : unmovable {
   cfg::source_t const &source() const;
   lua_State *lua_state() const;
 
-  std::vector<recipe *> const &dependencies() const;
-
  private:
   struct impl;
   std::unique_ptr<impl> m;
 };
-
-struct resolution_result {
-  std::set<std::unique_ptr<recipe>> recipes;
-  std::vector<recipe *> roots;
-};
-
-class cache;
-resolution_result recipe_resolve(std::vector<recipe::cfg> const &packages, cache &c);
 
 }  // namespace envy
