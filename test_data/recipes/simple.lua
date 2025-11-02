@@ -1,3 +1,10 @@
-return {
-  recipe = "local.simple@1.0.0",
-}
+-- Minimal test recipe - no dependencies
+dependencies = {}
+
+function check(ctx)
+  return false
+end
+
+function install(ctx)
+  -- Programmatic package - no cache interaction
+end

@@ -10,33 +10,31 @@
 int main(int argc, char **argv) {
   envy::tui::init();
 
-  try {
-    auto args{ envy::cli_parse(argc, argv) };
+  auto args{ envy::cli_parse(argc, argv) };
 
-    envy::aws_shutdown_guard aws_guard;
+  envy::aws_shutdown_guard aws_guard;
+  envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };
 
-    envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };
-
-    if (!args.cli_output.empty()) {
-      if (args.cmd_cfg.has_value()) {
-        envy::tui::info("%s", args.cli_output.c_str());
-      } else {
-        envy::tui::error("%s", args.cli_output.c_str());
-        return EXIT_FAILURE;
-      }
+  if (!args.cli_output.empty()) {
+    if (!args.cmd_cfg.has_value()) {
+      envy::tui::error("%s", args.cli_output.c_str());
+      return EXIT_FAILURE;
     }
+    envy::tui::info("%s", args.cli_output.c_str());
+  }
 
-    if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
+  if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
 
-    auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
-                         *args.cmd_cfg) };
+  auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
+                       *args.cmd_cfg) };
 
-    bool ok{ false };
+  bool ok{ false };
+  try {
     tbb::task_arena().execute([&cmd, &ok]() { ok = cmd->execute(); });
-
-    return ok ? EXIT_SUCCESS : EXIT_FAILURE;
   } catch (std::exception const &ex) {
     envy::tui::error("Execution failed: %s", ex.what());
     return EXIT_FAILURE;
   }
+
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

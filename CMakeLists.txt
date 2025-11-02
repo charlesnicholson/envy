@@ -212,9 +212,12 @@ target_sources(envy_functional_tester
         src/cmd_playground.cpp
         src/cmd_version.cpp
         src/cmd_cache_functional_test.cpp
+        src/cmd_engine_functional_test.cpp
+        src/engine.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/lua_util.cpp
+        src/phase.cpp
         src/recipe.cpp
         src/sha256.cpp
         src/fetch.cpp
