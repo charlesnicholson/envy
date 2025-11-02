@@ -16,6 +16,9 @@ cli_args cli_parse(int argc, char **argv) {
   bool verbose{ false };
   app.add_flag("--verbose", verbose, "Enable structured verbose logging");
 
+  bool trace{ false };
+  app.add_flag("--trace", trace, "Enable structured trace logging");
+
   // Support version flags (-v / --version) triggering version command directly.
   bool version_flag_short{ false };
   bool version_flag_long{ false };
@@ -163,7 +166,10 @@ cli_args cli_parse(int argc, char **argv) {
     args.cli_output = app.help();
   } catch (CLI::ParseError const &e) { args.cli_output = std::string(e.what()); }
 
-  if (verbose) {
+  if (trace) {
+    args.verbosity = tui::level::TUI_TRACE;
+    args.structured_logging = true;
+  } else if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;
     args.structured_logging = true;
   } else {

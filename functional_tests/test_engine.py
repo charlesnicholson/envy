@@ -277,6 +277,29 @@ class TestEngine(unittest.TestCase):
             f"Expected local dep error, got: {result.stderr}",
         )
 
+    def test_phase_execution_check_false(self):
+        """Engine executes check() and install() phases with TRACE logging."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.simple@1.0.0",
+                "test_data/recipes/simple.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify TRACE logs show phase execution
+        stderr_lower = result.stderr.lower()
+        self.assertIn("check", stderr_lower, f"Expected check phase log: {result.stderr}")
+        self.assertIn("install", stderr_lower, f"Expected install phase log: {result.stderr}")
+        self.assertIn("local.simple@1.0.0", stderr_lower, f"Expected identity in logs: {result.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -248,18 +248,6 @@ target_link_libraries(envy_functional_tester
         envy::thirdparty
 )
 
-if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
-    if(CMAKE_STRIP)
-        add_custom_command(
-            TARGET envy_functional_tester POST_BUILD
-            COMMAND "${CMAKE_STRIP}" "$<TARGET_FILE:envy_functional_tester>"
-            COMMENT "Stripping envy_functional_tester executable"
-            VERBATIM
-        )
-    endif()
-endif()
-
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
         envy::libgit2
