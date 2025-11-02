@@ -132,6 +132,12 @@ bool recipe::cfg::is_remote() const {
 
 bool recipe::cfg::is_local() const { return std::holds_alternative<local_source>(source); }
 
+bool recipe::cfg::is_git() const { return std::holds_alternative<git_source>(source); }
+
+bool recipe::cfg::has_fetch_function() const {
+  return std::holds_alternative<fetch_function>(source);
+}
+
 recipe::recipe(cfg cfg, lua_state_ptr lua_state, std::vector<recipe *> dependencies)
     : m{ std::make_unique<impl>(std::move(cfg),
                                 std::move(lua_state),
@@ -243,6 +249,12 @@ recipe *recipe_resolve_one(resolver &r, recipe::cfg const &cfg) {
                                                           std::nullopt);
                  }
                  return local.file_path;
+               },
+               [&](recipe::cfg::git_source const &) -> std::filesystem::path {
+                 throw std::runtime_error("git_source not yet implemented");
+               },
+               [&](recipe::cfg::fetch_function const &) -> std::filesystem::path {
+                 throw std::runtime_error("fetch_function not yet implemented");
                } },
         cfg.source) };
 
