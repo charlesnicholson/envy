@@ -29,9 +29,9 @@ bool cmd_engine_functional_test::execute() {
   // Run engine
   auto result{ engine_run({ recipe_cfg }, c) };
 
-  // Output results as key=value lines
+  // Output results as key -> value lines (avoid = which appears in option keys)
   for (auto const &[id, hash] : result) {
-    tui::print_stdout("%s=%s\n", id.c_str(), hash.c_str());
+    tui::print_stdout("%s -> %s\n", id.c_str(), hash.c_str());
   }
 
   return true;

@@ -10,6 +10,22 @@ namespace envy {
 
 namespace {
 
+std::string make_canonical_key(std::string const &identity,
+                                std::unordered_map<std::string, std::string> const &options) {
+  if (options.empty()) { return identity; }
+
+  std::vector<std::pair<std::string, std::string>> sorted{ options.begin(), options.end() };
+  std::ranges::sort(sorted);
+
+  std::string key{ identity + '{' };
+  for (size_t i{}; i < sorted.size(); ++i) {
+    if (i > 0) key += ',';
+    key += sorted[i].first + '=' + sorted[i].second;
+  }
+  key += '}';
+  return key;
+}
+
 void validate_phases(lua_State *L, std::string const &identity) {
   // Check for fetch function
   lua_getglobal(L, "fetch");
@@ -37,19 +53,26 @@ void resolve_recipe(recipe::cfg const &cfg,
                     recipe_asset_hash_map_t &result,
                     std::unordered_set<std::string> &visited,
                     std::vector<std::string> &path) {
+  auto const key{ make_canonical_key(cfg.identity, cfg.options) };
+
+  // Validate identity matches source type
+  if (cfg.identity.starts_with("local.") && !cfg.is_local()) {
+    throw std::runtime_error("Recipe 'local.*' must have local source: " + cfg.identity);
+  }
+
   // Cycle detection
-  if (std::ranges::find(path, cfg.identity) != path.end()) {
+  if (std::ranges::find(path, key) != path.end()) {
     std::string cycle_msg{ "Dependency cycle detected: " };
     for (auto const &id : path) { cycle_msg += id + " -> "; }
-    cycle_msg += cfg.identity;
+    cycle_msg += key;
     throw std::runtime_error(cycle_msg);
   }
 
   // Skip if already resolved
-  if (visited.contains(cfg.identity)) { return; }
-  visited.insert(cfg.identity);
+  if (visited.contains(key)) { return; }
+  visited.insert(key);
 
-  path.push_back(cfg.identity);
+  path.push_back(key);
 
   // Load recipe Lua file
   auto lua_state{ lua_make() };
@@ -79,7 +102,7 @@ void resolve_recipe(recipe::cfg const &cfg,
   path.pop_back();
 
   // Add this recipe to result
-  result[cfg.identity] = "STUB_HASH";
+  result[key] = "STUB_HASH";
 }
 
 }  // namespace
