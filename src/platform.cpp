@@ -101,6 +101,8 @@ void touch_file(std::filesystem::path const &path) {
 
 [[noreturn]] void terminate_process() { ::TerminateProcess(::GetCurrentProcess(), 1); }
 
+bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
+
 }  // namespace envy::platform
 
 #else  // POSIX
@@ -198,6 +200,8 @@ void touch_file(std::filesystem::path const &path) {
 }
 
 [[noreturn]] void terminate_process() { std::abort(); }
+
+bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 
 }  // namespace envy::platform
 

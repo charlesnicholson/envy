@@ -1,5 +1,7 @@
 #include "tui.h"
 
+#include "platform.h"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -78,6 +80,7 @@ void worker_thread() {
 
 std::string_view level_to_string(level value) {
   switch (value) {
+    case level::TUI_TRACE: return "TRC";
     case level::TUI_DEBUG: return "DBG";
     case level::TUI_INFO: return "INF";
     case level::TUI_WARN: return "WRN";
@@ -210,7 +213,14 @@ void shutdown() {
   s_tui.stop_requested = false;
 }
 
-bool is_tty() { return false; }
+bool is_tty() { return platform::is_tty(); }
+
+void trace(char const *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  log_formatted(level::TUI_TRACE, fmt, args);
+  va_end(args);
+}
 
 void debug(char const *fmt, ...) {
   va_list args;

@@ -21,4 +21,6 @@ void set_env_var(char const *name, char const *value);
 
 [[noreturn]] void terminate_process();
 
+bool is_tty();
+
 }  // namespace envy::platform
