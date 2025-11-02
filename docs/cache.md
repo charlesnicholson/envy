@@ -8,12 +8,16 @@
 ## Layout
 ```
 ~/.cache/envy/
-├── recipes/                      # Lua sources and archives
-│   ├── envy.cmake@v1.lua
+├── recipes/                      # Lua sources (declarative and custom fetch)
+│   ├── envy.cmake@v1.lua         # Single-file declarative recipe
 │   ├── arm.gcc@v2.lua
-│   └── gnu.binutils@v3/
-│       ├── recipe.lua
-│       └── helpers.lua
+│   └── corporate.toolchain@v3/   # Multi-file (custom fetch or archive)
+│       ├── .envy-complete
+│       ├── recipe.lua            # Entry point (required)
+│       ├── helpers.lua
+│       └── .work/
+│           └── fetch/
+│               └── .envy-complete
 ├── assets/                       # Asset entries (one per identity/options/platform)
 │   └── {namespace}.{name}@{version}/
 │       └── {platform}-{arch}-sha256-{hash}/
@@ -28,7 +32,7 @@
 ```
 
 ## Keys
-- **Recipe**: `{namespace}.{name}@{version}.lua` for single-file, `{namespace}.{name}@{version}/` for archives.
+- **Recipe**: `{namespace}.{name}@{version}.lua` for single-file declarative sources, `{namespace}.{name}@{version}/` for multi-file (custom fetch, archives, git repos). Custom fetch recipes always use directory layout with `recipe.lua` entry point.
 - **Asset**: `{identity}.{platform}-{arch}-sha256-{hash}` where `hash` is the leading 16 hex chars of the archive SHA256; deterministic before download so locks can be acquired early.
 
 ## Locking & Workspace Lifecycle
@@ -42,14 +46,38 @@
 - Crash recovery: next locker deletes stale `.install/`, recreates `work/stage/`, and either reuses or discards `work/fetch/` based on the fetch sentinel (`mark_fetch_complete()` present = reuse, otherwise refetch); no cache-wide sweeps required.
 
 ## Integrity & Verification
-- Recipes: manifest must supply SHA256; envy verifies before caching/executing. Optional opt-out via `allow_unverified_recipes`.
-- Assets: recipes declare expected hashes; verification happens before extraction.
-- Trust chain: once a recipe passes integrity, its declared downloads inherit trust.
+
+**Recipes:**
+- **Declarative sources (URL):** Manifest supplies SHA256; Envy downloads to temp, verifies hash, moves to cache on match. Mismatch = hard failure.
+- **Declarative sources (git):** Manifest supplies `ref` (commit SHA or committish); Envy clones repo, checks out ref, verifies git tree integrity. No separate SHA256 needed (git hash is fingerprint).
+- **Custom fetch functions:** API-enforced per-file verification. `ctx:fetch(url, sha256)` and `ctx:import_file(src, dest, sha256)` verify before writing to cache. Custom fetch cannot bypass (no direct cache directory access).
+- **Verification timing:** SHA256 computed at fetch time only; never re-verified from cache (`.envy-complete` marker signals immutable entry).
+
+**Assets:**
+- Recipes declare expected hashes for downloads; verification happens before extraction.
+- Trust chain: once recipe passes integrity, its declared downloads inherit trust.
 - BLAKE3 fingerprint file captures every asset payload (mmap-friendly header, entry table, string blob) so verification tools compare without locks.
 
 ## Operational Scenarios
+
+### Recipe Fetch
+
+1. **Declarative single-file (first fetch):** miss → lock → download URL to temp → verify SHA256 → move to `recipes/{identity}.lua` → touch `.envy-complete` (in parent dir logic) → release.
+
+2. **Declarative git (first fetch):** miss → lock → clone repo to temp → checkout `ref` → extract tree to `recipes/{identity}/` → record git ref in `.envy-git-ref` → touch `recipes/{identity}/.envy-complete` → release.
+
+3. **Custom fetch (first fetch):** miss → lock → create `recipes/{identity}/.work/fetch/` → create temp workspace → call fetch function (ctx:work_dir, ctx:fetch, ctx:import_file) → verify each import via SHA256 → copy verified files to `recipes/{identity}/` → touch `recipes/{identity}/.work/fetch/.envy-complete` → touch `recipes/{identity}/.envy-complete` → release.
+
+4. **Concurrent recipe fetch:** waiter blocks on lock; when creator finishes, waiter rechecks `.envy-complete` and returns path without refetching.
+
+5. **Recipe collision:** mismatched SHA256 triggers hard failure with instruction to bump recipe version.
+
+### Asset Install
+
 1. **First asset install**: miss → lock → create `.install/` + `.work/` → download into `work/fetch/` → `mark_fetch_complete()` on success → stage sources in `work/stage/` → write payload into `.install/` → rename to `asset/` → fingerprint `asset/` → delete `.work/` → touch entry `.envy-complete` → release.
+
 2. **Concurrent asset install**: waiter blocks on lock; when creator finishes, waiter rechecks `.envy-complete` and returns final path without recaching.
+
 3. **Crash recovery**: crash leaves `.install/` (and maybe `.work/`); next locker deletes stale `.install/`, conditionally reuses `work/fetch/`, and restarts staging.
+
 4. **Multi-project sharing**: identical `(identity, options, platform, hash)` reuses the same asset directory; no duplication.
-5. **Recipe collision**: mismatched SHA256 triggers hard failure with instruction to bump recipe version.

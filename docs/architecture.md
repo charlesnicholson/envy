@@ -2,18 +2,36 @@
 
 ## Project Manifests
 
-**Syntax:** Shorthand `"namespace.name@version"` expands to `{ recipe = "namespace.name@version" }`. Table syntax supports `url`, `sha256`, `file`, `options`.
+**Syntax:** Shorthand `"namespace.name@version"` expands to `{ recipe = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`.
 
 **Platform-specific packages:** Manifests are Lua scripts—use conditionals and `envy.join()` to combine common and OS-specific package lists.
 
 ```lua
 -- project/envy.lua
 local common = {
-    {  -- Remote with verification and options
+    {  -- Declarative remote with verification and options
         recipe = "arm.gcc@v2",
-        url = "https://github.com/arm/recipes/gcc-v2.lua",
+        source = "https://github.com/arm/recipes/gcc-v2.lua",
         sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         options = { version = "13.2.0", target = "arm-none-eabi" },
+    },
+    {  -- Git repository
+        recipe = "vendor.openocd@v3",
+        source = "git://github.com/vendor/openocd-recipe.git",
+        ref = "a1b2c3d4e5f6...",  -- Commit SHA
+        options = { target = "arm" },
+    },
+    {  -- Custom fetch (JFrog example)
+        recipe = "corporate.toolchain@v1",
+        fetch = function(ctx)
+            local jfrog = ctx:asset("jfrog.cli@v2")
+            local work = ctx:work_dir()
+            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
+            ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "sha256_here...")
+        end,
+        dependencies = {
+            { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+        }
     },
     {  -- Project-local (development)
         recipe = "local.wrapper@v1",
@@ -35,7 +53,18 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
         or common
 ```
 
-**Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `url`/`sha256`/`file`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
+**Field semantics:**
+- `source` — URL (http/https/s3/git/file) or Git repo for declarative fetch
+- `ref` — Git commit SHA or committish (required for git sources, optional SHA256)
+- `sha256` — Expected hash for verification (required for http/https/s3/file sources)
+- `fetch` — Custom Lua function for exotic sources (JFrog, authenticated APIs); mutually exclusive with `source`
+- `file` — Project-local recipe path (never cached; `local.*` namespace only)
+- `subdir` — Subdirectory within archive or git repo containing recipe entry point
+- `options` — Recipe-specific configuration (passed to recipe Lua as `ctx.options`)
+- `dependencies` — Transitive dependencies (recipes this recipe needs)
+- `needed_by` — Phase dependency annotation (default: `"fetch"`, custom: `"recipe_fetch"`, `"build"`, etc.)
+
+**Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
 ## Recipes
 
@@ -44,14 +73,15 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 **Identity:** Recipes are namespaced with version: `arm.gcc@v2`, `gnu.binutils@v3`. The `@` symbol denotes **recipe version**, not asset version. Asset versions come from `options` in manifest. Multiple recipe versions coexist; `local.*` namespace reserved for project-local recipes.
 
 **Sources:**
-- **Remote:** Fetched from `url`, verified via `sha256`, cached
-- **Project-local:** Loaded from `file` path, never cached
+- **Declarative:** `source` field with URL (http/https/s3/file) or git repo; verified via `sha256` (URL) or `ref` (git); cached
+- **Custom fetch:** `fetch` function with verification enforced at API boundary (`ctx:fetch`, `ctx:import_file`); cached
+- **Project-local:** `file` path in project tree; never cached; `local.*` namespace only
 
 **Formats:**
-- **Single-file:** `.lua` file (default, preferred)
-- **Multi-file:** Archive (`.tar.gz`/`.tar.xz`/`.zip`) with `recipe.lua` entry point at root
+- **Single-file:** `.lua` file (declarative sources only)
+- **Multi-file:** Directory with `recipe.lua` entry point (custom fetch, archives, git repos)
 
-**Integrity:** Remote recipes require SHA256 hash in manifest. Envy verifies before caching/executing. Mismatch causes hard failure.
+**Integrity:** Declarative sources require SHA256 (URL) or commit SHA (git). Custom fetch enforces SHA256 per-file via `ctx:fetch()` / `ctx:import_file()` API. Verification at fetch time only; never re-verified from cache. Mismatch causes hard failure.
 
 ### Verbs
 
@@ -107,56 +137,189 @@ end
 
 **Security:** Non-local recipes cannot depend on `local.*` recipes. Envy enforces at load time.
 
-## Manifest Loading & Recipe Resolution
+## Unified DAG Execution Model
 
-### Manifest Execution
+### Overview
 
-**Discovery:** Search upward from CWD for `envy.lua`, stop at filesystem root or git boundary.
+Envy builds a single `tbb::flow::graph` containing all recipe and package operations. No separation between "resolution" and "installation"—recipe fetching and asset building interleave as dependencies require. Graph expands dynamically: `recipe_fetch` nodes discover dependencies and add new nodes during execution.
 
-**Execution:** Run manifest in fresh `lua_state` with envy globals (`ENVY_PLATFORM`, `ENVY_ARCH`, `envy.join()`, etc.). Extract `packages` table, normalize shorthand strings into full tables, validate duplicates and conflicting sources.
+### Phase Model
 
-### Resolution Summary
+Each DAG node represents `(recipe_identity, options)` with up to seven verb phases:
 
-**Unified resolver:** Single recursive step fetches the recipe, evaluates its `dependencies` table/function, memoizes the node by `(identity, options)`, parallelizes child work via oneTBB, and enforces cycles, security policy, and `needed_by` checks while materializing the DAG. See `docs/recipe_resolution.md` for the detailed contract.
+- **`recipe_fetch`** — Load recipe Lua file(s) into cache; discover dependencies; add child nodes to graph
+- **`check`** — Test if asset already satisfied (skip remaining phases if true)
+- **`fetch`** — Download/acquire source materials into `.work/fetch/`
+- **`stage`** — Prepare build staging area from fetched content
+- **`build`** — Compile or process staged content
+- **`install`** — Write final artifacts to install directory
+- **`deploy`** — Post-install actions (env setup, capability registration)
 
-## Command Execution Model
+**Node optimization:** Only declared/inferred phases create nodes. Minimal recipes (just `source` field) infer `recipe_fetch` → `fetch` → `stage`, skip `build`/`install`/`deploy`. Recipe without `build` verb omits build node. Zero-verb overhead for simple cases.
+
+**Phase execution:** Each phase is a `flow::continue_node`. Intra-node dependencies: `recipe_fetch` → `check` → `fetch` → `stage` → `build` → `install` → `deploy` (linear chain). Inter-node dependencies declared via `needed_by` annotation (see below).
+
+### Recipe Fetching (Custom and Declarative)
+
+**Declarative sources** (common case):
+```lua
+-- Single-file recipe
+{ recipe = "vendor.lib@v1", source = "https://example.com/lib.lua", sha256 = "abc..." }
+
+-- Archive recipe (auto-extract)
+{ recipe = "vendor.lib@v2", source = "https://example.com/lib.tar.gz", sha256 = "def..." }
+
+-- Git repository
+{ recipe = "vendor.lib@v3", source = "git://github.com/vendor/lib.git", ref = "a1b2c3d4...", subdir = "recipes/" }
+
+-- S3 (first-class support)
+{ recipe = "vendor.lib@v4", source = "s3://bucket/lib.lua", sha256 = "ghi..." }
+```
+
+**Custom fetch functions** (exotic cases—JFrog, authenticated APIs, custom tools):
+```lua
+{
+  recipe = "corporate.toolchain@v1",
+  fetch = function(ctx)
+    local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
+    local work = ctx:work_dir()              -- Recipe-specific workspace
+
+    -- Download to workspace
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download",
+            "recipes/toolchain/recipe.lua", work .. "/recipe.lua")
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download",
+            "recipes/toolchain/helpers.lua", work .. "/helpers.lua")
+
+    -- Import with verification (enforced at API boundary)
+    ctx:import_file(work .. "/recipe.lua", "recipe.lua", "abc123...")
+    ctx:import_file(work .. "/helpers.lua", "helpers.lua", "def456...")
+
+    -- workspace cleaned up automatically after fetch completes
+  end,
+  dependencies = {
+    { recipe = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
+  }
+}
+```
+
+**Recipe fetch context API:**
+```lua
+ctx = {
+  work_dir = function() -> string,                    -- Recipe workspace, auto-cleaned
+  fetch = function(url, sha256, [filename]),          -- Download & verify
+  import_file = function(source, dest, sha256),       -- Copy & verify
+  sha256_file = function(path) -> string,             -- Compute hash
+  fetch_git = function(url, ref, [subdir]),           -- Clone & checkout
+  asset = function(identity) -> string,               -- Path to installed dependency
+  run = function(cmd, ...),                           -- Execute subprocess
+  run_capture = function(cmd, ...) -> {stdout, stderr, exitcode},
+  platform = string,                                  -- "darwin", "linux", "windows"
+  arch = string                                       -- "arm64", "x86_64", etc.
+}
+```
+
+**Verification:** All imports require SHA256. `ctx:fetch()` and `ctx:import_file()` verify before writing to cache—no post-hoc tree hashing. Custom fetch functions cannot bypass verification (no direct cache access). SHA256 computed at fetch time only; never re-verified from cache.
+
+**Cache layout:** Custom fetch → multi-file cache directory with `recipe.lua` entry point:
+```
+~/.cache/envy/recipes/
+└── corporate.toolchain@v1/
+    ├── .envy-complete
+    ├── recipe.lua           # Entry point (required)
+    ├── helpers.lua
+    └── .work/
+        └── fetch/
+            └── .envy-complete
+```
+
+### Phase Dependencies via `needed_by`
+
+**Default behavior:** Recipe A depends on recipe B → A's `fetch` phase waits for B's last declared phase (usually `deploy`).
+
+**Custom phase dependencies:** Use `needed_by` annotation to couple specific phases:
+```lua
+dependencies = {
+  { recipe = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
+}
+```
+
+**Semantics:** Dependency must complete its last declared phase before this node's specified phase starts. If `needed_by = "recipe_fetch"`, jfrog.cli's `deploy` completes before this recipe's `recipe_fetch` begins (recipe cannot be fetched until tool is installed).
+
+**Concrete example (corporate JFrog workflow):**
+```lua
+-- Manifest packages
+{
+  {
+    recipe = "corporate.toolchain@v1",
+    fetch = function(ctx)
+      local jfrog = ctx:asset("jfrog.cli@v2")  -- Tool must be installed first
+      -- ... fetch using jfrog CLI ...
+    end,
+    dependencies = {
+      {
+        recipe = "jfrog.cli@v2",
+        source = "https://public.com/jfrog-cli-recipe.lua",
+        sha256 = "...",
+        needed_by = "recipe_fetch"  -- Block corporate.toolchain recipe_fetch until jfrog.cli deployed
+      }
+    }
+  }
+}
+```
+
+**Graph topology:**
+```
+[jfrog.cli recipe_fetch] → [jfrog.cli fetch] → [jfrog.cli install] → [jfrog.cli deploy]
+                                                                           ↓
+                                              [corporate.toolchain recipe_fetch] → ...
+```
+
+**Valid `needed_by` phases:** `recipe_fetch`, `check`, `fetch`, `stage`, `build`, `install`, `deploy`. Omitting `needed_by` defaults to blocking on `fetch` (standard transitive dependency).
+
+### Dynamic Graph Expansion
+
+**Memoization:** Nodes keyed by `"identity{key1=val1,key2=val2}"` (canonical string, options sorted lexicographically). First thread to request a node allocates it; later threads reuse existing node.
+
+**Expansion process:**
+1. Manifest roots seed graph with initial `recipe_fetch` nodes
+2. `recipe_fetch` node executes: fetch recipe file(s), load Lua, evaluate `dependencies` field
+3. For each dependency: ensure memoized node exists, add edges based on `needed_by`
+4. Child `recipe_fetch` nodes execute, discover their dependencies, add more nodes
+5. Graph grows until all transitive dependencies discovered
+6. `flow::graph::wait_for_all()` blocks until entire graph completes
+
+**Cycle detection:** Must catch cycles during graph construction. Example illegal cycle:
+```lua
+-- Recipe A
+{ recipe = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
+  dependencies = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
+
+-- Recipe B
+{ recipe = "B@v1", dependencies = { { recipe = "A@v1", needed_by = "recipe_fetch" } } }
+```
+Both recipes need each other for `recipe_fetch` → deadlock. Envy detects via reachability check before adding edges; errors with cycle path.
+
+### Command Execution Model
 
 Commands implement `bool execute()` with no oneTBB types in their interface. Main wraps execution inside `tbb::task_arena().execute()` establishing a shared thread pool for all parallel operations.
 
 **Simple commands:** Ignore parallelism—just do synchronous work and return success/failure.
 
-**Recipe commands:** Call blocking helpers (`resolve_recipes()`, `ensure_assets()`) that encapsulate parallel implementation via `task_group` (resolution) and `flow::graph` (verb DAG execution). After parallel phases complete, commands perform sequential post-processing (validation, summary printing, shell script generation).
+**Package commands:** Build unified `flow::graph`, seed with manifest roots, wait for completion:
+```cpp
+bool cmd_install::execute() {
+  unified_dag dag{ cache_, manifest_->packages() };
+  dag.execute();  // Parallel internally (recipe_fetch + asset phases)
+  print_summary(dag.roots());
+  return true;
+}
+```
 
 **Custom parallel commands:** Create local `flow::graph` or `task_group` when needed—all TBB operations share the arena's thread pool via work-stealing scheduler.
 
-**Nested execution:** Commands freely call blocking parallel helpers from any context—direct invocation, inside `task_group` tasks, or within `flow::graph` node lambdas. TBB's cooperative scheduler handles blocking without deadlock; when a task waits on inner parallel work, other threads steal pending tasks. This composition works naturally because all TBB primitives (`task_group`, `flow::graph`, `parallel_invoke`) share the single task arena established by main.
+**Nested execution:** Commands freely call blocking parallel helpers from any context—direct invocation, inside `task_group` tasks, or within `flow::graph` node lambdas. TBB's cooperative scheduler handles blocking without deadlock; when a task waits on inner parallel work, other threads steal pending tasks. This composition works naturally because all TBB primitives share the single task arena established by main.
 
 **Lifetime:** Stack-scoped TBB graphs in `execute()` naturally satisfy lifetime requirements—nodes complete before function returns, so no dangling references. Commands destroyed after `execute()` completes.
-
-**Example patterns:**
-```cpp
-// Simple command
-bool cmd_version::execute() {
-  tui::info("envy version %s", ENVY_VERSION_STR);
-  return true;
-}
-
-// Recipe command with blocking helpers
-bool cmd_install::execute() {
-  auto resolved = resolve_recipes(manifest_->packages());  // Parallel internally
-  ensure_assets(resolved);                                  // Parallel internally
-  print_summary(resolved);                                  // Sequential
-  return true;
-}
-
-// Custom parallel command
-bool cmd_complex::execute() {
-  tbb::flow::graph g;
-  // Build custom DAG topology...
-  g.wait_for_all();
-  return finalize_results();
-}
-```
 
 ## Filesystem Cache
 
