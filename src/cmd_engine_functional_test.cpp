@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "platform.h"
-#include "recipe.h"
+#include "recipe_spec.h"
 #include "tui.h"
 
 #include <cstdio>
@@ -19,10 +19,10 @@ bool cmd_engine_functional_test::execute() {
 
   cache c{ cache_root };
 
-  // Build recipe::cfg
-  recipe::cfg recipe_cfg{ .identity = cfg_.identity,
+  // Build recipe
+  recipe recipe_cfg{ .identity = cfg_.identity,
                           .source =
-                              recipe::cfg::local_source{ .file_path = cfg_.recipe_path },
+                              recipe::local_source{ .file_path = cfg_.recipe_path },
                           .options = {},
                           .needed_by = std::nullopt };
 

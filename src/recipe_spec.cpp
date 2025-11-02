@@ -1,13 +1,8 @@
-#include "recipe.h"
+#include "recipe_spec.h"
 
 #include <stdexcept>
 
 namespace envy {
-
-struct recipe::impl {
-  cfg cfg_;
-  lua_state_ptr lua_state_;
-};
 
 namespace {
 
@@ -32,9 +27,8 @@ bool parse_identity(std::string const &identity,
 
 }  // namespace
 
-recipe::cfg recipe::cfg::parse(lua_value const &lua_val,
-                               std::filesystem::path const &base_path) {
-  cfg result;
+recipe recipe::parse(lua_value const &lua_val, std::filesystem::path const &base_path) {
+  recipe result;
 
   //  "namespace.name@version" shorthand requires url or file
   if (auto const *str{ lua_val.get<std::string>() }) {
@@ -112,51 +106,12 @@ recipe::cfg recipe::cfg::parse(lua_value const &lua_val,
   return result;
 }
 
-bool recipe::cfg::is_remote() const {
-  return std::holds_alternative<remote_source>(source);
-}
+bool recipe::is_remote() const { return std::holds_alternative<remote_source>(source); }
+bool recipe::is_local() const { return std::holds_alternative<local_source>(source); }
+bool recipe::is_git() const { return std::holds_alternative<git_source>(source); }
 
-bool recipe::cfg::is_local() const { return std::holds_alternative<local_source>(source); }
-
-bool recipe::cfg::is_git() const { return std::holds_alternative<git_source>(source); }
-
-bool recipe::cfg::has_fetch_function() const {
+bool recipe::has_fetch_function() const {
   return std::holds_alternative<fetch_function>(source);
 }
-
-recipe::recipe(cfg cfg, lua_state_ptr lua_state)
-    : m{ std::make_unique<impl>(std::move(cfg), std::move(lua_state)) } {}
-
-recipe::~recipe() = default;
-
-recipe::cfg const &recipe::config() const { return m->cfg_; }
-
-std::string const &recipe::identity() const { return m->cfg_.identity; }
-
-std::string_view recipe::namespace_name() const {
-  auto const dot_pos{ m->cfg_.identity.find('.') };
-  if (dot_pos == std::string::npos) { return {}; }
-  return std::string_view{ m->cfg_.identity.data(), dot_pos };
-}
-
-std::string_view recipe::name() const {
-  auto const dot_pos{ m->cfg_.identity.find('.') };
-  auto const at_pos{ m->cfg_.identity.find('@') };
-  if (dot_pos == std::string::npos || at_pos == std::string::npos || dot_pos >= at_pos) {
-    return {};
-  }
-  return std::string_view{ m->cfg_.identity.data() + dot_pos + 1, at_pos - dot_pos - 1 };
-}
-
-std::string_view recipe::version() const {
-  auto const at_pos{ m->cfg_.identity.find('@') };
-  if (at_pos == std::string::npos || at_pos == m->cfg_.identity.size() - 1) { return {}; }
-  return std::string_view{ m->cfg_.identity.data() + at_pos + 1,
-                           m->cfg_.identity.size() - at_pos - 1 };
-}
-
-recipe::cfg::source_t const &recipe::source() const { return m->cfg_.source; }
-
-lua_State *recipe::lua_state() const { return m->lua_state_.get(); }
 
 }  // namespace envy

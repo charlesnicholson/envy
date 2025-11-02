@@ -139,7 +139,7 @@ target_sources(envy
         src/aws_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
-        src/recipe.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -218,7 +218,7 @@ target_sources(envy_functional_tester
         src/aws_util.cpp
         src/lua_util.cpp
         src/phase.cpp
-        src/recipe.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -300,7 +300,7 @@ target_sources(envy_unit_tests
         src/aws_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
-        src/recipe.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -314,7 +314,7 @@ target_sources(envy_unit_tests
         src/fetch_tests.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
-        src/recipe_tests.cpp
+        src/recipe_spec_tests.cpp
         src/sha256_tests.cpp
         src/uri.cpp
         src/uri_tests.cpp

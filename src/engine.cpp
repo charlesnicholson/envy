@@ -24,18 +24,16 @@ namespace envy {
 namespace {
 
 struct recipe_data {
-  std::string key;
   lua_state_ptr lua_state;
 
   // Default constructor for TBB concurrent_hash_map (lua_state needs explicit deleter)
-  recipe_data() : key{}, lua_state{ nullptr, lua_close } {}
+  recipe_data() : lua_state{ nullptr, lua_close } {}
   recipe_data(recipe_data &&) = default;
   recipe_data &operator=(recipe_data &&) = default;
 };
 
 struct graph_state {
   tbb::flow::graph &graph;
-  cache &cache_ref;
 
   // Thread-safe maps for tracking nodes (use shared_ptr for concurrent insertion)
   using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
@@ -61,9 +59,11 @@ std::string make_canonical_key(
 
   std::ostringstream oss;
   oss << identity << '{';
-  for (size_t i{}; i < sorted.size(); ++i) {
-    if (i > 0) oss << ',';
-    oss << sorted[i].first << '=' << sorted[i].second;
+  bool first{ true };
+  for (auto const &[k, v] : sorted) {
+    if (!first) oss << ',';
+    oss << k << '=' << v;
+    first = false;
   }
   oss << '}';
   return oss.str();
@@ -92,7 +92,7 @@ void validate_phases(lua_State *L, std::string const &identity) {
 }
 
 // Forward declaration for use in helper functions
-void create_recipe_nodes(recipe::cfg cfg,
+void create_recipe_nodes(recipe cfg,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors);
 
@@ -102,52 +102,52 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
   if (!state.recipe_data_map.find(data_acc, key)) {
     throw std::runtime_error("Recipe data not found for " + key);
   }
-  auto const &data{ data_acc->second };
+  lua_State *L{ data_acc->second.lua_state.get() };
 
   // Execute check() phase
-  lua_getglobal(data.lua_state.get(), "check");
-  bool const has_check{ lua_isfunction(data.lua_state.get(), -1) };
+  lua_getglobal(L, "check");
+  bool const has_check{ lua_isfunction(L, -1) };
   bool check_result{ true };
 
   if (has_check) {
     tui::trace("phase check START %s", key.c_str());
-    lua_newtable(data.lua_state.get());
+    lua_newtable(L);
 
-    if (lua_pcall(data.lua_state.get(), 1, 1, 0) != LUA_OK) {
-      char const *err{ lua_tostring(data.lua_state.get(), -1) };
-      lua_pop(data.lua_state.get(), 1);
+    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+      char const *err{ lua_tostring(L, -1) };
+      lua_pop(L, 1);
       throw std::runtime_error("check() failed for " + key + ": " +
                                (err ? err : "unknown error"));
     }
 
-    check_result = lua_toboolean(data.lua_state.get(), -1);
-    lua_pop(data.lua_state.get(), 1);
+    check_result = lua_toboolean(L, -1);
+    lua_pop(L, 1);
     tui::trace("phase check END %s (result=%s)",
                key.c_str(),
                check_result ? "true" : "false");
   } else {
-    lua_pop(data.lua_state.get(), 1);
+    lua_pop(L, 1);
   }
 
   // Execute install() phase if check returned false
   if (!check_result) {
-    lua_getglobal(data.lua_state.get(), "install");
-    bool const has_install{ lua_isfunction(data.lua_state.get(), -1) };
+    lua_getglobal(L, "install");
+    bool const has_install{ lua_isfunction(L, -1) };
 
     if (has_install) {
       tui::trace("phase install START %s", key.c_str());
-      lua_newtable(data.lua_state.get());
+      lua_newtable(L);
 
-      if (lua_pcall(data.lua_state.get(), 1, 0, 0) != LUA_OK) {
-        char const *err{ lua_tostring(data.lua_state.get(), -1) };
-        lua_pop(data.lua_state.get(), 1);
+      if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+        char const *err{ lua_tostring(L, -1) };
+        lua_pop(L, 1);
         throw std::runtime_error("install() failed for " + key + ": " +
                                  (err ? err : "unknown error"));
       }
 
       tui::trace("phase install END %s", key.c_str());
     } else {
-      lua_pop(data.lua_state.get(), 1);
+      lua_pop(L, 1);
     }
   }
 
@@ -156,7 +156,7 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
 }
 
 void fetch_recipe_and_spawn_dependencies(
-    recipe::cfg const &cfg,
+    recipe const &cfg,
     std::string const &key,
     graph_state &state,
     tbb::flow::continue_node<tbb::flow::continue_msg> *execute_ptr,
@@ -166,7 +166,7 @@ void fetch_recipe_and_spawn_dependencies(
   lua_add_envy(lua_state);
 
   // Determine recipe path
-  auto const *local_src{ std::get_if<recipe::cfg::local_source>(&cfg.source) };
+  auto const *local_src{ std::get_if<recipe::local_source>(&cfg.source) };
   if (!local_src) {
     throw std::runtime_error("Only local recipes supported in minimal implementation");
   }
@@ -178,10 +178,10 @@ void fetch_recipe_and_spawn_dependencies(
   validate_phases(lua_state.get(), cfg.identity);
 
   // Parse dependencies (before moving lua_state)
-  std::vector<recipe::cfg> dep_configs;
+  std::vector<recipe> dep_configs;
   if (auto const deps_array{ lua_global_to_array(lua_state.get(), "dependencies") }) {
     for (auto const &dep_val : *deps_array) {
-      auto dep_cfg{ recipe::cfg::parse(dep_val, local_src->file_path) };
+      auto dep_cfg{ recipe::parse(dep_val, local_src->file_path) };
       dep_configs.push_back(dep_cfg);
     }
   }
@@ -190,7 +190,6 @@ void fetch_recipe_and_spawn_dependencies(
   {
     typename decltype(state.recipe_data_map)::accessor data_acc;
     state.recipe_data_map.insert(data_acc, key);
-    data_acc->second.key = key;
     data_acc->second.lua_state = std::move(lua_state);
   }
 
@@ -198,30 +197,24 @@ void fetch_recipe_and_spawn_dependencies(
   std::unordered_set<std::string> dep_ancestors{ ancestors };
   dep_ancestors.insert(key);
 
-  // Process dependencies: create nodes and connect edges BEFORE triggering
+  // Process dependencies: create nodes, connect edges, and trigger
   for (auto const &dep_cfg : dep_configs) {
     auto const dep_key{ make_canonical_key(dep_cfg.identity, dep_cfg.options) };
 
     // Create dependency nodes - pass ancestors for cycle detection
     create_recipe_nodes(dep_cfg, state, dep_ancestors);
 
-    {  // Connect edge: dep execute → self execute
+    // Connect edge: dep execute → self execute
+    {
       typename decltype(state.execute_nodes)::const_accessor dep_acc;
       if (state.execute_nodes.find(dep_acc, dep_key)) {
         tbb::flow::make_edge(*dep_acc->second, *execute_ptr);
       }
     }
-  }
-
-  // Trigger all dependency fetches AFTER edges are connected
-  // Only trigger each fetch node once (concurrent_unordered_set::insert is thread-safe)
-  for (auto const &dep_cfg : dep_configs) {
-    auto const dep_key{ make_canonical_key(dep_cfg.identity, dep_cfg.options) };
 
     // Try to insert into triggered set; if successful, trigger the node
     auto [iter, inserted]{ state.triggered.insert(dep_key) };
     if (inserted) {
-      // We won the race, trigger this node
       typename decltype(state.fetch_nodes)::const_accessor fetch_acc;
       if (state.fetch_nodes.find(fetch_acc, dep_key)) {
         fetch_acc->second->try_put(tbb::flow::continue_msg{});
@@ -233,7 +226,7 @@ void fetch_recipe_and_spawn_dependencies(
   if (dep_configs.empty()) { execute_ptr->try_put(tbb::flow::continue_msg{}); }
 }
 
-void create_recipe_nodes(recipe::cfg cfg,
+void create_recipe_nodes(recipe cfg,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors = {}) {
   auto const key{ make_canonical_key(cfg.identity, cfg.options) };
@@ -255,7 +248,7 @@ void create_recipe_nodes(recipe::cfg cfg,
   }
 
   // Create execute node upfront (will access recipe_data later when it runs)
-  auto execute_node{ std::make_unique<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  auto execute_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
       [key, &state](tbb::flow::continue_msg const &) {
         execute_recipe_phases(key, state);
@@ -263,44 +256,38 @@ void create_recipe_nodes(recipe::cfg cfg,
 
   // Create fetch node - loads recipe and spawns dependencies
   // Capture ancestors by value so each node has its own chain
-  auto fetch_node{ std::make_unique<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  auto fetch_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
       [cfg, key, &state, execute_ptr = execute_node.get(), ancestors](
           tbb::flow::continue_msg const &) {
         fetch_recipe_and_spawn_dependencies(cfg, key, state, execute_ptr, ancestors);
       }) };
 
-  {  // Store both nodes using accessors for thread-safe insertion
+  // Store both nodes using accessors for thread-safe insertion
+  {
     typename decltype(state.execute_nodes)::accessor exec_acc;
-    if (state.execute_nodes.insert(exec_acc, key)) {
-      exec_acc->second = std::move(execute_node);
-    }
+    if (state.execute_nodes.insert(exec_acc, key)) { exec_acc->second = execute_node; }
   }
   {
     typename decltype(state.fetch_nodes)::accessor fetch_acc;
-    if (state.fetch_nodes.insert(fetch_acc, key)) {
-      fetch_acc->second = std::move(fetch_node);
-    }
+    if (state.fetch_nodes.insert(fetch_acc, key)) { fetch_acc->second = fetch_node; }
   }
 }
 
 }  // namespace
 
-recipe_asset_hash_map_t engine_run(std::vector<recipe::cfg> const &roots, cache &c) {
+recipe_asset_hash_map_t engine_run(std::vector<recipe> const &roots, cache &) {
   tbb::flow::graph flow_graph;
-  graph_state state{ .graph = flow_graph, .cache_ref = c };
+  graph_state state{ .graph = flow_graph };
 
-  // Create nodes for all root recipes
-  for (auto const &cfg : roots) { create_recipe_nodes(cfg, state); }
-
-  // Trigger fetch for all root recipes (mark as triggered and execute)
+  // Create nodes and trigger fetch for all root recipes
   for (auto const &cfg : roots) {
     auto const key{ make_canonical_key(cfg.identity, cfg.options) };
 
-    // Mark as triggered (concurrent_unordered_set::insert is thread-safe)
-    state.triggered.insert(key);
+    create_recipe_nodes(cfg, state);
 
-    // Trigger the fetch node (use const_accessor to read)
+    // Mark as triggered and trigger the fetch node
+    state.triggered.insert(key);
     typename decltype(state.fetch_nodes)::const_accessor fetch_acc;
     if (state.fetch_nodes.find(fetch_acc, key)) {
       fetch_acc->second->try_put(tbb::flow::continue_msg{});
