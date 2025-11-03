@@ -35,7 +35,7 @@ struct graph_state {
   tbb::concurrent_hash_map<std::string, lua_state_ptr> lua_states;
   tbb::concurrent_unordered_map<std::string, std::string> result;
   tbb::concurrent_unordered_set<std::string> triggered;
-  tbb::concurrent_unordered_set<std::string> executed;  // Track which recipes have executed
+  tbb::concurrent_unordered_set<std::string> executed;
 };
 
 std::string make_canonical_key(
