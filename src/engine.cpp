@@ -238,7 +238,9 @@ void fetch_recipe_and_spawn_dependencies(
     }
   }
 
-  if (dep_configs.empty()) { execute_ptr->try_put(tbb::flow::continue_msg{}); }
+  // Note: execute_ptr will be triggered automatically by:
+  // 1. The fetch→execute edge when fetch completes
+  // 2. Edges from dependency execute nodes when they complete
 }
 
 void create_recipe_nodes(recipe cfg,
@@ -276,6 +278,9 @@ void create_recipe_nodes(recipe cfg,
           tbb::flow::continue_msg const &) {
         fetch_recipe_and_spawn_dependencies(cfg, key, state, execute_ptr, ancestors);
       }) };
+
+  // Connect fetch → execute for this recipe (fetch completion triggers execute)
+  tbb::flow::make_edge(*fetch_node, *execute_node);
 
   {  // Store both nodes using accessors for thread-safe insertion
     typename decltype(state.execute_nodes)::accessor exec_acc;
