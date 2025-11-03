@@ -42,7 +42,7 @@ class TestEngine(unittest.TestCase):
 
         key, value = lines[0].split(" -> ", 1)
         self.assertEqual(key, "local.simple@1.0.0")
-        self.assertTrue(len(value) > 0)
+        self.assertGreater(len(value), 0)
 
     def test_recipe_with_one_dependency(self):
         """Engine loads recipe and its dependency."""
@@ -297,7 +297,7 @@ class TestEngine(unittest.TestCase):
 
         key, value = lines[0].split(" -> ", 1)
         self.assertEqual(key, "remote.fileuri@1.0.0")
-        self.assertTrue(len(value) > 0)
+        self.assertGreater(len(value), 0)
 
     def test_remote_depends_on_remote(self):
         """Remote recipe depending on another remote recipe succeeds."""

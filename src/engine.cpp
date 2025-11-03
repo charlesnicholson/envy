@@ -167,7 +167,9 @@ void fetch_recipe_and_spawn_dependencies(
       tui::trace("fetch recipe %s from %s", cfg.identity.c_str(), remote_src->url.c_str());
       std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "recipe.lua" };
 
-      // TODO: Handle archives with subdir - for now assume single file
+      // Note: remote_source.subdir is not yet implemented
+      // Currently only single-file recipes (.lua) are supported for remote sources
+      // Archive extraction with subdir navigation will be added when needed
       fetch({ .source = remote_src->url, .destination = fetch_dest });
 
       cache_result.lock->mark_install_complete();
