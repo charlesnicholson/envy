@@ -17,7 +17,11 @@ extern "C" {
 
 namespace envy {
 
-using lua_state_ptr = std::unique_ptr<lua_State, void (*)(lua_State *)>;
+struct lua_deleter {
+  void operator()(lua_State *L) const;
+};
+
+using lua_state_ptr = std::unique_ptr<lua_State, lua_deleter>;
 
 lua_state_ptr lua_make();
 void lua_add_envy(lua_state_ptr const &state);  // install envy logging + globals

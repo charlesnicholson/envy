@@ -116,7 +116,7 @@ bool cmd_cache_ensure_asset::execute() {
     }
 
     // Mark complete if we got the lock
-    if (result.lock) { result.lock->mark_complete(); }
+    if (result.lock) { result.lock->mark_install_complete(); }
 
     // Output result
     cache_test_result output{};
@@ -202,7 +202,7 @@ bool cmd_cache_ensure_recipe::execute() {
     }
 
     // Mark complete if we got the lock
-    if (result.lock) { result.lock->mark_complete(); }
+    if (result.lock) { result.lock->mark_install_complete(); }
 
     // Output result
     cache_test_result output{};

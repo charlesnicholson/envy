@@ -270,7 +270,7 @@ TEST_CASE("lua_run returns false on missing file") {
 }
 
 TEST_CASE("lua_run returns false with null state") {
-  envy::lua_state_ptr const null_state{ nullptr, lua_close };
+  envy::lua_state_ptr const null_state;
   auto const test_root{ test_data_root() };
   auto const script_path{ test_root / "simple.lua" };
 
@@ -278,7 +278,7 @@ TEST_CASE("lua_run returns false with null state") {
 }
 
 TEST_CASE("lua_run_string returns false with null state") {
-  envy::lua_state_ptr const null_state{ nullptr, lua_close };
+  envy::lua_state_ptr const null_state;
 
   CHECK_FALSE(envy::lua_run_string(null_state, "x = 1"));
 }

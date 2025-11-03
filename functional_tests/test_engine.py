@@ -253,7 +253,6 @@ class TestEngine(unittest.TestCase):
         self.assertIn("local.fanout_child3@1.0.0", output)
         self.assertIn("local.fanout_child4@1.0.0", output)
 
-    @unittest.skip("Requires remote source implementation")
     def test_nonlocal_cannot_depend_on_local(self):
         """Engine rejects non-local recipe depending on local.*."""
         result = subprocess.run(
@@ -271,10 +270,125 @@ class TestEngine(unittest.TestCase):
         self.assertNotEqual(
             result.returncode, 0, "Expected validation to cause failure"
         )
-        self.assertIn(
-            "local",
-            result.stderr.lower(),
-            f"Expected local dep error, got: {result.stderr}",
+        stderr_lower = result.stderr.lower()
+        self.assertTrue(
+            "security" in stderr_lower or "local" in stderr_lower,
+            f"Expected security/local dep error, got: {result.stderr}",
+        )
+
+    def test_remote_file_uri_no_dependencies(self):
+        """Remote recipe with file:// source and no dependencies succeeds."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "engine-test",
+                "remote.fileuri@1.0.0",
+                "test_data/recipes/remote_fileuri.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+
+        key, value = lines[0].split(" -> ", 1)
+        self.assertEqual(key, "remote.fileuri@1.0.0")
+        self.assertTrue(len(value) > 0)
+
+    def test_remote_depends_on_remote(self):
+        """Remote recipe depending on another remote recipe succeeds."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "engine-test",
+                "remote.parent@1.0.0",
+                "test_data/recipes/remote_parent.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("remote.parent@1.0.0", output)
+        self.assertIn("remote.child@1.0.0", output)
+
+    def test_local_depends_on_remote(self):
+        """Local recipe depending on remote recipe succeeds."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "engine-test",
+                "local.wrapper@1.0.0",
+                "test_data/recipes/local_wrapper.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.wrapper@1.0.0", output)
+        self.assertIn("remote.base@1.0.0", output)
+
+    def test_local_depends_on_local(self):
+        """Local recipe depending on another local recipe succeeds."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "engine-test",
+                "local.parent@1.0.0",
+                "test_data/recipes/local_parent.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.parent@1.0.0", output)
+        self.assertIn("local.child@1.0.0", output)
+
+    def test_transitive_local_dependency_rejected(self):
+        """Remote recipe transitively depending on local.* fails."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "engine-test",
+                "remote.a@1.0.0",
+                "test_data/recipes/remote_transitive_a.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(
+            result.returncode, 0, "Expected transitive violation to cause failure"
+        )
+        stderr_lower = result.stderr.lower()
+        self.assertTrue(
+            "security" in stderr_lower or "local" in stderr_lower,
+            f"Expected security/local dep error, got: {result.stderr}",
         )
 
     def test_phase_execution_check_false(self):

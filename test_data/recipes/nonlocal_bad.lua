@@ -1,6 +1,11 @@
--- Invalid: non-local recipe trying to depend on local.*
+-- remote.badrecipe@1.0.0
+-- Security test: non-local recipe trying to depend on local.* recipe
+
 dependencies = {
-  { recipe = "local.simple@1.0.0", file = "simple.lua" }
+  {
+    recipe = "local.simple@v1",
+    file = "simple.lua"
+  }
 }
 
 function check(ctx)
@@ -8,5 +13,5 @@ function check(ctx)
 end
 
 function install(ctx)
-  -- Programmatic package
+  envy.info("Installing bad recipe")
 end

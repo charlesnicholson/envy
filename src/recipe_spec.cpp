@@ -1,5 +1,7 @@
 #include "recipe_spec.h"
 
+#include "uri.h"
+
 #include <stdexcept>
 
 namespace envy {
@@ -69,7 +71,15 @@ recipe recipe::parse(lua_value const &lua_val, std::filesystem::path const &base
         throw std::runtime_error("Recipe with 'url' must specify 'sha256'");
       }
       if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-        result.source = remote_source{ .url = *url, .sha256 = *sha256 };
+        // Resolve relative file:// URLs relative to base_path
+        std::string resolved_url{ *url };
+        auto const info{ uri_classify(resolved_url) };
+        if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+          std::filesystem::path p{ info.canonical };
+          p = base_path.parent_path() / p;
+          resolved_url = p.lexically_normal().string();
+        }
+        result.source = remote_source{ .url = resolved_url, .sha256 = *sha256 };
       } else {
         throw std::runtime_error("Recipe 'sha256' field must be string");
       }

@@ -23,7 +23,7 @@ class cache : unmovable {
                       platform::file_lock_handle_t lock_handle);
     ~scoped_entry_lock();
 
-    void mark_complete();
+    void mark_install_complete();
     void mark_fetch_complete();
     bool is_fetch_complete() const;
 

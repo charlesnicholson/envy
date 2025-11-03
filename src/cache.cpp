@@ -119,7 +119,7 @@ cache::path cache::scoped_entry_lock::install_dir() const {
   return m->entry_dir_ / ".install";
 }
 
-void cache::scoped_entry_lock::mark_complete() { m->completed_ = true; }
+void cache::scoped_entry_lock::mark_install_complete() { m->completed_ = true; }
 
 void cache::scoped_entry_lock::mark_fetch_complete() {
   std::filesystem::create_directories(fetch_dir());
@@ -172,7 +172,7 @@ cache::ensure_result cache::ensure_asset(std::string_view identity,
 cache::ensure_result cache::ensure_recipe(std::string_view identity) {
   std::string const id{ identity };
   return ensure_entry(*m,
-                      m->recipes_dir() / (id + ".lua"),
+                      m->recipes_dir() / id,
                       m->locks_dir() / ("recipe." + id + ".lock"));
 }
 

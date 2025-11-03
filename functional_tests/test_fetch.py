@@ -27,6 +27,90 @@ class FetchCommandFunctionalTest(unittest.TestCase):
     self._envy_binary = root / "out" / "build" / binary_name
     self._project_root = root
 
+  def test_fetch_local_file(self) -> None:
+    """Test fetch with local file source."""
+    self.assertTrue(self._envy_binary.exists(), f"envy binary missing at {self._envy_binary}")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+      source_file = Path(temp_dir) / "source.txt"
+      payload = b"local file content\n"
+      source_file.write_bytes(payload)
+
+      destination = Path(temp_dir) / "dest" / "output.txt"
+
+      env = os.environ.copy()
+      env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
+
+      result = subprocess.run(
+          [str(self._envy_binary), "fetch", str(source_file), str(destination)],
+          check=True,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.PIPE,
+          text=True,
+          env=env,
+      )
+
+      self.assertEqual("", result.stdout)
+      self.assertTrue(destination.exists(), f"expected {destination} to exist after fetch")
+      self.assertEqual(payload, destination.read_bytes())
+
+  def test_fetch_local_directory(self) -> None:
+    """Test fetch with local directory source (recursive copy)."""
+    self.assertTrue(self._envy_binary.exists(), f"envy binary missing at {self._envy_binary}")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+      source_dir = Path(temp_dir) / "source"
+      source_dir.mkdir()
+      (source_dir / "file1.txt").write_text("content 1")
+      (source_dir / "file2.txt").write_text("content 2")
+      subdir = source_dir / "subdir"
+      subdir.mkdir()
+      (subdir / "nested.txt").write_text("nested content")
+
+      destination = Path(temp_dir) / "dest"
+
+      env = os.environ.copy()
+      env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
+
+      result = subprocess.run(
+          [str(self._envy_binary), "fetch", str(source_dir), str(destination)],
+          check=True,
+          stdout=subprocess.PIPE,
+          stderr=subprocess.PIPE,
+          text=True,
+          env=env,
+      )
+
+      self.assertEqual("", result.stdout)
+      self.assertTrue(destination.exists(), f"expected {destination} to exist after fetch")
+      self.assertTrue((destination / "file1.txt").exists())
+      self.assertTrue((destination / "file2.txt").exists())
+      self.assertTrue((destination / "subdir" / "nested.txt").exists())
+      self.assertEqual("content 1", (destination / "file1.txt").read_text())
+      self.assertEqual("nested content", (destination / "subdir" / "nested.txt").read_text())
+
+  def test_fetch_local_file_nonexistent(self) -> None:
+    """Test fetch fails gracefully when source doesn't exist."""
+    self.assertTrue(self._envy_binary.exists(), f"envy binary missing at {self._envy_binary}")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+      source = Path(temp_dir) / "nonexistent.txt"
+      destination = Path(temp_dir) / "dest.txt"
+
+      env = os.environ.copy()
+      env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
+
+      result = subprocess.run(
+          [str(self._envy_binary), "fetch", str(source), str(destination)],
+          stdout=subprocess.PIPE,
+          stderr=subprocess.PIPE,
+          text=True,
+          env=env,
+      )
+
+      self.assertNotEqual(0, result.returncode, "expected fetch to fail for nonexistent source")
+      self.assertIn("does not exist", result.stderr.lower())
+
   def test_fetch_http_download(self) -> None:
     self.assertTrue(self._envy_binary.exists(), f"envy binary missing at {self._envy_binary}")
 
