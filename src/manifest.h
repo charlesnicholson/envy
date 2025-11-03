@@ -1,17 +1,15 @@
 #pragma once
 
-#include "recipe.h"
+#include "recipe_spec.h"
 
 #include <filesystem>
 #include <optional>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace envy {
 
 struct manifest {
-  std::vector<recipe::cfg> packages;
+  std::vector<recipe> packages;
   std::filesystem::path manifest_path;  // Absolute path to envy.lua
 
   static std::optional<std::filesystem::path> discover();

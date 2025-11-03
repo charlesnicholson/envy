@@ -35,16 +35,20 @@ int lua_print_tui(lua_State *lua) {
 
 }  // namespace
 
+void lua_deleter::operator()(lua_State *L) const {
+  if (L) lua_close(L);
+}
+
 lua_state_ptr lua_make() {
   lua_State *L{ luaL_newstate() };
   if (!L) {
     tui::error("Failed to create Lua state");
-    return { nullptr, lua_close };
+    return lua_state_ptr{ nullptr };
   }
 
   luaL_openlibs(L);
 
-  return { L, lua_close };
+  return lua_state_ptr{ L };
 }
 
 void lua_add_envy(lua_state_ptr const &state) {
@@ -106,6 +110,8 @@ void lua_add_envy(lua_state_ptr const &state) {
   lua_setglobal(L, "print");
 
   lua_newtable(L);
+  lua_pushcfunction(L, lua_print_tui<tui::trace>);
+  lua_setfield(L, -2, "trace");
   lua_pushcfunction(L, lua_print_tui<tui::debug>);
   lua_setfield(L, -2, "debug");
   lua_pushcfunction(L, lua_print_tui<tui::info>);

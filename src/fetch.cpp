@@ -31,6 +31,64 @@ std::filesystem::path prepare_destination(std::filesystem::path destination) {
   return destination;
 }
 
+std::filesystem::path resolve_file_path(
+    std::string const &canonical_path,
+    std::optional<std::filesystem::path> const &file_root) {
+  std::filesystem::path source{ canonical_path };
+  return std::filesystem::absolute(source.is_relative() && file_root ? *file_root / source
+                                                                     : source)
+      .lexically_normal();
+}
+
+fetch_result fetch_local_file(std::string const &canonical_path,
+                              std::filesystem::path const &destination,
+                              std::optional<std::filesystem::path> const &file_root) {
+  auto const source{ resolve_file_path(canonical_path, file_root) };
+
+  // Validate source exists
+  std::error_code ec;
+  if (!std::filesystem::exists(source, ec)) {
+    throw std::runtime_error("fetch: source file does not exist: " + source.string());
+  }
+  if (ec) {
+    throw std::runtime_error("fetch: failed to check source: " + source.string() + ": " +
+                             ec.message());
+  }
+
+  auto const dest{ prepare_destination(destination) };
+
+  bool const is_directory{ std::filesystem::is_directory(source, ec) };
+  if (ec) {
+    throw std::runtime_error("fetch: failed to check if source is directory: " +
+                             source.string() + ": " + ec.message());
+  }
+
+  if (is_directory) {
+    std::filesystem::copy(source,
+                          dest,
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::overwrite_existing,
+                          ec);
+    if (ec) {
+      throw std::runtime_error("fetch: failed to copy directory: " + source.string() +
+                               " -> " + dest.string() + ": " + ec.message());
+    }
+  } else {
+    std::filesystem::copy_file(source,
+                               dest,
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (ec) {
+      throw std::runtime_error("fetch: failed to copy file: " + source.string() + " -> " +
+                               dest.string() + ": " + ec.message());
+    }
+  }
+
+  return fetch_result{ .scheme = uri_scheme::LOCAL_FILE_ABSOLUTE,
+                       .resolved_source = source,
+                       .resolved_destination = dest };
+}
+
 }  // namespace
 
 fetch_result fetch(fetch_request const &request) {
@@ -40,6 +98,11 @@ fetch_result fetch(fetch_request const &request) {
   }
 
   switch (info.scheme) {
+    case uri_scheme::LOCAL_FILE_ABSOLUTE:
+    case uri_scheme::LOCAL_FILE_RELATIVE: {
+      return fetch_local_file(info.canonical, request.destination, request.file_root);
+    }
+
     case uri_scheme::HTTP:
     case uri_scheme::HTTPS: {
       return fetch_result{ .scheme = info.scheme,

@@ -139,7 +139,7 @@ target_sources(envy
         src/aws_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
-        src/recipe.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -212,10 +212,13 @@ target_sources(envy_functional_tester
         src/cmd_playground.cpp
         src/cmd_version.cpp
         src/cmd_cache_functional_test.cpp
+        src/cmd_engine_functional_test.cpp
+        src/engine.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/lua_util.cpp
-        src/recipe.cpp
+        src/phase.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -244,18 +247,6 @@ target_link_libraries(envy_functional_tester
     PRIVATE
         envy::thirdparty
 )
-
-if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
-    if(CMAKE_STRIP)
-        add_custom_command(
-            TARGET envy_functional_tester POST_BUILD
-            COMMAND "${CMAKE_STRIP}" "$<TARGET_FILE:envy_functional_tester>"
-            COMMENT "Stripping envy_functional_tester executable"
-            VERBATIM
-        )
-    endif()
-endif()
 
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
@@ -309,7 +300,7 @@ target_sources(envy_unit_tests
         src/aws_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
-        src/recipe.cpp
+        src/recipe_spec.cpp
         src/sha256.cpp
         src/fetch.cpp
         src/libcurl_util.cpp
@@ -323,7 +314,7 @@ target_sources(envy_unit_tests
         src/fetch_tests.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
-        src/recipe_tests.cpp
+        src/recipe_spec_tests.cpp
         src/sha256_tests.cpp
         src/uri.cpp
         src/uri_tests.cpp

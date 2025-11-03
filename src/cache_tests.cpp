@@ -62,7 +62,7 @@ TEST_CASE("ensure_asset returns lock for cold entry and publishes asset director
   // Simulate install: drop file into install dir then mark complete
   auto payload = result.lock->install_dir() / "sentinel.txt";
   std::ofstream{ payload } << "ok";
-  result.lock->mark_complete();
+  result.lock->mark_install_complete();
   result.lock.reset();
 
   CHECK(std::filesystem::exists(result.entry_path / ".envy-complete"));

@@ -7,6 +7,7 @@
 #include "cmd_version.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "cmd_cache_functional_test.h"
+#include "cmd_engine_functional_test.h"
 #endif
 #include "tui.h"
 
@@ -25,7 +26,8 @@ struct cli_args {
 #ifdef ENVY_FUNCTIONAL_TESTER
                                  ,
                                  cmd_cache_ensure_asset::cfg,
-                                 cmd_cache_ensure_recipe::cfg
+                                 cmd_cache_ensure_recipe::cfg,
+                                 cmd_engine_functional_test::cfg
 #endif
                                  >;
 

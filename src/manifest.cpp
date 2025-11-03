@@ -42,7 +42,7 @@ manifest manifest::load(char const *script, std::filesystem::path const &manifes
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
 
   for (auto const &package : *packages) {
-    m.packages.push_back(recipe::cfg::parse(package, manifest_path));
+    m.packages.push_back(recipe::parse(package, manifest_path));
   }
 
   return m;

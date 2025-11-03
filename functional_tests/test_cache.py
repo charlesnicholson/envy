@@ -483,13 +483,43 @@ class TestEntryPathsAndStructure(unittest.TestCase):
         self.assertEqual(result["entry_path"], str(expected_path))
 
     def test_recipe_entry_path_structure(self):
-        """Verify recipe path is recipes/{identity}.lua."""
+        """Verify recipe path is recipes/{identity}/."""
         proc = self.run_cache_cmd("ensure-recipe", "envy.cmake@v1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
-        expected_path = self.cache_root / "recipes" / "envy.cmake@v1.lua"
+        expected_path = self.cache_root / "recipes" / "envy.cmake@v1"
         self.assertEqual(result["entry_path"], str(expected_path))
+
+    def test_recipe_directory_structure(self):
+        """Verify recipe entry is a directory with expected structure."""
+        proc = self.run_cache_cmd("ensure-recipe", "envy.test@v2")
+        stdout, _ = proc.communicate()
+        result = parse_keyvalue(stdout)
+
+        entry_path = Path(result["entry_path"])
+        asset_path = Path(result["asset_path"])
+
+        self.assertTrue(entry_path.is_dir(), "Recipe entry should be a directory")
+        self.assertEqual(
+            entry_path / "asset", asset_path, "Recipe asset_path should be entry_path/asset"
+        )
+        self.assertTrue(
+            (entry_path / ".envy-complete").exists(),
+            "Recipe should have .envy-complete marker",
+        )
+
+    def test_recipe_asset_path_structure(self):
+        """Verify recipe uses asset subdirectory like other cache entries."""
+        proc = self.run_cache_cmd("ensure-recipe", "envy.simple@v1")
+        stdout, _ = proc.communicate()
+        result = parse_keyvalue(stdout)
+
+        entry_path = Path(result["entry_path"])
+        asset_path = Path(result["asset_path"])
+
+        # Recipes use uniform cache structure with asset/ subdirectory
+        self.assertEqual(entry_path / "asset", asset_path)
 
     def test_cache_directory_creation(self):
         """Call ensure_*, verify locks/ directory auto-created if missing."""
