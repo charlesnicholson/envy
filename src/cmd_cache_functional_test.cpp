@@ -111,7 +111,8 @@ bool cmd_cache_ensure_asset::execute() {
         output.stage_path = result.lock->stage_dir();
       }
       output.lock_file = lock_file;
-      tui::print_stdout("%s", output.to_keyvalue().c_str());
+      std::string const kv = output.to_keyvalue();
+      tui::print_stdout("%s", kv.c_str());
       return false;
     }
 
@@ -130,7 +131,8 @@ bool cmd_cache_ensure_asset::execute() {
       output.stage_path = result.lock->stage_dir();
     }
     output.lock_file = lock_file;
-    tui::print_stdout("%s", output.to_keyvalue().c_str());
+    std::string const kv = output.to_keyvalue();
+    tui::print_stdout("%s", kv.c_str());
 
     return true;
   } catch (std::exception const &ex) {
@@ -138,7 +140,8 @@ bool cmd_cache_ensure_asset::execute() {
     cache_test_result output{};
     output.locked = false;
     output.fast_path = false;
-    tui::print_stdout("%serror=%s\n", output.to_keyvalue().c_str(), ex.what());
+    std::string const kv = output.to_keyvalue();
+    tui::print_stdout("%serror=%s\n", kv.c_str(), ex.what());
     return false;
   }
 }
@@ -197,7 +200,8 @@ bool cmd_cache_ensure_recipe::execute() {
         output.stage_path = result.lock->stage_dir();
       }
       output.lock_file = lock_file;
-      tui::print_stdout("%s", output.to_keyvalue().c_str());
+      std::string const kv = output.to_keyvalue();
+      tui::print_stdout("%s", kv.c_str());
       return false;
     }
 
@@ -216,7 +220,8 @@ bool cmd_cache_ensure_recipe::execute() {
       output.stage_path = result.lock->stage_dir();
     }
     output.lock_file = lock_file;
-    tui::print_stdout("%s", output.to_keyvalue().c_str());
+    std::string const kv = output.to_keyvalue();
+    tui::print_stdout("%s", kv.c_str());
 
     return true;
   } catch (std::exception const &ex) {
@@ -224,7 +229,8 @@ bool cmd_cache_ensure_recipe::execute() {
     cache_test_result output{};
     output.locked = false;
     output.fast_path = false;
-    tui::print_stdout("%serror=%s\n", output.to_keyvalue().c_str(), ex.what());
+    std::string const kv = output.to_keyvalue();
+    tui::print_stdout("%serror=%s\n", kv.c_str(), ex.what());
     return false;
   }
 }
