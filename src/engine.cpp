@@ -35,6 +35,7 @@ struct graph_state {
   tbb::concurrent_hash_map<std::string, lua_state_ptr> lua_states;
   tbb::concurrent_unordered_map<std::string, std::string> result;
   tbb::concurrent_unordered_set<std::string> triggered;
+  tbb::concurrent_unordered_set<std::string> executed;  // Track which recipes have executed
 };
 
 std::string make_canonical_key(
@@ -86,6 +87,12 @@ void create_recipe_nodes(recipe cfg,
                          std::unordered_set<std::string> const &ancestors);
 
 void execute_recipe_phases(std::string const &key, graph_state &state) {
+  // Idempotency check - atomically check if already executed
+  // This allows execute to be triggered multiple times safely (from fetch→execute edge
+  // AND from dependency edges) without duplicate work or race conditions
+  auto [iter, inserted]{ state.executed.insert(key) };
+  if (!inserted) { return; }  // Already executed by another thread
+
   // Access lua state via const_accessor (read-only)
   typename decltype(state.lua_states)::const_accessor data_acc;
   if (!state.lua_states.find(data_acc, key)) {
@@ -237,10 +244,6 @@ void fetch_recipe_and_spawn_dependencies(
       }
     }
   }
-
-  // Note: execute_ptr will be triggered automatically by:
-  // 1. The fetch→execute edge when fetch completes
-  // 2. Edges from dependency execute nodes when they complete
 }
 
 void create_recipe_nodes(recipe cfg,
@@ -279,9 +282,6 @@ void create_recipe_nodes(recipe cfg,
         fetch_recipe_and_spawn_dependencies(cfg, key, state, execute_ptr, ancestors);
       }) };
 
-  // Connect fetch → execute for this recipe (fetch completion triggers execute)
-  tbb::flow::make_edge(*fetch_node, *execute_node);
-
   {  // Store both nodes using accessors for thread-safe insertion
     typename decltype(state.execute_nodes)::accessor exec_acc;
     if (state.execute_nodes.insert(exec_acc, key)) { exec_acc->second = execute_node; }
@@ -313,7 +313,16 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe> const &roots, cache &cach
     }
   }
 
-  // Wait for all work to complete
+  // Wait for all fetches to complete
+  flow_graph.wait_for_all();
+
+  // Trigger all execute nodes (edges will handle dependency ordering)
+  // This happens after all fetches complete, ensuring all edges are connected
+  for (auto const &[key, node] : state.execute_nodes) {
+    node->try_put(tbb::flow::continue_msg{});
+  }
+
+  // Wait for all executions to complete
   flow_graph.wait_for_all();
 
   // Convert concurrent_unordered_map to regular unordered_map

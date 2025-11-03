@@ -6,14 +6,15 @@ namespace envy {
 
 namespace {
 
+// Enum-to-string mapping (order must match phase enum in phase.h)
 constinit std::array<std::string_view, 7> const phase_name_table{{
-    [static_cast<std::size_t>(phase::recipe_fetch)] = "recipe_fetch",
-    [static_cast<std::size_t>(phase::asset_check)] = "check",
-    [static_cast<std::size_t>(phase::asset_fetch)] = "fetch",
-    [static_cast<std::size_t>(phase::asset_stage)] = "stage",
-    [static_cast<std::size_t>(phase::asset_build)] = "build",
-    [static_cast<std::size_t>(phase::asset_install)] = "install",
-    [static_cast<std::size_t>(phase::asset_deploy)] = "deploy",
+    "recipe_fetch",  // phase::recipe_fetch
+    "check",         // phase::asset_check
+    "fetch",         // phase::asset_fetch
+    "stage",         // phase::asset_stage
+    "build",         // phase::asset_build
+    "install",       // phase::asset_install
+    "deploy",        // phase::asset_deploy
 }};
 
 }  // namespace
