@@ -221,8 +221,7 @@ void fetch_recipe_and_spawn_dependencies(
     }
   }
 
-  // Store lua state using accessor for thread-safe insertion
-  {
+  {  // Store lua state using accessor for thread-safe insertion
     typename decltype(state.recipes)::accessor acc;
     if (state.recipes.find(acc, key)) { acc->second.lua_state = std::move(lua_state); }
   }
