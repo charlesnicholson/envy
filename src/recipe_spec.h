@@ -10,7 +10,7 @@
 
 namespace envy {
 
-struct recipe {
+struct recipe_spec {
   struct remote_source {
     std::string url;
     std::string sha256;
@@ -36,7 +36,8 @@ struct recipe {
   std::unordered_map<std::string, std::string> options;
   std::optional<phase> needed_by;  // Phase dependency annotation
 
-  static recipe parse(lua_value const &lua_val, std::filesystem::path const &base_path);
+  static recipe_spec parse(lua_value const &lua_val,
+                           std::filesystem::path const &base_path);
 
   bool is_remote() const;
   bool is_local() const;

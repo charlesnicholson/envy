@@ -20,9 +20,9 @@ bool cmd_engine_functional_test::execute() {
   cache c{ cache_root };
 
   // Build recipe
-  recipe recipe_cfg{ .identity = cfg_.identity,
+  recipe_spec recipe_cfg{ .identity = cfg_.identity,
                           .source =
-                              recipe::local_source{ .file_path = cfg_.recipe_path },
+                              recipe_spec::local_source{ .file_path = cfg_.recipe_path },
                           .options = {},
                           .needed_by = std::nullopt };
 

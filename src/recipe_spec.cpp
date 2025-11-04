@@ -29,8 +29,9 @@ bool parse_identity(std::string const &identity,
 
 }  // namespace
 
-recipe recipe::parse(lua_value const &lua_val, std::filesystem::path const &base_path) {
-  recipe result;
+recipe_spec recipe_spec::parse(lua_value const &lua_val,
+                               std::filesystem::path const &base_path) {
+  recipe_spec result;
 
   //  "namespace.name@version" shorthand requires url or file
   if (auto const *str{ lua_val.get<std::string>() }) {
@@ -116,11 +117,13 @@ recipe recipe::parse(lua_value const &lua_val, std::filesystem::path const &base
   return result;
 }
 
-bool recipe::is_remote() const { return std::holds_alternative<remote_source>(source); }
-bool recipe::is_local() const { return std::holds_alternative<local_source>(source); }
-bool recipe::is_git() const { return std::holds_alternative<git_source>(source); }
+bool recipe_spec::is_git() const { return std::holds_alternative<git_source>(source); }
+bool recipe_spec::is_local() const { return std::holds_alternative<local_source>(source); }
+bool recipe_spec::is_remote() const {
+  return std::holds_alternative<remote_source>(source);
+}
 
-bool recipe::has_fetch_function() const {
+bool recipe_spec::has_fetch_function() const {
   return std::holds_alternative<fetch_function>(source);
 }
 

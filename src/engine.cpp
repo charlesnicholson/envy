@@ -25,15 +25,21 @@ namespace envy {
 
 namespace {
 
+struct recipe {
+  using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
+
+  node_ptr fetch_node;
+  node_ptr execute_node;
+  lua_state_ptr lua_state;  // null until fetch completes
+  std::string result_hash;  // empty until execute completes
+};
+
 struct graph_state {
   tbb::flow::graph &graph;
   cache &cache_;
 
   using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
-  tbb::concurrent_hash_map<std::string, node_ptr> fetch_nodes;
-  tbb::concurrent_hash_map<std::string, node_ptr> execute_nodes;
-  tbb::concurrent_hash_map<std::string, lua_state_ptr> lua_states;
-  tbb::concurrent_unordered_map<std::string, std::string> result;
+  tbb::concurrent_hash_map<std::string, recipe> recipes;
   tbb::concurrent_unordered_set<std::string> triggered;
   tbb::concurrent_unordered_set<std::string> executed;
 };
@@ -81,8 +87,7 @@ void validate_phases(lua_State *lua, std::string const &identity) {
   }
 }
 
-// Forward declaration for use in helper functions
-void create_recipe_nodes(recipe cfg,
+void create_recipe_nodes(recipe_spec const &spec,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors);
 
@@ -94,11 +99,13 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
   if (!inserted) { return; }  // Already executed by another thread
 
   // Access lua state via const_accessor (read-only)
-  typename decltype(state.lua_states)::const_accessor data_acc;
-  if (!state.lua_states.find(data_acc, key)) {
-    throw std::runtime_error("Lua state not found for " + key);
-  }
-  lua_State *lua{ data_acc->second.get() };
+  lua_State *lua{ [&] {
+    typename decltype(state.recipes)::const_accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Recipe not found for " + key);
+    }
+    return acc->second.lua_state.get();  // Get raw pointer while recipe stays in map
+  }() };
 
   // Execute check() phase
   lua_getglobal(lua, "check");
@@ -125,12 +132,10 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
     lua_pop(lua, 1);
   }
 
-  // Execute install() phase if check returned false
-  if (!check_result) {
+  if (!check_result) {  // Execute install() phase if check returned false
     lua_getglobal(lua, "install");
-    bool const has_install{ lua_isfunction(lua, -1) };
 
-    if (has_install) {
+    if (lua_isfunction(lua, -1)) {
       tui::trace("phase install START %s", key.c_str());
       lua_newtable(lua);
 
@@ -147,11 +152,14 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
     }
   }
 
-  state.result.insert({ key, "STUB_HASH" });
+  {  // Write result hash
+    typename decltype(state.recipes)::accessor acc;
+    if (state.recipes.find(acc, key)) { acc->second.result_hash = "STUB_HASH"; }
+  }
 }
 
 void fetch_recipe_and_spawn_dependencies(
-    recipe const &cfg,
+    recipe_spec const &spec,
     std::string const &key,
     graph_state &state,
     tbb::flow::continue_node<tbb::flow::continue_msg> *execute_ptr,
@@ -161,17 +169,20 @@ void fetch_recipe_and_spawn_dependencies(
 
   // Load recipe from source
   std::filesystem::path recipe_path;
-  if (auto const *local_src{ std::get_if<recipe::local_source>(&cfg.source) }) {
+  if (auto const *local_src{ std::get_if<recipe_spec::local_source>(&spec.source) }) {
     recipe_path = local_src->file_path;
     if (!lua_run_file(lua_state, recipe_path)) {
-      throw std::runtime_error("Failed to load recipe: " + cfg.identity);
+      throw std::runtime_error("Failed to load recipe: " + spec.identity);
     }
-  } else if (auto const *remote_src{ std::get_if<recipe::remote_source>(&cfg.source) }) {
+  } else if (auto const *remote_src{
+                 std::get_if<recipe_spec::remote_source>(&spec.source) }) {
     // Ensure recipe in cache
-    auto cache_result{ state.cache_.ensure_recipe(cfg.identity) };
+    auto cache_result{ state.cache_.ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {  // We won the race - fetch recipe into cache
-      tui::trace("fetch recipe %s from %s", cfg.identity.c_str(), remote_src->url.c_str());
+      tui::trace("fetch recipe %s from %s",
+                 spec.identity.c_str(),
+                 remote_src->url.c_str());
       std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "recipe.lua" };
 
       // Note: remote_source.subdir is not yet implemented
@@ -185,23 +196,23 @@ void fetch_recipe_and_spawn_dependencies(
 
     recipe_path = cache_result.asset_path / "recipe.lua";
     if (!lua_run_file(lua_state, recipe_path)) {
-      throw std::runtime_error("Failed to load recipe: " + cfg.identity);
+      throw std::runtime_error("Failed to load recipe: " + spec.identity);
     }
   } else {
-    throw std::runtime_error("Only local and remote sources supported: " + cfg.identity);
+    throw std::runtime_error("Only local and remote sources supported: " + spec.identity);
   }
 
-  validate_phases(lua_state.get(), cfg.identity);
+  validate_phases(lua_state.get(), spec.identity);
 
   // Parse dependencies (before moving lua_state)
-  std::vector<recipe> dep_configs;
+  std::vector<recipe_spec> dep_configs;
   if (auto const deps_array{ lua_global_to_array(lua_state.get(), "dependencies") }) {
     for (auto const &dep_val : *deps_array) {
-      auto dep_cfg{ recipe::parse(dep_val, recipe_path) };
+      auto dep_cfg{ recipe_spec::parse(dep_val, recipe_path) };
 
       // Security: non-local.* recipes cannot depend on local.* recipes
-      if (!cfg.identity.starts_with("local.") && dep_cfg.identity.starts_with("local.")) {
-        throw std::runtime_error("Security violation: non-local recipe '" + cfg.identity +
+      if (!spec.identity.starts_with("local.") && dep_cfg.identity.starts_with("local.")) {
+        throw std::runtime_error("Security violation: non-local recipe '" + spec.identity +
                                  "' cannot depend on local recipe '" + dep_cfg.identity +
                                  "'");
       }
@@ -212,9 +223,8 @@ void fetch_recipe_and_spawn_dependencies(
 
   // Store lua state using accessor for thread-safe insertion
   {
-    typename decltype(state.lua_states)::accessor data_acc;
-    state.lua_states.insert(data_acc, key);
-    data_acc->second = std::move(lua_state);
+    typename decltype(state.recipes)::accessor acc;
+    if (state.recipes.find(acc, key)) { acc->second.lua_state = std::move(lua_state); }
   }
 
   // Build ancestor chain for cycle detection - add current node to ancestors
@@ -229,41 +239,41 @@ void fetch_recipe_and_spawn_dependencies(
     create_recipe_nodes(dep_cfg, state, dep_ancestors);
 
     {  // Connect edge: dep execute → self execute
-      typename decltype(state.execute_nodes)::const_accessor dep_acc;
-      if (state.execute_nodes.find(dep_acc, dep_key)) {
-        tbb::flow::make_edge(*dep_acc->second, *execute_ptr);
+      typename decltype(state.recipes)::const_accessor acc;
+      if (state.recipes.find(acc, dep_key)) {
+        tbb::flow::make_edge(*acc->second.execute_node, *execute_ptr);
       }
     }
 
     // Try to insert into triggered set; if successful, trigger the node
     auto [iter, inserted]{ state.triggered.insert(dep_key) };
     if (inserted) {
-      typename decltype(state.fetch_nodes)::const_accessor fetch_acc;
-      if (state.fetch_nodes.find(fetch_acc, dep_key)) {
-        fetch_acc->second->try_put(tbb::flow::continue_msg{});
+      typename decltype(state.recipes)::const_accessor acc;
+      if (state.recipes.find(acc, dep_key)) {
+        acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
       }
     }
   }
 }
 
-void create_recipe_nodes(recipe cfg,
+void create_recipe_nodes(recipe_spec const &spec,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors = {}) {
-  auto const key{ make_canonical_key(cfg.identity, cfg.options) };
+  auto const key{ make_canonical_key(spec.identity, spec.options) };
 
   // Cycle detection: check if this recipe is in our ancestor chain
   if (ancestors.contains(key)) {
     throw std::runtime_error("Cycle detected: " + key + " depends on itself");
   }
 
-  {  // Check if nodes already exist (use const_accessor for read-only check)
-    typename decltype(state.fetch_nodes)::const_accessor acc;
-    if (state.fetch_nodes.find(acc, key)) { return; }
+  {  // Check if recipe already exists (use const_accessor for read-only check)
+    typename decltype(state.recipes)::const_accessor acc;
+    if (state.recipes.find(acc, key)) { return; }
   }
 
   // Validate identity matches source type
-  if (cfg.identity.starts_with("local.") && !cfg.is_local()) {
-    throw std::runtime_error("Recipe 'local.*' must have local source: " + cfg.identity);
+  if (spec.identity.starts_with("local.") && !spec.is_local()) {
+    throw std::runtime_error("Recipe 'local.*' must have local source: " + spec.identity);
   }
 
   // Create execute node upfront (will access recipe_data later when it runs)
@@ -277,57 +287,49 @@ void create_recipe_nodes(recipe cfg,
   // Capture ancestors by value so each node has its own chain
   auto fetch_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [cfg, key, &state, execute_ptr = execute_node.get(), ancestors](
+      [spec, key, &state, execute_ptr = execute_node.get(), ancestors](
           tbb::flow::continue_msg const &) {
-        fetch_recipe_and_spawn_dependencies(cfg, key, state, execute_ptr, ancestors);
+        fetch_recipe_and_spawn_dependencies(spec, key, state, execute_ptr, ancestors);
       }) };
 
-  {  // Store both nodes using accessors for thread-safe insertion
-    typename decltype(state.execute_nodes)::accessor exec_acc;
-    if (state.execute_nodes.insert(exec_acc, key)) { exec_acc->second = execute_node; }
-  }
-  {
-    typename decltype(state.fetch_nodes)::accessor fetch_acc;
-    if (state.fetch_nodes.insert(fetch_acc, key)) { fetch_acc->second = fetch_node; }
+  {  // Store recipe with both nodes using accessor for thread-safe insertion
+    typename decltype(state.recipes)::accessor acc;
+    if (state.recipes.insert(acc, key)) {
+      acc->second.fetch_node = fetch_node;
+      acc->second.execute_node = execute_node;
+    }
   }
 }
 
 }  // namespace
 
-recipe_asset_hash_map_t engine_run(std::vector<recipe> const &roots, cache &cache_) {
+recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache &cache_) {
   tbb::flow::graph flow_graph;
   graph_state state{ .graph = flow_graph, .cache_ = cache_ };
 
-  // Create nodes and trigger fetch for all root recipes
-  for (auto const &cfg : roots) {
+  for (auto const &cfg : roots) {  // Create nodes and trigger fetch for all roots
     auto const key{ make_canonical_key(cfg.identity, cfg.options) };
-
     create_recipe_nodes(cfg, state);
-
-    // Mark as triggered and trigger the fetch node
     state.triggered.insert(key);
 
-    typename decltype(state.fetch_nodes)::const_accessor fetch_acc;
-    if (state.fetch_nodes.find(fetch_acc, key)) {
-      fetch_acc->second->try_put(tbb::flow::continue_msg{});
+    typename decltype(state.recipes)::const_accessor acc;
+    if (state.recipes.find(acc, key)) {
+      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
     }
   }
 
-  // Wait for all fetches to complete
   flow_graph.wait_for_all();
 
   // Trigger all execute nodes (edges will handle dependency ordering)
   // This happens after all fetches complete, ensuring all edges are connected
-  for (auto const &[key, node] : state.execute_nodes) {
-    node->try_put(tbb::flow::continue_msg{});
+  for (auto const &[key, rec] : state.recipes) {
+    rec.execute_node->try_put(tbb::flow::continue_msg{});
   }
 
-  // Wait for all executions to complete
   flow_graph.wait_for_all();
 
-  // Convert concurrent_unordered_map to regular unordered_map
   recipe_asset_hash_map_t result;
-  for (auto const &[k, v] : state.result) { result[k] = v; }
+  for (auto const &[key, rec] : state.recipes) { result[key] = rec.result_hash; }
   return result;
 }
 
