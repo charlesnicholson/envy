@@ -27,11 +27,12 @@
 
 **Dynamic expansion:** `recipe_fetch` node body:
 1. Fetch recipe file(s) (declarative `source` or custom `fetch` function)
-2. Verify integrity (SHA256 for URLs, git commit SHA, or API-enforced per-file verification)
+2. Verify integrity (SHA256 for URLs if provided, git commit SHA, or API-enforced per-file verification)
 3. Load Lua chunk, create `lua_state` sandbox
-4. Evaluate `dependencies` field → plain table (static copy or function return value)
-5. For each dependency: ensure memoized node exists (canonical key lookup), add edges based on `needed_by`
-6. Complete `recipe_fetch` node, unblock dependent phases
+4. **Validate identity:** Non-`local.*` recipes must declare `identity = "..."` field matching referrer's identity (prevents wrong recipe substitution)
+5. Evaluate `dependencies` field → plain table (static copy or function return value)
+6. For each dependency: ensure memoized node exists (canonical key lookup), add edges based on `needed_by`
+7. Complete `recipe_fetch` node, unblock dependent phases
 
 **Memoization:** `concurrent_hash_map<string, dag_node*>` tracks nodes by canonical key. First thread to request a node allocates and initializes it; later threads reuse existing node. Prevents duplicate work when multiple recipes depend on same `(identity, options)`.
 
@@ -109,56 +110,151 @@ Both need each other for `recipe_fetch` → deadlock. Envy detects when B's `rec
 
 ## Recipe Fetching
 
-**Declarative sources** (manifest):
+### Identity Declaration
+
+**Requirement:** ALL recipes must declare their identity at the top of the recipe file:
 ```lua
-{ recipe = "vendor.lib@v1", source = "https://example.com/lib.lua", sha256 = "abc..." }
-{ recipe = "vendor.lib@v2", source = "s3://bucket/lib.tar.gz", sha256 = "def..." }
-{ recipe = "vendor.lib@v3", source = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..." }
+-- vendor.lib@v1 recipe file
+identity = "vendor.lib@v1"
+
+-- local.wrapper@v1 recipe file
+identity = "local.wrapper@v1"
+
+-- Rest of recipe...
 ```
 
-Envy downloads to temp, verifies SHA256 (URL) or commit SHA (git), moves to cache. Archives auto-extracted; `subdir` specifies recipe entry point within archive/repo.
+**Validation:** When Envy loads a recipe, it verifies the declared identity matches the requested identity. This prevents:
+- Accidental recipe substitution (wrong URL, typo in manifest)
+- Copy-paste errors (forgot to update identity after copying recipe)
+- Stale references (manifest not updated after recipe rename)
+- Malicious substitution (compromised server for remote recipes)
 
-**Custom fetch functions** (manifest):
+**No exemptions:** Even `local.*` recipes require identity declaration. This is a correctness check orthogonal to SHA256 verification (which is about network trust). Identity validation catches errors in ALL recipes, regardless of namespace.
+
+### Declarative Fetch Sources
+
+**Single file** (string shorthand, no verification):
+```lua
+fetch = "https://example.com/gcc.tar.gz"
+```
+
+**Single file with verification** (table):
+```lua
+fetch = {url = "https://example.com/gcc.tar.gz", sha256 = "abc123..."}
+```
+
+**Multiple files** (concurrent download):
+```lua
+fetch = {
+  {url = "https://example.com/gcc.tar.gz", sha256 = "abc123..."},
+  {url = "https://example.com/gcc.tar.gz.sig", sha256 = "def456..."}
+}
+```
+
+**Trust model:** SHA256 is **optional** (permissive by default). If provided, Envy verifies after download. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
+
+**Git sources:**
+```lua
+fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
+```
+`ref` can be commit SHA (self-verifying) or tag/branch (future strict mode requires SHA).
+
+### Custom Fetch Functions
+
+**Use case:** Authenticated sources, custom tools (JFrog, Artifactory), dynamic recipe generation.
+
+**Example:**
 ```lua
 {
   recipe = "corporate.toolchain@v1",
   fetch = function(ctx)
-    local jfrog = ctx:asset("jfrog.cli@v2")
-    local work = ctx:work_dir()
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-    ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "abc123...")
+    local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
+
+    -- Download files concurrently with verification
+    ctx.fetch({
+      {url = "https://internal.com/toolchain.tar.gz", sha256 = "abc123..."},
+      {url = "https://internal.com/helpers.lua", sha256 = "def456..."}
+    })
   end,
-  dependencies = { { recipe = "jfrog.cli@v2", ..., needed_by = "recipe_fetch" } }
+  dependencies = {
+    { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+  }
 }
 ```
 
-**Recipe fetch context API:**
+**Security boundary:** Custom fetch functions cannot access cache paths directly. All downloads go through `ctx.fetch()` API, which enforces optional SHA256 verification.
+
+### Fetch Phase Context API
+
+**Available to `function fetch(ctx)` in recipes:**
 ```lua
 ctx = {
-  work_dir = function() -> string,                    -- Recipe workspace, auto-cleaned after fetch
-  fetch = function(url, sha256, [filename]),          -- Download to cache, verify SHA256
-  import_file = function(source, dest, sha256),       -- Copy to cache, verify SHA256
-  sha256_file = function(path) -> string,             -- Compute hash (for dynamic content)
-  fetch_git = function(url, ref, [subdir]),           -- Clone repo, checkout ref
-  asset = function(identity) -> string,               -- Path to installed dependency
-  run = function(cmd, ...),                           -- Execute subprocess (streamed output)
-  run_capture = function(cmd, ...) -> {stdout, stderr, exitcode},
-  platform = string,                                  -- "darwin", "linux", "windows"
-  arch = string                                       -- "arm64", "x86_64", etc.
+  -- Identity & configuration
+  identity = string,                                -- Recipe identity ("vendor.lib@v1")
+  options = table,                                  -- Recipe options (always present, may be empty)
+
+  -- Directories (read-only paths)
+  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+
+  -- Download functions (concurrent, atomic commit)
+  fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
+                                                    -- spec: {url="...", sha256="..."} or {{...}, {...}}
+                                                    -- Returns: basename(s) of downloaded file(s)
+
+  -- Dependency access
+  asset = function(identity) -> string,             -- Path to installed dependency asset
+
+  -- Process execution
+  run = function(cmd, ...) -> number,               -- Execute subprocess, stream output to logs
+  run_capture = function(cmd, ...) -> table,        -- Capture stdout/stderr/exitcode
 }
+
+-- Platform globals (available everywhere in Lua)
+ENVY_PLATFORM       -- "darwin", "linux", "windows"
+ENVY_ARCH           -- "arm64", "x86_64", etc.
+ENVY_PLATFORM_ARCH  -- "darwin-arm64", etc.
 ```
 
-**Verification enforcement:** All cache writes require SHA256. `ctx:fetch()` and `ctx:import_file()` verify before writing—no post-hoc tree hashing. Custom fetch functions cannot bypass (no direct cache directory access). SHA256 verified at fetch time only; never re-checked from cache.
+**Fetch function behavior:**
+- **Single file**: `ctx.fetch({url = "...", sha256 = "..."})` → returns basename string
+- **Multiple files**: `ctx.fetch({{url = "..."}, {url = "..."}})` → returns array of basenames
+- **Concurrent**: All downloads happen in parallel via TBB task_group
+- **Atomic**: All files downloaded and verified before ANY are committed to fetch_dir
+- **Error handling**: If any download or verification fails, entire operation rolls back
 
-**Cache layout:** Custom fetch → multi-file directory with `recipe.lua` entry point:
+**Example usage:**
+```lua
+function fetch(ctx)
+  -- Single file
+  local archive = ctx.fetch({url = "https://foo.com/gcc.tar.gz", sha256 = "abc..."})
+  -- archive = "gcc.tar.gz"
+
+  -- Multiple files (concurrent)
+  local files = ctx.fetch({
+    {url = "https://foo.com/gcc.tar.gz", sha256 = "abc..."},
+    {url = "https://foo.com/gcc.tar.gz.sig"}  -- No SHA256, still downloaded
+  })
+  -- files = {"gcc.tar.gz", "gcc.tar.gz.sig"}
+
+  -- Optional: verify signature using downloaded files
+  -- (both files are now in ctx.tmp directory)
+end
+```
+
+**SHA256 verification:** If `sha256` field present, Envy computes SHA256 after download and errors if mismatch. If absent, download proceeds without verification (permissive mode).
+
+### Cache Layout
+
+**Recipe cache** (custom fetch produces multi-file directory):
 ```
 ~/.cache/envy/recipes/
 └── corporate.toolchain@v1/
-    ├── .envy-complete
-    ├── recipe.lua           # Entry point (required)
-    ├── helpers.lua
+    ├── .envy-complete        # Marker: recipe fetch complete
+    ├── recipe.lua            # Entry point (required)
+    ├── helpers.lua           # Additional files from ctx.fetch()
     └── .work/
-        └── fetch/
+        ├── tmp/              # Temp directory for ctx.fetch() (cleaned after)
+        └── fetch/            # Downloaded files moved here after verification
             └── .envy-complete
 ```
 
