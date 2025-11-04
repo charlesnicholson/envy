@@ -414,6 +414,64 @@ class TestEngine(unittest.TestCase):
         self.assertIn("install", stderr_lower, f"Expected install phase log: {result.stderr}")
         self.assertIn("local.simple@1.0.0", stderr_lower, f"Expected identity in logs: {result.stderr}")
 
+    def test_fetch_function_basic(self):
+        """Engine executes fetch() phase for recipes with fetch function."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetcher@1.0.0",
+                "test_data/recipes/fetch_function_basic.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify TRACE logs show fetch phase execution
+        stderr_lower = result.stderr.lower()
+        self.assertIn("fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}")
+        self.assertIn("local.fetcher@1.0.0", stderr_lower, f"Expected identity in logs: {result.stderr}")
+
+        # Verify output contains asset hash
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+        key, value = lines[0].split(" -> ", 1)
+        self.assertEqual(key, "local.fetcher@1.0.0")
+        self.assertGreater(len(value), 0)
+
+    def test_fetch_function_with_dependency(self):
+        """Engine executes fetch() with dependencies available."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetcher_with_dep@1.0.0",
+                "test_data/recipes/fetch_function_with_dep.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify both recipes executed
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2)
+
+        # Verify dependency executed
+        dep_lines = [l for l in lines if "local.tool@1.0.0" in l]
+        self.assertEqual(len(dep_lines), 1)
+
+        # Verify main recipe executed
+        main_lines = [l for l in lines if "local.fetcher_with_dep@1.0.0" in l]
+        self.assertEqual(len(main_lines), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

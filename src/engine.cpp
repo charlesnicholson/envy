@@ -28,10 +28,21 @@ namespace {
 struct recipe {
   using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
 
+  // Phase nodes (all created upfront)
+  node_ptr recipe_fetch_node;
+  node_ptr check_node;
   node_ptr fetch_node;
-  node_ptr execute_node;
-  lua_state_ptr lua_state;  // null until fetch completes
-  std::string result_hash;  // empty until execute completes
+  node_ptr stage_node;
+  node_ptr build_node;
+  node_ptr install_node;
+  node_ptr deploy_node;
+  node_ptr completion_node;
+
+  // Phase state
+  lua_state_ptr lua_state;               // set by recipe_fetch
+  cache::scoped_entry_lock::ptr_t lock;  // set by check if cache miss
+  std::filesystem::path asset_path;      // set by check if cache hit
+  std::string result_hash;               // set by completion
 };
 
 struct graph_state {
@@ -87,33 +98,35 @@ void validate_phases(lua_State *lua, std::string const &identity) {
   }
 }
 
-void create_recipe_nodes(recipe_spec const &spec,
-                         graph_state &state,
-                         std::unordered_set<std::string> const &ancestors);
+// Forward declarations for phase functions
+void run_check_phase(std::string const &key, graph_state &state);
+void run_fetch_phase(std::string const &key, graph_state &state);
+void run_stage_phase(std::string const &key, graph_state &state);
+void run_build_phase(std::string const &key, graph_state &state);
+void run_install_phase(std::string const &key, graph_state &state);
+void run_deploy_phase(std::string const &key, graph_state &state);
+void run_completion_phase(std::string const &key, graph_state &state);
 
-void execute_recipe_phases(std::string const &key, graph_state &state) {
-  // Idempotency check - atomically check if already executed
-  // This allows execute to be triggered multiple times safely (from fetch→execute edge
-  // AND from dependency edges) without duplicate work or race conditions
-  auto [iter, inserted]{ state.executed.insert(key) };
-  if (!inserted) { return; }  // Already executed by another thread
+// Stub implementations (will be filled in later steps)
+void run_check_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase check START %s", key.c_str());
 
-  // Access lua state via const_accessor (read-only)
+  // Get lua_state and check if user defined check() function
   lua_State *lua{ [&] {
     typename decltype(state.recipes)::const_accessor acc;
     if (!state.recipes.find(acc, key)) {
       throw std::runtime_error("Recipe not found for " + key);
     }
-    return acc->second.lua_state.get();  // Get raw pointer while recipe stays in map
+    return acc->second.lua_state.get();
   }() };
 
-  // Execute check() phase
+  // Check if user defined a check() function
   lua_getglobal(lua, "check");
   bool const has_check{ lua_isfunction(lua, -1) };
-  bool check_result{ true };
 
   if (has_check) {
-    tui::trace("phase check START %s", key.c_str());
+    // Call check() function - it returns boolean (true = cache hit, false = cache miss)
+    // Push empty context table as argument
     lua_newtable(lua);
 
     if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
@@ -123,46 +136,169 @@ void execute_recipe_phases(std::string const &key, graph_state &state) {
                                (err ? err : "unknown error"));
     }
 
-    check_result = lua_toboolean(lua, -1);
+    bool const cache_hit{ static_cast<bool>(lua_toboolean(lua, -1)) };
     lua_pop(lua, 1);
-    tui::trace("phase check END %s (result=%s)",
-               key.c_str(),
-               check_result ? "true" : "false");
+
+    if (cache_hit) {
+      // User says it's already available - trigger completion directly
+      typename decltype(state.recipes)::accessor acc;
+      if (state.recipes.find(acc, key)) {
+        // For now, use a placeholder asset_path since user-defined check
+        // doesn't tell us where the asset is
+        acc->second.asset_path = "/placeholder/asset/path";
+        // Trigger completion node directly (short-circuit)
+        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+      }
+      tui::trace("phase check END %s (cache hit, short-circuited)", key.c_str());
+      return;
+    }
   } else {
-    lua_pop(lua, 1);
+    lua_pop(lua, 1);  // Pop nil from failed getglobal
   }
 
-  if (!check_result) {  // Execute install() phase if check returned false
-    lua_getglobal(lua, "install");
+  // Cache miss or no check() - call cache.ensure_asset to get lock or existing asset
+  // For now, use a simple hash derived from the key
+  // TODO: Compute proper content hash based on sources and dependencies
+  std::ostringstream hash_oss;
+  hash_oss << std::hex << std::hash<std::string>{}(key);
+  std::string const hash_prefix{ hash_oss.str().substr(0, 16) };  // Use first 16 hex chars
 
-    if (lua_isfunction(lua, -1)) {
-      tui::trace("phase install START %s", key.c_str());
-      lua_newtable(lua);
+  lua_getglobal(lua, "ENVY_PLATFORM");
+  std::string const platform{ lua_tostring(lua, -1) };
+  lua_pop(lua, 1);
 
-      if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
-        char const *err{ lua_tostring(lua, -1) };
-        lua_pop(lua, 1);
-        throw std::runtime_error("install() failed for " + key + ": " +
-                                 (err ? err : "unknown error"));
-      }
+  lua_getglobal(lua, "ENVY_ARCH");
+  std::string const arch{ lua_tostring(lua, -1) };
+  lua_pop(lua, 1);
 
-      tui::trace("phase install END %s", key.c_str());
+  // Extract identity from key (remove options suffix if present)
+  std::string identity{ key };
+  if (auto const brace_pos{ key.find('{') }; brace_pos != std::string::npos) {
+    identity = key.substr(0, brace_pos);
+  }
+
+  auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
+
+  // Store result in recipe
+  typename decltype(state.recipes)::accessor acc;
+  if (state.recipes.find(acc, key)) {
+    if (cache_result.lock) {
+      // Cache miss - we won the race, need to build
+      acc->second.lock = std::move(cache_result.lock);
+      tui::trace("phase check END %s (cache miss, acquired lock)", key.c_str());
     } else {
+      // Cache hit - asset already exists
+      acc->second.asset_path = cache_result.asset_path;
+      // Trigger completion node directly (short-circuit)
+      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+      tui::trace("phase check END %s (cache hit, short-circuited)", key.c_str());
+    }
+  }
+}
+
+void run_fetch_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase fetch START %s", key.c_str());
+  // TODO: Implement fetch logic
+  tui::trace("phase fetch END %s", key.c_str());
+}
+
+void run_stage_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase stage START %s", key.c_str());
+  // TODO: Implement stage logic
+  tui::trace("phase stage END %s", key.c_str());
+}
+
+void run_build_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase build START %s", key.c_str());
+  // TODO: Implement build logic
+  tui::trace("phase build END %s", key.c_str());
+}
+
+void run_install_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase install START %s", key.c_str());
+
+  // Get lua_state
+  lua_State *lua{ [&] {
+    typename decltype(state.recipes)::const_accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Recipe not found for " + key);
+    }
+    return acc->second.lua_state.get();
+  }() };
+
+  // Check if user defined install() function
+  lua_getglobal(lua, "install");
+  bool const has_install{ lua_isfunction(lua, -1) };
+
+  if (has_install) {
+    // Push empty context table as argument
+    lua_newtable(lua);
+
+    if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
+      char const *err{ lua_tostring(lua, -1) };
       lua_pop(lua, 1);
+      throw std::runtime_error("install() failed for " + key + ": " +
+                               (err ? err : "unknown error"));
+    }
+  } else {
+    lua_pop(lua, 1);  // Pop nil from failed getglobal
+  }
+
+  tui::trace("phase install END %s", key.c_str());
+}
+
+void run_deploy_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase deploy START %s", key.c_str());
+  // TODO: Implement deploy logic
+  tui::trace("phase deploy END %s", key.c_str());
+}
+
+void run_completion_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase completion START %s", key.c_str());
+
+  typename decltype(state.recipes)::accessor acc;
+  if (state.recipes.find(acc, key)) {
+    // If we have a lock, mark install complete and move to asset path
+    if (acc->second.lock) {
+      // Ensure install_dir exists before marking complete
+      // (the install phase should have created it, but create it if missing)
+      auto const install_dir{ acc->second.lock->install_dir() };
+      std::filesystem::create_directories(install_dir);
+
+      // Get the entry_path to compute final asset_path
+      // The lock destructor will rename install_dir to entry_path/asset
+      std::filesystem::path const entry_path{ install_dir.parent_path() };
+      std::filesystem::path const final_asset_path{ entry_path / "asset" };
+
+      acc->second.lock->mark_install_complete();
+      acc->second.asset_path = final_asset_path;
+      acc->second.lock.reset();  // Release lock, which moves install_dir to asset_dir
+    }
+
+    // Compute result hash from asset_path
+    // TODO: Compute proper content hash of installed assets
+    // For now, use a simple hash of the path
+    if (!acc->second.asset_path.empty()) {
+      auto const path_str{ acc->second.asset_path.string() };
+      acc->second.result_hash =
+          path_str.substr(std::max<size_t>(0, path_str.length() - 16));
+    } else {
+      // Fallback for testing
+      acc->second.result_hash = "STUB_HASH";
     }
   }
 
-  {  // Write result hash
-    typename decltype(state.recipes)::accessor acc;
-    if (state.recipes.find(acc, key)) { acc->second.result_hash = "STUB_HASH"; }
-  }
+  tui::trace("phase completion END %s", key.c_str());
 }
+
+void create_recipe_nodes(recipe_spec const &spec,
+                         graph_state &state,
+                         std::unordered_set<std::string> const &ancestors);
 
 void fetch_recipe_and_spawn_dependencies(
     recipe_spec const &spec,
     std::string const &key,
     graph_state &state,
-    tbb::flow::continue_node<tbb::flow::continue_msg> *execute_ptr,
     std::unordered_set<std::string> const &ancestors) {
   auto lua_state{ lua_make() };
   lua_add_envy(lua_state);
@@ -237,10 +373,12 @@ void fetch_recipe_and_spawn_dependencies(
     // Create dependency nodes - pass ancestors for cycle detection
     create_recipe_nodes(dep_cfg, state, dep_ancestors);
 
-    {  // Connect edge: dep execute → self execute
-      typename decltype(state.recipes)::const_accessor acc;
-      if (state.recipes.find(acc, dep_key)) {
-        tbb::flow::make_edge(*acc->second.execute_node, *execute_ptr);
+    {  // Connect edge: dep.completion → parent.check
+       // TODO: Implement needed_by logic in step 4
+      typename decltype(state.recipes)::const_accessor dep_acc, parent_acc;
+      if (state.recipes.find(dep_acc, dep_key) && state.recipes.find(parent_acc, key)) {
+        tbb::flow::make_edge(*dep_acc->second.completion_node,
+                             *parent_acc->second.check_node);
       }
     }
 
@@ -249,7 +387,7 @@ void fetch_recipe_and_spawn_dependencies(
     if (inserted) {
       typename decltype(state.recipes)::const_accessor acc;
       if (state.recipes.find(acc, dep_key)) {
-        acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
+        acc->second.recipe_fetch_node->try_put(tbb::flow::continue_msg{});
       }
     }
   }
@@ -275,27 +413,70 @@ void create_recipe_nodes(recipe_spec const &spec,
     throw std::runtime_error("Recipe 'local.*' must have local source: " + spec.identity);
   }
 
-  // Create execute node upfront (will access recipe_data later when it runs)
-  auto execute_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
-      state.graph,
-      [key, &state](tbb::flow::continue_msg const &) {
-        execute_recipe_phases(key, state);
-      }) };
+  // Create ALL phase nodes upfront
+  auto recipe_fetch_node{
+    std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+        state.graph,
+        [spec, key, &state, ancestors](tbb::flow::continue_msg const &) {
+          fetch_recipe_and_spawn_dependencies(spec, key, state, ancestors);
+        })
+  };
 
-  // Create fetch node - loads recipe and spawns dependencies
-  // Capture ancestors by value so each node has its own chain
+  auto check_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [key, &state](tbb::flow::continue_msg const &) { run_check_phase(key, state); }) };
+
   auto fetch_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [spec, key, &state, execute_ptr = execute_node.get(), ancestors](
-          tbb::flow::continue_msg const &) {
-        fetch_recipe_and_spawn_dependencies(spec, key, state, execute_ptr, ancestors);
-      }) };
+      [key, &state](tbb::flow::continue_msg const &) { run_fetch_phase(key, state); }) };
 
-  {  // Store recipe with both nodes using accessor for thread-safe insertion
+  auto stage_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [key, &state](tbb::flow::continue_msg const &) { run_stage_phase(key, state); }) };
+
+  auto build_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [key, &state](tbb::flow::continue_msg const &) { run_build_phase(key, state); }) };
+
+  auto install_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [key, &state](tbb::flow::continue_msg const &) { run_install_phase(key, state); }) };
+
+  auto deploy_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [key, &state](tbb::flow::continue_msg const &) { run_deploy_phase(key, state); }) };
+
+  auto completion_node{
+    std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+        state.graph,
+        [key, &state](tbb::flow::continue_msg const &) {
+          run_completion_phase(key, state);
+        })
+  };
+
+  // Create intra-recipe edges (linear chain)
+  tbb::flow::make_edge(*recipe_fetch_node, *check_node);
+  tbb::flow::make_edge(*check_node, *fetch_node);
+  tbb::flow::make_edge(*fetch_node, *stage_node);
+  tbb::flow::make_edge(*stage_node, *build_node);
+  tbb::flow::make_edge(*build_node, *install_node);
+  tbb::flow::make_edge(*install_node, *deploy_node);
+  tbb::flow::make_edge(*deploy_node, *completion_node);
+
+  // Special: check can short-circuit to completion (will be triggered conditionally)
+  tbb::flow::make_edge(*check_node, *completion_node);
+
+  {  // Store recipe with all nodes using accessor for thread-safe insertion
     typename decltype(state.recipes)::accessor acc;
     if (state.recipes.insert(acc, key)) {
+      acc->second.recipe_fetch_node = recipe_fetch_node;
+      acc->second.check_node = check_node;
       acc->second.fetch_node = fetch_node;
-      acc->second.execute_node = execute_node;
+      acc->second.stage_node = stage_node;
+      acc->second.build_node = build_node;
+      acc->second.install_node = install_node;
+      acc->second.deploy_node = deploy_node;
+      acc->second.completion_node = completion_node;
     }
   }
 }
@@ -306,27 +487,22 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache 
   tbb::flow::graph flow_graph;
   graph_state state{ .graph = flow_graph, .cache_ = cache_ };
 
-  for (auto const &cfg : roots) {  // Create nodes and trigger fetch for all roots
+  // Create nodes and trigger recipe_fetch for all roots
+  for (auto const &cfg : roots) {
     auto const key{ make_canonical_key(cfg.identity, cfg.options) };
     create_recipe_nodes(cfg, state);
     state.triggered.insert(key);
 
     typename decltype(state.recipes)::const_accessor acc;
     if (state.recipes.find(acc, key)) {
-      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
+      acc->second.recipe_fetch_node->try_put(tbb::flow::continue_msg{});
     }
   }
 
+  // Wait for graph to complete (all phases run naturally via edges)
   flow_graph.wait_for_all();
 
-  // Trigger all execute nodes (edges will handle dependency ordering)
-  // This happens after all fetches complete, ensuring all edges are connected
-  for (auto const &[key, rec] : state.recipes) {
-    rec.execute_node->try_put(tbb::flow::continue_msg{});
-  }
-
-  flow_graph.wait_for_all();
-
+  // Collect results from completion phase
   recipe_asset_hash_map_t result;
   for (auto const &[key, rec] : state.recipes) { result[key] = rec.result_hash; }
   return result;
