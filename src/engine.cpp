@@ -324,7 +324,13 @@ void fetch_recipe_and_spawn_dependencies(
       // Note: remote_source.subdir is not yet implemented
       // Currently only single-file recipes (.lua) are supported for remote sources
       // Archive extraction with subdir navigation will be added when needed
-      fetch({ .source = remote_src->url, .destination = fetch_dest });
+      auto const results{ fetch({ { .source = remote_src->url, .destination = fetch_dest } }) };
+      if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+        throw std::runtime_error("Failed to fetch recipe: " +
+                                 (results.empty()
+                                      ? "no results"
+                                      : std::get<std::string>(results[0])));
+      }
 
       cache_result.lock->mark_install_complete();
       cache_result.lock.reset();  // Release lock, moving install_dir to asset_path

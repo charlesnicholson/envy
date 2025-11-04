@@ -78,12 +78,18 @@ void aws_shutdown() {
 
 aws_shutdown_guard::~aws_shutdown_guard() { aws_shutdown(); }
 
-void aws_s3_download(s3_download_request const &request) {
+std::filesystem::path aws_s3_download(s3_download_request const &request) {
   aws_init();
 
   if (request.destination.empty()) {
     throw std::invalid_argument("aws_s3_download: destination path is empty");
   }
+
+  std::filesystem::path resolved_destination{ request.destination };
+  if (!resolved_destination.is_absolute()) {
+    resolved_destination = std::filesystem::absolute(resolved_destination);
+  }
+  resolved_destination = resolved_destination.lexically_normal();
 
   auto const parts{ parse_s3_uri(request.uri) };
 
@@ -105,7 +111,7 @@ void aws_s3_download(s3_download_request const &request) {
                              error.GetMessage().c_str());
   }
 
-  auto const parent{ request.destination.parent_path() };
+  auto const parent{ resolved_destination.parent_path() };
   if (!parent.empty()) {
     std::error_code ec;
     std::filesystem::create_directories(parent, ec);
@@ -118,7 +124,7 @@ void aws_s3_download(s3_download_request const &request) {
   auto result = outcome.GetResultWithOwnership();
   auto &body_stream = result.GetBody();
 
-  std::ofstream output{ request.destination, std::ios::binary | std::ios::trunc };
+  std::ofstream output{ resolved_destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
     throw std::runtime_error("aws_s3_download: failed to open destination file");
   }
@@ -150,6 +156,8 @@ void aws_s3_download(s3_download_request const &request) {
       }
     }
   }
+
+  return resolved_destination;
 }
 
 }  // namespace envy

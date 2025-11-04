@@ -3,10 +3,13 @@
 #include "aws_util.h"
 #include "libcurl_util.h"
 
+#include <tbb/task_group.h>
+
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace envy {
 namespace {
@@ -91,7 +94,7 @@ fetch_result fetch_local_file(std::string const &canonical_path,
 
 }  // namespace
 
-fetch_result fetch(fetch_request const &request) {
+fetch_result fetch_single(fetch_request const &request) {
   auto const info{ uri_classify(request.source) };
   if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
     throw std::invalid_argument("fetch: source URI is empty");
@@ -112,21 +115,37 @@ fetch_result fetch(fetch_request const &request) {
                                                                     request.progress) };
     }
     case uri_scheme::S3: {
-      auto const resolved_destination{ prepare_destination(request.destination) };
-
-      aws_s3_download(s3_download_request{ .uri = info.canonical,
-                                           .destination = resolved_destination,
-                                           .region = request.region,
-                                           .progress = request.progress });
-      return fetch_result{
-        .scheme = info.scheme,
-        .resolved_source = std::filesystem::path{ info.canonical },
-        .resolved_destination = resolved_destination,
-      };
+      return fetch_result{ .scheme = info.scheme,
+                           .resolved_source = std::filesystem::path{ info.canonical },
+                           .resolved_destination = aws_s3_download(
+                               s3_download_request{ .uri = info.canonical,
+                                                    .destination = request.destination,
+                                                    .region = request.region,
+                                                    .progress = request.progress }) };
     }
 
     default: throw std::runtime_error("fetch: scheme not implemented");
   }
+}
+
+std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {
+  std::vector<fetch_result_t> results(requests.size());
+
+  tbb::task_group tg;
+
+  for (size_t i = 0; i < requests.size(); ++i) {
+    tg.run([i, &requests, &results]() {
+      try {
+        results[i] = fetch_single(requests[i]);
+      } catch (std::exception const &e) {
+        results[i] = std::string(e.what());
+      } catch (...) { results[i] = "Unknown error during fetch"; }
+    });
+  }
+
+  tg.wait();
+
+  return results;
 }
 
 }  // namespace envy

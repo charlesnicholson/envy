@@ -248,7 +248,12 @@ std::filesystem::path download_resource(TempResourceManager &manager,
                          .progress = progress_cb };
   if (!region.empty()) { request.region = region; }
 
-  auto const result{ fetch(request) };
+  auto const results{ fetch({ request }) };
+  if (results.empty()) { throw std::runtime_error("fetch returned no results"); }
+  if (std::holds_alternative<std::string>(results[0])) {
+    throw std::runtime_error(std::get<std::string>(results[0]));
+  }
+  auto const &result{ std::get<fetch_result>(results[0]) };
 
   {
     std::lock_guard<std::mutex> lock{ state->mutex };
@@ -431,10 +436,16 @@ void run_fetch_tls_probe(std::string const &url,
   auto const destination{ probe_dir / "probe.bin" };
 
   try {
-    auto const result{ fetch(fetch_request{ .source = url,
-                                            .destination = destination,
-                                            .file_root = std::nullopt,
-                                            .progress = {} }) };
+    auto const results{ fetch({ fetch_request{ .source = url,
+                                               .destination = destination,
+                                               .file_root = std::nullopt,
+                                               .progress = {} } }) };
+    if (results.empty()) { throw std::runtime_error("fetch returned no results"); }
+    if (std::holds_alternative<std::string>(results[0])) {
+      throw std::runtime_error(std::get<std::string>(results[0]));
+    }
+    auto const &result{ std::get<fetch_result>(results[0]) };
+
     std::uintmax_t bytes{ 0 };
     std::error_code size_ec;
     if (auto const size = std::filesystem::file_size(result.resolved_destination, size_ec);
