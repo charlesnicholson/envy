@@ -193,14 +193,16 @@ void run_check_phase(std::string const &key, graph_state &state) {
       tui::trace("phase check: wiring edges for %s (cache miss)", key.c_str());
       tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
       tbb::flow::make_edge(*acc->second.check_node, *acc->second.fetch_node);
-      tui::trace("phase check END %s (cache miss, acquired lock, edges wired)", key.c_str());
+      tui::trace("phase check END %s (cache miss, acquired lock, edges wired)",
+                 key.c_str());
     } else {
       // Cache hit - asset already exists
       acc->second.asset_path = cache_result.asset_path;
       // Wire short-circuit: check -> completion
       tui::trace("phase check: wiring edge for %s (cache hit)", key.c_str());
       tbb::flow::make_edge(*acc->second.check_node, *acc->second.completion_node);
-      tui::trace("phase check END %s (cache hit, short-circuited, edge wired)", key.c_str());
+      tui::trace("phase check END %s (cache hit, short-circuited, edge wired)",
+                 key.c_str());
     }
   }
 }
@@ -294,11 +296,11 @@ void run_completion_phase(std::string const &key, graph_state &state) {
   // For now, use a simple hash of the path
   if (!acc->second.asset_path.empty()) {
     auto const path_str{ acc->second.asset_path.string() };
-    acc->second.result_hash = path_str.length() >= 16
-                                  ? path_str.substr(path_str.length() - 16)
-                                  : path_str;
+    acc->second.result_hash =
+        path_str.length() >= 16 ? path_str.substr(path_str.length() - 16) : path_str;
     tui::trace("phase completion: computed result_hash=%s for %s",
-               acc->second.result_hash.c_str(), key.c_str());
+               acc->second.result_hash.c_str(),
+               key.c_str());
   } else {
     // asset_path empty means check phase set neither lock nor asset_path
     tui::warn("phase completion: asset_path EMPTY for %s", key.c_str());

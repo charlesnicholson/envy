@@ -2,6 +2,7 @@
 """Functional tests for engine execution."""
 
 import hashlib
+import os
 import shutil
 import subprocess
 import tempfile
@@ -17,6 +18,8 @@ class TestEngine(unittest.TestCase):
         self.envy_test = (
             Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
         )
+        # Enable trace for all tests if ENVY_TEST_TRACE is set
+        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -26,6 +29,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
@@ -121,7 +125,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
-                "--trace",
+                *self.trace_flag,
                 "engine-test",
                 "local.diamond_a@v1",
                 "test_data/recipes/diamond_a.lua",
