@@ -284,8 +284,9 @@ void run_completion_phase(std::string const &key, graph_state &state) {
     // For now, use a simple hash of the path
     if (!acc->second.asset_path.empty()) {
       auto const path_str{ acc->second.asset_path.string() };
-      acc->second.result_hash =
-          path_str.substr(std::max<size_t>(0, path_str.length() - 16));
+      acc->second.result_hash = path_str.length() >= 16
+                                    ? path_str.substr(path_str.length() - 16)
+                                    : path_str;
     } else {
       // Fallback for testing
       acc->second.result_hash = "STUB_HASH";
