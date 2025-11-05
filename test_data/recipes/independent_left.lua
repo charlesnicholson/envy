@@ -1,4 +1,5 @@
 -- Independent tree, no shared deps
+identity = "local.independent_left@v1"
 dependencies = {}
 
 function check(ctx)

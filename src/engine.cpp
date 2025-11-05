@@ -248,6 +248,25 @@ void run_install_phase(std::string const &key, graph_state &state) {
     lua_pop(lua, 1);  // Pop nil from failed getglobal
   }
 
+  // Finalize install: mark complete and move to asset path
+  typename decltype(state.recipes)::accessor acc;
+  if (state.recipes.find(acc, key)) {
+    if (acc->second.lock) {
+      // Ensure install_dir exists
+      auto const install_dir{ acc->second.lock->install_dir() };
+      std::filesystem::create_directories(install_dir);
+
+      // Get the entry_path to compute final asset_path
+      // The lock destructor will rename install_dir to entry_path/asset
+      std::filesystem::path const entry_path{ install_dir.parent_path() };
+      std::filesystem::path const final_asset_path{ entry_path / "asset" };
+
+      acc->second.lock->mark_install_complete();
+      acc->second.asset_path = final_asset_path;
+      acc->second.lock.reset();  // Release lock, which moves install_dir to asset_dir
+    }
+  }
+
   tui::trace("phase install END %s", key.c_str());
 }
 
@@ -262,23 +281,6 @@ void run_completion_phase(std::string const &key, graph_state &state) {
 
   typename decltype(state.recipes)::accessor acc;
   if (state.recipes.find(acc, key)) {
-    // If we have a lock, mark install complete and move to asset path
-    if (acc->second.lock) {
-      // Ensure install_dir exists before marking complete
-      // (the install phase should have created it, but create it if missing)
-      auto const install_dir{ acc->second.lock->install_dir() };
-      std::filesystem::create_directories(install_dir);
-
-      // Get the entry_path to compute final asset_path
-      // The lock destructor will rename install_dir to entry_path/asset
-      std::filesystem::path const entry_path{ install_dir.parent_path() };
-      std::filesystem::path const final_asset_path{ entry_path / "asset" };
-
-      acc->second.lock->mark_install_complete();
-      acc->second.asset_path = final_asset_path;
-      acc->second.lock.reset();  // Release lock, which moves install_dir to asset_dir
-    }
-
     // Compute result hash from asset_path
     // TODO: Compute proper content hash of installed assets
     // For now, use a simple hash of the path
@@ -354,6 +356,23 @@ void fetch_recipe_and_spawn_dependencies(
     }
   } else {
     throw std::runtime_error("Only local and remote sources supported: " + spec.identity);
+  }
+
+  // Validate recipe identity declaration
+  lua_getglobal(lua_state.get(), "identity");
+  if (lua_isnil(lua_state.get(), -1)) {
+    lua_pop(lua_state.get(), 1);
+    throw std::runtime_error("Recipe must declare 'identity' field: " + spec.identity);
+  }
+  if (!lua_isstring(lua_state.get(), -1)) {
+    lua_pop(lua_state.get(), 1);
+    throw std::runtime_error("Recipe 'identity' field must be a string: " + spec.identity);
+  }
+  std::string const declared_identity{ lua_tostring(lua_state.get(), -1) };
+  lua_pop(lua_state.get(), 1);
+  if (declared_identity != spec.identity) {
+    throw std::runtime_error("Identity mismatch: expected '" + spec.identity +
+                             "' but recipe declares '" + declared_identity + "'");
   }
 
   validate_phases(lua_state.get(), spec.identity);

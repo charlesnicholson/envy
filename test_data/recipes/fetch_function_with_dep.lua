@@ -1,6 +1,7 @@
 -- Test recipe with fetch function that depends on another recipe
+identity = "local.fetcher_with_dep@v1"
 dependencies = {
-  { recipe = "local.tool@1.0.0", file = "tool.lua" }
+  { recipe = "local.tool@v1", file = "tool.lua" }
 }
 
 function fetch(ctx)

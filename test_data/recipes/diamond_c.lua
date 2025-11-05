@@ -1,6 +1,7 @@
 -- Right side of diamond: C depends on D
+identity = "local.diamond_c@v1"
 dependencies = {
-  { recipe = "local.diamond_d@1.0.0", file = "diamond_d.lua" }
+  { recipe = "local.diamond_d@v1", file = "diamond_d.lua" }
 }
 
 function check(ctx)

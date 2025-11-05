@@ -1,5 +1,4 @@
--- Fan-out child 3
-identity = "local.fanout_child3@v1"
+-- Recipe missing identity declaration (invalid)
 dependencies = {}
 
 function check(ctx)
@@ -7,5 +6,5 @@ function check(ctx)
 end
 
 function install(ctx)
-  -- Programmatic package
+  -- This should never execute
 end

@@ -1,5 +1,7 @@
--- remote.base@1.0.0
+-- remote.base@v1
 -- Remote recipe with no dependencies
+
+identity = "remote.base@v1"
 
 function check(ctx)
   return false

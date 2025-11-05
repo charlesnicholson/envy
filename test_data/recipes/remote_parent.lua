@@ -1,9 +1,10 @@
--- remote.parent@1.0.0
+-- remote.parent@v1
 -- Remote recipe depending on another remote recipe
 
+identity = "remote.parent@v1"
 dependencies = {
   {
-    recipe = "remote.child@1.0.0",
+    recipe = "remote.child@v1",
     url = "remote_child.lua"
     -- No SHA256 (permissive mode - for testing)
   }

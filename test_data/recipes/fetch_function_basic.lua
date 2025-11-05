@@ -1,4 +1,5 @@
 -- Test recipe with basic fetch function
+identity = "local.fetcher@v1"
 dependencies = {}
 
 function fetch(ctx)

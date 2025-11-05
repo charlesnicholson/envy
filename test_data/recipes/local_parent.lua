@@ -1,9 +1,10 @@
--- local.parent@1.0.0
+-- local.parent@v1
 -- Local recipe depending on another local recipe
 
+identity = "local.parent@v1"
 dependencies = {
   {
-    recipe = "local.child@1.0.0",
+    recipe = "local.child@v1",
     file = "local_child.lua"
   }
 }

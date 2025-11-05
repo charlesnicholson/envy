@@ -1,7 +1,8 @@
 -- Recipe with two independent dependencies
+identity = "local.multiple_roots@v1"
 dependencies = {
-  { recipe = "local.independent_left@1.0.0", file = "independent_left.lua" },
-  { recipe = "local.independent_right@1.0.0", file = "independent_right.lua" }
+  { recipe = "local.independent_left@v1", file = "independent_left.lua" },
+  { recipe = "local.independent_right@v1", file = "independent_right.lua" }
 }
 
 function check(ctx)

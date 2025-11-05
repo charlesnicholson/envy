@@ -1,6 +1,8 @@
 -- Deep chain: D -> E
+identity = "local.chain_d@v1"
+identity = "local.chain_d@v1"
 dependencies = {
-  { recipe = "local.chain_e@1.0.0", file = "chain_e.lua" }
+  { recipe = "local.chain_e@v1", file = "chain_e.lua" }
 }
 
 function check(ctx)
