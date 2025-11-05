@@ -143,14 +143,14 @@ void run_check_phase(std::string const &key, graph_state &state) {
     lua_pop(lua, 1);
 
     if (cache_hit) {
-      // User says it's already available - trigger completion directly
+      // User says it's already available - wire short-circuit to completion
       typename decltype(state.recipes)::accessor acc;
       if (state.recipes.find(acc, key)) {
         // For now, use a placeholder asset_path since user-defined check
         // doesn't tell us where the asset is
         acc->second.asset_path = "/placeholder/asset/path";
-        // Trigger completion node directly (short-circuit)
-        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+        // Create edge: check -> completion (short-circuit path)
+        tbb::flow::make_edge(*acc->second.check_node, *acc->second.completion_node);
       }
       tui::trace("phase check END %s (cache hit, short-circuited)", key.c_str());
       return;
@@ -183,18 +183,21 @@ void run_check_phase(std::string const &key, graph_state &state) {
 
   auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
 
-  // Store result in recipe
+  // Store result in recipe and wire appropriate edges
   typename decltype(state.recipes)::accessor acc;
   if (state.recipes.find(acc, key)) {
     if (cache_result.lock) {
       // Cache miss - we won the race, need to build
       acc->second.lock = std::move(cache_result.lock);
+      // Wire full pipeline: deploy -> completion, then check -> fetch
+      tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
+      tbb::flow::make_edge(*acc->second.check_node, *acc->second.fetch_node);
       tui::trace("phase check END %s (cache miss, acquired lock)", key.c_str());
     } else {
       // Cache hit - asset already exists
       acc->second.asset_path = cache_result.asset_path;
-      // Trigger completion node directly (short-circuit)
-      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+      // Wire short-circuit: check -> completion
+      tbb::flow::make_edge(*acc->second.check_node, *acc->second.completion_node);
       tui::trace("phase check END %s (cache hit, short-circuited)", key.c_str());
     }
   }
@@ -280,19 +283,21 @@ void run_completion_phase(std::string const &key, graph_state &state) {
   tui::trace("phase completion START %s", key.c_str());
 
   typename decltype(state.recipes)::accessor acc;
-  if (state.recipes.find(acc, key)) {
-    // Compute result hash from asset_path
-    // TODO: Compute proper content hash of installed assets
-    // For now, use a simple hash of the path
-    if (!acc->second.asset_path.empty()) {
-      auto const path_str{ acc->second.asset_path.string() };
-      acc->second.result_hash = path_str.length() >= 16
-                                    ? path_str.substr(path_str.length() - 16)
-                                    : path_str;
-    } else {
-      // Fallback for testing
-      acc->second.result_hash = "STUB_HASH";
-    }
+  if (!state.recipes.find(acc, key)) {
+    throw std::runtime_error("Recipe not found in completion phase: " + key);
+  }
+
+  // Compute result hash from asset_path
+  // TODO: Compute proper content hash of installed assets
+  // For now, use a simple hash of the path
+  if (!acc->second.asset_path.empty()) {
+    auto const path_str{ acc->second.asset_path.string() };
+    acc->second.result_hash = path_str.length() >= 16
+                                  ? path_str.substr(path_str.length() - 16)
+                                  : path_str;
+  } else {
+    // asset_path empty means check phase set neither lock nor asset_path
+    throw std::runtime_error("Completion phase: asset_path not set for recipe: " + key);
   }
 
   tui::trace("phase completion END %s", key.c_str());
@@ -489,16 +494,13 @@ void create_recipe_nodes(std::string const &key,
   };
 
   // Create intra-recipe edges (linear chain)
+  // Note: check->fetch, deploy->completion, and check->completion edges are created
+  // dynamically by run_check_phase based on cache hit/miss
   tbb::flow::make_edge(*recipe_fetch_node, *check_node);
-  tbb::flow::make_edge(*check_node, *fetch_node);
   tbb::flow::make_edge(*fetch_node, *stage_node);
   tbb::flow::make_edge(*stage_node, *build_node);
   tbb::flow::make_edge(*build_node, *install_node);
   tbb::flow::make_edge(*install_node, *deploy_node);
-  tbb::flow::make_edge(*deploy_node, *completion_node);
-
-  // Special: check can short-circuit to completion (will be triggered conditionally)
-  tbb::flow::make_edge(*check_node, *completion_node);
 
   {  // Store recipe with all nodes using accessor for thread-safe insertion
     typename decltype(state.recipes)::accessor acc;
@@ -537,20 +539,10 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache 
   flow_graph.wait_for_all();
 
   // Collect results from completion phase
-  // First collect keys, then read values with proper synchronization
-  std::vector<std::string> keys;
-  keys.reserve(state.recipes.size());
-  for (auto const &[key, rec] : state.recipes) {
-    keys.push_back(key);
-  }
-
-  // Now read result_hash for each key using accessor for proper memory synchronization
   recipe_asset_hash_map_t result;
-  for (auto const &key : keys) {
+  for (auto const &[key, rec] : state.recipes) {
     typename decltype(state.recipes)::const_accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Failed to find recipe in state after graph completion: " + key);
-    }
+    state.recipes.find(acc, key);
     result[key] = acc->second.result_hash;
   }
   return result;
