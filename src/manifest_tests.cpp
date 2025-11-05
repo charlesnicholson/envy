@@ -404,7 +404,7 @@ TEST_CASE("manifest::load errors on both url and file") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on url without sha256") {
+TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   char const *script{ R"(
     packages = {
       {
@@ -414,9 +414,13 @@ TEST_CASE("manifest::load errors on url without sha256") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe with 'url' must specify 'sha256'",
-                       std::runtime_error);
+  auto const result{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+  REQUIRE(result.packages.size() == 1);
+  CHECK(result.packages[0].identity == "arm.gcc@v2");
+  CHECK(result.packages[0].is_remote());
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&result.packages[0].source) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
 
 TEST_CASE("manifest::load errors on non-string url") {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Functional tests for engine execution."""
 
+import hashlib
 import shutil
 import subprocess
 import tempfile
@@ -471,6 +472,100 @@ class TestEngine(unittest.TestCase):
         # Verify main recipe executed
         main_lines = [l for l in lines if "local.fetcher_with_dep@1.0.0" in l]
         self.assertEqual(len(main_lines), 1)
+
+    def test_sha256_verification_success(self):
+        """Recipe with correct SHA256 succeeds."""
+        # Compute actual SHA256 of remote_child.lua
+        child_recipe_path = Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
+        with open(child_recipe_path, "rb") as f:
+            actual_sha256 = hashlib.sha256(f.read()).hexdigest()
+
+        # Create a temporary recipe that depends on remote_child with correct SHA256
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
+            tmp.write(f"""
+-- test.sha256_ok@1.0.0
+dependencies = {{
+  {{
+    recipe = "remote.child@1.0.0",
+    url = "{child_recipe_path}",
+    sha256 = "{actual_sha256}"
+  }}
+}}
+
+function check(ctx)
+  return false
+end
+
+function install(ctx)
+  envy.info("SHA256 verification succeeded")
+end
+""")
+            tmp_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "engine-test",
+                    "test.sha256_ok@1.0.0",
+                    tmp_path,
+                    f"--cache-root={self.cache_root}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+            lines = [line for line in result.stdout.strip().split("\n") if line]
+            self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_sha256_verification_failure(self):
+        """Recipe with incorrect SHA256 fails."""
+        child_recipe_path = Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
+        wrong_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+        # Create a temporary recipe that depends on remote_child with wrong SHA256
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
+            tmp.write(f"""
+-- test.sha256_fail@1.0.0
+dependencies = {{
+  {{
+    recipe = "remote.child@1.0.0",
+    url = "{child_recipe_path}",
+    sha256 = "{wrong_sha256}"
+  }}
+}}
+
+function check(ctx)
+  return false
+end
+
+function install(ctx)
+  envy.info("This should not execute")
+end
+""")
+            tmp_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "engine-test",
+                    "test.sha256_fail@1.0.0",
+                    tmp_path,
+                    f"--cache-root={self.cache_root}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0, "Expected SHA256 mismatch to cause failure")
+            self.assertIn("SHA256 mismatch", result.stderr, f"Expected SHA256 error, got: {result.stderr}")
+            self.assertIn(wrong_sha256, result.stderr, f"Expected wrong hash in error, got: {result.stderr}")
+        finally:
+            Path(tmp_path).unlink()
 
 
 if __name__ == "__main__":

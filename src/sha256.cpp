@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -19,7 +20,7 @@ struct file_closer {
 
 namespace envy {
 
-std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
+sha256_t sha256(std::filesystem::path const &file_path) {
   if (!std::filesystem::exists(file_path)) {
     throw std::runtime_error("sha256: file does not exist: " + file_path.string());
   }
@@ -65,12 +66,51 @@ std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
     }
   }
 
-  std::array<unsigned char, 32> digest{};
+  sha256_t digest{};
   if (mbedtls_sha256_finish(&ctx, digest.data())) {
     throw std::runtime_error("sha256: mbedtls_sha256_finish failed");
   }
 
   return digest;
+}
+
+void sha256_verify(std::string const &expected_hex, sha256_t const &actual_hash) {
+  if (expected_hex.size() != 64) {
+    throw std::runtime_error(
+        "sha256_verify: expected hex string must be 64 characters, got " +
+        std::to_string(expected_hex.size()));
+  }
+
+  sha256_t expected_bytes{};
+  for (size_t i = 0; i < 32; ++i) {
+    char const hi = expected_hex[i * 2];
+    char const lo = expected_hex[i * 2 + 1];
+
+    auto constexpr nibble = [](char c) -> unsigned char {
+      if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
+      if (c >= 'a' && c <= 'f') return static_cast<unsigned char>(c - 'a' + 10);
+      if (c >= 'A' && c <= 'F') return static_cast<unsigned char>(c - 'A' + 10);
+      throw std::runtime_error(std::string("sha256_verify: invalid hex character: ") + c);
+    };
+
+    expected_bytes[i] = static_cast<unsigned char>((nibble(hi) << 4) | nibble(lo));
+  }
+
+  if (expected_bytes != actual_hash) {
+    auto to_hex = [](sha256_t const &bytes) -> std::string {
+      std::string result;
+      result.reserve(64);
+      static char constexpr hex_chars[] = "0123456789abcdef";
+      for (auto const byte : bytes) {
+        result += hex_chars[(byte >> 4) & 0xf];
+        result += hex_chars[byte & 0xf];
+      }
+      return result;
+    };
+
+    throw std::runtime_error("SHA256 mismatch: expected " + expected_hex + " but got " +
+                             to_hex(actual_hash));
+  }
 }
 
 }  // namespace envy

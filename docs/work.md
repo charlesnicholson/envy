@@ -18,42 +18,43 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
 
 ---
 
-## Phase 1: Foundation (fetch.h Refactor + SHA256)
+## Phase 1: Foundation (Batch Fetch API)
 
-**Goal:** Refactor fetch API to support batch downloads with optional SHA256 verification.
+**Goal:** Refactor fetch API to support concurrent batch downloads.
 
 ### Tasks:
 
-- [ ] Refactor `fetch()` signature
-  - [ ] Change from `fetch_result fetch(fetch_request const &request)`
-  - [ ] To `fetch_batch_result fetch(vector<fetch_request> const &requests)`
-  - [ ] Define `fetch_batch_result` struct with successes/failures vectors
+- [x] Refactor `fetch()` to batch API
+  - [x] Change from `fetch_result fetch(fetch_request const &request)`
+  - [x] To `vector<fetch_result_t> fetch(vector<fetch_request> const &requests)`
+  - [x] Use `variant<fetch_result, string>` for success/error per item
 
-- [ ] Add SHA256 support
-  - [ ] Add `optional<string> sha256` field to `fetch_request` struct
-  - [ ] Implement SHA256 computation after download (use existing hash utilities)
-  - [ ] If sha256 provided, verify matches; add to failures if mismatch
-  - [ ] If sha256 absent, skip verification (permissive mode)
+- [x] Implement parallel execution
+  - [x] Use TBB `task_group` for concurrent downloads
+  - [x] One task per fetch_request
+  - [x] Rename existing fetch logic to `fetch_single()` helper
+  - [x] Return 1:1 result vector (no mutex needed - each task owns its index)
 
-- [ ] Implement parallel execution
-  - [ ] Use TBB `task_group` for concurrent downloads
-  - [ ] One task per fetch_request
-  - [ ] Each task uses existing single-file fetch logic
-  - [ ] Aggregate successes/failures after all tasks complete
+- [x] Update existing callers
+  - [x] Find all `fetch()` call sites
+  - [x] Wrap single requests: `fetch({request})` → vector
+  - [x] Handle variant results with error checking
+  - [x] Verify all callers still work
 
-- [ ] Update existing callers
-  - [ ] Find all `fetch()` call sites
-  - [ ] Wrap single requests: `fetch({request})` → vector
-  - [ ] Verify all callers still work
+- [x] Testing
+  - [x] Existing fetch tests still pass (updated to use batch API)
+  - [x] Add test: batch download (3+ files)
 
-- [ ] Testing
-  - [ ] Existing fetch tests still pass
-  - [ ] Add test: batch download (3+ files)
-  - [ ] Add test: SHA256 verification success
-  - [ ] Add test: SHA256 verification failure (mismatch)
-  - [ ] Add test: mixed (some with SHA256, some without)
+- [x] Add SHA256 support (recipe verification)
+  - [x] Implemented `sha256_verify()` helper in sha256.h/cpp (hex-to-bytes comparison)
+  - [x] SHA256 verification happens in engine after recipe fetch, before loading
+  - [x] Permissive mode: SHA256 optional in manifests (empty string = no verification)
+  - [x] Mismatch is always fatal with detailed error message
+  - [x] Unit tests: 6 tests covering hex parsing, case-insensitivity, validation, errors
+  - [x] Functional tests: 2 tests for correct/incorrect SHA256 verification
+  - [ ] Asset fetch SHA256 verification deferred to Phase 3/4
 
-**Completion Criteria:** All fetch operations use batch API, SHA256 verified when provided, existing functionality preserved.
+**Completion Criteria:** All fetch operations use batch API with concurrent downloads, recipe SHA256 verification working, existing functionality preserved.
 
 ---
 

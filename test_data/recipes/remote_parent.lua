@@ -4,8 +4,8 @@
 dependencies = {
   {
     recipe = "remote.child@1.0.0",
-    url = "remote_child.lua",
-    sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+    url = "remote_child.lua"
+    -- No SHA256 (permissive mode - for testing)
   }
 }
 

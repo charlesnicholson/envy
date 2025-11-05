@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "fetch.h"
 #include "lua_util.h"
+#include "sha256.h"
 #include "tui.h"
 
 extern "C" {
@@ -291,7 +292,8 @@ void run_completion_phase(std::string const &key, graph_state &state) {
   tui::trace("phase completion END %s", key.c_str());
 }
 
-void create_recipe_nodes(recipe_spec const &spec,
+void create_recipe_nodes(std::string const &key,
+                         recipe_spec const &spec,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors);
 
@@ -324,12 +326,19 @@ void fetch_recipe_and_spawn_dependencies(
       // Note: remote_source.subdir is not yet implemented
       // Currently only single-file recipes (.lua) are supported for remote sources
       // Archive extraction with subdir navigation will be added when needed
-      auto const results{ fetch({ { .source = remote_src->url, .destination = fetch_dest } }) };
+      auto const results{ fetch(
+          { { .source = remote_src->url, .destination = fetch_dest } }) };
       if (results.empty() || std::holds_alternative<std::string>(results[0])) {
-        throw std::runtime_error("Failed to fetch recipe: " +
-                                 (results.empty()
-                                      ? "no results"
-                                      : std::get<std::string>(results[0])));
+        throw std::runtime_error(
+            "Failed to fetch recipe: " +
+            (results.empty() ? "no results" : std::get<std::string>(results[0])));
+      }
+
+      // Verify SHA256 if provided
+      if (!remote_src->sha256.empty()) {
+        tui::trace("verifying SHA256 for recipe %s", spec.identity.c_str());
+        auto const actual_hash = sha256(fetch_dest);
+        sha256_verify(remote_src->sha256, actual_hash);
       }
 
       cache_result.lock->mark_install_complete();
@@ -377,7 +386,7 @@ void fetch_recipe_and_spawn_dependencies(
     auto const dep_key{ make_canonical_key(dep_cfg.identity, dep_cfg.options) };
 
     // Create dependency nodes - pass ancestors for cycle detection
-    create_recipe_nodes(dep_cfg, state, dep_ancestors);
+    create_recipe_nodes(dep_key, dep_cfg, state, dep_ancestors);
 
     {  // Connect edge: dep.completion → parent.check
        // TODO: Implement needed_by logic in step 4
@@ -399,12 +408,10 @@ void fetch_recipe_and_spawn_dependencies(
   }
 }
 
-void create_recipe_nodes(recipe_spec const &spec,
+void create_recipe_nodes(std::string const &key,
+                         recipe_spec const &spec,
                          graph_state &state,
                          std::unordered_set<std::string> const &ancestors = {}) {
-  auto const key{ make_canonical_key(spec.identity, spec.options) };
-
-  // Cycle detection: check if this recipe is in our ancestor chain
   if (ancestors.contains(key)) {
     throw std::runtime_error("Cycle detected: " + key + " depends on itself");
   }
@@ -414,7 +421,6 @@ void create_recipe_nodes(recipe_spec const &spec,
     if (state.recipes.find(acc, key)) { return; }
   }
 
-  // Validate identity matches source type
   if (spec.identity.starts_with("local.") && !spec.is_local()) {
     throw std::runtime_error("Recipe 'local.*' must have local source: " + spec.identity);
   }
@@ -496,7 +502,7 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache 
   // Create nodes and trigger recipe_fetch for all roots
   for (auto const &cfg : roots) {
     auto const key{ make_canonical_key(cfg.identity, cfg.options) };
-    create_recipe_nodes(cfg, state);
+    create_recipe_nodes(key, cfg, state);
     state.triggered.insert(key);
 
     typename decltype(state.recipes)::const_accessor acc;

@@ -67,23 +67,27 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
 
   if (url_it != table->end()) {  // Remote source
     if (auto const *url{ url_it->second.get<std::string>() }) {
+      // Resolve relative file:// URLs relative to base_path
+      std::string resolved_url{ *url };
+      auto const info{ uri_classify(resolved_url) };
+      if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+        std::filesystem::path p{ info.canonical };
+        p = base_path.parent_path() / p;
+        resolved_url = p.lexically_normal().string();
+      }
+
+      // SHA256 is optional (permissive mode)
+      std::string sha256_value;
       auto const sha256_it{ table->find("sha256") };
-      if (sha256_it == table->end()) {
-        throw std::runtime_error("Recipe with 'url' must specify 'sha256'");
-      }
-      if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-        // Resolve relative file:// URLs relative to base_path
-        std::string resolved_url{ *url };
-        auto const info{ uri_classify(resolved_url) };
-        if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-          std::filesystem::path p{ info.canonical };
-          p = base_path.parent_path() / p;
-          resolved_url = p.lexically_normal().string();
+      if (sha256_it != table->end()) {
+        if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
+          sha256_value = *sha256;
+        } else {
+          throw std::runtime_error("Recipe 'sha256' field must be string");
         }
-        result.source = remote_source{ .url = resolved_url, .sha256 = *sha256 };
-      } else {
-        throw std::runtime_error("Recipe 'sha256' field must be string");
       }
+
+      result.source = remote_source{ .url = resolved_url, .sha256 = sha256_value };
     } else {
       throw std::runtime_error("Recipe 'url' field must be string");
     }

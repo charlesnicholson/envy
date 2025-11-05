@@ -209,13 +209,17 @@ TEST_CASE("recipe::parse errors on both url and file") {
                        std::runtime_error);
 }
 
-TEST_CASE("recipe::parse errors on url without sha256") {
+TEST_CASE("recipe::parse allows url without sha256 (permissive mode)") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', url = 'https://example.com/gcc.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
-                       "Recipe with 'url' must specify 'sha256'",
-                       std::runtime_error);
+  auto const spec{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  CHECK(spec.identity == "arm.gcc@v2");
+  CHECK(spec.is_remote());
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&spec.source) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->url == "https://example.com/gcc.lua");
+  CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
 
 TEST_CASE("recipe::parse errors on non-string url") {
