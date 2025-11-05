@@ -1,6 +1,5 @@
 -- Deep chain: B -> C
 identity = "local.chain_b@v1"
-identity = "local.chain_b@v1"
 dependencies = {
   { recipe = "local.chain_c@v1", file = "chain_c.lua" }
 }
