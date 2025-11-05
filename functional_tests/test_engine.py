@@ -121,6 +121,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                "--trace",
                 "engine-test",
                 "local.diamond_a@v1",
                 "test_data/recipes/diamond_a.lua",
@@ -130,7 +131,7 @@ class TestEngine(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}")
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
