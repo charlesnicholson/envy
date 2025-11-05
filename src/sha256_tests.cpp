@@ -60,5 +60,5 @@ TEST_CASE("sha256_verify throws on wrong length") {
 TEST_CASE("sha256_verify throws on invalid hex character") {
   std::string const invalid_hex = "ga7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
   CHECK_THROWS_WITH(envy::sha256_verify(invalid_hex, kExpectedSha256Abc),
-                    "sha256_verify: invalid hex character: g");
+                    "util_hex_to_bytes: invalid character: g");
 }

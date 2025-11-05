@@ -137,8 +137,16 @@ class TestEngine(unittest.TestCase):
             len(lines), 4, f"Expected 4 recipes (A,B,C,D once), got: {result.stdout}"
         )
 
-        # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
+        # Verify all present - parse with better error reporting
+        output = {}
+        for i, line in enumerate(lines):
+            parts = line.split(" -> ", 1)
+            self.assertEqual(
+                len(parts),
+                2,
+                f"Line {i} malformed (expected 'key -> value'): {repr(line)}\nAll lines: {lines}",
+            )
+            output[parts[0]] = parts[1]
         self.assertIn("local.diamond_a@1.0.0", output)
         self.assertIn("local.diamond_b@1.0.0", output)
         self.assertIn("local.diamond_c@1.0.0", output)

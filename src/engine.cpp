@@ -1,10 +1,12 @@
 #include "engine.h"
 
+#include "blake3_util.h"
 #include "cache.h"
 #include "fetch.h"
 #include "lua_util.h"
 #include "sha256.h"
 #include "tui.h"
+#include "util.h"
 
 extern "C" {
 #include "lua.h"
@@ -160,9 +162,10 @@ void run_check_phase(std::string const &key, graph_state &state) {
   // Cache miss or no check() - call cache.ensure_asset to get lock or existing asset
   // For now, use a simple hash derived from the key
   // TODO: Compute proper content hash based on sources and dependencies
-  std::ostringstream hash_oss;
-  hash_oss << std::hex << std::hash<std::string>{}(key);
-  std::string const hash_prefix{ hash_oss.str().substr(0, 16) };  // Use first 16 hex chars
+  auto const digest{ blake3_hash(key.data(), key.size()) };
+
+  // Convert first 8 bytes to hex (16 chars)
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
 
   lua_getglobal(lua, "ENVY_PLATFORM");
   std::string const platform{ lua_tostring(lua, -1) };
@@ -337,8 +340,7 @@ void fetch_recipe_and_spawn_dependencies(
       // Verify SHA256 if provided
       if (!remote_src->sha256.empty()) {
         tui::trace("verifying SHA256 for recipe %s", spec.identity.c_str());
-        auto const actual_hash = sha256(fetch_dest);
-        sha256_verify(remote_src->sha256, actual_hash);
+        sha256_verify(remote_src->sha256, sha256(fetch_dest));
       }
 
       cache_result.lock->mark_install_complete();

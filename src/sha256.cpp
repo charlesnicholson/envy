@@ -1,8 +1,10 @@
 #include "sha256.h"
 
 #include "mbedtls/sha256.h"
+#include "util.h"
 
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -81,35 +83,15 @@ void sha256_verify(std::string const &expected_hex, sha256_t const &actual_hash)
         std::to_string(expected_hex.size()));
   }
 
-  sha256_t expected_bytes{};
-  for (size_t i = 0; i < 32; ++i) {
-    char const hi = expected_hex[i * 2];
-    char const lo = expected_hex[i * 2 + 1];
-
-    auto constexpr nibble = [](char c) -> unsigned char {
-      if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
-      if (c >= 'a' && c <= 'f') return static_cast<unsigned char>(c - 'a' + 10);
-      if (c >= 'A' && c <= 'F') return static_cast<unsigned char>(c - 'A' + 10);
-      throw std::runtime_error(std::string("sha256_verify: invalid hex character: ") + c);
-    };
-
-    expected_bytes[i] = static_cast<unsigned char>((nibble(hi) << 4) | nibble(lo));
+  auto const expected_bytes{ util_hex_to_bytes(expected_hex) };
+  if (expected_bytes.size() != 32) {
+    throw std::runtime_error("sha256_verify: hex conversion produced wrong size: " +
+                             std::to_string(expected_bytes.size()));
   }
 
-  if (expected_bytes != actual_hash) {
-    auto to_hex = [](sha256_t const &bytes) -> std::string {
-      std::string result;
-      result.reserve(64);
-      static char constexpr hex_chars[] = "0123456789abcdef";
-      for (auto const byte : bytes) {
-        result += hex_chars[(byte >> 4) & 0xf];
-        result += hex_chars[byte & 0xf];
-      }
-      return result;
-    };
-
+  if (std::memcmp(expected_bytes.data(), actual_hash.data(), 32) != 0) {
     throw std::runtime_error("SHA256 mismatch: expected " + expected_hex + " but got " +
-                             to_hex(actual_hash));
+                             util_bytes_to_hex(actual_hash.data(), actual_hash.size()));
   }
 }
 

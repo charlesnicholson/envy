@@ -1,6 +1,9 @@
 #pragma once
 
 #include <concepts>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 namespace envy {
 
@@ -26,5 +29,12 @@ struct match : Ts... {
 
 template <typename... Ts>
 match(Ts...) -> match<Ts...>;
+
+// Convert bytes to lowercase hex string
+std::string util_bytes_to_hex(void const *data, size_t length);
+
+// Convert hex string to bytes (case-insensitive)
+// Throws std::runtime_error if hex string is invalid (wrong length or invalid characters)
+std::vector<unsigned char> util_hex_to_bytes(std::string const &hex);
 
 }  // namespace envy
