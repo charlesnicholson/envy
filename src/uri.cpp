@@ -205,12 +205,10 @@ std::filesystem::path uri_resolve_local_file_relative(
 #ifdef _WIN32
   else if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
     // Path with root directory but no drive (e.g., "\tmp") - add current drive
-    if (!info.canonical.has_root_name() && info.canonical.has_root_directory()) {
+    if (!resolved.has_root_name() && resolved.has_root_directory()) {
       auto drive{ std::filesystem::current_path().root_name().string() };
       // Concatenate drive with the path that includes root directory
       resolved = std::filesystem::path(drive + info.canonical);
-    } else {
-      resolved = info.canonical;
     }
   }
 #endif
