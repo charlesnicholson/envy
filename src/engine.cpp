@@ -518,8 +518,15 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache 
   flow_graph.wait_for_all();
 
   // Collect results from completion phase
+  // Use const_accessor to ensure we see the final values written by completion nodes
   recipe_asset_hash_map_t result;
-  for (auto const &[key, rec] : state.recipes) { result[key] = rec.result_hash; }
+  for (auto const &[key, rec] : state.recipes) {
+    typename decltype(state.recipes)::const_accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Failed to find recipe in state after graph completion: " + key);
+    }
+    result[key] = acc->second.result_hash;
+  }
   return result;
 }
 
