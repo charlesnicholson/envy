@@ -16,13 +16,13 @@ constexpr envy::blake3_t kExpectedBlake3Abc{ 0x64, 0x37, 0xb3, 0xac, 0x38, 0x46,
 }  // namespace
 
 TEST_CASE("blake3_hash computes known hash") {
-  std::string constexpr input{ "abc" };
+  std::string const input{ "abc" };
   auto const digest{ envy::blake3_hash(input.data(), input.size()) };
   CHECK(digest == kExpectedBlake3Abc);
 }
 
 TEST_CASE("blake3_hash is deterministic") {
-  std::string constexpr input{ "test input" };
+  std::string const input{ "test input" };
   auto const digest1{ envy::blake3_hash(input.data(), input.size()) };
   auto const digest2{ envy::blake3_hash(input.data(), input.size()) };
   CHECK(digest1 == digest2);
