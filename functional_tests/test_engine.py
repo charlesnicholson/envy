@@ -495,7 +495,7 @@ class TestEngine(unittest.TestCase):
 dependencies = {{
   {{
     recipe = "remote.child@1.0.0",
-    url = "{child_recipe_path}",
+    url = "{child_recipe_path.as_posix()}",
     sha256 = "{actual_sha256}"
   }}
 }}
@@ -541,7 +541,7 @@ end
 dependencies = {{
   {{
     recipe = "remote.child@1.0.0",
-    url = "{child_recipe_path}",
+    url = "{child_recipe_path.as_posix()}",
     sha256 = "{wrong_sha256}"
   }}
 }}
