@@ -1,10 +1,13 @@
 #include "sha256.h"
 
 #include "mbedtls/sha256.h"
+#include "util.h"
 
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -19,7 +22,7 @@ struct file_closer {
 
 namespace envy {
 
-std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
+sha256_t sha256(std::filesystem::path const &file_path) {
   if (!std::filesystem::exists(file_path)) {
     throw std::runtime_error("sha256: file does not exist: " + file_path.string());
   }
@@ -65,12 +68,31 @@ std::array<unsigned char, 32> sha256(std::filesystem::path const &file_path) {
     }
   }
 
-  std::array<unsigned char, 32> digest{};
+  sha256_t digest{};
   if (mbedtls_sha256_finish(&ctx, digest.data())) {
     throw std::runtime_error("sha256: mbedtls_sha256_finish failed");
   }
 
   return digest;
+}
+
+void sha256_verify(std::string const &expected_hex, sha256_t const &actual_hash) {
+  if (expected_hex.size() != 64) {
+    throw std::runtime_error(
+        "sha256_verify: expected hex string must be 64 characters, got " +
+        std::to_string(expected_hex.size()));
+  }
+
+  auto const expected_bytes{ util_hex_to_bytes(expected_hex) };
+  if (expected_bytes.size() != 32) {
+    throw std::runtime_error("sha256_verify: hex conversion produced wrong size: " +
+                             std::to_string(expected_bytes.size()));
+  }
+
+  if (std::memcmp(expected_bytes.data(), actual_hash.data(), 32) != 0) {
+    throw std::runtime_error("SHA256 mismatch: expected " + expected_hex + " but got " +
+                             util_bytes_to_hex(actual_hash.data(), actual_hash.size()));
+  }
 }
 
 }  // namespace envy

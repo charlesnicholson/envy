@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace envy {
 
@@ -42,6 +43,8 @@ struct fetch_result {
   std::filesystem::path resolved_destination;
 };
 
-fetch_result fetch(fetch_request const &request);
+using fetch_result_t = std::variant<fetch_result, std::string>;  // string on error
+
+std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests);
 
 }  // namespace envy

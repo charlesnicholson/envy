@@ -9,7 +9,7 @@
 namespace envy {
 
 struct manifest {
-  std::vector<recipe> packages;
+  std::vector<recipe_spec> packages;
   std::filesystem::path manifest_path;  // Absolute path to envy.lua
 
   static std::optional<std::filesystem::path> discover();

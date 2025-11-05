@@ -188,32 +188,27 @@ std::filesystem::path uri_resolve_local_file_relative(
 
   auto const info{ uri_classify(trimmed) };
   auto const scheme{ info.scheme };
+
   if (scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
       scheme != uri_scheme::LOCAL_FILE_RELATIVE) {
     throw std::invalid_argument("resolve_local_uri: value is not a local file");
   }
 
-  auto const &raw_path{ info.canonical };
-  if (raw_path.empty()) {
+  if (info.canonical.empty()) {
     throw std::invalid_argument("resolve_local_uri: resolved path is empty");
   }
 
-  std::filesystem::path resolved{ raw_path };
+  std::filesystem::path resolved{ info.canonical };
   if (scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-    auto const base{ base_directory(anchor) };
-    resolved = std::filesystem::absolute(base / resolved);
+    resolved = std::filesystem::absolute(base_directory(anchor) / resolved);
   }
 #ifdef _WIN32
   else if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
-    std::filesystem::path p{ raw_path };
-
     // Path with root directory but no drive (e.g., "\tmp") - add current drive
-    if (!p.has_root_name() && p.has_root_directory()) {
-      auto drive = std::filesystem::current_path().root_name().string();
+    if (!resolved.has_root_name() && resolved.has_root_directory()) {
+      auto drive{ std::filesystem::current_path().root_name().string() };
       // Concatenate drive with the path that includes root directory
-      resolved = std::filesystem::path(drive + raw_path);
-    } else {
-      resolved = p;
+      resolved = std::filesystem::path(drive + info.canonical);
     }
   }
 #endif

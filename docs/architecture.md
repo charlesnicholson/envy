@@ -54,9 +54,10 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 ```
 
 **Field semantics:**
+- `identity` — Recipe identity declaration (**required in all recipe files**, no exemptions)
 - `source` — URL (http/https/s3/git/file) or Git repo for declarative fetch
-- `ref` — Git commit SHA or committish (required for git sources, optional SHA256)
-- `sha256` — Expected hash for verification (required for http/https/s3/file sources)
+- `ref` — Git commit SHA or committish (required for git sources)
+- `sha256` — Expected hash for verification (**optional**, permissive by default; future strict mode will require for non-`local.*`)
 - `fetch` — Custom Lua function for exotic sources (JFrog, authenticated APIs); mutually exclusive with `source`
 - `file` — Project-local recipe path (never cached; `local.*` namespace only)
 - `subdir` — Subdirectory within archive or git repo containing recipe entry point
@@ -81,14 +82,32 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 - **Single-file:** `.lua` file (declarative sources only)
 - **Multi-file:** Directory with `recipe.lua` entry point (custom fetch, archives, git repos)
 
-**Integrity:** Declarative sources require SHA256 (URL) or commit SHA (git). Custom fetch enforces SHA256 per-file via `ctx:fetch()` / `ctx:import_file()` API. Verification at fetch time only; never re-verified from cache. Mismatch causes hard failure.
+**Integrity:** Two orthogonal checks:
+
+1. **Identity validation** (ALL recipes, always required):
+   - Recipe must declare `identity = "..."` matching referrer's expectation
+   - Catches typos, stale references, copy-paste errors
+   - No namespace exemptions
+
+2. **SHA256 verification** (optional, namespace-specific):
+   - Declarative sources accept SHA256 (URL) or commit SHA (git)
+   - Custom fetch accepts SHA256 per-file via `ctx.fetch()` API
+   - If SHA256 provided, verification happens at fetch time; mismatch causes hard failure
+   - Never re-verified from cache
+   - **Permissive by default**: SHA256 optional for all recipes
+   - **Namespace rule**: `local.*` recipes never require SHA256 (files are local/trusted)
+   - **Future strict mode**: Will require SHA256 for all non-`local.*` recipes
 
 ### Verbs
 
 Recipes define verbs describing how to acquire, validate, and install packages:
 
 - **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`.envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
-- **`fetch`** — Acquire source materials. Can be declarative table (archive URL + hash) or function with custom logic.
+- **`fetch`** — Acquire source materials. Can be:
+  - String: `fetch = "https://..."` (no verification)
+  - Single file: `fetch = {url="...", sha256="..."}` (optional verification)
+  - Multiple files: `fetch = {{url="..."}, {url="..."}}` (concurrent, optional verification per-file)
+  - Custom function: `fetch = function(ctx) ctx.fetch(...) end` (imperative with `ctx.fetch()` API)
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
 - **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
@@ -161,19 +180,37 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 
 ### Recipe Fetching (Custom and Declarative)
 
+**Identity requirement:** ALL recipes must declare their identity:
+```lua
+-- vendor.lib@v1 recipe file
+identity = "vendor.lib@v1"
+
+-- local.wrapper@v1 recipe file
+identity = "local.wrapper@v1"
+
+-- Rest of recipe...
+```
+Envy validates declared identity matches requested identity. This prevents typos, stale references, copy-paste errors, and malicious substitution. No namespace exemptions—all recipes require identity declaration.
+
 **Declarative sources** (common case):
 ```lua
--- Single-file recipe
-{ recipe = "vendor.lib@v1", source = "https://example.com/lib.lua", sha256 = "abc..." }
+-- String shorthand (no verification)
+fetch = "https://example.com/gcc.tar.gz"
 
--- Archive recipe (auto-extract)
-{ recipe = "vendor.lib@v2", source = "https://example.com/lib.tar.gz", sha256 = "def..." }
+-- Single file with verification
+fetch = {url = "https://example.com/lib.lua", sha256 = "abc..."}
+
+-- Multiple files (concurrent download)
+fetch = {
+  {url = "https://example.com/gcc.tar.gz", sha256 = "abc..."},
+  {url = "https://example.com/gcc.tar.gz.sig", sha256 = "def..."}
+}
 
 -- Git repository
-{ recipe = "vendor.lib@v3", source = "git://github.com/vendor/lib.git", ref = "a1b2c3d4...", subdir = "recipes/" }
+fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 
 -- S3 (first-class support)
-{ recipe = "vendor.lib@v4", source = "s3://bucket/lib.lua", sha256 = "ghi..." }
+fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```
 
 **Custom fetch functions** (exotic cases—JFrog, authenticated APIs, custom tools):
@@ -182,22 +219,16 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
   recipe = "corporate.toolchain@v1",
   fetch = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
-    local work = ctx:work_dir()              -- Recipe-specific workspace
 
-    -- Download to workspace
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download",
-            "recipes/toolchain/recipe.lua", work .. "/recipe.lua")
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download",
-            "recipes/toolchain/helpers.lua", work .. "/helpers.lua")
-
-    -- Import with verification (enforced at API boundary)
-    ctx:import_file(work .. "/recipe.lua", "recipe.lua", "abc123...")
-    ctx:import_file(work .. "/helpers.lua", "helpers.lua", "def456...")
-
-    -- workspace cleaned up automatically after fetch completes
+    -- Download files concurrently with verification
+    local files = ctx.fetch({
+      {url = "https://internal.com/recipe.lua", sha256 = "abc..."},
+      {url = "https://internal.com/helpers.lua", sha256 = "def..."}
+    })
+    -- files = {"recipe.lua", "helpers.lua"}
   end,
   dependencies = {
-    { recipe = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
+    { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
 ```
@@ -205,20 +236,37 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 **Recipe fetch context API:**
 ```lua
 ctx = {
-  work_dir = function() -> string,                    -- Recipe workspace, auto-cleaned
-  fetch = function(url, sha256, [filename]),          -- Download & verify
-  import_file = function(source, dest, sha256),       -- Copy & verify
-  sha256_file = function(path) -> string,             -- Compute hash
-  fetch_git = function(url, ref, [subdir]),           -- Clone & checkout
-  asset = function(identity) -> string,               -- Path to installed dependency
-  run = function(cmd, ...),                           -- Execute subprocess
-  run_capture = function(cmd, ...) -> {stdout, stderr, exitcode},
-  platform = string,                                  -- "darwin", "linux", "windows"
-  arch = string                                       -- "arm64", "x86_64", etc.
+  -- Identity & configuration
+  identity = string,                                -- Recipe identity
+  options = table,                                  -- Recipe options (always present, may be empty)
+
+  -- Directories
+  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+
+  -- Download functions (concurrent, atomic commit)
+  fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
+                                                    -- spec: {url="...", sha256="..."} or {{...}, {...}}
+                                                    -- Returns: basename(s) of downloaded file(s)
+
+  -- Dependency access
+  asset = function(identity) -> string,             -- Path to installed dependency
+
+  -- Process execution
+  run = function(cmd, ...) -> number,               -- Execute subprocess, stream output
+  run_capture = function(cmd, ...) -> table,        -- Capture stdout/stderr/exitcode
 }
+
+-- Platform globals
+ENVY_PLATFORM, ENVY_ARCH, ENVY_PLATFORM_ARCH
 ```
 
-**Verification:** All imports require SHA256. `ctx:fetch()` and `ctx:import_file()` verify before writing to cache—no post-hoc tree hashing. Custom fetch functions cannot bypass verification (no direct cache access). SHA256 computed at fetch time only; never re-verified from cache.
+**Fetch behavior:**
+- **Polymorphic API**: Single file `ctx.fetch({url="..."})` or batch `ctx.fetch({{url="..."}, {url="..."}})`
+- **Concurrent**: All downloads happen in parallel via TBB task_group
+- **Atomic**: All files downloaded and verified before ANY committed to fetch_dir (all-or-nothing)
+- **SHA256 optional**: If provided, verified after download; if absent, permissive
+
+**Verification:** SHA256 is **optional**. If `sha256` field present, Envy verifies after download. If absent, download proceeds without verification (permissive mode). Custom fetch functions cannot bypass—all downloads go through `ctx.fetch()` API. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
 
 **Cache layout:** Custom fetch → multi-file cache directory with `recipe.lua` entry point:
 ```
@@ -228,7 +276,8 @@ ctx = {
     ├── recipe.lua           # Entry point (required)
     ├── helpers.lua
     └── .work/
-        └── fetch/
+        ├── tmp/             # Temp directory for ctx.fetch() (cleaned after)
+        └── fetch/           # Downloaded files moved here after verification
             └── .envy-complete
 ```
 

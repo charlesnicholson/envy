@@ -4,6 +4,10 @@ import pathlib
 # generation, but our ZLIB::ZLIB is an INTERFACE IMPORTED target without a
 # LOCATION property, causing warnings. Replace it with the actual underlying
 # zlib target name.
+#
+# Also disable man page generation by commenting out add_subdirectory(docs).
+# BUILD_MANPAGES option is ignored by curl - it checks PERL_FOUND and
+# unconditionally adds docs with ALL target.
 
 cmake_path = pathlib.Path(r"@LIBCURL_CMAKELISTS@")
 zlib_target = r"@ENVY_ZLIB_TARGET@"
@@ -23,6 +27,13 @@ replacement = f"  list(APPEND CURL_LIBS {zlib_target})"
 
 if marker in updated:
     updated = updated.replace(marker, replacement, 1)
+
+# Disable docs subdirectory to skip man page generation
+docs_marker = "  add_subdirectory(docs)"
+docs_replacement = "  # add_subdirectory(docs)  # Disabled by Envy: skip man page generation"
+
+if docs_marker in updated:
+    updated = updated.replace(docs_marker, docs_replacement, 1)
 
 if updated != text:
     cmake_path.write_text(updated)

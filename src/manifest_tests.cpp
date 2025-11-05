@@ -186,7 +186,8 @@ TEST_CASE("manifest::load parses table package with remote source") {
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe::remote_source>(&m.packages[0].source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(
+      &m.packages[0].source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -207,7 +208,7 @@ TEST_CASE("manifest::load parses table package with local source") {
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "local.wrapper@v1");
 
-  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&m.packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
 }
@@ -302,7 +303,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
   auto const m{ envy::manifest::load(script, fs::path("/project/sub/envy.lua")) };
 
   REQUIRE(m.packages.size() == 1);
-  auto const *local{ std::get_if<envy::recipe::local_source>(&m.packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&m.packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -403,7 +404,7 @@ TEST_CASE("manifest::load errors on both url and file") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on url without sha256") {
+TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   char const *script{ R"(
     packages = {
       {
@@ -413,9 +414,13 @@ TEST_CASE("manifest::load errors on url without sha256") {
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe with 'url' must specify 'sha256'",
-                       std::runtime_error);
+  auto const result{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+  REQUIRE(result.packages.size() == 1);
+  CHECK(result.packages[0].identity == "arm.gcc@v2");
+  CHECK(result.packages[0].is_remote());
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&result.packages[0].source) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
 
 TEST_CASE("manifest::load errors on non-string url") {

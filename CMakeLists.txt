@@ -137,6 +137,7 @@ target_sources(envy
         src/cmd_version.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/blake3_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
         src/recipe_spec.cpp
@@ -146,6 +147,7 @@ target_sources(envy
         src/platform.cpp
         src/tui.cpp
         src/uri.cpp
+        src/util.cpp
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
@@ -216,6 +218,7 @@ target_sources(envy_functional_tester
         src/engine.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/blake3_util.cpp
         src/lua_util.cpp
         src/phase.cpp
         src/recipe_spec.cpp
@@ -225,6 +228,7 @@ target_sources(envy_functional_tester
         src/platform.cpp
         src/tui.cpp
         src/uri.cpp
+        src/util.cpp
 )
 
 target_compile_features(envy_functional_tester PRIVATE cxx_std_20)
@@ -298,6 +302,7 @@ target_sources(envy_unit_tests
         src/cmd_playground.cpp
         src/extract.cpp
         src/aws_util.cpp
+        src/blake3_util.cpp
         src/lua_util.cpp
         src/manifest.cpp
         src/recipe_spec.cpp
@@ -305,6 +310,7 @@ target_sources(envy_unit_tests
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
+        src/blake3_util_tests.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
         src/cmd_tests.cpp
@@ -320,6 +326,7 @@ target_sources(envy_unit_tests
         src/uri_tests.cpp
         src/tui_tests.cpp
         src/tui.cpp
+        src/util.cpp
         src/util_tests.cpp
 )
 

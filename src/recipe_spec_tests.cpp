@@ -29,7 +29,7 @@ envy::lua_value lua_eval(char const *script) {
 TEST_CASE("recipe::parse rejects string shorthand") {
   auto lua_val{ lua_eval("result = 'arm.gcc@v2'") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        doctest::Contains("shorthand string syntax requires table"),
                        std::runtime_error);
 }
@@ -37,7 +37,7 @@ TEST_CASE("recipe::parse rejects string shorthand") {
 TEST_CASE("recipe::parse rejects table without url or file") {
   auto lua_val{ lua_eval("result = { recipe = 'gnu.binutils@v3' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        doctest::Contains("must specify either 'url' or 'file'"),
                        std::runtime_error);
 }
@@ -47,11 +47,11 @@ TEST_CASE("recipe::parse parses table with remote source") {
       "result = { recipe = 'arm.gcc@v2', url = 'https://example.com/gcc.lua', sha256 = "
       "'abc123' }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/fake")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
   CHECK(cfg.identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe::remote_source>(&cfg.source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg.source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -61,11 +61,11 @@ TEST_CASE("recipe::parse parses table with local source") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'local.tool@v1', file = './recipes/tool.lua' }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/project/envy.lua")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/envy.lua")) };
 
   CHECK(cfg.identity == "local.tool@v1");
 
-  auto const *local{ std::get_if<envy::recipe::local_source>(&cfg.source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg.source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/tool.lua"));
 }
@@ -74,9 +74,9 @@ TEST_CASE("recipe::parse resolves relative file paths") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'local.tool@v1', file = '../sibling/tool.lua' }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/project/sub/envy.lua")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/sub/envy.lua")) };
 
-  auto const *local{ std::get_if<envy::recipe::local_source>(&cfg.source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg.source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -87,7 +87,7 @@ TEST_CASE("recipe::parse parses table with options") {
       "'13.2.0', target = "
       "'arm-none-eabi' } }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/fake")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
   CHECK(cfg.identity == "arm.gcc@v2");
   REQUIRE(cfg.options.size() == 2);
@@ -99,7 +99,7 @@ TEST_CASE("recipe::parse parses table with empty options") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = {} }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/fake")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
   CHECK(cfg.identity == "arm.gcc@v2");
   CHECK(cfg.options.empty());
@@ -111,11 +111,11 @@ TEST_CASE("recipe::parse parses table with all fields") {
       "'abc123', "
       "options = { version = '13.2.0' } }") };
 
-  auto const cfg{ envy::recipe::parse(lua_val, fs::path("/fake")) };
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
   CHECK(cfg.identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe::remote_source>(&cfg.source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg.source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -130,7 +130,7 @@ TEST_CASE("recipe::parse errors on invalid identity format") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'invalid-no-at-sign', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: invalid-no-at-sign",
                        std::runtime_error);
 }
@@ -138,7 +138,7 @@ TEST_CASE("recipe::parse errors on invalid identity format") {
 TEST_CASE("recipe::parse errors on identity missing namespace") {
   auto lua_val{ lua_eval("result = { recipe = 'gcc@v2', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: gcc@v2",
                        std::runtime_error);
 }
@@ -146,7 +146,7 @@ TEST_CASE("recipe::parse errors on identity missing namespace") {
 TEST_CASE("recipe::parse errors on identity missing name") {
   auto lua_val{ lua_eval("result = { recipe = 'arm.@v2', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: arm.@v2",
                        std::runtime_error);
 }
@@ -154,7 +154,7 @@ TEST_CASE("recipe::parse errors on identity missing name") {
 TEST_CASE("recipe::parse errors on identity missing version") {
   auto lua_val{ lua_eval("result = { recipe = 'arm.gcc@', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: arm.gcc@",
                        std::runtime_error);
 }
@@ -162,7 +162,7 @@ TEST_CASE("recipe::parse errors on identity missing version") {
 TEST_CASE("recipe::parse errors on identity missing @ sign") {
   auto lua_val{ lua_eval("result = { recipe = 'arm.gcc', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: arm.gcc",
                        std::runtime_error);
 }
@@ -170,7 +170,7 @@ TEST_CASE("recipe::parse errors on identity missing @ sign") {
 TEST_CASE("recipe::parse errors on identity missing dot") {
   auto lua_val{ lua_eval("result = { recipe = 'armgcc@v2', file = '/fake/r.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Invalid recipe identity format: armgcc@v2",
                        std::runtime_error);
 }
@@ -178,7 +178,7 @@ TEST_CASE("recipe::parse errors on identity missing dot") {
 TEST_CASE("recipe::parse errors on non-string and non-table value") {
   auto lua_val{ lua_eval("result = 123") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe entry must be string or table",
                        std::runtime_error);
 }
@@ -186,7 +186,7 @@ TEST_CASE("recipe::parse errors on non-string and non-table value") {
 TEST_CASE("recipe::parse errors on table missing recipe field") {
   auto lua_val{ lua_eval("result = { url = 'https://example.com/foo.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe table missing required 'recipe' field",
                        std::runtime_error);
 }
@@ -194,7 +194,7 @@ TEST_CASE("recipe::parse errors on table missing recipe field") {
 TEST_CASE("recipe::parse errors on non-string recipe field") {
   auto lua_val{ lua_eval("result = { recipe = 123 }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe 'recipe' field must be string",
                        std::runtime_error);
 }
@@ -204,25 +204,29 @@ TEST_CASE("recipe::parse errors on both url and file") {
       "result = { recipe = 'arm.gcc@v2', url = 'https://example.com/gcc.lua', file = "
       "'./local.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe cannot specify both 'url' and 'file'",
                        std::runtime_error);
 }
 
-TEST_CASE("recipe::parse errors on url without sha256") {
+TEST_CASE("recipe::parse allows url without sha256 (permissive mode)") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', url = 'https://example.com/gcc.lua' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
-                       "Recipe with 'url' must specify 'sha256'",
-                       std::runtime_error);
+  auto const spec{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  CHECK(spec.identity == "arm.gcc@v2");
+  CHECK(spec.is_remote());
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&spec.source) };
+  REQUIRE(remote != nullptr);
+  CHECK(remote->url == "https://example.com/gcc.lua");
+  CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
 
 TEST_CASE("recipe::parse errors on non-string url") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', url = 123, sha256 = 'abc' }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe 'url' field must be string",
                        std::runtime_error);
 }
@@ -233,7 +237,7 @@ TEST_CASE("recipe::parse errors on non-string sha256") {
       "123 "
       "}") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe 'sha256' field must be string",
                        std::runtime_error);
 }
@@ -241,7 +245,7 @@ TEST_CASE("recipe::parse errors on non-string sha256") {
 TEST_CASE("recipe::parse errors on non-string file") {
   auto lua_val{ lua_eval("result = { recipe = 'local.tool@v1', file = 123 }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe 'file' field must be string",
                        std::runtime_error);
 }
@@ -251,7 +255,7 @@ TEST_CASE("recipe::parse errors on non-table options") {
       "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = 'not a table' "
       "}") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Recipe 'options' field must be table",
                        std::runtime_error);
 }
@@ -261,7 +265,7 @@ TEST_CASE("recipe::parse errors on non-string option value") {
       "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = 123 "
       "} }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe::parse(lua_val, fs::path("/fake")),
+  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
                        "Option value for 'version' must be string",
                        std::runtime_error);
 }

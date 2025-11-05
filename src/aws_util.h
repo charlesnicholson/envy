@@ -19,7 +19,7 @@ struct s3_download_request {
   fetch_progress_cb_t progress{};
 };
 
-void aws_s3_download(s3_download_request const &request);
+std::filesystem::path aws_s3_download(s3_download_request const &request);
 
 class aws_shutdown_guard : unmovable {
  public:

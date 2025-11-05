@@ -27,7 +27,18 @@ bool cmd_fetch::execute() {
                          .progress = {} };
 
   try {
-    auto const result{ fetch(request) };
+    auto const results{ fetch({ request }) };
+    if (results.empty()) {
+      tui::error("fetch failed: no result returned");
+      return false;
+    }
+
+    if (std::holds_alternative<std::string>(results[0])) {
+      tui::error("fetch failed: %s", std::get<std::string>(results[0]).c_str());
+      return false;
+    }
+
+    auto const &result{ std::get<fetch_result>(results[0]) };
     tui::info("Fetched %s -> %s",
               result.resolved_source.string().c_str(),
               result.resolved_destination.string().c_str());
