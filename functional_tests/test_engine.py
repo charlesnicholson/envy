@@ -54,6 +54,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.withdep@v1",
                 "test_data/recipes/with_dep.lua",
@@ -78,6 +79,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.cycle_a@v1",
                 "test_data/recipes/cycle_a.lua",
@@ -99,6 +101,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.nophases@v1",
                 "test_data/recipes/no_phases.lua",
@@ -162,6 +165,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.multiple_roots@v1",
                 "test_data/recipes/multiple_roots.lua",
@@ -187,6 +191,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.options_parent@v1",
                 "test_data/recipes/options_parent.lua",
@@ -216,6 +221,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.chain_a@v1",
                 "test_data/recipes/chain_a.lua",
@@ -245,6 +251,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.fanout_root@v1",
                 "test_data/recipes/fanout_root.lua",
@@ -272,6 +279,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "remote.badrecipe@v1",
                 "test_data/recipes/nonlocal_bad.lua",
@@ -295,6 +303,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "remote.fileuri@v1",
                 "test_data/recipes/remote_fileuri.lua",
@@ -318,6 +327,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "remote.parent@v1",
                 "test_data/recipes/remote_parent.lua",
@@ -341,6 +351,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.wrapper@v1",
                 "test_data/recipes/local_wrapper.lua",
@@ -364,6 +375,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.parent@v1",
                 "test_data/recipes/local_parent.lua",
@@ -387,6 +399,7 @@ class TestEngine(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "remote.a@v1",
                 "test_data/recipes/remote_transitive_a.lua",
@@ -520,6 +533,7 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                *self.trace_flag,
                     "engine-test",
                     "test.sha256_ok@v1",
                     tmp_path,
@@ -567,6 +581,7 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                *self.trace_flag,
                     "engine-test",
                     "test.sha256_fail@v1",
                     tmp_path,
@@ -587,6 +602,7 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.identity_correct@v1",
                 "test_data/recipes/identity_correct.lua",
@@ -606,6 +622,7 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.identity_missing@v1",
                 "test_data/recipes/identity_missing.lua",
@@ -626,6 +643,7 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.identity_expected@v1",
                 "test_data/recipes/identity_mismatch.lua",
@@ -648,6 +666,7 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                *self.trace_flag,
                 "engine-test",
                 "local.identity_wrong_type@v1",
                 "test_data/recipes/identity_wrong_type.lua",
@@ -679,6 +698,7 @@ function install(ctx) end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                *self.trace_flag,
                     "engine-test",
                     "local.temp_no_identity@v1",
                     tmp_path,
