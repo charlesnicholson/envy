@@ -715,6 +715,121 @@ function install(ctx) end
         finally:
             Path(tmp_path).unlink()
 
+    def test_declarative_fetch_string(self):
+        """Recipe with declarative fetch (string format) downloads file."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetch_string@v1",
+                "test_data/recipes/fetch_string.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("local.fetch_string@v1", result.stdout)
+
+        # Verify fetch phase executed
+        stderr_lower = result.stderr.lower()
+        self.assertIn("fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}")
+
+    def test_declarative_fetch_single_table(self):
+        """Recipe with declarative fetch (single table with sha256) downloads and verifies."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetch_single@v1",
+                "test_data/recipes/fetch_single.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("local.fetch_single@v1", result.stdout)
+
+        # Verify SHA256 verification occurred
+        stderr_lower = result.stderr.lower()
+        self.assertIn("sha256", stderr_lower, f"Expected SHA256 verification log: {result.stderr}")
+
+    def test_declarative_fetch_array(self):
+        """Recipe with declarative fetch (array format) downloads multiple files concurrently."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetch_array@v1",
+                "test_data/recipes/fetch_array.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("local.fetch_array@v1", result.stdout)
+
+        # Verify multiple files were downloaded
+        stderr_lower = result.stderr.lower()
+        self.assertIn("downloading", stderr_lower, f"Expected download log: {result.stderr}")
+        # The log should mention "3 file(s)" or similar
+        self.assertTrue("3" in result.stderr or "file" in stderr_lower,
+                       f"Expected multiple file download log: {result.stderr}")
+
+    def test_declarative_fetch_collision(self):
+        """Recipe with duplicate filenames fails with collision error."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_collision@v1",
+                "test_data/recipes/fetch_collision.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0, "Expected filename collision to cause failure")
+        self.assertIn("collision", result.stderr.lower(),
+                     f"Expected collision error, got: {result.stderr}")
+        self.assertIn("simple.lua", result.stderr,
+                     f"Expected filename in error, got: {result.stderr}")
+
+    def test_declarative_fetch_bad_sha256(self):
+        """Recipe with wrong SHA256 fails verification."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_bad_sha256@v1",
+                "test_data/recipes/fetch_bad_sha256.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0, "Expected SHA256 mismatch to cause failure")
+        self.assertIn("sha256", result.stderr.lower(),
+                     f"Expected SHA256 error, got: {result.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()

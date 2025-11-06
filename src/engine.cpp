@@ -29,6 +29,12 @@ namespace envy {
 
 namespace {
 
+struct trace_on_exit {
+  std::string message;
+  explicit trace_on_exit(std::string msg) : message{ std::move(msg) } {}
+  ~trace_on_exit() { tui::trace("%s", message.c_str()); }
+};
+
 struct recipe {
   using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
 
@@ -84,10 +90,12 @@ std::string make_canonical_key(
 
 void validate_phases(lua_State *lua, std::string const &identity) {
   lua_getglobal(lua, "fetch");
-  bool const has_fetch{ lua_isfunction(lua, -1) };
+  int const fetch_type{ lua_type(lua, -1) };
+  bool const has_fetch{ fetch_type == LUA_TFUNCTION || fetch_type == LUA_TSTRING ||
+                        fetch_type == LUA_TTABLE };
   lua_pop(lua, 1);
 
-  if (has_fetch) { return; }  // fetch alone is valid
+  if (has_fetch) { return; }  // fetch alone is valid (function, string, or table)
 
   // No fetch, so check + install are required
   lua_getglobal(lua, "check");
@@ -105,6 +113,11 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 }
 
 // Forward declarations for phase functions
+void create_recipe_nodes(std::string const &key,
+                         recipe_spec const &spec,
+                         graph_state &state,
+                         std::unordered_set<std::string> const &ancestors);
+
 void run_check_phase(std::string const &key, graph_state &state);
 void run_fetch_phase(std::string const &key, graph_state &state);
 void run_stage_phase(std::string const &key, graph_state &state);
@@ -113,208 +126,10 @@ void run_install_phase(std::string const &key, graph_state &state);
 void run_deploy_phase(std::string const &key, graph_state &state);
 void run_completion_phase(std::string const &key, graph_state &state);
 
-// Stub implementations (will be filled in later steps)
-void run_check_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase check START %s", key.c_str());
-
-  // Get lua_state and check if user defined check() function
-  lua_State *lua{ [&] {
-    typename decltype(state.recipes)::const_accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return acc->second.lua_state.get();
-  }() };
-
-  // Check if user defined a check() function
-  lua_getglobal(lua, "check");
-  bool const has_check{ lua_isfunction(lua, -1) };
-
-  if (has_check) {
-    // Call check() - return whether package is installed
-    lua_newtable(lua);
-
-    if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
-      char const *err{ lua_tostring(lua, -1) };
-      lua_pop(lua, 1);
-      throw std::runtime_error("check() failed for " + key + ": " +
-                               (err ? err : "unknown error"));
-    }
-
-    bool const installed{ static_cast<bool>(lua_toboolean(lua, -1)) };
-    lua_pop(lua, 1);
-
-    if (installed) {
-      typename decltype(state.recipes)::accessor acc;
-      if (state.recipes.find(acc, key)) {
-        // For now, use a placeholder asset_path since user-defined check
-        // doesn't tell us where the asset is
-        acc->second.asset_path = "/placeholder/asset/path";
-        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
-      }
-      tui::trace("phase check END %s (user check returned true, triggered completion)",
-                 key.c_str());
-      return;
-    }
-  } else {
-    lua_pop(lua, 1);
-  }
-
-  // Not installed or no check() - call cache.ensure_asset to get lock or existing asset
-  // For now, use a simple hash derived from the key
-  // TODO: Compute proper content hash based on sources and dependencies
-  auto const digest{ blake3_hash(key.data(), key.size()) };
-
-  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
-
-  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
-  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
-
-  // Extract identity from key (remove options suffix if present)
-  std::string identity{ key };
-  if (auto const brace_pos{ key.find('{') }; brace_pos != std::string::npos) {
-    identity = key.substr(0, brace_pos);
-  }
-
-  auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
-
-  // Store result and trigger appropriate next phase
-  typename decltype(state.recipes)::accessor acc;
-  if (state.recipes.find(acc, key)) {
-    if (cache_result.lock) {
-      // Cache miss - we won the race, need to build
-      acc->second.lock = std::move(cache_result.lock);
-      tui::trace("phase check: cache miss for %s, triggering fetch", key.c_str());
-      // Wire deploy -> completion edge now (will be used later)
-      tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
-      // Trigger fetch phase directly
-      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
-      tui::trace("phase check END %s (cache miss, triggered fetch)", key.c_str());
-    } else {
-      // Cache hit - asset already exists
-      acc->second.asset_path = cache_result.asset_path;
-      tui::trace("phase check: cache hit for %s, triggering completion", key.c_str());
-      // Trigger completion phase directly
-      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
-      tui::trace("phase check END %s (cache hit, triggered completion)", key.c_str());
-    }
-  }
-}
-
-void run_fetch_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase fetch START %s", key.c_str());
-  // TODO: Implement fetch logic
-  tui::trace("phase fetch END %s", key.c_str());
-}
-
-void run_stage_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase stage START %s", key.c_str());
-  // TODO: Implement stage logic
-  tui::trace("phase stage END %s", key.c_str());
-}
-
-void run_build_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase build START %s", key.c_str());
-  // TODO: Implement build logic
-  tui::trace("phase build END %s", key.c_str());
-}
-
-void run_install_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase install START %s", key.c_str());
-
-  // Get lua_state
-  lua_State *lua{ [&] {
-    typename decltype(state.recipes)::const_accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return acc->second.lua_state.get();
-  }() };
-
-  // Check if user defined install() function
-  lua_getglobal(lua, "install");
-  bool const has_install{ lua_isfunction(lua, -1) };
-
-  if (has_install) {
-    lua_newtable(lua);
-    if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
-      char const *err{ lua_tostring(lua, -1) };
-      lua_pop(lua, 1);
-      throw std::runtime_error("install() failed for " + key + ": " +
-                               (err ? err : "unknown error"));
-    }
-  } else {
-    lua_pop(lua, 1);  // Pop nil from failed getglobal
-  }
-
-  // Finalize install: mark complete and move to asset path
-  typename decltype(state.recipes)::accessor acc;
-  if (state.recipes.find(acc, key)) {
-    if (acc->second.lock) {
-      // Ensure install_dir exists
-      auto const install_dir{ acc->second.lock->install_dir() };
-      std::filesystem::create_directories(install_dir);
-
-      // Get the entry_path to compute final asset_path
-      // The lock destructor will rename install_dir to entry_path/asset
-      std::filesystem::path const entry_path{ install_dir.parent_path() };
-      std::filesystem::path const final_asset_path{ entry_path / "asset" };
-
-      acc->second.lock->mark_install_complete();
-      acc->second.asset_path = final_asset_path;
-      acc->second.lock.reset();  // Release lock, which moves install_dir to asset_dir
-    }
-  }
-
-  tui::trace("phase install END %s", key.c_str());
-}
-
-void run_deploy_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase deploy START %s", key.c_str());
-  // TODO: Implement deploy logic
-  tui::trace("phase deploy END %s", key.c_str());
-}
-
-void run_completion_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase completion START %s", key.c_str());
-
-  typename decltype(state.recipes)::accessor acc;
-  if (!state.recipes.find(acc, key)) {
-    throw std::runtime_error("Recipe not found in completion phase: " + key);
-  }
-
-  // Compute result hash from asset_path
-  // TODO: Compute proper content hash of installed assets
-  // For now, use a simple hash of the path
-  if (!acc->second.asset_path.empty()) {
-    auto const path_str{ acc->second.asset_path.string() };
-    acc->second.result_hash =
-        path_str.length() >= 16 ? path_str.substr(path_str.length() - 16) : path_str;
-
-    acc->second.completed = true;
-
-    tui::trace("phase completion: computed result_hash=%s for %s",
-               acc->second.result_hash.c_str(),
-               key.c_str());
-  } else {
-    // asset_path empty means check phase set neither lock nor asset_path
-    tui::warn("phase completion: asset_path EMPTY for %s", key.c_str());
-    throw std::runtime_error("Completion phase: asset_path not set for recipe: " + key);
-  }
-
-  tui::trace("phase completion END %s", key.c_str());
-}
-
-void create_recipe_nodes(std::string const &key,
-                         recipe_spec const &spec,
-                         graph_state &state,
-                         std::unordered_set<std::string> const &ancestors);
-
-void fetch_recipe_and_spawn_dependencies(
-    recipe_spec const &spec,
-    std::string const &key,
-    graph_state &state,
-    std::unordered_set<std::string> const &ancestors) {
+void run_recipe_fetch_phase(recipe_spec const &spec,
+                            std::string const &key,
+                            graph_state &state,
+                            std::unordered_set<std::string> const &ancestors) {
   auto lua_state{ lua_make() };
   lua_add_envy(lua_state);
 
@@ -440,6 +255,369 @@ void fetch_recipe_and_spawn_dependencies(
   }
 }
 
+// Stub implementations (will be filled in later steps)
+void run_check_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase check START %s", key.c_str());
+  trace_on_exit trace_end{ "phase check END " + key };
+
+  // Get lua_state and check if user defined check() function
+  lua_State *lua{ [&] {
+    typename decltype(state.recipes)::const_accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Recipe not found for " + key);
+    }
+    return acc->second.lua_state.get();
+  }() };
+
+  // Check if user defined a check() function
+  lua_getglobal(lua, "check");
+  bool const has_check{ lua_isfunction(lua, -1) };
+
+  if (has_check) {
+    // Call check() - return whether package is installed
+    lua_newtable(lua);
+
+    if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
+      char const *err{ lua_tostring(lua, -1) };
+      lua_pop(lua, 1);
+      throw std::runtime_error("check() failed for " + key + ": " +
+                               (err ? err : "unknown error"));
+    }
+
+    bool const installed{ static_cast<bool>(lua_toboolean(lua, -1)) };
+    lua_pop(lua, 1);
+
+    if (installed) {
+      typename decltype(state.recipes)::accessor acc;
+      if (state.recipes.find(acc, key)) {
+        // For now, use a placeholder asset_path since user-defined check
+        // doesn't tell us where the asset is
+        acc->second.asset_path = "/placeholder/asset/path";
+        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+      }
+      tui::trace("phase check: user check returned true, triggered completion");
+      return;
+    }
+  } else {
+    lua_pop(lua, 1);
+  }
+
+  // Not installed or no check() - call cache.ensure_asset to get lock or existing asset
+  // For now, use a simple hash derived from the key
+  // TODO: Compute proper content hash based on sources and dependencies
+  auto const digest{ blake3_hash(key.data(), key.size()) };
+
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
+
+  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
+  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
+
+  // Extract identity from key (remove options suffix if present)
+  std::string identity{ key };
+  if (auto const brace_pos{ key.find('{') }; brace_pos != std::string::npos) {
+    identity = key.substr(0, brace_pos);
+  }
+
+  auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
+
+  // Store result and trigger appropriate next phase
+  typename decltype(state.recipes)::accessor acc;
+  if (state.recipes.find(acc, key)) {
+    if (cache_result.lock) {
+      // Cache miss - we won the race, need to build
+      acc->second.lock = std::move(cache_result.lock);
+      tui::trace("phase check: cache miss for %s, triggering fetch", key.c_str());
+      // Wire deploy -> completion edge now (will be used later)
+      tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
+      // Trigger fetch phase directly
+      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
+    } else {
+      // Cache hit - asset already exists
+      acc->second.asset_path = cache_result.asset_path;
+      tui::trace("phase check: cache hit for %s, triggering completion", key.c_str());
+      // Trigger completion phase directly
+      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+    }
+  }
+}
+
+void run_fetch_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase fetch START %s", key.c_str());
+  trace_on_exit trace_end{ "phase fetch END " + key };
+
+  // Get lua_state and lock
+  auto [lua, lock] = [&] {
+    typename decltype(state.recipes)::accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Recipe not found for " + key);
+    }
+    return std::pair{ acc->second.lua_state.get(), acc->second.lock.get() };
+  }();
+
+  if (!lock) {  // cache hit path - skip fetch
+    tui::trace("phase fetch: no lock (cache hit), skipping");
+    return;
+  }
+
+  if (lock->is_fetch_complete()) {  // fetch is complete (previous build etc failed)
+    tui::trace("phase fetch: fetch already complete, skipping");
+    return;
+  }
+
+  // Get fetch field from Lua
+  lua_getglobal(lua, "fetch");
+  int const fetch_type{ lua_type(lua, -1) };
+
+  if (fetch_type == LUA_TFUNCTION) {  // Imperative fetch - defer to Phase 4
+    lua_pop(lua, 1);
+    tui::trace("phase fetch: has fetch function, skipping declarative (Phase 4)");
+    return;
+  }
+
+  if (fetch_type == LUA_TNIL) {  // No fetch field - valid if recipe has check+install
+    lua_pop(lua, 1);
+    tui::trace("phase fetch: no fetch field, skipping");
+    return;
+  }
+
+  // Parse declarative fetch (string or table)
+  struct fetch_spec {
+    fetch_request request;
+    std::string sha256;  // Optional verification hash
+  };
+  std::vector<fetch_spec> fetch_specs;
+  std::unordered_set<std::string> basenames;  // For collision detection
+
+  if (fetch_type == LUA_TSTRING) {
+    // String: fetch = "url"
+    char const *url{ lua_tostring(lua, -1) };
+    std::filesystem::path dest{ lock->fetch_dir() /
+                                std::filesystem::path(url).filename() };
+    std::string basename{ dest.filename().string() };
+
+    if (basenames.contains(basename)) {
+      lua_pop(lua, 1);
+      throw std::runtime_error("Fetch filename collision: " + basename + " in " + key);
+    }
+    basenames.insert(basename);
+
+    fetch_specs.push_back(
+        { .request = { .source = url, .destination = dest }, .sha256 = "" });
+  } else if (fetch_type == LUA_TTABLE) {
+    // Table: could be single fetch or array of fetches
+    // Check if it's an array (has numeric keys starting at 1)
+    lua_rawgeti(lua, -1, 1);
+    bool const is_array{ !lua_isnil(lua, -1) };
+    lua_pop(lua, 1);
+
+    if (is_array) {
+      // Array of fetches: fetch = {{url="..."}, {url="..."}}
+      size_t const len{ lua_rawlen(lua, -1) };
+      for (size_t i = 1; i <= len; ++i) {
+        lua_rawgeti(lua, -1, i);
+        if (!lua_istable(lua, -1)) {
+          lua_pop(lua, 2);  // pop element and fetch table
+          throw std::runtime_error("Fetch array element must be table in " + key);
+        }
+
+        // Get url field
+        lua_getfield(lua, -1, "url");
+        if (!lua_isstring(lua, -1)) {
+          lua_pop(lua, 3);  // pop url, element, fetch table
+          throw std::runtime_error("Fetch element missing 'url' field in " + key);
+        }
+        std::string url{ lua_tostring(lua, -1) };
+        lua_pop(lua, 1);  // pop url
+
+        // Get optional sha256 field
+        lua_getfield(lua, -1, "sha256");
+        std::string sha256;
+        if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
+        lua_pop(lua, 1);  // pop sha256
+
+        std::filesystem::path dest{ lock->fetch_dir() /
+                                    std::filesystem::path(url).filename() };
+        std::string basename{ dest.filename().string() };
+
+        if (basenames.contains(basename)) {
+          lua_pop(lua, 2);  // pop element and fetch table
+          throw std::runtime_error("Fetch filename collision: " + basename + " in " + key);
+        }
+        basenames.insert(basename);
+
+        fetch_specs.push_back(
+            { .request = { .source = url, .destination = dest }, .sha256 = sha256 });
+
+        lua_pop(lua, 1);  // pop element
+      }
+    } else {
+      // Single fetch: fetch = {url="...", sha256="..."}
+      lua_getfield(lua, -1, "url");
+      if (!lua_isstring(lua, -1)) {
+        lua_pop(lua, 2);  // pop url and fetch table
+        throw std::runtime_error("Fetch table missing 'url' field in " + key);
+      }
+      std::string url{ lua_tostring(lua, -1) };
+      lua_pop(lua, 1);  // pop url
+
+      // Get optional sha256 field
+      lua_getfield(lua, -1, "sha256");
+      std::string sha256;
+      if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
+      lua_pop(lua, 1);  // pop sha256
+
+      std::filesystem::path dest{ lock->fetch_dir() /
+                                  std::filesystem::path(url).filename() };
+      fetch_specs.push_back(
+          { .request = { .source = url, .destination = dest }, .sha256 = sha256 });
+    }
+  } else {
+    lua_pop(lua, 1);
+    throw std::runtime_error("Fetch field must be string, table, or function in " + key);
+  }
+
+  lua_pop(lua, 1);  // pop fetch value
+
+  // Execute fetches
+  if (!fetch_specs.empty()) {
+    tui::trace("phase fetch: downloading %zu file(s)", fetch_specs.size());
+
+    // Build requests vector
+    std::vector<fetch_request> requests;
+    requests.reserve(fetch_specs.size());
+    for (auto const &spec : fetch_specs) { requests.push_back(spec.request); }
+
+    auto const results{ fetch(requests) };
+
+    // Check for errors and verify SHA256
+    std::vector<std::string> errors;
+    for (size_t i = 0; i < results.size(); ++i) {
+      if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
+        errors.push_back(fetch_specs[i].request.source + ": " + *err);
+      } else if (!fetch_specs[i].sha256.empty()) {
+        // Verify SHA256 if provided
+        try {
+          auto const *result{ std::get_if<fetch_result>(&results[i]) };
+          if (!result) { throw std::runtime_error("Unexpected result type"); }
+
+          tui::trace("phase fetch: verifying SHA256 for %s",
+                     result->resolved_destination.string().c_str());
+          sha256_verify(fetch_specs[i].sha256, sha256(result->resolved_destination));
+        } catch (std::exception const &e) {
+          errors.push_back(fetch_specs[i].request.source + ": " + e.what());
+        }
+      }
+    }
+
+    if (!errors.empty()) {
+      std::ostringstream oss;
+      oss << "Fetch failed for " << key << ":\n";
+      for (auto const &err : errors) { oss << "  " << err << "\n"; }
+      throw std::runtime_error(oss.str());
+    }
+
+    // Mark fetch complete
+    lock->mark_fetch_complete();
+    tui::trace("phase fetch: marked fetch complete");
+  }
+}
+
+void run_stage_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase stage START %s", key.c_str());
+  trace_on_exit trace_end{ "phase stage END " + key };
+  // TODO: Implement stage logic
+}
+
+void run_build_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase build START %s", key.c_str());
+  trace_on_exit trace_end{ "phase build END " + key };
+  // TODO: Implement build logic
+}
+
+void run_install_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase install START %s", key.c_str());
+  trace_on_exit trace_end{ "phase install END " + key };
+
+  // Get lua_state
+  lua_State *lua{ [&] {
+    typename decltype(state.recipes)::const_accessor acc;
+    if (!state.recipes.find(acc, key)) {
+      throw std::runtime_error("Recipe not found for " + key);
+    }
+    return acc->second.lua_state.get();
+  }() };
+
+  // Check if user defined install() function
+  lua_getglobal(lua, "install");
+  bool const has_install{ lua_isfunction(lua, -1) };
+
+  if (has_install) {
+    lua_newtable(lua);
+    if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
+      char const *err{ lua_tostring(lua, -1) };
+      lua_pop(lua, 1);
+      throw std::runtime_error("install() failed for " + key + ": " +
+                               (err ? err : "unknown error"));
+    }
+  } else {
+    lua_pop(lua, 1);  // Pop nil from failed getglobal
+  }
+
+  // Finalize install: mark complete and move to asset path
+  typename decltype(state.recipes)::accessor acc;
+  if (state.recipes.find(acc, key)) {
+    if (acc->second.lock) {
+      // Ensure install_dir exists
+      auto const install_dir{ acc->second.lock->install_dir() };
+      std::filesystem::create_directories(install_dir);
+
+      // Get the entry_path to compute final asset_path
+      // The lock destructor will rename install_dir to entry_path/asset
+      std::filesystem::path const entry_path{ install_dir.parent_path() };
+      std::filesystem::path const final_asset_path{ entry_path / "asset" };
+
+      acc->second.lock->mark_install_complete();
+      acc->second.asset_path = final_asset_path;
+      acc->second.lock.reset();  // Release lock, which moves install_dir to asset_dir
+    }
+  }
+}
+
+void run_deploy_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase deploy START %s", key.c_str());
+  trace_on_exit trace_end{ "phase deploy END " + key };
+  // TODO: Implement deploy logic
+}
+
+void run_completion_phase(std::string const &key, graph_state &state) {
+  tui::trace("phase completion START %s", key.c_str());
+  trace_on_exit trace_end{ "phase completion END " + key };
+
+  typename decltype(state.recipes)::accessor acc;
+  if (!state.recipes.find(acc, key)) {
+    throw std::runtime_error("Recipe not found in completion phase: " + key);
+  }
+
+  // Compute result hash from asset_path
+  // TODO: Compute proper content hash of installed assets
+  // For now, use a simple hash of the path
+  if (!acc->second.asset_path.empty()) {
+    auto const path_str{ acc->second.asset_path.string() };
+    acc->second.result_hash =
+        path_str.length() >= 16 ? path_str.substr(path_str.length() - 16) : path_str;
+
+    acc->second.completed = true;
+
+    tui::trace("phase completion: computed result_hash=%s for %s",
+               acc->second.result_hash.c_str(),
+               key.c_str());
+  } else {
+    // asset_path empty means check phase set neither lock nor asset_path
+    tui::warn("phase completion: asset_path EMPTY for %s", key.c_str());
+    throw std::runtime_error("Completion phase: asset_path not set for recipe: " + key);
+  }
+}
+
 void create_recipe_nodes(std::string const &key,
                          recipe_spec const &spec,
                          graph_state &state,
@@ -462,7 +640,7 @@ void create_recipe_nodes(std::string const &key,
     std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
         state.graph,
         [spec, key, &state, ancestors](tbb::flow::continue_msg const &) {
-          fetch_recipe_and_spawn_dependencies(spec, key, state, ancestors);
+          run_recipe_fetch_phase(spec, key, state, ancestors);
         })
   };
 
