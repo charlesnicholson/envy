@@ -217,16 +217,16 @@ target_sources(envy_functional_tester
         src/cmd_cache_functional_test.cpp
         src/cmd_engine_functional_test.cpp
         src/engine.cpp
-        src/engine/create_nodes.cpp
-        src/engine/graph_state.cpp
-        src/engine/phase_build.cpp
-        src/engine/phase_check.cpp
-        src/engine/phase_completion.cpp
-        src/engine/phase_deploy.cpp
-        src/engine/phase_fetch.cpp
-        src/engine/phase_install.cpp
-        src/engine/phase_recipe_fetch.cpp
-        src/engine/phase_stage.cpp
+        src/engine_phases/create_nodes.cpp
+        src/engine_phases/graph_state.cpp
+        src/engine_phases/phase_build.cpp
+        src/engine_phases/phase_check.cpp
+        src/engine_phases/phase_completion.cpp
+        src/engine_phases/phase_deploy.cpp
+        src/engine_phases/phase_fetch.cpp
+        src/engine_phases/phase_install.cpp
+        src/engine_phases/phase_recipe_fetch.cpp
+        src/engine_phases/phase_stage.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp

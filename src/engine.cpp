@@ -1,6 +1,6 @@
 #include "engine.h"
 
-#include "engine/graph_state.h"
+#include "engine_phases/graph_state.h"
 #include "tui.h"
 
 namespace envy {
