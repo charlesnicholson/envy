@@ -1,6 +1,7 @@
 #include "graph_state.h"
 
 #include <algorithm>
+#include <ranges>
 #include <sstream>
 #include <vector>
 
@@ -11,7 +12,7 @@ std::string make_canonical_key(std::string const &identity,
   if (opts.empty()) { return identity; }
 
   std::vector<std::pair<std::string, std::string>> sorted{ opts.begin(), opts.end() };
-  std::sort(sorted.begin(), sorted.end());
+  std::ranges::sort(sorted);
 
   std::ostringstream oss;
   oss << identity << '{';

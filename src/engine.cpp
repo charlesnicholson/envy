@@ -23,8 +23,8 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots, cache 
   flow_graph.wait_for_all();
 
   recipe_asset_hash_map_t result;
-  for (auto const &[key, rec] : state.recipes) {
-    (void)rec;
+  for (auto const &entry : state.recipes) {
+    auto const &key{ entry.first };
     typename decltype(state.recipes)::const_accessor acc;
     state.recipes.find(acc, key);
     if (acc->second.result_hash.empty()) {
