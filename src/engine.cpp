@@ -18,6 +18,7 @@ extern "C" {
 #include <tbb/flow_graph.h>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -46,6 +47,8 @@ struct recipe {
   cache::scoped_entry_lock::ptr_t lock;  // set by check if cache miss
   std::filesystem::path asset_path;      // set by check if cache hit
   std::string result_hash;               // set by completion
+
+  std::atomic_bool completed{ false };  // race guard: finished before dependants start
 };
 
 struct graph_state {
@@ -128,8 +131,7 @@ void run_check_phase(std::string const &key, graph_state &state) {
   bool const has_check{ lua_isfunction(lua, -1) };
 
   if (has_check) {
-    // Call check() function - it returns boolean (true = cache hit, false = cache miss)
-    // Push empty context table as argument
+    // Call check() - return whether package is installed
     lua_newtable(lua);
 
     if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
@@ -139,41 +141,34 @@ void run_check_phase(std::string const &key, graph_state &state) {
                                (err ? err : "unknown error"));
     }
 
-    bool const cache_hit{ static_cast<bool>(lua_toboolean(lua, -1)) };
+    bool const installed{ static_cast<bool>(lua_toboolean(lua, -1)) };
     lua_pop(lua, 1);
 
-    if (cache_hit) {
-      // User says it's already available - wire short-circuit to completion
+    if (installed) {
       typename decltype(state.recipes)::accessor acc;
       if (state.recipes.find(acc, key)) {
         // For now, use a placeholder asset_path since user-defined check
         // doesn't tell us where the asset is
         acc->second.asset_path = "/placeholder/asset/path";
-        // Create edge: check -> completion (short-circuit path)
-        tbb::flow::make_edge(*acc->second.check_node, *acc->second.completion_node);
+        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
       }
-      tui::trace("phase check END %s (cache hit, short-circuited)", key.c_str());
+      tui::trace("phase check END %s (user check returned true, triggered completion)",
+                 key.c_str());
       return;
     }
   } else {
-    lua_pop(lua, 1);  // Pop nil from failed getglobal
+    lua_pop(lua, 1);
   }
 
-  // Cache miss or no check() - call cache.ensure_asset to get lock or existing asset
+  // Not installed or no check() - call cache.ensure_asset to get lock or existing asset
   // For now, use a simple hash derived from the key
   // TODO: Compute proper content hash based on sources and dependencies
   auto const digest{ blake3_hash(key.data(), key.size()) };
 
-  // Convert first 8 bytes to hex (16 chars)
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
 
-  lua_getglobal(lua, "ENVY_PLATFORM");
-  std::string const platform{ lua_tostring(lua, -1) };
-  lua_pop(lua, 1);
-
-  lua_getglobal(lua, "ENVY_ARCH");
-  std::string const arch{ lua_tostring(lua, -1) };
-  lua_pop(lua, 1);
+  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
+  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
 
   // Extract identity from key (remove options suffix if present)
   std::string identity{ key };
@@ -183,26 +178,25 @@ void run_check_phase(std::string const &key, graph_state &state) {
 
   auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
 
-  // Store result in recipe and wire appropriate edges
+  // Store result and trigger appropriate next phase
   typename decltype(state.recipes)::accessor acc;
   if (state.recipes.find(acc, key)) {
     if (cache_result.lock) {
       // Cache miss - we won the race, need to build
       acc->second.lock = std::move(cache_result.lock);
-      // Wire full pipeline: deploy -> completion, then check -> fetch
-      tui::trace("phase check: wiring edges for %s (cache miss)", key.c_str());
+      tui::trace("phase check: cache miss for %s, triggering fetch", key.c_str());
+      // Wire deploy -> completion edge now (will be used later)
       tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
-      tbb::flow::make_edge(*acc->second.check_node, *acc->second.fetch_node);
-      tui::trace("phase check END %s (cache miss, acquired lock, edges wired)",
-                 key.c_str());
+      // Trigger fetch phase directly
+      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
+      tui::trace("phase check END %s (cache miss, triggered fetch)", key.c_str());
     } else {
       // Cache hit - asset already exists
       acc->second.asset_path = cache_result.asset_path;
-      // Wire short-circuit: check -> completion
-      tui::trace("phase check: wiring edge for %s (cache hit)", key.c_str());
-      tbb::flow::make_edge(*acc->second.check_node, *acc->second.completion_node);
-      tui::trace("phase check END %s (cache hit, short-circuited, edge wired)",
-                 key.c_str());
+      tui::trace("phase check: cache hit for %s, triggering completion", key.c_str());
+      // Trigger completion phase directly
+      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
+      tui::trace("phase check END %s (cache hit, triggered completion)", key.c_str());
     }
   }
 }
@@ -242,9 +236,7 @@ void run_install_phase(std::string const &key, graph_state &state) {
   bool const has_install{ lua_isfunction(lua, -1) };
 
   if (has_install) {
-    // Push empty context table as argument
     lua_newtable(lua);
-
     if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
       char const *err{ lua_tostring(lua, -1) };
       lua_pop(lua, 1);
@@ -298,6 +290,9 @@ void run_completion_phase(std::string const &key, graph_state &state) {
     auto const path_str{ acc->second.asset_path.string() };
     acc->second.result_hash =
         path_str.length() >= 16 ? path_str.substr(path_str.length() - 16) : path_str;
+
+    acc->second.completed = true;
+
     tui::trace("phase completion: computed result_hash=%s for %s",
                acc->second.result_hash.c_str(),
                key.c_str());
@@ -352,7 +347,6 @@ void fetch_recipe_and_spawn_dependencies(
             (results.empty() ? "no results" : std::get<std::string>(results[0])));
       }
 
-      // Verify SHA256 if provided
       if (!remote_src->sha256.empty()) {
         tui::trace("verifying SHA256 for recipe %s", spec.identity.c_str());
         sha256_verify(remote_src->sha256, sha256(fetch_dest));
@@ -371,17 +365,15 @@ void fetch_recipe_and_spawn_dependencies(
   }
 
   // Validate recipe identity declaration
-  lua_getglobal(lua_state.get(), "identity");
-  if (lua_isnil(lua_state.get(), -1)) {
-    lua_pop(lua_state.get(), 1);
-    throw std::runtime_error("Recipe must declare 'identity' field: " + spec.identity);
-  }
-  if (!lua_isstring(lua_state.get(), -1)) {
-    lua_pop(lua_state.get(), 1);
-    throw std::runtime_error("Recipe 'identity' field must be a string: " + spec.identity);
-  }
-  std::string const declared_identity{ lua_tostring(lua_state.get(), -1) };
-  lua_pop(lua_state.get(), 1);
+  std::string const declared_identity = [&] {
+    try {
+      return lua_global_to_string(lua_state.get(), "identity");
+    } catch (std::runtime_error const &e) {
+      throw std::runtime_error(std::string(e.what()) + " (in recipe: " + spec.identity +
+                               ")");
+    }
+  }();
+
   if (declared_identity != spec.identity) {
     throw std::runtime_error("Identity mismatch: expected '" + spec.identity +
                              "' but recipe declares '" + declared_identity + "'");
@@ -426,8 +418,14 @@ void fetch_recipe_and_spawn_dependencies(
        // TODO: Implement needed_by logic in step 4
       typename decltype(state.recipes)::const_accessor dep_acc, parent_acc;
       if (state.recipes.find(dep_acc, dep_key) && state.recipes.find(parent_acc, key)) {
+        // ALWAYS add the edge first
         tbb::flow::make_edge(*dep_acc->second.completion_node,
                              *parent_acc->second.check_node);
+
+        // Check if dependency already completed before this recipe started!
+        if (dep_acc->second.completed) {
+          parent_acc->second.check_node->try_put(tbb::flow::continue_msg{});
+        }
       }
     }
 
