@@ -130,11 +130,11 @@ target_sources(envy
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
-        src/cmd_extract.cpp
-        src/cmd_fetch.cpp
-        src/cmd_lua.cpp
-        src/cmd_playground.cpp
-        src/cmd_version.cpp
+        src/commands/cmd_extract.cpp
+        src/commands/cmd_fetch.cpp
+        src/commands/cmd_lua.cpp
+        src/commands/cmd_playground.cpp
+        src/commands/cmd_version.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
@@ -209,13 +209,13 @@ target_sources(envy_functional_tester
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
-        src/cmd_extract.cpp
-        src/cmd_fetch.cpp
-        src/cmd_lua.cpp
-        src/cmd_playground.cpp
-        src/cmd_version.cpp
-        src/cmd_cache_functional_test.cpp
-        src/cmd_engine_functional_test.cpp
+        src/commands/cmd_extract.cpp
+        src/commands/cmd_fetch.cpp
+        src/commands/cmd_lua.cpp
+        src/commands/cmd_playground.cpp
+        src/commands/cmd_version.cpp
+        src/commands/cmd_cache_functional_test.cpp
+        src/commands/cmd_engine_functional_test.cpp
         src/engine.cpp
         src/engine_phases/create_nodes.cpp
         src/engine_phases/graph_state.cpp
@@ -307,11 +307,11 @@ target_sources(envy_unit_tests
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
-        src/cmd_extract.cpp
-        src/cmd_fetch.cpp
-        src/cmd_lua.cpp
-        src/cmd_version.cpp
-        src/cmd_playground.cpp
+        src/commands/cmd_extract.cpp
+        src/commands/cmd_fetch.cpp
+        src/commands/cmd_lua.cpp
+        src/commands/cmd_version.cpp
+        src/commands/cmd_playground.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
@@ -325,10 +325,10 @@ target_sources(envy_unit_tests
         src/blake3_util_tests.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
-        src/cmd_tests.cpp
-        src/cmd_extract_tests.cpp
-        src/cmd_lua_tests.cpp
-        src/cmd_version_tests.cpp
+        src/commands/cmd_tests.cpp
+        src/commands/cmd_extract_tests.cpp
+        src/commands/cmd_lua_tests.cpp
+        src/commands/cmd_version_tests.cpp
         src/fetch_tests.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
