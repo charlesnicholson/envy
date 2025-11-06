@@ -151,6 +151,7 @@ target_sources(envy
 )
 
 target_compile_features(envy PRIVATE cxx_std_20)
+target_include_directories(envy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(envy PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
@@ -216,6 +217,16 @@ target_sources(envy_functional_tester
         src/cmd_cache_functional_test.cpp
         src/cmd_engine_functional_test.cpp
         src/engine.cpp
+        src/engine_phases/create_nodes.cpp
+        src/engine_phases/graph_state.cpp
+        src/engine_phases/phase_build.cpp
+        src/engine_phases/phase_check.cpp
+        src/engine_phases/phase_completion.cpp
+        src/engine_phases/phase_deploy.cpp
+        src/engine_phases/phase_fetch.cpp
+        src/engine_phases/phase_install.cpp
+        src/engine_phases/phase_recipe_fetch.cpp
+        src/engine_phases/phase_stage.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
@@ -232,6 +243,7 @@ target_sources(envy_functional_tester
 )
 
 target_compile_features(envy_functional_tester PRIVATE cxx_std_20)
+target_include_directories(envy_functional_tester PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(envy_functional_tester PRIVATE
     ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
     ENVY_FUNCTIONAL_TESTER=1
@@ -331,6 +343,7 @@ target_sources(envy_unit_tests
 )
 
 target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
+target_include_directories(envy_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_compile_options(envy_unit_tests PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
