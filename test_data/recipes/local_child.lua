@@ -1,5 +1,7 @@
--- local.child@1.0.0
+-- local.child@v1
 -- Local recipe with no dependencies
+
+identity = "local.child@v1"
 
 function check(ctx)
   return false

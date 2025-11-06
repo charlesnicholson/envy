@@ -1,9 +1,10 @@
--- local.wrapper@1.0.0
+-- local.wrapper@v1
 -- Local recipe depending on remote recipe
 
+identity = "local.wrapper@v1"
 dependencies = {
   {
-    recipe = "remote.base@1.0.0",
+    recipe = "remote.base@v1",
     url = "remote_base.lua"
     -- No SHA256 (permissive mode - for testing)
   }

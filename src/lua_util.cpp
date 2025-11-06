@@ -302,6 +302,21 @@ std::optional<std::vector<lua_value>> lua_global_to_array(lua_State *L, char con
   return result;
 }
 
+std::string lua_global_to_string(lua_State *L, char const *name) {
+  auto val = lua_global_to_value(L, name);
+
+  if (!val || val->is_nil()) {
+    throw std::runtime_error(std::string("Recipe must declare '") + name + "' field");
+  }
+
+  auto const *str = val->get<std::string>();
+  if (!str) {
+    throw std::runtime_error(std::string("Recipe '") + name + "' field must be a string");
+  }
+
+  return *str;
+}
+
 void value_to_lua_stack(lua_State *L, lua_value const &val) {
   static_assert(
       std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);

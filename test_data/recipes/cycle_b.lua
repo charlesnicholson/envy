@@ -1,4 +1,5 @@
 -- Recipe B in a cycle: B -> A
+identity = "local.cycle_b@v1"
 dependencies = {
   { recipe = "local.cycle_a@v1", file = "cycle_a.lua" }
 }

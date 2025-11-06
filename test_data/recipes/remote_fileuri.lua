@@ -1,5 +1,7 @@
--- remote.fileuri@1.0.0
+-- remote.fileuri@v1
 -- Remote recipe with no dependencies
+
+identity = "remote.fileuri@v1"
 
 function check(ctx)
   return false

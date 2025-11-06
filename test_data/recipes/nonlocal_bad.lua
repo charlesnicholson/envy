@@ -1,6 +1,7 @@
--- remote.badrecipe@1.0.0
+-- remote.badrecipe@v1
 -- Security test: non-local recipe trying to depend on local.* recipe
 
+identity = "remote.badrecipe@v1"
 dependencies = {
   {
     recipe = "local.simple@v1",

@@ -1,4 +1,5 @@
 -- Minimal test recipe - no dependencies
+identity = "local.simple@v1"
 dependencies = {}
 
 function check(ctx)

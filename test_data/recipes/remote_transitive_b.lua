@@ -1,9 +1,10 @@
--- remote.b@1.0.0
+-- remote.b@v1
 -- Remote recipe that depends on local.* (transitively violates security)
 
+identity = "remote.b@v1"
 dependencies = {
   {
-    recipe = "local.c@1.0.0",
+    recipe = "local.c@v1",
     file = "local_c.lua"
   }
 }

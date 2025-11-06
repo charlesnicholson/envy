@@ -25,7 +25,8 @@ struct tui {
   std::queue<std::string> messages;
   std::function<void(std::string_view)> output_handler;
   std::thread worker;
-  std::mutex mutex;
+  std::mutex mutex;         // protects messages queue and cv
+  std::mutex stdout_mutex;  // protects raw stdout writes in print_stdout()
   std::condition_variable cv;
   std::atomic_bool stop_requested{ false };
   std::optional<envy::tui::level> level_threshold;
@@ -252,10 +253,14 @@ void error(char const *fmt, ...) {
 
 void print_stdout(char const *fmt, ...) {
   if (!fmt) { return; }
+
+  std::lock_guard<std::mutex> lock{ s_tui.stdout_mutex };
+
   va_list args;
   va_start(args, fmt);
   int const written{ std::vprintf(fmt, args) };
   va_end(args);
+
   if (written > 0) { std::fflush(stdout); }
 }
 

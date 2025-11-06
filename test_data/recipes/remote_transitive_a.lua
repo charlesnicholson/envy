@@ -1,9 +1,10 @@
--- remote.a@1.0.0
+-- remote.a@v1
 -- Remote recipe that transitively depends on local.* through remote.b
 
+identity = "remote.a@v1"
 dependencies = {
   {
-    recipe = "remote.b@1.0.0",
+    recipe = "remote.b@v1",
     url = "remote_transitive_b.lua"
     -- No SHA256 (permissive mode - for testing)
   }
