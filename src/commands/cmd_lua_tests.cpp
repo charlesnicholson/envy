@@ -1,4 +1,4 @@
-#include "cmd_lua.h"
+#include "commands/cmd_lua.h"
 #include "tui.h"
 
 #include "doctest.h"

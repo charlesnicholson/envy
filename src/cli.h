@@ -1,13 +1,13 @@
 #pragma once
 
-#include "cmd_extract.h"
-#include "cmd_fetch.h"
-#include "cmd_lua.h"
-#include "cmd_playground.h"
-#include "cmd_version.h"
+#include "commands/cmd_extract.h"
+#include "commands/cmd_fetch.h"
+#include "commands/cmd_lua.h"
+#include "commands/cmd_playground.h"
+#include "commands/cmd_version.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
-#include "cmd_cache_functional_test.h"
-#include "cmd_engine_functional_test.h"
+#include "commands/cmd_cache_functional_test.h"
+#include "commands/cmd_engine_functional_test.h"
 #endif
 #include "tui.h"
 

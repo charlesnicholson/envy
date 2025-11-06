@@ -1,4 +1,4 @@
-#include "cmd_version.h"
+#include "commands/cmd_version.h"
 
 #include "doctest.h"
 
