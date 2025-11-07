@@ -13,8 +13,11 @@ class TestHash(unittest.TestCase):
 
     def setUp(self):
         self.project_root = Path(__file__).resolve().parent.parent
-        self.envy = self.project_root / "out" / "build" / (
-            "envy.exe" if sys.platform == "win32" else "envy"
+        self.envy = (
+            self.project_root
+            / "out"
+            / "build"
+            / ("envy.exe" if sys.platform == "win32" else "envy")
         )
 
     def test_hash_binary_file_matches_external_tool(self):
