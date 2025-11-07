@@ -132,6 +132,7 @@ target_sources(envy
         src/cmd.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
+        src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_playground.cpp
         src/commands/cmd_version.cpp
@@ -211,6 +212,7 @@ target_sources(envy_functional_tester
         src/cmd.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
+        src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_playground.cpp
         src/commands/cmd_version.cpp
@@ -310,6 +312,7 @@ target_sources(envy_unit_tests
         src/cmd.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
+        src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_version.cpp
         src/commands/cmd_playground.cpp

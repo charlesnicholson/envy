@@ -58,6 +58,14 @@ cli_args cli_parse(int argc, char **argv) {
                     "Manifest root for resolving relative file URIs");
   fetch->callback([&cmd_cfg, &fetch_cfg] { cmd_cfg = fetch_cfg; });
 
+  // Hash subcommand
+  cmd_hash::cfg hash_cfg{};
+  auto *hash{ app.add_subcommand("hash", "Compute SHA256 hash of a file") };
+  hash->add_option("file", hash_cfg.file_path, "File to hash")
+      ->required()
+      ->check(CLI::ExistingFile);
+  hash->callback([&cmd_cfg, &hash_cfg] { cmd_cfg = hash_cfg; });
+
   // Lua subcommand
   cmd_lua::cfg lua_cfg{};
   auto *lua{ app.add_subcommand("lua", "Execute Lua script") };
