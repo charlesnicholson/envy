@@ -237,6 +237,7 @@ target_sources(envy_functional_tester
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
+        src/test_support.cpp
         src/tui.cpp
         src/uri.cpp
         src/util.cpp

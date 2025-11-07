@@ -138,7 +138,9 @@ class TestEngine(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}")
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}"
+        )
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
@@ -437,9 +439,17 @@ class TestEngine(unittest.TestCase):
 
         # Verify TRACE logs show phase execution
         stderr_lower = result.stderr.lower()
-        self.assertIn("check", stderr_lower, f"Expected check phase log: {result.stderr}")
-        self.assertIn("install", stderr_lower, f"Expected install phase log: {result.stderr}")
-        self.assertIn("local.simple@v1", stderr_lower, f"Expected identity in logs: {result.stderr}")
+        self.assertIn(
+            "check", stderr_lower, f"Expected check phase log: {result.stderr}"
+        )
+        self.assertIn(
+            "install", stderr_lower, f"Expected install phase log: {result.stderr}"
+        )
+        self.assertIn(
+            "local.simple@v1",
+            stderr_lower,
+            f"Expected identity in logs: {result.stderr}",
+        )
 
     def test_fetch_function_basic(self):
         """Engine executes fetch() phase for recipes with fetch function."""
@@ -460,8 +470,14 @@ class TestEngine(unittest.TestCase):
 
         # Verify TRACE logs show fetch phase execution
         stderr_lower = result.stderr.lower()
-        self.assertIn("fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}")
-        self.assertIn("local.fetcher@v1", stderr_lower, f"Expected identity in logs: {result.stderr}")
+        self.assertIn(
+            "fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}"
+        )
+        self.assertIn(
+            "local.fetcher@v1",
+            stderr_lower,
+            f"Expected identity in logs: {result.stderr}",
+        )
 
         # Verify output contains asset hash
         lines = [line for line in result.stdout.strip().split("\n") if line]
@@ -502,7 +518,9 @@ class TestEngine(unittest.TestCase):
     def test_sha256_verification_success(self):
         """Recipe with correct SHA256 succeeds."""
         # Compute actual SHA256 of remote_child.lua
-        child_recipe_path = Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
+        child_recipe_path = (
+            Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
+        )
         with open(child_recipe_path, "rb") as f:
             actual_sha256 = hashlib.sha256(f.read()).hexdigest()
 
@@ -533,7 +551,7 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
-                *self.trace_flag,
+                    *self.trace_flag,
                     "engine-test",
                     "test.sha256_ok@v1",
                     tmp_path,
@@ -551,8 +569,12 @@ end
 
     def test_sha256_verification_failure(self):
         """Recipe with incorrect SHA256 fails."""
-        child_recipe_path = Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
-        wrong_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+        child_recipe_path = (
+            Path(__file__).parent.parent / "test_data" / "recipes" / "remote_child.lua"
+        )
+        wrong_sha256 = (
+            "0000000000000000000000000000000000000000000000000000000000000000"
+        )
 
         # Create a temporary recipe that depends on remote_child with wrong SHA256
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
@@ -581,7 +603,7 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
-                *self.trace_flag,
+                    *self.trace_flag,
                     "engine-test",
                     "test.sha256_fail@v1",
                     tmp_path,
@@ -591,9 +613,19 @@ end
                 text=True,
             )
 
-            self.assertNotEqual(result.returncode, 0, "Expected SHA256 mismatch to cause failure")
-            self.assertIn("SHA256 mismatch", result.stderr, f"Expected SHA256 error, got: {result.stderr}")
-            self.assertIn(wrong_sha256, result.stderr, f"Expected wrong hash in error, got: {result.stderr}")
+            self.assertNotEqual(
+                result.returncode, 0, "Expected SHA256 mismatch to cause failure"
+            )
+            self.assertIn(
+                "SHA256 mismatch",
+                result.stderr,
+                f"Expected SHA256 error, got: {result.stderr}",
+            )
+            self.assertIn(
+                wrong_sha256,
+                result.stderr,
+                f"Expected wrong hash in error, got: {result.stderr}",
+            )
         finally:
             Path(tmp_path).unlink()
 
@@ -632,11 +664,19 @@ end
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected missing identity to cause failure")
-        self.assertIn("must declare 'identity' field", result.stderr.lower(),
-                     f"Expected identity field error, got: {result.stderr}")
-        self.assertIn("local.identity_missing@v1", result.stderr,
-                     f"Expected recipe identity in error, got: {result.stderr}")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected missing identity to cause failure"
+        )
+        self.assertIn(
+            "must declare 'identity' field",
+            result.stderr.lower(),
+            f"Expected identity field error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "local.identity_missing@v1",
+            result.stderr,
+            f"Expected recipe identity in error, got: {result.stderr}",
+        )
 
     def test_identity_validation_mismatch(self):
         """Recipe with wrong identity fails with clear error."""
@@ -653,13 +693,24 @@ end
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected identity mismatch to cause failure")
-        self.assertIn("identity mismatch", result.stderr.lower(),
-                     f"Expected identity mismatch error, got: {result.stderr}")
-        self.assertIn("local.identity_expected@v1", result.stderr,
-                     f"Expected expected identity in error, got: {result.stderr}")
-        self.assertIn("local.wrong_identity@v1", result.stderr,
-                     f"Expected declared identity in error, got: {result.stderr}")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected identity mismatch to cause failure"
+        )
+        self.assertIn(
+            "identity mismatch",
+            result.stderr.lower(),
+            f"Expected identity mismatch error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "local.identity_expected@v1",
+            result.stderr,
+            f"Expected expected identity in error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "local.wrong_identity@v1",
+            result.stderr,
+            f"Expected declared identity in error, got: {result.stderr}",
+        )
 
     def test_identity_validation_wrong_type(self):
         """Recipe with identity as wrong type fails with clear error."""
@@ -676,11 +727,19 @@ end
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected wrong type to cause failure")
-        self.assertIn("must be a string", result.stderr.lower(),
-                     f"Expected type error, got: {result.stderr}")
-        self.assertIn("local.identity_wrong_type@v1", result.stderr,
-                     f"Expected recipe identity in error, got: {result.stderr}")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected wrong type to cause failure"
+        )
+        self.assertIn(
+            "must be a string",
+            result.stderr.lower(),
+            f"Expected type error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "local.identity_wrong_type@v1",
+            result.stderr,
+            f"Expected recipe identity in error, got: {result.stderr}",
+        )
 
     def test_identity_validation_local_recipe(self):
         """Local recipes also require identity validation (no exemption)."""
@@ -698,7 +757,7 @@ function install(ctx) end
             result = subprocess.run(
                 [
                     str(self.envy_test),
-                *self.trace_flag,
+                    *self.trace_flag,
                     "engine-test",
                     "local.temp_no_identity@v1",
                     tmp_path,
@@ -708,10 +767,14 @@ function install(ctx) end
                 text=True,
             )
 
-            self.assertNotEqual(result.returncode, 0,
-                               "Expected local recipe without identity to fail")
-            self.assertIn("must declare 'identity' field", result.stderr.lower(),
-                         f"Expected identity field error for local recipe, got: {result.stderr}")
+            self.assertNotEqual(
+                result.returncode, 0, "Expected local recipe without identity to fail"
+            )
+            self.assertIn(
+                "must declare 'identity' field",
+                result.stderr.lower(),
+                f"Expected identity field error for local recipe, got: {result.stderr}",
+            )
         finally:
             Path(tmp_path).unlink()
 
@@ -737,7 +800,9 @@ function install(ctx) end
 
         # Verify fetch phase executed
         stderr_lower = result.stderr.lower()
-        self.assertIn("fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}")
+        self.assertIn(
+            "fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}"
+        )
 
     def test_declarative_fetch_single_table(self):
         """Recipe with declarative fetch (single table with sha256) downloads and verifies."""
@@ -761,7 +826,9 @@ function install(ctx) end
 
         # Verify SHA256 verification occurred
         stderr_lower = result.stderr.lower()
-        self.assertIn("sha256", stderr_lower, f"Expected SHA256 verification log: {result.stderr}")
+        self.assertIn(
+            "sha256", stderr_lower, f"Expected SHA256 verification log: {result.stderr}"
+        )
 
     def test_declarative_fetch_array(self):
         """Recipe with declarative fetch (array format) downloads multiple files concurrently."""
@@ -785,10 +852,14 @@ function install(ctx) end
 
         # Verify multiple files were downloaded
         stderr_lower = result.stderr.lower()
-        self.assertIn("downloading", stderr_lower, f"Expected download log: {result.stderr}")
+        self.assertIn(
+            "downloading", stderr_lower, f"Expected download log: {result.stderr}"
+        )
         # The log should mention "3 file(s)" or similar
-        self.assertTrue("3" in result.stderr or "file" in stderr_lower,
-                       f"Expected multiple file download log: {result.stderr}")
+        self.assertTrue(
+            "3" in result.stderr or "file" in stderr_lower,
+            f"Expected multiple file download log: {result.stderr}",
+        )
 
     def test_declarative_fetch_collision(self):
         """Recipe with duplicate filenames fails with collision error."""
@@ -805,11 +876,19 @@ function install(ctx) end
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected filename collision to cause failure")
-        self.assertIn("collision", result.stderr.lower(),
-                     f"Expected collision error, got: {result.stderr}")
-        self.assertIn("simple.lua", result.stderr,
-                     f"Expected filename in error, got: {result.stderr}")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected filename collision to cause failure"
+        )
+        self.assertIn(
+            "collision",
+            result.stderr.lower(),
+            f"Expected collision error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "simple.lua",
+            result.stderr,
+            f"Expected filename in error, got: {result.stderr}",
+        )
 
     def test_declarative_fetch_bad_sha256(self):
         """Recipe with wrong SHA256 fails verification."""
@@ -826,9 +905,183 @@ function install(ctx) end
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected SHA256 mismatch to cause failure")
-        self.assertIn("sha256", result.stderr.lower(),
-                     f"Expected SHA256 error, got: {result.stderr}")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected SHA256 mismatch to cause failure"
+        )
+        self.assertIn(
+            "sha256",
+            result.stderr.lower(),
+            f"Expected SHA256 error, got: {result.stderr}",
+        )
+
+    def test_declarative_fetch_partial_failure_then_complete(self):
+        """Partial failure caches successful files, completion reuses them (no intrusive code)."""
+        # Use shared cache root so second run sees first run's cached files
+        shared_cache = Path(tempfile.mkdtemp(prefix="envy-shared-cache-"))
+
+        try:
+            # Create temp directory for the missing file
+            temp_dir = shared_cache / "temp_files"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            missing_file = temp_dir / "fetch_partial_missing.lua"
+
+            # Create modified recipe with correct temp path
+            recipe_template = Path(
+                "test_data/recipes/fetch_partial_then_complete.lua"
+            ).read_text()
+            recipe_content = recipe_template.replace("__TEMP__", str(temp_dir))
+            modified_recipe = shared_cache / "fetch_partial_modified.lua"
+            modified_recipe.write_text(recipe_content)
+
+            # Run 1: Partial failure (2 succeed, 1 fails - missing file doesn't exist yet)
+            result1 = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_partial@v1",
+                    str(modified_recipe),
+                    f"--cache-root={shared_cache}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result1.returncode, 0, "Expected partial failure")
+            self.assertIn(
+                "fetch failed",
+                result1.stderr.lower(),
+                f"Expected fetch failure: {result1.stderr}",
+            )
+
+            # Verify fetch_dir has the 2 successful files (in asset cache, not recipe cache)
+            # With hierarchical structure, find variant dirs under identity dir
+            identity_dir = shared_cache / "assets" / "local.fetch_partial@v1"
+            self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            self.assertEqual(
+                len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
+            )
+            fetch_dir = variant_dirs[0] / "fetch"
+            self.assertTrue(
+                (fetch_dir / "simple.lua").exists(), "simple.lua should be cached"
+            )
+            self.assertTrue(
+                (fetch_dir / "print_single.lua").exists(),
+                "print_single.lua should be cached",
+            )
+
+            # Create the missing file (empty file matches the SHA256 for empty content)
+            missing_file.write_text("")
+
+            # Run 2: Completion with cache - use same cache root
+            result2 = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_partial@v1",
+                    str(modified_recipe),
+                    f"--cache-root={shared_cache}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                result2.returncode, 0, f"Second run failed: {result2.stderr}"
+            )
+
+            # Verify cache hits in trace log
+            stderr_lower = result2.stderr.lower()
+            self.assertIn(
+                "cache hit", stderr_lower, f"Expected cache hit log: {result2.stderr}"
+            )
+            # Should only download 1 file (the missing one)
+            self.assertIn(
+                "downloading 1 file(s)",
+                result2.stderr,
+                f"Expected 1 download: {result2.stderr}",
+            )
+        finally:
+            shutil.rmtree(shared_cache, ignore_errors=True)
+
+    def test_declarative_fetch_intrusive_partial_failure(self):
+        """Use --fail-after-fetch-count to simulate partial download (intrusive flag)."""
+        # Use shared cache root so second run sees first run's cached files
+        shared_cache = Path(tempfile.mkdtemp(prefix="envy-intrusive-cache-"))
+
+        try:
+            # Run 1: Download 2 files then fail
+            result1 = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",  # Has 3 files
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                    "--fail-after-fetch-count=2",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(
+                result1.returncode, 0, "Expected failure after 2 downloads"
+            )
+            self.assertIn(
+                "fail_after_fetch_count",
+                result1.stderr.lower(),
+                f"Expected fail_after_fetch_count error: {result1.stderr}",
+            )
+
+            # Verify fetch_dir has the first 2 files cached (in asset cache, not recipe cache)
+            # With hierarchical structure, find variant dirs under identity dir
+            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+            self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            self.assertEqual(
+                len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
+            )
+            fetch_dir = variant_dirs[0] / "fetch"
+            # Check that at least some files exist (order may vary due to concurrent downloads)
+            cached_files = list(fetch_dir.glob("*.lua")) if fetch_dir.exists() else []
+            self.assertGreaterEqual(
+                len(cached_files),
+                2,
+                f"Expected at least 2 cached files, got: {cached_files}",
+            )
+
+            # Run 2: Complete without flag - use same cache root
+            result2 = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(
+                result2.returncode, 0, f"Second run failed: {result2.stderr}"
+            )
+
+            # Verify cache hits for some files
+            stderr_lower = result2.stderr.lower()
+            self.assertIn(
+                "cache hit", stderr_lower, f"Expected cache hit log: {result2.stderr}"
+            )
+            # Verify only remaining file(s) downloaded
+            self.assertIn(
+                "downloading 1 file(s)",
+                result2.stderr,
+                f"Expected 1 download in second run: {result2.stderr}",
+            )
+        finally:
+            shutil.rmtree(shared_cache, ignore_errors=True)
 
 
 if __name__ == "__main__":

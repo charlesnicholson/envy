@@ -30,7 +30,7 @@ TEST_CASE("cache root path") {
 }
 
 TEST_CASE("cache is_entry_complete") {
-  // Complete entry has .envy-complete marker
+  // Complete entry has envy-complete marker
   CHECK(envy::cache::is_entry_complete("test_data/cache/complete-entry"));
 
   // Incomplete entry missing marker
@@ -65,9 +65,9 @@ TEST_CASE("ensure_asset returns lock for cold entry and publishes asset director
   result.lock->mark_install_complete();
   result.lock.reset();
 
-  CHECK(std::filesystem::exists(result.entry_path / ".envy-complete"));
+  CHECK(std::filesystem::exists(result.entry_path / "envy-complete"));
   CHECK(std::filesystem::exists(result.asset_path / "sentinel.txt"));
-  CHECK_FALSE(std::filesystem::exists(result.entry_path / ".work"));
+  CHECK_FALSE(std::filesystem::exists(result.entry_path / "work"));
 
   std::filesystem::remove_all(root);
 }
@@ -76,11 +76,11 @@ TEST_CASE("ensure_asset fast path when marker present") {
   auto root = make_temp_root();
   envy::cache c{ root };
 
-  auto entry_dir = root / "assets" / "foo.darwin-arm64-sha256-deadbeef";
+  auto entry_dir = root / "assets" / "foo" / "darwin-arm64-sha256-deadbeef";
   auto asset_dir = entry_dir / "asset";
   std::filesystem::create_directories(asset_dir);
   std::ofstream{ asset_dir / "existing.txt" } << "cached";
-  envy::platform::touch_file(entry_dir / ".envy-complete");
+  envy::platform::touch_file(entry_dir / "envy-complete");
 
   auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock == nullptr);
@@ -100,7 +100,7 @@ TEST_CASE("mark_fetch_complete creates sentinel") {
   CHECK_FALSE(result.lock->is_fetch_complete());
   result.lock->mark_fetch_complete();
   CHECK(result.lock->is_fetch_complete());
-  CHECK(std::filesystem::exists(result.lock->fetch_dir() / ".envy-complete"));
+  CHECK(std::filesystem::exists(result.lock->fetch_dir() / "envy-complete"));
   // Release lock before removing root on Windows to prevent removal errors.
   result.lock.reset();
   std::filesystem::remove_all(root);
@@ -137,7 +137,7 @@ TEST_CASE("fetch_dir preserved when marked complete") {
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("fetch_dir wiped when not marked complete") {
+TEST_CASE("fetch_dir preserved when not marked complete") {
   auto root = make_temp_root();
   envy::cache c{ root };
 
@@ -151,14 +151,18 @@ TEST_CASE("fetch_dir wiped when not marked complete") {
     // Note: intentionally not calling mark_fetch_complete()
   }
 
-  // Second acquisition: verify fetch/ was wiped
+  // Second acquisition: verify fetch/ was preserved for per-file caching
   {
     auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     CHECK_FALSE(result.lock->is_fetch_complete());
     auto fetch_file = result.lock->fetch_dir() / "partial.tar.gz";
-    CHECK_FALSE(std::filesystem::exists(fetch_file));
+    CHECK(std::filesystem::exists(fetch_file));
+
+    std::ifstream ifs{ fetch_file };
+    std::string content{ std::istreambuf_iterator<char>{ ifs }, {} };
+    CHECK(content == "incomplete");
   }
 
   std::filesystem::remove_all(root);

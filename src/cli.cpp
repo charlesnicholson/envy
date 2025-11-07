@@ -155,6 +155,11 @@ cli_args cli_parse(int argc, char **argv) {
   engine_test->add_option("--cache-root",
                           engine_test_cfg.cache_root,
                           "Cache root directory");
+  engine_test
+      ->add_option("--fail-after-fetch-count",
+                   engine_test_cfg.fail_after_fetch_count,
+                   "Fail after N successful file downloads (test only)")
+      ->default_val(-1);
   engine_test->callback([&cmd_cfg, &engine_test_cfg] { cmd_cfg = engine_test_cfg; });
 #endif
 
