@@ -25,6 +25,16 @@ build.bat           # Windows
 
 The build script lazily configures `out/build` if needed and builds all targets including `envy` and unit tests. Run `out/build/envy` to verify the build.
 
+## Cache Location
+
+Envy uses a user-wide cache to share packages across projects. The default cache root varies by platform:
+
+- **macOS**: `~/Library/Caches/envy`
+- **Linux**: `$XDG_CACHE_HOME/envy` (or `~/.cache/envy` if `XDG_CACHE_HOME` is unset)
+- **Windows**: `%LOCALAPPDATA%\envy` (or `%USERPROFILE%\AppData\Local\envy` if `LOCALAPPDATA` is unset)
+
+Override the default by setting the `ENVY_CACHE_ROOT` environment variable.
+
 ## Project Structure
 
 - `src/` — Runtime sources

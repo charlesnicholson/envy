@@ -3,6 +3,9 @@
 #include "fetch.h"
 #include "sha256.h"
 #include "tui.h"
+#ifdef ENVY_FUNCTIONAL_TESTER
+#include "test_support.h"
+#endif
 
 #include <filesystem>
 #include <sstream>
@@ -141,30 +144,84 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
   lua_pop(lua, 1);
 
   if (!fetch_specs.empty()) {
-    tui::trace("phase fetch: downloading %zu file(s)", fetch_specs.size());
-
-    std::vector<fetch_request> requests;
-    requests.reserve(fetch_specs.size());
-    for (auto const &spec : fetch_specs) { requests.push_back(spec.request); }
-
-    auto const results{ fetch(requests) };
-
+    // Check cache before downloading
+    std::vector<size_t> to_download_indices;
     std::vector<std::string> errors;
-    for (size_t i = 0; i < results.size(); ++i) {
-      if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-        errors.push_back(fetch_specs[i].request.source + ": " + *err);
-      } else if (!fetch_specs[i].sha256.empty()) {
-        try {
-          auto const *result{ std::get_if<fetch_result>(&results[i]) };
-          if (!result) { throw std::runtime_error("Unexpected result type"); }
 
-          tui::trace("phase fetch: verifying SHA256 for %s",
-                     result->resolved_destination.string().c_str());
-          sha256_verify(fetch_specs[i].sha256, sha256(result->resolved_destination));
-        } catch (std::exception const &e) {
-          errors.push_back(fetch_specs[i].request.source + ": " + e.what());
+    for (size_t i = 0; i < fetch_specs.size(); ++i) {
+      auto const &spec{ fetch_specs[i] };
+      auto const &dest{ spec.request.destination };
+
+      if (std::filesystem::exists(dest)) {
+        if (!spec.sha256.empty()) {
+          // SHA256 provided: verify cached file
+          try {
+            tui::trace("phase fetch: verifying cached file %s", dest.string().c_str());
+            sha256_verify(spec.sha256, sha256(dest));
+            tui::trace("phase fetch: cache hit for %s", dest.filename().string().c_str());
+            // Cache hit: skip download
+          } catch (std::exception const &e) {
+            // Cache miss: hash mismatch, delete and re-download
+            tui::trace("phase fetch: cache mismatch for %s, deleting",
+                       dest.string().c_str());
+            std::filesystem::remove(dest);
+            to_download_indices.push_back(i);
+          }
+        } else {
+          // No SHA256: always re-download (no cache trust)
+          tui::trace("phase fetch: no SHA256 for %s, re-downloading (no cache)",
+                     dest.filename().string().c_str());
+          to_download_indices.push_back(i);
+        }
+      } else {
+        // File doesn't exist: download
+        to_download_indices.push_back(i);
+      }
+    }
+
+    if (!to_download_indices.empty()) {
+      tui::trace("phase fetch: downloading %zu file(s)", to_download_indices.size());
+
+      std::vector<fetch_request> requests;
+      requests.reserve(to_download_indices.size());
+      for (auto idx : to_download_indices) {
+        requests.push_back(fetch_specs[idx].request);
+      }
+
+      auto const results{ fetch(requests) };
+
+      for (size_t i = 0; i < results.size(); ++i) {
+        auto const spec_idx{ to_download_indices[i] };
+        if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
+          errors.push_back(fetch_specs[spec_idx].request.source + ": " + *err);
+        } else {
+          // File downloaded successfully
+#ifdef ENVY_FUNCTIONAL_TESTER
+          try {
+            test::decrement_fail_counter();
+          } catch (std::exception const &e) {
+            errors.push_back(fetch_specs[spec_idx].request.source + ": " + e.what());
+            continue;
+          }
+#endif
+
+          if (!fetch_specs[spec_idx].sha256.empty()) {
+            try {
+              auto const *result{ std::get_if<fetch_result>(&results[i]) };
+              if (!result) { throw std::runtime_error("Unexpected result type"); }
+
+              tui::trace("phase fetch: verifying SHA256 for %s",
+                         result->resolved_destination.string().c_str());
+              sha256_verify(fetch_specs[spec_idx].sha256,
+                            sha256(result->resolved_destination));
+            } catch (std::exception const &e) {
+              errors.push_back(fetch_specs[spec_idx].request.source + ": " + e.what());
+            }
+          }
         }
       }
+    } else {
+      tui::trace("phase fetch: all files cached, no downloads needed");
     }
 
     if (!errors.empty()) {

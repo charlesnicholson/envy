@@ -1,6 +1,7 @@
 #include "cli.h"
 #include "commands/cmd_extract.h"
 #include "commands/cmd_fetch.h"
+#include "commands/cmd_hash.h"
 #include "commands/cmd_lua.h"
 #include "commands/cmd_playground.h"
 #include "commands/cmd_version.h"
@@ -146,6 +147,66 @@ TEST_CASE("cli_parse: cmd_fetch") {
     CHECK(cfg->destination == std::filesystem::path("/tmp/tool.tar.gz"));
     REQUIRE(cfg->manifest_root.has_value());
     CHECK(*cfg->manifest_root == std::filesystem::path("/workspace"));
+  }
+}
+
+TEST_CASE("cli_parse: cmd_hash") {
+  SUBCASE("with valid file") {
+    // Create temporary test file
+    auto temp_path{ std::filesystem::temp_directory_path() / "cli_test_hash.txt" };
+    {
+      std::ofstream temp_file{ temp_path };
+      temp_file << "test content\n";
+    }
+
+    std::vector<std::string> args{ "envy", "hash", temp_path.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    // Clean up temp file
+    std::filesystem::remove(temp_path);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_hash::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->file_path == temp_path);
+  }
+
+  SUBCASE("missing file path rejected") {
+    std::vector<std::string> args{ "envy", "hash" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    // Should fail when file argument is missing
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("nonexistent file rejected") {
+    std::vector<std::string> args{ "envy", "hash", "/nonexistent/file.txt" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    // CLI11's ExistingFile check should reject nonexistent files
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("directory rejected") {
+    // Use temp directory which we know exists and is a directory
+    auto temp_dir{ std::filesystem::temp_directory_path() };
+
+    std::vector<std::string> args{ "envy", "hash", temp_dir.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    // CLI11's ExistingFile check should reject directories
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }
 

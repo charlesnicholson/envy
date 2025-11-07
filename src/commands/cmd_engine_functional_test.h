@@ -14,6 +14,7 @@ class cmd_engine_functional_test : public cmd {
     std::string identity;
     std::filesystem::path recipe_path;
     std::optional<std::filesystem::path> cache_root;
+    int fail_after_fetch_count = -1;  // -1 = disabled, >0 = fail after N files
   };
 
   explicit cmd_engine_functional_test(cfg cfg);

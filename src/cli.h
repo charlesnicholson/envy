@@ -2,6 +2,7 @@
 
 #include "commands/cmd_extract.h"
 #include "commands/cmd_fetch.h"
+#include "commands/cmd_hash.h"
 #include "commands/cmd_lua.h"
 #include "commands/cmd_playground.h"
 #include "commands/cmd_version.h"
@@ -20,6 +21,7 @@ namespace envy {
 struct cli_args {
   using cmd_cfg_t = std::variant<cmd_extract::cfg,
                                  cmd_fetch::cfg,
+                                 cmd_hash::cfg,
                                  cmd_lua::cfg,
                                  cmd_playground::cfg,
                                  cmd_version::cfg

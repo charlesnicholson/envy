@@ -102,7 +102,7 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 Recipes define verbs describing how to acquire, validate, and install packages:
 
-- **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`.envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
+- **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
 - **`fetch`** — Acquire source materials. Can be:
   - String: `fetch = "https://..."` (no verification)
   - Single file: `fetch = {url="...", sha256="..."}` (optional verification)
@@ -168,7 +168,7 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 
 - **`recipe_fetch`** — Load recipe Lua file(s) into cache; discover dependencies; add child nodes to graph
 - **`check`** — Test if asset already satisfied (skip remaining phases if true)
-- **`fetch`** — Download/acquire source materials into `.work/fetch/`
+- **`fetch`** — Download/acquire source materials into `fetch/`
 - **`stage`** — Prepare build staging area from fetched content
 - **`build`** — Compile or process staged content
 - **`install`** — Write final artifacts to install directory
@@ -272,13 +272,13 @@ ENVY_PLATFORM, ENVY_ARCH, ENVY_PLATFORM_ARCH
 ```
 ~/.cache/envy/recipes/
 └── corporate.toolchain@v1/
-    ├── .envy-complete
+    ├── envy-complete
     ├── recipe.lua           # Entry point (required)
     ├── helpers.lua
-    └── .work/
-        ├── tmp/             # Temp directory for ctx.fetch() (cleaned after)
-        └── fetch/           # Downloaded files moved here after verification
-            └── .envy-complete
+    ├── fetch/               # Downloaded files moved here after verification
+    │   └── envy-complete
+    └── work/
+        └── tmp/             # Temp directory for ctx.fetch() (cleaned after)
 ```
 
 ### Phase Dependencies via `needed_by`

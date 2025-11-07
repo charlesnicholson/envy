@@ -4,15 +4,19 @@
 #include "engine.h"
 #include "platform.h"
 #include "recipe_spec.h"
+#include "test_support.h"
 #include "tui.h"
-
-#include <cstdio>
 
 namespace envy {
 
 cmd_engine_functional_test::cmd_engine_functional_test(cfg cfg) : cfg_{ std::move(cfg) } {}
 
 bool cmd_engine_functional_test::execute() {
+  // Set up test fail counter
+  if (cfg_.fail_after_fetch_count > 0) {
+    test::set_fail_after_fetch_count(cfg_.fail_after_fetch_count);
+  }
+
   // Get cache root
   auto const cache_root{ cfg_.cache_root ? *cfg_.cache_root
                                          : platform::get_default_cache_root().value() };

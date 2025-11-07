@@ -58,6 +58,14 @@ cli_args cli_parse(int argc, char **argv) {
                     "Manifest root for resolving relative file URIs");
   fetch->callback([&cmd_cfg, &fetch_cfg] { cmd_cfg = fetch_cfg; });
 
+  // Hash subcommand
+  cmd_hash::cfg hash_cfg{};
+  auto *hash{ app.add_subcommand("hash", "Compute SHA256 hash of a file") };
+  hash->add_option("file", hash_cfg.file_path, "File to hash")
+      ->required()
+      ->check(CLI::ExistingFile);
+  hash->callback([&cmd_cfg, &hash_cfg] { cmd_cfg = hash_cfg; });
+
   // Lua subcommand
   cmd_lua::cfg lua_cfg{};
   auto *lua{ app.add_subcommand("lua", "Execute Lua script") };
@@ -155,6 +163,11 @@ cli_args cli_parse(int argc, char **argv) {
   engine_test->add_option("--cache-root",
                           engine_test_cfg.cache_root,
                           "Cache root directory");
+  engine_test
+      ->add_option("--fail-after-fetch-count",
+                   engine_test_cfg.fail_after_fetch_count,
+                   "Fail after N successful file downloads (test only)")
+      ->default_val(-1);
   engine_test->callback([&cmd_cfg, &engine_test_cfg] { cmd_cfg = engine_test_cfg; });
 #endif
 

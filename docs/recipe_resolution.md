@@ -249,13 +249,13 @@ end
 ```
 ~/.cache/envy/recipes/
 └── corporate.toolchain@v1/
-    ├── .envy-complete        # Marker: recipe fetch complete
+    ├── envy-complete         # Marker: recipe fetch complete
     ├── recipe.lua            # Entry point (required)
     ├── helpers.lua           # Additional files from ctx.fetch()
-    └── .work/
-        ├── tmp/              # Temp directory for ctx.fetch() (cleaned after)
-        └── fetch/            # Downloaded files moved here after verification
-            └── .envy-complete
+    ├── fetch/                # Downloaded files moved here after verification
+    │   └── envy-complete
+    └── work/
+        └── tmp/              # Temp directory for ctx.fetch() (cleaned after)
 ```
 
 ## Dependency Function Semantics
@@ -379,11 +379,11 @@ end
 4. `jfrog.cli@v2.fetch` executes
    - Download https://jfrog.com/cli/jfrog-cli.tar.gz
    - Verify SHA256 "789abc..."
-   - Extract to `.work/fetch/`, mark fetch complete
+   - Extract to `fetch/`, mark fetch complete
 5. `jfrog.cli@v2.install` executes (no stage/build phases declared, node optimization skips them)
    - Extract archive to install dir
    - Add bin/ to PATH metadata
-   - Atomic rename `.install/` → `asset/`
+   - Atomic rename `install/` → `asset/`
    - Mark complete
 6. `jfrog.cli@v2.deploy` completes (no deploy verb, auto-completes immediately)
 
@@ -482,6 +482,6 @@ class unified_dag {
 
 **Progress tracking:** Each phase node reports progress (0-100%) via TUI handle. User sees: "Fetching jfrog.cli@v2 [=====> ] 45%", "Building corporate.toolchain@v1 [========>] 80%".
 
-**Partial execution:** Skip phases for already-installed assets (`.envy-complete` marker present). Graph prunes completed nodes before execution. Supports incremental updates.
+**Partial execution:** Skip phases for already-installed assets (`envy-complete` marker present). Graph prunes completed nodes before execution. Supports incremental updates.
 
 **Speculative fetching:** Recipe fetch can preemptively download common dependencies before Lua evaluation completes. Reduces critical path latency for well-known recipes.
