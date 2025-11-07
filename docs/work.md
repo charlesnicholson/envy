@@ -94,44 +94,55 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
 
 ---
 
-## Phase 3: Declarative Fetch
+## Phase 3: Declarative Fetch ✅ COMPLETE
 
 **Goal:** Support declarative fetch in recipes with concurrent downloads and verification.
 
 ### Tasks:
 
-- [ ] Extend `recipe_spec` parsing
-  - [ ] Detect fetch field type (string, single table, array of tables)
-  - [ ] Parse string: `fetch = "url"` → no sha256
-  - [ ] Parse single: `fetch = {url="...", sha256="..."}` → optional sha256
-  - [ ] Parse batch: `fetch = {{url="..."}, {...}}` → multiple fetch_requests
-  - [ ] Store parsed fetch_requests in new `recipe_spec` field
-  - [ ] Handle filename collisions: detect duplicate basenames, error early
+- [x] Extend `recipe_spec` parsing
+  - [x] Detect fetch field type (string, single table, array of tables)
+  - [x] Parse string: `fetch = "url"` → no sha256
+  - [x] Parse single: `fetch = {url="...", sha256="..."}` → optional sha256
+  - [x] Parse batch: `fetch = {{url="..."}, {...}}` → multiple fetch_requests
+  - [x] Store parsed fetch_requests in new `recipe_spec` field
+  - [x] Handle filename collisions: detect duplicate basenames, error early
 
-- [ ] Implement `run_fetch_phase()` for declarative fetch
-  - [ ] Check if we have lock (cache miss path) - if not, return early
-  - [ ] Skip if `spec.has_fetch_function()` (defer to Phase 4)
-  - [ ] Extract parsed fetch_requests from recipe_spec
-  - [ ] Set destinations to temp directory
-  - [ ] Call `fetch(requests)`
-  - [ ] If any failures, throw with aggregate error message
-  - [ ] Move all downloaded files from temp to `lock->fetch_dir()`
-  - [ ] Call `lock->mark_fetch_complete()`
+- [x] Implement `run_fetch_phase()` for declarative fetch
+  - [x] Check if we have lock (cache miss path) - if not, return early
+  - [x] Skip if `spec.has_fetch_function()` (defer to Phase 4)
+  - [x] Extract parsed fetch_requests from recipe_spec
+  - [x] Set destinations to `lock->fetch_dir()`
+  - [x] Call `fetch(requests)`
+  - [x] If any failures, throw with aggregate error message
+  - [x] Implement per-file caching with SHA256 verification
+  - [x] Call `lock->mark_fetch_complete()` after successful completion
 
-- [ ] Update recipe_spec validation
-  - [ ] Local sources should skip fetch phase (no files to fetch)
+- [x] Implement per-file caching and recovery
+  - [x] Cache individual files even on partial failure
+  - [x] Verify cached files by SHA256 on subsequent runs
+  - [x] Detect corrupted cache files and re-download
+  - [x] Trust files with SHA256, re-download files without SHA256
+  - [x] Delete fetch/ directory after successful asset install
+
+- [x] Update recipe_spec validation
+  - [x] Local sources skip fetch phase (no files to fetch)
   - [ ] Git sources: defer implementation (TODO comment)
 
-- [ ] Testing
-  - [ ] Test: recipe with `fetch = "url"` (string) downloads without verification
-  - [ ] Test: recipe with `fetch = {url="...", sha256="..."}` verifies
-  - [ ] Test: recipe with batch fetch downloads concurrently
-  - [ ] Test: SHA256 mismatch fails with clear error
-  - [ ] Test: filename collision detected and errors early
-  - [ ] Test: local source skips fetch phase
-  - [ ] Verify `test_fetch_function_basic` and `test_fetch_function_with_dependency` still pass (even if stubs)
+- [x] Testing (5 declarative fetch tests + 4 caching tests)
+  - [x] Test: recipe with `fetch = "url"` (string) downloads without verification
+  - [x] Test: recipe with `fetch = {url="...", sha256="..."}` verifies
+  - [x] Test: recipe with batch fetch downloads concurrently
+  - [x] Test: SHA256 mismatch fails with clear error
+  - [x] Test: filename collision detected and errors early
+  - [x] Test: per-file caching across partial failures
+  - [x] Test: corrupted cache detection and re-download
+  - [x] Test: unmarked completion (SHA256-based revalidation)
+  - [x] Verify `test_fetch_function_basic` and `test_fetch_function_with_dependency` pass
 
-**Completion Criteria:** Recipes can declaratively fetch files with optional SHA256 verification, concurrent downloads work.
+**Completion Criteria:** Recipes can declaratively fetch files with optional SHA256 verification, concurrent downloads work, per-file caching handles partial failures and corruption.
+
+**Results:** Declarative fetch fully implemented with robust caching. All 5 declarative fetch tests + 4 caching tests pass.
 
 ---
 
@@ -181,6 +192,108 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
   - [ ] Verify `test_fetch_function_with_dependency` fully functional
 
 **Completion Criteria:** Custom fetch functions work, `ctx.fetch()` API complete, all imperative fetch tests pass.
+
+---
+
+## Testing Infrastructure Improvements
+
+### Hash Command Implementation (2025-01-XX)
+
+**Problem:** Windows CRLF line endings caused SHA256 mismatches in functional tests that hardcoded expected hashes.
+
+**Solution:** Implemented `envy hash` subcommand and dynamic hash computation in tests.
+
+**Tasks Completed:**
+
+- [x] Implement `envy hash` subcommand
+  - [x] Created `cmd_hash.h` and `cmd_hash.cpp` in `src/commands/`
+  - [x] Wired into CLI via `cli.h` and `cli.cpp`
+  - [x] Single file only (errors on directory)
+  - [x] Uses `tui::print_stdout()` for output consistency
+  - [x] Added to all CMakeLists.txt targets
+
+- [x] Unit tests for `envy hash`
+  - [x] Valid file hash computation
+  - [x] Missing file path rejection
+  - [x] Nonexistent file rejection
+  - [x] Directory rejection
+  - [x] Added to `src/cli_tests.cpp` (4 test cases)
+
+- [x] Functional tests for `envy hash`
+  - [x] Created `functional_tests/test_hash.py`
+  - [x] Binary test file (`test_data/binary/test.png`) to avoid CRLF issues
+  - [x] Ground truth test validates against Python's `hashlib.sha256()`
+  - [x] Error handling tests (nonexistent file, directory, missing argument)
+
+- [x] Update fetch functional tests to use dynamic SHA256
+  - [x] Added `get_file_hash()` helper method to TestEngine
+  - [x] Updated 6 fetch tests to generate recipes dynamically:
+    - `test_declarative_fetch_single_table`
+    - `test_declarative_fetch_array`
+    - `test_declarative_fetch_partial_failure_then_complete`
+    - `test_declarative_fetch_intrusive_partial_failure`
+    - `test_declarative_fetch_corrupted_cache`
+    - `test_declarative_fetch_complete_but_unmarked`
+  - [x] Fixed Windows path issue: used `Path.as_posix()` for Lua string compatibility
+  - [x] All tests pass on macOS, Linux, and Windows
+
+**Benefits:**
+- Cross-platform test reliability (CRLF-independent)
+- Tests production code path (`envy hash` itself is tested)
+- Self-maintaining (file changes auto-update expected hashes)
+- Single ground truth test validates correctness
+
+---
+
+### Test File Organization (2025-01-XX)
+
+**Problem:** `test_engine.py` grew to 1391 lines with 34 tests, becoming difficult to navigate.
+
+**Solution:** Split into 5 phase-based test files aligned with engine execution flow.
+
+**New Structure:**
+
+1. **test_engine_recipe_loading.py** (9 tests, ~280 lines)
+   - Recipe fetch and validation phase
+   - Identity field validation (correct/missing/mismatch/wrong type/local)
+   - Recipe SHA256 verification (success/failure)
+   - Basic structure validation (phases required)
+   - Single recipe loading
+
+2. **test_engine_dependency_resolution.py** (13 tests, ~400 lines)
+   - Dependency graph construction phase
+   - Single/multiple dependencies, cycle detection
+   - Diamond pattern memoization, deep chains, wide fanout
+   - Options differentiation
+   - Local/remote security constraints (4 tests)
+
+3. **test_engine_phases.py** (3 tests, ~100 lines)
+   - Phase lifecycle execution (check/fetch/install)
+   - Imperative fetch() function tests
+   - Phase execution with dependencies
+
+4. **test_engine_declarative_fetch.py** (5 tests, ~200 lines)
+   - Declarative `fetch = ...` syntax
+   - String format, single table format, array format
+   - Collision detection, bad SHA256 error handling
+
+5. **test_engine_fetch_caching.py** (4 tests, ~410 lines)
+   - Per-file asset caching and recovery
+   - Partial failure recovery (intrusive and non-intrusive)
+   - Corruption detection and re-download
+   - SHA256-based revalidation without completion marker
+
+**Verification:**
+- ✓ All 34 tests accounted for (9+13+3+5+4=34)
+- ✓ All 5 test files pass independently
+- ✓ Old `test_engine.py` removed
+- ✓ Each file independently runnable via `python3 -m functional_tests.test_engine_*`
+
+**Benefits:**
+- Clearer test organization by engine phase
+- Easier to find relevant tests
+- Prevents future file bloat
+- Faster test subset execution during development
 
 ---
 
