@@ -989,6 +989,8 @@ fetch = {{
             empty_hash = self.get_file_hash(empty_temp)
 
             # Create recipe with computed hashes
+            # Convert path to POSIX format (forward slashes) for Lua string compatibility
+            temp_dir_posix = temp_dir.as_posix()
             recipe_content = f"""-- Test per-file caching across partial failures
 -- Two files succeed, one fails, then completion reuses cached files
 identity = "local.fetch_partial@v1"
@@ -1004,7 +1006,7 @@ fetch = {{
   }},
   {{
     -- This file will be created by the test after first run
-    url = "file://{temp_dir}/fetch_partial_missing.lua",
+    url = "file://{temp_dir_posix}/fetch_partial_missing.lua",
     sha256 = "{empty_hash}"
   }}
 }}
