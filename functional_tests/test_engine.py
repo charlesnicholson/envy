@@ -18,11 +18,22 @@ class TestEngine(unittest.TestCase):
         self.envy_test = (
             Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
         )
+        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy"
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+
+    def get_file_hash(self, filepath):
+        """Get SHA256 hash of file using envy hash command."""
+        result = subprocess.run(
+            [str(self.envy), "hash", str(filepath)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
 
     def test_single_local_recipe_no_deps(self):
         """Engine loads single local recipe with no dependencies."""
@@ -806,13 +817,29 @@ function install(ctx) end
 
     def test_declarative_fetch_single_table(self):
         """Recipe with declarative fetch (single table with sha256) downloads and verifies."""
+        # Compute hash dynamically
+        simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+
+        # Create recipe with computed hash
+        recipe_content = f"""-- Test declarative fetch with single table format and SHA256 verification
+identity = "local.fetch_single@v1"
+
+-- Single table format with optional sha256
+fetch = {{
+  url = "test_data/lua/simple.lua",
+  sha256 = "{simple_hash}"
+}}
+"""
+        modified_recipe = self.cache_root / "fetch_single.lua"
+        modified_recipe.write_text(recipe_content)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
                 "--trace",
                 "engine-test",
                 "local.fetch_single@v1",
-                "test_data/recipes/fetch_single.lua",
+                str(modified_recipe),
                 f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
@@ -832,13 +859,40 @@ function install(ctx) end
 
     def test_declarative_fetch_array(self):
         """Recipe with declarative fetch (array format) downloads multiple files concurrently."""
+        # Compute hashes dynamically
+        simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+        print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+
+        # Create recipe with computed hashes
+        recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+identity = "local.fetch_array@v1"
+
+-- Array format: multiple files with optional sha256
+fetch = {{
+  {{
+    url = "test_data/lua/simple.lua",
+    sha256 = "{simple_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_single.lua",
+    sha256 = "{print_single_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_multiple.lua"
+    -- No sha256 - should still work (permissive mode)
+  }}
+}}
+"""
+        modified_recipe = self.cache_root / "fetch_array.lua"
+        modified_recipe.write_text(recipe_content)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
                 "--trace",
                 "engine-test",
                 "local.fetch_array@v1",
-                "test_data/recipes/fetch_array.lua",
+                str(modified_recipe),
                 f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
@@ -925,11 +979,36 @@ function install(ctx) end
             temp_dir.mkdir(parents=True, exist_ok=True)
             missing_file = temp_dir / "fetch_partial_missing.lua"
 
-            # Create modified recipe with correct temp path
-            recipe_template = Path(
-                "test_data/recipes/fetch_partial_then_complete.lua"
-            ).read_text()
-            recipe_content = recipe_template.replace("__TEMP__", str(temp_dir))
+            # Compute hashes dynamically
+            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+
+            # Create empty file and compute its hash
+            empty_temp = shared_cache / "empty_temp.txt"
+            empty_temp.write_text("")
+            empty_hash = self.get_file_hash(empty_temp)
+
+            # Create recipe with computed hashes
+            recipe_content = f"""-- Test per-file caching across partial failures
+-- Two files succeed, one fails, then completion reuses cached files
+identity = "local.fetch_partial@v1"
+
+fetch = {{
+  {{
+    url = "test_data/lua/simple.lua",
+    sha256 = "{simple_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_single.lua",
+    sha256 = "{print_single_hash}"
+  }},
+  {{
+    -- This file will be created by the test after first run
+    url = "file://{temp_dir}/fetch_partial_missing.lua",
+    sha256 = "{empty_hash}"
+  }}
+}}
+"""
             modified_recipe = shared_cache / "fetch_partial_modified.lua"
             modified_recipe.write_text(recipe_content)
 
@@ -1010,6 +1089,33 @@ function install(ctx) end
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-intrusive-cache-"))
 
         try:
+            # Compute hashes dynamically
+            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+
+            # Create recipe with computed hashes
+            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+identity = "local.fetch_array@v1"
+
+-- Array format: multiple files with optional sha256
+fetch = {{
+  {{
+    url = "test_data/lua/simple.lua",
+    sha256 = "{simple_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_single.lua",
+    sha256 = "{print_single_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_multiple.lua"
+    -- No sha256 - should still work (permissive mode)
+  }}
+}}
+"""
+            modified_recipe = shared_cache / "fetch_array.lua"
+            modified_recipe.write_text(recipe_content)
+
             # Run 1: Download 2 files then fail
             result1 = subprocess.run(
                 [
@@ -1017,7 +1123,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",  # Has 3 files
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=2",
                 ],
@@ -1058,7 +1164,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
@@ -1088,11 +1194,34 @@ function install(ctx) end
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-corrupted-cache-"))
 
         try:
-            # Manually create cache entry with corrupted file
+            # Compute hashes dynamically
+            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+
+            # Create recipe with computed hashes
+            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+identity = "local.fetch_array@v1"
+
+-- Array format: multiple files with optional sha256
+fetch = {{
+  {{
+    url = "test_data/lua/simple.lua",
+    sha256 = "{simple_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_single.lua",
+    sha256 = "{print_single_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_multiple.lua"
+    -- No sha256 - should still work (permissive mode)
+  }}
+}}
+"""
+            modified_recipe = shared_cache / "fetch_array.lua"
+            modified_recipe.write_text(recipe_content)
+
             identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
-            # Compute expected variant name (platform-arch-sha256-hash)
-            # Recipe hash computation would happen in C++, but we can use a fixed hash
-            # Actually, we need to run once first to establish the cache structure
 
             # Run 1: Let it create the structure but fail it
             result_setup = subprocess.run(
@@ -1101,7 +1230,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=1",  # Fail after 1 file
                 ],
@@ -1127,7 +1256,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
@@ -1159,7 +1288,33 @@ function install(ctx) end
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-complete-unmarked-"))
 
         try:
-            # Manually create cache structure with all correct files but no marker
+            # Compute hashes dynamically
+            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+
+            # Create recipe with computed hashes
+            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+identity = "local.fetch_array@v1"
+
+-- Array format: multiple files with optional sha256
+fetch = {{
+  {{
+    url = "test_data/lua/simple.lua",
+    sha256 = "{simple_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_single.lua",
+    sha256 = "{print_single_hash}"
+  }},
+  {{
+    url = "test_data/lua/print_multiple.lua"
+    -- No sha256 - should still work (permissive mode)
+  }}
+}}
+"""
+            modified_recipe = shared_cache / "fetch_array.lua"
+            modified_recipe.write_text(recipe_content)
+
             identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
 
             # Run once to establish cache structure, then fail it
@@ -1169,7 +1324,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=1",
                 ],
@@ -1184,10 +1339,10 @@ function install(ctx) end
             fetch_dir = variant_dirs[0] / "fetch"
             fetch_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write correct content for all files (matching their SHA256)
-            (fetch_dir / "simple.lua").write_text("-- Simple test script for lua_util tests\nexpected_value = 42\n")
-            (fetch_dir / "print_single.lua").write_text('print("hello")\n')
-            (fetch_dir / "print_multiple.lua").write_text('print("a", "b", "c")\n')
+            # Copy actual test files to cache (they'll match the computed hashes)
+            shutil.copy("test_data/lua/simple.lua", fetch_dir / "simple.lua")
+            shutil.copy("test_data/lua/print_single.lua", fetch_dir / "print_single.lua")
+            shutil.copy("test_data/lua/print_multiple.lua", fetch_dir / "print_multiple.lua")
 
             # Ensure NO completion marker exists
             completion_marker = fetch_dir / "envy-complete"
@@ -1201,7 +1356,7 @@ function install(ctx) end
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    "test_data/recipes/fetch_array.lua",
+                    str(modified_recipe),
                     f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
