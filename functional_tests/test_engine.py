@@ -1083,6 +1083,152 @@ function install(ctx) end
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
 
+    def test_declarative_fetch_corrupted_cache(self):
+        """Corrupted files in fetch/ are detected and re-downloaded."""
+        shared_cache = Path(tempfile.mkdtemp(prefix="envy-corrupted-cache-"))
+
+        try:
+            # Manually create cache entry with corrupted file
+            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+            # Compute expected variant name (platform-arch-sha256-hash)
+            # Recipe hash computation would happen in C++, but we can use a fixed hash
+            # Actually, we need to run once first to establish the cache structure
+
+            # Run 1: Let it create the structure but fail it
+            result_setup = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                    "--fail-after-fetch-count=1",  # Fail after 1 file
+                ],
+                capture_output=True,
+                text=True,
+            )
+            # Should fail
+            self.assertNotEqual(result_setup.returncode, 0)
+
+            # Now find the fetch directory and corrupt one of the files
+            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            self.assertEqual(len(variant_dirs), 1, f"Expected 1 variant dir: {variant_dirs}")
+            fetch_dir = variant_dirs[0] / "fetch"
+
+            # Corrupt simple.lua (replace with garbage that won't match SHA256)
+            corrupted_file = fetch_dir / "simple.lua"
+            corrupted_file.write_text("GARBAGE CONTENT THAT WILL FAIL SHA256 VERIFICATION")
+
+            # Run 2: Should detect corruption and re-download
+            result = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, f"Should succeed: {result.stderr}")
+
+            # Verify that corruption was detected and file re-downloaded
+            stderr_lower = result.stderr.lower()
+            self.assertIn("cache mismatch", stderr_lower,
+                         f"Expected cache mismatch detection: {result.stderr}")
+
+            # Verify asset completed successfully (entry-level marker exists)
+            # Note: fetch/ is deleted after successful asset completion
+            entry_complete = variant_dirs[0] / "envy-complete"
+            self.assertTrue(entry_complete.exists(),
+                          "Entry-level completion marker should exist after successful asset install")
+
+            # Verify asset directory exists with installed files
+            asset_dir = variant_dirs[0] / "asset"
+            self.assertTrue(asset_dir.exists(), "Asset directory should exist after completion")
+
+        finally:
+            shutil.rmtree(shared_cache, ignore_errors=True)
+
+    def test_declarative_fetch_complete_but_unmarked(self):
+        """All files present with correct SHA256, but no completion marker."""
+        shared_cache = Path(tempfile.mkdtemp(prefix="envy-complete-unmarked-"))
+
+        try:
+            # Manually create cache structure with all correct files but no marker
+            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+
+            # Run once to establish cache structure, then fail it
+            result_setup = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                    "--fail-after-fetch-count=1",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result_setup.returncode, 0)
+
+            # Find fetch directory
+            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            self.assertEqual(len(variant_dirs), 1)
+            fetch_dir = variant_dirs[0] / "fetch"
+            fetch_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write correct content for all files (matching their SHA256)
+            (fetch_dir / "simple.lua").write_text("-- Simple test script for lua_util tests\nexpected_value = 42\n")
+            (fetch_dir / "print_single.lua").write_text('print("hello")\n')
+            (fetch_dir / "print_multiple.lua").write_text('print("a", "b", "c")\n')
+
+            # Ensure NO completion marker exists
+            completion_marker = fetch_dir / "envy-complete"
+            if completion_marker.exists():
+                completion_marker.unlink()
+
+            # Run: Should verify cached files by SHA256, reuse them
+            result = subprocess.run(
+                [
+                    str(self.envy_test),
+                    "--trace",
+                    "engine-test",
+                    "local.fetch_array@v1",
+                    "test_data/recipes/fetch_array.lua",
+                    f"--cache-root={shared_cache}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, f"Should succeed: {result.stderr}")
+
+            stderr_lower = result.stderr.lower()
+
+            # Should see cache hits for files with SHA256
+            self.assertIn("cache hit", stderr_lower,
+                         f"Expected cache hits for verified files: {result.stderr}")
+
+            # Should still download print_multiple.lua (no SHA256 = can't trust)
+            self.assertIn("downloading", stderr_lower,
+                         f"Expected download for file without SHA256: {result.stderr}")
+
+            # Verify asset completed successfully (entry-level marker exists)
+            # Note: fetch/ and its marker are deleted after successful asset completion
+            entry_complete = variant_dirs[0] / "envy-complete"
+            self.assertTrue(entry_complete.exists(),
+                          "Entry-level completion marker should exist after successful asset install")
+
+        finally:
+            shutil.rmtree(shared_cache, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
