@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
@@ -61,11 +62,43 @@ void ensure_directory(std::filesystem::path const &path) {
   }
 }
 
+std::optional<std::string> strip_path_components(char const *path, int strip_count) {
+  if (strip_count <= 0 || !path) { return std::string(path); }
+
+  char const *p{ path };
+  int components_stripped{ 0 };
+
+  // Skip leading slashes
+  while (*p == '/') { ++p; }
+
+  // Skip the specified number of path components
+  while (components_stripped < strip_count) {
+    if (*p == '\0') {
+      // Path has fewer components than requested strip count
+      return std::nullopt;
+    }
+    if (*p == '/') {
+      ++components_stripped;
+      // Skip multiple consecutive slashes
+      while (*p == '/') { ++p; }
+    } else {
+      ++p;
+    }
+  }
+
+  if (*p == '\0') {
+    // Nothing left after stripping
+    return std::nullopt;
+  }
+
+  return std::string(p);
+}
+
 }  // namespace
 
 std::uint64_t extract(std::filesystem::path const &archive_path,
                       std::filesystem::path const &destination,
-                      extract_progress_cb_t const &progress) {
+                      extract_options const &options) {
   archive_reader reader;
   archive_writer writer;
 
@@ -91,6 +124,18 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     char const *entry_path{ archive_entry_pathname(entry) };
     if (!entry_path) { throw std::runtime_error("Archive entry has null pathname"); }
 
+    // Apply strip-components if configured
+    std::string stripped_path;
+    if (options.strip_components > 0) {
+      auto stripped{ strip_path_components(entry_path, options.strip_components) };
+      if (!stripped) {
+        // Skip this entry - it was stripped to nothing
+        continue;
+      }
+      stripped_path = *stripped;
+      entry_path = stripped_path.c_str();
+    }
+
     std::filesystem::path const full_path{ destination / entry_path };
     ensure_directory(full_path);
 
@@ -100,13 +145,22 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     }
 
     if (char const *hardlink{ archive_entry_hardlink(entry) }) {
-      std::string const hardlink_full{ (destination / hardlink).string() };
+      std::string hardlink_str{ hardlink };
+
+      // Strip components from hardlink target too
+      if (options.strip_components > 0) {
+        auto stripped{ strip_path_components(hardlink, options.strip_components) };
+        if (stripped) { hardlink_str = *stripped; }
+      }
+
+      std::string const hardlink_full{ (destination / hardlink_str).string() };
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());
     }
 
-    if (progress && !progress(extract_progress{ .bytes_processed = processed,
-                                                .total_bytes = std::nullopt,
-                                                .current_entry = full_path })) {
+    if (options.progress &&
+        !options.progress(extract_progress{ .bytes_processed = processed,
+                                            .total_bytes = std::nullopt,
+                                            .current_entry = full_path })) {
       throw std::runtime_error("extract: aborted by progress callback");
     }
 
@@ -133,9 +187,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
         processed += static_cast<std::uint64_t>(bytes_read);
 
-        if (progress && !progress(extract_progress{ .bytes_processed = processed,
-                                                    .total_bytes = std::nullopt,
-                                                    .current_entry = full_path })) {
+        if (options.progress &&
+            !options.progress(extract_progress{ .bytes_processed = processed,
+                                                .total_bytes = std::nullopt,
+                                                .current_entry = full_path })) {
           throw std::runtime_error("extract: aborted by progress callback");
         }
       }
@@ -151,11 +206,23 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
                                archive_error_string(writer.handle));
     }
 
-    bool const skip_count{ full_path.filename().string().rfind("._", 0) == 0 };
-    if (archive_entry_filetype(entry) == AE_IFREG && !skip_count) { ++files_extracted; }
+    if (archive_entry_filetype(entry) == AE_IFREG) { ++files_extracted; }
   }
 
   return files_extracted;
+}
+
+bool extract_is_archive_extension(std::filesystem::path const &path) {
+  static std::unordered_set<std::string> const archive_extensions{
+    ".tar",     ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2",
+    ".tar.zst", ".zip", ".7z",     ".rar",    ".iso"
+  };
+
+  std::string const ext{ path.extension().string() };
+  if (archive_extensions.contains(ext)) { return true; }
+
+  return path.stem().has_extension() &&
+         archive_extensions.contains(path.stem().extension().string() + ext);
 }
 
 }  // namespace envy

@@ -59,53 +59,68 @@ int lua_ctx_fetch(lua_State *lua) {
   // Parse argument: string, string array, table, or table array
   int const arg_type{ lua_type(lua, 1) };
 
-  if (arg_type == LUA_TSTRING) {
-    // Scalar string
-    urls.push_back(lua_tostring(lua, 1));
-  } else if (arg_type == LUA_TTABLE) {
-    // Check if array or single table
-    lua_rawgeti(lua, 1, 1);
-    int const first_elem_type{ lua_type(lua, -1) };
-    lua_pop(lua, 1);
+  switch (arg_type) {
+    case LUA_TSTRING:
+      // Scalar string
+      urls.push_back(lua_tostring(lua, 1));
+      break;
 
-    if (first_elem_type == LUA_TNIL) {
-      // Single table {url="..."}
-      lua_getfield(lua, 1, "url");
-      if (!lua_isstring(lua, -1)) {
-        return luaL_error(lua, "ctx.fetch: table missing 'url' field");
-      }
-      urls.push_back(lua_tostring(lua, -1));
+    case LUA_TTABLE: {
+      // Check if array or single table
+      lua_rawgeti(lua, 1, 1);
+      int const first_elem_type{ lua_type(lua, -1) };
       lua_pop(lua, 1);
-    } else if (first_elem_type == LUA_TSTRING) {
-      // Array of strings {"url1", "url2"}
-      is_array = true;
-      size_t const len{ lua_rawlen(lua, 1) };
-      for (size_t i = 1; i <= len; ++i) {
-        lua_rawgeti(lua, 1, i);
-        if (!lua_isstring(lua, -1)) {
-          return luaL_error(lua, "ctx.fetch: array element %zu must be string", i);
+
+      switch (first_elem_type) {
+        case LUA_TNIL:
+          // Single table {url="..."}
+          lua_getfield(lua, 1, "url");
+          if (!lua_isstring(lua, -1)) {
+            return luaL_error(lua, "ctx.fetch: table missing 'url' field");
+          }
+          urls.push_back(lua_tostring(lua, -1));
+          lua_pop(lua, 1);
+          break;
+
+        case LUA_TSTRING: {
+          // Array of strings {"url1", "url2"}
+          is_array = true;
+          size_t const len{ lua_rawlen(lua, 1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, 1, i);
+            if (!lua_isstring(lua, -1)) {
+              return luaL_error(lua, "ctx.fetch: array element %zu must be string", i);
+            }
+            urls.push_back(lua_tostring(lua, -1));
+            lua_pop(lua, 1);
+          }
+          break;
         }
-        urls.push_back(lua_tostring(lua, -1));
-        lua_pop(lua, 1);
-      }
-    } else if (first_elem_type == LUA_TTABLE) {
-      // Array of tables {{url="..."}, {...}}
-      is_array = true;
-      size_t const len{ lua_rawlen(lua, 1) };
-      for (size_t i = 1; i <= len; ++i) {
-        lua_rawgeti(lua, 1, i);
-        lua_getfield(lua, -1, "url");
-        if (!lua_isstring(lua, -1)) {
-          return luaL_error(lua, "ctx.fetch: array element %zu missing 'url' field", i);
+
+        case LUA_TTABLE: {
+          // Array of tables {{url="..."}, {...}}
+          is_array = true;
+          size_t const len{ lua_rawlen(lua, 1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, 1, i);
+            lua_getfield(lua, -1, "url");
+            if (!lua_isstring(lua, -1)) {
+              return luaL_error(lua,
+                                "ctx.fetch: array element %zu missing 'url' field",
+                                i);
+            }
+            urls.push_back(lua_tostring(lua, -1));
+            lua_pop(lua, 2);  // pop url string and table
+          }
+          break;
         }
-        urls.push_back(lua_tostring(lua, -1));
-        lua_pop(lua, 2);  // pop url string and table
+
+        default: return luaL_error(lua, "ctx.fetch: invalid array element type");
       }
-    } else {
-      return luaL_error(lua, "ctx.fetch: invalid array element type");
+      break;
     }
-  } else {
-    return luaL_error(lua, "ctx.fetch: argument must be string or table");
+
+    default: return luaL_error(lua, "ctx.fetch: argument must be string or table");
   }
 
   // Build requests with collision handling
@@ -184,69 +199,83 @@ std::vector<commit_entry> parse_commit_fetch_args(lua_State *lua) {
   std::vector<commit_entry> entries;
   int const arg_type{ lua_type(lua, 1) };
 
-  if (arg_type == LUA_TSTRING) {
-    // Scalar string
-    entries.push_back({ lua_tostring(lua, 1), "" });
-  } else if (arg_type == LUA_TTABLE) {
-    // Check if array or single table
-    lua_rawgeti(lua, 1, 1);
-    int const first_elem_type{ lua_type(lua, -1) };
-    lua_pop(lua, 1);
+  switch (arg_type) {
+    case LUA_TSTRING:
+      // Scalar string
+      entries.push_back({ lua_tostring(lua, 1), "" });
+      break;
 
-    if (first_elem_type == LUA_TNIL) {
-      // Single table {filename="...", sha256="..."}
-      lua_getfield(lua, 1, "filename");
-      if (!lua_isstring(lua, -1)) {
-        throw std::runtime_error("table missing 'filename' field");
-      }
-      std::string filename{ lua_tostring(lua, -1) };
+    case LUA_TTABLE: {
+      // Check if array or single table
+      lua_rawgeti(lua, 1, 1);
+      int const first_elem_type{ lua_type(lua, -1) };
       lua_pop(lua, 1);
 
-      lua_getfield(lua, 1, "sha256");
-      std::string sha256;
-      if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-      lua_pop(lua, 1);
+      switch (first_elem_type) {
+        case LUA_TNIL: {
+          // Single table {filename="...", sha256="..."}
+          lua_getfield(lua, 1, "filename");
+          if (!lua_isstring(lua, -1)) {
+            throw std::runtime_error("table missing 'filename' field");
+          }
+          std::string filename{ lua_tostring(lua, -1) };
+          lua_pop(lua, 1);
 
-      entries.push_back({ std::move(filename), std::move(sha256) });
-    } else if (first_elem_type == LUA_TSTRING) {
-      // Array of strings {"file1", "file2"}
-      size_t const len{ lua_rawlen(lua, 1) };
-      for (size_t i = 1; i <= len; ++i) {
-        lua_rawgeti(lua, 1, i);
-        if (!lua_isstring(lua, -1)) {
-          throw std::runtime_error("array element " + std::to_string(i) +
-                                   " must be string");
+          lua_getfield(lua, 1, "sha256");
+          std::string sha256;
+          if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
+          lua_pop(lua, 1);
+
+          entries.push_back({ std::move(filename), std::move(sha256) });
+          break;
         }
-        entries.push_back({ lua_tostring(lua, -1), "" });
-        lua_pop(lua, 1);
-      }
-    } else if (first_elem_type == LUA_TTABLE) {
-      // Array of tables {{filename="...", sha256="..."}, {...}}
-      size_t const len{ lua_rawlen(lua, 1) };
-      for (size_t i = 1; i <= len; ++i) {
-        lua_rawgeti(lua, 1, i);
 
-        lua_getfield(lua, -1, "filename");
-        if (!lua_isstring(lua, -1)) {
-          throw std::runtime_error("array element " + std::to_string(i) +
-                                   " missing 'filename' field");
+        case LUA_TSTRING: {
+          // Array of strings {"file1", "file2"}
+          size_t const len{ lua_rawlen(lua, 1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, 1, i);
+            if (!lua_isstring(lua, -1)) {
+              throw std::runtime_error("array element " + std::to_string(i) +
+                                       " must be string");
+            }
+            entries.push_back({ lua_tostring(lua, -1), "" });
+            lua_pop(lua, 1);
+          }
+          break;
         }
-        std::string filename{ lua_tostring(lua, -1) };
-        lua_pop(lua, 1);
 
-        lua_getfield(lua, -1, "sha256");
-        std::string sha256;
-        if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-        lua_pop(lua, 1);
+        case LUA_TTABLE: {
+          // Array of tables {{filename="...", sha256="..."}, {...}}
+          size_t const len{ lua_rawlen(lua, 1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, 1, i);
 
-        entries.push_back({ std::move(filename), std::move(sha256) });
-        lua_pop(lua, 1);  // pop table
+            lua_getfield(lua, -1, "filename");
+            if (!lua_isstring(lua, -1)) {
+              throw std::runtime_error("array element " + std::to_string(i) +
+                                       " missing 'filename' field");
+            }
+            std::string filename{ lua_tostring(lua, -1) };
+            lua_pop(lua, 1);
+
+            lua_getfield(lua, -1, "sha256");
+            std::string sha256;
+            if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
+            lua_pop(lua, 1);
+
+            entries.push_back({ std::move(filename), std::move(sha256) });
+            lua_pop(lua, 1);  // pop table
+          }
+          break;
+        }
+
+        default: throw std::runtime_error("invalid array element type");
       }
-    } else {
-      throw std::runtime_error("invalid array element type");
+      break;
     }
-  } else {
-    throw std::runtime_error("argument must be string or table");
+
+    default: throw std::runtime_error("argument must be string or table");
   }
 
   return entries;
@@ -484,67 +513,78 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                           std::string const &key) {
   int const fetch_type{ lua_type(lua, -1) };
 
-  if (fetch_type == LUA_TSTRING) {
-    char const *url{ lua_tostring(lua, -1) };
-    std::string basename{ uri_extract_filename(url) };
-    if (basename.empty()) {
-      throw std::runtime_error("Cannot extract filename from URL: " + std::string(url) +
-                               " in " + key);
-    }
-    std::filesystem::path dest{ fetch_dir / basename };
-    return { { .request = { .source = url, .destination = std::move(dest) },
-               .sha256 = "" } };
-  }
-
-  if (fetch_type != LUA_TTABLE) {
-    throw std::runtime_error("Fetch field must be string, table, or function in " + key);
-  }
-
-  std::vector<fetch_spec> specs;
-  std::unordered_set<std::string> basenames;
-
-  // Detect array type: check first element
-  lua_rawgeti(lua, -1, 1);
-  int const first_elem_type{ lua_type(lua, -1) };
-  lua_pop(lua, 1);
-
-  auto process_table_entry{ [&]() {
-    auto entry{ parse_table_entry(lua, key) };
-    specs.push_back(create_fetch_spec(std::move(entry.url),
-                                      std::move(entry.sha256),
-                                      fetch_dir,
-                                      basenames,
-                                      key));
-  } };
-
-  if (first_elem_type == LUA_TNIL) {  // Single table {url="...", sha256="..."}
-    process_table_entry();
-  } else if (first_elem_type == LUA_TSTRING) {  // Array of strings {"url1", "url2", ...}
-    size_t const len{ lua_rawlen(lua, -1) };
-    for (size_t i = 1; i <= len; ++i) {
-      lua_rawgeti(lua, -1, i);
-      if (!lua_isstring(lua, -1)) {
-        throw std::runtime_error("Array element " + std::to_string(i) +
-                                 " must be string in " + key);
+  switch (fetch_type) {
+    case LUA_TSTRING: {
+      char const *url{ lua_tostring(lua, -1) };
+      std::string basename{ uri_extract_filename(url) };
+      if (basename.empty()) {
+        throw std::runtime_error("Cannot extract filename from URL: " + std::string(url) +
+                                 " in " + key);
       }
-      std::string url{ lua_tostring(lua, -1) };
+      std::filesystem::path dest{ fetch_dir / basename };
+      return { { .request = { .source = url, .destination = std::move(dest) },
+                 .sha256 = "" } };
+    }
+
+    case LUA_TTABLE: {
+      std::vector<fetch_spec> specs;
+      std::unordered_set<std::string> basenames;
+
+      // Detect array type: check first element
+      lua_rawgeti(lua, -1, 1);
+      int const first_elem_type{ lua_type(lua, -1) };
       lua_pop(lua, 1);
 
-      specs.push_back(create_fetch_spec(std::move(url), "", fetch_dir, basenames, key));
+      auto process_table_entry{ [&]() {
+        auto entry{ parse_table_entry(lua, key) };
+        specs.push_back(create_fetch_spec(std::move(entry.url),
+                                          std::move(entry.sha256),
+                                          fetch_dir,
+                                          basenames,
+                                          key));
+      } };
+
+      switch (first_elem_type) {
+        case LUA_TNIL:  // Single table {url="...", sha256="..."}
+          process_table_entry();
+          break;
+
+        case LUA_TSTRING: {  // Array of strings {"url1", "url2", ...}
+          size_t const len{ lua_rawlen(lua, -1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, -1, i);
+            if (!lua_isstring(lua, -1)) {
+              throw std::runtime_error("Array element " + std::to_string(i) +
+                                       " must be string in " + key);
+            }
+            std::string url{ lua_tostring(lua, -1) };
+            lua_pop(lua, 1);
+
+            specs.push_back(
+                create_fetch_spec(std::move(url), "", fetch_dir, basenames, key));
+          }
+          break;
+        }
+
+        case LUA_TTABLE: {  // Array of tables {{url="...", sha256="..."}, {...}}
+          size_t const len{ lua_rawlen(lua, -1) };
+          for (size_t i = 1; i <= len; ++i) {
+            lua_rawgeti(lua, -1, i);
+            process_table_entry();
+            lua_pop(lua, 1);
+          }
+          break;
+        }
+
+        default: throw std::runtime_error("Invalid fetch array element type in " + key);
+      }
+
+      return specs;
     }
-  } else if (first_elem_type == LUA_TTABLE) {
-    // Array of tables {{url="...", sha256="..."}, {...}}
-    size_t const len{ lua_rawlen(lua, -1) };
-    for (size_t i = 1; i <= len; ++i) {
-      lua_rawgeti(lua, -1, i);
-      process_table_entry();
-      lua_pop(lua, 1);
-    }
-  } else {
-    throw std::runtime_error("Invalid fetch array element type in " + key);
+
+    default:
+      throw std::runtime_error("Fetch field must be string, table, or function in " + key);
   }
-
-  return specs;
 }
 
 // Check cache and determine which files need downloading.
@@ -679,16 +719,15 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
   lua_getglobal(lua, "fetch");
   int const fetch_type{ lua_type(lua, -1) };
 
-  if (fetch_type == LUA_TNIL) {
-    lua_pop(lua, 1);
-    tui::trace("phase fetch: no fetch field, skipping");
-    return;
-  }
-
-  if (fetch_type == LUA_TFUNCTION) {
-    run_programmatic_fetch(lua, lock, identity, options, state, key);
-  } else {
-    run_declarative_fetch(lua, lock, key);
+  switch (fetch_type) {
+    case LUA_TNIL:
+      lua_pop(lua, 1);
+      tui::trace("phase fetch: no fetch field, skipping");
+      return;
+    case LUA_TFUNCTION:
+      run_programmatic_fetch(lua, lock, identity, options, state, key);
+      break;
+    default: run_declarative_fetch(lua, lock, key); break;
   }
 
   lock->mark_fetch_complete();

@@ -204,9 +204,9 @@ TEST_CASE("util_hex_to_bytes throws on odd length") {
 
 TEST_CASE("util_hex_to_bytes throws on invalid character") {
   CHECK_THROWS_WITH(envy::util_hex_to_bytes("ag"),
-                    "util_hex_to_bytes: invalid character at position 0");
+                    "util_hex_to_bytes: invalid character at position 1");
   CHECK_THROWS_WITH(envy::util_hex_to_bytes("0z"),
-                    "util_hex_to_bytes: invalid character at position 0");
+                    "util_hex_to_bytes: invalid character at position 1");
   CHECK_THROWS_WITH(envy::util_hex_to_bytes("!0"),
                     "util_hex_to_bytes: invalid character at position 0");
   CHECK_THROWS_WITH(envy::util_hex_to_bytes(" 0"),

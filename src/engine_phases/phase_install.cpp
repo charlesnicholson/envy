@@ -40,6 +40,23 @@ void run_install_phase(std::string const &key, graph_state &state) {
       auto const install_dir{ acc->second.lock->install_dir() };
       std::filesystem::create_directories(install_dir);
 
+      // If no custom install function, copy staged/built files to install_dir
+      if (!has_install) {
+        auto const stage_dir{ acc->second.lock->stage_dir() };
+        if (std::filesystem::exists(stage_dir) && std::filesystem::is_directory(stage_dir)) {
+          tui::trace("phase install: copying staged files to install_dir");
+          for (auto const &entry : std::filesystem::recursive_directory_iterator(stage_dir)) {
+            if (entry.is_regular_file() || entry.is_symlink()) {
+              auto const rel_path{ std::filesystem::relative(entry.path(), stage_dir) };
+              auto const dest_path{ install_dir / rel_path };
+              std::filesystem::create_directories(dest_path.parent_path());
+              std::filesystem::copy(entry.path(), dest_path,
+                                    std::filesystem::copy_options::overwrite_existing);
+            }
+          }
+        }
+      }
+
       std::filesystem::path const entry_path{ install_dir.parent_path() };
       std::filesystem::path const final_asset_path{ entry_path / "asset" };
 
