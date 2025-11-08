@@ -219,7 +219,7 @@ target_sources(envy_functional_tester
         src/commands/cmd_cache_functional_test.cpp
         src/commands/cmd_engine_functional_test.cpp
         src/engine.cpp
-        src/engine_phases/create_nodes.cpp
+        src/engine_phases/create_recipe_nodes.cpp
         src/engine_phases/graph_state.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp

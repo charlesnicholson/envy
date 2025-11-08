@@ -15,7 +15,9 @@ std::string make_canonical_key(std::string const &identity,
 
   std::vector<std::pair<std::string, std::string>> sorted;
   sorted.reserve(opts.size());
-  for (auto const &[k, v] : opts) { sorted.emplace_back(k, serialize_option_table(v)); }
+  for (auto const &[k, v] : opts) {
+    sorted.emplace_back(k, recipe_spec::serialize_option_table(v));
+  }
   std::ranges::sort(sorted);
 
   std::ostringstream oss;

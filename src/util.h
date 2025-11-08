@@ -34,7 +34,9 @@ match(Ts...) -> match<Ts...>;
 std::string util_bytes_to_hex(void const *data, size_t length);
 
 // Convert hex string to bytes (case-insensitive)
-// Throws std::runtime_error if hex string is invalid (wrong length or invalid characters)
 std::vector<unsigned char> util_hex_to_bytes(std::string const &hex);
+
+// Convert single hex character to value (0-15). Returns -1 if invalid.
+int util_hex_char_to_int(char c);
 
 }  // namespace envy

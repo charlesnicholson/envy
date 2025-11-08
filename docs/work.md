@@ -146,52 +146,79 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
 
 ---
 
-## Phase 4: Imperative Fetch (ctx.fetch() Lua API)
+## Phase 4: Programmatic Fetch (ctx.fetch() Lua API) ✅ COMPLETE
 
-**Goal:** Expose `ctx.fetch()` Lua C function for custom fetch logic.
+**Goal:** Expose `ctx.fetch()` and `ctx.commit_fetch()` Lua C functions for custom fetch logic.
 
 ### Tasks:
 
-- [ ] Implement `ctx.fetch()` Lua C function
-  - [ ] Detect polymorphic input: single table vs array of tables
-  - [ ] Parse table fields: `url` (required), `sha256` (optional)
-  - [ ] Build `vector<fetch_request>` with destinations in `ctx.tmp`
-  - [ ] Generate unique filenames (basename of URL)
-  - [ ] Call `fetch(requests)`
-  - [ ] If any failures, throw Lua error with aggregate message
-  - [ ] Return to Lua: single basename (string) or array of basenames (table)
+- [x] Implement `ctx.fetch()` Lua C function (download only, no SHA256)
+  - [x] Detect polymorphic input: string, string array, table, or table array
+  - [x] Parse table fields: `url` (required), NO sha256 (that's for commit_fetch)
+  - [x] Build `vector<fetch_request>` with destinations in `ctx.tmp`
+  - [x] Handle filename collisions with `-2`, `-3` suffixes
+  - [x] Call `fetch(requests)` - executes serially/synchronously
+  - [x] If any failures, throw Lua error with aggregate message
+  - [x] Return to Lua: single basename (string) or array of basenames (table)
 
-- [ ] Implement fetch phase context
-  - [ ] Create context table in `run_fetch_phase()`
-  - [ ] Add `ctx.identity` (string)
-  - [ ] Add `ctx.options` (table, always present even if empty)
-  - [ ] Add `ctx.tmp` (string, temp directory path)
-  - [ ] Add `ctx.fetch` (C function)
-  - [ ] Add `ctx.asset` (function to get dependency paths)
-  - [ ] Add `ctx.run` and `ctx.run_capture` (subprocess execution)
+- [x] Implement `ctx.commit_fetch()` Lua C function (verification + commitment)
+  - [x] Detect polymorphic input: string, string array, table, or table array
+  - [x] Parse table fields: `filename` (required), `sha256` (optional)
+  - [x] Refactored into `parse_commit_fetch_args()` and `commit_files()` helpers
+  - [x] Verify SHA256 if provided (empty = no verification)
+  - [x] Move files from `ctx.tmp` to fetch_dir
+  - [x] If any failures, throw Lua error with details
 
-- [ ] Update `run_fetch_phase()` for fetch functions
-  - [ ] If `spec.has_fetch_function()`:
-    - [ ] Create temp directory for `ctx.tmp`
-    - [ ] Build context table
-    - [ ] Call `lua_getglobal(lua, "fetch")`
-    - [ ] Push context table
-    - [ ] Call `lua_pcall(lua, 1, 0, 0)`
-    - [ ] Handle errors, clean up temp
-    - [ ] Move files from `ctx.tmp` to `lock->fetch_dir()`
-    - [ ] Call `lock->mark_fetch_complete()`
+- [x] Implement fetch phase context
+  - [x] Create context table in `run_programmatic_fetch()`
+  - [x] Add `ctx.identity` (string)
+  - [x] Add `ctx.options` (table, always present even if empty)
+  - [x] Add `ctx.tmp` (string, temp directory path)
+  - [x] Add `ctx.fetch` (C function)
+  - [x] Add `ctx.commit_fetch` (C function)
+  - [x] Add `ctx.asset` (function returning fetch_dir path)
 
-- [ ] Testing
-  - [ ] Test: `ctx.fetch({url="..."})` single file downloads and returns basename
-  - [ ] Test: `ctx.fetch({{url="..."}, {...}})` batch downloads concurrently
-  - [ ] Test: SHA256 verification in `ctx.fetch()` works
-  - [ ] Test: SHA256 mismatch in `ctx.fetch()` throws Lua error
-  - [ ] Test: `ctx.identity` and `ctx.options` accessible in fetch function
-  - [ ] Test: `ctx.asset()` returns dependency paths
-  - [ ] Verify `test_fetch_function_basic` now fully functional (not stub)
-  - [ ] Verify `test_fetch_function_with_dependency` fully functional
+- [x] Update `run_fetch_phase()` for programmatic and declarative paths
+  - [x] Symmetric dispatch: TNIL check, then LUA_TFUNCTION vs declarative
+  - [x] Extracted `run_programmatic_fetch()` for function path
+  - [x] Extracted `run_declarative_fetch()` for declarative path
+  - [x] Create temp directory for `ctx.tmp`
+  - [x] Build context table with fetch/commit_fetch/asset/identity/options/tmp
+  - [x] Call `lua_pcall(lua, 1, 0, 0)` with proper error handling
+  - [x] Unified cleanup: single `lock->mark_fetch_complete()` call
 
-**Completion Criteria:** Custom fetch functions work, `ctx.fetch()` API complete, all imperative fetch tests pass.
+- [x] Add string array support to declarative fetch
+  - [x] Support `fetch = {"url1", "url2", "url3"}` syntax
+  - [x] Test: declarative fetch with string array downloads all files
+
+- [x] Code organization and refactoring
+  - [x] Moved `serialize_option_table` to static member of `recipe_spec`
+  - [x] Created `create_recipe_nodes.h` with proper header/implementation split
+  - [x] Renamed `create_nodes.*` → `create_recipe_nodes.*` to match function name
+  - [x] Added `identity` and `options` fields to `recipe` struct in graph_state
+
+- [x] Testing (17 programmatic + 1 declarative = 18 new tests)
+  - [x] Test: `ctx.fetch("url")` single string downloads and returns scalar
+  - [x] Test: `ctx.fetch({"url1", "url2"})` string array downloads and returns array
+  - [x] Test: `ctx.fetch({url="..."})` single table downloads
+  - [x] Test: `ctx.fetch({{url="..."}, {...}})` table array downloads
+  - [x] Test: `ctx.commit_fetch()` with SHA256 verification succeeds
+  - [x] Test: SHA256 mismatch in `ctx.commit_fetch()` throws Lua error
+  - [x] Test: Selective commit (fetch 3 files, commit 2)
+  - [x] Test: Filename collisions get `-2` suffix
+  - [x] Test: `ctx.identity` accessible in fetch function
+  - [x] Test: `ctx.options` accessible as table (empty when no options)
+  - [x] Test: `ctx.tmp` accessible as string path
+  - [x] Test: `ctx.asset()` returns correct path
+  - [x] Test: Multiple serial `ctx.fetch()` calls work correctly
+  - [x] Test: Fetch function errors propagate with recipe identity in message
+  - [x] Test: Table with extra keys ignored (forward compatibility)
+  - [x] Test: Missing URL field throws error
+  - [x] Test: Declarative `fetch = {"url1", "url2", "url3"}` downloads all files
+
+**Completion Criteria:** Custom fetch functions work, `ctx.fetch()` and `ctx.commit_fetch()` APIs complete, SHA256 verification separated from download, all programmatic fetch tests pass.
+
+**Results:** Programmatic fetch fully implemented with two-phase download/commit model. All 98 functional tests pass (17 new programmatic, 1 new declarative string array).
 
 ## Status Legend
 

@@ -2,7 +2,6 @@
 
 #include "cache.h"
 #include "lua_util.h"
-#include "recipe_spec.h"
 #include "tui.h"
 
 #include <tbb/concurrent_hash_map.h>
@@ -14,12 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
-
-extern "C" {
-#include "lua.h"
-}
 
 namespace envy {
 
@@ -46,6 +40,9 @@ struct recipe {
   std::filesystem::path asset_path;
   std::string result_hash;
 
+  std::string identity;
+  std::unordered_map<std::string, lua_value> options;
+
   std::atomic_bool completed{ false };
 };
 
@@ -59,13 +56,7 @@ struct graph_state {
   tbb::concurrent_unordered_set<std::string> executed;
 };
 
-std::string make_canonical_key(
-    std::string const &identity,
-    std::unordered_map<std::string, lua_value> const &options);
-
-void create_recipe_nodes(std::string const &key,
-                         recipe_spec const &spec,
-                         graph_state &state,
-                         std::unordered_set<std::string> const &ancestors = {});
+std::string make_canonical_key(std::string const &identity,
+                               std::unordered_map<std::string, lua_value> const &options);
 
 }  // namespace envy

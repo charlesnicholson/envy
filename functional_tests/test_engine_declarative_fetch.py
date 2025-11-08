@@ -217,6 +217,45 @@ fetch = {{
             f"Expected SHA256 error, got: {result.stderr}",
         )
 
+    def test_declarative_fetch_string_array(self):
+        """Recipe with fetch = {\"url1\", \"url2\", \"url3\"} downloads all files."""
+        # Create recipe with array of strings (no SHA256)
+        recipe_content = """-- Test declarative fetch with string array
+identity = "local.fetch_string_array@v1"
+
+-- Array of strings (no SHA256 verification)
+fetch = {
+  "test_data/lua/simple.lua",
+  "test_data/lua/print_single.lua",
+  "test_data/lua/print_multiple.lua"
+}
+"""
+        recipe_path = self.cache_root / "fetch_string_array.lua"
+        recipe_path.write_text(recipe_content)
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.fetch_string_array@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("local.fetch_string_array@v1", result.stdout)
+
+        # Verify downloading log mentions 3 files
+        stderr_lower = result.stderr.lower()
+        self.assertIn("downloading", stderr_lower, f"Expected download log: {result.stderr}")
+        self.assertIn("3", result.stderr, f"Expected 3 files mentioned: {result.stderr}")
+
 
 if __name__ == "__main__":
     unittest.main()

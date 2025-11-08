@@ -26,9 +26,11 @@ struct uri_info {
 };
 
 uri_info uri_classify(std::string_view value);
+std::string uri_extract_filename(std::string_view uri);
 
 std::filesystem::path uri_resolve_local_file_relative(
     std::string_view local_file,
     std::optional<std::filesystem::path> const &anchor);
+
 
 }  // namespace envy

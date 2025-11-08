@@ -129,7 +129,7 @@ bool recipe_spec::has_fetch_function() const {
   return std::holds_alternative<fetch_function>(source);
 }
 
-std::string serialize_option_table(lua_value const &val) {
+std::string recipe_spec::serialize_option_table(lua_value const &val) {
   static_assert(
       std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);
   static_assert(std::is_same_v<std::variant_alternative_t<1, lua_variant>, bool>);
@@ -175,7 +175,7 @@ std::string serialize_option_table(lua_value const &val) {
       std::vector<std::pair<std::string, std::string>> sorted;
       sorted.reserve(table.size());
       for (auto const &[key, value] : table) {
-        sorted.emplace_back(key, serialize_option_table(value));
+        sorted.emplace_back(key, recipe_spec::serialize_option_table(value));
       }
       std::ranges::sort(sorted);
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graph_state.h"
+#include "recipe_spec.h"
 
 #include <string>
 #include <unordered_set>

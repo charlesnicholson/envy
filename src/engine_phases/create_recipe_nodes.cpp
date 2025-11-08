@@ -1,4 +1,4 @@
-#include "graph_state.h"
+#include "create_recipe_nodes.h"
 
 #include "phase_build.h"
 #include "phase_check.h"
@@ -87,6 +87,8 @@ void create_recipe_nodes(std::string const &key,
       acc->second.install_node = install_node;
       acc->second.deploy_node = deploy_node;
       acc->second.completion_node = completion_node;
+      acc->second.identity = spec.identity;
+      acc->second.options = spec.options;
     }
   }
 }
