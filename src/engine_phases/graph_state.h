@@ -61,7 +61,7 @@ struct graph_state {
 
 std::string make_canonical_key(
     std::string const &identity,
-    std::unordered_map<std::string, std::string> const &options);
+    std::unordered_map<std::string, lua_value> const &options);
 
 void create_recipe_nodes(std::string const &key,
                          recipe_spec const &spec,

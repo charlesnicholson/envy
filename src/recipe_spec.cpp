@@ -2,7 +2,12 @@
 
 #include "uri.h"
 
+#include <algorithm>
+#include <charconv>
+#include <ranges>
+#include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace envy {
 
@@ -103,16 +108,9 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
     throw std::runtime_error("Recipe must specify either 'url' or 'file'");
   }
 
-  auto const options_it{ table->find("options") };
-  if (options_it != table->end()) {
+  if (auto const options_it{ table->find("options") }; options_it != table->end()) {
     if (auto const *options_table{ options_it->second.get<lua_table>() }) {
-      for (auto const &[key, val] : *options_table) {
-        if (auto const *val_str{ val.get<std::string>() }) {
-          result.options[key] = *val_str;
-        } else {
-          throw std::runtime_error("Option value for '" + key + "' must be string");
-        }
-      }
+      for (auto const &[key, val] : *options_table) { result.options[key] = val; }
     } else {
       throw std::runtime_error("Recipe 'options' field must be table");
     }
@@ -129,6 +127,72 @@ bool recipe_spec::is_remote() const {
 
 bool recipe_spec::has_fetch_function() const {
   return std::holds_alternative<fetch_function>(source);
+}
+
+std::string serialize_option_table(lua_value const &val) {
+  static_assert(
+      std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);
+  static_assert(std::is_same_v<std::variant_alternative_t<1, lua_variant>, bool>);
+  static_assert(std::is_same_v<std::variant_alternative_t<2, lua_variant>, int64_t>);
+  static_assert(std::is_same_v<std::variant_alternative_t<3, lua_variant>, double>);
+  static_assert(std::is_same_v<std::variant_alternative_t<4, lua_variant>, std::string>);
+  static_assert(std::is_same_v<std::variant_alternative_t<5, lua_variant>, lua_table>);
+
+  switch (val.v.index()) {
+    case 0: return "nil";
+    case 1: return std::get<bool>(val.v) ? "true" : "false";
+    case 2: return std::to_string(std::get<int64_t>(val.v));
+
+    case 3: {
+      char buf[32];
+      auto [ptr, ec] = std::to_chars(buf,
+                                     buf + sizeof(buf),
+                                     std::get<double>(val.v),
+                                     std::chars_format::general);
+      if (ec != std::errc{}) {
+        throw std::runtime_error("Failed to serialize double value");
+      }
+      return std::string{ buf, ptr };
+    }
+
+    case 4: {
+      auto const &str{ std::get<std::string>(val.v) };
+      std::string result;
+      result.reserve(str.size() + 2);
+      result += '"';
+      for (char c : str) {
+        if (c == '"' || c == '\\') { result += '\\'; }
+        result += c;
+      }
+      result += '"';
+      return result;
+    }
+
+    case 5: {
+      auto const &table{ std::get<lua_table>(val.v) };
+      if (table.empty()) { return "{}"; }
+
+      std::vector<std::pair<std::string, std::string>> sorted;
+      sorted.reserve(table.size());
+      for (auto const &[key, value] : table) {
+        sorted.emplace_back(key, serialize_option_table(value));
+      }
+      std::ranges::sort(sorted);
+
+      std::ostringstream oss;
+      oss << '{';
+      bool first{ true };
+      for (auto const &[key, serialized_val] : sorted) {
+        if (!first) { oss << ','; };
+        oss << key << '=' << serialized_val;
+        first = false;
+      }
+      oss << '}';
+      return oss.str();
+    }
+  }
+
+  __builtin_unreachable();
 }
 
 }  // namespace envy

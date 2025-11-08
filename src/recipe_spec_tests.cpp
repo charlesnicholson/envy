@@ -91,8 +91,8 @@ TEST_CASE("recipe::parse parses table with options") {
 
   CHECK(cfg.identity == "arm.gcc@v2");
   REQUIRE(cfg.options.size() == 2);
-  CHECK(cfg.options.at("version") == "13.2.0");
-  CHECK(cfg.options.at("target") == "arm-none-eabi");
+  CHECK(*cfg.options.at("version").get<std::string>() == "13.2.0");
+  CHECK(*cfg.options.at("target").get<std::string>() == "arm-none-eabi");
 }
 
 TEST_CASE("recipe::parse parses table with empty options") {
@@ -121,7 +121,7 @@ TEST_CASE("recipe::parse parses table with all fields") {
   CHECK(remote->sha256 == "abc123");
 
   REQUIRE(cfg.options.size() == 1);
-  CHECK(cfg.options.at("version") == "13.2.0");
+  CHECK(*cfg.options.at("version").get<std::string>() == "13.2.0");
 }
 
 // Error cases ----------------------------------------------------------------
@@ -260,12 +260,323 @@ TEST_CASE("recipe::parse errors on non-table options") {
                        std::runtime_error);
 }
 
-TEST_CASE("recipe::parse errors on non-string option value") {
+TEST_CASE("recipe::parse accepts non-string option values") {
   auto lua_val{ lua_eval(
-      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = 123 "
-      "} }") };
+      "result = { recipe = 'arm.gcc@v2', file = '/fake/r.lua', options = { version = 123, "
+      "debug = true, nested = { key = 'value' } } }") };
 
-  CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
-                       "Option value for 'version' must be string",
+  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  REQUIRE(cfg.options.size() == 3);
+  CHECK(cfg.options.at("version").is_integer());
+  CHECK(*cfg.options.at("version").get<int64_t>() == 123);
+  CHECK(cfg.options.at("debug").is_bool());
+  CHECK(*cfg.options.at("debug").get<bool>() == true);
+  CHECK(cfg.options.at("nested").is_table());
+}
+
+TEST_CASE("recipe::parse errors on function in options") {
+  // Exception thrown during lua_eval when converting function to lua_value
+  CHECK_THROWS_WITH_AS(lua_eval(R"(
+    result = {
+      recipe = 'arm.gcc@v2',
+      file = '/fake/r.lua',
+      options = { func = function() return 42 end }
+    }
+  )"),
+                       "Unsupported Lua type: function",
                        std::runtime_error);
+}
+
+TEST_CASE("recipe::parse errors on function nested in options") {
+  // Exception thrown during lua_eval when converting nested function to lua_value
+  CHECK_THROWS_WITH_AS(lua_eval(R"(
+    result = {
+      recipe = 'arm.gcc@v2',
+      file = '/fake/r.lua',
+      options = {
+        compiler = {
+          version = '13.2',
+          callback = function() return true end
+        }
+      }
+    }
+  )"),
+                       "Unsupported Lua type: function",
+                       std::runtime_error);
+}
+
+// serialize_option_table tests -------------------------------------------
+
+TEST_CASE("serialize_option_table serializes nil") {
+  envy::lua_value val{};
+  CHECK(envy::serialize_option_table(val) == "nil");
+}
+
+TEST_CASE("serialize_option_table serializes bool true") {
+  envy::lua_value val{ envy::lua_variant{ true } };
+  CHECK(envy::serialize_option_table(val) == "true");
+}
+
+TEST_CASE("serialize_option_table serializes bool false") {
+  envy::lua_value val{ envy::lua_variant{ false } };
+  CHECK(envy::serialize_option_table(val) == "false");
+}
+
+TEST_CASE("serialize_option_table serializes positive integer") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 42 } } };
+  CHECK(envy::serialize_option_table(val) == "42");
+}
+
+TEST_CASE("serialize_option_table serializes negative integer") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ -999 } } };
+  CHECK(envy::serialize_option_table(val) == "-999");
+}
+
+TEST_CASE("serialize_option_table serializes zero") {
+  envy::lua_value val{ envy::lua_variant{ int64_t{ 0 } } };
+  CHECK(envy::serialize_option_table(val) == "0");
+}
+
+TEST_CASE("serialize_option_table serializes double") {
+  envy::lua_value val{ envy::lua_variant{ 3.14159 } };
+  auto const result{ envy::serialize_option_table(val) };
+  CHECK(std::stod(result) == doctest::Approx(3.14159));
+}
+
+TEST_CASE("serialize_option_table serializes double with shortest representation") {
+  envy::lua_value val{ envy::lua_variant{ 1.5 } };
+  CHECK(envy::serialize_option_table(val) == "1.5");
+}
+
+TEST_CASE("serialize_option_table serializes simple string") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "hello" } } };
+  CHECK(envy::serialize_option_table(val) == "\"hello\"");
+}
+
+TEST_CASE("serialize_option_table serializes empty string") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "" } } };
+  CHECK(envy::serialize_option_table(val) == "\"\"");
+}
+
+TEST_CASE("serialize_option_table escapes quote in string") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "say \"hello\"" } } };
+  CHECK(envy::serialize_option_table(val) == "\"say \\\"hello\\\"\"");
+}
+
+TEST_CASE("serialize_option_table escapes backslash in string") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "path\\to\\file" } } };
+  CHECK(envy::serialize_option_table(val) == "\"path\\\\to\\\\file\"");
+}
+
+TEST_CASE("serialize_option_table escapes mixed quote and backslash") {
+  envy::lua_value val{ envy::lua_variant{ std::string{ "\\\"escape\"\\me\\" } } };
+  CHECK(envy::serialize_option_table(val) == "\"\\\\\\\"escape\\\"\\\\me\\\\\"");
+}
+
+TEST_CASE("serialize_option_table serializes empty table") {
+  envy::lua_table table;
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+  CHECK(envy::serialize_option_table(val) == "{}");
+}
+
+TEST_CASE("serialize_option_table serializes single-entry table") {
+  envy::lua_table table;
+  table["key"] = envy::lua_value{ envy::lua_variant{ std::string{ "value" } } };
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+  CHECK(envy::serialize_option_table(val) == "{key=\"value\"}");
+}
+
+TEST_CASE("serialize_option_table sorts table keys lexicographically") {
+  envy::lua_table table;
+  table["zebra"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+  table["apple"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+  table["middle"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+  CHECK(envy::serialize_option_table(val) == "{apple=1,middle=2,zebra=3}");
+}
+
+TEST_CASE("serialize_option_table sorts keys case-sensitively") {
+  envy::lua_table table;
+  table["Zebra"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+  table["apple"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+  table["Banana"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+  // Uppercase letters come before lowercase in ASCII
+  CHECK(envy::serialize_option_table(val) == "{Banana=3,Zebra=1,apple=2}");
+}
+
+TEST_CASE("serialize_option_table serializes table with mixed types") {
+  envy::lua_table table;
+  table["bool"] = envy::lua_value{ envy::lua_variant{ true } };
+  table["int"] = envy::lua_value{ envy::lua_variant{ int64_t{ 42 } } };
+  table["str"] = envy::lua_value{ envy::lua_variant{ std::string{ "text" } } };
+  table["nil"] = envy::lua_value{ envy::lua_variant{ std::monostate{} } };
+  envy::lua_value val{ envy::lua_variant{ std::move(table) } };
+  CHECK(envy::serialize_option_table(val) == "{bool=true,int=42,nil=nil,str=\"text\"}");
+}
+
+TEST_CASE("serialize_option_table serializes nested table") {
+  envy::lua_table inner;
+  inner["nested"] = envy::lua_value{ envy::lua_variant{ std::string{ "value" } } };
+
+  envy::lua_table outer;
+  outer["outer"] = envy::lua_value{ envy::lua_variant{ std::move(inner) } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(outer) } };
+  CHECK(envy::serialize_option_table(val) == "{outer={nested=\"value\"}}");
+}
+
+TEST_CASE("serialize_option_table sorts keys at each nesting level") {
+  envy::lua_table inner;
+  inner["z"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+  inner["a"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+
+  envy::lua_table outer;
+  outer["y"] = envy::lua_value{ envy::lua_variant{ std::move(inner) } };
+  outer["b"] = envy::lua_value{ envy::lua_variant{ int64_t{ 0 } } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(outer) } };
+  CHECK(envy::serialize_option_table(val) == "{b=0,y={a=1,z=2}}");
+}
+
+TEST_CASE("serialize_option_table handles 3-level nested tables") {
+  envy::lua_table level3;
+  level3["deep"] = envy::lua_value{ envy::lua_variant{ std::string{ "bottom" } } };
+
+  envy::lua_table level2;
+  level2["l2"] = envy::lua_value{ envy::lua_variant{ std::move(level3) } };
+
+  envy::lua_table level1;
+  level1["l1"] = envy::lua_value{ envy::lua_variant{ std::move(level2) } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(level1) } };
+  CHECK(envy::serialize_option_table(val) == "{l1={l2={deep=\"bottom\"}}}");
+}
+
+TEST_CASE("serialize_option_table handles 5-level nested tables with sorting") {
+  // Build from innermost to outermost
+  envy::lua_table l5;
+  l5["z5"] = envy::lua_value{ envy::lua_variant{ int64_t{ 5 } } };
+  l5["a5"] = envy::lua_value{ envy::lua_variant{ int64_t{ 5 } } };
+
+  envy::lua_table l4;
+  l4["z4"] = envy::lua_value{ envy::lua_variant{ int64_t{ 4 } } };
+  l4["nest"] = envy::lua_value{ envy::lua_variant{ std::move(l5) } };
+  l4["a4"] = envy::lua_value{ envy::lua_variant{ int64_t{ 4 } } };
+
+  envy::lua_table l3;
+  l3["z3"] = envy::lua_value{ envy::lua_variant{ std::move(l4) } };
+  l3["a3"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+
+  envy::lua_table l2;
+  l2["z2"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+  l2["nest"] = envy::lua_value{ envy::lua_variant{ std::move(l3) } };
+  l2["a2"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+
+  envy::lua_table l1;
+  l1["z1"] = envy::lua_value{ envy::lua_variant{ std::move(l2) } };
+  l1["a1"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(l1) } };
+  // Keys sorted at every level: a before nest before z
+  CHECK(envy::serialize_option_table(val) ==
+        "{a1=1,z1={a2=2,nest={a3=3,z3={a4=4,nest={a5=5,z5=5},z4=4}},z2=2}}");
+}
+
+TEST_CASE("serialize_option_table handles wide nested tables") {
+  // Multiple siblings at each level
+  envy::lua_table inner1;
+  inner1["i1a"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+  inner1["i1z"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+
+  envy::lua_table inner2;
+  inner2["i2m"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+
+  envy::lua_table inner3;
+  inner3["i3x"] = envy::lua_value{ envy::lua_variant{ int64_t{ 4 } } };
+  inner3["i3b"] = envy::lua_value{ envy::lua_variant{ int64_t{ 5 } } };
+
+  envy::lua_table outer;
+  outer["c"] = envy::lua_value{ envy::lua_variant{ std::move(inner2) } };
+  outer["a"] = envy::lua_value{ envy::lua_variant{ std::move(inner1) } };
+  outer["z"] = envy::lua_value{ envy::lua_variant{ std::move(inner3) } };
+  outer["m"] = envy::lua_value{ envy::lua_variant{ int64_t{ 6 } } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(outer) } };
+  CHECK(envy::serialize_option_table(val) ==
+        "{a={i1a=1,i1z=2},c={i2m=3},m=6,z={i3b=5,i3x=4}}");
+}
+
+TEST_CASE("serialize_option_table disambiguates string with equals from nested table") {
+  envy::lua_table table1;
+  table1["a"] = envy::lua_value{ envy::lua_variant{ std::string{ "b=c" } } };
+  envy::lua_value val1{ envy::lua_variant{ std::move(table1) } };
+  auto const result1{ envy::serialize_option_table(val1) };
+
+  envy::lua_table inner;
+  inner["b"] = envy::lua_value{ envy::lua_variant{ std::string{ "c" } } };
+  envy::lua_table table2;
+  table2["a"] = envy::lua_value{ envy::lua_variant{ std::move(inner) } };
+  envy::lua_value val2{ envy::lua_variant{ std::move(table2) } };
+  auto const result2{ envy::serialize_option_table(val2) };
+
+  CHECK(result1 == "{a=\"b=c\"}");
+  CHECK(result2 == "{a={b=\"c\"}}");
+  CHECK(result1 != result2);
+}
+
+TEST_CASE("serialize_option_table disambiguates string with braces from nested table") {
+  envy::lua_table table1;
+  table1["a"] = envy::lua_value{ envy::lua_variant{ std::string{ "b{c" } } };
+  envy::lua_value val1{ envy::lua_variant{ std::move(table1) } };
+  auto const result1{ envy::serialize_option_table(val1) };
+
+  envy::lua_table inner;
+  inner["b"] = envy::lua_value{ envy::lua_variant{ std::string{ "c" } } };
+  envy::lua_table table2;
+  table2["a"] = envy::lua_value{ envy::lua_variant{ std::move(inner) } };
+  envy::lua_value val2{ envy::lua_variant{ std::move(table2) } };
+  auto const result2{ envy::serialize_option_table(val2) };
+
+  CHECK(result1 == "{a=\"b{c\"}");
+  CHECK(result2 == "{a={b=\"c\"}}");
+  CHECK(result1 != result2);
+}
+
+TEST_CASE("serialize_option_table handles complex nested options") {
+  // Real-world: options = { arch = "arm64", compiler = { version = "13.2", flags = "-O2" }, debug = true }
+  envy::lua_table compiler;
+  compiler["flags"] = envy::lua_value{ envy::lua_variant{ std::string{ "-O2" } } };
+  compiler["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "13.2" } } };
+
+  envy::lua_table options;
+  options["arch"] = envy::lua_value{ envy::lua_variant{ std::string{ "arm64" } } };
+  options["compiler"] = envy::lua_value{ envy::lua_variant{ std::move(compiler) } };
+  options["debug"] = envy::lua_value{ envy::lua_variant{ true } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(options) } };
+  CHECK(envy::serialize_option_table(val) ==
+        "{arch=\"arm64\",compiler={flags=\"-O2\",version=\"13.2\"},debug=true}");
+}
+
+TEST_CASE("serialize_option_table mixed nesting with all types") {
+  envy::lua_table features;
+  features["ssl"] = envy::lua_value{ envy::lua_variant{ true } };
+  features["threads"] = envy::lua_value{ envy::lua_variant{ int64_t{ 8 } } };
+  features["timeout"] = envy::lua_value{ envy::lua_variant{ 30.5 } };
+
+  envy::lua_table config;
+  config["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "2.0" } } };
+  config["features"] = envy::lua_value{ envy::lua_variant{ std::move(features) } };
+  config["nil_val"] = envy::lua_value{ envy::lua_variant{ std::monostate{} } };
+
+  envy::lua_value val{ envy::lua_variant{ std::move(config) } };
+  auto const result{ envy::serialize_option_table(val) };
+
+  // Verify features are sorted within nested table
+  CHECK(result.find("features={ssl=true,threads=8,timeout=30.5}") != std::string::npos);
+  // Verify outer keys are sorted
+  CHECK(result.find("features=") < result.find("nil_val="));
+  CHECK(result.find("nil_val=") < result.find("version="));
 }

@@ -231,8 +231,8 @@ TEST_CASE("manifest::load parses table package with options") {
   REQUIRE(m.packages.size() == 1);
   CHECK(m.packages[0].identity == "arm.gcc@v2");
   REQUIRE(m.packages[0].options.size() == 2);
-  CHECK(m.packages[0].options.at("version") == "13.2.0");
-  CHECK(m.packages[0].options.at("target") == "arm-none-eabi");
+  CHECK(*m.packages[0].options.at("version").get<std::string>() == "13.2.0");
+  CHECK(*m.packages[0].options.at("target").get<std::string>() == "arm-none-eabi");
 }
 
 TEST_CASE("manifest::load parses mixed string and table packages") {
@@ -486,19 +486,25 @@ TEST_CASE("manifest::load errors on non-table options") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on non-string option value") {
+TEST_CASE("manifest::load accepts non-string option values") {
   char const *script{ R"(
     packages = {
       {
         recipe = "arm.gcc@v2", file = "/fake/r.lua",
-        options = { version = 123 }
+        options = { version = 123, debug = true, nested = { key = "value" } }
       }
     }
   )" };
 
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Option value for 'version' must be string",
-                       std::runtime_error);
+  auto const m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m.packages.size() == 1);
+  REQUIRE(m.packages[0].options.size() == 3);
+  CHECK(m.packages[0].options.at("version").is_integer());
+  CHECK(*m.packages[0].options.at("version").get<int64_t>() == 123);
+  CHECK(m.packages[0].options.at("debug").is_bool());
+  CHECK(*m.packages[0].options.at("debug").get<bool>() == true);
+  CHECK(m.packages[0].options.at("nested").is_table());
 }
 
 TEST_CASE("manifest::load allows same identity with different options") {
