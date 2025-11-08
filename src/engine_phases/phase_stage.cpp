@@ -259,10 +259,7 @@ void run_programmatic_stage(lua_State *lua,
 
   build_stage_context_table(lua, identity, options, &ctx);
 
-  // Stack: stage_function, ctx_table
-  lua_insert(lua, -2);
-  lua_insert(lua, -2);
-
+  // Stack: stage_function at -2, ctx_table at -1 (ready for pcall)
   if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };

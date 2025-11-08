@@ -451,10 +451,7 @@ void run_programmatic_fetch(lua_State *lua,
   build_fetch_context_table(lua, identity, options, &ctx);
 
   // Call fetch(ctx)
-  // Stack: fetch function (-2), context table (-1)
-  lua_insert(lua, -2);  // Swap so function is on top: context (-2), function (-1)
-  lua_insert(lua, -2);  // Back to: function (-2), context (-1)
-
+  // Stack: fetch function at -2, context table at -1 (ready for pcall)
   if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };

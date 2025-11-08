@@ -63,7 +63,8 @@ void ensure_directory(std::filesystem::path const &path) {
 }
 
 std::optional<std::string> strip_path_components(char const *path, int strip_count) {
-  if (strip_count <= 0 || !path) { return std::string(path); }
+  if (!path) { return std::nullopt; }
+  if (strip_count <= 0) { return std::string(path); }
 
   char const *p{ path };
   int components_stripped{ 0 };
