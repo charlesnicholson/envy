@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <random>
 #include <string>
@@ -26,7 +27,7 @@ std::vector<std::string> collect_files_recursive(std::filesystem::path const &ro
       files.push_back(rel.string());
     }
   }
-  std::sort(files.begin(), files.end());
+  std::ranges::sort(files);
   return files;
 }
 
