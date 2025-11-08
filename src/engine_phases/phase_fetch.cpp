@@ -229,9 +229,8 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
     return std::pair{ acc->second.lua_state.get(), acc->second.lock.get() };
   }();
 
-  if (!lock) {
-    tui::trace("phase fetch: no lock (cache hit), skipping");
-    return;
+  if (!lock) {  // Phase should only execute if we have work to do
+    throw std::runtime_error("BUG: fetch phase executing without lock for " + key);
   }
 
   if (lock->is_fetch_complete()) {
