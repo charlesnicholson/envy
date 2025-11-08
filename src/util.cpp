@@ -39,10 +39,15 @@ std::vector<unsigned char> util_hex_to_bytes(std::string const &hex) {
     int const hi{ util_hex_char_to_int(hex[i]) };
     int const lo{ util_hex_char_to_int(hex[i + 1]) };
 
-    if (hi < 0 || lo < 0) {
+    if (hi < 0) {
       throw std::runtime_error(
           std::string("util_hex_to_bytes: invalid character at position ") +
           std::to_string(i));
+    }
+    if (lo < 0) {
+      throw std::runtime_error(
+          std::string("util_hex_to_bytes: invalid character at position ") +
+          std::to_string(i + 1));
     }
 
     result.push_back(static_cast<unsigned char>((hi << 4) | lo));
