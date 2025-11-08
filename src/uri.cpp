@@ -1,5 +1,7 @@
 #include "uri.h"
 
+#include "util.h"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -214,6 +216,55 @@ std::filesystem::path uri_resolve_local_file_relative(
 #endif
 
   return resolved.lexically_normal();
+}
+
+std::string uri_extract_filename(std::string_view uri) {
+  if (uri.empty()) { return {}; }
+
+  // Strip query and fragment first
+  auto const clean_uri{ strip_query_and_fragment(uri) };
+  if (clean_uri.empty()) { return {}; }
+
+  // Find last slash or backslash (Windows paths)
+  auto const last_fwd_slash{ clean_uri.rfind('/') };
+  auto const last_back_slash{ clean_uri.rfind('\\') };
+
+  // Choose the rightmost slash, handling npos correctly
+  size_t last_slash{};
+  if (last_fwd_slash == std::string_view::npos && last_back_slash == std::string_view::npos) {
+    // No slash - entire string is filename (or just a domain/scheme)
+    return std::string{ clean_uri };
+  } else if (last_fwd_slash == std::string_view::npos) {
+    last_slash = last_back_slash;
+  } else if (last_back_slash == std::string_view::npos) {
+    last_slash = last_fwd_slash;
+  } else {
+    last_slash = std::max(last_fwd_slash, last_back_slash);
+  }
+
+  // Extract everything after last slash
+  auto const filename{ clean_uri.substr(last_slash + 1) };
+  if (filename.empty()) { return {}; }  // URI ends with slash
+
+  // URL decode: convert %XX sequences to actual characters
+  std::string decoded;
+  decoded.reserve(filename.size());
+
+  for (size_t i = 0; i < filename.size(); ++i) {
+    if (filename[i] == '%' && i + 2 < filename.size()) {
+      int const high{ util_hex_char_to_int(filename[i + 1]) };
+      int const low{ util_hex_char_to_int(filename[i + 2]) };
+
+      if (high >= 0 && low >= 0) {
+        decoded.push_back(static_cast<char>((high << 4) | low));
+        i += 2;
+        continue;
+      }
+    }
+    decoded.push_back(filename[i]);
+  }
+
+  return decoded;
 }
 
 }  // namespace envy

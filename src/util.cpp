@@ -19,26 +19,33 @@ std::string util_bytes_to_hex(void const *data, size_t length) {
   return result;
 }
 
+int util_hex_char_to_int(char c) {
+  if (c >= '0' && c <= '9') { return c - '0'; }
+  if (c >= 'a' && c <= 'f') { return c - 'a' + 10; }
+  if (c >= 'A' && c <= 'F') { return c - 'A' + 10; }
+  return -1;
+}
+
 std::vector<unsigned char> util_hex_to_bytes(std::string const &hex) {
   if (hex.size() % 2 != 0) {
     throw std::runtime_error("util_hex_to_bytes: hex string must have even length, got " +
                              std::to_string(hex.size()));
   }
 
-  auto constexpr nibble = [](char c) -> unsigned char {
-    if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
-    if (c >= 'a' && c <= 'f') return static_cast<unsigned char>(c - 'a' + 10);
-    if (c >= 'A' && c <= 'F') return static_cast<unsigned char>(c - 'A' + 10);
-    throw std::runtime_error(std::string("util_hex_to_bytes: invalid character: ") + c);
-  };
-
   std::vector<unsigned char> result;
   result.reserve(hex.size() / 2);
 
   for (size_t i{}; i < hex.size(); i += 2) {
-    char const hi{ hex[i] };
-    char const lo{ hex[i + 1] };
-    result.push_back(static_cast<unsigned char>((nibble(hi) << 4) | nibble(lo)));
+    int const hi{ util_hex_char_to_int(hex[i]) };
+    int const lo{ util_hex_char_to_int(hex[i + 1]) };
+
+    if (hi < 0 || lo < 0) {
+      throw std::runtime_error(
+          std::string("util_hex_to_bytes: invalid character at position ") +
+          std::to_string(i));
+    }
+
+    result.push_back(static_cast<unsigned char>((hi << 4) | lo));
   }
 
   return result;

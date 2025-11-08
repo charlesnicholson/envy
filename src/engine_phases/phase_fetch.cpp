@@ -3,6 +3,7 @@
 #include "fetch.h"
 #include "sha256.h"
 #include "tui.h"
+#include "uri.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "test_support.h"
 #endif
@@ -55,14 +56,18 @@ fetch_spec create_fetch_spec(std::string url,
                              std::filesystem::path const &fetch_dir,
                              std::unordered_set<std::string> &basenames,
                              std::string const &context) {
-  std::filesystem::path dest{ fetch_dir / std::filesystem::path(url).filename() };
-  std::string basename{ dest.filename().string() };
+  std::string basename{ uri_extract_filename(url) };
+  if (basename.empty()) {
+    throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
+                             context);
+  }
 
   if (basenames.contains(basename)) {
     throw std::runtime_error("Fetch filename collision: " + basename + " in " + context);
   }
   basenames.insert(basename);
 
+  std::filesystem::path dest{ fetch_dir / basename };
   return { .request = { .source = std::move(url), .destination = std::move(dest) },
            .sha256 = std::move(sha256) };
 }
@@ -71,44 +76,49 @@ fetch_spec create_fetch_spec(std::string url,
 std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                           std::filesystem::path const &fetch_dir,
                                           std::string const &key) {
-  std::vector<fetch_spec> specs;
-  std::unordered_set<std::string> basenames;
-
   int const fetch_type{ lua_type(lua, -1) };
 
   if (fetch_type == LUA_TSTRING) {
-    // Single URL string
     char const *url{ lua_tostring(lua, -1) };
-    specs.push_back(create_fetch_spec(url, "", fetch_dir, basenames, key));
-  } else if (fetch_type == LUA_TTABLE) {
-    lua_rawgeti(lua, -1, 1);
-    bool const is_array{ !lua_isnil(lua, -1) };
-    lua_pop(lua, 1);
+    std::string basename{ uri_extract_filename(url) };
+    if (basename.empty()) {
+      throw std::runtime_error("Cannot extract filename from URL: " + std::string(url) +
+                               " in " + key);
+    }
+    std::filesystem::path dest{ fetch_dir / basename };
+    return { { .request = { .source = url, .destination = std::move(dest) },
+               .sha256 = "" } };
+  }
 
-    if (is_array) {
-      // Array of tables
-      size_t const len{ lua_rawlen(lua, -1) };
-      for (size_t i = 1; i <= len; ++i) {
-        lua_rawgeti(lua, -1, i);
-        auto entry{ parse_table_entry(lua, key) };
-        specs.push_back(create_fetch_spec(std::move(entry.url),
-                                          std::move(entry.sha256),
-                                          fetch_dir,
-                                          basenames,
-                                          key));
-        lua_pop(lua, 1);
-      }
-    } else {
-      // Single table
-      auto entry{ parse_table_entry(lua, key) };
-      specs.push_back(create_fetch_spec(std::move(entry.url),
-                                        std::move(entry.sha256),
-                                        fetch_dir,
-                                        basenames,
-                                        key));
+  if (fetch_type != LUA_TTABLE) {
+    throw std::runtime_error("Fetch field must be string, table, or function in " + key);
+  }
+
+  std::vector<fetch_spec> specs;
+  std::unordered_set<std::string> basenames;
+
+  lua_rawgeti(lua, -1, 1);
+  bool const is_array{ !lua_isnil(lua, -1) };
+  lua_pop(lua, 1);
+
+  auto process_table_entry{ [&]() {
+    auto entry{ parse_table_entry(lua, key) };
+    specs.push_back(create_fetch_spec(std::move(entry.url),
+                                      std::move(entry.sha256),
+                                      fetch_dir,
+                                      basenames,
+                                      key));
+  } };
+
+  if (is_array) {
+    size_t const len{ lua_rawlen(lua, -1) };
+    for (size_t i = 1; i <= len; ++i) {
+      lua_rawgeti(lua, -1, i);
+      process_table_entry();
+      lua_pop(lua, 1);
     }
   } else {
-    throw std::runtime_error("Fetch field must be string, table, or function in " + key);
+    process_table_entry();
   }
 
   return specs;
@@ -122,43 +132,32 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
     auto const &spec{ specs[i] };
     auto const &dest{ spec.request.destination };
 
-    if (std::filesystem::exists(dest)) {
-      if (!spec.sha256.empty()) {
-        // SHA256 provided: verify cached file
-        try {
-          tui::trace("phase fetch: verifying cached file %s", dest.string().c_str());
-          sha256_verify(spec.sha256, sha256(dest));
-          tui::trace("phase fetch: cache hit for %s", dest.filename().string().c_str());
-          // Cache hit: skip download
-        } catch (std::exception const &e) {
-          // Cache miss: hash mismatch, delete and re-download
-          tui::trace("phase fetch: cache mismatch for %s, deleting",
-                     dest.string().c_str());
-          std::filesystem::remove(dest);
-          to_download.push_back(i);
-        }
-      } else {
-        // No SHA256: always re-download (no cache trust)
-        tui::trace("phase fetch: no SHA256 for %s, re-downloading (no cache)",
-                   dest.filename().string().c_str());
-        to_download.push_back(i);
-      }
-    } else {
-      // File doesn't exist: download
+    if (!std::filesystem::exists(dest)) {  // File doesn't exist: download
+      to_download.push_back(i);
+      continue;
+    }
+
+    if (spec.sha256.empty()) {  // No SHA256: always re-download (no cache trust)
+      tui::trace("phase fetch: no SHA256 for %s, re-downloading (no cache)",
+                 dest.filename().string().c_str());
+      std::filesystem::remove(dest);
+      to_download.push_back(i);
+      continue;
+    }
+
+    // File exists with SHA256 - verify cached version
+    try {
+      tui::trace("phase fetch: verifying cached file %s", dest.string().c_str());
+      sha256_verify(spec.sha256, sha256(dest));
+      tui::trace("phase fetch: cache hit for %s", dest.filename().string().c_str());
+    } catch (std::exception const &e) {  // hash mismatch, delete and re-download
+      tui::trace("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
+      std::filesystem::remove(dest);
       to_download.push_back(i);
     }
   }
 
   return to_download;
-}
-
-// Verify a downloaded file's SHA256 if provided.
-void verify_downloaded_file(fetch_spec const &spec, fetch_result const &result) {
-  if (spec.sha256.empty()) { return; }
-
-  tui::trace("phase fetch: verifying SHA256 for %s",
-             result.resolved_destination.string().c_str());
-  sha256_verify(spec.sha256, sha256(result.resolved_destination));
 }
 
 // Execute downloads and verification for specs that need downloading.
@@ -194,12 +193,16 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
       }
 #endif
 
-      try {
-        auto const *result{ std::get_if<fetch_result>(&results[i]) };
-        if (!result) { throw std::runtime_error("Unexpected result type"); }
-        verify_downloaded_file(specs[spec_idx], *result);
-      } catch (std::exception const &e) {
-        errors.push_back(specs[spec_idx].request.source + ": " + e.what());
+      if (!specs[spec_idx].sha256.empty()) {
+        try {
+          auto const *result{ std::get_if<fetch_result>(&results[i]) };
+          if (!result) { throw std::runtime_error("Unexpected result type"); }
+          tui::trace("phase fetch: verifying SHA256 for %s",
+                     result->resolved_destination.string().c_str());
+          sha256_verify(specs[spec_idx].sha256, sha256(result->resolved_destination));
+        } catch (std::exception const &e) {
+          errors.push_back(specs[spec_idx].request.source + ": " + e.what());
+        }
       }
     }
   }
@@ -257,11 +260,7 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
 
   if (fetch_specs.empty()) { return; }
 
-  // Determine which files need downloading based on cache
-  auto to_download{ determine_downloads_needed(fetch_specs) };
-
-  // Execute downloads and verification
-  execute_downloads(fetch_specs, to_download, key);
+  execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), key);
 
   lock->mark_fetch_complete();
   tui::trace("phase fetch: marked fetch complete");
