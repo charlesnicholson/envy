@@ -206,8 +206,7 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
                                archive_error_string(writer.handle));
     }
 
-    bool const skip_count{ full_path.filename().string().rfind("._", 0) == 0 };
-    if (archive_entry_filetype(entry) == AE_IFREG && !skip_count) { ++files_extracted; }
+    if (archive_entry_filetype(entry) == AE_IFREG) { ++files_extracted; }
   }
 
   return files_extracted;
