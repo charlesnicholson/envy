@@ -234,7 +234,9 @@ lua_value lua_stack_to_value(lua_State *L, int index) {
       return lua_value{ lua_variant{ std::move(table) } };
     }
 
-    default: return lua_value{};  // (function, userdata, thread, lightuserdata) return nil
+    default:
+      throw std::runtime_error(
+          std::string("Unsupported Lua type: ") + lua_typename(L, type));
   }
 }
 

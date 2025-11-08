@@ -107,7 +107,9 @@ fetch = {{
             # Verify fetch_dir has the 2 successful files (in asset cache, not recipe cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "assets" / "local.fetch_partial@v1"
-            self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+            self.assertTrue(
+                identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
+            )
             variant_dirs = list(identity_dir.glob("*-sha256-*"))
             self.assertEqual(
                 len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
@@ -215,7 +217,9 @@ fetch = {{
             # Verify fetch_dir has the first 2 files cached (in asset cache, not recipe cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
-            self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+            self.assertTrue(
+                identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
+            )
             variant_dirs = list(identity_dir.glob("*-sha256-*"))
             self.assertEqual(
                 len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
@@ -314,12 +318,16 @@ fetch = {{
 
             # Now find the fetch directory and corrupt one of the files
             variant_dirs = list(identity_dir.glob("*-sha256-*"))
-            self.assertEqual(len(variant_dirs), 1, f"Expected 1 variant dir: {variant_dirs}")
+            self.assertEqual(
+                len(variant_dirs), 1, f"Expected 1 variant dir: {variant_dirs}"
+            )
             fetch_dir = variant_dirs[0] / "fetch"
 
             # Corrupt simple.lua (replace with garbage that won't match SHA256)
             corrupted_file = fetch_dir / "simple.lua"
-            corrupted_file.write_text("GARBAGE CONTENT THAT WILL FAIL SHA256 VERIFICATION")
+            corrupted_file.write_text(
+                "GARBAGE CONTENT THAT WILL FAIL SHA256 VERIFICATION"
+            )
 
             # Run 2: Should detect corruption and re-download
             result = subprocess.run(
@@ -339,18 +347,25 @@ fetch = {{
 
             # Verify that corruption was detected and file re-downloaded
             stderr_lower = result.stderr.lower()
-            self.assertIn("cache mismatch", stderr_lower,
-                         f"Expected cache mismatch detection: {result.stderr}")
+            self.assertIn(
+                "cache mismatch",
+                stderr_lower,
+                f"Expected cache mismatch detection: {result.stderr}",
+            )
 
             # Verify asset completed successfully (entry-level marker exists)
             # Note: fetch/ is deleted after successful asset completion
             entry_complete = variant_dirs[0] / "envy-complete"
-            self.assertTrue(entry_complete.exists(),
-                          "Entry-level completion marker should exist after successful asset install")
+            self.assertTrue(
+                entry_complete.exists(),
+                "Entry-level completion marker should exist after successful asset install",
+            )
 
             # Verify asset directory exists with installed files
             asset_dir = variant_dirs[0] / "asset"
-            self.assertTrue(asset_dir.exists(), "Asset directory should exist after completion")
+            self.assertTrue(
+                asset_dir.exists(), "Asset directory should exist after completion"
+            )
 
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
@@ -413,8 +428,12 @@ fetch = {{
 
             # Copy actual test files to cache (they'll match the computed hashes)
             shutil.copy("test_data/lua/simple.lua", fetch_dir / "simple.lua")
-            shutil.copy("test_data/lua/print_single.lua", fetch_dir / "print_single.lua")
-            shutil.copy("test_data/lua/print_multiple.lua", fetch_dir / "print_multiple.lua")
+            shutil.copy(
+                "test_data/lua/print_single.lua", fetch_dir / "print_single.lua"
+            )
+            shutil.copy(
+                "test_data/lua/print_multiple.lua", fetch_dir / "print_multiple.lua"
+            )
 
             # Ensure NO completion marker exists
             completion_marker = fetch_dir / "envy-complete"
@@ -440,18 +459,26 @@ fetch = {{
             stderr_lower = result.stderr.lower()
 
             # Should see cache hits for files with SHA256
-            self.assertIn("cache hit", stderr_lower,
-                         f"Expected cache hits for verified files: {result.stderr}")
+            self.assertIn(
+                "cache hit",
+                stderr_lower,
+                f"Expected cache hits for verified files: {result.stderr}",
+            )
 
             # Should still download print_multiple.lua (no SHA256 = can't trust)
-            self.assertIn("downloading", stderr_lower,
-                         f"Expected download for file without SHA256: {result.stderr}")
+            self.assertIn(
+                "downloading",
+                stderr_lower,
+                f"Expected download for file without SHA256: {result.stderr}",
+            )
 
             # Verify asset completed successfully (entry-level marker exists)
             # Note: fetch/ and its marker are deleted after successful asset completion
             entry_complete = variant_dirs[0] / "envy-complete"
-            self.assertTrue(entry_complete.exists(),
-                          "Entry-level completion marker should exist after successful asset install")
+            self.assertTrue(
+                entry_complete.exists(),
+                "Entry-level completion marker should exist after successful asset install",
+            )
 
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)

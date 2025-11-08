@@ -1140,3 +1140,42 @@ TEST_CASE("lua_value::get<T>() pointer remains valid") {
   CHECK(ptr1 == ptr2);  // Same address
   CHECK(*ptr1 == "persistent");
 }
+
+TEST_CASE("lua_stack_to_value throws on function type") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "func = function() return 42 end"));
+  lua_getglobal(L.get(), "func");
+  CHECK(lua_isfunction(L.get(), -1));
+
+  CHECK_THROWS_WITH_AS(envy::lua_stack_to_value(L.get(), -1),
+                       "Unsupported Lua type: function",
+                       std::runtime_error);
+}
+
+TEST_CASE("lua_stack_to_value throws on function in table") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, R"(
+    t = {
+      name = "test",
+      func = function() return 42 end
+    }
+  )"));
+  lua_getglobal(L.get(), "t");
+
+  // Table extraction itself doesn't throw (functions are skipped during iteration)
+  // But if we try to serialize a value containing a function, it would fail at serialize time
+  // Since lua_stack_to_value only processes string keys and recursively converts values,
+  // and our default case now throws, this should catch it
+
+  // Actually, looking at the code, lua_stack_to_value processes tables with lua_next,
+  // and only processes string keys. When it encounters a function value, it calls
+  // lua_stack_to_value recursively, which will hit the default case and throw.
+
+  CHECK_THROWS_WITH_AS(envy::lua_stack_to_value(L.get(), -1),
+                       "Unsupported Lua type: function",
+                       std::runtime_error);
+}

@@ -174,11 +174,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
             f"Expected 3 recipes (parent + 2 variants), got: {result.stdout}",
         )
 
-        # Verify all present with options in keys
+        # Verify all present with options in keys (strings are quoted)
         output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.options_parent@v1", output)
-        self.assertIn("local.with_options@v1{variant=bar}", output)
-        self.assertIn("local.with_options@v1{variant=foo}", output)
+        self.assertIn('local.with_options@v1{variant="bar"}', output)
+        self.assertIn('local.with_options@v1{variant="foo"}', output)
 
     def test_deep_chain_dependency(self):
         """Engine resolves deep dependency chain (A->B->C->D->E)."""

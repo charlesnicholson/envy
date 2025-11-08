@@ -33,7 +33,7 @@ struct recipe_spec {
 
   std::string identity;  // "namespace.name@version"
   source_t source;
-  std::unordered_map<std::string, std::string> options;
+  std::unordered_map<std::string, lua_value> options;
   std::optional<phase> needed_by;  // Phase dependency annotation
 
   static recipe_spec parse(lua_value const &lua_val,
@@ -44,5 +44,8 @@ struct recipe_spec {
   bool is_git() const;
   bool has_fetch_function() const;
 };
+
+// Serialize lua_value to canonical string for stable recipe option hashing
+std::string serialize_option_table(lua_value const &val);
 
 }  // namespace envy
