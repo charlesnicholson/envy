@@ -231,7 +231,8 @@ std::string uri_extract_filename(std::string_view uri) {
 
   // Choose the rightmost slash, handling npos correctly
   size_t last_slash{};
-  if (last_fwd_slash == std::string_view::npos && last_back_slash == std::string_view::npos) {
+  if (last_fwd_slash == std::string_view::npos &&
+      last_back_slash == std::string_view::npos) {
     // No slash - entire string is filename (or just a domain/scheme)
     return std::string{ clean_uri };
   } else if (last_fwd_slash == std::string_view::npos) {

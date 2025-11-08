@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "engine_phases/create_recipe_nodes.h"
 #include "engine_phases/graph_state.h"
 #include "tui.h"
 
