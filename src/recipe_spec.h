@@ -39,13 +39,13 @@ struct recipe_spec {
   static recipe_spec parse(lua_value const &lua_val,
                            std::filesystem::path const &base_path);
 
+  // Serialize lua_value to canonical string for stable recipe option hashing
+  static std::string serialize_option_table(lua_value const &val);
+
   bool is_remote() const;
   bool is_local() const;
   bool is_git() const;
   bool has_fetch_function() const;
 };
-
-// Serialize lua_value to canonical string for stable recipe option hashing
-std::string serialize_option_table(lua_value const &val);
 
 }  // namespace envy

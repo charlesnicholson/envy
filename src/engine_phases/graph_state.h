@@ -2,7 +2,6 @@
 
 #include "cache.h"
 #include "lua_util.h"
-#include "recipe_spec.h"
 #include "tui.h"
 
 #include <tbb/concurrent_hash_map.h>
@@ -14,12 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
-
-extern "C" {
-#include "lua.h"
-}
 
 namespace envy {
 
