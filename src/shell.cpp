@@ -79,7 +79,7 @@ class fd_cleanup {
 
 std::string get_shell_path() {
   if (char const *bash_env{ ::getenv("BASH") }) { return bash_env; }
-  return "/bin/bash";
+  return "/usr/bin/env bash";
 }
 
 std::string create_temp_script(std::string_view script, bool disable_strict) {
@@ -213,11 +213,27 @@ shell_result wait_for_child(pid_t child) {
     }
   }
 
-  std::vector<char *> argv{ const_cast<char *>(shell_arg.data()),
-                            const_cast<char *>(script_arg.data()),
-                            nullptr };
+  // Split shell_arg by spaces to handle "/usr/bin/env bash"
+  std::vector<std::string> shell_parts;
+  std::string_view shell_view{ shell_arg };
+  size_t start{ 0 };
+  while (start < shell_view.size()) {
+    size_t const end{ shell_view.find(' ', start) };
+    if (end == std::string_view::npos) {
+      shell_parts.emplace_back(shell_view.substr(start));
+      break;
+    }
+    shell_parts.emplace_back(shell_view.substr(start, end - start));
+    start = end + 1;
+  }
 
-  ::execve(shell_arg.c_str(), argv.data(), envp.pointers.data());
+  std::vector<char *> argv;
+  argv.reserve(shell_parts.size() + 2);
+  for (auto &part : shell_parts) { argv.push_back(part.data()); }
+  argv.push_back(const_cast<char *>(script_arg.data()));
+  argv.push_back(nullptr);
+
+  ::execve(shell_parts[0].c_str(), argv.data(), envp.pointers.data());
   std::perror("execve");
   _exit(kChildErrorExit);
 }
