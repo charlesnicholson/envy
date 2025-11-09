@@ -5,8 +5,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
-#include <random>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -37,15 +35,6 @@ std::vector<std::string> run_collect(std::string_view script,
   REQUIRE(result.exit_code == 0);
   REQUIRE(!result.signaled);
   return lines;
-}
-
-std::string random_suffix() {
-  static std::mt19937_64 rng{ std::random_device{}() };
-  std::uniform_int_distribution<uint64_t> dist;
-  auto value{ dist(rng) };
-  std::ostringstream oss;
-  oss << std::hex << value;
-  return oss.str();
 }
 
 }  // namespace

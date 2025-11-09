@@ -10,7 +10,6 @@
 namespace envy {
 
 using shell_env_t = std::unordered_map<std::string, std::string>;
-using shell_output_cb_t = std::function<void(std::string_view)>;
 
 struct shell_result {
   int exit_code;
@@ -22,7 +21,7 @@ struct shell_invocation {
   std::function<void(std::string_view)> on_output_line;
   std::optional<std::filesystem::path> cwd;
   shell_env_t env;
-  bool disable_strict{false};  // Disable default "set -euo pipefail"
+  bool disable_strict{ false };  // Disable default "set -euo pipefail"
 };
 
 shell_env_t shell_getenv();
