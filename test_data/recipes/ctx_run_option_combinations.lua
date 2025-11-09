@@ -32,34 +32,34 @@ stage = function(ctx)
     ]], {cwd = "dir1", env = {VAR1 = "value1"}})
   end
 
-  -- Combination 2: cwd + disable_strict
+  -- Combination 2: cwd with a failing command in the middle
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo2_pwd.txt -Value (Get-Location).Path
       cmd /c exit 1
       Set-Content -Path combo2_continued.txt -Value "After false"
-    ]], {cwd = "dir2", disable_strict = true, shell = "powershell"})
+    ]], {cwd = "dir2", shell = "powershell"})
   else
     ctx.run([[
       pwd > combo2_pwd.txt
-      false
+      false || true
       echo "After false" > combo2_continued.txt
-    ]], {cwd = "dir2", disable_strict = true})
+    ]], {cwd = "dir2"})
   end
 
-  -- Combination 3: env + disable_strict (default cwd)
+  -- Combination 3: env with a failing command (default cwd)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo3_env.txt -Value ("VAR2=" + $env:VAR2)
       cmd /c exit 1
       Add-Content -Path combo3_env.txt -Value "Continued"
-    ]], {env = {VAR2 = "value2"}, disable_strict = true, shell = "powershell"})
+    ]], {env = {VAR2 = "value2"}, shell = "powershell"})
   else
     ctx.run([[
       echo "VAR2=$VAR2" > combo3_env.txt
-      false
+      false || true
       echo "Continued" >> combo3_env.txt
-    ]], {env = {VAR2 = "value2"}, disable_strict = true})
+    ]], {env = {VAR2 = "value2"}})
   end
 
   -- Combination 4: Just env
@@ -84,16 +84,16 @@ stage = function(ctx)
     ]], {cwd = "dir1"})
   end
 
-  -- Combination 6: Just disable_strict
+  -- Combination 6: Failing command without any other options
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       cmd /c exit 1
-      Set-Content -Path combo6_continued.txt -Value "Standalone disable_strict"
-    ]], {disable_strict = true, shell = "powershell"})
+      Set-Content -Path combo6_continued.txt -Value "Standalone failure scenario"
+    ]], {shell = "powershell"})
   else
     ctx.run([[
-      false
-      echo "Standalone disable_strict" > combo6_continued.txt
-    ]], {disable_strict = true})
+      false || true
+      echo "Standalone failure scenario" > combo6_continued.txt
+    ]])
   end
 end

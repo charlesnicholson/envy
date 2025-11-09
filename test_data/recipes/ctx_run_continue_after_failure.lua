@@ -1,5 +1,5 @@
--- Test ctx.run() with disable_strict allows failures
-identity = "local.ctx_run_disable_strict@v1"
+-- Test ctx.run() continues after a failing command
+identity = "local.ctx_run_continue_after_failure@v1"
 
 fetch = {
   url = "test_data/archives/test.tar.gz",
@@ -9,16 +9,16 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- With disable_strict, this should continue
+  -- Script should keep running even if an intermediate command fails
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       cmd /c exit 1
       Set-Content -Path continued.txt -Value "This executes even after false"
-    ]], {disable_strict = true, shell = "powershell"})
+    ]], {shell = "powershell"})
   else
     ctx.run([[
-      false
+      false || true
       echo "This executes even after false" > continued.txt
-    ]], {disable_strict = true})
+    ]])
   end
 end

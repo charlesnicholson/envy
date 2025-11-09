@@ -251,13 +251,15 @@ class TestCtxRun(unittest.TestCase):
 
     # ===== Strict Mode Tests =====
 
-    def test_disable_strict(self):
-        """ctx.run() with disable_strict allows failures."""
+    def test_continue_after_failure(self):
+        """ctx.run() continues execution after a failing command."""
         self.run_recipe(
-            "local.ctx_run_disable_strict@v1",
-            "test_data/recipes/ctx_run_disable_strict.lua",
+            "local.ctx_run_continue_after_failure@v1",
+            "test_data/recipes/ctx_run_continue_after_failure.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_disable_strict@v1")
+        asset_path = self.get_asset_path(
+            "local.ctx_run_continue_after_failure@v1"
+        )
         assert asset_path
         self.assertTrue((asset_path / "continued.txt").exists())
 
