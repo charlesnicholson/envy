@@ -139,7 +139,7 @@ std::wstring normalize_newlines(std::wstring_view input) {
 }
 
 std::wstring build_script_contents(std::string_view script, shell_run_cfg const &inv) {
-  std::wstring const normalized{ normalize_newlines(utf8_to_wstring(script)) };
+  std::wstring normalized{ normalize_newlines(utf8_to_wstring(script)) };
   if (!normalized.empty() && !ends_with_crlf(normalized)) { normalized.append(L"\r\n"); }
 
   std::wstring content{};
@@ -151,7 +151,7 @@ std::wstring build_script_contents(std::string_view script, shell_run_cfg const 
     content.append(normalized);
   }
 
-  if (!content.empty() && !ends_with_crlf(content)) { content.append(L"\r\n"); }
+  if (!ends_with_crlf(content)) { content.append(L"\r\n"); }
   return content;
 }
 

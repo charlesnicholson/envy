@@ -34,7 +34,7 @@ stage = function(ctx)
       pwd > all_opts_pwd.txt
       echo "MY_VAR=$MY_VAR" > all_opts_env.txt
       echo "ANOTHER=$ANOTHER" >> all_opts_env.txt
-      false
+      false || true
       echo "Continued after false" > all_opts_continued.txt
     ]], {
       cwd = "subdir",
