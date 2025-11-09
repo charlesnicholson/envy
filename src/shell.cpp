@@ -54,20 +54,26 @@ class fd_cleanup {
   explicit fd_cleanup(int fd) : fd_{ fd } {}
   ~fd_cleanup() {
     if (fd_ == -1) { return; }
-    while (::close(fd_) == -1 && errno == EINTR) {}
+    close_with_retry();
   }
 
   fd_cleanup(fd_cleanup const &) = delete;
   fd_cleanup &operator=(fd_cleanup const &) = delete;
 
   int get() const { return fd_; }
-  int release() {
-    int const fd = fd_;
+  void release() {
+    if (fd_ == -1) { return; }
+    close_with_retry();
     fd_ = -1;
-    return fd;
   }
 
  private:
+  void close_with_retry() {
+    for (int attempts{ 0 }; attempts < 3 && ::close(fd_) == -1; ++attempts) {
+      if (errno != EINTR) { break; }
+    }
+  }
+
   int fd_{ -1 };
 };
 
@@ -122,15 +128,15 @@ void stream_pipe_lines(int fd, std::function<void(std::string_view)> const &call
   pending.reserve(kLinePendingReserve);
   std::string chunk(kPipeBufferSize, '\0');
 
-  while (true) {
-    ssize_t const read_bytes{ ::read(fd, chunk.data(), chunk.size()) };
-    if (read_bytes == 0) { break; }
+  ssize_t read_bytes;
+  while ((read_bytes = ::read(fd, chunk.data(), chunk.size())) != 0) {
     if (read_bytes == -1) {
       if (errno == EINTR) { continue; }
       throw std::system_error(errno, std::generic_category(), "read failed");
     }
 
     pending.append(chunk.data(), static_cast<size_t>(read_bytes));
+
     size_t newline{ 0 };
     while ((newline = pending.find('\n')) != std::string::npos) {
       std::string line{ pending.substr(0, newline) };
@@ -182,6 +188,40 @@ shell_result wait_for_child(pid_t child) {
   return { .exit_code = status, .signaled = false, .signal = 0 };
 }
 
+[[noreturn]] void exec_child_process(fd_cleanup &read_end,
+                                     fd_cleanup &write_end,
+                                     std::optional<std::filesystem::path> const &cwd,
+                                     std::string const &shell_arg,
+                                     std::string const &script_arg,
+                                     envp_storage const &envp) {
+  read_end.release();
+
+  int const null_fd{ ::open("/dev/null", O_RDONLY) };
+  if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
+      ::dup2(write_end.get(), STDOUT_FILENO) == -1 ||
+      ::dup2(write_end.get(), STDERR_FILENO) == -1) {
+    std::perror("dup2");
+    _exit(kChildErrorExit);
+  }
+  if (null_fd != STDIN_FILENO) { ::close(null_fd); }
+  write_end.release();
+
+  if (cwd) {
+    if (::chdir(cwd->c_str()) == -1) {
+      std::perror("chdir");
+      _exit(kChildErrorExit);
+    }
+  }
+
+  std::vector<char *> argv{ const_cast<char *>(shell_arg.data()),
+                            const_cast<char *>(script_arg.data()),
+                            nullptr };
+
+  ::execve(shell_arg.c_str(), argv.data(), envp.pointers.data());
+  std::perror("execve");
+  _exit(kChildErrorExit);
+}
+
 }  // namespace
 
 shell_env_t shell_getenv() {
@@ -221,34 +261,11 @@ shell_result shell_run(std::string_view script, shell_invocation const &invocati
     throw std::system_error(errno, std::generic_category(), "fork failed");
   }
 
-  if (child == 0) {  // Child process
-    ::close(read_end.release());
-
-    int const null_fd{ ::open("/dev/null", O_RDONLY) };
-    if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
-        ::dup2(write_end.get(), STDOUT_FILENO) == -1 ||
-        ::dup2(write_end.get(), STDERR_FILENO) == -1) {
-      std::perror("dup2");
-      _exit(kChildErrorExit);
-    }
-    if (null_fd != STDIN_FILENO) { ::close(null_fd); }
-    ::close(write_end.release());
-
-    if (invocation.cwd) {
-      if (::chdir(invocation.cwd->c_str()) == -1) {
-        std::perror("chdir");
-        _exit(kChildErrorExit);
-      }
-    }
-
-    std::vector<char *> argv{ shell_arg.data(), script_arg.data(), nullptr };
-
-    ::execve(shell_arg.c_str(), argv.data(), envp.pointers.data());
-    std::perror("execve");
-    _exit(kChildErrorExit);
+  if (child == 0) {
+    exec_child_process(read_end, write_end, invocation.cwd, shell_arg, script_arg, envp);
   }
 
-  ::close(write_end.release());  // Parent: close write end and stream output
+  write_end.release();  // Parent: close write end and stream output
 
   shell_result result;
   try {
