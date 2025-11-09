@@ -9,14 +9,23 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create a subdirectory
-  ctx.run([[
-    mkdir -p deep/nested/dir
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path "deep/nested/dir" | Out-Null
+    ]], { shell = "powershell" })
 
-  -- Run from subdirectory, use .. to go back
-  ctx.run([[
-    pwd > pwd_from_parent.txt
-    echo "Using parent dir" > parent_marker.txt
-  ]], {cwd = "deep/nested/.."})
+    ctx.run([[
+      Set-Content -Path pwd_from_parent.txt -Value (Get-Location).Path
+      Set-Content -Path parent_marker.txt -Value "Using parent dir"
+    ]], {cwd = "deep/nested/..", shell = "powershell"})
+  else
+    ctx.run([[
+      mkdir -p deep/nested/dir
+    ]])
+
+    ctx.run([[
+      pwd > pwd_from_parent.txt
+      echo "Using parent dir" > parent_marker.txt
+    ]], {cwd = "deep/nested/.."})
+  end
 end

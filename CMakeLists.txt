@@ -387,7 +387,7 @@ add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
     COMMAND envy_unit_tests
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
-    DEPENDS envy_unit_tests
+    DEPENDS envy_unit_tests ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running unit tests"
     VERBATIM
@@ -411,6 +411,7 @@ add_custom_command(
         envy
         envy_functional_tester
         ${ENVY_FUNCTIONAL_TEST_SOURCES}
+        ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running functional tests"
     VERBATIM

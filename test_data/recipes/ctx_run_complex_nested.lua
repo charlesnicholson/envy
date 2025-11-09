@@ -9,37 +9,61 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create a complex nested structure
-  ctx.run([[
-    # Create nested directories and files
-    mkdir -p level1/{level2a,level2b}/{level3a,level3b}
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      $level2 = @("level2a", "level2b")
+      $level3 = @("level3a", "level3b")
+      foreach ($l2 in $level2) {
+        foreach ($l3 in $level3) {
+          $path = Join-Path -Path "level1" -ChildPath (Join-Path $l2 $l3)
+          New-Item -ItemType Directory -Force -Path $path | Out-Null
+          Set-Content -Path (Join-Path $path "data.txt") -Value ("Content in " + $path)
+        }
+      }
 
-    # Populate with files
-    for l2 in level1/level2*; do
-      for l3 in $l2/level3*; do
-        echo "Content in $l3" > "$l3/data.txt"
+      Get-ChildItem -Path level1 -Recurse -Filter data.txt | ForEach-Object {
+        Add-Content -Path found_files.txt -Value ("Found in " + $_.Directory.Name)
+      }
+
+      $dirCount = ([System.IO.Directory]::GetDirectories("level1", "*", [System.IO.SearchOption]::AllDirectories).Count + 1)
+      $fileCount = [System.IO.Directory]::GetFiles("level1", "*", [System.IO.SearchOption]::AllDirectories).Count
+      Set-Content -Path summary.txt -Value ("Total directories: " + $dirCount)
+      Add-Content -Path summary.txt -Value ("Total files: " + $fileCount)
+
+      foreach ($dir in Get-ChildItem -Path level1 -Directory) {
+        $count = (Get-ChildItem -Path $dir.FullName -Recurse -File).Count
+        if ($count -gt 0) {
+          Add-Content -Path dir_summary.txt -Value ("Directory " + $dir.FullName + " has " + $count + " files")
+        }
+      }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      mkdir -p level1/{level2a,level2b}/{level3a,level3b}
+
+      for l2 in level1/level2*; do
+        for l3 in $l2/level3*; do
+          echo "Content in $l3" > "$l3/data.txt"
+        done
       done
-    done
 
-    # Process the tree
-    find level1 -type f -name "data.txt" | while read file; do
-      dirname=$(dirname "$file")
-      basename=$(basename "$dirname")
-      echo "Found in $basename" >> found_files.txt
-    done
+      find level1 -type f -name "data.txt" | while read file; do
+        dirname=$(dirname "$file")
+        basename=$(basename "$dirname")
+        echo "Found in $basename" >> found_files.txt
+      done
 
-    # Create a summary
-    echo "Total directories: $(find level1 -type d | wc -l)" > summary.txt
-    echo "Total files: $(find level1 -type f | wc -l)" >> summary.txt
+      echo "Total directories: $(find level1 -type d | wc -l)" > summary.txt
+      echo "Total files: $(find level1 -type f | wc -l)" >> summary.txt
 
-    # Nested conditionals and loops
-    for dir in level1/level2*; do
-      if [ -d "$dir" ]; then
-        count=$(find "$dir" -type f | wc -l)
-        if [ $count -gt 0 ]; then
-          echo "Directory $dir has $count files" >> dir_summary.txt
+      for dir in level1/level2*; do
+        if [ -d "$dir" ]; then
+          count=$(find "$dir" -type f | wc -l)
+          if [ $count -gt 0 ]; then
+            echo "Directory $dir has $count files" >> dir_summary.txt
+          fi
         fi
-      fi
-    done
-  ]])
+      done
+    ]])
+  end
 end

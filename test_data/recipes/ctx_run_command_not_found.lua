@@ -10,7 +10,13 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   -- This should fail because nonexistent_command doesn't exist
-  ctx.run([[
-    nonexistent_command_xyz123
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[ 
+      nonexistent_command_xyz123
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[ 
+      nonexistent_command_xyz123
+    ]])
+  end
 end

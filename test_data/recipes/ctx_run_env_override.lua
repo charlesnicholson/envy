@@ -10,7 +10,13 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   -- Override a variable (USER is typically set)
-  ctx.run([[
-    echo "USER=$USER" > overridden_user.txt
-  ]], {env = {USER = "test_override_user"}})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path overridden_user.txt -Value ("USER=" + $env:USER)
+    ]], {env = {USER = "test_override_user"}, shell = "powershell"})
+  else
+    ctx.run([[
+      echo "USER=$USER" > overridden_user.txt
+    ]], {env = {USER = "test_override_user"}})
+  end
 end

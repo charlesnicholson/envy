@@ -9,11 +9,19 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Run multiple commands in sequence
-  ctx.run([[
-    echo "Command 1" > cmd1.txt
-    echo "Command 2" > cmd2.txt
-    echo "Command 3" > cmd3.txt
-    cat cmd1.txt cmd2.txt cmd3.txt > all_cmds.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path cmd1.txt -Value "Command 1"
+      Set-Content -Path cmd2.txt -Value "Command 2"
+      Set-Content -Path cmd3.txt -Value "Command 3"
+      Get-Content cmd1.txt, cmd2.txt, cmd3.txt | Set-Content -Path all_cmds.txt
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Command 1" > cmd1.txt
+      echo "Command 2" > cmd2.txt
+      echo "Command 3" > cmd3.txt
+      cat cmd1.txt cmd2.txt cmd3.txt > all_cmds.txt
+    ]])
+  end
 end

@@ -9,17 +9,19 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Cleanup unwanted files
-  ctx.run([[
-    # Remove any backup files
-    find . -name "*.bak" -delete
-
-    # Remove temporary files
-    rm -f *.tmp
-
-    # Clean up empty directories
-    find . -type d -empty -delete
-
-    echo "Cleanup complete" > cleanup_log.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Get-ChildItem -Recurse -Filter *.bak | Remove-Item -Force -ErrorAction SilentlyContinue
+      Get-ChildItem -Recurse -Filter *.tmp | Remove-Item -Force -ErrorAction SilentlyContinue
+      Get-ChildItem -Recurse -Directory | Where-Object { $_.GetFileSystemInfos().Count -eq 0 } | Remove-Item -Force -ErrorAction SilentlyContinue
+      Set-Content -Path cleanup_log.txt -Value "Cleanup complete"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      find . -name "*.bak" -delete
+      rm -f *.tmp
+      find . -type d -empty -delete
+      echo "Cleanup complete" > cleanup_log.txt
+    ]])
+  end
 end

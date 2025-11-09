@@ -9,22 +9,31 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Generate files programmatically
-  ctx.run([[
-    # Generate a header file
-    cat > generated.h <<EOF
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+$header = @"
+#ifndef GENERATED_H
+#define GENERATED_H
+#define VERSION \"1.0.0\"
+#endif
+"@
+Set-Content -Path generated.h -Value $header
+Set-Content -Path generated.bat -Value "@echo off`necho Generated script"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+cat > generated.h <<EOF
 #ifndef GENERATED_H
 #define GENERATED_H
 #define VERSION "1.0.0"
 #endif
 EOF
 
-    # Generate a simple script
-    cat > generated.sh <<'SCRIPT'
+cat > generated.sh <<'SCRIPT'
 #!/usr/bin/env bash
 echo "Generated script"
 SCRIPT
-
-    chmod +x generated.sh
-  ]])
+chmod +x generated.sh
+    ]])
+  end
 end

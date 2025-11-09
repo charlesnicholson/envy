@@ -9,9 +9,14 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Strict mode pipefail should catch failure in middle of pipe
-  ctx.run([[
-    set -euo pipefail
-    echo "Start" | false | cat > should_fail.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      cmd /c "echo Start | cmd /c exit 1 | cat > should_fail.txt"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      set -euo pipefail
+      echo "Start" | false | cat > should_fail.txt
+    ]])
+  end
 end

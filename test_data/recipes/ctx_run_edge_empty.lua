@@ -9,11 +9,15 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Empty script should succeed (no commands to run)
-  ctx.run([[]])
-
-  -- Just to verify we got here
-  ctx.run([[
-    echo "After empty script" > after_empty.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[]], { shell = "powershell" })
+    ctx.run([[
+      Set-Content -Path after_empty.txt -Value "After empty script"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[]])
+    ctx.run([[
+      echo "After empty script" > after_empty.txt
+    ]])
+  end
 end

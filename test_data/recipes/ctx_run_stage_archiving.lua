@@ -10,16 +10,30 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   -- Create archives
-  ctx.run([[
-    # Create a directory structure
-    mkdir -p archive_test/subdir
-    echo "file1" > archive_test/file1.txt
-    echo "file2" > archive_test/subdir/file2.txt
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path "archive_test/subdir" | Out-Null
+      Set-Content -Path archive_test/file1.txt -Value "file1"
+      Set-Content -Path archive_test/subdir/file2.txt -Value "file2"
+      Compress-Archive -Path archive_test -DestinationPath archive_test.zip -Force
+      if (Test-Path archive_test.zip) {
+        Set-Content -Path archive_log.txt -Value "Archive created"
+      } else {
+        exit 1
+      }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      # Create a directory structure
+      mkdir -p archive_test/subdir
+      echo "file1" > archive_test/file1.txt
+      echo "file2" > archive_test/subdir/file2.txt
 
-    # Create tar archive
-    tar czf archive_test.tar.gz archive_test/
+      # Create tar archive
+      tar czf archive_test.tar.gz archive_test/
 
-    # Verify archive was created
-    test -f archive_test.tar.gz && echo "Archive created" > archive_log.txt
-  ]])
+      # Verify archive was created
+      test -f archive_test.tar.gz && echo "Archive created" > archive_log.txt
+    ]])
+  end
 end

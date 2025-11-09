@@ -9,11 +9,19 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Generate large output
-  ctx.run([[
-    for i in {1..100}; do
-      echo "Output line $i with some content to make it longer"
-    done
-    echo "Large output test complete" > large_output_marker.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      for ($i = 1; $i -le 100; $i++) {
+        Write-Output "Output line $i with some content to make it longer"
+      }
+      Set-Content -Path large_output_marker.txt -Value "Large output test complete"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      for i in {1..100}; do
+        echo "Output line $i with some content to make it longer"
+      done
+      echo "Large output test complete" > large_output_marker.txt
+    ]])
+  end
 end

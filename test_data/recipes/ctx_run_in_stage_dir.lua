@@ -9,10 +9,19 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Verify we're in the stage directory
-  ctx.run([[
-    pwd > pwd_default.txt
-    ls > ls_output.txt
-    test -f file1.txt && echo "Found file1.txt from archive" > stage_verification.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path pwd_default.txt -Value (Get-Location).Path
+      Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path ls_output.txt
+      if (Test-Path file1.txt) {
+        Set-Content -Path stage_verification.txt -Value "Found file1.txt from archive"
+      }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      pwd > pwd_default.txt
+      ls > ls_output.txt
+      test -f file1.txt && echo "Found file1.txt from archive" > stage_verification.txt
+    ]])
+  end
 end

@@ -9,11 +9,20 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Typical build preparation tasks
-  ctx.run([[
-    mkdir -p build
-    cd build
-    echo "# Build configuration" > config.txt
-    echo "CFLAGS=-O2" >> config.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path build | Out-Null
+      Push-Location build
+      Set-Content -Path config.txt -Value "# Build configuration"
+      Add-Content -Path config.txt -Value "CFLAGS=-O2"
+      Pop-Location
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      mkdir -p build
+      cd build
+      echo "# Build configuration" > config.txt
+      echo "CFLAGS=-O2" >> config.txt
+    ]])
+  end
 end

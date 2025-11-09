@@ -9,12 +9,20 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Simulate patching operations
-  ctx.run([[
-    echo "Patching file" > patch_log.txt
-    echo "old content" > temp.txt
-    sed 's/old/new/g' temp.txt > temp.txt.patched
-    mv temp.txt.patched temp.txt
-    echo "Patch applied" >> patch_log.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path patch_log.txt -Value "Patching file"
+      Set-Content -Path temp.txt -Value "old content"
+      (Get-Content temp.txt) -replace "old","new" | Set-Content -Path temp.txt
+      Add-Content -Path patch_log.txt -Value "Patch applied"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Patching file" > patch_log.txt
+      echo "old content" > temp.txt
+      sed 's/old/new/g' temp.txt > temp.txt.patched
+      mv temp.txt.patched temp.txt
+      echo "Patch applied" >> patch_log.txt
+    ]])
+  end
 end

@@ -10,8 +10,15 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   -- This should fail
-  ctx.run([[
-    echo "About to fail"
-    exit 42
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Write-Output "About to fail"
+      exit 42
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "About to fail"
+      exit 42
+    ]])
+  end
 end

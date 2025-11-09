@@ -9,9 +9,18 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Run with absolute path to /tmp
-  ctx.run([[
-    pwd > pwd_absolute.txt
-    echo "Running in /tmp" > /tmp/envy_ctx_run_test.txt
-  ]], {cwd = "/tmp"})
+  if ENVY_PLATFORM == "windows" then
+    local temp = os.getenv("TEMP") or "C:\\\\Temp"
+    local target = temp .. "\\\\envy_ctx_run_test.txt"
+    target = string.gsub(target, "\\\\", "\\\\\\\\")
+    ctx.run(string.format([[
+      Set-Content -Path pwd_absolute.txt -Value (Get-Location).Path
+      Set-Content -Path "%s" -Value "Running in TEMP"
+    ]], target), {cwd = temp, shell = "powershell"})
+  else
+    ctx.run([[
+      pwd > pwd_absolute.txt
+      echo "Running in /tmp" > /tmp/envy_ctx_run_test.txt
+    ]], {cwd = "/tmp"})
+  end
 end

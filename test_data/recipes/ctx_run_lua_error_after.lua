@@ -9,10 +9,15 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- This should succeed
-  ctx.run([[
-    echo "Before Lua error" > before_lua_error.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path before_lua_error.txt -Value "Before Lua error"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Before Lua error" > before_lua_error.txt
+    ]])
+  end
 
   -- Then Lua error
   error("Intentional Lua error after ctx.run")

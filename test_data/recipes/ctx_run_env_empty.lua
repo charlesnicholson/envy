@@ -9,9 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Empty env table should not break anything
-  ctx.run([[
-    echo "Empty env table works" > empty_env.txt
-    test -n "$PATH" && echo "PATH still available" >> empty_env.txt
-  ]], {env = {}})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path empty_env.txt -Value "Empty env table works"
+      if ($env:PATH) {
+        Add-Content -Path empty_env.txt -Value "PATH still available"
+      }
+    ]], {env = {}, shell = "powershell"})
+  else
+    ctx.run([[
+      echo "Empty env table works" > empty_env.txt
+      test -n "$PATH" && echo "PATH still available" >> empty_env.txt
+    ]], {env = {}})
+  end
 end
