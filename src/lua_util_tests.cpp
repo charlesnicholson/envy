@@ -1244,3 +1244,184 @@ TEST_CASE("envy.template errors on invalid placeholders") {
     expect("unmatched", "{{incomplete")
   )"));
 }
+
+TEST_CASE("envy.template errors on unmatched closing braces") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    local function expect(pattern, text)
+      local ok, err = pcall(function()
+        envy.template(text, { key = "value" })
+      end)
+      assert(not ok, "expected envy.template failure")
+      assert(err:match(pattern), err)
+    end
+
+    expect("unmatched '}}'", "}}text")
+    expect("unmatched '}}'", "text}}more")
+    expect("unmatched '}}'", "}}{{key}}")
+    expect("unmatched '}}'", "{{key}}}}extra")
+  )"));
+}
+
+TEST_CASE("envy.template handles valid bracket patterns") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    -- Empty string
+    assert(envy.template("", {}) == "")
+
+    -- No placeholders
+    assert(envy.template("plain text", {}) == "plain text")
+
+    -- Single placeholder
+    assert(envy.template("{{key}}", { key = "value" }) == "value")
+
+    -- Multiple placeholders
+    assert(envy.template("{{a}} and {{b}}", { a = "first", b = "second" }) == "first and second")
+
+    -- Adjacent placeholders
+    assert(envy.template("{{a}}{{b}}", { a = "x", b = "y" }) == "xy")
+
+    -- Placeholder at start
+    assert(envy.template("{{key}} end", { key = "start" }) == "start end")
+
+    -- Placeholder at end
+    assert(envy.template("start {{key}}", { key = "end" }) == "start end")
+
+    -- Placeholder in middle
+    assert(envy.template("a {{key}} b", { key = "middle" }) == "a middle b")
+
+    -- Multiple occurrences of same placeholder
+    assert(envy.template("{{x}} {{x}} {{x}}", { x = "same" }) == "same same same")
+  )"));
+}
+
+TEST_CASE("envy.template handles whitespace in placeholders") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    -- Whitespace is trimmed
+    assert(envy.template("{{ key }}", { key = "value" }) == "value")
+    assert(envy.template("{{  key  }}", { key = "value" }) == "value")
+    assert(envy.template("{{key}}", { key = "value" }) == "value")
+
+    -- Mixed whitespace
+    assert(envy.template("{{a}} {{ b }}", { a = "1", b = "2" }) == "1 2")
+  )"));
+}
+
+TEST_CASE("envy.template errors on complex unmatched patterns") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    local function expect_error(pattern, text)
+      local ok, err = pcall(function()
+        envy.template(text, { key = "value", a = "1", b = "2" })
+      end)
+      assert(not ok, "expected envy.template failure for: " .. text)
+      assert(err:match(pattern), "expected pattern '" .. pattern .. "' but got: " .. tostring(err))
+    end
+
+    -- Single unmatched opening
+    expect_error("unmatched", "{{key")
+    expect_error("unmatched", "text {{key")
+    expect_error("unmatched", "{{")
+
+    -- Single unmatched closing
+    expect_error("unmatched '}}'", "}}")
+    expect_error("unmatched '}}'", "text }}")
+    expect_error("unmatched '}}'", "}} text")
+
+    -- Multiple unmatched openings
+    expect_error("unmatched", "{{{{")
+    expect_error("unmatched", "{{a}} {{b")
+
+    -- Multiple unmatched closings
+    expect_error("unmatched '}}'", "}}}}")
+    expect_error("unmatched '}}'", "{{a}} }}")
+
+    -- Interleaved valid and invalid
+    expect_error("unmatched", "{{a}} {{b}} {{c")
+    expect_error("unmatched '}}'", "{{a}} {{b}} }}")
+
+    -- Closing before opening
+    expect_error("unmatched '}}'", "}} {{a}}")
+    expect_error("unmatched '}}'", "text }} {{a}}")
+
+    -- Extra closing after valid pair
+    expect_error("unmatched '}}'", "{{a}} }}")
+    expect_error("unmatched '}}'", "{{a}} {{b}} }}")
+
+    -- Extra opening before valid pair
+    expect_error("unmatched", "{{ {{a}}")
+    expect_error("unmatched", "{{{{a}}")
+  )"));
+}
+
+TEST_CASE("envy.template allows single braces") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    -- Single braces should be allowed (not part of placeholder syntax)
+    assert(envy.template("{text}", {}) == "{text}")
+    assert(envy.template("}text{", {}) == "}text{")
+    assert(envy.template("a{b}c", {}) == "a{b}c")
+
+    -- Extra closing brace after placeholder
+    assert(envy.template("{{key}}}", { key = "value" }) == "value}")
+
+    -- Mixed single and double braces
+    assert(envy.template("prefix{{key}}suffix", { key = "X" }) == "prefixXsuffix")
+    assert(envy.template("start{{a}}middle{{b}}end", { a = "1", b = "2" }) == "start1middle2end")
+  )"));
+}
+
+TEST_CASE("envy.template handles edge cases with bracket positions") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    local function expect_error(pattern, text, values)
+      values = values or { key = "value" }
+      local ok, err = pcall(function()
+        envy.template(text, values)
+      end)
+      assert(not ok, "expected failure for: " .. text)
+      assert(err:match(pattern), "expected pattern '" .. pattern .. "' but got: " .. tostring(err))
+    end
+
+    -- Valid: Extra single brace after valid placeholder
+    assert(envy.template("{{key}}}", { key = "x" }) == "x}")
+    assert(envy.template("{{a}}{{b}}}", { a = "1", b = "2" }) == "12}")
+
+    -- Invalid: Odd braces create invalid captures
+    -- {{{key}}} would match {{{key}} with capture {key (invalid identifier)
+    expect_error("invalid characters", "{{{key}}}", { key = "x" })
+    expect_error("invalid characters", "{{{key}}", { key = "x" })
+
+    -- Invalid: Four opening braces (unmatched pair)
+    expect_error("unmatched", "{{{{key}}")
+
+    -- Invalid: Four closing braces (extra unmatched pair)
+    expect_error("unmatched '}}'", "{{key}}}}")
+
+    -- Invalid: Empty placeholder
+    expect_error("placeholder cannot be empty", "{{  }}")
+
+    -- Valid: Double braces around a single brace literal
+    assert(envy.template("{{key}}", { key = "{" }) == "{")
+    assert(envy.template("{{key}}", { key = "}" }) == "}")
+  )"));
+}

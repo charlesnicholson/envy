@@ -34,15 +34,24 @@ return function(str, values)
   end
 
   local function ensure_pairs(str)
-    local search_from = 1
-    while true do
-      local open_start = str:find("{{", search_from, true)
-      if not open_start then break end
-      local close_start = str:find("}}", open_start + 2, true)
-      if not close_start then
-        error("envy.template: unmatched '{{' at position " .. open_start, 2)
+    local open_count = 0
+    local i = 1
+    while i <= #str do
+      if str:sub(i, i+1) == "{{" then
+        open_count = open_count + 1
+        i = i + 2
+      elseif str:sub(i, i+1) == "}}" then
+        open_count = open_count - 1
+        if open_count < 0 then
+          error("envy.template: unmatched '}}' at position " .. i, 2)
+        end
+        i = i + 2
+      else
+        i = i + 1
       end
-      search_from = close_start + 2
+    end
+    if open_count > 0 then
+      error("envy.template: unmatched '{{' (missing closing '}}')", 2)
     end
   end
 
