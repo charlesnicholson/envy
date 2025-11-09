@@ -98,7 +98,7 @@ std::string create_temp_script(std::string_view script, bool disable_strict) {
   std::string content{ "#!" + get_shell_path() + "\n" };
   if (!disable_strict) { content.append("set -euo pipefail\n"); }
   content.append(script);
-  if (content.empty() || content.back() != '\n') { content.push_back('\n'); }
+  if (content.back() != '\n') { content.push_back('\n'); }
 
   ssize_t remaining{ static_cast<ssize_t>(content.size()) };
   char const *data{ content.data() };

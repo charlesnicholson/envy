@@ -1,6 +1,12 @@
 #include "util.h"
 
+#include <cstdio>
+#include <cstring>
 #include <stdexcept>
+
+#if defined(_WIN32)
+#include <string>
+#endif
 
 namespace envy {
 
@@ -54,6 +60,24 @@ std::vector<unsigned char> util_hex_to_bytes(std::string const &hex) {
   }
 
   return result;
+}
+
+void file_deleter::operator()(std::FILE *file) const noexcept {
+  if (file) { static_cast<void>(std::fclose(file)); }
+}
+
+file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode) {
+#if defined(_WIN32)
+  // Convert mode string to wide string for _wfopen
+  std::wstring wide_mode;
+  wide_mode.reserve(std::strlen(mode));
+  for (char const *p{ mode }; *p != '\0'; ++p) {
+    wide_mode.push_back(static_cast<wchar_t>(*p));
+  }
+  return file_ptr_t{ _wfopen(path.c_str(), wide_mode.c_str()) };
+#else
+  return file_ptr_t{ std::fopen(path.c_str(), mode) };
+#endif
 }
 
 }  // namespace envy

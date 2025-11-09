@@ -2,6 +2,9 @@
 
 #include <concepts>
 #include <cstddef>
+#include <cstdio>
+#include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,5 +41,15 @@ std::vector<unsigned char> util_hex_to_bytes(std::string const &hex);
 
 // Convert single hex character to value (0-15). Returns -1 if invalid.
 int util_hex_char_to_int(char c);
+
+// RAII file pointer with custom deleter
+struct file_deleter {
+  void operator()(std::FILE *file) const noexcept;
+};
+using file_ptr_t = std::unique_ptr<std::FILE, file_deleter>;
+
+// Open file with RAII wrapper. Returns nullptr on failure.
+// On Windows, uses _wfopen for proper Unicode path support.
+file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 
 }  // namespace envy
