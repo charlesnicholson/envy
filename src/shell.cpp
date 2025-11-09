@@ -117,8 +117,7 @@ std::string create_temp_script(std::string_view script, bool disable_strict) {
   return std::string{ path_buffer.data() };
 }
 
-void stream_pipe_lines(int fd,
-                       std::function<void(std::string_view)> const &callback) {
+void stream_pipe_lines(int fd, std::function<void(std::string_view)> const &callback) {
   std::string pending;
   pending.reserve(kLinePendingReserve);
   std::string chunk(kPipeBufferSize, '\0');
@@ -153,10 +152,7 @@ envp_storage build_envp(shell_env_t const &env) {
   result.strings.reserve(env.size());
   result.pointers.reserve(env.size() + 1);
 
-  for (auto const &[key, value] : env) {
-    result.strings.push_back(key + "=" + value);
-  }
-
+  for (auto const &[key, value] : env) { result.strings.push_back(key + "=" + value); }
   for (auto &entry : result.strings) { result.pointers.push_back(entry.data()); }
   result.pointers.push_back(nullptr);
 
@@ -177,17 +173,34 @@ shell_result wait_for_child(pid_t child) {
   if (WIFEXITED(status)) {
     return { .exit_code = WEXITSTATUS(status), .signaled = false, .signal = 0 };
   }
+
   if (WIFSIGNALED(status)) {
     int const sig{ WTERMSIG(status) };
     return { .exit_code = kSignalExitBase + sig, .signaled = true, .signal = sig };
   }
+
   return { .exit_code = status, .signaled = false, .signal = 0 };
 }
 
 }  // namespace
 
-shell_result shell_run(std::string_view script,
-                       shell_invocation const &invocation) {
+shell_env_t shell_getenv() {
+  shell_env_t env;
+  if (!environ) { return env; }
+
+  for (char **entry{ environ }; *entry != nullptr; ++entry) {
+    std::string_view kv{ *entry };
+    size_t const sep{ kv.find('=') };
+    if (sep == std::string_view::npos) { continue; }
+    std::string key{ kv.substr(0, sep) };
+    std::string value{ kv.substr(sep + 1) };
+    env[std::move(key)] = std::move(value);
+  }
+
+  return env;
+}
+
+shell_result shell_run(std::string_view script, shell_invocation const &invocation) {
   std::string script_path{ create_temp_script(script, invocation.disable_strict) };
   file_cleanup cleanup{ script_path };
 
@@ -209,7 +222,7 @@ shell_result shell_run(std::string_view script,
   }
 
   if (child == 0) {  // Child process
-    (void)read_end.release();
+    ::close(read_end.release());
 
     int const null_fd{ ::open("/dev/null", O_RDONLY) };
     if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
@@ -219,7 +232,7 @@ shell_result shell_run(std::string_view script,
       _exit(kChildErrorExit);
     }
     if (null_fd != STDIN_FILENO) { ::close(null_fd); }
-    (void)write_end.release();
+    ::close(write_end.release());
 
     if (invocation.cwd) {
       if (::chdir(invocation.cwd->c_str()) == -1) {
@@ -235,8 +248,7 @@ shell_result shell_run(std::string_view script,
     _exit(kChildErrorExit);
   }
 
-  // Parent: close write end and stream output
-  (void)write_end.release();
+  ::close(write_end.release());  // Parent: close write end and stream output
 
   shell_result result;
   try {

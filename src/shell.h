@@ -25,6 +25,7 @@ struct shell_invocation {
   bool disable_strict{false};  // Disable default "set -euo pipefail"
 };
 
+shell_env_t shell_getenv();
 shell_result shell_run(std::string_view script, shell_invocation const &invocation);
 
 }  // namespace envy
