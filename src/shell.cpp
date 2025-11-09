@@ -7,19 +7,7 @@
 #include <vector>
 
 #if defined(_WIN32)
-
-namespace envy {
-
-shell_env_t shell_getenv() {
-  throw std::runtime_error("shell_getenv is not implemented on Windows yet");
-}
-
-int shell_run(std::string_view /*script*/, shell_invocation const & /*invocation*/) {
-  throw std::runtime_error("shell_run is not implemented on Windows yet");
-}
-
-}  // namespace envy
-
+#error "shell.h is not supported on Windows - use preprocessor guards to exclude"
 #else  // POSIX implementation
 
 #include <fcntl.h>
@@ -30,6 +18,7 @@ int shell_run(std::string_view /*script*/, shell_invocation const & /*invocation
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include <filesystem>
@@ -38,6 +27,11 @@ extern char **environ;
 
 namespace envy {
 namespace {
+
+constexpr int kChildErrorExit{ 127 };
+constexpr size_t kPipeBufferSize{ 4096 };
+constexpr size_t kLinePendingReserve{ 256 };
+constexpr int kSignalExitBase{ 128 };
 
 class file_cleanup {
  public:
@@ -77,12 +71,12 @@ class fd_cleanup {
   int fd_{ -1 };
 };
 
-void close_no_throw(int fd) {
-  if (fd == -1) { return; }
-  while (::close(fd) == -1 && errno == EINTR) {}
+std::string get_shell_path() {
+  if (char const *bash_env{ ::getenv("BASH") }) { return bash_env; }
+  return "/bin/bash";
 }
 
-std::string create_temp_script(std::string_view script) {
+std::string create_temp_script(std::string_view script, bool disable_strict) {
   auto tmp_dir{ std::filesystem::temp_directory_path() };
   std::string pattern{ (tmp_dir / "envy-shell-XXXXXX").string() };
 
@@ -95,7 +89,8 @@ std::string create_temp_script(std::string_view script) {
   }
   fd_cleanup fd_guard{ fd };
 
-  std::string content{ "#!/bin/bash\nset -euo pipefail\n" };
+  std::string content{ "#!" + get_shell_path() + "\n" };
+  if (!disable_strict) { content.append("set -euo pipefail\n"); }
   content.append(script);
   if (content.empty() || content.back() != '\n') { content.push_back('\n'); }
 
@@ -115,23 +110,18 @@ std::string create_temp_script(std::string_view script) {
     throw std::system_error(errno, std::generic_category(), "fchmod failed");
   }
 
-  // Ensure content is flushed to disk before executing.
   if (::fsync(fd_guard.get()) == -1) {
     throw std::system_error(errno, std::generic_category(), "fsync failed");
-  }
-
-  int const raw_fd{ fd_guard.release() };
-  if (::close(raw_fd) == -1) {
-    throw std::system_error(errno, std::generic_category(), "close failed");
   }
 
   return std::string{ path_buffer.data() };
 }
 
-void stream_pipe_lines(int fd, shell_output_cb_t const &callback) {
+void stream_pipe_lines(int fd,
+                       std::function<void(std::string_view)> const &callback) {
   std::string pending;
-  pending.reserve(256);
-  std::string chunk(4096, '\0');
+  pending.reserve(kLinePendingReserve);
+  std::string chunk(kPipeBufferSize, '\0');
 
   while (true) {
     ssize_t const read_bytes{ ::read(fd, chunk.data(), chunk.size()) };
@@ -153,22 +143,27 @@ void stream_pipe_lines(int fd, shell_output_cb_t const &callback) {
   if (!pending.empty()) { callback(pending); }
 }
 
-std::vector<char *> build_envp(std::vector<std::string> &storage) {
-  std::vector<char *> result;
-  result.reserve(storage.size() + 1);
-  for (auto &entry : storage) { result.push_back(entry.data()); }
-  result.push_back(nullptr);
+struct envp_storage {
+  std::vector<std::string> strings;
+  std::vector<char *> pointers;
+};
+
+envp_storage build_envp(shell_env_t const &env) {
+  envp_storage result;
+  result.strings.reserve(env.size());
+  result.pointers.reserve(env.size() + 1);
+
+  for (auto const &[key, value] : env) {
+    result.strings.push_back(key + "=" + value);
+  }
+
+  for (auto &entry : result.strings) { result.pointers.push_back(entry.data()); }
+  result.pointers.push_back(nullptr);
+
   return result;
 }
 
-std::vector<std::string> serialize_env(shell_env_t const &env) {
-  std::vector<std::string> storage;
-  storage.reserve(env.size());
-  for (auto const &[key, value] : env) { storage.push_back(key + "=" + value); }
-  return storage;
-}
-
-int wait_for_child(pid_t child) {
+shell_result wait_for_child(pid_t child) {
   int status{ 0 };
   while (true) {
     pid_t const result = ::waitpid(child, &status, 0);
@@ -179,39 +174,24 @@ int wait_for_child(pid_t child) {
     break;
   }
 
-  if (WIFEXITED(status)) { return WEXITSTATUS(status); }
-  if (WIFSIGNALED(status)) { return 128 + WTERMSIG(status); }
-  return status;
+  if (WIFEXITED(status)) {
+    return { .exit_code = WEXITSTATUS(status), .signaled = false, .signal = 0 };
+  }
+  if (WIFSIGNALED(status)) {
+    int const sig{ WTERMSIG(status) };
+    return { .exit_code = kSignalExitBase + sig, .signaled = true, .signal = sig };
+  }
+  return { .exit_code = status, .signaled = false, .signal = 0 };
 }
 
 }  // namespace
 
-shell_env_t shell_getenv() {
-  shell_env_t env;
-  if (!environ) { return env; }
-
-  for (char **entry{ environ }; *entry != nullptr; ++entry) {
-    std::string_view kv{ *entry };
-    size_t const sep{ kv.find('=') };
-    if (sep == std::string_view::npos) { continue; }
-    std::string key{ kv.substr(0, sep) };
-    std::string value{ kv.substr(sep + 1) };
-    env[std::move(key)] = std::move(value);
-  }
-
-  return env;
-}
-
-int shell_run(std::string_view script, shell_invocation const &invocation) {
-  if (!invocation.on_output_line) {
-    throw std::invalid_argument("shell_run requires on_output_line callback");
-  }
-
-  std::string script_path{ create_temp_script(script) };
+shell_result shell_run(std::string_view script,
+                       shell_invocation const &invocation) {
+  std::string script_path{ create_temp_script(script, invocation.disable_strict) };
   file_cleanup cleanup{ script_path };
 
-  std::vector<std::string> env_storage{ serialize_env(invocation.env) };
-  auto envp{ build_envp(env_storage) };
+  auto envp{ build_envp(invocation.env) };
 
   int pipefd[2];
   if (::pipe(pipefd) == -1) {
@@ -220,7 +200,7 @@ int shell_run(std::string_view script, shell_invocation const &invocation) {
   fd_cleanup read_end{ pipefd[0] };
   fd_cleanup write_end{ pipefd[1] };
 
-  std::string shell_arg{ "/bin/bash" };
+  std::string shell_arg{ get_shell_path() };
   std::string script_arg{ script_path };
 
   pid_t const child{ ::fork() };
@@ -229,42 +209,46 @@ int shell_run(std::string_view script, shell_invocation const &invocation) {
   }
 
   if (child == 0) {  // Child process
-    ::close(read_end.release());
-    if (::dup2(write_end.get(), STDOUT_FILENO) == -1 ||
+    (void)read_end.release();
+
+    int const null_fd{ ::open("/dev/null", O_RDONLY) };
+    if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
+        ::dup2(write_end.get(), STDOUT_FILENO) == -1 ||
         ::dup2(write_end.get(), STDERR_FILENO) == -1) {
       std::perror("dup2");
-      _exit(127);
+      _exit(kChildErrorExit);
     }
-
-    ::close(write_end.release());  // Close original write descriptor after dup.
+    if (null_fd != STDIN_FILENO) { ::close(null_fd); }
+    (void)write_end.release();
 
     if (invocation.cwd) {
       if (::chdir(invocation.cwd->c_str()) == -1) {
         std::perror("chdir");
-        _exit(127);
+        _exit(kChildErrorExit);
       }
     }
 
     std::vector<char *> argv{ shell_arg.data(), script_arg.data(), nullptr };
 
-    ::execve(shell_arg.c_str(), argv.data(), envp.data());
+    ::execve(shell_arg.c_str(), argv.data(), envp.pointers.data());
     std::perror("execve");
-    _exit(127);
+    _exit(kChildErrorExit);
   }
 
-  close_no_throw(write_end.release());  // Parent
+  // Parent: close write end and stream output
+  (void)write_end.release();
 
+  shell_result result;
   try {
     stream_pipe_lines(read_end.get(), invocation.on_output_line);
+    result = wait_for_child(child);
   } catch (...) {
     ::kill(child, SIGKILL);
-    close_no_throw(read_end.release());
     wait_for_child(child);
     throw;
   }
 
-  close_no_throw(read_end.release());
-  return wait_for_child(child);
+  return result;
 }
 
 }  // namespace envy

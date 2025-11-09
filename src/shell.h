@@ -12,13 +12,19 @@ namespace envy {
 using shell_env_t = std::unordered_map<std::string, std::string>;
 using shell_output_cb_t = std::function<void(std::string_view)>;
 
-struct shell_invocation {
-  std::optional<std::filesystem::path> cwd;
-  shell_env_t env;
-  shell_output_cb_t on_output_line;
+struct shell_result {
+  int exit_code;
+  bool signaled;
+  int signal;  // Only valid if signaled == true
 };
 
-shell_env_t shell_getenv();
-int shell_run(std::string_view script, shell_invocation const &invocation);
+struct shell_invocation {
+  std::function<void(std::string_view)> on_output_line;
+  std::optional<std::filesystem::path> cwd;
+  shell_env_t env;
+  bool disable_strict{false};  // Disable default "set -euo pipefail"
+};
+
+shell_result shell_run(std::string_view script, shell_invocation const &invocation);
 
 }  // namespace envy
