@@ -1167,9 +1167,9 @@ TEST_CASE("lua_stack_to_value throws on function in table") {
   lua_getglobal(L.get(), "t");
 
   // Table extraction itself doesn't throw (functions are skipped during iteration)
-  // But if we try to serialize a value containing a function, it would fail at serialize time
-  // Since lua_stack_to_value only processes string keys and recursively converts values,
-  // and our default case now throws, this should catch it
+  // But if we try to serialize a value containing a function, it would fail at serialize
+  // time Since lua_stack_to_value only processes string keys and recursively converts
+  // values, and our default case now throws, this should catch it
 
   // Actually, looking at the code, lua_stack_to_value processes tables with lua_next,
   // and only processes string keys. When it encounters a function value, it calls
@@ -1178,4 +1178,69 @@ TEST_CASE("lua_stack_to_value throws on function in table") {
   CHECK_THROWS_WITH_AS(envy::lua_stack_to_value(L.get(), -1),
                        "Unsupported Lua type: function",
                        std::runtime_error);
+}
+
+TEST_CASE("envy.template substitutes placeholders") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    templated = envy.template([[cmake -S {{src}} -B {{out}}]], {
+      src = "src",
+      out = "build"
+    })
+  )"));
+
+  CHECK(envy::lua_global_to_string(L.get(), "templated") == "cmake -S src -B build");
+}
+
+TEST_CASE("envy.template handles boolean and numeric values") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    templated = envy.template([[{{ flag }} {{count}} {{ ratio }}]], {
+      flag = true,
+      count = 7,
+      ratio = 3.5,
+    })
+  )"));
+
+  CHECK(envy::lua_global_to_string(L.get(), "templated") == "true 7 3.5");
+}
+
+TEST_CASE("envy.template errors on missing placeholders") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    local ok, err = pcall(function()
+      envy.template([[{{missing}}]], { present = "ok" })
+    end)
+    assert(not ok, "expected envy.template to fail")
+    assert(err:match("missing value"), err)
+  )"));
+}
+
+TEST_CASE("envy.template errors on invalid placeholders") {
+  auto L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+  envy::lua_add_envy(L);
+
+  CHECK(envy::lua_run_string(L, R"(
+    local function expect(pattern, text)
+      local ok, err = pcall(function()
+        envy.template(text, { good = "ok" })
+      end)
+      assert(not ok, "expected envy.template failure")
+      assert(err:match(pattern), err)
+    end
+
+    expect("contains invalid characters", "{{bad-name}}")
+    expect("placeholder cannot be empty", "{{  }}")
+    expect("unmatched", "{{incomplete")
+  )"));
 }
