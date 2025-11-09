@@ -11,6 +11,7 @@ stage = function(ctx)
 
   -- Strict mode pipefail should catch failure in middle of pipe
   ctx.run([[
+    set -euo pipefail
     echo "Start" | false | cat > should_fail.txt
   ]])
 end

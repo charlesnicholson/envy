@@ -11,6 +11,7 @@ stage = function(ctx)
 
   -- Strict mode should catch the 'false' command
   ctx.run([[
+    set -euo pipefail
     false
     echo "This should not execute"
   ]])

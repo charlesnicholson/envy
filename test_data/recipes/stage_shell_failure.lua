@@ -8,6 +8,7 @@ fetch = {
 
 -- Shell script that intentionally fails
 stage = [[
+  set -euo pipefail
   echo "About to fail"
   false  # This should cause stage to fail with strict mode enabled
   echo "This line should never execute"

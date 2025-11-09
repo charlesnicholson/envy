@@ -2,10 +2,29 @@
 
 #include "doctest.h"
 
+#include <atomic>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <variant>
 #include <vector>
+
+namespace {
+
+std::filesystem::path make_temp_path(char const *tag) {
+  static std::atomic<int> counter{ 0 };
+  auto const id = counter.fetch_add(1, std::memory_order_relaxed);
+  auto base{ std::filesystem::temp_directory_path() };
+  return base / ("envy-util-test-" + std::string(tag) + "-" + std::to_string(id));
+}
+
+void write_dummy_file(std::filesystem::path const &path) {
+  std::ofstream out{ path };
+  out << "envy-test";
+}
+
+}  // namespace
 
 TEST_CASE("match with std::variant of int and string") {
   using var_t = std::variant<int, std::string>;
@@ -227,4 +246,34 @@ TEST_CASE("util_hex_to_bytes and util_bytes_to_hex round-trip") {
   std::string recovered_hex = envy::util_bytes_to_hex(bytes.data(), bytes.size());
   // Result should be lowercase
   CHECK(recovered_hex == "0123456789abcdefabcdef");
+}
+
+TEST_CASE("scoped_path_cleanup removes file on destruction") {
+  auto path = make_temp_path("cleanup");
+  write_dummy_file(path);
+  REQUIRE(std::filesystem::exists(path));
+  {
+    envy::scoped_path_cleanup cleanup{ path };
+    CHECK(std::filesystem::exists(path));
+  }
+  CHECK_FALSE(std::filesystem::exists(path));
+}
+
+TEST_CASE("scoped_path_cleanup reset switches targets and cleans previous file") {
+  auto first = make_temp_path("first");
+  auto second = make_temp_path("second");
+  write_dummy_file(first);
+  write_dummy_file(second);
+  REQUIRE(std::filesystem::exists(first));
+  REQUIRE(std::filesystem::exists(second));
+
+  {
+    envy::scoped_path_cleanup cleanup{ first };
+    CHECK(std::filesystem::exists(first));
+    cleanup.reset(second);
+    CHECK_FALSE(std::filesystem::exists(first));
+    CHECK(std::filesystem::exists(second));
+  }
+
+  CHECK_FALSE(std::filesystem::exists(second));
 }

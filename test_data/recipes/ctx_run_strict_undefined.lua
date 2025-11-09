@@ -11,6 +11,7 @@ stage = function(ctx)
 
   -- Strict mode should catch undefined variable
   ctx.run([[
+    set -euo pipefail
     echo "About to use undefined variable"
     echo "Value: $UNDEFINED_VARIABLE_XYZ"
     echo "Should not reach here" > should_not_exist.txt

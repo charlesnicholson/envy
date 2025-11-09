@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <system_error>
+#include <utility>
 
 #if defined(_WIN32)
 #include <string>
@@ -78,6 +80,22 @@ file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode) {
 #else
   return file_ptr_t{ std::fopen(path.c_str(), mode) };
 #endif
+}
+
+scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path) : path_{ std::move(path) } {}
+
+scoped_path_cleanup::~scoped_path_cleanup() { cleanup(); }
+
+void scoped_path_cleanup::reset(std::filesystem::path path) {
+  cleanup();
+  path_ = std::move(path);
+}
+
+void scoped_path_cleanup::cleanup() {
+  if (path_.empty()) { return; }
+  std::error_code ec;
+  std::filesystem::remove(path_, ec);
+  path_.clear();
 }
 
 }  // namespace envy
