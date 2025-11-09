@@ -9,9 +9,15 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Basic shell command
-  ctx.run([[
-    echo "Hello from ctx.run" > run_marker.txt
-    echo "Stage directory: $(pwd)" >> run_marker.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path run_marker.txt -Value "Hello from ctx.run"
+      Add-Content -Path run_marker.txt -Value ("Stage directory: " + (Get-Location).Path)
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Hello from ctx.run" > run_marker.txt
+      echo "Stage directory: $(pwd)" >> run_marker.txt
+    ]])
+  end
 end

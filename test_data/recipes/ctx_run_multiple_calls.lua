@@ -9,23 +9,31 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- First ctx.run
-  ctx.run([[
-    echo "Call 1" > call1.txt
-  ]])
-
-  -- Second ctx.run
-  ctx.run([[
-    echo "Call 2" > call2.txt
-  ]])
-
-  -- Third ctx.run
-  ctx.run([[
-    echo "Call 3" > call3.txt
-  ]])
-
-  -- Fourth ctx.run to verify all
-  ctx.run([[
-    cat call1.txt call2.txt call3.txt > all_calls.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path call1.txt -Value "Call 1"
+    ]], { shell = "powershell" })
+    ctx.run([[
+      Set-Content -Path call2.txt -Value "Call 2"
+    ]], { shell = "powershell" })
+    ctx.run([[
+      Set-Content -Path call3.txt -Value "Call 3"
+    ]], { shell = "powershell" })
+    ctx.run([[
+      Get-Content call1.txt, call2.txt, call3.txt | Set-Content -Path all_calls.txt
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Call 1" > call1.txt
+    ]])
+    ctx.run([[
+      echo "Call 2" > call2.txt
+    ]])
+    ctx.run([[
+      echo "Call 3" > call3.txt
+    ]])
+    ctx.run([[
+      cat call1.txt call2.txt call3.txt > all_calls.txt
+    ]])
+  end
 end

@@ -9,17 +9,29 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Script with only whitespace and comments
-  ctx.run([[
-    # This is a comment
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      # This is a comment
 
-    # Another comment
+      # Another comment
 
 
-  ]])
+    ]], { shell = "powershell" })
 
-  -- Verify we can continue
-  ctx.run([[
-    echo "After whitespace script" > after_whitespace.txt
-  ]])
+    ctx.run([[
+      Set-Content -Path after_whitespace.txt -Value "After whitespace script"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      # This is a comment
+
+      # Another comment
+
+
+    ]])
+
+    ctx.run([[
+      echo "After whitespace script" > after_whitespace.txt
+    ]])
+  end
 end

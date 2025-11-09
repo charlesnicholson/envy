@@ -10,14 +10,23 @@ stage = function(ctx)
   -- Extract first
   ctx.extract_all({strip = 1})
 
-  -- Then use ctx.run to verify extraction
-  ctx.run([[
-    ls > extracted_files.txt
-    test -f file1.txt && echo "Extraction verified" > verify_extract.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path extracted_files.txt
+      if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" }
+    ]], { shell = "powershell" })
 
-  -- Run again to modify extracted files
-  ctx.run([[
-    echo "Modified by ctx.run" >> file1.txt
-  ]])
+    ctx.run([[
+      Add-Content -Path file1.txt -Value "Modified by ctx.run"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      ls > extracted_files.txt
+      test -f file1.txt && echo "Extraction verified" > verify_extract.txt
+    ]])
+
+    ctx.run([[
+      echo "Modified by ctx.run" >> file1.txt
+    ]])
+  end
 end

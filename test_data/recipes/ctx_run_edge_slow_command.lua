@@ -9,15 +9,29 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Slow command with sleep
-  ctx.run([[
-    echo "Starting slow command" > slow_start.txt
-    sleep 1
-    echo "Finished slow command" > slow_end.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path slow_start.txt -Value "Starting slow command"
+      Start-Sleep -Seconds 1
+      Set-Content -Path slow_end.txt -Value "Finished slow command"
+    ]], { shell = "powershell" })
 
-  -- Verify both files exist (proves we waited)
-  ctx.run([[
-    test -f slow_start.txt && test -f slow_end.txt && echo "Both files exist" > slow_verify.txt
-  ]])
+    ctx.run([[
+      if ((Test-Path slow_start.txt) -and (Test-Path slow_end.txt)) {
+        Set-Content -Path slow_verify.txt -Value "Both files exist"
+      } else {
+        exit 1
+      }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Starting slow command" > slow_start.txt
+      sleep 1
+      echo "Finished slow command" > slow_end.txt
+    ]])
+
+    ctx.run([[
+      test -f slow_start.txt && test -f slow_end.txt && echo "Both files exist" > slow_verify.txt
+    ]])
+  end
 end

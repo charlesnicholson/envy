@@ -10,8 +10,15 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   -- With disable_strict, this should continue
-  ctx.run([[
-    false
-    echo "This executes even after false" > continued.txt
-  ]], {disable_strict = true})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      cmd /c exit 1
+      Set-Content -Path continued.txt -Value "This executes even after false"
+    ]], {disable_strict = true, shell = "powershell"})
+  else
+    ctx.run([[
+      false
+      echo "This executes even after false" > continued.txt
+    ]], {disable_strict = true})
+  end
 end

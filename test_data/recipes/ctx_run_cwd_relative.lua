@@ -9,14 +9,23 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create subdirectory
-  ctx.run([[
-    mkdir -p custom/subdir
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path "custom/subdir" | Out-Null
+    ]], { shell = "powershell" })
 
-  -- Run in subdirectory (relative to stage_dir)
-  ctx.run([[
-    pwd > pwd_output.txt
-    echo "Running in subdir" > marker.txt
-  ]], {cwd = "custom/subdir"})
+    ctx.run([[
+      Set-Content -Path pwd_output.txt -Value (Get-Location).Path
+      Set-Content -Path marker.txt -Value "Running in subdir"
+    ]], {cwd = "custom/subdir", shell = "powershell"})
+  else
+    ctx.run([[
+      mkdir -p custom/subdir
+    ]])
+
+    ctx.run([[
+      pwd > pwd_output.txt
+      echo "Running in subdir" > marker.txt
+    ]], {cwd = "custom/subdir"})
+  end
 end

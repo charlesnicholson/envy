@@ -52,4 +52,18 @@ using file_ptr_t = std::unique_ptr<std::FILE, file_deleter>;
 // On Windows, uses _wfopen for proper Unicode path support.
 file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 
+class scoped_path_cleanup : public unmovable {
+ public:
+  explicit scoped_path_cleanup(std::filesystem::path path);
+  ~scoped_path_cleanup();
+
+  void reset(std::filesystem::path path = {});
+  std::filesystem::path const &path() const { return path_; }
+
+ private:
+  void cleanup();
+
+  std::filesystem::path path_;
+};
+
 }  // namespace envy

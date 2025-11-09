@@ -9,8 +9,13 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- This should fail with signal termination
-  ctx.run([[
-    kill -TERM $$
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Stop-Process -Id $PID -Force
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      kill -TERM $$
+    ]])
+  end
 end

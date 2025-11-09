@@ -9,9 +9,16 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Strict mode should catch the 'false' command
-  ctx.run([[
-    false
-    echo "This should not execute"
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      cmd /c exit 1
+      echo "This should not execute"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      set -euo pipefail
+      false
+      echo "This should not execute"
+    ]])
+  end
 end

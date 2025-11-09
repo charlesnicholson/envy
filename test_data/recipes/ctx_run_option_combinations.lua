@@ -9,43 +9,91 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  ctx.run([[
-    mkdir -p dir1 dir2
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path dir1,dir2 | Out-Null
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      mkdir -p dir1 dir2
+    ]])
+  end
 
   -- Combination 1: cwd + env
-  ctx.run([[
-    pwd > combo1_pwd.txt
-    echo "VAR1=$VAR1" > combo1_env.txt
-  ]], {cwd = "dir1", env = {VAR1 = "value1"}})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path combo1_pwd.txt -Value (Get-Location).Path
+      Set-Content -Path combo1_env.txt -Value ("VAR1=" + $env:VAR1)
+    ]], {cwd = "dir1", env = {VAR1 = "value1"}, shell = "powershell"})
+  else
+    ctx.run([[
+      pwd > combo1_pwd.txt
+      echo "VAR1=$VAR1" > combo1_env.txt
+    ]], {cwd = "dir1", env = {VAR1 = "value1"}})
+  end
 
   -- Combination 2: cwd + disable_strict
-  ctx.run([[
-    pwd > combo2_pwd.txt
-    false
-    echo "After false" > combo2_continued.txt
-  ]], {cwd = "dir2", disable_strict = true})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path combo2_pwd.txt -Value (Get-Location).Path
+      cmd /c exit 1
+      Set-Content -Path combo2_continued.txt -Value "After false"
+    ]], {cwd = "dir2", disable_strict = true, shell = "powershell"})
+  else
+    ctx.run([[
+      pwd > combo2_pwd.txt
+      false
+      echo "After false" > combo2_continued.txt
+    ]], {cwd = "dir2", disable_strict = true})
+  end
 
   -- Combination 3: env + disable_strict (default cwd)
-  ctx.run([[
-    echo "VAR2=$VAR2" > combo3_env.txt
-    false
-    echo "Continued" >> combo3_env.txt
-  ]], {env = {VAR2 = "value2"}, disable_strict = true})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path combo3_env.txt -Value ("VAR2=" + $env:VAR2)
+      cmd /c exit 1
+      Add-Content -Path combo3_env.txt -Value "Continued"
+    ]], {env = {VAR2 = "value2"}, disable_strict = true, shell = "powershell"})
+  else
+    ctx.run([[
+      echo "VAR2=$VAR2" > combo3_env.txt
+      false
+      echo "Continued" >> combo3_env.txt
+    ]], {env = {VAR2 = "value2"}, disable_strict = true})
+  end
 
   -- Combination 4: Just env
-  ctx.run([[
-    echo "VAR3=$VAR3" > combo4_env.txt
-  ]], {env = {VAR3 = "value3"}})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path combo4_env.txt -Value ("VAR3=" + $env:VAR3)
+    ]], {env = {VAR3 = "value3"}, shell = "powershell"})
+  else
+    ctx.run([[
+      echo "VAR3=$VAR3" > combo4_env.txt
+    ]], {env = {VAR3 = "value3"}})
+  end
 
   -- Combination 5: Just cwd
-  ctx.run([[
-    pwd > combo5_pwd.txt
-  ]], {cwd = "dir1"})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path combo5_pwd.txt -Value (Get-Location).Path
+    ]], {cwd = "dir1", shell = "powershell"})
+  else
+    ctx.run([[
+      pwd > combo5_pwd.txt
+    ]], {cwd = "dir1"})
+  end
 
   -- Combination 6: Just disable_strict
-  ctx.run([[
-    false
-    echo "Standalone disable_strict" > combo6_continued.txt
-  ]], {disable_strict = true})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      cmd /c exit 1
+      Set-Content -Path combo6_continued.txt -Value "Standalone disable_strict"
+    ]], {disable_strict = true, shell = "powershell"})
+  else
+    ctx.run([[
+      false
+      echo "Standalone disable_strict" > combo6_continued.txt
+    ]], {disable_strict = true})
+  end
 end

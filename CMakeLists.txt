@@ -147,6 +147,8 @@ target_sources(envy
         src/libcurl_util.cpp
         src/platform.cpp
         src/shell.cpp
+        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
         src/tui.cpp
         src/uri.cpp
         src/util.cpp
@@ -241,6 +243,8 @@ target_sources(envy_functional_tester
         src/libcurl_util.cpp
         src/platform.cpp
         src/shell.cpp
+        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
         src/test_support.cpp
         src/tui.cpp
         src/uri.cpp
@@ -329,6 +333,8 @@ target_sources(envy_unit_tests
         src/libcurl_util.cpp
         src/platform.cpp
         src/shell.cpp
+        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
         src/blake3_util_tests.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
@@ -381,7 +387,7 @@ add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
     COMMAND envy_unit_tests
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
-    DEPENDS envy_unit_tests
+    DEPENDS envy_unit_tests ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running unit tests"
     VERBATIM
@@ -405,6 +411,7 @@ add_custom_command(
         envy
         envy_functional_tester
         ${ENVY_FUNCTIONAL_TEST_SOURCES}
+        ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running functional tests"
     VERBATIM

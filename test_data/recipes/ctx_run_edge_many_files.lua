@@ -9,12 +9,22 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create many files
-  ctx.run([[
-    mkdir -p many_files
-    for i in {1..50}; do
-      echo "File $i content" > "many_files/file_$i.txt"
-    done
-    echo "Created many files" > many_files_marker.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path many_files | Out-Null
+      foreach ($i in 1..50) {
+        $path = "many_files/file_$i.txt"
+        Set-Content -Path $path -Value ("File " + $i + " content")
+      }
+      Set-Content -Path many_files_marker.txt -Value "Created many files"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      mkdir -p many_files
+      for i in {1..50}; do
+        echo "File $i content" > "many_files/file_$i.txt"
+      done
+      echo "Created many files" > many_files_marker.txt
+    ]])
+  end
 end

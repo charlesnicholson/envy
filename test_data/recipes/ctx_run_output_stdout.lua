@@ -9,11 +9,19 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Generate stdout output
-  ctx.run([[
-    echo "Line 1 to stdout"
-    echo "Line 2 to stdout"
-    echo "Line 3 to stdout"
-    echo "stdout test complete" > stdout_marker.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Write-Output "Line 1 to stdout"
+      Write-Output "Line 2 to stdout"
+      Write-Output "Line 3 to stdout"
+      Set-Content -Path stdout_marker.txt -Value "stdout test complete"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Line 1 to stdout"
+      echo "Line 2 to stdout"
+      echo "Line 3 to stdout"
+      echo "stdout test complete" > stdout_marker.txt
+    ]])
+  end
 end

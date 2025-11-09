@@ -162,8 +162,8 @@ int lua_ctx_run(lua_State *lua) {
 
   // Arg 2: options (optional)
   std::optional<std::filesystem::path> cwd;
-  bool disable_strict{ false };
   shell_env_t env{ shell_getenv() };
+  shell_choice shell_choice{ shell_parse_choice(std::nullopt) };
 
   if (lua_gettop(lua) >= 2) {
     if (!lua_istable(lua, 2)) {
@@ -187,15 +187,6 @@ int lua_ctx_run(lua_State *lua) {
     }
     lua_pop(lua, 1);
 
-    // Parse disable_strict option
-    lua_getfield(lua, 2, "disable_strict");
-    if (lua_isboolean(lua, -1)) {
-      disable_strict = lua_toboolean(lua, -1);
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.run: disable_strict option must be a boolean");
-    }
-    lua_pop(lua, 1);
-
     // Parse env option (merge with inherited environment)
     lua_getfield(lua, 2, "env");
     if (lua_istable(lua, -1)) {
@@ -213,41 +204,50 @@ int lua_ctx_run(lua_State *lua) {
       return luaL_error(lua, "ctx.run: env option must be a table");
     }
     lua_pop(lua, 1);
+
+    lua_getfield(lua, 2, "shell");
+    if (lua_isstring(lua, -1)) {
+      std::string value{ lua_tostring(lua, -1) };
+      try {
+        shell_choice = shell_parse_choice(value);
+      } catch (std::exception const &e) {
+        return luaL_error(lua, "ctx.run: %s", e.what());
+      }
+    } else if (!lua_isnil(lua, -1)) {
+      return luaL_error(lua, "ctx.run: shell option must be a string");
+    }
+    lua_pop(lua, 1);
   }
 
-  // Use dest_dir as default cwd
-  if (!cwd) { cwd = ctx->dest_dir; }
+  if (!cwd) { cwd = ctx->dest_dir; }  // Use dest_dir as default cwd
 
   try {
     std::vector<std::string> output_lines;
-    shell_invocation inv{
-      .on_output_line = [&](std::string_view line) {
-        tui::info("%s", std::string{ line }.c_str());
-        output_lines.emplace_back(line);
-      },
-      .cwd = cwd,
-      .env = std::move(env),
-      .disable_strict = disable_strict
-    };
+    shell_run_cfg inv{ .on_output_line =
+                           [&](std::string_view line) {
+                             tui::info("%s", std::string{ line }.c_str());
+                             output_lines.emplace_back(line);
+                           },
+                       .cwd = cwd,
+                       .env = std::move(env),
+                       .shell = shell_choice };
 
     shell_result const result{ shell_run(script_view, inv) };
 
     if (result.exit_code != 0) {
-      if (result.signaled) {
+      if (result.signal) {
         return luaL_error(lua,
-                         "ctx.run: shell script terminated by signal %d for %s",
-                         result.signal,
-                         ctx->key->c_str());
+                          "ctx.run: shell script terminated by signal %d for %s",
+                          *result.signal,
+                          ctx->key->c_str());
       } else {
         return luaL_error(lua,
-                         "ctx.run: shell script failed with exit code %d for %s",
-                         result.exit_code,
-                         ctx->key->c_str());
+                          "ctx.run: shell script failed with exit code %d for %s",
+                          result.exit_code,
+                          ctx->key->c_str());
       }
     }
-  } catch (std::exception const &e) {
-    return luaL_error(lua, "ctx.run: %s", e.what());
-  }
+  } catch (std::exception const &e) { return luaL_error(lua, "ctx.run: %s", e.what()); }
 
   return 0;  // No return values
 }
@@ -386,22 +386,21 @@ void run_shell_stage(std::string_view script,
   shell_env_t env{ shell_getenv() };
 
   std::vector<std::string> output_lines;
-  shell_invocation inv{
-    .on_output_line = [&](std::string_view line) {
-      tui::info("%s", std::string{ line }.c_str());
-      output_lines.emplace_back(line);
-    },
-    .cwd = dest_dir,
-    .env = std::move(env),
-    .disable_strict = false
-  };
+  shell_run_cfg inv{ .on_output_line =
+                         [&](std::string_view line) {
+                           tui::info("%s", std::string{ line }.c_str());
+                           output_lines.emplace_back(line);
+                         },
+                     .cwd = dest_dir,
+                     .env = std::move(env),
+                     .shell = shell_parse_choice(std::nullopt) };
 
   shell_result const result{ shell_run(script, inv) };
 
   if (result.exit_code != 0) {
-    if (result.signaled) {
+    if (result.signal) {
       throw std::runtime_error("Stage shell script failed for " + key +
-                               " (terminated by signal " + std::to_string(result.signal) +
+                               " (terminated by signal " + std::to_string(*result.signal) +
                                ")");
     } else {
       throw std::runtime_error("Stage shell script failed for " + key + " (exit code " +
@@ -442,6 +441,7 @@ void run_stage_phase(std::string const &key, graph_state &state) {
       lua_pop(lua, 1);
       run_default_stage(fetch_dir, dest_dir);
       break;
+
     case LUA_TSTRING: {
       size_t len{ 0 };
       char const *script{ lua_tolstring(lua, -1, &len) };
@@ -450,14 +450,17 @@ void run_stage_phase(std::string const &key, graph_state &state) {
       run_shell_stage(script_view, dest_dir, key);
       break;
     }
+
     case LUA_TFUNCTION:
       run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, state, key);
       break;
+
     case LUA_TTABLE: run_declarative_stage(lua, fetch_dir, dest_dir, key); break;
+
     default:
       lua_pop(lua, 1);
-      throw std::runtime_error(
-          "stage field must be nil, string, table, or function for " + key);
+      throw std::runtime_error("stage field must be nil, string, table, or function for " +
+                               key);
   }
 }
 

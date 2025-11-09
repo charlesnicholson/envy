@@ -9,14 +9,23 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create deep nested directory
-  ctx.run([[
-    mkdir -p level1/level2/level3/level4
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      New-Item -ItemType Directory -Force -Path "level1/level2/level3/level4" | Out-Null
+    ]], { shell = "powershell" })
 
-  -- Run in deeply nested directory
-  ctx.run([[
-    pwd > pwd_nested.txt
-    echo "Deep nesting works" > nested_marker.txt
-  ]], {cwd = "level1/level2/level3/level4"})
+    ctx.run([[
+      Set-Content -Path pwd_nested.txt -Value (Get-Location).Path
+      Set-Content -Path nested_marker.txt -Value "Deep nesting works"
+    ]], {cwd = "level1/level2/level3/level4", shell = "powershell"})
+  else
+    ctx.run([[
+      mkdir -p level1/level2/level3/level4
+    ]])
+
+    ctx.run([[
+      pwd > pwd_nested.txt
+      echo "Deep nesting works" > nested_marker.txt
+    ]], {cwd = "level1/level2/level3/level4"})
+  end
 end

@@ -9,10 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Generate stderr output (but don't fail)
-  ctx.run([[
-    echo "Line 1 to stderr" >&2
-    echo "Line 2 to stderr" >&2
-    echo "stderr test complete" > stderr_marker.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      [System.Console]::Error.WriteLine("Line 1 to stderr")
+      [System.Console]::Error.WriteLine("Line 2 to stderr")
+      Set-Content -Path stderr_marker.txt -Value "stderr test complete"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Line 1 to stderr" >&2
+      echo "Line 2 to stderr" >&2
+      echo "stderr test complete" > stderr_marker.txt
+    ]])
+  end
 end

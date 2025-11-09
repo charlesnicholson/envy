@@ -9,16 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Simulate compilation steps
-  ctx.run([[
-    # Create source file
-    cat > hello.c <<'EOF'
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+$source = @'#include <stdio.h>\nint main() { printf("Hello\\n"); return 0; }\n'@\nSet-Content -Path hello.c -Value $source\nSet-Content -Path compile_log.txt -Value \"Compiling hello.c...\"\nAdd-Content -Path compile_log.txt -Value \"Compilation successful\"\n    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+cat > hello.c <<'EOF'
 #include <stdio.h>
 int main() { printf("Hello\n"); return 0; }
 EOF
-
-    # "Compile" (just verify syntax by echoing)
-    echo "Compiling hello.c..." > compile_log.txt
-    echo "Compilation successful" >> compile_log.txt
-  ]])
+echo "Compiling hello.c..." > compile_log.txt
+echo "Compilation successful" >> compile_log.txt
+    ]])
+  end
 end

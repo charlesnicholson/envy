@@ -9,21 +9,35 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Create a template with ctx.run
-  ctx.run([[
-    echo "Hello {{name}}, you are {{age}} years old" > greeting.tmpl
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path greeting.tmpl -Value "Hello {{name}}, you are {{age}} years old"
+    ]], { shell = "powershell" })
 
-  -- Process it with shell substitution (no ctx.template method)
-  ctx.run([[
-    name="Alice"
-    age="30"
-    sed "s/{{name}}/$name/g; s/{{age}}/$age/g" greeting.tmpl > greeting.txt
-  ]])
+    ctx.run([[
+      $content = Get-Content greeting.tmpl
+      $content = $content -replace "{{name}}","Alice" -replace "{{age}}","30"
+      Set-Content -Path greeting.txt -Value $content
+    ]], { shell = "powershell" })
 
-  -- Verify with ctx.run
-  ctx.run([[
-    grep "Alice" greeting.txt > template_check.txt
-    grep "30" greeting.txt >> template_check.txt
-  ]])
+    ctx.run([[
+      if ((Select-String -Path greeting.txt -Pattern "Alice")) { Set-Content -Path template_check.txt -Value "Alice" }
+      if ((Select-String -Path greeting.txt -Pattern "30")) { Add-Content -Path template_check.txt -Value "30" }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Hello {{name}}, you are {{age}} years old" > greeting.tmpl
+    ]])
+
+    ctx.run([[
+      name="Alice"
+      age="30"
+      sed "s/{{name}}/$name/g; s/{{age}}/$age/g" greeting.tmpl > greeting.txt
+    ]])
+
+    ctx.run([[
+      grep "Alice" greeting.txt > template_check.txt
+      grep "30" greeting.txt >> template_check.txt
+    ]])
+  end
 end

@@ -9,10 +9,20 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Strict mode should catch undefined variable
-  ctx.run([[
-    echo "About to use undefined variable"
-    echo "Value: $UNDEFINED_VARIABLE_XYZ"
-    echo "Should not reach here" > should_not_exist.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      $ErrorActionPreference = "Stop"
+      Write-Output "About to use undefined variable"
+      if (-not $env:UNDEFINED_VARIABLE_XYZ) { throw "Undefined variable" }
+      Write-Output "Value: $env:UNDEFINED_VARIABLE_XYZ"
+      Set-Content -Path should_not_exist.txt -Value "Should not reach here"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      set -euo pipefail
+      echo "About to use undefined variable"
+      echo "Value: $UNDEFINED_VARIABLE_XYZ"
+      echo "Should not reach here" > should_not_exist.txt
+    ]])
+  end
 end

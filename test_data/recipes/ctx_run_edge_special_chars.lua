@@ -9,10 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Special characters in output
-  ctx.run([[
-    echo "Special chars: !@#$%^&*()_+-=[]{}|;:',.<>?/~\`" > special_chars.txt
-    echo "Quotes: \"double\" 'single'" >> special_chars.txt
-    echo "Backslash: \\ and newline: (literal)" >> special_chars.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path special_chars.txt -Value 'Special chars: !@#$%^&*()_+-=[]{}|;:'',.<>?/~`'
+      Add-Content -Path special_chars.txt -Value 'Quotes: "double" ''single'''
+      Add-Content -Path special_chars.txt -Value 'Backslash: \ and newline: (literal)'
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Special chars: !@#$%^&*()_+-=[]{}|;:',.<>?/~\`" > special_chars.txt
+      echo "Quotes: \"double\" 'single'" >> special_chars.txt
+      echo "Backslash: \\ and newline: (literal)" >> special_chars.txt
+    ]])
+  end
 end

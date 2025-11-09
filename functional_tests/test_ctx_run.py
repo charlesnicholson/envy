@@ -88,6 +88,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_basic.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_basic@v1")
+        assert asset_path
         self.assertTrue((asset_path / "run_marker.txt").exists())
 
     def test_multiple_commands(self):
@@ -97,6 +98,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_multiple_cmds.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_multiple_cmds@v1")
+        assert asset_path
         self.assertTrue((asset_path / "all_cmds.txt").exists())
 
     def test_file_operations(self):
@@ -106,6 +108,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_file_ops.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_file_ops@v1")
+        assert asset_path
         self.assertTrue((asset_path / "ops_result.txt").exists())
 
     def test_runs_in_stage_dir(self):
@@ -115,6 +118,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_in_stage_dir.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_in_stage_dir@v1")
+        assert asset_path
         self.assertTrue((asset_path / "stage_verification.txt").exists())
 
     def test_with_pipes(self):
@@ -124,6 +128,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_with_pipes.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_with_pipes@v1")
+        assert asset_path
         self.assertTrue((asset_path / "grepped.txt").exists())
 
     # ===== Error Handling Tests =====
@@ -168,6 +173,28 @@ class TestCtxRun(unittest.TestCase):
             should_fail=True,
         )
 
+    @unittest.skipUnless(os.name != "nt", "requires POSIX shells")
+    def test_shell_sh(self):
+        """ctx.run() executes explicitly via /bin/sh."""
+        self.run_recipe(
+            "local.ctx_run_shell_sh@v1",
+            "test_data/recipes/ctx_run_shell_sh.lua",
+        )
+        asset_path = self.get_asset_path("local.ctx_run_shell_sh@v1")
+        assert asset_path
+        self.assertTrue((asset_path / "shell_sh_marker.txt").exists())
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows CMD")
+    def test_shell_cmd(self):
+        """ctx.run() executes explicitly via cmd.exe."""
+        self.run_recipe(
+            "local.ctx_run_shell_cmd@v1",
+            "test_data/recipes/ctx_run_shell_cmd.lua",
+        )
+        asset_path = self.get_asset_path("local.ctx_run_shell_cmd@v1")
+        assert asset_path
+        self.assertTrue((asset_path / "shell_cmd_marker.txt").exists())
+
     # ===== CWD Tests =====
 
     def test_cwd_relative(self):
@@ -177,6 +204,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_cwd_relative.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_cwd_relative@v1")
+        assert asset_path
         self.assertTrue((asset_path / "custom" / "subdir" / "marker.txt").exists())
 
     def test_cwd_absolute(self):
@@ -185,9 +213,12 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_cwd_absolute@v1",
             "test_data/recipes/ctx_run_cwd_absolute.lua",
         )
-        # Check that /tmp/envy_ctx_run_test.txt was created
-        self.assertTrue(Path("/tmp/envy_ctx_run_test.txt").exists())
-        Path("/tmp/envy_ctx_run_test.txt").unlink(missing_ok=True)
+        if os.name == "nt":
+            target = Path(os.environ.get("TEMP", "C:/Temp")) / "envy_ctx_run_test.txt"
+        else:
+            target = Path("/tmp/envy_ctx_run_test.txt")
+        self.assertTrue(target.exists())
+        target.unlink(missing_ok=True)
 
     def test_cwd_parent(self):
         """ctx.run() handles parent directory (..) in cwd."""
@@ -196,6 +227,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_cwd_parent.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_cwd_parent@v1")
+        assert asset_path
         self.assertTrue((asset_path / "deep" / "parent_marker.txt").exists())
 
     def test_cwd_nested(self):
@@ -205,8 +237,16 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_cwd_nested.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_cwd_nested@v1")
+        assert asset_path
         self.assertTrue(
-            (asset_path / "level1" / "level2" / "level3" / "level4" / "nested_marker.txt").exists()
+            (
+                asset_path
+                / "level1"
+                / "level2"
+                / "level3"
+                / "level4"
+                / "nested_marker.txt"
+            ).exists()
         )
 
     # ===== Strict Mode Tests =====
@@ -218,6 +258,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_disable_strict.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_disable_strict@v1")
+        assert asset_path
         self.assertTrue((asset_path / "continued.txt").exists())
 
     def test_strict_undefined_variable(self):
@@ -245,6 +286,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_env_custom.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_env_custom@v1")
+        assert asset_path
         self.assertTrue((asset_path / "env_output.txt").exists())
         content = (asset_path / "env_output.txt").read_text()
         self.assertIn("MY_VAR=test_value", content)
@@ -257,6 +299,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_env_inherit.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_env_inherit@v1")
+        assert asset_path
         self.assertTrue((asset_path / "path_verification.txt").exists())
 
     def test_env_override(self):
@@ -266,6 +309,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_env_override.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_env_override@v1")
+        assert asset_path
         content = (asset_path / "overridden_user.txt").read_text()
         self.assertIn("USER=test_override_user", content)
 
@@ -276,6 +320,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_env_empty.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_env_empty@v1")
+        assert asset_path
         self.assertTrue((asset_path / "empty_env.txt").exists())
 
     def test_env_complex(self):
@@ -285,6 +330,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_env_complex.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_env_complex@v1")
+        assert asset_path
         content = (asset_path / "env_complex.txt").read_text()
         self.assertIn("STRING=hello_world", content)
         self.assertIn("NUMBER=12345", content)
@@ -299,6 +345,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_with_extract.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_with_extract@v1")
+        assert asset_path
         self.assertTrue((asset_path / "verify_extract.txt").exists())
 
     def test_with_rename(self):
@@ -308,6 +355,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_with_rename.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_with_rename@v1")
+        assert asset_path
         self.assertTrue((asset_path / "rename_check.txt").exists())
 
     def test_with_template(self):
@@ -317,6 +365,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_with_template.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_with_template@v1")
+        assert asset_path
         self.assertTrue((asset_path / "template_check.txt").exists())
 
     def test_multiple_calls(self):
@@ -326,6 +375,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_multiple_calls.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_multiple_calls@v1")
+        assert asset_path
         self.assertTrue((asset_path / "all_calls.txt").exists())
 
     def test_interleaved(self):
@@ -335,6 +385,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_interleaved.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_interleaved@v1")
+        assert asset_path
         self.assertTrue((asset_path / "step_count.txt").exists())
 
     # ===== Phase-Specific Tests =====
@@ -346,6 +397,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_build_prep.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_build_prep@v1")
+        assert asset_path
         self.assertTrue((asset_path / "build" / "config.txt").exists())
 
     def test_stage_patch(self):
@@ -355,6 +407,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_patch.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_patch@v1")
+        assert asset_path
         self.assertTrue((asset_path / "patch_log.txt").exists())
 
     def test_stage_permissions(self):
@@ -364,6 +417,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_permissions.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_permissions@v1")
+        assert asset_path
         self.assertTrue((asset_path / "permissions.txt").exists())
 
     def test_stage_verification(self):
@@ -373,6 +427,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_verification.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_verification@v1")
+        assert asset_path
         self.assertTrue((asset_path / "verification.txt").exists())
 
     def test_stage_generation(self):
@@ -382,6 +437,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_generation.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_generation@v1")
+        assert asset_path
         self.assertTrue((asset_path / "generated.h").exists())
         self.assertTrue((asset_path / "generated.sh").exists())
 
@@ -392,6 +448,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_cleanup.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_cleanup@v1")
+        assert asset_path
         self.assertTrue((asset_path / "cleanup_log.txt").exists())
 
     def test_stage_compilation(self):
@@ -401,6 +458,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_compilation.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_compilation@v1")
+        assert asset_path
         self.assertTrue((asset_path / "compile_log.txt").exists())
 
     def test_stage_archiving(self):
@@ -410,6 +468,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_stage_archiving.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_stage_archiving@v1")
+        assert asset_path
         self.assertTrue((asset_path / "archive_log.txt").exists())
 
     # ===== Output/Logging Tests =====
@@ -421,6 +480,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_output_stdout.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_output_stdout@v1")
+        assert asset_path
         self.assertTrue((asset_path / "stdout_marker.txt").exists())
 
     def test_output_stderr(self):
@@ -431,6 +491,7 @@ class TestCtxRun(unittest.TestCase):
         )
         # Stderr should be captured in logs
         asset_path = self.get_asset_path("local.ctx_run_output_stderr@v1")
+        assert asset_path
         self.assertTrue((asset_path / "stderr_marker.txt").exists())
 
     def test_output_large(self):
@@ -440,6 +501,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_output_large.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_output_large@v1")
+        assert asset_path
         self.assertTrue((asset_path / "large_output_marker.txt").exists())
 
     def test_output_multiline(self):
@@ -449,6 +511,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_output_multiline.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_output_multiline@v1")
+        assert asset_path
         self.assertTrue((asset_path / "multiline_marker.txt").exists())
 
     # ===== Complex Scenario Tests =====
@@ -460,6 +523,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_complex_workflow.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_complex_workflow@v1")
+        assert asset_path
         self.assertTrue((asset_path / "workflow_complete.txt").exists())
 
     def test_complex_env_manipulation(self):
@@ -469,6 +533,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_complex_env_manip.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_complex_env_manip@v1")
+        assert asset_path
         self.assertTrue((asset_path / "env_step1.txt").exists())
         self.assertTrue((asset_path / "env_step2.txt").exists())
         self.assertTrue((asset_path / "env_step3.txt").exists())
@@ -480,6 +545,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_complex_conditional.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_complex_conditional@v1")
+        assert asset_path
         self.assertTrue((asset_path / "os_info.txt").exists())
         self.assertTrue((asset_path / "test_info.txt").exists())
 
@@ -490,6 +556,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_complex_loops.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_complex_loops@v1")
+        assert asset_path
         self.assertTrue((asset_path / "loop_output.txt").exists())
 
     def test_complex_nested(self):
@@ -499,6 +566,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_complex_nested.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_complex_nested@v1")
+        assert asset_path
         self.assertTrue((asset_path / "summary.txt").exists())
 
     # ===== Edge Case Tests =====
@@ -510,6 +578,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_empty.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_empty@v1")
+        assert asset_path
         self.assertTrue((asset_path / "after_empty.txt").exists())
 
     def test_edge_whitespace(self):
@@ -519,6 +588,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_whitespace.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_whitespace@v1")
+        assert asset_path
         self.assertTrue((asset_path / "after_whitespace.txt").exists())
 
     def test_edge_long_line(self):
@@ -528,6 +598,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_long_line.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_long_line@v1")
+        assert asset_path
         self.assertTrue((asset_path / "long_line.txt").exists())
 
     def test_edge_special_chars(self):
@@ -537,6 +608,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_special_chars.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_special_chars@v1")
+        assert asset_path
         self.assertTrue((asset_path / "special_chars.txt").exists())
 
     def test_edge_unicode(self):
@@ -546,6 +618,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_unicode.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_unicode@v1")
+        assert asset_path
         self.assertTrue((asset_path / "unicode.txt").exists())
 
     def test_edge_many_files(self):
@@ -555,6 +628,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_many_files.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_many_files@v1")
+        assert asset_path
         self.assertTrue((asset_path / "many_files_marker.txt").exists())
 
     def test_edge_slow_command(self):
@@ -564,6 +638,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_edge_slow_command.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_edge_slow_command@v1")
+        assert asset_path
         self.assertTrue((asset_path / "slow_verify.txt").exists())
 
     # ===== Lua Error Integration Tests =====
@@ -609,6 +684,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_all_options.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_all_options@v1")
+        assert asset_path
         self.assertTrue((asset_path / "subdir" / "all_opts_continued.txt").exists())
 
     def test_option_combinations(self):
@@ -618,6 +694,7 @@ class TestCtxRun(unittest.TestCase):
             "test_data/recipes/ctx_run_option_combinations.lua",
         )
         asset_path = self.get_asset_path("local.ctx_run_option_combinations@v1")
+        assert asset_path
         self.assertTrue((asset_path / "dir1" / "combo1_env.txt").exists())
         self.assertTrue((asset_path / "dir2" / "combo2_continued.txt").exists())
         self.assertTrue((asset_path / "combo3_env.txt").exists())

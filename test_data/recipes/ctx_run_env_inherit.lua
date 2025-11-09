@@ -9,10 +9,22 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Verify PATH is inherited (allows us to run commands)
-  ctx.run([[
-    echo "PATH=$PATH" > inherited_path.txt
-    which echo > which_echo.txt
-    test -n "$PATH" && echo "PATH inherited" > path_verification.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path inherited_path.txt -Value ("PATH=" + $env:PATH)
+      $echoPath = (Get-Command echo.exe).Source
+      Set-Content -Path which_echo.txt -Value $echoPath
+      if ($env:PATH) {
+        Set-Content -Path path_verification.txt -Value "PATH inherited"
+      } else {
+        exit 1
+      }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "PATH=$PATH" > inherited_path.txt
+      which echo > which_echo.txt
+      test -n "$PATH" && echo "PATH inherited" > path_verification.txt
+    ]])
+  end
 end

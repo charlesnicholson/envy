@@ -9,9 +9,24 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Generate multi-line output with different formats
-  ctx.run([[
-    cat > output.txt <<'MULTILINE'
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+$thisContent = @"
+This is line 1
+This is line 2
+This is line 3
+
+This is line 5 (after blank line)
+	This line has a tab
+    This line has spaces
+"@
+Set-Content -Path output.txt -Value $thisContent
+Get-Content output.txt | ForEach-Object { Write-Output $_ }
+Set-Content -Path multiline_marker.txt -Value "Multi-line test complete"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+cat > output.txt <<'MULTILINE'
 This is line 1
 This is line 2
 This is line 3
@@ -23,5 +38,6 @@ MULTILINE
 
     cat output.txt
     echo "Multi-line test complete" > multiline_marker.txt
-  ]])
+    ]])
+  end
 end

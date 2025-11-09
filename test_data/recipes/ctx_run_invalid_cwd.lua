@@ -9,8 +9,18 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- This should fail because /nonexistent/directory doesn't exist
-  ctx.run([[
-    echo "Should not execute"
-  ]], {cwd = "/nonexistent/directory/that/does/not/exist"})
+  local invalid_cwd
+  local script
+  if ENVY_PLATFORM == "windows" then
+    invalid_cwd = "Z:/nonexistent/directory/that/does/not/exist"
+    script = [[
+      Write-Output "Should not execute"
+    ]]
+    ctx.run(script, {cwd = invalid_cwd, shell = "powershell"})
+  else
+    invalid_cwd = "/nonexistent/directory/that/does/not/exist"
+    ctx.run([[
+      echo "Should not execute"
+    ]], {cwd = invalid_cwd})
+  end
 end

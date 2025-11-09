@@ -9,19 +9,31 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Use ctx.run to create a file
-  ctx.run([[
-    echo "original name" > original.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path original.txt -Value "original name"
+    ]], { shell = "powershell" })
 
-  -- Use ctx.run to rename it (no ctx.rename method)
-  ctx.run([[
-    mv original.txt renamed.txt
-  ]])
+    ctx.run([[
+      Move-Item -Path original.txt -Destination renamed.txt -Force
+    ]], { shell = "powershell" })
 
-  -- Use ctx.run to verify rename
-  ctx.run([[
-    test -f renamed.txt && echo "Rename verified" > rename_check.txt
-    test ! -f original.txt && echo "Original gone" >> rename_check.txt
-  ]])
+    ctx.run([[
+      if (Test-Path renamed.txt) { Set-Content -Path rename_check.txt -Value "Rename verified" }
+      if (-not (Test-Path original.txt)) { Add-Content -Path rename_check.txt -Value "Original gone" }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "original name" > original.txt
+    ]])
+
+    ctx.run([[
+      mv original.txt renamed.txt
+    ]])
+
+    ctx.run([[
+      test -f renamed.txt && echo "Rename verified" > rename_check.txt
+      test ! -f original.txt && echo "Original gone" >> rename_check.txt
+    ]])
+  end
 end

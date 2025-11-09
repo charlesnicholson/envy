@@ -9,12 +9,21 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Set file permissions
-  ctx.run([[
-    chmod +x file1.txt
-    ls -l file1.txt > permissions.txt
-    touch executable.sh
-    chmod 755 executable.sh
-    ls -l executable.sh >> permissions.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      (Get-Item file1.txt).Attributes = 'Normal'
+      Add-Content -Path permissions.txt -Value ((Get-Item file1.txt).Attributes)
+      Set-Content -Path executable.bat -Value "@echo off"
+      (Get-Item executable.bat).Attributes = 'Normal'
+      Add-Content -Path permissions.txt -Value ((Get-Item executable.bat).Attributes)
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      chmod +x file1.txt
+      ls -l file1.txt > permissions.txt
+      touch executable.sh
+      chmod 755 executable.sh
+      ls -l executable.sh >> permissions.txt
+    ]])
+  end
 end

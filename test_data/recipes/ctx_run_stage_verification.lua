@@ -9,14 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Verification checks
-  ctx.run([[
-    # Check required files exist
-    test -f file1.txt || (echo "Missing file1.txt" && exit 1)
-
-    # Check file is not empty
-    test -s file1.txt || (echo "File is empty" && exit 1)
-
-    echo "All verification checks passed" > verification.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      if (-not (Test-Path file1.txt)) { throw "Missing file1.txt" }
+      if ((Get-Item file1.txt).Length -eq 0) { throw "File is empty" }
+      Set-Content -Path verification.txt -Value "All verification checks passed"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      test -f file1.txt || (echo "Missing file1.txt" && exit 1)
+      test -s file1.txt || (echo "File is empty" && exit 1)
+      echo "All verification checks passed" > verification.txt
+    ]])
+  end
 end

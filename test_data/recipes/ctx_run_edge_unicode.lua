@@ -9,10 +9,17 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Unicode characters in output
-  ctx.run([[
-    echo "Unicode: Hello 世界 🌍 café" > unicode.txt
-    echo "More Unicode: Ω α β γ δ" >> unicode.txt
-    echo "Emoji: 😀 🎉 🚀" >> unicode.txt
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path unicode.txt -Value "Unicode: Hello 世界 🌍 café"
+      Add-Content -Path unicode.txt -Value "More Unicode: Ω α β γ δ"
+      Add-Content -Path unicode.txt -Value "Emoji: 😀 🎉 🚀"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Unicode: Hello 世界 🌍 café" > unicode.txt
+      echo "More Unicode: Ω α β γ δ" >> unicode.txt
+      echo "Emoji: 😀 🎉 🚀" >> unicode.txt
+    ]])
+  end
 end
