@@ -218,6 +218,8 @@ shell_result wait_for_child(pid_t child) {
   std::string_view shell_view{ shell_arg };
   size_t start{ 0 };
   while (start < shell_view.size()) {
+    while (start < shell_view.size() && shell_view[start] == ' ') { ++start; }
+    if (start >= shell_view.size()) { break; }
     size_t const end{ shell_view.find(' ', start) };
     if (end == std::string_view::npos) {
       shell_parts.emplace_back(shell_view.substr(start));
@@ -227,10 +229,15 @@ shell_result wait_for_child(pid_t child) {
     start = end + 1;
   }
 
+  if (shell_parts.empty()) {
+    std::fprintf(stderr, "invalid shell path: '%s'\n", shell_arg.c_str());
+    _exit(kChildErrorExit);
+  }
+
   std::vector<char *> argv;
   argv.reserve(shell_parts.size() + 2);
-  for (auto &part : shell_parts) { argv.push_back(part.data()); }
-  argv.push_back(const_cast<char *>(script_arg.data()));
+  for (auto &part : shell_parts) { argv.push_back(const_cast<char *>(part.c_str())); }
+  argv.push_back(const_cast<char *>(script_arg.c_str()));
   argv.push_back(nullptr);
 
   ::execve(shell_parts[0].c_str(), argv.data(), envp.pointers.data());
