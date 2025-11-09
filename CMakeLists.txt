@@ -146,6 +146,7 @@ target_sources(envy
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
+        src/shell.cpp
         src/tui.cpp
         src/uri.cpp
         src/util.cpp
@@ -239,6 +240,7 @@ target_sources(envy_functional_tester
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
+        src/shell.cpp
         src/test_support.cpp
         src/tui.cpp
         src/uri.cpp
@@ -326,6 +328,7 @@ target_sources(envy_unit_tests
         src/fetch.cpp
         src/libcurl_util.cpp
         src/platform.cpp
+        src/shell.cpp
         src/blake3_util_tests.cpp
         src/cache_tests.cpp
         src/cli_tests.cpp
@@ -339,6 +342,7 @@ target_sources(envy_unit_tests
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp
         src/sha256_tests.cpp
+        src/shell_tests.cpp
         src/uri.cpp
         src/uri_tests.cpp
         src/tui_tests.cpp

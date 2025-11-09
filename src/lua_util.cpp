@@ -13,6 +13,54 @@ extern "C" {
 namespace envy {
 namespace {
 
+constexpr char kEnvyTemplateLua[] = R"lua(
+return function(str, values)
+  if type(str) ~= "string" then
+    error("envy.template: first argument must be a string", 2)
+  end
+  if type(values) ~= "table" then
+    error("envy.template: second argument must be a table", 2)
+  end
+
+  local function normalize_key(raw)
+    local trimmed = raw:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+      error("envy.template: placeholder cannot be empty", 2)
+    end
+    if not trimmed:match("^[%a_][%w_]*$") then
+      error("envy.template: placeholder '" .. trimmed .. "' contains invalid characters", 2)
+    end
+    return trimmed
+  end
+
+  local function ensure_pairs(str)
+    local search_from = 1
+    while true do
+      local open_start = str:find("{{", search_from, true)
+      if not open_start then break end
+      local close_start = str:find("}}", open_start + 2, true)
+      if not close_start then
+        error("envy.template: unmatched '{{' at position " .. open_start, 2)
+      end
+      search_from = close_start + 2
+    end
+  end
+
+  ensure_pairs(str)
+
+  local function replacer(token)
+    local key = normalize_key(token)
+    local value = values[key]
+    if value == nil then
+      error("envy.template: missing value for placeholder '" .. key .. "'", 2)
+    end
+    return tostring(value)
+  end
+
+  return (str:gsub("{{(.-)}}", replacer))
+end
+)lua";
+
 int lua_print_override(lua_State *lua) {
   int argc{ lua_gettop(lua) };
   std::ostringstream oss;
@@ -33,27 +81,45 @@ int lua_print_tui(lua_State *lua) {
   return 0;
 }
 
+bool push_envy_template(lua_State *lua) {
+  if (luaL_loadstring(lua, kEnvyTemplateLua) != LUA_OK) {
+    char const *err{ lua_tostring(lua, -1) };
+    tui::error("Failed to load envy.template helper: %s", err ? err : "unknown error");
+    lua_pop(lua, 1);
+    return false;
+  }
+
+  if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+    char const *err{ lua_tostring(lua, -1) };
+    tui::error("Failed to initialize envy.template helper: %s",
+               err ? err : "unknown error");
+    lua_pop(lua, 1);
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace
 
-void lua_deleter::operator()(lua_State *L) const {
-  if (L) lua_close(L);
+void lua_deleter::operator()(lua_State *lua) const {
+  if (lua) lua_close(lua);
 }
 
 lua_state_ptr lua_make() {
-  lua_State *L{ luaL_newstate() };
-  if (!L) {
+  lua_State *lua{ luaL_newstate() };
+  if (!lua) {
     tui::error("Failed to create Lua state");
     return lua_state_ptr{ nullptr };
   }
 
-  luaL_openlibs(L);
-
-  return lua_state_ptr{ L };
+  luaL_openlibs(lua);
+  return lua_state_ptr{ lua };
 }
 
 void lua_add_envy(lua_state_ptr const &state) {
-  lua_State *L{ state.get() };
-  if (!L) {
+  lua_State *lua{ state.get() };
+  if (!lua) {
     tui::error("lua_add_envy called with null state");
     return;
   }
@@ -99,41 +165,43 @@ void lua_add_envy(lua_state_ptr const &state) {
 #endif
   std::string const platform_arch{ std::string{ platform } + "-" + arch };
 
-  lua_pushstring(L, platform);
-  lua_setglobal(L, "ENVY_PLATFORM");
-  lua_pushstring(L, arch);
-  lua_setglobal(L, "ENVY_ARCH");
-  lua_pushlstring(L, platform_arch.c_str(), platform_arch.size());
-  lua_setglobal(L, "ENVY_PLATFORM_ARCH");
+  lua_pushstring(lua, platform);
+  lua_setglobal(lua, "ENVY_PLATFORM");
+  lua_pushstring(lua, arch);
+  lua_setglobal(lua, "ENVY_ARCH");
+  lua_pushlstring(lua, platform_arch.c_str(), platform_arch.size());
+  lua_setglobal(lua, "ENVY_PLATFORM_ARCH");
 
-  lua_pushcfunction(L, lua_print_override);
-  lua_setglobal(L, "print");
+  lua_pushcfunction(lua, lua_print_override);
+  lua_setglobal(lua, "print");
 
-  lua_newtable(L);
-  lua_pushcfunction(L, lua_print_tui<tui::trace>);
-  lua_setfield(L, -2, "trace");
-  lua_pushcfunction(L, lua_print_tui<tui::debug>);
-  lua_setfield(L, -2, "debug");
-  lua_pushcfunction(L, lua_print_tui<tui::info>);
-  lua_setfield(L, -2, "info");
-  lua_pushcfunction(L, lua_print_tui<tui::warn>);
-  lua_setfield(L, -2, "warn");
-  lua_pushcfunction(L, lua_print_tui<tui::error>);
-  lua_setfield(L, -2, "error");
-  lua_pushcfunction(L, lua_print_tui<tui::print_stdout>);
-  lua_setfield(L, -2, "stdout");
-  lua_setglobal(L, "envy");
+  lua_newtable(lua);
+  lua_pushcfunction(lua, lua_print_tui<tui::trace>);
+  lua_setfield(lua, -2, "trace");
+  lua_pushcfunction(lua, lua_print_tui<tui::debug>);
+  lua_setfield(lua, -2, "debug");
+  lua_pushcfunction(lua, lua_print_tui<tui::info>);
+  lua_setfield(lua, -2, "info");
+  lua_pushcfunction(lua, lua_print_tui<tui::warn>);
+  lua_setfield(lua, -2, "warn");
+  lua_pushcfunction(lua, lua_print_tui<tui::error>);
+  lua_setfield(lua, -2, "error");
+  lua_pushcfunction(lua, lua_print_tui<tui::print_stdout>);
+  lua_setfield(lua, -2, "stdout");
+  if (push_envy_template(lua)) { lua_setfield(lua, -2, "template"); }
+  lua_setglobal(lua, "envy");
 }
 
 bool lua_run_file(lua_state_ptr const &state, std::filesystem::path const &path) {
-  lua_State *L{ state.get() };
-  if (!L) {
+  lua_State *lua{ state.get() };
+  if (!lua) {
     tui::error("lua_run called with null state");
     return false;
   }
 
-  if (int load_status{ luaL_loadfile(L, path.string().c_str()) }; load_status != LUA_OK) {
-    char const *err{ lua_tostring(L, -1) };
+  if (int const load_status{ luaL_loadfile(lua, path.string().c_str()) };
+      load_status != LUA_OK) {
+    char const *err{ lua_tostring(lua, -1) };
     if (load_status == LUA_ERRFILE) {
       tui::error("Failed to open %s: %s",
                  path.string().c_str(),
@@ -141,12 +209,14 @@ bool lua_run_file(lua_state_ptr const &state, std::filesystem::path const &path)
     } else {
       tui::error("%s", err ? err : "unknown error");
     }
+    lua_pop(lua, 1);
     return false;
   }
 
-  if (lua_pcall(L, 0, LUA_MULTRET, 0) != LUA_OK) {
-    auto err{ lua_tostring(L, -1) };
+  if (lua_pcall(lua, 0, LUA_MULTRET, 0) != LUA_OK) {
+    auto err{ lua_tostring(lua, -1) };
     tui::error("%s", err ? err : "unknown error");
+    lua_pop(lua, 1);
     return false;
   }
 
@@ -154,21 +224,23 @@ bool lua_run_file(lua_state_ptr const &state, std::filesystem::path const &path)
 }
 
 bool lua_run_string(lua_state_ptr const &state, char const *script) {
-  lua_State *L{ state.get() };
-  if (!L) {
+  lua_State *lua{ state.get() };
+  if (!lua) {
     tui::error("lua_run_string called with null state");
     return false;
   }
 
-  if (luaL_loadstring(L, script) != LUA_OK) {
-    char const *err{ lua_tostring(L, -1) };
+  if (luaL_loadstring(lua, script) != LUA_OK) {
+    char const *err{ lua_tostring(lua, -1) };
     tui::error("Failed to load Lua script: %s", err ? err : "unknown error");
+    lua_pop(lua, 1);
     return false;
   }
 
-  if (lua_pcall(L, 0, LUA_MULTRET, 0) != LUA_OK) {
-    char const *err{ lua_tostring(L, -1) };
+  if (lua_pcall(lua, 0, LUA_MULTRET, 0) != LUA_OK) {
+    char const *err{ lua_tostring(lua, -1) };
     tui::error("Lua script execution failed: %s", err ? err : "unknown error");
+    lua_pop(lua, 1);
     return false;
   }
 
@@ -235,8 +307,8 @@ lua_value lua_stack_to_value(lua_State *L, int index) {
     }
 
     default:
-      throw std::runtime_error(
-          std::string("Unsupported Lua type: ") + lua_typename(L, type));
+      throw std::runtime_error(std::string("Unsupported Lua type: ") +
+                               lua_typename(L, type));
   }
 }
 
