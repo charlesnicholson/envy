@@ -8,9 +8,20 @@ fetch = {
 
 stage = {strip = 1}
 
-build = [[
-  echo "Building in shell script mode"
-  mkdir -p build_output
-  echo "build_artifact" > build_output/artifact.txt
-  ls -la
-]]
+build = function(ctx)
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Write-Host "Building in shell script mode"
+      New-Item -ItemType Directory -Path build_output -Force | Out-Null
+      Set-Content -Path build_output/artifact.txt -Value "build_artifact"
+      Get-ChildItem
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      echo "Building in shell script mode"
+      mkdir -p build_output
+      echo "build_artifact" > build_output/artifact.txt
+      ls -la
+    ]])
+  end
+end

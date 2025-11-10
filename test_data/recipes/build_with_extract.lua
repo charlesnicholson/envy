@@ -9,7 +9,11 @@ fetch = {
 -- Skip stage phase, extract manually in build
 stage = function(ctx)
   -- Don't extract yet, just prepare
-  ctx.run("mkdir -p manual_build")
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = "powershell" })
+  else
+    ctx.run("mkdir -p manual_build")
+  end
 end
 
 build = function(ctx)
@@ -20,19 +24,29 @@ build = function(ctx)
   print("Extracted " .. files_extracted .. " files")
 
   -- Extract again with strip_components
-  ctx.run("mkdir -p stripped")
-  ctx.run("cd stripped && true")  -- Create directory
-
-  -- Extract to subdirectory with strip
-  local result = ctx.run([[
-    mkdir -p extracted_stripped
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[New-Item -ItemType Directory -Path stripped -Force | Out-Null]], { shell = "powershell" })
+    ctx.run([[Set-Location stripped; $true]], { shell = "powershell" })  -- Create directory
+    ctx.run([[New-Item -ItemType Directory -Path extracted_stripped -Force | Out-Null]], { shell = "powershell" })
+  else
+    ctx.run("mkdir -p stripped")
+    ctx.run("cd stripped && true")  -- Create directory
+    ctx.run([[mkdir -p extracted_stripped]])
+  end
 
   -- Note: extract extracts to cwd, so we need to work around this
   -- For now, just verify the first extraction worked
-  ctx.run([[
-    test -d root || exit 1
-    test -f root/file1.txt || exit 1
-    echo "Extract successful"
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      if (-not (Test-Path root -PathType Container)) { exit 1 }
+      if (-not (Test-Path root/file1.txt)) { exit 1 }
+      Write-Output "Extract successful"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      test -d root || exit 1
+      test -f root/file1.txt || exit 1
+      echo "Extract successful"
+    ]])
+  end
 end

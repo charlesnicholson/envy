@@ -12,11 +12,20 @@ build = function(ctx)
   print("Testing output capture")
 
   -- Capture output from command
-  local result = ctx.run([[
-    echo "line1"
-    echo "line2"
-    echo "line3"
-  ]])
+  local result
+  if ENVY_PLATFORM == "windows" then
+    result = ctx.run([[
+      Write-Output "line1"
+      Write-Output "line2"
+      Write-Output "line3"
+    ]], { shell = "powershell" })
+  else
+    result = ctx.run([[
+      echo "line1"
+      echo "line2"
+      echo "line3"
+    ]])
+  end
 
   -- Verify stdout contains all lines
   if not result.stdout:match("line1") then
@@ -30,11 +39,19 @@ build = function(ctx)
   end
 
   -- Test with special characters
-  result = ctx.run([[
-    echo "Special: !@#$%^&*()"
-    echo "Unicode: 你好世界"
-    echo "Quotes: 'single' \"double\""
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    result = ctx.run([[
+      Write-Output "Special: !@#$%^&*()"
+      Write-Output "Unicode: 你好世界"
+      Write-Output "Quotes: 'single' `"double`""
+    ]], { shell = "powershell" })
+  else
+    result = ctx.run([[
+      echo "Special: !@#$%^&*()"
+      echo "Unicode: 你好世界"
+      echo "Quotes: 'single' \"double\""
+    ]])
+  end
 
   if not result.stdout:match("Special:") then
     error("Missing special characters in output")

@@ -12,17 +12,33 @@ build = function(ctx)
   print("Testing custom environment variables")
 
   -- Run with custom environment
-  local result = ctx.run([[
-    echo "BUILD_MODE=$BUILD_MODE"
-    echo "CUSTOM_VAR=$CUSTOM_VAR"
-    test "$BUILD_MODE" = "release" || exit 1
-    test "$CUSTOM_VAR" = "test_value" || exit 1
-  ]], {
-    env = {
-      BUILD_MODE = "release",
-      CUSTOM_VAR = "test_value"
-    }
-  })
+  local result
+  if ENVY_PLATFORM == "windows" then
+    result = ctx.run([[
+      Write-Output "BUILD_MODE=$env:BUILD_MODE"
+      Write-Output "CUSTOM_VAR=$env:CUSTOM_VAR"
+      if ($env:BUILD_MODE -ne "release") { exit 1 }
+      if ($env:CUSTOM_VAR -ne "test_value") { exit 1 }
+    ]], {
+      env = {
+        BUILD_MODE = "release",
+        CUSTOM_VAR = "test_value"
+      },
+      shell = "powershell"
+    })
+  else
+    result = ctx.run([[
+      echo "BUILD_MODE=$BUILD_MODE"
+      echo "CUSTOM_VAR=$CUSTOM_VAR"
+      test "$BUILD_MODE" = "release" || exit 1
+      test "$CUSTOM_VAR" = "test_value" || exit 1
+    ]], {
+      env = {
+        BUILD_MODE = "release",
+        CUSTOM_VAR = "test_value"
+      }
+    })
+  end
 
   -- Verify environment was set
   if not result.stdout:match("BUILD_MODE=release") then

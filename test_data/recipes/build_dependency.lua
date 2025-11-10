@@ -9,5 +9,9 @@ fetch = {
 stage = {strip = 1}
 
 build = function(ctx)
-  ctx.run("echo 'dependency_data' > dependency.txt")
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[Set-Content -Path dependency.txt -Value "dependency_data"]], { shell = "powershell" })
+  else
+    ctx.run("echo 'dependency_data' > dependency.txt")
+  end
 end

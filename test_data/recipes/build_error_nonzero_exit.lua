@@ -12,7 +12,11 @@ build = function(ctx)
   print("Testing error handling")
 
   -- This should fail and abort the build
-  ctx.run("exit 42")
+  if ENVY_PLATFORM == "windows" then
+    ctx.run("exit 42", { shell = "powershell" })
+  else
+    ctx.run("exit 42")
+  end
 
   -- This should never execute
   error("Should not reach here")

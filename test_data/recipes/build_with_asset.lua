@@ -19,10 +19,18 @@ build = function(ctx)
   print("Dependency path: " .. dep_path)
 
   -- Copy dependency file
-  local result = ctx.run([[
-    cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt
-    echo "Used dependency data"
-  ]])
+  local result
+  if ENVY_PLATFORM == "windows" then
+    result = ctx.run([[
+      Get-Content "]] .. dep_path .. [[/dependency.txt" | Set-Content -Path from_dependency.txt
+      Write-Output "Used dependency data"
+    ]], { shell = "powershell" })
+  else
+    result = ctx.run([[
+      cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt
+      echo "Used dependency data"
+    ]])
+  end
 
   if not result.stdout:match("Used dependency data") then
     error("Failed to use dependency")

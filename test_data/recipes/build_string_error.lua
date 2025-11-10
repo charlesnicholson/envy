@@ -9,9 +9,20 @@ fetch = {
 stage = {strip = 1}
 
 -- This build script should fail
-build = [[
-  set -e
-  echo "Starting build"
-  false
-  echo "This should not execute"
-]]
+build = function(ctx)
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      $ErrorActionPreference = "Stop"
+      Write-Output "Starting build"
+      exit 1
+      Write-Output "This should not execute"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      set -e
+      echo "Starting build"
+      false
+      echo "This should not execute"
+    ]])
+  end
+end

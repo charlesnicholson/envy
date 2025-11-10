@@ -12,33 +12,68 @@ build = function(ctx)
   print("Testing custom working directory")
 
   -- Create subdirectory
-  ctx.run("mkdir -p subdir")
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[New-Item -ItemType Directory -Path subdir -Force | Out-Null]], { shell = "powershell" })
+  else
+    ctx.run("mkdir -p subdir")
+  end
 
   -- Run in subdirectory (relative path)
-  ctx.run([[
-    pwd > current_dir.txt
-    echo "In subdirectory" > marker.txt
-  ]], {cwd = "subdir"})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Get-Location | Out-File -FilePath current_dir.txt
+      Set-Content -Path marker.txt -Value "In subdirectory"
+    ]], {cwd = "subdir", shell = "powershell"})
+  else
+    ctx.run([[
+      pwd > current_dir.txt
+      echo "In subdirectory" > marker.txt
+    ]], {cwd = "subdir"})
+  end
 
   -- Verify we ran in subdirectory
-  ctx.run([[
-    test -f subdir/marker.txt || exit 1
-    grep -q subdir subdir/current_dir.txt || exit 1
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      if (-not (Test-Path subdir/marker.txt)) { exit 1 }
+      if (-not (Select-String -Path subdir/current_dir.txt -Pattern "subdir" -Quiet)) { exit 1 }
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      test -f subdir/marker.txt || exit 1
+      grep -q subdir subdir/current_dir.txt || exit 1
+    ]])
+  end
 
   -- Create nested structure
-  ctx.run("mkdir -p nested/deep/dir")
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[New-Item -ItemType Directory -Path nested/deep/dir -Force | Out-Null]], { shell = "powershell" })
+  else
+    ctx.run("mkdir -p nested/deep/dir")
+  end
 
   -- Run in deeply nested directory
-  ctx.run([[
-    echo "deep" > deep_marker.txt
-  ]], {cwd = "nested/deep/dir"})
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Set-Content -Path deep_marker.txt -Value "deep"
+    ]], {cwd = "nested/deep/dir", shell = "powershell"})
+  else
+    ctx.run([[
+      echo "deep" > deep_marker.txt
+    ]], {cwd = "nested/deep/dir"})
+  end
 
   -- Verify
-  ctx.run([[
-    test -f nested/deep/dir/deep_marker.txt || exit 1
-    echo "CWD operations successful"
-  ]])
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      if (-not (Test-Path nested/deep/dir/deep_marker.txt)) { exit 1 }
+      Write-Output "CWD operations successful"
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      test -f nested/deep/dir/deep_marker.txt || exit 1
+      echo "CWD operations successful"
+    ]])
+  end
 
   print("Custom working directory works correctly")
 end
