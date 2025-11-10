@@ -1425,3 +1425,381 @@ TEST_CASE("envy.template handles edge cases with bracket positions") {
     assert(envy.template("{{key}}", { key = "}" }) == "}")
   )"));
 }
+
+// lua_get_arg tests -------------------------------------------------------
+
+TEST_CASE("lua_get_arg returns nullopt for empty stack") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(lua_gettop(L.get()) == 0);
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 1).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 2).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), -1).has_value());
+}
+
+TEST_CASE("lua_get_arg returns nullopt for out of range positive index") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "arg1");
+  lua_pushinteger(L.get(), 42);
+
+  CHECK(lua_gettop(L.get()) == 2);
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 3).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 4).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 100).has_value());
+}
+
+TEST_CASE("lua_get_arg returns nullopt for out of range negative index") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "arg1");
+  lua_pushinteger(L.get(), 42);
+
+  CHECK(lua_gettop(L.get()) == 2);
+  CHECK_FALSE(envy::lua_get_arg(L.get(), -3).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), -4).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), -100).has_value());
+}
+
+TEST_CASE("lua_get_arg returns nullopt for index 0") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "arg1");
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 0).has_value());
+}
+
+TEST_CASE("lua_get_arg extracts first argument") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "hello");
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_string());
+  CHECK(*result->get<std::string>() == "hello");
+}
+
+TEST_CASE("lua_get_arg extracts second argument") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "first");
+  lua_pushinteger(L.get(), 99);
+
+  auto const result{ envy::lua_get_arg(L.get(), 2) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_integer());
+  CHECK(*result->get<int64_t>() == 99);
+}
+
+TEST_CASE("lua_get_arg extracts multiple arguments") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "arg1");
+  lua_pushinteger(L.get(), 42);
+  lua_pushboolean(L.get(), 1);
+  lua_pushnumber(L.get(), 3.14);
+
+  auto const arg1{ envy::lua_get_arg(L.get(), 1) };
+  auto const arg2{ envy::lua_get_arg(L.get(), 2) };
+  auto const arg3{ envy::lua_get_arg(L.get(), 3) };
+  auto const arg4{ envy::lua_get_arg(L.get(), 4) };
+
+  REQUIRE(arg1.has_value());
+  CHECK(arg1->is_string());
+  CHECK(*arg1->get<std::string>() == "arg1");
+
+  REQUIRE(arg2.has_value());
+  CHECK(arg2->is_integer());
+  CHECK(*arg2->get<int64_t>() == 42);
+
+  REQUIRE(arg3.has_value());
+  CHECK(arg3->is_bool());
+  CHECK(*arg3->get<bool>() == true);
+
+  REQUIRE(arg4.has_value());
+  CHECK(arg4->is_number());
+  CHECK(*arg4->get<double>() == doctest::Approx(3.14));
+}
+
+TEST_CASE("lua_get_arg extracts argument with negative index") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "first");
+  lua_pushinteger(L.get(), 42);
+  lua_pushboolean(L.get(), 1);
+
+  // -1 is top (third element), -2 is second, -3 is first
+  auto const arg_neg1{ envy::lua_get_arg(L.get(), -1) };
+  auto const arg_neg2{ envy::lua_get_arg(L.get(), -2) };
+  auto const arg_neg3{ envy::lua_get_arg(L.get(), -3) };
+
+  REQUIRE(arg_neg1.has_value());
+  CHECK(arg_neg1->is_bool());
+  CHECK(*arg_neg1->get<bool>() == true);
+
+  REQUIRE(arg_neg2.has_value());
+  CHECK(arg_neg2->is_integer());
+  CHECK(*arg_neg2->get<int64_t>() == 42);
+
+  REQUIRE(arg_neg3.has_value());
+  CHECK(arg_neg3->is_string());
+  CHECK(*arg_neg3->get<std::string>() == "first");
+}
+
+TEST_CASE("lua_get_arg handles nil argument") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushnil(L.get());
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_nil());
+}
+
+TEST_CASE("lua_get_arg handles boolean false") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushboolean(L.get(), 0);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_bool());
+  CHECK(*result->get<bool>() == false);
+}
+
+TEST_CASE("lua_get_arg handles empty string") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushlstring(L.get(), "", 0);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_string());
+  CHECK(*result->get<std::string>() == "");
+}
+
+TEST_CASE("lua_get_arg handles zero integer") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushinteger(L.get(), 0);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_integer());
+  CHECK(*result->get<int64_t>() == 0);
+}
+
+TEST_CASE("lua_get_arg handles negative integer") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushinteger(L.get(), -999);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_integer());
+  CHECK(*result->get<int64_t>() == -999);
+}
+
+TEST_CASE("lua_get_arg handles zero double") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushnumber(L.get(), 0.0);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_number());
+  CHECK(*result->get<double>() == doctest::Approx(0.0));
+}
+
+TEST_CASE("lua_get_arg handles negative double") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushnumber(L.get(), -123.456);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_number());
+  CHECK(*result->get<double>() == doctest::Approx(-123.456));
+}
+
+TEST_CASE("lua_get_arg handles table argument") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "return { foo = 'bar', num = 42 }"));
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  REQUIRE(result->is_table());
+  auto const *table{ result->get<envy::lua_table>() };
+  REQUIRE(table != nullptr);
+  CHECK(table->size() == 2);
+  CHECK(table->find("foo") != table->end());
+  CHECK(table->find("num") != table->end());
+}
+
+TEST_CASE("lua_get_arg handles nested table argument") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  CHECK(envy::lua_run_string(L, "return { outer = { inner = 'value' } }"));
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  REQUIRE(result->is_table());
+  auto const *outer{ result->get<envy::lua_table>() };
+  REQUIRE(outer != nullptr);
+
+  auto const it{ outer->find("outer") };
+  REQUIRE(it != outer->end());
+  REQUIRE(it->second.is_table());
+  auto const *inner{ it->second.get<envy::lua_table>() };
+  REQUIRE(inner != nullptr);
+  CHECK(inner->find("inner") != inner->end());
+}
+
+TEST_CASE("lua_get_arg handles string with embedded nulls") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  char const data[]{ "hello\0world" };
+  lua_pushlstring(L.get(), data, 11);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_string());
+  auto const *str{ result->get<std::string>() };
+  REQUIRE(str != nullptr);
+  CHECK(str->size() == 11);
+  CHECK(*str == std::string(data, 11));
+}
+
+TEST_CASE("lua_get_arg handles very large integer") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushinteger(L.get(), INT64_MAX);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_integer());
+  CHECK(*result->get<int64_t>() == INT64_MAX);
+}
+
+TEST_CASE("lua_get_arg handles very small integer") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushinteger(L.get(), INT64_MIN);
+  auto const result{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result.has_value());
+  CHECK(result->is_integer());
+  CHECK(*result->get<int64_t>() == INT64_MIN);
+}
+
+TEST_CASE("lua_get_arg works with many arguments on stack") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  // Push 20 arguments
+  for (int i = 1; i <= 20; ++i) { lua_pushinteger(L.get(), i); }
+
+  // Check we can access all of them
+  for (int i = 1; i <= 20; ++i) {
+    auto const result{ envy::lua_get_arg(L.get(), i) };
+    REQUIRE(result.has_value());
+    CHECK(result->is_integer());
+    CHECK(*result->get<int64_t>() == i);
+  }
+
+  // Check out of bounds
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 21).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), 0).has_value());
+  CHECK_FALSE(envy::lua_get_arg(L.get(), -21).has_value());
+}
+
+TEST_CASE("lua_get_arg with mixed positive and negative indices") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "first");
+  lua_pushinteger(L.get(), 42);
+  lua_pushboolean(L.get(), 1);
+
+  // Get first element with both positive and negative indices
+  auto const pos1{ envy::lua_get_arg(L.get(), 1) };
+  auto const neg3{ envy::lua_get_arg(L.get(), -3) };
+
+  REQUIRE(pos1.has_value());
+  REQUIRE(neg3.has_value());
+  CHECK(pos1->is_string());
+  CHECK(neg3->is_string());
+  CHECK(*pos1->get<std::string>() == *neg3->get<std::string>());
+
+  // Get last element with both indices
+  auto const pos3{ envy::lua_get_arg(L.get(), 3) };
+  auto const neg1{ envy::lua_get_arg(L.get(), -1) };
+
+  REQUIRE(pos3.has_value());
+  REQUIRE(neg1.has_value());
+  CHECK(pos3->is_bool());
+  CHECK(neg1->is_bool());
+  CHECK(*pos3->get<bool>() == *neg1->get<bool>());
+}
+
+TEST_CASE("lua_get_arg preserves stack") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "test");
+  lua_pushinteger(L.get(), 42);
+
+  int const before_top{ lua_gettop(L.get()) };
+  CHECK(before_top == 2);
+
+  auto const result1{ envy::lua_get_arg(L.get(), 1) };
+  auto const result2{ envy::lua_get_arg(L.get(), 2) };
+
+  int const after_top{ lua_gettop(L.get()) };
+  CHECK(after_top == before_top);  // Stack unchanged
+
+  REQUIRE(result1.has_value());
+  REQUIRE(result2.has_value());
+}
+
+TEST_CASE("lua_get_arg returns independent copies") {
+  auto const L{ envy::lua_make() };
+  REQUIRE(L != nullptr);
+
+  lua_pushstring(L.get(), "original");
+
+  auto result1{ envy::lua_get_arg(L.get(), 1) };
+  auto result2{ envy::lua_get_arg(L.get(), 1) };
+
+  REQUIRE(result1.has_value());
+  REQUIRE(result2.has_value());
+
+  // Both should have same value
+  CHECK(*result1->get<std::string>() == "original");
+  CHECK(*result2->get<std::string>() == "original");
+
+  // They should be independent copies
+  CHECK(&result1 != &result2);
+}

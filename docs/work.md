@@ -1,20 +1,38 @@
 # Implementation Work Tracker
 
-## Current Focus: Fetch Phase Implementation
+## Current Focus: Build Phase Implementation
 
 ### Overview
 
-Implementing the fetch phase with concurrent downloads, optional SHA256 verification, identity validation, and both declarative and imperative fetch support.
+Implementing the build phase to enable compilation and processing workflows. Build operates on stage_dir (working directory) and prepares artifacts for install phase. Common context utilities (run, asset, copy) implemented for all phases.
 
-**Key Decisions Documented In:**
-- `docs/recipe_resolution.md` - Fetch architecture, identity validation, ctx API
-- `docs/architecture.md` - Recipe verbs, fetch syntax, verification model
+**Key Design Decisions:**
+- **build = nil**: Skip build phase (stage_dir already prepared)
+- **build = string**: Execute shell script with stage_dir as cwd
+- **build = function(ctx)**: Programmatic build with full ctx API
+- **Working directory**: All build happens in stage_dir (no separate build_dir)
+- **Common utilities**: Shared Lua bindings in `lua_ctx_bindings.{cpp,h}`
+- **Common API**: `lua_ctx_bindings_register_*(lua, ctx)` functions
+- **All phases get**: run(), asset(), copy(), extract()
+- **Phase-specific**: import() (fetch only), extract_all() (stage convenience)
 
-**Trust Model:**
-- **Identity validation**: ALL recipes must declare matching identity field (no exemptions)
-- **SHA256 verification**: Optional (permissive by default)
-  - `local.*` recipes: Never require SHA256 (files are local/trusted)
-  - Non-`local.*` recipes: SHA256 optional now, required in future "strict mode"
+**Context API Structure:**
+```lua
+ctx = {
+  identity, options,
+  fetch_dir, stage_dir, install_dir,  -- Phase-dependent which paths present
+
+  -- Common functions (all phases):
+  run(script, opts) -> {stdout, stderr},  -- Execute shell, log to TUI
+  asset(identity) -> path,                -- Dependency path (validated)
+  copy(src, dst),                         -- File/directory copy
+  extract(filename, opts),                -- Extract single archive
+
+  -- Phase-specific:
+  import(src, dest, sha256),              -- Fetch only
+  extract_all(opts),                      -- Stage convenience wrapper
+}
+```
 
 ---
 
@@ -68,6 +86,115 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
 
 **Results:** Programmatic fetch fully implemented with two-phase download/commit model. All 98 functional tests pass (17 new programmatic, 1 new declarative string array).
 
+---
+
+## Phase 5: Stage Phase Implementation ✅ COMPLETE
+
+**Goal:** Extract archives to staging area, prepare source tree for build phase.
+
+**Implementation:** Stage phase supports declarative (table), imperative (function), and shell (string) forms. Default behavior extracts all archives from fetch_dir. Programmatic stage provides ctx API with extract/extract_all/run functions.
+
+**Results:** Stage phase fully implemented with extraction support, shell execution, and ctx API. Handles strip_components option, non-archive files, and custom staging logic.
+
+---
+
+## Phase 6: Build Phase Implementation
+
+**Goal:** Enable compilation and processing workflows. Build operates on stage_dir, prepares artifacts for install phase. Extract common context utilities (run, asset, copy) for use across all phases.
+
+### Tasks
+
+- [x] 1. Create Common Lua Bindings
+  - [x] Create `src/engine_phases/lua_ctx_bindings.{cpp,h}`
+  - [x] Implement `lua_ctx_bindings_register_run(lua, context)`
+    - [x] Internal: `lua_ctx_run()` - Execute shell, capture output, log to TUI
+    - [x] Parse opts table for shell choice (bash/sh/cmd/powershell)
+    - [x] Return `{stdout, stderr}` table (stderr empty until shell_run separation)
+    - [x] Throw Lua error on non-zero exit
+  - [x] Implement `lua_ctx_bindings_register_asset(lua, context)`
+    - [x] Internal: `lua_ctx_asset()` - Dependency path access (simplified)
+    - [x] Extract graph_state from context upvalue
+    - [x] Look up dependency identity in graph_state.recipes
+    - [x] Verify dependency completed flag is set
+    - [x] Return asset_path
+    - [x] NOTE: Full validation (dependency declaration + needed_by) deferred
+  - [x] Implement `lua_ctx_bindings_register_copy(lua, context)`
+    - [x] Internal: `lua_ctx_copy()` - File/directory copy helper
+    - [x] Auto-detect file vs directory
+    - [x] Handle recursive directory copy
+    - [x] Error on filesystem exceptions
+  - [x] Implement `lua_ctx_bindings_register_move(lua, context)`
+    - [x] Internal: `lua_ctx_move()` - Safe move/rename
+    - [x] Error if destination exists (no automatic overwrites)
+  - [x] Implement `lua_ctx_bindings_register_extract(lua, context)`
+    - [x] Internal: `lua_ctx_extract()` - Extract single archive
+    - [x] Adapted from phase_stage.cpp
+    - [x] Parse opts table for strip_components
+    - [x] Use extract() from extract.h
+  - [x] Add `lua_get_arg()` helper to lua_util.{h,cpp}
+    - [x] Get argument at stack index, return optional<lua_value>
+    - [x] Handle positive and negative indices
+    - [x] Add 27 comprehensive unit tests
+
+- [x] 2. Refactor Phase Fetch
+  - [x] Remove `lua_ctx_run`, `lua_ctx_run_capture`, `lua_ctx_asset` from phase_fetch.cpp
+  - [x] Reorder `fetch_context` struct to match `lua_ctx_common` layout
+  - [x] Keep `lua_ctx_fetch` and `lua_ctx_commit_fetch` (phase-specific)
+  - [x] Update `build_fetch_context_table()` to use `lua_ctx_bindings_register_*`
+  - [x] Add include for `lua_ctx_bindings.h`
+
+- [x] 3. Refactor Phase Stage
+  - [x] Remove `lua_ctx_run` from phase_stage.cpp (now in lua_ctx_bindings)
+  - [x] Remove `lua_ctx_extract` from phase_stage.cpp (now in lua_ctx_bindings)
+  - [x] Keep `lua_ctx_extract_all` in phase_stage.cpp (convenience wrapper)
+  - [x] Update `build_stage_context_table()` to use `lua_ctx_bindings_register_*`
+  - [x] Add include for `lua_ctx_bindings.h`
+  - [x] All 166 functional tests pass
+
+- [ ] 4. Implement Build Phase Logic
+  - [ ] Define `build_context` struct (fetch_dir, stage_dir, install_dir, state, key)
+  - [ ] Implement `build_build_context_table()` - Construct ctx with common bindings
+    - [ ] Set identity, options, fetch_dir, stage_dir, install_dir
+    - [ ] Call `lua_ctx_bindings_register_run(lua, ctx)`
+    - [ ] Call `lua_ctx_bindings_register_asset(lua, ctx)`
+    - [ ] Call `lua_ctx_bindings_register_copy(lua, ctx)`
+    - [ ] Call `lua_ctx_bindings_register_extract(lua, ctx)`
+  - [ ] Implement `run_programmatic_build()` - Handle function(ctx) case
+  - [ ] Implement `run_shell_build()` - Handle string script case
+  - [ ] Implement `run_build_phase()` - Main dispatcher (nil/string/function)
+    - [ ] Follow phase_stage.cpp pattern (type dispatch)
+    - [ ] Use stage_dir as working directory
+    - [ ] Provide fetch_dir, stage_dir, install_dir in ctx
+
+- [x] 5. Update Build System
+  - [x] Add `engine_phases/lua_ctx_bindings.cpp` to CMakeLists.txt
+
+- [ ] 6. Update Documentation
+  - [ ] Add declarative build systems section to `docs/future-enhancements.md`
+    - [ ] Table form for cmake/make/meson/ninja/cargo
+    - [ ] Example: `build = { cmake = { args = {...} }, make = { jobs = 4 } }`
+
+- [ ] 7. Add Tests
+  - [ ] Create `test_data/recipes/build_nil.lua` - No build phase
+  - [ ] Create `test_data/recipes/build_string.lua` - Shell script build
+  - [ ] Create `test_data/recipes/build_function.lua` - Programmatic with ctx.run()
+  - [ ] Create `test_data/recipes/build_with_asset.lua` - Uses ctx.asset() for dependency
+  - [ ] Create `test_data/recipes/build_with_copy.lua` - Uses ctx.copy()
+  - [ ] Create `functional_tests/test_build.py` - Python test suite
+    - [ ] Test build = nil (skip)
+    - [ ] Test build = string (shell)
+    - [ ] Test build = function (ctx API)
+    - [ ] Test ctx.asset() dependency access
+    - [ ] Test ctx.copy() file and directory
+    - [ ] Test ctx.run() output capture
+
+- [ ] 8. Verify All Tests Pass
+  - [ ] Run `./build.sh` - All unit tests pass
+  - [ ] Run functional tests - All tests pass
+  - [ ] Verify Windows compatibility (separate task if needed)
+
+**Completion Criteria:** Build phase fully functional with nil/string/function forms. Common context utilities (run, asset, copy) available across all phases. Programmatic builds can access dependencies, execute shell commands, copy files. All tests pass.
+
 ## Status Legend
 
 - [ ] Not started
@@ -79,39 +206,38 @@ Implementing the fetch phase with concurrent downloads, optional SHA256 verifica
 
 ## Notes / Decisions
 
-### 2024-01-XX: Fetch Phase Architecture Finalized
-- Polymorphic `ctx.fetch()` API (single or batch)
-- Atomic commit: all-or-nothing downloads
-- SHA256 optional (permissive mode)
-- Identity validation required for non-`local.*`
-- Concurrent downloads via TBB task_group
-- Try-all error collection (show all failures)
+### Build Phase Architecture Finalized
+- Build operates in stage_dir (no separate build_dir)
+- Common Lua bindings in `lua_ctx_bindings.{cpp,h}`
+- Registration API: `lua_ctx_bindings_register_*(lua_State*, context)`
+- All phases get: run(), asset(), copy(), extract()
+- Phase-specific: import() (fetch), extract_all() (stage convenience)
+- `ctx.run()` returns `{stdout, stderr}` while logging to TUI
+- `ctx.asset()` validates dependency declaration and completion
+- `ctx.copy()` auto-detects file vs directory
+- `ctx.extract()` moved from stage to common (single archive extraction)
+- Shell choice uses platform default, not per-invocation auto-detect
 
 ### Deferred Work
 - Git source support (use committish for now, implement clone later)
-- Archive extraction (that's stage phase, not fetch)
 - Strict mode (enforce SHA256 requirements)
 - BLAKE3 content verification (future verify command)
+- Declarative build system support (cmake/make/meson table forms)
+- `ctx.asset()` dependency validation - validate requested dependency is explicitly declared in current recipe and `needed_by` phase allows access. Requires storing evaluated dependencies in recipe struct during recipe_fetch phase.
+- `ctx.copy()` / `ctx.move()` path validation - restrict destinations to writable directories (fetch/stage/install/tmp), sources to project root + ctx directories. Requires adding project_root to context and defining project root concept (likely: directory containing manifest).
+- `ctx.run()` stdout/stderr separation - extend shell_run to use separate pipes for stdout and stderr, requiring select()/poll() on POSIX and proper handle management on Windows. Currently returns combined output in stdout field, stderr is always empty.
 
 ---
 
 ## Future Phases (Not Yet Started)
 
-### Phase 5: Stage Phase Implementation
-- Extract archives to `lock->stage_dir()`
-- Call user's `stage(ctx)` function if defined
-- Default behavior: extract all archives from fetch_dir
+### Phase 7: Install Phase Implementation
+- Analyze current stub implementation in `phase_install.cpp`
+- Propose correct behavior: install pulls artifacts from stage_dir to install_dir
+- Fallback: if no install() function and install_dir has content, mark complete
+- Classic example: `ctx.run("make install")` after build phase
 
-### Phase 6: Build Phase Implementation
-- Call user's `build(ctx)` function
-- Provide `ctx.stage_dir`, `ctx.install_dir`, dependency access
-
-### Phase 7: Deploy Phase Implementation
-- Call user's `deploy(ctx)` function
+### Phase 8: Deploy Phase Implementation
 - Post-install actions (env setup, capability registration)
-
-### Phase 8: Context API Completion
-- Implement full `ctx` API for all phases (stage/build/install/deploy)
-- Add `ctx.fetch_dir` for later phases
-- Add `ctx.stage_dir`, `ctx.install_dir` where appropriate
-- Add helper functions (extract, copy, symlink, etc.)
+- Call user's `deploy(ctx)` function if defined
+- Examples: PATH modification, library registration, service setup

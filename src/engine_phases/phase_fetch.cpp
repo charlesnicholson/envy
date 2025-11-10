@@ -1,6 +1,7 @@
 #include "phase_fetch.h"
 
 #include "fetch.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "sha256.h"
 #include "tui.h"
@@ -37,12 +38,13 @@ struct table_entry {
 };
 
 // Context data for Lua C functions (stored as userdata upvalue)
+// MUST match lua_ctx_common layout for first 4 fields (fetch_dir, work_dir, state, key)
 struct fetch_context {
-  std::filesystem::path tmp_dir;
   std::filesystem::path fetch_dir;
-  std::unordered_set<std::string> used_basenames;  // Track collisions across calls
+  std::filesystem::path tmp_dir;  // work_dir for fetch phase
   graph_state *state;
   std::string const *key;
+  std::unordered_set<std::string> used_basenames;  // Track collisions across calls
 };
 
 // Lua C function: ctx.fetch(url) or ctx.fetch({url1, url2}) or ctx.fetch({url="..."})
@@ -340,51 +342,12 @@ int lua_ctx_commit_fetch(lua_State *lua) {
   return 0;  // No return values
 }
 
-// Lua C function: ctx.asset(identity) -> path string
-int lua_ctx_asset(lua_State *lua) {
-  auto *ctx{ static_cast<fetch_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.asset: missing context"); }
-
-  if (!lua_isstring(lua, 1)) {
-    return luaL_error(lua, "ctx.asset: argument must be string (identity)");
-  }
-
-  std::string const identity{ lua_tostring(lua, 1) };
-
-  // Look up the asset in the graph state
-  typename decltype(ctx->state->recipes)::const_accessor acc;
-  if (!ctx->state->recipes.find(acc, identity)) {
-    return luaL_error(lua, "ctx.asset: dependency not found: %s", identity.c_str());
-  }
-
-  if (acc->second.asset_path.empty()) {
-    return luaL_error(lua,
-                      "ctx.asset: dependency not yet installed: %s",
-                      identity.c_str());
-  }
-
-  lua_pushstring(lua, acc->second.asset_path.string().c_str());
-  return 1;
-}
-
-// Lua C function stub: ctx.run(cmd, ...) -> exitcode
-int lua_ctx_run(lua_State *lua) {
-  // TODO: Implement subprocess execution (Phase 5+)
-  return luaL_error(lua, "ctx.run not yet implemented");
-}
-
-// Lua C function stub: ctx.run_capture(cmd, ...) -> {stdout="", stderr="", exitcode=0}
-int lua_ctx_run_capture(lua_State *lua) {
-  // TODO: Implement subprocess execution with capture (Phase 5+)
-  return luaL_error(lua, "ctx.run_capture not yet implemented");
-}
-
 // Build context table for fetch function
 void build_fetch_context_table(lua_State *lua,
                                std::string const &identity,
                                std::unordered_map<std::string, lua_value> const &options,
                                fetch_context *ctx) {
-  lua_createtable(lua, 0, 7);  // Pre-allocate space for 7 fields
+  lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
 
   // ctx.identity
   lua_pushstring(lua, identity.c_str());
@@ -402,30 +365,22 @@ void build_fetch_context_table(lua_State *lua,
   lua_pushstring(lua, ctx->tmp_dir.string().c_str());
   lua_setfield(lua, -2, "tmp");
 
-  // ctx.fetch (C closure with context as upvalue)
+  // ctx.fetch (phase-specific: C closure with context as upvalue)
   lua_pushlightuserdata(lua, ctx);
   lua_pushcclosure(lua, lua_ctx_fetch, 1);
   lua_setfield(lua, -2, "fetch");
 
-  // ctx.commit_fetch (C closure with context as upvalue)
+  // ctx.commit_fetch (phase-specific: C closure with context as upvalue)
   lua_pushlightuserdata(lua, ctx);
   lua_pushcclosure(lua, lua_ctx_commit_fetch, 1);
   lua_setfield(lua, -2, "commit_fetch");
 
-  // ctx.asset (C closure with context as upvalue)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_asset, 1);
-  lua_setfield(lua, -2, "asset");
-
-  // ctx.run (stub)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_run, 1);
-  lua_setfield(lua, -2, "run");
-
-  // ctx.run_capture (stub)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_run_capture, 1);
-  lua_setfield(lua, -2, "run_capture");
+  // Common context bindings (all phases)
+  lua_ctx_bindings_register_run(lua, ctx);
+  lua_ctx_bindings_register_asset(lua, ctx);
+  lua_ctx_bindings_register_copy(lua, ctx);
+  lua_ctx_bindings_register_move(lua, ctx);
+  lua_ctx_bindings_register_extract(lua, ctx);
 }
 
 // fetch = function(ctx) ... end
@@ -441,12 +396,12 @@ void run_programmatic_fetch(lua_State *lua,
   std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
   std::filesystem::create_directories(tmp_dir);
 
-  // Build context
-  fetch_context ctx{ .tmp_dir = tmp_dir,
-                     .fetch_dir = lock->fetch_dir(),
-                     .used_basenames = {},
+  // Build context (field order must match lua_ctx_common)
+  fetch_context ctx{ .fetch_dir = lock->fetch_dir(),
+                     .tmp_dir = tmp_dir,
                      .state = &state,
-                     .key = &key };
+                     .key = &key,
+                     .used_basenames = {} };
 
   build_fetch_context_table(lua, identity, options, &ctx);
 
