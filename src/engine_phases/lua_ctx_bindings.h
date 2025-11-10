@@ -1,8 +1,22 @@
 #pragma once
 
+#include <filesystem>
+#include <string>
+
 struct lua_State;
 
 namespace envy {
+
+struct graph_state;
+
+// Common context fields that all phase contexts must provide.
+// Phase-specific contexts should embed this as their first member.
+struct lua_ctx_common {
+  std::filesystem::path fetch_dir;
+  std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
+  graph_state *state;
+  std::string const *key;
+};
 
 // Register common Lua context functions available to all phases.
 // Each function expects the ctx table to be at the top of the Lua stack.

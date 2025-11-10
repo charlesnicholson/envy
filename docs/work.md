@@ -151,28 +151,31 @@ ctx = {
   - [x] Add include for `lua_ctx_bindings.h`
   - [x] All 166 functional tests pass
 
-- [ ] 4. Implement Build Phase Logic
-  - [ ] Define `build_context` struct (fetch_dir, stage_dir, install_dir, state, key)
-  - [ ] Implement `build_build_context_table()` - Construct ctx with common bindings
-    - [ ] Set identity, options, fetch_dir, stage_dir, install_dir
-    - [ ] Call `lua_ctx_bindings_register_run(lua, ctx)`
-    - [ ] Call `lua_ctx_bindings_register_asset(lua, ctx)`
-    - [ ] Call `lua_ctx_bindings_register_copy(lua, ctx)`
-    - [ ] Call `lua_ctx_bindings_register_extract(lua, ctx)`
-  - [ ] Implement `run_programmatic_build()` - Handle function(ctx) case
-  - [ ] Implement `run_shell_build()` - Handle string script case
-  - [ ] Implement `run_build_phase()` - Main dispatcher (nil/string/function)
-    - [ ] Follow phase_stage.cpp pattern (type dispatch)
-    - [ ] Use stage_dir as working directory
-    - [ ] Provide fetch_dir, stage_dir, install_dir in ctx
+- [x] 4. Implement Build Phase Logic
+  - [x] Define `build_context` struct (fetch_dir, stage_dir, install_dir, state, key)
+  - [x] Implement `build_build_context_table()` - Construct ctx with common bindings
+    - [x] Set identity, options, fetch_dir, stage_dir, install_dir
+    - [x] Call `lua_ctx_bindings_register_run(lua, ctx)`
+    - [x] Call `lua_ctx_bindings_register_asset(lua, ctx)`
+    - [x] Call `lua_ctx_bindings_register_copy(lua, ctx)`
+    - [x] Call `lua_ctx_bindings_register_move(lua, ctx)`
+    - [x] Call `lua_ctx_bindings_register_extract(lua, ctx)`
+  - [x] Implement `run_programmatic_build()` - Handle function(ctx) case
+  - [x] Implement `run_shell_build()` - Handle string script case
+  - [x] Implement `run_build_phase()` - Main dispatcher (nil/string/function)
+    - [x] Follow phase_stage.cpp pattern (type dispatch)
+    - [x] Use stage_dir as working directory
+    - [x] Provide fetch_dir, stage_dir, install_dir in ctx
+  - [x] All 166 functional tests pass
 
 - [x] 5. Update Build System
   - [x] Add `engine_phases/lua_ctx_bindings.cpp` to CMakeLists.txt
 
-- [ ] 6. Update Documentation
-  - [ ] Add declarative build systems section to `docs/future-enhancements.md`
-    - [ ] Table form for cmake/make/meson/ninja/cargo
-    - [ ] Example: `build = { cmake = { args = {...} }, make = { jobs = 4 } }`
+- [x] 6. Update Documentation
+  - [x] Add declarative build systems section to `docs/future-enhancements.md`
+    - [x] Table form for cmake/make/meson/ninja/cargo/autotools/meson
+    - [x] Example: `build = { cmake = { args = {...} }, make = { jobs = 4 } }`
+    - [x] Implementation considerations and trade-offs documented
 
 - [ ] 7. Add Tests
   - [ ] Create `test_data/recipes/build_nil.lua` - No build phase
@@ -209,14 +212,21 @@ ctx = {
 ### Build Phase Architecture Finalized
 - Build operates in stage_dir (no separate build_dir)
 - Common Lua bindings in `lua_ctx_bindings.{cpp,h}`
+- **Inheritance-based design:** `lua_ctx_common` exported in header, all phase contexts inherit from it
+- Phase contexts: `fetch_context`, `stage_context`, `build_context` all inherit from `lua_ctx_common`
+- Layout guarantee: inheritance ensures proper memory layout for safe casting to base type
+- `lua_ctx_common` fields: `fetch_dir`, `run_dir` (default cwd for ctx.run()), `state`, `key`
+- `run_dir` clarifies it's the phase-specific working directory (not lock->work_dir())
 - Registration API: `lua_ctx_bindings_register_*(lua_State*, context)`
-- All phases get: run(), asset(), copy(), extract()
-- Phase-specific: import() (fetch), extract_all() (stage convenience)
+- All phases get: run(), asset(), copy(), move(), extract()
+- Phase-specific: fetch()/commit_fetch() (fetch), extract_all() (stage convenience)
 - `ctx.run()` returns `{stdout, stderr}` while logging to TUI
 - `ctx.asset()` validates dependency declaration and completion
 - `ctx.copy()` auto-detects file vs directory
+- `ctx.move()` provides efficient rename-based moves
 - `ctx.extract()` moved from stage to common (single archive extraction)
 - Shell choice uses platform default, not per-invocation auto-detect
+- **Safety:** All Lua strings copied to std::string before popping to prevent use-after-free
 
 ### Deferred Work
 - Git source support (use committish for now, implement clone later)

@@ -20,11 +20,8 @@ namespace envy {
 namespace {
 
 // Context data for Lua C functions (stored as userdata upvalue)
-struct stage_context {
-  std::filesystem::path fetch_dir;
-  std::filesystem::path dest_dir;  // stage_dir or install_dir
-  graph_state *state;
-  std::string const *key;
+struct stage_context : lua_ctx_common {
+  // run_dir inherited from base is dest_dir (stage_dir)
 };
 
 void extract_all_archives(std::filesystem::path const &fetch_dir,
@@ -98,7 +95,7 @@ int lua_ctx_extract_all(lua_State *lua) {
   }
 
   try {
-    extract_all_archives(ctx->fetch_dir, ctx->dest_dir, strip_components);
+    extract_all_archives(ctx->fetch_dir, ctx->run_dir, strip_components);
   } catch (std::exception const &e) {
     return luaL_error(lua, "ctx.extract_all: %s", e.what());
   }
@@ -125,7 +122,7 @@ void build_stage_context_table(lua_State *lua,
   lua_pushstring(lua, ctx->fetch_dir.string().c_str());
   lua_setfield(lua, -2, "fetch_dir");
 
-  lua_pushstring(lua, ctx->dest_dir.string().c_str());
+  lua_pushstring(lua, ctx->run_dir.string().c_str());
   lua_setfield(lua, -2, "stage_dir");
 
   // Phase-specific: ctx.extract_all (convenience wrapper)
@@ -216,10 +213,11 @@ void run_programmatic_stage(lua_State *lua,
                             std::string const &key) {
   tui::trace("phase stage: running imperative stage function");
 
-  stage_context ctx{ .fetch_dir = fetch_dir,
-                     .dest_dir = dest_dir,
-                     .state = &state,
-                     .key = &key };
+  stage_context ctx{};
+  ctx.fetch_dir = fetch_dir;
+  ctx.run_dir = dest_dir;
+  ctx.state = &state;
+  ctx.key = &key;
 
   build_stage_context_table(lua, identity, options, &ctx);
 
@@ -299,9 +297,9 @@ void run_stage_phase(std::string const &key, graph_state &state) {
     case LUA_TSTRING: {
       size_t len{ 0 };
       char const *script{ lua_tolstring(lua, -1, &len) };
-      std::string_view script_view{ script, len };
+      std::string script_str{ script, len };  // Copy before popping
       lua_pop(lua, 1);
-      run_shell_stage(script_view, dest_dir, key);
+      run_shell_stage(script_str, dest_dir, key);
       break;
     }
 

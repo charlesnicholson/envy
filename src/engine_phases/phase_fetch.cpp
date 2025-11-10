@@ -38,12 +38,7 @@ struct table_entry {
 };
 
 // Context data for Lua C functions (stored as userdata upvalue)
-// MUST match lua_ctx_common layout for first 4 fields (fetch_dir, work_dir, state, key)
-struct fetch_context {
-  std::filesystem::path fetch_dir;
-  std::filesystem::path tmp_dir;  // work_dir for fetch phase
-  graph_state *state;
-  std::string const *key;
+struct fetch_context : lua_ctx_common {
   std::unordered_set<std::string> used_basenames;  // Track collisions across calls
 };
 
@@ -151,14 +146,14 @@ int lua_ctx_fetch(lua_State *lua) {
     ctx->used_basenames.insert(final_basename);
     basenames.push_back(final_basename);
 
-    std::filesystem::path dest{ ctx->tmp_dir / final_basename };
+    std::filesystem::path dest{ ctx->run_dir / final_basename };
     requests.push_back({ .source = url, .destination = dest });
   }
 
   // Execute downloads (blocking, synchronous)
   tui::trace("ctx.fetch: downloading %zu file(s) to %s",
              urls.size(),
-             ctx->tmp_dir.string().c_str());
+             ctx->run_dir.string().c_str());
 
   auto const results{ fetch(requests) };
 
@@ -334,7 +329,7 @@ int lua_ctx_commit_fetch(lua_State *lua) {
   if (!ctx) { return luaL_error(lua, "ctx.commit_fetch: missing context"); }
 
   try {
-    commit_files(parse_commit_fetch_args(lua), ctx->tmp_dir, ctx->fetch_dir);
+    commit_files(parse_commit_fetch_args(lua), ctx->run_dir, ctx->fetch_dir);
   } catch (std::exception const &e) {
     return luaL_error(lua, "ctx.commit_fetch: %s", e.what());
   }
@@ -362,7 +357,7 @@ void build_fetch_context_table(lua_State *lua,
   lua_setfield(lua, -2, "options");
 
   // ctx.tmp
-  lua_pushstring(lua, ctx->tmp_dir.string().c_str());
+  lua_pushstring(lua, ctx->run_dir.string().c_str());
   lua_setfield(lua, -2, "tmp");
 
   // ctx.fetch (phase-specific: C closure with context as upvalue)
@@ -396,12 +391,13 @@ void run_programmatic_fetch(lua_State *lua,
   std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
   std::filesystem::create_directories(tmp_dir);
 
-  // Build context (field order must match lua_ctx_common)
-  fetch_context ctx{ .fetch_dir = lock->fetch_dir(),
-                     .tmp_dir = tmp_dir,
-                     .state = &state,
-                     .key = &key,
-                     .used_basenames = {} };
+  // Build context (inherits from lua_ctx_common)
+  fetch_context ctx{};
+  ctx.fetch_dir = lock->fetch_dir();
+  ctx.run_dir = tmp_dir;
+  ctx.state = &state;
+  ctx.key = &key;
+  ctx.used_basenames = {};
 
   build_fetch_context_table(lua, identity, options, &ctx);
 

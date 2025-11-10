@@ -17,15 +17,6 @@ extern "C" {
 namespace envy {
 namespace {
 
-// Common context fields that all phase contexts must provide.
-// Phase-specific contexts must have these fields at the beginning in this order.
-struct lua_ctx_common {
-  std::filesystem::path fetch_dir;
-  std::filesystem::path work_dir;  // Primary working directory (stage_dir, etc.)
-  graph_state *state;
-  std::string const *key;
-};
-
 // Lua C function: ctx.run(script, opts?) -> {stdout, stderr}
 int lua_ctx_run(lua_State *lua) {
   auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
@@ -55,9 +46,9 @@ int lua_ctx_run(lua_State *lua) {
       char const *cwd_str{ lua_tostring(lua, -1) };
       std::filesystem::path cwd_path{ cwd_str };
 
-      // If relative, make it relative to work_dir
+      // If relative, make it relative to run_dir
       if (cwd_path.is_relative()) {
-        cwd = ctx->work_dir / cwd_path;
+        cwd = ctx->run_dir / cwd_path;
       } else {
         cwd = cwd_path;
       }
@@ -99,7 +90,7 @@ int lua_ctx_run(lua_State *lua) {
     lua_pop(lua, 1);
   }
 
-  if (!cwd) { cwd = ctx->work_dir; }  // Use work_dir as default cwd
+  if (!cwd) { cwd = ctx->run_dir; }  // Use run_dir as default cwd
 
   try {
     std::string combined_output;
@@ -177,6 +168,9 @@ int lua_ctx_asset(lua_State *lua) {
 
 // Lua C function: ctx.copy(src, dst)
 int lua_ctx_copy(lua_State *lua) {
+  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  if (!ctx) { return luaL_error(lua, "ctx.copy: missing context"); }
+
   // Arg 1: source path (required)
   if (!lua_isstring(lua, 1)) {
     return luaL_error(lua, "ctx.copy: first argument must be source path string");
@@ -191,6 +185,10 @@ int lua_ctx_copy(lua_State *lua) {
 
   std::filesystem::path src{ src_str };
   std::filesystem::path dst{ dst_str };
+
+  // Resolve relative paths against run_dir
+  if (src.is_relative()) { src = ctx->run_dir / src; }
+  if (dst.is_relative()) { dst = ctx->run_dir / dst; }
 
   try {
     if (!std::filesystem::exists(src)) {
@@ -219,6 +217,9 @@ int lua_ctx_copy(lua_State *lua) {
 
 // Lua C function: ctx.move(src, dst)
 int lua_ctx_move(lua_State *lua) {
+  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  if (!ctx) { return luaL_error(lua, "ctx.move: missing context"); }
+
   // Arg 1: source path (required)
   if (!lua_isstring(lua, 1)) {
     return luaL_error(lua, "ctx.move: first argument must be source path string");
@@ -233,6 +234,10 @@ int lua_ctx_move(lua_State *lua) {
 
   std::filesystem::path src{ src_str };
   std::filesystem::path dst{ dst_str };
+
+  // Resolve relative paths against run_dir
+  if (src.is_relative()) { src = ctx->run_dir / src; }
+  if (dst.is_relative()) { dst = ctx->run_dir / dst; }
 
   try {
     if (!std::filesystem::exists(src)) {
@@ -290,7 +295,7 @@ int lua_ctx_extract(lua_State *lua) {
 
   try {
     extract_options opts{ .strip_components = strip_components };
-    std::uint64_t const files{ extract(archive_path, ctx->work_dir, opts) };
+    std::uint64_t const files{ extract(archive_path, ctx->run_dir, opts) };
     lua_pushinteger(lua, static_cast<lua_Integer>(files));
     return 1;  // Return file count
   } catch (std::exception const &e) {
