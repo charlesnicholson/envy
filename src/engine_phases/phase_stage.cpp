@@ -1,6 +1,7 @@
 #include "phase_stage.h"
 
 #include "extract.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
@@ -19,11 +20,8 @@ namespace envy {
 namespace {
 
 // Context data for Lua C functions (stored as userdata upvalue)
-struct stage_context {
-  std::filesystem::path fetch_dir;
-  std::filesystem::path dest_dir;  // stage_dir or install_dir
-  graph_state *state;
-  std::string const *key;
+struct stage_context : lua_ctx_common {
+  // run_dir inherited from base is dest_dir (stage_dir)
 };
 
 void extract_all_archives(std::filesystem::path const &fetch_dir,
@@ -75,48 +73,6 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
       static_cast<unsigned long long>(total_files_copied));
 }
 
-// Lua C function: ctx.extract(filename, {strip=0}?)
-int lua_ctx_extract(lua_State *lua) {
-  auto *ctx{ static_cast<stage_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.extract: missing context"); }
-
-  // Arg 1: filename (required)
-  if (!lua_isstring(lua, 1)) {
-    return luaL_error(lua, "ctx.extract: first argument must be filename string");
-  }
-  char const *filename{ lua_tostring(lua, 1) };
-
-  // Arg 2: options (optional)
-  int strip_components{ 0 };
-  if (lua_gettop(lua) >= 2 && lua_istable(lua, 2)) {
-    lua_getfield(lua, 2, "strip");
-    if (lua_isnumber(lua, -1)) {
-      strip_components = static_cast<int>(lua_tointeger(lua, -1));
-      if (strip_components < 0) {
-        return luaL_error(lua, "ctx.extract: strip must be non-negative");
-      }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.extract: strip must be a number");
-    }
-    lua_pop(lua, 1);
-  }
-
-  std::filesystem::path const archive_path{ ctx->fetch_dir / filename };
-
-  if (!std::filesystem::exists(archive_path)) {
-    return luaL_error(lua, "ctx.extract: file not found: %s", filename);
-  }
-
-  try {
-    extract_options opts{ .strip_components = strip_components };
-    std::uint64_t const files{ extract(archive_path, ctx->dest_dir, opts) };
-    lua_pushinteger(lua, static_cast<lua_Integer>(files));
-    return 1;  // Return file count
-  } catch (std::exception const &e) {
-    return luaL_error(lua, "ctx.extract: %s", e.what());
-  }
-}
-
 // Lua C function: ctx.extract_all({strip=0})
 int lua_ctx_extract_all(lua_State *lua) {
   auto *ctx{ static_cast<stage_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
@@ -139,115 +95,10 @@ int lua_ctx_extract_all(lua_State *lua) {
   }
 
   try {
-    extract_all_archives(ctx->fetch_dir, ctx->dest_dir, strip_components);
+    extract_all_archives(ctx->fetch_dir, ctx->run_dir, strip_components);
   } catch (std::exception const &e) {
     return luaL_error(lua, "ctx.extract_all: %s", e.what());
   }
-
-  return 0;  // No return values
-}
-
-// Lua C function: ctx.run(script, opts?)
-int lua_ctx_run(lua_State *lua) {
-  auto *ctx{ static_cast<stage_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.run: missing context"); }
-
-  // Arg 1: script (required)
-  if (!lua_isstring(lua, 1)) {
-    return luaL_error(lua, "ctx.run: first argument must be a string (shell script)");
-  }
-  size_t script_len{ 0 };
-  char const *script{ lua_tolstring(lua, 1, &script_len) };
-  std::string_view script_view{ script, script_len };
-
-  // Arg 2: options (optional)
-  std::optional<std::filesystem::path> cwd;
-  shell_env_t env{ shell_getenv() };
-  shell_choice shell_choice{ shell_parse_choice(std::nullopt) };
-
-  if (lua_gettop(lua) >= 2) {
-    if (!lua_istable(lua, 2)) {
-      return luaL_error(lua, "ctx.run: second argument must be a table (options)");
-    }
-
-    // Parse cwd option
-    lua_getfield(lua, 2, "cwd");
-    if (lua_isstring(lua, -1)) {
-      char const *cwd_str{ lua_tostring(lua, -1) };
-      std::filesystem::path cwd_path{ cwd_str };
-
-      // If relative, make it relative to dest_dir
-      if (cwd_path.is_relative()) {
-        cwd = ctx->dest_dir / cwd_path;
-      } else {
-        cwd = cwd_path;
-      }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.run: cwd option must be a string");
-    }
-    lua_pop(lua, 1);
-
-    // Parse env option (merge with inherited environment)
-    lua_getfield(lua, 2, "env");
-    if (lua_istable(lua, -1)) {
-      lua_pushnil(lua);
-      while (lua_next(lua, -2) != 0) {
-        // Key at -2, value at -1
-        if (lua_type(lua, -2) == LUA_TSTRING && lua_type(lua, -1) == LUA_TSTRING) {
-          char const *key{ lua_tostring(lua, -2) };
-          char const *value{ lua_tostring(lua, -1) };
-          env[key] = value;
-        }
-        lua_pop(lua, 1);  // Pop value, keep key
-      }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.run: env option must be a table");
-    }
-    lua_pop(lua, 1);
-
-    lua_getfield(lua, 2, "shell");
-    if (lua_isstring(lua, -1)) {
-      std::string value{ lua_tostring(lua, -1) };
-      try {
-        shell_choice = shell_parse_choice(value);
-      } catch (std::exception const &e) {
-        return luaL_error(lua, "ctx.run: %s", e.what());
-      }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.run: shell option must be a string");
-    }
-    lua_pop(lua, 1);
-  }
-
-  if (!cwd) { cwd = ctx->dest_dir; }  // Use dest_dir as default cwd
-
-  try {
-    std::vector<std::string> output_lines;
-    shell_run_cfg inv{ .on_output_line =
-                           [&](std::string_view line) {
-                             tui::info("%s", std::string{ line }.c_str());
-                             output_lines.emplace_back(line);
-                           },
-                       .cwd = cwd,
-                       .env = std::move(env),
-                       .shell = shell_choice };
-
-    shell_result const result{ shell_run(script_view, inv) };
-
-    if (result.exit_code != 0) {
-      if (result.signal) {
-        return luaL_error(lua,
-                          "ctx.run: shell script terminated by signal %d for %s",
-                          *result.signal,
-                          ctx->key->c_str());
-      } else {
-        return luaL_error(lua,
-                          "ctx.run: shell script failed with exit code %d for %s",
-                          result.exit_code,
-                          ctx->key->c_str());
-      }
-    }
-  } catch (std::exception const &e) { return luaL_error(lua, "ctx.run: %s", e.what()); }
 
   return 0;  // No return values
 }
@@ -256,7 +107,7 @@ void build_stage_context_table(lua_State *lua,
                                std::string const &identity,
                                std::unordered_map<std::string, lua_value> const &options,
                                stage_context *ctx) {
-  lua_createtable(lua, 0, 7);  // Pre-allocate space for 7 fields
+  lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
 
   lua_pushstring(lua, identity.c_str());
   lua_setfield(lua, -2, "identity");
@@ -271,20 +122,20 @@ void build_stage_context_table(lua_State *lua,
   lua_pushstring(lua, ctx->fetch_dir.string().c_str());
   lua_setfield(lua, -2, "fetch_dir");
 
-  lua_pushstring(lua, ctx->dest_dir.string().c_str());
+  lua_pushstring(lua, ctx->run_dir.string().c_str());
   lua_setfield(lua, -2, "stage_dir");
 
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_extract, 1);
-  lua_setfield(lua, -2, "extract");
-
+  // Phase-specific: ctx.extract_all (convenience wrapper)
   lua_pushlightuserdata(lua, ctx);
   lua_pushcclosure(lua, lua_ctx_extract_all, 1);
   lua_setfield(lua, -2, "extract_all");
 
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_run, 1);
-  lua_setfield(lua, -2, "run");
+  // Common context bindings (all phases)
+  lua_ctx_bindings_register_run(lua, ctx);
+  lua_ctx_bindings_register_asset(lua, ctx);
+  lua_ctx_bindings_register_copy(lua, ctx);
+  lua_ctx_bindings_register_move(lua, ctx);
+  lua_ctx_bindings_register_extract(lua, ctx);
 }
 
 std::filesystem::path determine_stage_destination(lua_State *lua,
@@ -362,10 +213,11 @@ void run_programmatic_stage(lua_State *lua,
                             std::string const &key) {
   tui::trace("phase stage: running imperative stage function");
 
-  stage_context ctx{ .fetch_dir = fetch_dir,
-                     .dest_dir = dest_dir,
-                     .state = &state,
-                     .key = &key };
+  stage_context ctx{};
+  ctx.fetch_dir = fetch_dir;
+  ctx.run_dir = dest_dir;
+  ctx.state = &state;
+  ctx.key = &key;
 
   build_stage_context_table(lua, identity, options, &ctx);
 
@@ -445,9 +297,9 @@ void run_stage_phase(std::string const &key, graph_state &state) {
     case LUA_TSTRING: {
       size_t len{ 0 };
       char const *script{ lua_tolstring(lua, -1, &len) };
-      std::string_view script_view{ script, len };
+      std::string script_str{ script, len };  // Copy before popping
       lua_pop(lua, 1);
-      run_shell_stage(script_view, dest_dir, key);
+      run_shell_stage(script_str, dest_dir, key);
       break;
     }
 

@@ -400,6 +400,18 @@ std::string lua_global_to_string(lua_State *L, char const *name) {
   return *str;
 }
 
+std::optional<lua_value> lua_get_arg(lua_State *L, int index) {
+  int const top{ lua_gettop(L) };
+
+  // Handle negative indices (count from top)
+  int const absolute_index{ (index < 0) ? (top + index + 1) : index };
+
+  // Check if index is within valid range [1, top]
+  if (absolute_index < 1 || absolute_index > top) { return std::nullopt; }
+
+  return lua_stack_to_value(L, index);
+}
+
 void value_to_lua_stack(lua_State *L, lua_value const &val) {
   static_assert(
       std::is_same_v<std::variant_alternative_t<0, lua_variant>, std::monostate>);

@@ -224,6 +224,7 @@ target_sources(envy_functional_tester
         src/engine.cpp
         src/engine_phases/create_recipe_nodes.cpp
         src/engine_phases/graph_state.cpp
+        src/engine_phases/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
         src/engine_phases/phase_completion.cpp

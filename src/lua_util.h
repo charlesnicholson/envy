@@ -59,6 +59,9 @@ std::optional<std::vector<lua_value>> lua_global_to_array(lua_State *L, char con
 // Convenience helper: get global as string, throwing if absent or wrong type
 std::string lua_global_to_string(lua_State *L, char const *name);
 
+// Get argument at index as lua_value, return nullopt if index out of range
+std::optional<lua_value> lua_get_arg(lua_State *L, int index);
+
 void value_to_lua_stack(lua_State *L, lua_value const &val);
 void value_to_lua_global(lua_State *L, char const *name, lua_value const &val);
 

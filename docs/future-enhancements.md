@@ -95,6 +95,92 @@ Mark recipes as deprecated with migration guidance. Envy warns users and suggest
 deprecated = { message = "Use arm.gcc@v2 instead", replacement = "arm.gcc@v2" }
 ```
 
+## Declarative Build Systems
+
+Support declarative table form for common build systems (cmake, make, meson, ninja, cargo, etc.) to reduce boilerplate in recipes. Currently all builds use imperative functions or shell scripts.
+
+**Current approach (imperative):**
+```lua
+build = function(ctx)
+  ctx.run([[
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=]] .. ctx.install_dir .. [[
+    cmake --build build --parallel
+    cmake --install build
+  ]])
+end
+```
+
+**Proposed declarative form:**
+```lua
+build = {
+  cmake = {
+    source_dir = ".",
+    build_dir = "build",
+    args = { "-DCMAKE_BUILD_TYPE=Release" },
+    build_args = { "--parallel" },
+    install = true,
+  }
+}
+```
+
+**Additional build system examples:**
+
+```lua
+-- Make-based build
+build = {
+  make = {
+    makefile = "Makefile",
+    jobs = 4,
+    targets = { "all", "install" },
+    env = { CC = "gcc", CFLAGS = "-O2" },
+  }
+}
+
+-- Meson + Ninja
+build = {
+  meson = {
+    args = { "--buildtype=release" },
+    ninja = { jobs = 8 },
+  }
+}
+
+-- Cargo (Rust)
+build = {
+  cargo = {
+    profile = "release",
+    features = { "ssl", "compression" },
+    target_dir = "target",
+  }
+}
+
+-- Autotools
+build = {
+  autotools = {
+    configure_args = { "--prefix=" .. ctx.install_dir, "--enable-shared" },
+    make_jobs = 4,
+  }
+}
+```
+
+**Implementation considerations:**
+- Table form is syntactic sugar; translates to `ctx.run()` calls internally
+- Supports common patterns while still allowing `build = function(ctx)` for complex cases
+- Recipe validation checks for valid build system keys and required fields
+- Each build system has sensible defaults (e.g., `make.jobs` defaults to available cores)
+- Build systems inject correct paths (install_dir, stage_dir) automatically
+- Mixed forms not allowed: choose either table or function, not both
+
+**Benefits:**
+- Reduces recipe boilerplate for standard build patterns
+- Self-documenting: table keys make build configuration explicit
+- Easier to validate and lint recipes statically
+- Common patterns standardized across recipes
+
+**Trade-offs:**
+- Adds complexity to recipe parsing and validation
+- May not cover all edge cases (custom build systems, complex workflows)
+- Escape hatch via function form still required for advanced builds
+
 ## Cross-Platform Recipe Variants
 
 Higher-level abstraction for platform-specific variants within a single recipe identity. Current Lua approach handles this programmatically.
