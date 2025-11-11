@@ -32,10 +32,10 @@ bool cmd_engine_functional_test::execute() {
                           .needed_by = std::nullopt };
 
   // Create minimal manifest for engine (no default_shell for tests)
-  manifest m{ std::move(manifest::load("packages = {}", cfg_.recipe_path)) };
+  auto m{ manifest::load("packages = {}", cfg_.recipe_path) };
 
   // Run engine
-  auto result{ engine_run({ recipe_cfg }, c, m) };
+  auto result{ engine_run({ recipe_cfg }, c, *m) };
 
   // Output results as key -> value lines (avoid = which appears in option keys)
   for (auto const &[id, hash] : result) {

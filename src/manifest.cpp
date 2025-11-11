@@ -16,96 +16,12 @@ extern "C" {
 namespace envy {
 namespace {
 
-// Parse custom shell from table (expects table at top of stack)
+// Wrapper to add "default_shell:" prefix to error messages
 custom_shell parse_custom_shell_table(lua_State *L) {
-  if (!lua_istable(L, -1)) {
-    throw std::runtime_error("default_shell: custom shell must be a table with 'file' or 'inline' key");
-  }
-
-  // Check for 'file' key
-  lua_getfield(L, -1, "file");
-  bool const has_file{ !lua_isnil(L, -1) };
-  lua_pop(L, 1);
-
-  // Check for 'inline' key
-  lua_getfield(L, -1, "inline");
-  bool const has_inline{ !lua_isnil(L, -1) };
-  lua_pop(L, 1);
-
-  if (has_file && has_inline) {
-    throw std::runtime_error(
-        "default_shell: custom shell table cannot have both 'file' and 'inline' keys");
-  }
-  if (!has_file && !has_inline) {
-    throw std::runtime_error(
-        "default_shell: custom shell table must have either 'file' or 'inline' key");
-  }
-
-  if (has_file) {
-    // Parse file mode
-    lua_getfield(L, -1, "file");
-
-    // Handle string shorthand: file = "/path" → file = {"/path"}
-    std::vector<std::string> argv;
-    if (lua_isstring(L, -1)) {
-      argv.push_back(lua_tostring(L, -1));
-    } else if (lua_istable(L, -1)) {
-      // Parse array of strings
-      size_t const len{ lua_rawlen(L, -1) };
-      if (len == 0) {
-        throw std::runtime_error(
-            "default_shell: file mode argv must be non-empty (at least shell executable path)");
-      }
-      for (size_t i{ 1 }; i <= len; ++i) {
-        lua_rawgeti(L, -1, static_cast<lua_Integer>(i));
-        if (!lua_isstring(L, -1)) {
-          throw std::runtime_error("default_shell: file mode argv must contain only strings");
-        }
-        argv.push_back(lua_tostring(L, -1));
-        lua_pop(L, 1);
-      }
-    } else {
-      throw std::runtime_error(
-          "default_shell: 'file' key must be a string (path) or array of strings");
-    }
-    lua_pop(L, 1);  // Pop 'file' value
-
-    // Get 'ext' field (required for file mode)
-    lua_getfield(L, -1, "ext");
-    if (!lua_isstring(L, -1)) {
-      throw std::runtime_error(
-          "default_shell: file mode requires 'ext' field (e.g., \".sh\", \".tcl\")");
-    }
-    std::string ext{ lua_tostring(L, -1) };
-    lua_pop(L, 1);  // Pop 'ext' value
-
-    return custom_shell_file{ std::move(argv), std::move(ext) };
-  } else {
-    // Parse inline mode
-    lua_getfield(L, -1, "inline");
-
-    std::vector<std::string> argv;
-    if (lua_istable(L, -1)) {
-      // Parse array of strings
-      size_t const len{ lua_rawlen(L, -1) };
-      if (len == 0) {
-        throw std::runtime_error(
-            "default_shell: inline mode argv must be non-empty (at least shell executable path)");
-      }
-      for (size_t i{ 1 }; i <= len; ++i) {
-        lua_rawgeti(L, -1, static_cast<lua_Integer>(i));
-        if (!lua_isstring(L, -1)) {
-          throw std::runtime_error("default_shell: inline mode argv must contain only strings");
-        }
-        argv.push_back(lua_tostring(L, -1));
-        lua_pop(L, 1);
-      }
-    } else {
-      throw std::runtime_error("default_shell: 'inline' key must be an array of strings");
-    }
-    lua_pop(L, 1);  // Pop 'inline' value
-
-    return custom_shell_inline{ std::move(argv) };
+  try {
+    return shell_parse_custom_from_lua(L);
+  } catch (std::exception const &e) {
+    throw std::runtime_error(std::string{ "default_shell: " } + e.what());
   }
 }
 
@@ -192,7 +108,8 @@ void manifest::parse_default_shell(lua_State *L) {
   // Unsupported type
   lua_pop(L, 1);
   throw std::runtime_error(
-      "default_shell: must be ENVY_SHELL constant, table {file=..., ext=...} or {inline=...}, "
+      "default_shell: must be ENVY_SHELL constant, table {file=..., ext=...} or "
+      "{inline=...}, "
       "or function()");
 }
 
@@ -215,7 +132,8 @@ std::optional<std::filesystem::path> manifest::discover() {
   }
 }
 
-manifest manifest::load(char const *script, std::filesystem::path const &manifest_path) {
+std::unique_ptr<manifest> manifest::load(char const *script,
+                                         std::filesystem::path const &manifest_path) {
   auto state{ lua_make() };
   if (!state) { throw std::runtime_error("Failed to create Lua state"); }
 
@@ -225,44 +143,21 @@ manifest manifest::load(char const *script, std::filesystem::path const &manifes
     throw std::runtime_error("Failed to execute manifest script");
   }
 
-  manifest m;
-  m.manifest_path = manifest_path;
-  m.lua_state_ = std::move(state);  // Keep lua_state alive for function evaluation
+  auto m{ std::make_unique<manifest>() };
+  m->manifest_path = manifest_path;
+  m->lua_state_ = std::move(state);  // Keep lua_state alive for function evaluation
 
-  auto packages{ lua_global_to_array(m.lua_state_.get(), "packages") };
+  auto packages{ lua_global_to_array(m->lua_state_.get(), "packages") };
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
 
   for (auto const &package : *packages) {
-    m.packages.push_back(recipe_spec::parse(package, manifest_path));
+    m->packages.push_back(recipe_spec::parse(package, manifest_path));
   }
 
   // Parse and store default_shell configuration
-  m.parse_default_shell(m.lua_state_.get());
+  m->parse_default_shell(m->lua_state_.get());
 
   return m;
-}
-
-manifest::manifest(manifest &&other) noexcept
-    : packages{ std::move(other.packages) },
-      manifest_path{ std::move(other.manifest_path) },
-      lua_state_{ std::move(other.lua_state_) },
-      default_shell_func_ref_{ other.default_shell_func_ref_ },
-      resolve_flag_{},  // std::once_flag is not movable, default-construct new one
-      resolved_{ std::move(other.resolved_) } {
-  other.default_shell_func_ref_ = -1;
-}
-
-manifest &manifest::operator=(manifest &&other) noexcept {
-  if (this != &other) {
-    packages = std::move(other.packages);
-    manifest_path = std::move(other.manifest_path);
-    lua_state_ = std::move(other.lua_state_);
-    default_shell_func_ref_ = other.default_shell_func_ref_;
-    // resolve_flag_ cannot be moved or assigned, leave as-is
-    resolved_ = std::move(other.resolved_);
-    other.default_shell_func_ref_ = -1;
-  }
-  return *this;
 }
 
 default_shell_cfg manifest::resolve_default_shell(lua_ctx_common const *ctx) const {
@@ -315,7 +210,8 @@ default_shell_cfg manifest::resolve_default_shell(lua_ctx_common const *ctx) con
 
       if (choice != shell_choice::bash && choice != shell_choice::sh &&
           choice != shell_choice::cmd && choice != shell_choice::powershell) {
-        throw std::runtime_error("default_shell function: returned invalid ENVY_SHELL constant");
+        throw std::runtime_error(
+            "default_shell function: returned invalid ENVY_SHELL constant");
       }
 
       resolved_ = choice;
@@ -330,7 +226,8 @@ default_shell_cfg manifest::resolve_default_shell(lua_ctx_common const *ctx) con
     } else {
       lua_pop(L, 1);
       throw std::runtime_error(
-          "default_shell function: must return ENVY_SHELL constant or table {file=..., ext=...} "
+          "default_shell function: must return ENVY_SHELL constant or table {file=..., "
+          "ext=...} "
           "or {inline=...}");
     }
   });

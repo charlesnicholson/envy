@@ -7,9 +7,9 @@
 // Platform-specific unreachable hint. Use compiler intrinsics where available
 // while remaining safe for MSVC which lacks __builtin_unreachable.
 #if defined(_MSC_VER)
-	#define ENVY_UNREACHABLE() __assume(0)
+#define ENVY_UNREACHABLE() __assume(0)
 #else
-	#define ENVY_UNREACHABLE() __builtin_unreachable()
+#define ENVY_UNREACHABLE() __builtin_unreachable()
 #endif
 
 namespace envy::platform {

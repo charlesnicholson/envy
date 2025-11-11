@@ -43,7 +43,8 @@ void validate_shell_config(T const &shell_cfg) {
 
   // Check if it's a regular file (not a directory)
   if (!std::filesystem::is_regular_file(shell_path, ec)) {
-    throw std::runtime_error("Custom shell path is not a regular file: " + shell_path.string());
+    throw std::runtime_error("Custom shell path is not a regular file: " +
+                             shell_path.string());
   }
 
   // Note: We don't check executable permission on Windows (no reliable portable way)
@@ -73,7 +74,8 @@ custom_shell shell_parse_custom_from_lua(::lua_State *L) {
   lua_pop(L, 1);
 
   if (has_file && has_inline) {
-    throw std::runtime_error("custom shell table cannot have both 'file' and 'inline' keys");
+    throw std::runtime_error(
+        "custom shell table cannot have both 'file' and 'inline' keys");
   }
   if (!has_file && !has_inline) {
     throw std::runtime_error("custom shell table must have either 'file' or 'inline' key");
