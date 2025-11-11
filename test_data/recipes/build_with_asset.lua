@@ -22,8 +22,13 @@ build = function(ctx)
   local result
   if ENVY_PLATFORM == "windows" then
     result = ctx.run([[
-      Get-Content "]] .. dep_path .. [[/dependency.txt" | Set-Content -Path from_dependency.txt
+      $depFile = ']] .. dep_path .. [[/dependency.txt'
+      if (-not (Test-Path $depFile)) { Start-Sleep -Milliseconds 100 }
+      if (-not (Test-Path $depFile)) { Write-Error "Dependency artifact missing"; exit 61 }
+      Get-Content $depFile | Set-Content -Path from_dependency.txt
       Write-Output "Used dependency data"
+      if (-not (Test-Path from_dependency.txt)) { Write-Error "Output artifact missing"; exit 62 }
+      exit 0
     ]], { shell = "powershell" })
   else
     result = ctx.run([[

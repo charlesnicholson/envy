@@ -14,11 +14,7 @@ build = function(ctx)
   -- Create build artifacts
   local result
   if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[
-      New-Item -ItemType Directory -Path build_output -Force | Out-Null
-      Set-Content -Path build_output/result.txt -Value "function_artifact"
-      Write-Output "Build complete"
-    ]], { shell = "powershell" })
+    result = ctx.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]], { shell = "cmd" })
   else
     result = ctx.run([[
       mkdir -p build_output

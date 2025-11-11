@@ -21,6 +21,8 @@ stage = function(ctx)
       } else {
         exit 1
       }
+      if (-not (Test-Path archive_log.txt)) { exit 1 }
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

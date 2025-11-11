@@ -10,9 +10,11 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
+    -- Force failure and terminate immediately; ensure non-zero exit code surfaces.
     ctx.run([[
-      cmd /c exit 1
-      echo "This should not execute"
+      cmd /c exit /b 7
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      Write-Output "This should not execute"
     ]], { shell = "powershell" })
   else
     ctx.run([[

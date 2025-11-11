@@ -21,7 +21,7 @@ build = function(ctx)
   -- Run in subdirectory (relative path)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      Get-Location | Out-File -FilePath current_dir.txt
+      (Get-Location).Path | Out-File -FilePath current_dir.txt
       Set-Content -Path marker.txt -Value "In subdirectory"
     ]], {cwd = "subdir", shell = "powershell"})
   else
@@ -34,8 +34,16 @@ build = function(ctx)
   -- Verify we ran in subdirectory
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path subdir/marker.txt)) { exit 1 }
-      if (-not (Select-String -Path subdir/current_dir.txt -Pattern "subdir" -Quiet)) { exit 1 }
+      if (-not (Test-Path subdir/marker.txt)) {
+        Write-Output "missing subdir/marker.txt"
+        exit 1
+      }
+      $content = Get-Content subdir/current_dir.txt -Raw
+      if ($content -notmatch "(?i)subdir") {
+        Write-Output "current_dir does not contain subdir: $content"
+        exit 1
+      }
+      Write-Output "CWD subdir verified"
     ]], { shell = "powershell" })
   else
     ctx.run([[
@@ -65,7 +73,15 @@ build = function(ctx)
   -- Verify
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path nested/deep/dir/deep_marker.txt)) { exit 1 }
+      if (-not (Test-Path nested/deep/dir/deep_marker.txt)) {
+        Write-Output "missing deep_marker.txt"
+        exit 1
+      }
+      $deep = Get-Content nested/deep/dir/deep_marker.txt -Raw
+      if ($deep -notmatch "deep") {
+        Write-Output "deep_marker.txt does not contain deep"
+        exit 1
+      }
       Write-Output "CWD operations successful"
     ]], { shell = "powershell" })
   else

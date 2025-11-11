@@ -181,6 +181,117 @@ build = {
 - May not cover all edge cases (custom build systems, complex workflows)
 - Escape hatch via function form still required for advanced builds
 
+## Shell Execution: Async Pipe Reading and Stream Separation
+
+### Current Implementation
+
+`shell_run()` (both Windows and POSIX) uses synchronous pipe reading on the main thread:
+
+1. Spawn child process with stdout+stderr redirected to single pipe
+2. Close write end of pipe in parent
+3. Read pipe synchronously with `stream_pipe_lines()` until EOF (child closes write end)
+4. Wait for child process exit
+5. Return exit code
+
+**Key behaviors:**
+- Parent actively drains pipe while child runs (no deadlock in normal cases)
+- Pipe provides backpressure: child blocks on write if pipe buffer fills (typically 4-64KB)
+- Parent's `on_output_line` callback is invoked synchronously for each line
+- Both stdout and stderr merge into single pipe; no way to distinguish streams
+
+### Limitations
+
+**1. Slow callback stalls child**
+
+If `on_output_line` callback blocks (e.g., synchronous disk I/O, network call), parent stops reading pipe. Child fills pipe buffer and blocks on write. Build effectively pauses until callback completes.
+
+- **Real-world impact:** Low. Most callbacks just append to vector or print to terminal (fast).
+- **Workaround:** Keep callbacks fast; defer expensive work to after `shell_run` returns.
+
+**2. Pathologically long lines**
+
+If child writes 100KB+ without newline, `stream_pipe_lines` accumulates entire line in memory before calling callback. Unbounded accumulation could exhaust memory.
+
+- **Real-world impact:** Very low. Normal build output has reasonable line lengths (<10KB).
+- **Example pathological case:** Binary dump to stdout, base64-encoded data without newlines.
+
+**3. No stdout/stderr separation**
+
+Both streams merge in pipe. Caller receives combined output in temporal order but cannot distinguish stdout from stderr.
+
+- **Real-world impact:** Low. Most build tools merge streams anyway (cmake, ninja, make).
+- **Use case:** Parsing structured stdout (JSON, XML) while ignoring stderr diagnostics.
+
+### Potential Solutions
+
+#### Option A: Background Reader Thread
+
+Spawn thread to read pipe asynchronously while main thread waits for process:
+
+```cpp
+std::thread reader([&]() {
+    stream_pipe_lines(read_end.get(), cfg.on_output_line);
+});
+shell_result result = wait_for_child(process);
+reader.join();
+```
+
+**Pros:**
+- Decouples pipe reading from process waiting
+- Slow callbacks no longer stall child
+- Simple threading model
+
+**Cons:**
+- Thread overhead (minor)
+- Exception propagation complexity: callback throws on thread, must marshal to main
+- Requires thread-safe callback or synchronization
+
+#### Option B: Async I/O with Event Loop
+
+Use platform-specific async I/O to multiplex pipe and process:
+
+**Windows:** `OVERLAPPED` I/O with `WaitForMultipleObjects` on `{process_handle, pipe_event}`
+**POSIX:** `select()`/`poll()` on pipe fd, `waitpid()` with `WNOHANG`
+
+**Pros:**
+- No threading complexity
+- Can separate stdout/stderr with dual pipes + multiplexing
+- Callback remains on main thread (easier exception handling)
+
+**Cons:**
+- Significant platform-specific complexity
+- Event loop state machine harder to reason about
+- Overkill for current usage patterns
+
+#### Option C: Stdout/Stderr Separation
+
+Requires dual pipes + either threading or async I/O:
+
+**Threading approach:**
+```cpp
+std::thread stdout_reader([&]() { read_stdout_lines(cfg.on_stdout_line); });
+std::thread stderr_reader([&]() { read_stderr_lines(cfg.on_stderr_line); });
+wait_for_child(process);
+stdout_reader.join();
+stderr_reader.join();
+```
+
+**Trade-offs:**
+- Loses temporal ordering: can't interleave stdout/stderr lines accurately
+- Child can deadlock if one pipe fills while other is empty (needs careful reader design)
+- Questionable value: most build tools intentionally merge streams
+
+### Recommendation
+
+**Defer until real-world need emerges.** Current implementation handles tested workloads correctly (all functional tests pass, including large outputs). The limitations are theoretical edge cases that haven't caused issues in practice.
+
+**If implemented:**
+- Option A (background thread) is simplest and handles slow callbacks
+- Option C (stream separation) has unclear value proposition; most tools merge anyway
+- Option B (async I/O) is over-engineered for current requirements
+
+**Alternative:** Add configuration option for max line length with truncation warning if pathologically long lines become an issue.
+
 ## Cross-Platform Recipe Variants
 
 Higher-level abstraction for platform-specific variants within a single recipe identity. Current Lua approach handles this programmatically.

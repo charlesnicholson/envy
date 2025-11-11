@@ -16,6 +16,8 @@ stage = function(ctx)
       Set-Content -Path config.txt -Value "# Build configuration"
       Add-Content -Path config.txt -Value "CFLAGS=-O2"
       Pop-Location
+      if (-not (Test-Path build/config.txt)) { exit 1 }
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

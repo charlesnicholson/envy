@@ -18,7 +18,6 @@ build = function(ctx)
       New-Item -ItemType Directory -Path output/lib/x86_64 -Force | Out-Null
       New-Item -ItemType Directory -Path output/include/subproject -Force | Out-Null
       New-Item -ItemType Directory -Path output/share/doc -Force | Out-Null
-
       Set-Content -Path output/bin/app -Value "binary"
       Set-Content -Path output/lib/x86_64/libapp.so -Value "library"
       Set-Content -Path output/include/app.h -Value "header"
@@ -31,7 +30,6 @@ build = function(ctx)
       mkdir -p output/lib/x86_64
       mkdir -p output/include/subproject
       mkdir -p output/share/doc
-
       echo "binary" > output/bin/app
       echo "library" > output/lib/x86_64/libapp.so
       echo "header" > output/include/app.h
@@ -46,11 +44,26 @@ build = function(ctx)
   -- Verify all files exist in copied structure
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path copied_output/bin/app)) { exit 1 }
-      if (-not (Test-Path copied_output/lib/x86_64/libapp.so)) { exit 1 }
-      if (-not (Test-Path copied_output/include/app.h)) { exit 1 }
-      if (-not (Test-Path copied_output/include/subproject/sub.h)) { exit 1 }
-      if (-not (Test-Path copied_output/share/doc/README.md)) { exit 1 }
+      if (-not (Test-Path copied_output/bin/app)) {
+        Write-Output "missing bin/app"
+        exit 1
+      }
+      if (-not (Test-Path copied_output/lib/x86_64/libapp.so)) {
+        Write-Output "missing libapp.so"
+        exit 1
+      }
+      if (-not (Test-Path copied_output/include/app.h)) {
+        Write-Output "missing app.h"
+        exit 1
+      }
+      if (-not (Test-Path copied_output/include/subproject/sub.h)) {
+        Write-Output "missing sub.h"
+        exit 1
+      }
+      if (-not (Test-Path copied_output/share/doc/README.md)) {
+        Write-Output "missing README.md"
+        exit 1
+      }
       Write-Output "Nested directory operations successful"
     ]], { shell = "powershell" })
   else

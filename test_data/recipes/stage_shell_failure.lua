@@ -7,9 +7,17 @@ fetch = {
 }
 
 -- Shell script that intentionally fails
-stage = [[
-  set -euo pipefail
-  echo "About to fail"
-  false  # This should cause stage to fail with strict mode enabled
-  echo "This line should never execute"
-]]
+stage = function(ctx)
+  if ENVY_PLATFORM == "windows" then
+    ctx.run([[
+      Write-Output "About to fail"
+      exit 9
+    ]], { shell = "powershell" })
+  else
+    ctx.run([[
+      set -euo pipefail
+      echo "About to fail"
+      false
+    ]])
+  end
+end

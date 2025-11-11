@@ -7,13 +7,25 @@ fetch = {
 }
 
 -- Shell script that extracts and creates a marker file
-stage = [[
-  # Extract the archive manually (should be in fetch_dir)
-  tar -xzf ../fetch/test.tar.gz --strip-components=1
+if ENVY_PLATFORM == "windows" then
+  -- PowerShell variant
+  stage = [[
+    # PowerShell still invoked; use tar (Windows 10+ includes bsdtar) and Out-File
+    tar -xzf ../fetch/test.tar.gz --strip-components=1
+    "stage script executed" | Out-File -Encoding UTF8 STAGE_MARKER.txt
+    Get-ChildItem -Force | Format-List > DIR_LIST.txt
+    if (-not (Test-Path STAGE_MARKER.txt)) { exit 1 }
+    exit 0
+  ]]
+else
+  stage = [[
+    # Extract the archive manually (should be in fetch_dir)
+    tar -xzf ../fetch/test.tar.gz --strip-components=1
 
-  # Create a marker file to prove shell ran
-  echo "stage script executed" > STAGE_MARKER.txt
+    # Create a marker file to prove shell ran
+    echo "stage script executed" > STAGE_MARKER.txt
 
-  # List files for debugging
-  ls -la
-]]
+    # List files for debugging
+    ls -la
+  ]]
+end

@@ -14,6 +14,8 @@ stage = function(ctx)
       Set-Content -Path special_chars.txt -Value 'Special chars: !@#$%^&*()_+-=[]{}|;:'',.<>?/~`'
       Add-Content -Path special_chars.txt -Value 'Quotes: "double" ''single'''
       Add-Content -Path special_chars.txt -Value 'Backslash: \ and newline: (literal)'
+      if (-not (Test-Path special_chars.txt)) { exit 1 }
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

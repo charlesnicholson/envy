@@ -11,9 +11,10 @@ stage = function(ctx)
     error("ctx_run_shell_cmd should only run on Windows")
   end
 
-  ctx.run([[\
-@echo off\
-setlocal enabledelayedexpansion\
-echo shell=cmd>shell_cmd_marker.txt\
+  -- Use clean multi-line script without stray backslashes; ensure proper file creation.
+  ctx.run([[
+@echo off
+setlocal enabledelayedexpansion
+echo shell=cmd>shell_cmd_marker.txt
   ]], { shell = "cmd" })
 end

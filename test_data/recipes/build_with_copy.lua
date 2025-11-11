@@ -18,6 +18,7 @@ build = function(ctx)
       New-Item -ItemType Directory -Path source_dir -Force | Out-Null
       Set-Content -Path source_dir/file1.txt -Value "nested1"
       Set-Content -Path source_dir/file2.txt -Value "nested2"
+      Write-Output "creation_done"
     ]], { shell = "powershell" })
   else
     ctx.run([[
@@ -37,9 +38,18 @@ build = function(ctx)
   -- Verify copies
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path dest_file.txt)) { exit 1 }
-      if (-not (Test-Path dest_dir/file1.txt)) { exit 1 }
-      if (-not (Test-Path dest_dir/file2.txt)) { exit 1 }
+      if (-not (Test-Path dest_file.txt)) {
+        Write-Output "missing dest_file.txt"
+        exit 1
+      }
+      if (-not (Test-Path dest_dir/file1.txt)) {
+        Write-Output "missing file1.txt"
+        exit 1
+      }
+      if (-not (Test-Path dest_dir/file2.txt)) {
+        Write-Output "missing file2.txt"
+        exit 1
+      }
       Write-Output "Copy operations successful"
     ]], { shell = "powershell" })
   else
