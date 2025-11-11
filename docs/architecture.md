@@ -67,6 +67,39 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
+## Shell Configuration
+
+Manifests can specify a `default_shell` global to control how `ctx:run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
+
+**Built-in shells (constants):**
+- `ENVY_SHELL.BASH` — POSIX bash (default on macOS/Linux)
+- `ENVY_SHELL.SH` — POSIX sh
+- `ENVY_SHELL.CMD` — Windows cmd.exe
+- `ENVY_SHELL.POWERSHELL` — Windows PowerShell (default on Windows)
+
+**Custom shells (table):**
+- **File mode:** `{file = "/path/to/interpreter", ext = ".ext"}` or `{file = {"/path/to/exe", "--arg"}, ext = ".tcl"}`
+  - Script written to temp file with extension, path passed as final argument
+  - Shorthand: `file = "/path"` expands to `file = {"/path"}`
+- **Inline mode:** `{inline = {"/path/to/exe", "-c"}}`
+  - Script content passed as final argument (no temp file)
+
+**Dynamic shell selection (function):**
+```lua
+default_shell = function(ctx)
+  -- Query deployed assets to use as interpreter
+  local python = ctx:asset("python@v3.11")
+  return {inline = {python .. "/bin/python3", "-c"}}
+end
+```
+
+**Use case:** Express all build scripts in a custom language (Python, Tcl, Ruby) without assuming it's pre-installed. The function can query `ctx:asset()` to locate envy-deployed interpreters. Bootstrap recipes (Python itself) must use built-in shells.
+
+**Implementation notes:**
+- Functions evaluated lazily during engine execution (after dependency graph built)
+- Result cached per manifest
+- **Future work:** Dependency analysis—extract `ctx:asset()` calls from function to add implicit dependencies, ensuring interpreter deploys before dependent recipes run
+
 ## Recipes
 
 ### Organization

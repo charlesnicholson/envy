@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -73,7 +74,7 @@ std::string get_shell_path(shell_choice choice) {
   }
 }
 
-std::string create_temp_script(std::string_view script, shell_choice choice) {
+std::string create_temp_script(std::string_view script) {
   auto tmp_dir{ std::filesystem::temp_directory_path() };
   std::string pattern{ (tmp_dir / "envy-shell-XXXXXX").string() };
 
@@ -86,9 +87,9 @@ std::string create_temp_script(std::string_view script, shell_choice choice) {
   }
   fd_cleanup fd_guard{ fd };
 
-  std::string content{ "#!" + get_shell_path(choice) + "\n" };
-  content.append(script);
-  if (content.back() != '\n') { content.push_back('\n'); }
+  // Write script content as-is (no shebang needed - we invoke shell explicitly)
+  std::string content{ script };
+  if (!content.empty() && content.back() != '\n') { content.push_back('\n'); }
 
   ssize_t remaining{ static_cast<ssize_t>(content.size()) };
   char const *data{ content.data() };
@@ -181,8 +182,7 @@ shell_result wait_for_child(pid_t child) {
 [[noreturn]] void exec_child_process(fd_cleanup &read_end,
                                      fd_cleanup &write_end,
                                      std::optional<std::filesystem::path> const &cwd,
-                                     std::string const &shell_arg,
-                                     std::string const &script_arg,
+                                     std::vector<std::string> const &argv_strings,
                                      envp_storage const &envp) {
   read_end.release();
 
@@ -203,34 +203,18 @@ shell_result wait_for_child(pid_t child) {
     }
   }
 
-  // Split shell_arg by spaces to handle "/usr/bin/env bash"
-  std::vector<std::string> shell_parts;
-  std::string_view shell_view{ shell_arg };
-  size_t start{ 0 };
-  while (start < shell_view.size()) {
-    while (start < shell_view.size() && shell_view[start] == ' ') { ++start; }
-    if (start >= shell_view.size()) { break; }
-    size_t const end{ shell_view.find(' ', start) };
-    if (end == std::string_view::npos) {
-      shell_parts.emplace_back(shell_view.substr(start));
-      break;
-    }
-    shell_parts.emplace_back(shell_view.substr(start, end - start));
-    start = end + 1;
-  }
-
-  if (shell_parts.empty()) {
-    std::fprintf(stderr, "invalid shell path: '%s'\n", shell_arg.c_str());
+  if (argv_strings.empty()) {
+    std::fprintf(stderr, "exec_child_process: argv must be non-empty\n");
     _exit(kChildErrorExit);
   }
 
+  // Build argv array from strings
   std::vector<char *> argv;
-  argv.reserve(shell_parts.size() + 2);
-  for (auto &part : shell_parts) { argv.push_back(const_cast<char *>(part.c_str())); }
-  argv.push_back(const_cast<char *>(script_arg.c_str()));
+  argv.reserve(argv_strings.size() + 1);
+  for (auto const &arg : argv_strings) { argv.push_back(const_cast<char *>(arg.c_str())); }
   argv.push_back(nullptr);
 
-  ::execve(shell_parts[0].c_str(), argv.data(), envp.pointers.data());
+  ::execve(argv_strings[0].c_str(), argv.data(), envp.pointers.data());
   std::perror("execve");
   _exit(kChildErrorExit);
 }
@@ -254,12 +238,63 @@ shell_env_t shell_getenv() {
 }
 
 shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
-  if (cfg.shell != shell_choice::bash && cfg.shell != shell_choice::sh) {
-    throw std::invalid_argument("shell_run: POSIX build only supports bash or sh shells");
+  // Determine if we need a script file or pass inline
+  bool const is_inline{ std::holds_alternative<custom_shell_inline>(cfg.shell) };
+
+  std::string script_path{};
+  std::unique_ptr<scoped_path_cleanup> cleanup;
+
+  if (!is_inline) {
+    script_path = create_temp_script(script);
+    cleanup = std::make_unique<scoped_path_cleanup>(std::filesystem::path{ script_path });
   }
 
-  std::string script_path{ create_temp_script(script, cfg.shell) };
-  scoped_path_cleanup cleanup{ std::filesystem::path{ script_path } };
+  // Build argv based on shell type
+  std::vector<std::string> argv_strings{ std::visit(
+      match{
+          [&script_path](shell_choice const &shell_cfg) -> std::vector<std::string> {
+            if (shell_cfg != shell_choice::bash && shell_cfg != shell_choice::sh) {
+              throw std::invalid_argument(
+                  "shell_run: POSIX only supports bash or sh built-in shells");
+            }
+            // Split shell path to handle "/usr/bin/env bash"
+            std::vector<std::string> result;
+            std::string const shell_path{ get_shell_path(shell_cfg) };
+            std::string_view shell_view{ shell_path };
+            size_t start{ 0 };
+
+            while (start < shell_view.size()) {
+              while (start < shell_view.size() && shell_view[start] == ' ') { ++start; }
+
+              if (start >= shell_view.size()) { break; }
+              size_t const end{ shell_view.find(' ', start) };
+
+              if (end == std::string_view::npos) {
+                result.emplace_back(shell_view.substr(start));
+                break;
+              }
+
+              result.emplace_back(shell_view.substr(start, end - start));
+              start = end + 1;
+            }
+
+            result.push_back(script_path);
+            return result;
+          },
+          [&script_path](custom_shell_file const &shell_cfg) -> std::vector<std::string> {
+            // Copy argv and append script path
+            std::vector<std::string> result{ shell_cfg.argv };
+            result.push_back(script_path);
+            return result;
+          },
+          [&script](custom_shell_inline const &shell_cfg) -> std::vector<std::string> {
+            // custom_shell_inline: copy argv and append script content
+            std::vector<std::string> result{ shell_cfg.argv };
+            result.push_back(std::string{ script });
+            return result;
+          },
+      },
+      cfg.shell) };
 
   auto envp{ build_envp(cfg.env) };
 
@@ -271,17 +306,12 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   fd_cleanup read_end{ pipefd[0] };
   fd_cleanup write_end{ pipefd[1] };
 
-  std::string shell_arg{ get_shell_path(cfg.shell) };
-  std::string script_arg{ script_path };
-
   pid_t const child{ ::fork() };
   if (child == -1) {
     throw std::system_error(errno, std::generic_category(), "fork failed");
   }
 
-  if (child == 0) {
-    exec_child_process(read_end, write_end, cfg.cwd, shell_arg, script_arg, envp);
-  }
+  if (child == 0) { exec_child_process(read_end, write_end, cfg.cwd, argv_strings, envp); }
 
   write_end.release();  // Parent: close write end and stream output
 

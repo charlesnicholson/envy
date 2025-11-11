@@ -17,6 +17,8 @@
 
 namespace envy {
 
+struct manifest;
+
 struct trace_on_exit {
   std::string message;
   explicit trace_on_exit(std::string msg) : message{ std::move(msg) } {}
@@ -49,6 +51,7 @@ struct recipe {
 struct graph_state {
   tbb::flow::graph &graph;
   cache &cache_;
+  manifest const *manifest_;  // Manifest (for default_shell resolution, always non-null)
 
   using node_ptr = recipe::node_ptr;
   tbb::concurrent_hash_map<std::string, recipe> recipes;

@@ -397,6 +397,7 @@ void run_programmatic_fetch(lua_State *lua,
   ctx.run_dir = tmp_dir;
   ctx.state = &state;
   ctx.key = &key;
+  ctx.manifest_ = state.manifest_;
   ctx.used_basenames = {};
 
   build_fetch_context_table(lua, identity, options, &ctx);

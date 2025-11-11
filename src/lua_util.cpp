@@ -1,5 +1,6 @@
 #include "lua_util.h"
 
+#include "shell.h"
 #include "tui.h"
 
 extern "C" {
@@ -199,6 +200,19 @@ void lua_add_envy(lua_state_ptr const &state) {
   lua_setfield(lua, -2, "stdout");
   if (push_envy_template(lua)) { lua_setfield(lua, -2, "template"); }
   lua_setglobal(lua, "envy");
+
+  // ENVY_SHELL table with built-in shell constants
+  lua_newtable(lua);
+  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
+  lua_setfield(lua, -2, "BASH");
+  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
+  lua_setfield(lua, -2, "SH");
+  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
+  lua_setfield(lua, -2, "CMD");
+  lua_pushlightuserdata(lua,
+                        reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
+  lua_setfield(lua, -2, "POWERSHELL");
+  lua_setglobal(lua, "ENVY_SHELL");
 }
 
 bool lua_run_file(lua_state_ptr const &state, std::filesystem::path const &path) {

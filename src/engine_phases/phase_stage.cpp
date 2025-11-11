@@ -218,6 +218,7 @@ void run_programmatic_stage(lua_State *lua,
   ctx.run_dir = dest_dir;
   ctx.state = &state;
   ctx.key = &key;
+  ctx.manifest_ = state.manifest_;
 
   build_stage_context_table(lua, identity, options, &ctx);
 

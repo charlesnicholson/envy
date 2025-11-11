@@ -237,6 +237,7 @@ target_sources(envy_functional_tester
         src/aws_util.cpp
         src/blake3_util.cpp
         src/lua_util.cpp
+        src/manifest.cpp
         src/phase.cpp
         src/recipe_spec.cpp
         src/sha256.cpp

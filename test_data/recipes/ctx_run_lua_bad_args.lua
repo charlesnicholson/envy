@@ -9,6 +9,6 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Call with invalid argument types to ensure failure consistently.
+  -- Call with invalid argument value (nil) to ensure failure consistently.
   ctx.run(nil)
 end
