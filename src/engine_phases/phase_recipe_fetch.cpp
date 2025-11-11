@@ -116,9 +116,17 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
     }
   }
 
+  // Extract dependency identities for validation
+  std::vector<std::string> dep_identities;
+  dep_identities.reserve(dep_configs.size());
+  for (auto const &dep_cfg : dep_configs) { dep_identities.push_back(dep_cfg.identity); }
+
   {
     typename decltype(state.recipes)::accessor acc;
-    if (state.recipes.find(acc, key)) { acc->second.lua_state = std::move(lua_state); }
+    if (state.recipes.find(acc, key)) {
+      acc->second.lua_state = std::move(lua_state);
+      acc->second.declared_dependencies = std::move(dep_identities);
+    }
   }
 
   std::unordered_set<std::string> dep_ancestors{ ancestors };

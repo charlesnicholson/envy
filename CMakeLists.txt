@@ -349,6 +349,9 @@ target_sources(envy_unit_tests
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp
+        src/lua_ctx_bindings_tests.cpp
+        src/engine_phases/lua_ctx_bindings.cpp
+        src/engine_phases/graph_state.cpp
         src/sha256_tests.cpp
         src/shell_tests_common.cpp
         $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>

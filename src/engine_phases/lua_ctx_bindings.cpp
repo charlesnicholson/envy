@@ -13,9 +13,57 @@ extern "C" {
 
 #include <filesystem>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
+
+bool is_transitive_dependency_impl(graph_state *state,
+                                   std::string const &current_key,
+                                   std::string const &target_identity,
+                                   std::unordered_set<std::string> &visited) {
+  if (current_key == target_identity) { return true; }  // Base case: found the target
+  if (visited.contains(current_key)) { return false; }  // already visited this node
+  visited.insert(current_key);
+
+  typename decltype(state->recipes)::const_accessor acc;
+  if (!state->recipes.find(acc, current_key)) {
+    return false;  // Recipe not in graph - can't reach target through this path
+  }
+
+  for (auto const &dep_identity : acc->second.declared_dependencies) {  // recurse
+    if (is_transitive_dependency_impl(state, dep_identity, target_identity, visited)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool is_transitive_dependency(graph_state *state,
+                              std::string const &current_key,
+                              std::string const &target_identity) {
+  if (current_key == target_identity) { return true; }  // Base case: self
+
+  typename decltype(state->recipes)::const_accessor acc;
+  if (!state->recipes.find(acc, current_key)) { return false; }
+
+  // Check direct dependencies first
+  for (std::string const &dep_identity : acc->second.declared_dependencies) {
+    if (dep_identity == target_identity) { return true; }
+  }
+
+  // Check transitive dependencies with cycle detection
+  std::unordered_set<std::string> visited{ current_key };
+  for (std::string const &dep_identity : acc->second.declared_dependencies) {
+    if (is_transitive_dependency_impl(state, dep_identity, target_identity, visited)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 namespace {
 
 // Lua C function: ctx.run(script, opts?) -> {stdout, stderr}
@@ -27,6 +75,7 @@ int lua_ctx_run(lua_State *lua) {
   if (!lua_isstring(lua, 1)) {
     return luaL_error(lua, "ctx.run: first argument must be a string (shell script)");
   }
+
   size_t script_len{ 0 };
   char const *script{ lua_tolstring(lua, 1, &script_len) };
   std::string_view script_view{ script, script_len };
@@ -35,12 +84,12 @@ int lua_ctx_run(lua_State *lua) {
   std::optional<std::filesystem::path> cwd;
   shell_env_t env{ shell_getenv() };
 
-  // Three-tier shell resolution: call-site override → manifest default → platform default
+  // resolution: call-site override -> manifest default -> platform default
   std::variant<shell_choice, custom_shell_file, custom_shell_inline> shell{
 #if defined(_WIN32)
-      shell_choice::powershell
+    shell_choice::powershell
 #else
-      shell_choice::bash
+    shell_choice::bash
 #endif
   };
 
@@ -49,15 +98,15 @@ int lua_ctx_run(lua_State *lua) {
     default_shell_cfg manifest_default{ ctx->manifest_->resolve_default_shell(ctx) };
     if (manifest_default) {
       // Convert default_shell_value to shell_run_cfg variant
-      std::visit([&shell](auto &&value) {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, shell_choice>) {
-          shell = value;
-        } else if constexpr (std::is_same_v<T, custom_shell>) {
-          // custom_shell is variant<custom_shell_file, custom_shell_inline>
-          std::visit([&shell](auto &&custom) { shell = custom; }, value);
-        }
-      }, *manifest_default);
+      std::visit(
+          match{
+              [&shell](shell_choice const &choice) { shell = choice; },
+              [&shell](custom_shell const &custom) {
+                // custom_shell is variant<custom_shell_file, custom_shell_inline>
+                std::visit([&shell](auto &&custom_type) { shell = custom_type; }, custom);
+              },
+          },
+          *manifest_default);
     }
   }
 
@@ -149,8 +198,9 @@ int lua_ctx_run(lua_State *lua) {
         break;
 
       default:
-        return luaL_error(lua,
-                          "ctx.run: shell option must be a string, ENVY_SHELL constant, or table");
+        return luaL_error(
+            lua,
+            "ctx.run: shell option must be a string, ENVY_SHELL constant, or table");
     }
     lua_pop(lua, 1);
   }
@@ -213,6 +263,14 @@ int lua_ctx_asset(lua_State *lua) {
     return luaL_error(lua, "ctx.asset: first argument must be identity string");
   }
   char const *identity{ lua_tostring(lua, 1) };
+
+  // Validate dependency declaration
+  if (!is_transitive_dependency(ctx->state, *ctx->key, identity)) {
+    return luaL_error(lua,
+                      "ctx.asset: recipe '%s' does not declare dependency on '%s'",
+                      ctx->key->c_str(),
+                      identity);
+  }
 
   // Look up dependency in graph_state
   typename decltype(ctx->state->recipes)::const_accessor acc;
@@ -359,8 +417,9 @@ int lua_ctx_extract(lua_State *lua) {
   }
 
   try {
-    extract_options opts{ .strip_components = strip_components };
-    std::uint64_t const files{ extract(archive_path, ctx->run_dir, opts) };
+    std::uint64_t const files{
+      extract(archive_path, ctx->run_dir, { .strip_components = strip_components })
+    };
     lua_pushinteger(lua, static_cast<lua_Integer>(files));
     return 1;  // Return file count
   } catch (std::exception const &e) {
