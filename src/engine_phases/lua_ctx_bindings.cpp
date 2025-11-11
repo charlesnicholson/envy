@@ -2,6 +2,7 @@
 
 #include "extract.h"
 #include "graph_state.h"
+#include "manifest.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -33,7 +34,32 @@ int lua_ctx_run(lua_State *lua) {
   // Arg 2: options (optional)
   std::optional<std::filesystem::path> cwd;
   shell_env_t env{ shell_getenv() };
-  shell_choice shell_choice{ shell_parse_choice(std::nullopt) };
+
+  // Three-tier shell resolution: call-site override → manifest default → platform default
+  std::variant<shell_choice, custom_shell_file, custom_shell_inline> shell{
+#if defined(_WIN32)
+      shell_choice::powershell
+#else
+      shell_choice::bash
+#endif
+  };
+
+  // Tier 2: Resolve manifest default_shell (if present)
+  if (ctx->manifest_) {
+    default_shell_cfg manifest_default{ ctx->manifest_->resolve_default_shell(ctx) };
+    if (manifest_default) {
+      // Convert default_shell_value to shell_run_cfg variant
+      std::visit([&shell](auto &&value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, shell_choice>) {
+          shell = value;
+        } else if constexpr (std::is_same_v<T, custom_shell>) {
+          // custom_shell is variant<custom_shell_file, custom_shell_inline>
+          std::visit([&shell](auto &&custom) { shell = custom; }, value);
+        }
+      }, *manifest_default);
+    }
+  }
 
   if (lua_gettop(lua) >= 2) {
     if (!lua_istable(lua, 2)) {
@@ -75,17 +101,56 @@ int lua_ctx_run(lua_State *lua) {
     }
     lua_pop(lua, 1);
 
-    // Parse shell option
+    // Tier 3: Parse shell option (call-site override)
     lua_getfield(lua, 2, "shell");
-    if (lua_isstring(lua, -1)) {
-      std::string value{ lua_tostring(lua, -1) };
-      try {
-        shell_choice = shell_parse_choice(value);
-      } catch (std::exception const &e) {
-        return luaL_error(lua, "ctx.run: %s", e.what());
+    int const shell_type{ lua_type(lua, -1) };
+
+    switch (shell_type) {
+      case LUA_TSTRING: {
+        // String: parse as shell_choice name ("bash", "sh", "cmd", "powershell")
+        std::string value{ lua_tostring(lua, -1) };
+        try {
+          shell = shell_parse_choice(value);
+        } catch (std::exception const &e) {
+          return luaL_error(lua, "ctx.run: %s", e.what());
+        }
+        break;
       }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.run: shell option must be a string");
+
+      case LUA_TLIGHTUSERDATA: {
+        // ENVY_SHELL constant (light userdata)
+        void *ud{ lua_touserdata(lua, -1) };
+        auto const choice{ static_cast<shell_choice>(reinterpret_cast<uintptr_t>(ud)) };
+
+        // Validate enum value
+        if (choice != shell_choice::bash && choice != shell_choice::sh &&
+            choice != shell_choice::cmd && choice != shell_choice::powershell) {
+          return luaL_error(lua, "ctx.run: invalid ENVY_SHELL constant");
+        }
+        shell = choice;
+        break;
+      }
+
+      case LUA_TTABLE: {
+        // Custom shell table
+        try {
+          custom_shell custom{ shell_parse_custom_from_lua(lua) };
+          shell_validate_custom(custom);
+          // Unpack custom_shell variant into shell_run_cfg variant
+          std::visit([&shell](auto &&custom_cfg) { shell = custom_cfg; }, custom);
+        } catch (std::exception const &e) {
+          return luaL_error(lua, "ctx.run: %s", e.what());
+        }
+        break;
+      }
+
+      case LUA_TNIL:
+        // No override specified, use manifest default or platform default
+        break;
+
+      default:
+        return luaL_error(lua,
+                          "ctx.run: shell option must be a string, ENVY_SHELL constant, or table");
     }
     lua_pop(lua, 1);
   }
@@ -103,7 +168,7 @@ int lua_ctx_run(lua_State *lua) {
                            },
                        .cwd = cwd,
                        .env = std::move(env),
-                       .shell = shell_choice };
+                       .shell = shell };
 
     shell_result const result{ shell_run(script_view, inv) };
 

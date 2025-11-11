@@ -8,6 +8,7 @@ struct lua_State;
 namespace envy {
 
 struct graph_state;
+struct manifest;
 
 // Common context fields that all phase contexts must provide.
 // Phase-specific contexts should embed this as their first member.
@@ -16,6 +17,7 @@ struct lua_ctx_common {
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
   graph_state *state;
   std::string const *key;
+  manifest const *manifest_;  // Manifest (for default_shell resolution, always non-null)
 };
 
 // Register common Lua context functions available to all phases.

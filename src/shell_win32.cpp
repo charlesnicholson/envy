@@ -16,6 +16,8 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace envy {
@@ -186,7 +188,21 @@ std::filesystem::path create_temp_script(std::string_view script,
   // that can trigger sharing violations from antivirus/indexers
   DWORD const pid{ ::GetCurrentProcessId() };
   ULONGLONG const tick{ ::GetTickCount64() };
-  std::wstring const ext{ inv.shell == shell_choice::powershell ? L".ps1" : L".cmd" };
+
+  // Determine extension based on shell type
+  std::wstring ext{ std::visit(
+      [](auto const &shell_cfg) -> std::wstring {
+        using T = std::decay_t<decltype(shell_cfg)>;
+        if constexpr (std::is_same_v<T, shell_choice>) {
+          return shell_cfg == shell_choice::powershell ? L".ps1" : L".cmd";
+        } else if constexpr (std::is_same_v<T, custom_shell_file>) {
+          return utf8_to_wstring(shell_cfg.ext);
+        } else {  // custom_shell_inline
+          return L".tmp";  // Generic extension for inline mode temp files
+        }
+      },
+      inv.shell) };
+
   std::wstring const filename{ L"env" + std::to_wstring(pid) + L"_" + std::to_wstring(tick) + ext };
   std::filesystem::path script_path{ std::wstring{ temp_dir } + filename };
 
@@ -213,54 +229,76 @@ std::filesystem::path create_temp_script(std::string_view script,
 
   DWORD written{ 0 };
 
-  if (inv.shell == shell_choice::powershell) {
-    // UTF-16 BOM + UTF-16 LE content
-    std::wstring const content{ build_powershell_script_contents(script) };
-    wchar_t const bom{ 0xFEFF };
-    if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
-        written != sizeof(bom)) {
-      throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
-    }
-    if (!content.empty()) {
-      DWORD const byte_count{ static_cast<DWORD>(content.size() * sizeof(wchar_t)) };
-      if (!::WriteFile(file_guard.get(), content.data(), byte_count, &written, nullptr) ||
-          written != byte_count) {
-        throw std::system_error(::GetLastError(),
-                                std::system_category(),
-                                "WriteFile failed");
-      }
-    }
-  } else {
-    // cmd.exe UTF-8 support: Windows 10 build 17134+ supports UTF-8 (CP_UTF8) natively.
-    // Older versions use system codepage (CP1252, CP932, etc.) which breaks non-ASCII.
-    // This implementation requires Windows 10+; non-ASCII on older versions will fail.
-    std::string narrow{ script };
-    std::string normalized{};
-    normalized.reserve(narrow.size() + 8);
-    for (size_t i = 0; i < narrow.size(); ++i) {
-      char ch = narrow[i];
-      if (ch == '\r') {
-        normalized.push_back('\r');
-        if (i + 1 < narrow.size() && narrow[i + 1] == '\n') { normalized.push_back('\n'); ++i; }
-        else { normalized.push_back('\n'); }
-      } else if (ch == '\n') {
-        normalized.push_back('\r');
-        normalized.push_back('\n');
-      } else {
-        normalized.push_back(ch);
-      }
-    }
-    if (!normalized.empty() && (normalized.size() < 2 || normalized.substr(normalized.size() - 2) != "\r\n")) {
-      normalized.append("\r\n");
-    }
-    if (!normalized.empty()) {
-      DWORD const byte_count{ static_cast<DWORD>(normalized.size()) };
-      if (!::WriteFile(file_guard.get(), normalized.data(), byte_count, &written, nullptr) ||
-          written != byte_count) {
-        throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
-      }
-    }
-  }
+  std::visit(
+      [&](auto const &shell_cfg) {
+        using T = std::decay_t<decltype(shell_cfg)>;
+        if constexpr (std::is_same_v<T, shell_choice>) {
+          if (shell_cfg == shell_choice::powershell) {
+            // UTF-16 BOM + UTF-16 LE content
+            std::wstring const content{ build_powershell_script_contents(script) };
+            wchar_t const bom{ 0xFEFF };
+            if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
+                written != sizeof(bom)) {
+              throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
+            }
+            if (!content.empty()) {
+              DWORD const byte_count{ static_cast<DWORD>(content.size() * sizeof(wchar_t)) };
+              if (!::WriteFile(file_guard.get(), content.data(), byte_count, &written, nullptr) ||
+                  written != byte_count) {
+                throw std::system_error(::GetLastError(),
+                                        std::system_category(),
+                                        "WriteFile failed");
+              }
+            }
+          } else {  // cmd
+            // cmd.exe UTF-8 support: Windows 10 build 17134+ supports UTF-8 (CP_UTF8) natively.
+            // Older versions use system codepage (CP1252, CP932, etc.) which breaks non-ASCII.
+            // This implementation requires Windows 10+; non-ASCII on older versions will fail.
+            std::string narrow{ script };
+            std::string normalized{};
+            normalized.reserve(narrow.size() + 8);
+            for (size_t i = 0; i < narrow.size(); ++i) {
+              char ch = narrow[i];
+              if (ch == '\r') {
+                normalized.push_back('\r');
+                if (i + 1 < narrow.size() && narrow[i + 1] == '\n') {
+                  normalized.push_back('\n');
+                  ++i;
+                } else {
+                  normalized.push_back('\n');
+                }
+              } else if (ch == '\n') {
+                normalized.push_back('\r');
+                normalized.push_back('\n');
+              } else {
+                normalized.push_back(ch);
+              }
+            }
+            if (!normalized.empty() && (normalized.size() < 2 ||
+                                        normalized.substr(normalized.size() - 2) != "\r\n")) {
+              normalized.append("\r\n");
+            }
+            if (!normalized.empty()) {
+              DWORD const byte_count{ static_cast<DWORD>(normalized.size()) };
+              if (!::WriteFile(file_guard.get(), normalized.data(), byte_count, &written, nullptr) ||
+                  written != byte_count) {
+                throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
+              }
+            }
+          }
+        } else {  // custom_shell_file or custom_shell_inline
+          // Write UTF-8 without BOM for custom shells
+          std::string content{ script };
+          if (!content.empty()) {
+            DWORD const byte_count{ static_cast<DWORD>(content.size()) };
+            if (!::WriteFile(file_guard.get(), content.data(), byte_count, &written, nullptr) ||
+                written != byte_count) {
+              throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
+            }
+          }
+        }
+      },
+      inv.shell);
 
   if (!::FlushFileBuffers(file_guard.get())) {
     throw std::system_error(::GetLastError(),
@@ -352,20 +390,79 @@ shell_result wait_for_child(HANDLE process) {
   return { .exit_code = static_cast<int>(exit_code), .signal = std::nullopt };
 }
 
-std::wstring build_command_line(shell_choice shell,
-                                std::filesystem::path const &script_path) {
+std::wstring quote_arg(std::wstring_view arg) {
+  // Windows command-line quoting: wrap in quotes if contains spaces or special chars
+  if (arg.find_first_of(L" \t\"") == std::wstring_view::npos) {
+    return std::wstring{ arg };
+  }
+
+  std::wstring result{ L"\"" };
+  for (size_t i{ 0 }; i < arg.size(); ++i) {
+    size_t backslash_count{ 0 };
+    while (i < arg.size() && arg[i] == L'\\') {
+      ++backslash_count;
+      ++i;
+    }
+
+    if (i == arg.size()) {
+      // Backslashes at end of string: double them before closing quote
+      result.append(backslash_count * 2, L'\\');
+      break;
+    } else if (arg[i] == L'"') {
+      // Backslashes before quote: double them, then escape the quote
+      result.append(backslash_count * 2 + 1, L'\\');
+      result.push_back(L'"');
+    } else {
+      // Normal backslashes: keep as-is
+      result.append(backslash_count, L'\\');
+      result.push_back(arg[i]);
+    }
+  }
+  result.push_back(L'"');
+  return result;
+}
+
+std::wstring build_command_line_builtin(shell_choice shell,
+                                        std::filesystem::path const &script_path) {
   std::wstring quoted{ L"\"" };
   quoted.append(script_path.wstring());
   quoted.push_back(L'"');
 
   if (shell == shell_choice::powershell) {
-    return L"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + quoted;
+    return L"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " +
+           quoted;
   }
 
   // cmd shell requires nested quotes: ""C:\path\script.cmd""
   std::wstring command{ L"cmd.exe /D /V:OFF /S /C \"" };
   command.append(quoted);
   command.push_back(L'"');
+  return command;
+}
+
+std::wstring build_command_line_custom(custom_shell_file const &shell,
+                                       std::filesystem::path const &script_path) {
+  std::wstring command{};
+  for (size_t i{ 0 }; i < shell.argv.size(); ++i) {
+    if (i > 0) { command.push_back(L' '); }
+    command.append(quote_arg(utf8_to_wstring(shell.argv[i])));
+  }
+  // Append script path as final argument
+  command.push_back(L' ');
+  command.append(quote_arg(script_path.wstring()));
+  return command;
+}
+
+std::wstring build_command_line_custom(custom_shell_inline const &shell,
+                                       std::string_view script_content) {
+  std::wstring command{};
+  for (size_t i{ 0 }; i < shell.argv.size(); ++i) {
+    if (i > 0) { command.push_back(L' '); }
+    command.append(quote_arg(utf8_to_wstring(shell.argv[i])));
+  }
+  // Append script content as final argument
+  command.push_back(L' ');
+  command.append(quote_arg(utf8_to_wstring(std::string{ script_content })));
   return command;
 }
 
@@ -451,7 +548,18 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
 
   PROCESS_INFORMATION pi{};
 
-  std::wstring const command_line{ build_command_line(cfg.shell, script_path) };
+  std::wstring const command_line{ std::visit(
+      [&script_path, &script](auto const &shell_cfg) -> std::wstring {
+        using T = std::decay_t<decltype(shell_cfg)>;
+        if constexpr (std::is_same_v<T, shell_choice>) {
+          return build_command_line_builtin(shell_cfg, script_path);
+        } else if constexpr (std::is_same_v<T, custom_shell_file>) {
+          return build_command_line_custom(shell_cfg, script_path);
+        } else {  // custom_shell_inline
+          return build_command_line_custom(shell_cfg, script);
+        }
+      },
+      cfg.shell) };
   std::vector<wchar_t> cmd_buffer{ command_line.begin(), command_line.end() };
   cmd_buffer.push_back(L'\0');
 

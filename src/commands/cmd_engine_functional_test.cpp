@@ -2,6 +2,7 @@
 
 #include "cache.h"
 #include "engine.h"
+#include "manifest.h"
 #include "platform.h"
 #include "recipe_spec.h"
 #include "test_support.h"
@@ -30,8 +31,11 @@ bool cmd_engine_functional_test::execute() {
                           .options = {},
                           .needed_by = std::nullopt };
 
+  // Create minimal manifest for engine (no default_shell for tests)
+  manifest m{ std::move(manifest::load("packages = {}", cfg_.recipe_path)) };
+
   // Run engine
-  auto result{ engine_run({ recipe_cfg }, c) };
+  auto result{ engine_run({ recipe_cfg }, c, m) };
 
   // Output results as key -> value lines (avoid = which appears in option keys)
   for (auto const &[id, hash] : result) {
