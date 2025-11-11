@@ -12,6 +12,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# IDE and editor config
+.claude/
+
 # CMake build artifacts
 CMakeCache.txt
 CMakeFiles/

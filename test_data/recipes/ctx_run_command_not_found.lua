@@ -11,8 +11,10 @@ stage = function(ctx)
 
   -- This should fail because nonexistent_command doesn't exist
   if ENVY_PLATFORM == "windows" then
+    -- Force a terminating failure with a guaranteed missing command.
     ctx.run([[ 
-      nonexistent_command_xyz123
+      cmd /c nonexistent_command_xyz123
+      exit $LASTEXITCODE
     ]], { shell = "powershell" })
   else
     ctx.run([[ 

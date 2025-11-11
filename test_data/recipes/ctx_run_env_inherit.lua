@@ -11,10 +11,10 @@ stage = function(ctx)
 
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      Set-Content -Path inherited_path.txt -Value ("PATH=" + $env:PATH)
+      Set-Content -Path inherited_path.txt -Value ("PATH=" + $env:Path)
       $echoPath = (Get-Command echo.exe).Source
       Set-Content -Path which_echo.txt -Value $echoPath
-      if ($env:PATH) {
+      if ($env:Path -and $env:Path.Length -gt 0) {
         Set-Content -Path path_verification.txt -Value "PATH inherited"
       } else {
         exit 1

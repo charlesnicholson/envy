@@ -21,6 +21,8 @@ stage = function(ctx)
     ctx.run([[
       if (Test-Path renamed.txt) { Set-Content -Path rename_check.txt -Value "Rename verified" }
       if (-not (Test-Path original.txt)) { Add-Content -Path rename_check.txt -Value "Original gone" }
+      if (-not (Test-Path rename_check.txt)) { Write-Error "rename_check missing"; exit 1 }
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

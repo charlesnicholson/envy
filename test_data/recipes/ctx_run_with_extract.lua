@@ -11,14 +11,11 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[
-      Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path extracted_files.txt
-      if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" }
-    ]], { shell = "powershell" })
-
-    ctx.run([[
-      Add-Content -Path file1.txt -Value "Modified by ctx.run"
-    ]], { shell = "powershell" })
+      ctx.run([[
+        Get-ChildItem -Name | Set-Content -Path extracted_files.txt
+        if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" } else { exit 52 }
+        Add-Content -Path file1.txt -Value "Modified by ctx.run"
+      ]], { shell = "powershell" })
   else
     ctx.run([[
       ls > extracted_files.txt

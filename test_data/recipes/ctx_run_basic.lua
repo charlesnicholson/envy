@@ -13,6 +13,7 @@ stage = function(ctx)
     ctx.run([[
       Set-Content -Path run_marker.txt -Value "Hello from ctx.run"
       Add-Content -Path run_marker.txt -Value ("Stage directory: " + (Get-Location).Path)
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

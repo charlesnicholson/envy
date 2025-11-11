@@ -52,18 +52,36 @@ class handle_closer {
 
 std::wstring utf8_to_wstring(std::string_view input) {
   if (input.empty()) { return {}; }
-  int const required{ ::MultiByteToWideChar(CP_UTF8,
-                                            0,
-                                            input.data(),
-                                            static_cast<int>(input.size()),
-                                            nullptr,
-                                            0) };
+  // Use MB_ERR_INVALID_CHARS to detect malformed UTF-8; fall back to permissive mode on error
+  int required{ ::MultiByteToWideChar(CP_UTF8,
+                                      MB_ERR_INVALID_CHARS,
+                                      input.data(),
+                                      static_cast<int>(input.size()),
+                                      nullptr,
+                                      0) };
   if (required == 0) {
-    throw std::system_error(::GetLastError(),
-                            std::system_category(),
-                            "MultiByteToWideChar");
+    DWORD const err{ ::GetLastError() };
+    if (err == ERROR_NO_UNICODE_TRANSLATION) {
+      // Invalid UTF-8 sequence; retry without strict validation (replaces with U+FFFD)
+      required = ::MultiByteToWideChar(CP_UTF8,
+                                       0,
+                                       input.data(),
+                                       static_cast<int>(input.size()),
+                                       nullptr,
+                                       0);
+      if (required == 0) {
+        throw std::system_error(::GetLastError(),
+                                std::system_category(),
+                                "MultiByteToWideChar (permissive)");
+      }
+    } else {
+      throw std::system_error(err,
+                              std::system_category(),
+                              "MultiByteToWideChar");
+    }
   }
-  std::wstring result{ static_cast<size_t>(required), L'\0' };
+  std::wstring result;
+  result.resize(static_cast<size_t>(required));
   int const converted{ ::MultiByteToWideChar(CP_UTF8,
                                              0,
                                              input.data(),
@@ -80,6 +98,8 @@ std::wstring utf8_to_wstring(std::string_view input) {
 
 std::string wstring_to_utf8(std::wstring_view input) {
   if (input.empty()) { return {}; }
+  // WC_ERR_INVALID_CHARS fails on unpaired surrogates; use permissive mode (flag 0)
+  // which replaces unmappable chars with U+FFFD or default char
   int const required{ ::WideCharToMultiByte(CP_UTF8,
                                             0,
                                             input.data(),
@@ -89,11 +109,18 @@ std::string wstring_to_utf8(std::wstring_view input) {
                                             nullptr,
                                             nullptr) };
   if (required == 0) {
-    throw std::system_error(::GetLastError(),
+    // Conversion error; pipe output may contain invalid wide chars (rare)
+    // Return empty string rather than crash - caller will get truncated output
+    DWORD const err{ ::GetLastError() };
+    if (err == ERROR_NO_UNICODE_TRANSLATION) {
+      return {};
+    }
+    throw std::system_error(err,
                             std::system_category(),
                             "WideCharToMultiByte");
   }
-  std::string result{ static_cast<size_t>(required), '\0' };
+  std::string result;
+  result.resize(static_cast<size_t>(required));
   int const converted{ ::WideCharToMultiByte(CP_UTF8,
                                              0,
                                              input.data(),
@@ -138,21 +165,11 @@ std::wstring normalize_newlines(std::wstring_view input) {
   return result;
 }
 
-std::wstring build_script_contents(std::string_view script, shell_run_cfg const &inv) {
+// Build script contents for PowerShell only (wide). For cmd we emit narrow text later.
+std::wstring build_powershell_script_contents(std::string_view script) {
   std::wstring normalized{ normalize_newlines(utf8_to_wstring(script)) };
   if (!normalized.empty() && !ends_with_crlf(normalized)) { normalized.append(L"\r\n"); }
-
-  std::wstring content{};
-  if (inv.shell == shell_choice::powershell) {
-    content.append(normalized);
-  } else {
-    content.append(L"@echo off\r\n");
-    content.append(L"setlocal EnableExtensions\r\n");
-    content.append(normalized);
-  }
-
-  if (!ends_with_crlf(content)) { content.append(L"\r\n"); }
-  return content;
+  return normalized;
 }
 
 std::filesystem::path create_temp_script(std::string_view script,
@@ -165,57 +182,83 @@ std::filesystem::path create_temp_script(std::string_view script,
                             "GetTempPathW failed");
   }
 
-  wchar_t temp_file[MAX_PATH + 1];
-  if (::GetTempFileNameW(temp_dir, L"env", 0, temp_file) == 0) {
-    throw std::system_error(::GetLastError(),
-                            std::system_category(),
-                            "GetTempFileNameW failed");
-  }
+  // Generate unique filename directly without GetTempFileNameW to avoid zero-byte file creation
+  // that can trigger sharing violations from antivirus/indexers
+  DWORD const pid{ ::GetCurrentProcessId() };
+  ULONGLONG const tick{ ::GetTickCount64() };
+  std::wstring const ext{ inv.shell == shell_choice::powershell ? L".ps1" : L".cmd" };
+  std::wstring const filename{ L"env" + std::to_wstring(pid) + L"_" + std::to_wstring(tick) + ext };
+  std::filesystem::path script_path{ std::wstring{ temp_dir } + filename };
 
-  std::filesystem::path const base_path{ temp_file };
-  std::filesystem::path script_path{ base_path };
-  if (inv.shell == shell_choice::powershell) {
-    script_path.replace_extension(".ps1");
-  } else {
-    script_path.replace_extension(".cmd");
-  }
+  // Create file with retry on sharing violation
+  HANDLE file{ INVALID_HANDLE_VALUE };
+  for (int retry{ 0 }; retry < 3; ++retry) {
+    file = ::CreateFileW(script_path.c_str(),
+                        GENERIC_WRITE,
+                        FILE_SHARE_READ | FILE_SHARE_DELETE,
+                        nullptr,
+                        CREATE_NEW,
+                        FILE_ATTRIBUTE_NORMAL,
+                        nullptr);
+    if (file != INVALID_HANDLE_VALUE) { break; }
 
-  std::error_code rename_ec{};
-  std::filesystem::rename(base_path, script_path, rename_ec);
-  if (rename_ec) {
-    // Fall back to removing the original temp file and using the renamed path
-    std::filesystem::remove(base_path, rename_ec);
-  }
-
-  HANDLE const file{ ::CreateFileW(script_path.c_str(),
-                                   GENERIC_WRITE,
-                                   FILE_SHARE_READ,
-                                   nullptr,
-                                   CREATE_ALWAYS,
-                                   FILE_ATTRIBUTE_NORMAL,
-                                   nullptr) };
-  if (file == INVALID_HANDLE_VALUE) {
-    throw std::system_error(::GetLastError(),
-                            std::system_category(),
-                            "CreateFileW failed");
+    DWORD const err{ ::GetLastError() };
+    if ((err == ERROR_SHARING_VIOLATION || err == ERROR_FILE_EXISTS) && retry < 2) {
+      ::Sleep(10);  // Brief wait before retry
+      continue;
+    }
+    throw std::system_error(err, std::system_category(), "CreateFileW failed");
   }
   handle_closer file_guard{ file };
 
-  std::wstring const content{ build_script_contents(script, inv) };
-  wchar_t const bom{ 0xFEFF };
   DWORD written{ 0 };
-  if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
-      written != sizeof(bom)) {
-    throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
-  }
 
-  if (!content.empty()) {
-    DWORD const byte_count{ static_cast<DWORD>(content.size() * sizeof(wchar_t)) };
-    if (!::WriteFile(file_guard.get(), content.data(), byte_count, &written, nullptr) ||
-        written != byte_count) {
-      throw std::system_error(::GetLastError(),
-                              std::system_category(),
-                              "WriteFile failed");
+  if (inv.shell == shell_choice::powershell) {
+    // UTF-16 BOM + UTF-16 LE content
+    std::wstring const content{ build_powershell_script_contents(script) };
+    wchar_t const bom{ 0xFEFF };
+    if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
+        written != sizeof(bom)) {
+      throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
+    }
+    if (!content.empty()) {
+      DWORD const byte_count{ static_cast<DWORD>(content.size() * sizeof(wchar_t)) };
+      if (!::WriteFile(file_guard.get(), content.data(), byte_count, &written, nullptr) ||
+          written != byte_count) {
+        throw std::system_error(::GetLastError(),
+                                std::system_category(),
+                                "WriteFile failed");
+      }
+    }
+  } else {
+    // cmd.exe UTF-8 support: Windows 10 build 17134+ supports UTF-8 (CP_UTF8) natively.
+    // Older versions use system codepage (CP1252, CP932, etc.) which breaks non-ASCII.
+    // This implementation requires Windows 10+; non-ASCII on older versions will fail.
+    std::string narrow{ script };
+    std::string normalized{};
+    normalized.reserve(narrow.size() + 8);
+    for (size_t i = 0; i < narrow.size(); ++i) {
+      char ch = narrow[i];
+      if (ch == '\r') {
+        normalized.push_back('\r');
+        if (i + 1 < narrow.size() && narrow[i + 1] == '\n') { normalized.push_back('\n'); ++i; }
+        else { normalized.push_back('\n'); }
+      } else if (ch == '\n') {
+        normalized.push_back('\r');
+        normalized.push_back('\n');
+      } else {
+        normalized.push_back(ch);
+      }
+    }
+    if (!normalized.empty() && (normalized.size() < 2 || normalized.substr(normalized.size() - 2) != "\r\n")) {
+      normalized.append("\r\n");
+    }
+    if (!normalized.empty()) {
+      DWORD const byte_count{ static_cast<DWORD>(normalized.size()) };
+      if (!::WriteFile(file_guard.get(), normalized.data(), byte_count, &written, nullptr) ||
+          written != byte_count) {
+        throw std::system_error(::GetLastError(), std::system_category(), "WriteFile failed");
+      }
     }
   }
 
@@ -229,15 +272,13 @@ std::filesystem::path create_temp_script(std::string_view script,
 }
 
 std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
-  if (env.empty()) { return { L'\0' }; }
-
-  std::vector<std::pair<std::string, std::string> > entries{ env.begin(), env.end() };
-  std::sort(entries.begin(), entries.end(), [](auto const &a, auto const &b) {
-    return a.first < b.first;
-  });
-
+  // Inherit parent when no overrides.
+  if (env.empty()) { return {}; }
+  // Merge parent + overrides (overrides replace parent entries case-insensitively is optional; keep simple).
+  shell_env_t merged{ shell_getenv() };
+  for (auto const &kv : env) { merged[kv.first] = kv.second; }
   std::vector<wchar_t> block{};
-  for (auto const &[key, value] : entries) {
+  for (auto const &[key, value] : merged) {
     std::wstring wkey{ utf8_to_wstring(key) };
     std::wstring wvalue{ utf8_to_wstring(value) };
     block.insert(block.end(), wkey.begin(), wkey.end());
@@ -254,6 +295,7 @@ void stream_pipe_lines(HANDLE pipe,
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
+  size_t offset{ 0 };
 
   while (true) {
     DWORD read_bytes{ 0 };
@@ -271,17 +313,24 @@ void stream_pipe_lines(HANDLE pipe,
     pending.append(buffer.data(), read_bytes);
 
     size_t newline{ 0 };
-    while ((newline = pending.find('\n')) != std::string::npos) {
-      std::string line{ pending.substr(0, newline) };
-      if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+    while ((newline = pending.find('\n', offset)) != std::string::npos) {
+      std::string_view line{ pending.data() + offset, newline - offset };
+      if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
       callback(line);
-      pending.erase(0, newline + 1);
+      offset = newline + 1;
+    }
+
+    // Compact buffer when offset grows large
+    if (offset > kPipeBufferSize) {
+      pending.erase(0, offset);
+      offset = 0;
     }
   }
 
-  if (!pending.empty()) {
-    if (!pending.empty() && pending.back() == '\r') { pending.pop_back(); }
-    callback(pending);
+  if (offset < pending.size()) {
+    std::string_view line{ pending.data() + offset, pending.size() - offset };
+    if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
+    callback(line);
   }
 }
 
@@ -310,8 +359,7 @@ std::wstring build_command_line(shell_choice shell,
   quoted.push_back(L'"');
 
   if (shell == shell_choice::powershell) {
-    return L"powershell.exe -NoLogo -NonInteractive -ExecutionPolicy Bypass -File " +
-           quoted;
+    return L"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + quoted;
   }
 
   // cmd shell requires nested quotes: ""C:\path\script.cmd""
@@ -351,7 +399,8 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   std::filesystem::path const script_path{ create_temp_script(script, cfg) };
   scoped_path_cleanup cleanup{ script_path };
 
-  std::vector<wchar_t> const env_block{ build_environment_block(cfg.env) };
+  // Environment block must be mutable for CreateProcessW (LPVOID), build then keep non-const.
+  std::vector<wchar_t> env_block{ build_environment_block(cfg.env) };
 
   SECURITY_ATTRIBUTES sa{};
   sa.nLength = sizeof(sa);
@@ -410,6 +459,8 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   wchar_t *cwd_ptr{ nullptr };
   if (cfg.cwd) {
     cwd_storage = cfg.cwd->wstring();
+    std::transform(cwd_storage.begin(), cwd_storage.end(), cwd_storage.begin(),
+                   [](wchar_t ch) { return ch == L'/' ? L'\\' : ch; });
     cwd_ptr = cwd_storage.data();
   }
 

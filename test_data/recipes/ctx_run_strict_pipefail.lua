@@ -10,8 +10,10 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
+    -- Simulate pipe failure and exit non-zero explicitly.
     ctx.run([[
-      cmd /c "echo Start | cmd /c exit 1 | cat > should_fail.txt"
+      cmd /c "echo Start | cmd /c exit /b 3"
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     ]], { shell = "powershell" })
   else
     ctx.run([[

@@ -9,6 +9,6 @@ fetch = {
 stage = function(ctx)
   ctx.extract_all({strip = 1})
 
-  -- Call with non-string first argument (should cause Lua error)
-  ctx.run(12345)
+  -- Call with invalid argument types to ensure failure consistently.
+  ctx.run(nil)
 end

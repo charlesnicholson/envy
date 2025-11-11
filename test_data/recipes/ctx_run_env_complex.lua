@@ -16,13 +16,14 @@ stage = function(ctx)
     SPECIAL = "a=b:c;d"
   }
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
-      Set-Content -Path env_complex.txt -Value ("STRING=" + $env:STRING)
-      Add-Content -Path env_complex.txt -Value ("NUMBER=" + $env:NUMBER)
-      Add-Content -Path env_complex.txt -Value ("WITH_SPACE=" + $env:WITH_SPACE)
-      Add-Content -Path env_complex.txt -Value ("SPECIAL=" + $env:SPECIAL)
-    ]], {env = env_values, shell = "powershell"})
+    if ENVY_PLATFORM == "windows" then
+      ctx.run([[
+        if (-not $env:STRING) { exit 44 }
+        Set-Content -Path env_complex.txt -Value ("STRING=" + $env:STRING)
+        Add-Content -Path env_complex.txt -Value ("NUMBER=" + $env:NUMBER)
+        Add-Content -Path env_complex.txt -Value ("WITH_SPACE=" + $env:WITH_SPACE)
+        Add-Content -Path env_complex.txt -Value ("SPECIAL=" + $env:SPECIAL)
+      ]], {env = env_values, shell = "powershell"})
   else
     ctx.run([[
       echo "STRING=$STRING" > env_complex.txt

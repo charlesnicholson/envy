@@ -14,7 +14,7 @@ stage = function(ctx)
       Write-Output "Line 1 to stdout"
       Write-Output "Line 2 to stdout"
       Write-Output "Line 3 to stdout"
-      Set-Content -Path stdout_marker.txt -Value "stdout test complete"
+      "stdout test complete" | Out-File -Encoding UTF8 stdout_marker.txt
     ]], { shell = "powershell" })
   else
     ctx.run([[

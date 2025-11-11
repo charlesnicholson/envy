@@ -13,6 +13,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Write-Output "About to fail"
+      Set-Content -Path will_fail.txt -Value "Intentional failure sentinel"
       exit 42
     ]], { shell = "powershell" })
   else

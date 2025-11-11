@@ -11,7 +11,14 @@ stage = function(ctx)
 
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-$source = @'#include <stdio.h>\nint main() { printf("Hello\\n"); return 0; }\n'@\nSet-Content -Path hello.c -Value $source\nSet-Content -Path compile_log.txt -Value \"Compiling hello.c...\"\nAdd-Content -Path compile_log.txt -Value \"Compilation successful\"\n    ]], { shell = "powershell" })
+$source = @'
+#include <stdio.h>
+int main() { printf("Hello\n"); return 0; }
+'@
+Set-Content -Path hello.c -Value $source
+Set-Content -Path compile_log.txt -Value "Compiling hello.c..."
+Add-Content -Path compile_log.txt -Value "Compilation successful"
+    ]], { shell = "powershell" })
   else
     ctx.run([[
 cat > hello.c <<'EOF'

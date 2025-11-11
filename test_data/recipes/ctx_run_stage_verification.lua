@@ -14,6 +14,8 @@ stage = function(ctx)
       if (-not (Test-Path file1.txt)) { throw "Missing file1.txt" }
       if ((Get-Item file1.txt).Length -eq 0) { throw "File is empty" }
       Set-Content -Path verification.txt -Value "All verification checks passed"
+      if (-not (Test-Path verification.txt)) { throw "verification.txt missing post write" }
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

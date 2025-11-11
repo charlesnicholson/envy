@@ -15,6 +15,9 @@ build = function(ctx)
       New-Item -ItemType Directory -Path build_output -Force | Out-Null
       Set-Content -Path build_output/artifact.txt -Value "build_artifact"
       Get-ChildItem
+      if (-not (Test-Path build_output/artifact.txt)) { Write-Error "artifact missing"; exit 1 }
+      Write-Output "Build string shell success"
+      exit 0
     ]], { shell = "powershell" })
   else
     ctx.run([[

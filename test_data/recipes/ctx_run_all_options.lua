@@ -10,35 +10,23 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[
-      New-Item -ItemType Directory -Force -Path subdir | Out-Null
-    ]], { shell = "powershell" })
-
+    ctx.run([[New-Item -ItemType Directory -Force -Path subdir | Out-Null]], { shell = "powershell" })
     ctx.run([[
       Set-Content -Path all_opts_pwd.txt -Value (Get-Location).Path
       Set-Content -Path all_opts_env.txt -Value ("MY_VAR=" + $env:MY_VAR)
       Add-Content -Path all_opts_env.txt -Value ("ANOTHER=" + $env:ANOTHER)
+      $ErrorActionPreference = 'Continue'
       cmd /c exit 1
       Set-Content -Path all_opts_continued.txt -Value "Continued after false"
-    ]], {
-      cwd = "subdir",
-      env = {MY_VAR = "test", ANOTHER = "value"},
-      shell = "powershell"
-    })
+    ]], {cwd = "subdir", env = {MY_VAR = "test", ANOTHER = "value"}, shell = "powershell"})
   else
-    ctx.run([[
-      mkdir -p subdir
-    ]])
-
+    ctx.run([[mkdir -p subdir]])
     ctx.run([[
       pwd > all_opts_pwd.txt
       echo "MY_VAR=$MY_VAR" > all_opts_env.txt
       echo "ANOTHER=$ANOTHER" >> all_opts_env.txt
       false || true
       echo "Continued after false" > all_opts_continued.txt
-    ]], {
-      cwd = "subdir",
-      env = {MY_VAR = "test", ANOTHER = "value"}
-    })
+    ]], {cwd = "subdir", env = {MY_VAR = "test", ANOTHER = "value"}})
   end
 end

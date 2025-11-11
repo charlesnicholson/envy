@@ -349,7 +349,9 @@ target_sources(envy_unit_tests
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp
         src/sha256_tests.cpp
-        src/shell_tests.cpp
+        src/shell_tests_common.cpp
+        $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>
         src/uri.cpp
         src/uri_tests.cpp
         src/tui_tests.cpp

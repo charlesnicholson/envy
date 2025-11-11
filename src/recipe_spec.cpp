@@ -3,6 +3,7 @@
 #include "uri.h"
 
 #include <algorithm>
+#include "platform.h"
 #include <charconv>
 #include <ranges>
 #include <sstream>
@@ -192,7 +193,7 @@ std::string recipe_spec::serialize_option_table(lua_value const &val) {
     }
   }
 
-  __builtin_unreachable();
+  ENVY_UNREACHABLE();
 }
 
 }  // namespace envy

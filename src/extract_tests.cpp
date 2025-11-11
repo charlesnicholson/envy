@@ -24,7 +24,10 @@ std::vector<std::string> collect_files_recursive(std::filesystem::path const &ro
   for (auto const &entry : std::filesystem::recursive_directory_iterator(root)) {
     if (entry.is_regular_file()) {
       auto rel{ std::filesystem::relative(entry.path(), root) };
-      files.push_back(rel.string());
+        std::string s{ rel.string() };
+        // Normalize Windows backslashes to forward slashes for stable comparisons.
+        for (char &ch : s) { if (ch == '\\') ch = '/'; }
+        files.push_back(s);
     }
   }
   std::ranges::sort(files);

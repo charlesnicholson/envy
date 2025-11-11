@@ -7,21 +7,40 @@ fetch = {
 }
 
 -- Shell script that uses environment variables
-stage = [[
-  # Extract archive
-  tar -xzf ../fetch/test.tar.gz --strip-components=1
+if ENVY_PLATFORM == "windows" then
+  stage = [[
+    tar -xzf ../fetch/test.tar.gz --strip-components=1
+    $pathStatus = if ($env:Path) { 'yes' } else { '' }
+    $homeStatus = if ($env:UserProfile) { 'yes' } else { '' }
+    $userStatus = if ($env:USERNAME) { 'yes' } else { '' }
+    @(
+      "PATH is available: $pathStatus"
+      "HOME is available: $homeStatus"
+      "USER is available: $userStatus"
+      ("Shell: powershell")
+    ) | Out-File -Encoding UTF8 env_info.txt
+    if (-not (Test-Path env_info.txt)) { exit 1 }
+    if (-not (Select-String -Path env_info.txt -Pattern "PATH is available: yes" -Quiet)) { exit 1 }
+    Write-Output "Environment check complete"
+    exit 0
+  ]]
+else
+  stage = [[
+    # Extract archive
+    tar -xzf ../fetch/test.tar.gz --strip-components=1
 
-  # Write environment information to file
-  cat > env_info.txt << EOF
+    # Write environment information to file
+    cat > env_info.txt << EOF
 PATH is available: ${PATH:+yes}
 HOME is available: ${HOME:+yes}
 USER is available: ${USER:+yes}
 Shell: $(basename $SHELL)
 EOF
 
-  # Verify the file was created
-  test -f env_info.txt || exit 1
-  grep -q "PATH is available: yes" env_info.txt || exit 1
+    # Verify the file was created
+    test -f env_info.txt || exit 1
+    grep -q "PATH is available: yes" env_info.txt || exit 1
 
-  echo "Environment check complete"
-]]
+    echo "Environment check complete"
+  ]]
+end

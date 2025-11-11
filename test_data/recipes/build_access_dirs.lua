@@ -17,9 +17,9 @@ build = function(ctx)
   -- Verify directories exist
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path "]] .. ctx.fetch_dir .. [[" -PathType Container)) { exit 1 }
-      if (-not (Test-Path "]] .. ctx.stage_dir .. [[" -PathType Container)) { exit 1 }
-      if (-not (Test-Path "]] .. ctx.install_dir .. [[" -PathType Container)) { exit 1 }
+      if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[' -PathType Container)) { exit 42 }
+      if (-not (Test-Path -LiteralPath ']] .. ctx.stage_dir .. [[' -PathType Container)) { exit 43 }
+      if (-not (Test-Path -LiteralPath ']] .. ctx.install_dir .. [[' -PathType Container)) { exit 44 }
       Write-Output "All directories exist"
     ]], { shell = "powershell" })
   else
@@ -34,7 +34,7 @@ build = function(ctx)
   -- Verify fetch_dir contains the archive
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      if (-not (Test-Path "]] .. ctx.fetch_dir .. [[/test.tar.gz")) { exit 1 }
+      if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[/test.tar.gz')) { exit 45 }
       Write-Output "Archive found in fetch_dir"
     ]], { shell = "powershell" })
   else
@@ -47,7 +47,8 @@ build = function(ctx)
   -- Create output in install_dir for later verification
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
-      Set-Content -Path "]] .. ctx.install_dir .. [[/build_marker.txt" -Value "Built successfully"
+      Set-Content -LiteralPath "]] .. ctx.install_dir .. [[/build_marker.txt" -Value "Built successfully"
+      Set-Content -Path dest_file.txt -Value "dest"
     ]], { shell = "powershell" })
   else
     ctx.run([[
