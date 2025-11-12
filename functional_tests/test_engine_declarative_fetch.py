@@ -280,13 +280,13 @@ function install(ctx)
     end
     f:close()
 
-    -- Verify .git was removed
+    -- Verify .git directory is present (kept for packages that need it)
     local git_dir = ctx.stage_dir .. "/ninja.git/.git"
     local g = io.open(git_dir, "r")
-    if g then
-        g:close()
-        error(".git directory should have been removed")
+    if not g then
+        error(".git directory should be present at: " .. git_dir)
     end
+    g:close()
 end
 """
         recipe_path = self.cache_root / "fetch_git_test.lua"

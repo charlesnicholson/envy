@@ -19,4 +19,12 @@ function install(ctx)
         error("Could not find README.md at: " .. readme)
     end
     f:close()
+
+    -- Verify .git directory is present (kept for packages that need it)
+    local git_dir = ctx.stage_dir .. "/ninja.git/.git"
+    local g = io.open(git_dir, "r")
+    if not g then
+        error(".git directory should be present at: " .. git_dir)
+    end
+    g:close()
 end

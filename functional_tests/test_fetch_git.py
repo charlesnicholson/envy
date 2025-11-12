@@ -54,8 +54,8 @@ class TestFetchGit(unittest.TestCase):
             self.assertTrue((dest / "README.md").exists(), "README.md should exist")
             self.assertTrue((dest / "src").is_dir(), "src directory should exist")
 
-            # Verify .git directory is removed
-            self.assertFalse((dest / ".git").exists(), ".git directory should be removed")
+            # Verify .git directory is present (kept for packages that need it)
+            self.assertTrue((dest / ".git").exists(), ".git directory should be present")
 
     def test_clone_public_https_branch(self):
         """Clone a public HTTPS repository with a branch ref."""
@@ -77,7 +77,7 @@ class TestFetchGit(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
             self.assertTrue(dest.exists())
-            self.assertFalse((dest / ".git").exists(), ".git directory should be removed")
+            self.assertTrue((dest / ".git").exists(), ".git directory should be present")
 
     def test_verify_file_contents_correct(self):
         """Verify that cloned repository has correct file contents."""

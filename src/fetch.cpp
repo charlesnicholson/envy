@@ -140,8 +140,10 @@ fetch_result fetch_git_repo(std::string const &url,
     throw std::runtime_error(msg);
   }
 
-  std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{ repo_raw,
-                                                                         git_repository_free };
+  std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{
+    repo_raw,
+    git_repository_free
+  };
 
   // Look up and checkout the specified ref
   git_object *target_obj{ nullptr };
@@ -152,7 +154,8 @@ fetch_result fetch_git_repo(std::string const &url,
     throw std::runtime_error(msg);
   }
 
-  std::unique_ptr<git_object, decltype(&git_object_free)> target{ target_obj, git_object_free };
+  std::unique_ptr<git_object, decltype(&git_object_free)> target{ target_obj,
+                                                                  git_object_free };
 
   git_checkout_options checkout_opts;
   git_checkout_options_init(&checkout_opts, GIT_CHECKOUT_OPTIONS_VERSION);
@@ -168,20 +171,10 @@ fetch_result fetch_git_repo(std::string const &url,
   // Update HEAD to point to the target
   git_oid const *target_oid{ git_object_id(target.get()) };
   git_reference *head_ref{ nullptr };
-  if (int const error{ git_reference_create(
-          &head_ref, repo.get(), "HEAD", target_oid, 1, "checkout") };
+  if (int const error{
+          git_reference_create(&head_ref, repo.get(), "HEAD", target_oid, 1, "checkout") };
       error == 0 && head_ref) {
     git_reference_free(head_ref);
-  }
-
-  repo.reset();  // Close repository before removing .git
-
-  std::filesystem::path git_dir{ dest / ".git" };
-  std::error_code ec;
-  std::filesystem::remove_all(git_dir, ec);
-  if (ec) {
-    throw std::runtime_error("fetch_git: failed to remove .git directory: " +
-                             ec.message());
   }
 
   return fetch_result{ .scheme = uri_scheme::GIT,
