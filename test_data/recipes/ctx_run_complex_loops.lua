@@ -2,7 +2,7 @@
 identity = "local.ctx_run_complex_loops@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -56,7 +56,7 @@ stage = function(ctx)
           }
         }
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       for i in {1..5}; do

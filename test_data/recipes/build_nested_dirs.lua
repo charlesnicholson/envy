@@ -2,7 +2,7 @@
 identity = "local.build_nested_dirs@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -23,7 +23,7 @@ build = function(ctx)
       Set-Content -Path output/include/app.h -Value "header"
       Set-Content -Path output/include/subproject/sub.h -Value "nested_header"
       Set-Content -Path output/share/doc/README.md -Value "documentation"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p output/bin
@@ -65,7 +65,7 @@ build = function(ctx)
         exit 1
       }
       Write-Output "Nested directory operations successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f copied_output/bin/app || exit 1

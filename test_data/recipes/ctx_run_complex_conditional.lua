@@ -2,7 +2,7 @@
 identity = "local.ctx_run_complex_conditional@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -29,7 +29,7 @@ stage = function(ctx)
           Set-Content -Path dir_check.txt -Value "Directory is read-only"
         }
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       if [ "$(uname)" = "Darwin" ]; then

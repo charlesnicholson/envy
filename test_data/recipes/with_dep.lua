@@ -1,7 +1,7 @@
 -- Recipe with a dependency
 identity = "local.withdep@v1"
 dependencies = {
-  { recipe = "local.simple@v1", file = "simple.lua" }
+  { recipe = "local.simple@v1", source = "simple.lua" }
 }
 
 function check(ctx)

@@ -632,8 +632,6 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   wchar_t *cwd_ptr{ nullptr };
   if (cfg.cwd) {
     cwd_storage = cfg.cwd->wstring();
-    // Normalize path separators: CreateProcessW requires backslashes in working directory.
-    std::replace(cwd_storage.begin(), cwd_storage.end(), L'/', L'\\');
     cwd_ptr = cwd_storage.data();
   }
 

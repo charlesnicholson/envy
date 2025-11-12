@@ -2,7 +2,7 @@
 identity = "local.ctx_run_strict_undefined@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -16,7 +16,7 @@ stage = function(ctx)
       if (-not $env:UNDEFINED_VARIABLE_XYZ) { throw "Undefined variable" }
       Write-Output "Value: $env:UNDEFINED_VARIABLE_XYZ"
       Set-Content -Path should_not_exist.txt -Value "Should not reach here"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       set -euo pipefail

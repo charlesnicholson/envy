@@ -2,7 +2,7 @@
 identity = "local.ctx_run_output_multiline@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -23,7 +23,7 @@ This is line 5 (after blank line)
 Set-Content -Path output.txt -Value $thisContent
 Get-Content output.txt | ForEach-Object { Write-Output $_ }
 Set-Content -Path multiline_marker.txt -Value "Multi-line test complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
 cat > output.txt <<'MULTILINE'

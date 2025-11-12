@@ -2,7 +2,7 @@
 identity = "local.ctx_run_multiple_cmds@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -15,7 +15,7 @@ stage = function(ctx)
       Set-Content -Path cmd2.txt -Value "Command 2"
       Set-Content -Path cmd3.txt -Value "Command 3"
       Get-Content cmd1.txt, cmd2.txt, cmd3.txt | Set-Content -Path all_cmds.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Command 1" > cmd1.txt

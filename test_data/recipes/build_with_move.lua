@@ -2,7 +2,7 @@
 identity = "local.build_with_move@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -17,7 +17,7 @@ build = function(ctx)
       Set-Content -Path source_move.txt -Value "moveable_file"
       New-Item -ItemType Directory -Path move_dir -Force | Out-Null
       Set-Content -Path move_dir/content.txt -Value "dir_content"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "moveable_file" > source_move.txt
@@ -40,7 +40,7 @@ build = function(ctx)
       if (Test-Path move_dir) { exit 1 }
       if (-not (Test-Path moved_dir/content.txt)) { exit 1 }
       Write-Output "Move operations successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test ! -f source_move.txt || exit 1

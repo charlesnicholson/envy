@@ -3,12 +3,12 @@
 #include "uri.h"
 
 #include <algorithm>
-#include "platform.h"
 #include <charconv>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#include "platform.h"
 
 namespace envy {
 
@@ -64,49 +64,51 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
     throw std::runtime_error("Invalid recipe identity format: " + result.identity);
   }
 
-  auto const url_it{ table->find("url") };
-  auto const file_it{ table->find("file") };
+  auto const source_it{ table->find("source") };
 
-  if (url_it != table->end() && file_it != table->end()) {
-    throw std::runtime_error("Recipe cannot specify both 'url' and 'file'");
+  if (source_it == table->end()) {
+    throw std::runtime_error("Recipe must specify 'source' field");
   }
 
-  if (url_it != table->end()) {  // Remote source
-    if (auto const *url{ url_it->second.get<std::string>() }) {
-      // Resolve relative file:// URLs relative to base_path
-      std::string resolved_url{ *url };
-      auto const info{ uri_classify(resolved_url) };
+  if (auto const *source_uri{ source_it->second.get<std::string>() }) {
+    auto const info{ uri_classify(*source_uri) };
+
+    auto const sha256{ [&]() -> std::optional<std::string> {
+      auto const sha256_it{ table->find("sha256") };
+      if (sha256_it == table->end()) { return std::nullopt; }
+      if (auto const *sha256_str{ sha256_it->second.get<std::string>() }) {
+        return *sha256_str;
+      }
+      throw std::runtime_error("Recipe 'sha256' field must be string");
+    }() };
+
+    // If SHA256 is provided, always treat as remote_source (needs verification)
+    // Otherwise, local files use local_source, remote URIs use remote_source
+    if (sha256.has_value() || (info.scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
+                               info.scheme != uri_scheme::LOCAL_FILE_RELATIVE)) {
+      // Remote source or local file with SHA256 verification
+      std::string resolved_uri;
       if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
         std::filesystem::path p{ info.canonical };
         p = base_path.parent_path() / p;
-        resolved_url = p.lexically_normal().string();
+        resolved_uri = "file://" + p.lexically_normal().string();
+      } else if (info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
+        resolved_uri = "file://" + info.canonical;
+      } else {
+        resolved_uri = info.canonical;
       }
-
-      // SHA256 is optional (permissive mode)
-      std::string sha256_value;
-      auto const sha256_it{ table->find("sha256") };
-      if (sha256_it != table->end()) {
-        if (auto const *sha256{ sha256_it->second.get<std::string>() }) {
-          sha256_value = *sha256;
-        } else {
-          throw std::runtime_error("Recipe 'sha256' field must be string");
-        }
+      result.source = remote_source{ .url = resolved_uri, .sha256 = sha256.value_or("") };
+    } else {
+      // Local file without SHA256 - use local_source (no verification)
+      std::filesystem::path p{ info.canonical };
+      if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+        p = base_path.parent_path() / p;
+        p = p.lexically_normal();
       }
-
-      result.source = remote_source{ .url = resolved_url, .sha256 = sha256_value };
-    } else {
-      throw std::runtime_error("Recipe 'url' field must be string");
-    }
-  } else if (file_it != table->end()) {  // Local source
-    if (auto const *file{ file_it->second.get<std::string>() }) {
-      std::filesystem::path p{ *file };
-      if (p.is_relative()) { p = base_path.parent_path() / p; }
-      result.source = local_source{ .file_path = p.lexically_normal() };
-    } else {
-      throw std::runtime_error("Recipe 'file' field must be string");
+      result.source = local_source{ .file_path = p };
     }
   } else {
-    throw std::runtime_error("Recipe must specify either 'url' or 'file'");
+    throw std::runtime_error("Recipe 'source' field must be string");
   }
 
   if (auto const options_it{ table->find("options") }; options_it != table->end()) {

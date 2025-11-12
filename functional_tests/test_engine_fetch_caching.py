@@ -67,16 +67,16 @@ identity = "local.fetch_partial@v1"
 
 fetch = {{
   {{
-    url = "test_data/lua/simple.lua",
+    source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
   }},
   {{
-    url = "test_data/lua/print_single.lua",
+    source = "test_data/lua/print_single.lua",
     sha256 = "{print_single_hash}"
   }},
   {{
     -- This file will be created by the test after first run
-    url = "file://{temp_dir_posix}/fetch_partial_missing.lua",
+    source = "file://{temp_dir_posix}/fetch_partial_missing.lua",
     sha256 = "{empty_hash}"
   }}
 }}
@@ -174,15 +174,15 @@ identity = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 fetch = {{
   {{
-    url = "test_data/lua/simple.lua",
+    source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
   }},
   {{
-    url = "test_data/lua/print_single.lua",
+    source = "test_data/lua/print_single.lua",
     sha256 = "{print_single_hash}"
   }},
   {{
-    url = "test_data/lua/print_multiple.lua"
+    source = "test_data/lua/print_multiple.lua"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -281,15 +281,15 @@ identity = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 fetch = {{
   {{
-    url = "test_data/lua/simple.lua",
+    source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
   }},
   {{
-    url = "test_data/lua/print_single.lua",
+    source = "test_data/lua/print_single.lua",
     sha256 = "{print_single_hash}"
   }},
   {{
-    url = "test_data/lua/print_multiple.lua"
+    source = "test_data/lua/print_multiple.lua"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -386,15 +386,15 @@ identity = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 fetch = {{
   {{
-    url = "test_data/lua/simple.lua",
+    source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
   }},
   {{
-    url = "test_data/lua/print_single.lua",
+    source = "test_data/lua/print_single.lua",
     sha256 = "{print_single_hash}"
   }},
   {{
-    url = "test_data/lua/print_multiple.lua"
+    source = "test_data/lua/print_multiple.lua"
     -- No sha256 - should still work (permissive mode)
   }}
 }}

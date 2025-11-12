@@ -2,7 +2,7 @@
 identity = "local.ctx_run_stage_generation@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -21,7 +21,7 @@ Set-Content -Path generated.h -Value $header
 Set-Content -Path generated.bat -Value "@echo off`necho Generated script"
 # Also produce generated.sh for test parity
 Set-Content -Path generated.sh -Value "echo Generated script"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
 cat > generated.h <<EOF

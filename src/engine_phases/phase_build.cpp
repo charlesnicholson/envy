@@ -1,6 +1,6 @@
 #include "phase_build.h"
 
-#include "lua_ctx_bindings.h"
+#include "../lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"

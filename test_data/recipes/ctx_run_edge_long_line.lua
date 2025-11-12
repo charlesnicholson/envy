@@ -2,7 +2,7 @@
 identity = "local.ctx_run_edge_long_line@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -14,7 +14,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run(string.format([[
       Set-Content -Path long_line.txt -Value "%s"
-    ]], long), { shell = "powershell" })
+    ]], long), { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run(string.format([[
       echo "%s" > long_line.txt

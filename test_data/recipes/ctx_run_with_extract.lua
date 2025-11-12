@@ -2,7 +2,7 @@
 identity = "local.ctx_run_with_extract@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -15,7 +15,7 @@ stage = function(ctx)
         Get-ChildItem -Name | Set-Content -Path extracted_files.txt
         if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" } else { exit 52 }
         Add-Content -Path file1.txt -Value "Modified by ctx.run"
-      ]], { shell = "powershell" })
+      ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       ls > extracted_files.txt

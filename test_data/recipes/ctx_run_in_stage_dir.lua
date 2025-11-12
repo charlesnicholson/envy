@@ -2,7 +2,7 @@
 identity = "local.ctx_run_in_stage_dir@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -16,7 +16,7 @@ stage = function(ctx)
       if (Test-Path file1.txt) {
         Set-Content -Path stage_verification.txt -Value "Found file1.txt from archive"
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       pwd > pwd_default.txt

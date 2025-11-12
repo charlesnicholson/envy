@@ -1,7 +1,7 @@
 #include "phase_fetch.h"
 
 #include "fetch.h"
-#include "lua_ctx_bindings.h"
+#include "../lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "sha256.h"
 #include "tui.h"
@@ -70,10 +70,10 @@ int lua_ctx_fetch(lua_State *lua) {
 
       switch (first_elem_type) {
         case LUA_TNIL:
-          // Single table {url="..."}
-          lua_getfield(lua, 1, "url");
+          // Single table {source="..."}
+          lua_getfield(lua, 1, "source");
           if (!lua_isstring(lua, -1)) {
-            return luaL_error(lua, "ctx.fetch: table missing 'url' field");
+            return luaL_error(lua, "ctx.fetch: table missing 'source' field");
           }
           urls.push_back(lua_tostring(lua, -1));
           lua_pop(lua, 1);
@@ -95,19 +95,19 @@ int lua_ctx_fetch(lua_State *lua) {
         }
 
         case LUA_TTABLE: {
-          // Array of tables {{url="..."}, {...}}
+          // Array of tables {{source="..."}, {...}}
           is_array = true;
           size_t const len{ lua_rawlen(lua, 1) };
           for (size_t i = 1; i <= len; ++i) {
             lua_rawgeti(lua, 1, i);
-            lua_getfield(lua, -1, "url");
+            lua_getfield(lua, -1, "source");
             if (!lua_isstring(lua, -1)) {
               return luaL_error(lua,
-                                "ctx.fetch: array element %zu missing 'url' field",
+                                "ctx.fetch: array element %zu missing 'source' field",
                                 i);
             }
             urls.push_back(lua_tostring(lua, -1));
-            lua_pop(lua, 2);  // pop url string and table
+            lua_pop(lua, 2);  // pop source string and table
           }
           break;
         }
@@ -414,14 +414,14 @@ void run_programmatic_fetch(lua_State *lua,
   std::filesystem::remove_all(tmp_dir);
 }
 
-// Extract url and sha256 from a Lua table at the top of the stack.
+// Extract source and sha256 from a Lua table at the top of the stack.
 table_entry parse_table_entry(lua_State *lua, std::string const &context) {
   if (!lua_istable(lua, -1)) { throw std::runtime_error("Expected table in " + context); }
 
-  lua_getfield(lua, -1, "url");
+  lua_getfield(lua, -1, "source");
   if (!lua_isstring(lua, -1)) {
     lua_pop(lua, 1);
-    throw std::runtime_error("Fetch table missing 'url' field in " + context);
+    throw std::runtime_error("Fetch table missing 'source' field in " + context);
   }
   std::string url{ lua_tostring(lua, -1) };
   lua_pop(lua, 1);
@@ -627,7 +627,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
   }
 }
 
-// fetch = "url" or fetch = {url="..."} or fetch = {{...}}
+// fetch = "source" or fetch = {source="..."} or fetch = {{...}}
 void run_declarative_fetch(lua_State *lua,
                            cache::scoped_entry_lock *lock,
                            std::string const &key) {

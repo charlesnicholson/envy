@@ -5,7 +5,7 @@ identity = "local.parent@v1"
 dependencies = {
   {
     recipe = "local.child@v1",
-    file = "local_child.lua"
+    source = "local_child.lua"
   }
 }
 

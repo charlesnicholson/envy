@@ -2,7 +2,7 @@
 identity = "local.build_with_extract@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -10,7 +10,7 @@ fetch = {
 stage = function(ctx)
   -- Don't extract yet, just prepare
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = "powershell" })
+    ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p manual_build")
   end
@@ -25,9 +25,9 @@ build = function(ctx)
 
   -- Extract again with strip_components
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Path stripped -Force | Out-Null]], { shell = "powershell" })
-    ctx.run([[Set-Location stripped; $true]], { shell = "powershell" })  -- Create directory
-    ctx.run([[New-Item -ItemType Directory -Path extracted_stripped -Force | Out-Null]], { shell = "powershell" })
+    ctx.run([[New-Item -ItemType Directory -Path stripped -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
+    ctx.run([[Set-Location stripped; $true]], { shell = ENVY_SHELL.POWERSHELL })  -- Create directory
+    ctx.run([[New-Item -ItemType Directory -Path extracted_stripped -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p stripped")
     ctx.run("cd stripped && true")  -- Create directory
@@ -41,7 +41,7 @@ build = function(ctx)
       if (-not (Test-Path root -PathType Container)) { exit 1 }
       if (-not (Test-Path root/file1.txt)) { exit 1 }
       Write-Output "Extract successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -d root || exit 1

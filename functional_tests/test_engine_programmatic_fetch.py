@@ -114,7 +114,7 @@ end
         recipe_content = """identity = "local.prog_fetch_table@v1"
 
 function fetch(ctx)
-  local file = ctx.fetch({url = "test_data/lua/simple.lua"})
+  local file = ctx.fetch({source = "test_data/lua/simple.lua"})
 
   -- Verify return is scalar string
   if type(file) ~= "string" then
@@ -148,8 +148,8 @@ end
 
 function fetch(ctx)
   local files = ctx.fetch({
-    {url = "test_data/lua/simple.lua"},
-    {url = "test_data/lua/print_single.lua"}
+    {source = "test_data/lua/simple.lua"},
+    {source = "test_data/lua/print_single.lua"}
   })
 
   -- Verify return is array

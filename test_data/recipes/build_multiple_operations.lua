@@ -2,7 +2,7 @@
 identity = "local.build_multiple_operations@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -16,7 +16,7 @@ build = function(ctx)
     ctx.run([[
       New-Item -ItemType Directory -Path step1 -Force | Out-Null
       Set-Content -Path step1/data.txt -Value "step1_output"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p step1
@@ -32,7 +32,7 @@ build = function(ctx)
     ctx.run([[
       Add-Content -Path step2/data.txt -Value "step2_additional"
       Set-Content -Path step2/new.txt -Value "step2_new"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "step2_additional" >> step2/data.txt
@@ -67,7 +67,7 @@ build = function(ctx)
         exit 1
       }
       Write-Output "All operations completed"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -d final || exit 1

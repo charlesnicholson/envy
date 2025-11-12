@@ -108,7 +108,7 @@ identity = "test.sha256_ok@v1"
 dependencies = {{
   {{
     recipe = "remote.child@v1",
-    url = "{child_recipe_path.as_posix()}",
+    source = "{child_recipe_path.as_posix()}",
     sha256 = "{actual_sha256}"
   }}
 }}
@@ -160,7 +160,7 @@ identity = "test.sha256_fail@v1"
 dependencies = {{
   {{
     recipe = "remote.child@v1",
-    url = "{child_recipe_path.as_posix()}",
+    source = "{child_recipe_path.as_posix()}",
     sha256 = "{wrong_sha256}"
   }}
 }}

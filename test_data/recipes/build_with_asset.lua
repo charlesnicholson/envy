@@ -2,11 +2,11 @@
 identity = "local.build_with_asset@v1"
 
 dependencies = {
-  { recipe = "local.build_dependency@v1", file = "build_dependency.lua" }
+  { recipe = "local.build_dependency@v1", source = "build_dependency.lua" }
 }
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -29,7 +29,7 @@ build = function(ctx)
       Write-Output "Used dependency data"
       if (-not (Test-Path from_dependency.txt)) { Write-Error "Output artifact missing"; exit 62 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     result = ctx.run([[
       cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt

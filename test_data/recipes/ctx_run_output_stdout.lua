@@ -2,7 +2,7 @@
 identity = "local.ctx_run_output_stdout@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -15,7 +15,7 @@ stage = function(ctx)
       Write-Output "Line 2 to stdout"
       Write-Output "Line 3 to stdout"
       "stdout test complete" | Out-File -Encoding UTF8 stdout_marker.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Line 1 to stdout"

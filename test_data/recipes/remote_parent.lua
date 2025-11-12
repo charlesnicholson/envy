@@ -5,7 +5,7 @@ identity = "remote.parent@v1"
 dependencies = {
   {
     recipe = "remote.child@v1",
-    url = "remote_child.lua"
+    source = "remote_child.lua"
     -- No SHA256 (permissive mode - for testing)
   }
 }

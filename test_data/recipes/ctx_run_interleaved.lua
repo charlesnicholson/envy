@@ -2,7 +2,7 @@
 identity = "local.ctx_run_interleaved@v1"
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
@@ -13,31 +13,31 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path steps.txt -Value "Step 1"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       if (Test-Path test.txt) {
         Move-Item test.txt test_renamed.txt -Force
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Add-Content -Path steps.txt -Value "Step 2"
       Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path file_list.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Set-Content -Path version.tmpl -Value "Version: {{version}}"
       $content = Get-Content version.tmpl
       $content = $content -replace "{{version}}", "1.0"
       Set-Content -Path version.txt -Value $content
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Add-Content -Path steps.txt -Value "Step 3"
       $count = (Get-Content steps.txt | Measure-Object -Line).Lines
       Set-Content -Path step_count.txt -Value $count
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Step 1" > steps.txt
