@@ -71,6 +71,7 @@ cli_args cli_parse(int argc, char **argv) {
   fetch->add_option("--manifest-root",
                     fetch_cfg.manifest_root,
                     "Manifest root for resolving relative file URIs");
+  fetch->add_option("--ref", fetch_cfg.ref, "Git ref (branch/tag/SHA) for git sources");
   fetch->callback([&cmd_cfg, &fetch_cfg] { cmd_cfg = fetch_cfg; });
 
   // Hash subcommand
@@ -88,14 +89,6 @@ cli_args cli_parse(int argc, char **argv) {
       ->required()
       ->check(CLI::ExistingFile);
   lua->callback([&cmd_cfg, &lua_cfg] { cmd_cfg = lua_cfg; });
-
-  // Playground subcommand
-  cmd_playground::cfg playground_cfg{};
-  auto *playground{ app.add_subcommand("playground", "Run S3/Git/Curl playground demo") };
-  playground->add_option("uri", playground_cfg.uri, "Resource URI (s3/http/file/...)")
-      ->required();
-  playground->add_option("region", playground_cfg.region, "AWS region (optional)");
-  playground->callback([&cmd_cfg, &playground_cfg] { cmd_cfg = playground_cfg; });
 
 #ifdef ENVY_FUNCTIONAL_TESTER
   // Cache testing subcommands

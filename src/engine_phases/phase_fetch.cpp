@@ -27,6 +27,17 @@ namespace envy {
 
 namespace {
 
+// Helper to extract destination from fetch_request variant
+std::filesystem::path const &get_destination(fetch_request const &req) {
+  return std::visit([](auto const &r) -> std::filesystem::path const & { return r.destination; },
+                    req);
+}
+
+// Helper to extract source from fetch_request variant
+std::string const &get_source(fetch_request const &req) {
+  return std::visit([](auto const &r) -> std::string const & { return r.source; }, req);
+}
+
 struct fetch_spec {
   fetch_request request;
   std::string sha256;
@@ -147,7 +158,39 @@ int lua_ctx_fetch(lua_State *lua) {
     basenames.push_back(final_basename);
 
     std::filesystem::path dest{ ctx->run_dir / final_basename };
-    requests.push_back({ .source = url, .destination = dest });
+
+    // Determine the request type based on the URL scheme
+    auto const info{ uri_classify(url) };
+    fetch_request req;
+    switch (info.scheme) {
+      case uri_scheme::HTTP:
+        req = fetch_request_http{ .source = url, .destination = dest };
+        break;
+      case uri_scheme::HTTPS:
+        req = fetch_request_https{ .source = url, .destination = dest };
+        break;
+      case uri_scheme::FTP:
+        req = fetch_request_ftp{ .source = url, .destination = dest };
+        break;
+      case uri_scheme::FTPS:
+        req = fetch_request_ftps{ .source = url, .destination = dest };
+        break;
+      case uri_scheme::S3:
+        req = fetch_request_s3{ .source = url, .destination = dest };
+        // TODO: region support for programmatic fetch
+        break;
+      case uri_scheme::LOCAL_FILE_ABSOLUTE:
+      case uri_scheme::LOCAL_FILE_RELATIVE:
+        req = fetch_request_file{ .source = url, .destination = dest };
+        // TODO: file_root support for programmatic fetch
+        break;
+      case uri_scheme::GIT:
+        // TODO: ref support for programmatic git fetch
+        throw std::runtime_error("ctx.fetch: git URLs not yet supported in programmatic fetch");
+      default:
+        throw std::runtime_error("ctx.fetch: unsupported URL scheme: " + url);
+    }
+    requests.push_back(req);
   }
 
   // Execute downloads (blocking, synchronous)
@@ -452,8 +495,40 @@ fetch_spec create_fetch_spec(std::string url,
   basenames.insert(basename);
 
   std::filesystem::path dest{ fetch_dir / basename };
-  return { .request = { .source = std::move(url), .destination = std::move(dest) },
-           .sha256 = std::move(sha256) };
+
+  // Determine the request type based on the URL scheme
+  auto const info{ uri_classify(url) };
+  fetch_request req;
+  switch (info.scheme) {
+    case uri_scheme::HTTP:
+      req = fetch_request_http{ .source = url, .destination = dest };
+      break;
+    case uri_scheme::HTTPS:
+      req = fetch_request_https{ .source = url, .destination = dest };
+      break;
+    case uri_scheme::FTP:
+      req = fetch_request_ftp{ .source = url, .destination = dest };
+      break;
+    case uri_scheme::FTPS:
+      req = fetch_request_ftps{ .source = url, .destination = dest };
+      break;
+    case uri_scheme::S3:
+      req = fetch_request_s3{ .source = url, .destination = dest };
+      // TODO: region support for declarative fetch
+      break;
+    case uri_scheme::LOCAL_FILE_ABSOLUTE:
+    case uri_scheme::LOCAL_FILE_RELATIVE:
+      req = fetch_request_file{ .source = url, .destination = dest };
+      // TODO: file_root support for declarative fetch
+      break;
+    case uri_scheme::GIT:
+      // TODO: ref support for declarative git fetch
+      throw std::runtime_error("Git URLs not yet supported in declarative fetch: " + context);
+    default:
+      throw std::runtime_error("Unsupported URL scheme in " + context);
+  }
+
+  return { .request = std::move(req), .sha256 = std::move(sha256) };
 }
 
 // Parse the fetch field from Lua into a vector of fetch_specs.
@@ -471,8 +546,37 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                  " in " + key);
       }
       std::filesystem::path dest{ fetch_dir / basename };
-      return { { .request = { .source = url, .destination = std::move(dest) },
-                 .sha256 = "" } };
+
+      // Determine the request type based on the URL scheme
+      auto const info{ uri_classify(url) };
+      fetch_request req;
+      switch (info.scheme) {
+        case uri_scheme::HTTP:
+          req = fetch_request_http{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::HTTPS:
+          req = fetch_request_https{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::FTP:
+          req = fetch_request_ftp{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::FTPS:
+          req = fetch_request_ftps{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::S3:
+          req = fetch_request_s3{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::LOCAL_FILE_ABSOLUTE:
+        case uri_scheme::LOCAL_FILE_RELATIVE:
+          req = fetch_request_file{ .source = url, .destination = dest };
+          break;
+        case uri_scheme::GIT:
+          throw std::runtime_error("Git URLs not yet supported in declarative fetch: " + key);
+        default:
+          throw std::runtime_error("Unsupported URL scheme in " + key);
+      }
+
+      return { { .request = std::move(req), .sha256 = "" } };
     }
 
     case LUA_TTABLE: {
@@ -542,7 +646,7 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
 
   for (size_t i = 0; i < specs.size(); ++i) {
     auto const &spec{ specs[i] };
-    auto const &dest{ spec.request.destination };
+    auto const &dest{ get_destination(spec.request) };
 
     if (!std::filesystem::exists(dest)) {  // File doesn't exist: download
       to_download.push_back(i);
@@ -593,14 +697,14 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
   for (size_t i = 0; i < results.size(); ++i) {
     auto const spec_idx{ to_download_indices[i] };
     if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-      errors.push_back(specs[spec_idx].request.source + ": " + *err);
+      errors.push_back(get_source(specs[spec_idx].request) + ": " + *err);
     } else {
       // File downloaded successfully
 #ifdef ENVY_FUNCTIONAL_TESTER
       try {
         test::decrement_fail_counter();
       } catch (std::exception const &e) {
-        errors.push_back(specs[spec_idx].request.source + ": " + e.what());
+        errors.push_back(get_source(specs[spec_idx].request) + ": " + e.what());
         continue;
       }
 #endif
@@ -613,7 +717,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                      result->resolved_destination.string().c_str());
           sha256_verify(specs[spec_idx].sha256, sha256(result->resolved_destination));
         } catch (std::exception const &e) {
-          errors.push_back(specs[spec_idx].request.source + ": " + e.what());
+          errors.push_back(get_source(specs[spec_idx].request) + ": " + e.what());
         }
       }
     }

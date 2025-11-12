@@ -60,8 +60,35 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
                  remote_src->url.c_str());
       std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "recipe.lua" };
 
-      auto const results{ fetch(
-          { { .source = remote_src->url, .destination = fetch_dest } }) };
+      // Determine fetch request type based on URL scheme
+      auto const info{ uri_classify(remote_src->url) };
+      fetch_request req;
+      switch (info.scheme) {
+        case uri_scheme::HTTP:
+          req = fetch_request_http{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        case uri_scheme::HTTPS:
+          req = fetch_request_https{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        case uri_scheme::FTP:
+          req = fetch_request_ftp{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        case uri_scheme::FTPS:
+          req = fetch_request_ftps{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        case uri_scheme::S3:
+          req = fetch_request_s3{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        case uri_scheme::LOCAL_FILE_ABSOLUTE:
+        case uri_scheme::LOCAL_FILE_RELATIVE:
+          req = fetch_request_file{ .source = remote_src->url, .destination = fetch_dest };
+          break;
+        default:
+          throw std::runtime_error("Unsupported URL scheme for recipe fetch: " +
+                                   remote_src->url);
+      }
+
+      auto const results{ fetch({ req }) };
       if (results.empty() || std::holds_alternative<std::string>(results[0])) {
         throw std::runtime_error(
             "Failed to fetch recipe: " +
@@ -81,8 +108,37 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
     if (!lua_run_file(lua_state, recipe_path)) {
       throw std::runtime_error("Failed to load recipe: " + spec.identity);
     }
+  } else if (auto const *git_src{ std::get_if<recipe_spec::git_source>(&spec.source) }) {
+    auto cache_result{ state.cache_.ensure_recipe(spec.identity) };
+
+    if (cache_result.lock) {
+      tui::trace("fetch recipe %s from git %s @ %s",
+                 spec.identity.c_str(),
+                 git_src->url.c_str(),
+                 git_src->ref.c_str());
+
+      // For git sources, clone directly to the install directory (no extraction needed)
+      std::filesystem::path install_dir{ cache_result.lock->install_dir() };
+
+      auto const results{ fetch({ fetch_request_git{ .source = git_src->url,
+                                                      .destination = install_dir,
+                                                      .ref = git_src->ref } }) };
+      if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+        throw std::runtime_error(
+            "Failed to fetch git recipe: " +
+            (results.empty() ? "no results" : std::get<std::string>(results[0])));
+      }
+
+      cache_result.lock->mark_install_complete();
+      cache_result.lock.reset();
+    }
+
+    recipe_path = cache_result.asset_path / "recipe.lua";
+    if (!lua_run_file(lua_state, recipe_path)) {
+      throw std::runtime_error("Failed to load recipe: " + spec.identity);
+    }
   } else {
-    throw std::runtime_error("Only local and remote sources supported: " + spec.identity);
+    throw std::runtime_error("Unsupported source type: " + spec.identity);
   }
 
   std::string const declared_identity = [&] {

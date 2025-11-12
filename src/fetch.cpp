@@ -2,7 +2,9 @@
 
 #include "aws_util.h"
 #include "libcurl_util.h"
+#include "util.h"
 
+#include <git2.h>
 #include <tbb/task_group.h>
 
 #include <filesystem>
@@ -92,40 +94,180 @@ fetch_result fetch_local_file(std::string const &canonical_path,
                        .resolved_destination = dest };
 }
 
+struct scoped_git_init {
+  scoped_git_init() { git_libgit2_init(); }
+  ~scoped_git_init() { git_libgit2_shutdown(); }
+
+  scoped_git_init(scoped_git_init const &) = delete;
+  scoped_git_init &operator=(scoped_git_init const &) = delete;
+};
+
+int git_fetch_progress_callback(git_indexer_progress const *stats, void *payload) {
+  auto *cb{ static_cast<fetch_progress_cb_t *>(payload) };
+  if (!cb || !*cb) { return 0; }
+
+  fetch_git_progress progress{
+    .total_objects = stats->total_objects,
+    .indexed_objects = stats->indexed_objects,
+    .received_objects = stats->received_objects,
+    .total_deltas = stats->total_deltas,
+    .indexed_deltas = stats->indexed_deltas,
+    .received_bytes = stats->received_bytes,
+  };
+
+  return (*cb)(progress) ? 0 : -1;
+}
+
+fetch_result fetch_git_repo(std::string const &url,
+                            std::string const &ref,
+                            std::filesystem::path const &destination,
+                            fetch_progress_cb_t const &progress) {
+  auto const dest{ prepare_destination(destination) };
+
+  scoped_git_init git_guard;
+
+  git_repository *repo_raw{ nullptr };
+  git_clone_options clone_opts;
+  git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
+
+  clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
+  clone_opts.fetch_opts.callbacks.payload = const_cast<fetch_progress_cb_t *>(&progress);
+
+  if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
+    git_error const *git_err{ git_error_last() };
+    std::string msg{ "fetch_git: clone failed: " };
+    if (git_err) { msg += git_err->message; }
+    throw std::runtime_error(msg);
+  }
+
+  std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{ repo_raw,
+                                                                         git_repository_free };
+
+  // Look up and checkout the specified ref
+  git_object *target_obj{ nullptr };
+  if (git_revparse_single(&target_obj, repo.get(), ref.c_str())) {
+    git_error const *git_err{ git_error_last() };
+    std::string msg{ "fetch_git: failed to resolve ref '" + ref + "': " };
+    if (git_err) { msg += git_err->message; }
+    throw std::runtime_error(msg);
+  }
+
+  std::unique_ptr<git_object, decltype(&git_object_free)> target{ target_obj, git_object_free };
+
+  git_checkout_options checkout_opts;
+  git_checkout_options_init(&checkout_opts, GIT_CHECKOUT_OPTIONS_VERSION);
+  checkout_opts.checkout_strategy = GIT_CHECKOUT_FORCE;
+
+  if (git_checkout_tree(repo.get(), target.get(), &checkout_opts)) {
+    git_error const *git_err{ git_error_last() };
+    std::string msg{ "fetch_git: checkout failed: " };
+    if (git_err) { msg += git_err->message; }
+    throw std::runtime_error(msg);
+  }
+
+  // Update HEAD to point to the target
+  git_oid const *target_oid{ git_object_id(target.get()) };
+  git_reference *head_ref{ nullptr };
+  if (int const error{ git_reference_create(
+          &head_ref, repo.get(), "HEAD", target_oid, 1, "checkout") };
+      error == 0 && head_ref) {
+    git_reference_free(head_ref);
+  }
+
+  repo.reset();  // Close repository before removing .git
+
+  std::filesystem::path git_dir{ dest / ".git" };
+  std::error_code ec;
+  std::filesystem::remove_all(git_dir, ec);
+  if (ec) {
+    throw std::runtime_error("fetch_git: failed to remove .git directory: " +
+                             ec.message());
+  }
+
+  return fetch_result{ .scheme = uri_scheme::GIT,
+                       .resolved_source = std::filesystem::path{ url },
+                       .resolved_destination = dest };
+}
+
 }  // namespace
 
 fetch_result fetch_single(fetch_request const &request) {
-  auto const info{ uri_classify(request.source) };
-  if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
-    throw std::invalid_argument("fetch: source URI is empty");
-  }
-
-  switch (info.scheme) {
-    case uri_scheme::LOCAL_FILE_ABSOLUTE:
-    case uri_scheme::LOCAL_FILE_RELATIVE: {
-      return fetch_local_file(info.canonical, request.destination, request.file_root);
-    }
-
-    case uri_scheme::HTTP:
-    case uri_scheme::HTTPS: {
-      return fetch_result{ .scheme = info.scheme,
-                           .resolved_source = std::filesystem::path{ info.canonical },
-                           .resolved_destination = libcurl_download(info.canonical,
-                                                                    request.destination,
-                                                                    request.progress) };
-    }
-    case uri_scheme::S3: {
-      return fetch_result{ .scheme = info.scheme,
-                           .resolved_source = std::filesystem::path{ info.canonical },
-                           .resolved_destination = aws_s3_download(
-                               s3_download_request{ .uri = info.canonical,
-                                                    .destination = request.destination,
-                                                    .region = request.region,
-                                                    .progress = request.progress }) };
-    }
-
-    default: throw std::runtime_error("fetch: scheme not implemented");
-  }
+  return std::visit(
+      match{
+          [](fetch_request_http const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_result{
+              .scheme = info.scheme,
+              .resolved_source = std::filesystem::path{ info.canonical },
+              .resolved_destination =
+                  libcurl_download(info.canonical, req.destination, req.progress)
+            };
+          },
+          [](fetch_request_https const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_result{
+              .scheme = info.scheme,
+              .resolved_source = std::filesystem::path{ info.canonical },
+              .resolved_destination =
+                  libcurl_download(info.canonical, req.destination, req.progress)
+            };
+          },
+          [](fetch_request_ftp const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_result{
+              .scheme = info.scheme,
+              .resolved_source = std::filesystem::path{ info.canonical },
+              .resolved_destination =
+                  libcurl_download(info.canonical, req.destination, req.progress)
+            };
+          },
+          [](fetch_request_ftps const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_result{
+              .scheme = info.scheme,
+              .resolved_source = std::filesystem::path{ info.canonical },
+              .resolved_destination =
+                  libcurl_download(info.canonical, req.destination, req.progress)
+            };
+          },
+          [](fetch_request_s3 const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_result{ .scheme = info.scheme,
+                                 .resolved_source =
+                                     std::filesystem::path{ info.canonical },
+                                 .resolved_destination = aws_s3_download(
+                                     s3_download_request{ .uri = info.canonical,
+                                                          .destination = req.destination,
+                                                          .region = req.region,
+                                                          .progress = req.progress }) };
+          },
+          [](fetch_request_file const &req) -> fetch_result {
+            auto const info{ uri_classify(req.source) };
+            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+              throw std::invalid_argument("fetch: source URI is empty");
+            }
+            return fetch_local_file(info.canonical, req.destination, req.file_root);
+          },
+          [](fetch_request_git const &req) -> fetch_result {
+            return fetch_git_repo(req.source, req.ref, req.destination, req.progress);
+          },
+      },
+      request);
 }
 
 std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {

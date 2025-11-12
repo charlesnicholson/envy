@@ -73,39 +73,59 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
   if (auto const *source_uri{ source_it->second.get<std::string>() }) {
     auto const info{ uri_classify(*source_uri) };
 
-    auto const sha256{ [&]() -> std::optional<std::string> {
-      auto const sha256_it{ table->find("sha256") };
-      if (sha256_it == table->end()) { return std::nullopt; }
-      if (auto const *sha256_str{ sha256_it->second.get<std::string>() }) {
-        return *sha256_str;
-      }
-      throw std::runtime_error("Recipe 'sha256' field must be string");
-    }() };
+    // Check if this is a git repository
+    if (info.scheme == uri_scheme::GIT) {
+      auto const *ref_str{ [&]() -> std::string const * {
+        auto const ref_it{ table->find("ref") };
+        if (ref_it == table->end()) {
+          throw std::runtime_error("Recipe with git source must specify 'ref' field");
+        }
+        auto const *ref{ ref_it->second.get<std::string>() };
+        if (!ref) { throw std::runtime_error("Recipe 'ref' field must be string"); }
+        if (ref->empty()) {
+          throw std::runtime_error("Recipe 'ref' field cannot be empty");
+        }
+        return ref;
+      }() };
 
-    // If SHA256 is provided, always treat as remote_source (needs verification)
-    // Otherwise, local files use local_source, remote URIs use remote_source
-    if (sha256.has_value() || (info.scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
-                               info.scheme != uri_scheme::LOCAL_FILE_RELATIVE)) {
-      // Remote source or local file with SHA256 verification
-      std::string resolved_uri;
-      if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-        std::filesystem::path p{ info.canonical };
-        p = base_path.parent_path() / p;
-        resolved_uri = "file://" + p.lexically_normal().string();
-      } else if (info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
-        resolved_uri = "file://" + info.canonical;
-      } else {
-        resolved_uri = info.canonical;
-      }
-      result.source = remote_source{ .url = resolved_uri, .sha256 = sha256.value_or("") };
+      result.source = git_source{ .url = info.canonical, .ref = *ref_str };
     } else {
-      // Local file without SHA256 - use local_source (no verification)
-      std::filesystem::path p{ info.canonical };
-      if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-        p = base_path.parent_path() / p;
-        p = p.lexically_normal();
+      auto const sha256{ [&]() -> std::optional<std::string> {
+        auto const sha256_it{ table->find("sha256") };
+        if (sha256_it == table->end()) { return std::nullopt; }
+        if (auto const *sha256_str{ sha256_it->second.get<std::string>() }) {
+          return *sha256_str;
+        }
+        throw std::runtime_error("Recipe 'sha256' field must be string");
+      }() };
+
+      // If SHA256 is provided, always treat as remote_source (needs verification)
+      // Otherwise, local files use local_source, remote URIs use remote_source
+      if (sha256.has_value() || (info.scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
+                                 info.scheme != uri_scheme::LOCAL_FILE_RELATIVE)) {
+        // Remote source or local file with SHA256 verification
+        std::string const resolved_uri{ [&]() -> std::string {
+          if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+            std::filesystem::path p{ info.canonical };
+            p = base_path.parent_path() / p;
+            return "file://" + p.lexically_normal().string();
+          } else if (info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
+            return "file://" + info.canonical;
+          } else {
+            return info.canonical;
+          }
+        }() };
+        result.source =
+            remote_source{ .url = resolved_uri, .sha256 = sha256.value_or("") };
+      } else {
+        // Local file without SHA256 - use local_source (no verification)
+        std::filesystem::path p{ info.canonical };
+        if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+          p = base_path.parent_path() / p;
+          p = p.lexically_normal();
+        }
+        result.source = local_source{ .file_path = p };
       }
-      result.source = local_source{ .file_path = p };
     }
   } else {
     throw std::runtime_error("Recipe 'source' field must be string");

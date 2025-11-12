@@ -135,7 +135,6 @@ target_sources(envy
         src/commands/cmd_fetch.cpp
         src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
-        src/commands/cmd_playground.cpp
         src/commands/cmd_version.cpp
         src/engine.cpp
         src/create_recipe_nodes.cpp
@@ -232,7 +231,6 @@ target_sources(envy_functional_tester
         src/commands/cmd_fetch.cpp
         src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
-        src/commands/cmd_playground.cpp
         src/commands/cmd_version.cpp
         src/commands/cmd_cache_functional_test.cpp
         src/commands/cmd_engine_functional_test.cpp
@@ -340,7 +338,6 @@ target_sources(envy_unit_tests
         src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_version.cpp
-        src/commands/cmd_playground.cpp
         src/engine.cpp
         src/create_recipe_nodes.cpp
         src/graph_state.cpp

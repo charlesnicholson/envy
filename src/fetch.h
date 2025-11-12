@@ -29,13 +29,63 @@ struct fetch_git_progress {
 using fetch_progress_t = std::variant<fetch_transfer_progress, fetch_git_progress>;
 using fetch_progress_cb_t = std::function<bool(fetch_progress_t const &)>;
 
-struct fetch_request {
+// HTTP/HTTPS/FTP/FTPS fetch requests (no additional fields)
+struct fetch_request_http {
   std::string source;
   std::filesystem::path destination;
-  std::optional<std::filesystem::path> file_root;
-  std::optional<std::string> region;
   fetch_progress_cb_t progress{};
 };
+
+struct fetch_request_https {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+};
+
+struct fetch_request_ftp {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+};
+
+struct fetch_request_ftps {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+};
+
+// S3 fetch request with region
+struct fetch_request_s3 {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+  std::string region;
+};
+
+// Local file fetch request with file_root
+struct fetch_request_file {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+  std::filesystem::path file_root;
+};
+
+// Git fetch request with ref (committish: tag, branch, or SHA)
+// Note: Submodules are not yet supported
+struct fetch_request_git {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+  std::string ref;
+};
+
+using fetch_request = std::variant<fetch_request_http,
+                                   fetch_request_https,
+                                   fetch_request_ftp,
+                                   fetch_request_ftps,
+                                   fetch_request_s3,
+                                   fetch_request_file,
+                                   fetch_request_git>;
 
 struct fetch_result {
   uri_scheme scheme;

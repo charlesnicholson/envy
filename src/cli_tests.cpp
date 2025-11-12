@@ -4,7 +4,6 @@
 #include "commands/cmd_fetch.h"
 #include "commands/cmd_hash.h"
 #include "commands/cmd_lua.h"
-#include "commands/cmd_playground.h"
 #include "commands/cmd_version.h"
 
 #include "doctest.h"
@@ -235,39 +234,7 @@ TEST_CASE("cli_parse: cmd_lua") {
   }
 }
 
-TEST_CASE("cli_parse: cmd_playground") {
-  SUBCASE("uri only") {
-    std::vector<std::string> args{ "envy", "playground", "s3://bucket/key" };
-    auto argv{ make_argv(args) };
-
-    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
-
-    REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg) };
-    REQUIRE(cfg != nullptr);
-    CHECK(cfg->uri == "s3://bucket/key");
-    CHECK(cfg->region.empty());
-    REQUIRE(parsed.verbosity.has_value());
-    CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
-    CHECK_FALSE(parsed.structured_logging);
-  }
-
-  SUBCASE("uri with region") {
-    std::vector<std::string> args{ "envy", "playground", "s3://bucket/key", "us-west-2" };
-    auto argv{ make_argv(args) };
-
-    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
-
-    REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_playground::cfg>(&*parsed.cmd_cfg) };
-    REQUIRE(cfg != nullptr);
-    CHECK(cfg->uri == "s3://bucket/key");
-    CHECK(cfg->region == "us-west-2");
-    REQUIRE(parsed.verbosity.has_value());
-    CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
-    CHECK_FALSE(parsed.structured_logging);
-  }
-}
+// TEST_CASE removed: cmd_playground has been deleted
 
 TEST_CASE("cli_parse: cmd_asset") {
   SUBCASE("identity only") {
@@ -303,7 +270,7 @@ TEST_CASE("cli_parse: cmd_asset") {
 }
 
 TEST_CASE("cli_parse: verbose flag") {
-  std::vector<std::string> args{ "envy", "--verbose", "playground", "s3://bucket/key" };
+  std::vector<std::string> args{ "envy", "--verbose", "version" };
   auto argv{ make_argv(args) };
 
   auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
