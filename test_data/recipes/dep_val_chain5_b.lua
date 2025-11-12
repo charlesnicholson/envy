@@ -1,0 +1,16 @@
+-- Level B for 5-level chain test
+identity = "local.dep_val_chain5_b@v1"
+
+dependencies = {
+  { recipe = "local.dep_val_chain5_a@v1", file = "dep_val_chain5_a.lua" }
+}
+
+fetch = {
+  url = "test_data/archives/test.tar.gz",
+  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+}
+
+stage = function(ctx)
+  ctx.extract_all({strip = 1})
+  ctx.asset("local.dep_val_chain5_a@v1")
+end

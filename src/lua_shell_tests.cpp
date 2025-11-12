@@ -12,7 +12,6 @@ extern "C" {
 
 #include <cstdint>
 #include <stdexcept>
-#include <string>
 #include <variant>
 
 namespace {
@@ -25,16 +24,24 @@ lua_State *make_test_lua_state() {
   // Register ENVY_SHELL table with constants
   lua_createtable(L, 0, 4);
 
-  lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
+  lua_pushlightuserdata(
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
   lua_setfield(L, -2, "BASH");
 
-  lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
+  lua_pushlightuserdata(
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
   lua_setfield(L, -2, "SH");
 
-  lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
+  lua_pushlightuserdata(
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
   lua_setfield(L, -2, "CMD");
 
-  lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
+  lua_pushlightuserdata(
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
   lua_setfield(L, -2, "POWERSHELL");
 
   lua_setglobal(L, "ENVY_SHELL");
@@ -106,10 +113,9 @@ TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
   // Push invalid light userdata (value 999, not a valid shell_choice)
   lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(999)));
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: invalid ENVY_SHELL constant",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: invalid ENVY_SHELL constant",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -182,10 +188,9 @@ TEST_CASE("parse_shell_config_from_lua - custom shell wrong type for inline") {
   lua_pushstring(L, "/bin/sh");
   lua_setfield(L, -2, "inline");
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: 'inline' key must be an array of strings",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: 'inline' key must be an array of strings",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -232,10 +237,10 @@ TEST_CASE("parse_shell_config_from_lua - string type not supported") {
 
   lua_pushstring(L, "bash");
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: shell must be ENVY_SHELL constant or table {file=..., "
+                       "ext=...} or {inline=...}",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -245,10 +250,10 @@ TEST_CASE("parse_shell_config_from_lua - number type not supported") {
 
   lua_pushnumber(L, 42);
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: shell must be ENVY_SHELL constant or table {file=..., "
+                       "ext=...} or {inline=...}",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -258,10 +263,10 @@ TEST_CASE("parse_shell_config_from_lua - nil type not supported") {
 
   lua_pushnil(L);
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: shell must be ENVY_SHELL constant or table {file=..., "
+                       "ext=...} or {inline=...}",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -271,10 +276,10 @@ TEST_CASE("parse_shell_config_from_lua - boolean type not supported") {
 
   lua_pushboolean(L, 1);
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
-      "test_ctx: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "test_ctx"),
+                       "test_ctx: shell must be ENVY_SHELL constant or table {file=..., "
+                       "ext=...} or {inline=...}",
+                       std::runtime_error);
 
   lua_close(L);
 }
@@ -285,20 +290,20 @@ TEST_CASE("parse_shell_config_from_lua - error context in message") {
   lua_pushstring(L, "invalid");
 
   // Test with different context strings
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "ctx.run"),
-      "ctx.run: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "ctx.run"),
+                       "ctx.run: shell must be ENVY_SHELL constant or table {file=..., "
+                       "ext=...} or {inline=...}",
+                       std::runtime_error);
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "default_shell"),
-      "default_shell: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "default_shell"),
+                       "default_shell: shell must be ENVY_SHELL constant or table "
+                       "{file=..., ext=...} or {inline=...}",
+                       std::runtime_error);
 
-  CHECK_THROWS_WITH_AS(
-      envy::parse_shell_config_from_lua(L, -1, "default_shell function"),
-      "default_shell function: shell must be ENVY_SHELL constant or table {file=..., ext=...} or {inline=...}",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(L, -1, "default_shell function"),
+                       "default_shell function: shell must be ENVY_SHELL constant or "
+                       "table {file=..., ext=...} or {inline=...}",
+                       std::runtime_error);
 
   lua_close(L);
 }
