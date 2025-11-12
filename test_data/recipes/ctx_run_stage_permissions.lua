@@ -16,7 +16,7 @@ stage = function(ctx)
       Set-Content -Path executable.bat -Value "@echo off"
       (Get-Item executable.bat).Attributes = 'Normal'
       Add-Content -Path permissions.txt -Value ((Get-Item executable.bat).Attributes)
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       chmod +x file1.txt

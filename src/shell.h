@@ -42,7 +42,7 @@ using default_shell_value = std::variant<
 >;
 
 // Manifest default_shell configuration (optional, nullopt if not specified)
-using default_shell_cfg = std::optional<default_shell_value>;
+using default_shell_cfg_t = std::optional<default_shell_value>;
 
 struct shell_run_cfg {
   std::function<void(std::string_view)> on_output_line;

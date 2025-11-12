@@ -16,5 +16,5 @@ stage = function(ctx)
   ctx.run([[\
     set -eu\
     printf "shell=sh\n" > shell_sh_marker.txt\
-  ]], { shell = "sh" })
+  ]], { shell = ENVY_SHELL.SH })
 end

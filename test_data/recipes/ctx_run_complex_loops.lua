@@ -56,7 +56,7 @@ stage = function(ctx)
           }
         }
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       for i in {1..5}; do

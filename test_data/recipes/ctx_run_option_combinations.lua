@@ -12,7 +12,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Force -Path dir1,dir2 | Out-Null
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p dir1 dir2

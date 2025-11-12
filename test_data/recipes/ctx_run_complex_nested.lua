@@ -36,7 +36,7 @@ stage = function(ctx)
           Add-Content -Path dir_summary.txt -Value ("Directory " + $dir.FullName + " has " + $count + " files")
         }
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p level1/{level2a,level2b}/{level3a,level3b}

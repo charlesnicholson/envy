@@ -16,11 +16,11 @@ stage = function(ctx)
       # Another comment
 
 
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Set-Content -Path after_whitespace.txt -Value "After whitespace script"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       # This is a comment

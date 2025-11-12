@@ -12,7 +12,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Stop-Process -Id $PID -Force
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       kill -TERM $$

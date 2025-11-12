@@ -128,20 +128,38 @@ bool is_transitive_dependency(
 
 ### Phase 5: Remove default_shell caching
 **Files to modify:**
-- [ ] `src/manifest.h`
-- [ ] `src/manifest.cpp`
+- [x] `src/manifest.h`
+- [x] `src/manifest.cpp`
+- [x] `src/engine_phases/lua_ctx_bindings.h`
+- [x] `src/engine_phases/lua_ctx_bindings.cpp`
 
-**Changes:**
-- [ ] Delete field: `int default_shell_func_ref_` from manifest struct
-- [ ] Delete field: `mutable std::once_flag resolve_flag_` from manifest struct
-- [ ] Delete field: `mutable default_shell_cfg resolved_` from manifest struct
-- [ ] Delete method: `resolve_default_shell()` entirely
-- [ ] Update `parse_default_shell()` to just parse and store the global (no ref storage, no evaluation)
-- [ ] Consider renaming or simplifying - may just need to store raw Lua global type
+**Changes in manifest.h:**
+- [x] Delete field: `int default_shell_func_ref_`
+- [x] Delete field: `mutable std::once_flag resolve_flag_`
+- [x] Delete field: `mutable default_shell_cfg resolved_`
+- [x] Delete method: `parse_default_shell()`
+- [x] Rename `resolve_default_shell()` → `get_default_shell()`
+- [x] Keep only `lua_state_` for default_shell global access
+
+**Changes in manifest.cpp:**
+- [x] Delete `lua_ctx_asset_for_manifest()` function (no longer needed)
+- [x] Delete `parse_default_shell()` implementation
+- [x] Rewrite `get_default_shell()` to evaluate fresh every time:
+  - [x] Get `default_shell` global on every call (no caching)
+  - [x] For constants/tables: return immediately
+  - [x] For functions: call with ctx argument, return result
+  - [x] Use regular `lua_ctx_asset()` with full validation
+
+**Changes in lua_ctx_bindings:**
+- [x] Move `lua_ctx_asset()` out of anonymous namespace
+- [x] Expose `lua_ctx_asset()` in header for use by manifest.cpp
+- [x] Update call site: `resolve_default_shell()` → `get_default_shell()`
+- [x] Remove duplicate `lua_ctx_asset()` definition
 
 **Verification:**
-- [ ] Code compiles
-- [ ] Existing shell tests still pass (may need updates in Phase 6)
+- [x] Code compiles
+- [x] All 362 unit tests pass
+- [x] All 184 functional tests pass
 
 ---
 

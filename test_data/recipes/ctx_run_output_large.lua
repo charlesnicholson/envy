@@ -15,7 +15,7 @@ stage = function(ctx)
         Write-Output "Output line $i with some content to make it longer"
       }
       Set-Content -Path large_output_marker.txt -Value "Large output test complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       for i in {1..100}; do

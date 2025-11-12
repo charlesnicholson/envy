@@ -10,7 +10,7 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Force -Path "custom/subdir" | Out-Null]], { shell = "powershell" })
+    ctx.run([[New-Item -ItemType Directory -Force -Path "custom/subdir" | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path pwd_output.txt -Value (Get-Location).Path
       Set-Content -Path marker.txt -Value "Running in subdir"

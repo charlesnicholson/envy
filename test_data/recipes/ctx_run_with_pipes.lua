@@ -15,7 +15,7 @@ $content = @("line3", "line1", "line2")
 $content | Sort-Object | Set-Content -Path sorted.txt
 Get-Content sorted.txt | Where-Object { $_ -match "line2" } | Set-Content -Path grepped.txt
 Add-Content -Path grepped.txt -Value "Pipes work"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo -e "line3\nline1\nline2" | sort > sorted.txt

@@ -14,7 +14,7 @@ build = function(ctx)
   -- Capture output from command
   local result
   if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[if (-not $PSVersionTable) { Write-Output "psversion-init" }; Write-Output "line1"; if (-not ("line1")) { Write-Output "line1" }; Write-Output "line2"; Write-Output "line3"; exit 0]], { shell = "powershell" })
+    result = ctx.run([[if (-not $PSVersionTable) { Write-Output "psversion-init" }; Write-Output "line1"; if (-not ("line1")) { Write-Output "line1" }; Write-Output "line2"; Write-Output "line3"; exit 0]], { shell = ENVY_SHELL.POWERSHELL })
   else
     result = ctx.run([[
       echo "line1"
@@ -36,7 +36,7 @@ build = function(ctx)
 
   -- Test with special characters
   if ENVY_PLATFORM == "windows" then
-      result = ctx.run([[Write-Output "Special: !@#$%^&*()"; Write-Output "Unicode: 你好世界"; Write-Output "Quotes: 'single' \"double\""; exit 0]], { shell = "powershell" })
+      result = ctx.run([[Write-Output "Special: !@#$%^&*()"; Write-Output "Unicode: 你好世界"; Write-Output "Quotes: 'single' \"double\""; exit 0]], { shell = ENVY_SHELL.POWERSHELL })
   else
     result = ctx.run([[
       echo "Special: !@#$%^&*()"

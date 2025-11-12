@@ -23,7 +23,7 @@ stage = function(ctx)
       if (-not (Test-Path config.mk)) { exit 1 }
       if (-not (Test-Path build/build.mk)) { exit 1 }
       Set-Content -Path workflow_complete.txt -Value "Workflow complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p build src include

@@ -12,18 +12,18 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path original.txt -Value "original name"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Move-Item -Path original.txt -Destination renamed.txt -Force
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       if (Test-Path renamed.txt) { Set-Content -Path rename_check.txt -Value "Rename verified" }
       if (-not (Test-Path original.txt)) { Add-Content -Path rename_check.txt -Value "Original gone" }
       if (-not (Test-Path rename_check.txt)) { Write-Error "rename_check missing"; exit 1 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "original name" > original.txt

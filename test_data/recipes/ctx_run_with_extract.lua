@@ -15,7 +15,7 @@ stage = function(ctx)
         Get-ChildItem -Name | Set-Content -Path extracted_files.txt
         if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" } else { exit 52 }
         Add-Content -Path file1.txt -Value "Modified by ctx.run"
-      ]], { shell = "powershell" })
+      ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       ls > extracted_files.txt

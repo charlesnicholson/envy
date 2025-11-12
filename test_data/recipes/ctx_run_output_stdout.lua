@@ -15,7 +15,7 @@ stage = function(ctx)
       Write-Output "Line 2 to stdout"
       Write-Output "Line 3 to stdout"
       "stdout test complete" | Out-File -Encoding UTF8 stdout_marker.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Line 1 to stdout"

@@ -16,7 +16,7 @@ stage = function(ctx)
       if (-not $env:UNDEFINED_VARIABLE_XYZ) { throw "Undefined variable" }
       Write-Output "Value: $env:UNDEFINED_VARIABLE_XYZ"
       Set-Content -Path should_not_exist.txt -Value "Should not reach here"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       set -euo pipefail

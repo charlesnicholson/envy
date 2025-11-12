@@ -21,7 +21,7 @@ Set-Content -Path generated.h -Value $header
 Set-Content -Path generated.bat -Value "@echo off`necho Generated script"
 # Also produce generated.sh for test parity
 Set-Content -Path generated.sh -Value "echo Generated script"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
 cat > generated.h <<EOF

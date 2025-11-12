@@ -16,7 +16,7 @@ stage = function(ctx)
       Set-Content -Path verification.txt -Value "All verification checks passed"
       if (-not (Test-Path verification.txt)) { throw "verification.txt missing post write" }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f file1.txt || (echo "Missing file1.txt" && exit 1)

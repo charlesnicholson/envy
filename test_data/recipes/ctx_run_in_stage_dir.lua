@@ -16,7 +16,7 @@ stage = function(ctx)
       if (Test-Path file1.txt) {
         Set-Content -Path stage_verification.txt -Value "Found file1.txt from archive"
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       pwd > pwd_default.txt

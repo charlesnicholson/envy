@@ -12,7 +12,7 @@ stage = function(ctx)
     ctx.run([[
       Write-Output "About to fail"
       exit 9
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       set -euo pipefail

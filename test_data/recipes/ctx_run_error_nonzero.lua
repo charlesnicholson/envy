@@ -15,7 +15,7 @@ stage = function(ctx)
       Write-Output "About to fail"
       Set-Content -Path will_fail.txt -Value "Intentional failure sentinel"
       exit 42
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "About to fail"

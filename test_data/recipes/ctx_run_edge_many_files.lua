@@ -17,7 +17,7 @@ stage = function(ctx)
         Set-Content -Path $path -Value ("File " + $i + " content")
       }
       Set-Content -Path many_files_marker.txt -Value "Created many files"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p many_files

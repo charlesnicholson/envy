@@ -18,7 +18,7 @@ stage = function(ctx)
       Pop-Location
       if (-not (Test-Path build/config.txt)) { exit 1 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p build

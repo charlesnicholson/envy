@@ -16,7 +16,7 @@ stage = function(ctx)
       Add-Content -Path special_chars.txt -Value 'Backslash: \ and newline: (literal)'
       if (-not (Test-Path special_chars.txt)) { exit 1 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Special chars: !@#$%^&*()_+-=[]{}|;:',.<>?/~\`" > special_chars.txt

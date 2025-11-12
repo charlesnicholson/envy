@@ -15,7 +15,7 @@ stage = function(ctx)
       Set-Content -Path temp.txt -Value "old content"
       (Get-Content temp.txt) -replace "old","new" | Set-Content -Path temp.txt
       Add-Content -Path patch_log.txt -Value "Patch applied"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Patching file" > patch_log.txt

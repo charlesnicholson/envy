@@ -15,7 +15,7 @@ stage = function(ctx)
       Set-Content -Path cmd2.txt -Value "Command 2"
       Set-Content -Path cmd3.txt -Value "Command 3"
       Get-Content cmd1.txt, cmd2.txt, cmd3.txt | Set-Content -Path all_cmds.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Command 1" > cmd1.txt

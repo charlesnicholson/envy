@@ -14,7 +14,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run(string.format([[
       Set-Content -Path long_line.txt -Value "%s"
-    ]], long), { shell = "powershell" })
+    ]], long), { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run(string.format([[
       echo "%s" > long_line.txt

@@ -29,7 +29,7 @@ stage = function(ctx)
           Set-Content -Path dir_check.txt -Value "Directory is read-only"
         }
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       if [ "$(uname)" = "Darwin" ]; then

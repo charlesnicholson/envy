@@ -13,7 +13,7 @@ build = function(ctx)
 
   -- This should fail and abort the build
   if ENVY_PLATFORM == "windows" then
-    ctx.run("exit 42", { shell = "powershell" })
+    ctx.run("exit 42", { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("exit 42")
   end

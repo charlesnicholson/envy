@@ -14,7 +14,7 @@ stage = function(ctx)
       [System.Console]::Error.WriteLine("Line 1 to stderr")
       [System.Console]::Error.WriteLine("Line 2 to stderr")
       Set-Content -Path stderr_marker.txt -Value "stderr test complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Line 1 to stderr" >&2

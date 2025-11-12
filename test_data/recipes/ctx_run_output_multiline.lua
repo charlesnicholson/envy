@@ -23,7 +23,7 @@ This is line 5 (after blank line)
 Set-Content -Path output.txt -Value $thisContent
 Get-Content output.txt | ForEach-Object { Write-Output $_ }
 Set-Content -Path multiline_marker.txt -Value "Multi-line test complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
 cat > output.txt <<'MULTILINE'

@@ -13,7 +13,7 @@ build = function(ctx)
 
   -- Create subdirectory
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Path subdir -Force | Out-Null]], { shell = "powershell" })
+    ctx.run([[New-Item -ItemType Directory -Path subdir -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p subdir")
   end
@@ -44,7 +44,7 @@ build = function(ctx)
         exit 1
       }
       Write-Output "CWD subdir verified"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f subdir/marker.txt || exit 1
@@ -54,7 +54,7 @@ build = function(ctx)
 
   -- Create nested structure
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Path nested/deep/dir -Force | Out-Null]], { shell = "powershell" })
+    ctx.run([[New-Item -ItemType Directory -Path nested/deep/dir -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p nested/deep/dir")
   end
@@ -83,7 +83,7 @@ build = function(ctx)
         exit 1
       }
       Write-Output "CWD operations successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f nested/deep/dir/deep_marker.txt || exit 1

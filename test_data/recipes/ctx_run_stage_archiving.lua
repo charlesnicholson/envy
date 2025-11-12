@@ -23,7 +23,7 @@ stage = function(ctx)
       }
       if (-not (Test-Path archive_log.txt)) { exit 1 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       # Create a directory structure

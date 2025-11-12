@@ -15,7 +15,7 @@ stage = function(ctx)
     ctx.run([[ 
       cmd /c nonexistent_command_xyz123
       exit $LASTEXITCODE
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[ 
       nonexistent_command_xyz123

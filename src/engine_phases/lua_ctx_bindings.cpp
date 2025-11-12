@@ -2,6 +2,7 @@
 
 #include "extract.h"
 #include "graph_state.h"
+#include "lua_shell.h"
 #include "manifest.h"
 #include "shell.h"
 #include "tui.h"
@@ -64,6 +65,42 @@ bool is_transitive_dependency(graph_state *state,
   return false;
 }
 
+// Lua C function: ctx.asset(identity) -> path
+int lua_ctx_asset(lua_State *lua) {
+  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  if (!ctx) { return luaL_error(lua, "ctx.asset: missing context"); }
+
+  // Arg 1: identity (required)
+  if (!lua_isstring(lua, 1)) {
+    return luaL_error(lua, "ctx.asset: first argument must be identity string");
+  }
+  char const *identity{ lua_tostring(lua, 1) };
+
+  // Validate dependency declaration
+  if (!is_transitive_dependency(ctx->state, *ctx->key, identity)) {
+    return luaL_error(lua,
+                      "ctx.asset: recipe '%s' does not declare dependency on '%s'",
+                      ctx->key->c_str(),
+                      identity);
+  }
+
+  // Look up dependency in graph_state
+  typename decltype(ctx->state->recipes)::const_accessor acc;
+  if (!ctx->state->recipes.find(acc, identity)) {
+    return luaL_error(lua, "ctx.asset: dependency not found: %s", identity);
+  }
+
+  // Verify dependency is completed
+  if (!acc->second.completed.load()) {
+    return luaL_error(lua, "ctx.asset: dependency not completed: %s", identity);
+  }
+
+  // Return asset_path
+  std::string const path{ acc->second.asset_path.string() };
+  lua_pushstring(lua, path.c_str());
+  return 1;
+}
+
 namespace {
 
 // Lua C function: ctx.run(script, opts?) -> {stdout, stderr}
@@ -93,20 +130,18 @@ int lua_ctx_run(lua_State *lua) {
 #endif
   };
 
-  // Tier 2: Resolve manifest default_shell (if present)
+  // Tier 2: Get manifest default_shell (if present)
   if (ctx->manifest_) {
-    default_shell_cfg manifest_default{ ctx->manifest_->resolve_default_shell(ctx) };
-    if (manifest_default) {
-      // Convert default_shell_value to shell_run_cfg variant
-      std::visit(
-          match{
-              [&shell](shell_choice const &choice) { shell = choice; },
-              [&shell](custom_shell const &custom) {
-                // custom_shell is variant<custom_shell_file, custom_shell_inline>
-                std::visit([&shell](auto &&custom_type) { shell = custom_type; }, custom);
-              },
-          },
-          *manifest_default);
+    default_shell_cfg_t const manifest_default{ ctx->manifest_->get_default_shell(ctx) };
+    if (manifest_default) {  // Convert default_shell_value to shell_run_cfg variant
+      std::visit(match{
+                     [&shell](shell_choice const &choice) { shell = choice; },
+                     [&shell](custom_shell const &custom) {
+                       std::visit([&shell](auto &&custom_type) { shell = custom_type; },
+                                  custom);
+                     },
+                 },
+                 *manifest_default);
     }
   }
 
@@ -152,55 +187,13 @@ int lua_ctx_run(lua_State *lua) {
 
     // Tier 3: Parse shell option (call-site override)
     lua_getfield(lua, 2, "shell");
-    int const shell_type{ lua_type(lua, -1) };
-
-    switch (shell_type) {
-      case LUA_TSTRING: {
-        // String: parse as shell_choice name ("bash", "sh", "cmd", "powershell")
-        std::string value{ lua_tostring(lua, -1) };
-        try {
-          shell = shell_parse_choice(value);
-        } catch (std::exception const &e) {
-          return luaL_error(lua, "ctx.run: %s", e.what());
-        }
-        break;
+    if (!lua_isnil(lua, -1)) {
+      try {
+        shell = parse_shell_config_from_lua(lua, -1, "ctx.run");
+      } catch (std::exception const &e) {
+        lua_pop(lua, 1);
+        return luaL_error(lua, "%s", e.what());
       }
-
-      case LUA_TLIGHTUSERDATA: {
-        // ENVY_SHELL constant (light userdata)
-        void *ud{ lua_touserdata(lua, -1) };
-        auto const choice{ static_cast<shell_choice>(reinterpret_cast<uintptr_t>(ud)) };
-
-        // Validate enum value
-        if (choice != shell_choice::bash && choice != shell_choice::sh &&
-            choice != shell_choice::cmd && choice != shell_choice::powershell) {
-          return luaL_error(lua, "ctx.run: invalid ENVY_SHELL constant");
-        }
-        shell = choice;
-        break;
-      }
-
-      case LUA_TTABLE: {
-        // Custom shell table
-        try {
-          custom_shell custom{ shell_parse_custom_from_lua(lua) };
-          shell_validate_custom(custom);
-          // Unpack custom_shell variant into shell_run_cfg variant
-          std::visit([&shell](auto &&custom_cfg) { shell = custom_cfg; }, custom);
-        } catch (std::exception const &e) {
-          return luaL_error(lua, "ctx.run: %s", e.what());
-        }
-        break;
-      }
-
-      case LUA_TNIL:
-        // No override specified, use manifest default or platform default
-        break;
-
-      default:
-        return luaL_error(
-            lua,
-            "ctx.run: shell option must be a string, ENVY_SHELL constant, or table");
     }
     lua_pop(lua, 1);
   }
@@ -251,42 +244,6 @@ int lua_ctx_run(lua_State *lua) {
 
     return 1;  // Return table
   } catch (std::exception const &e) { return luaL_error(lua, "ctx.run: %s", e.what()); }
-}
-
-// Lua C function: ctx.asset(identity) -> path
-int lua_ctx_asset(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.asset: missing context"); }
-
-  // Arg 1: identity (required)
-  if (!lua_isstring(lua, 1)) {
-    return luaL_error(lua, "ctx.asset: first argument must be identity string");
-  }
-  char const *identity{ lua_tostring(lua, 1) };
-
-  // Validate dependency declaration
-  if (!is_transitive_dependency(ctx->state, *ctx->key, identity)) {
-    return luaL_error(lua,
-                      "ctx.asset: recipe '%s' does not declare dependency on '%s'",
-                      ctx->key->c_str(),
-                      identity);
-  }
-
-  // Look up dependency in graph_state
-  typename decltype(ctx->state->recipes)::const_accessor acc;
-  if (!ctx->state->recipes.find(acc, identity)) {
-    return luaL_error(lua, "ctx.asset: dependency not found: %s", identity);
-  }
-
-  // Verify dependency is completed
-  if (!acc->second.completed.load()) {
-    return luaL_error(lua, "ctx.asset: dependency not completed: %s", identity);
-  }
-
-  // Return asset_path
-  std::string const path{ acc->second.asset_path.string() };
-  lua_pushstring(lua, path.c_str());
-  return 1;
 }
 
 // Lua C function: ctx.copy(src, dst)

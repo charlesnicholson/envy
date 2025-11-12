@@ -139,6 +139,7 @@ target_sources(envy
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
+        src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
         src/recipe_spec.cpp
@@ -236,6 +237,7 @@ target_sources(envy_functional_tester
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
+        src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
         src/phase.cpp
@@ -327,6 +329,7 @@ target_sources(envy_unit_tests
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
+        src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
         src/recipe_spec.cpp
@@ -346,6 +349,8 @@ target_sources(envy_unit_tests
         src/commands/cmd_version_tests.cpp
         src/extract_tests.cpp
         src/fetch_tests.cpp
+        src/lua_shell_tests.cpp
+        src/lua_shell.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp

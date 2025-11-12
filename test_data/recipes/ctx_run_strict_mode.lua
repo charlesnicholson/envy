@@ -15,7 +15,7 @@ stage = function(ctx)
       cmd /c exit /b 7
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       Write-Output "This should not execute"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       set -euo pipefail

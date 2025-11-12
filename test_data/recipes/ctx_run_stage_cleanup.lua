@@ -15,7 +15,7 @@ stage = function(ctx)
       Get-ChildItem -Recurse -Filter *.tmp | Remove-Item -Force -ErrorAction SilentlyContinue
       Get-ChildItem -Recurse -Directory | Where-Object { $_.GetFileSystemInfos().Count -eq 0 } | Remove-Item -Force -ErrorAction SilentlyContinue
       Set-Content -Path cleanup_log.txt -Value "Cleanup complete"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       find . -name "*.bak" -delete

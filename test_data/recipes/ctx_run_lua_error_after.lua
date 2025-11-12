@@ -12,7 +12,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path before_lua_error.txt -Value "Before Lua error"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Before Lua error" > before_lua_error.txt

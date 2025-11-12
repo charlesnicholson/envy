@@ -12,16 +12,16 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path call1.txt -Value "Call 1"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path call2.txt -Value "Call 2"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path call3.txt -Value "Call 3"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Get-Content call1.txt, call2.txt, call3.txt | Set-Content -Path all_calls.txt
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Call 1" > call1.txt

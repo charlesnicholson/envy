@@ -21,7 +21,7 @@ build = function(ctx)
       if (-not (Test-Path -LiteralPath ']] .. ctx.stage_dir .. [[' -PathType Container)) { exit 43 }
       if (-not (Test-Path -LiteralPath ']] .. ctx.install_dir .. [[' -PathType Container)) { exit 44 }
       Write-Output "All directories exist"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -d "]] .. ctx.fetch_dir .. [[" || exit 1
@@ -36,7 +36,7 @@ build = function(ctx)
     ctx.run([[
       if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[/test.tar.gz')) { exit 45 }
       Write-Output "Archive found in fetch_dir"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f "]] .. ctx.fetch_dir .. [[/test.tar.gz" || exit 1
@@ -49,7 +49,7 @@ build = function(ctx)
     ctx.run([[
       Set-Content -LiteralPath "]] .. ctx.install_dir .. [[/build_marker.txt" -Value "Built successfully"
       Set-Content -Path dest_file.txt -Value "dest"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Built successfully" > "]] .. ctx.install_dir .. [[/build_marker.txt"

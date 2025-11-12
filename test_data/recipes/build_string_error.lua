@@ -11,7 +11,7 @@ stage = {strip = 1}
 -- This build script should fail
 build = function(ctx)
   if ENVY_PLATFORM == "windows" then
-    local result = ctx.run([[Write-Output "Starting build"; Write-Error "Intentional failure"; exit 7 ]], { shell = "powershell" })
+    local result = ctx.run([[Write-Output "Starting build"; Write-Error "Intentional failure"; exit 7 ]], { shell = ENVY_SHELL.POWERSHELL })
     -- Force recipe failure regardless of ctx.run non-zero handling mechanics
     error("Intentional failure after ctx.run")
   else

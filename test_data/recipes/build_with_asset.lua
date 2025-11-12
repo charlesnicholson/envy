@@ -29,7 +29,7 @@ build = function(ctx)
       Write-Output "Used dependency data"
       if (-not (Test-Path from_dependency.txt)) { Write-Error "Output artifact missing"; exit 62 }
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     result = ctx.run([[
       cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt

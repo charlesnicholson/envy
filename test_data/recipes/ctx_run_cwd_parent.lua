@@ -12,7 +12,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Force -Path "deep/nested/dir" | Out-Null
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
 
     ctx.run([[
       Set-Content -Path pwd_from_parent.txt -Value (Get-Location).Path

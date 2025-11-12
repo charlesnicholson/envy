@@ -14,7 +14,7 @@ stage = function(ctx)
     ctx.run([[
       cmd /c "echo Start | cmd /c exit /b 3"
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       set -euo pipefail

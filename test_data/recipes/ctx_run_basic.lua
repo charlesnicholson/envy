@@ -14,7 +14,7 @@ stage = function(ctx)
       Set-Content -Path run_marker.txt -Value "Hello from ctx.run"
       Add-Content -Path run_marker.txt -Value ("Stage directory: " + (Get-Location).Path)
       exit 0
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Hello from ctx.run" > run_marker.txt

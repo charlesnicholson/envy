@@ -14,7 +14,7 @@ build = function(ctx)
   -- Create build artifacts
   local result
   if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]], { shell = "cmd" })
+    result = ctx.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]], { shell = ENVY_SHELL.CMD })
   else
     result = ctx.run([[
       mkdir -p build_output

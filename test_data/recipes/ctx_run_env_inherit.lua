@@ -19,7 +19,7 @@ stage = function(ctx)
       } else {
         exit 1
       }
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "PATH=$PATH" > inherited_path.txt

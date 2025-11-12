@@ -16,5 +16,5 @@ stage = function(ctx)
 @echo off
 setlocal enabledelayedexpansion
 echo shell=cmd>shell_cmd_marker.txt
-  ]], { shell = "cmd" })
+  ]], { shell = ENVY_SHELL.CMD })
 end

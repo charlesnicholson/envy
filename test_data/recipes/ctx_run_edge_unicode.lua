@@ -14,7 +14,7 @@ stage = function(ctx)
       Set-Content -Path unicode.txt -Value "Unicode: Hello 世界 🌍 café"
       Add-Content -Path unicode.txt -Value "More Unicode: Ω α β γ δ"
       Add-Content -Path unicode.txt -Value "Emoji: 😀 🎉 🚀"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       echo "Unicode: Hello 世界 🌍 café" > unicode.txt

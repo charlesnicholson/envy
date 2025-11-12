@@ -10,10 +10,10 @@ stage = function(ctx)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[]], { shell = "powershell" })
+    ctx.run([[]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path after_empty.txt -Value "After empty script"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[]])
     ctx.run([[

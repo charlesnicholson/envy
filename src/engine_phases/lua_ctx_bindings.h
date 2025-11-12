@@ -50,4 +50,8 @@ bool is_transitive_dependency(graph_state *state,
                               std::string const &current_key,
                               std::string const &target_identity);
 
+// Lua C function: ctx.asset(identity) -> path
+// Exposed for use in default_shell functions (in manifest.cpp)
+int lua_ctx_asset(lua_State *lua);
+
 }  // namespace envy

@@ -18,7 +18,7 @@ int main() { printf("Hello\n"); return 0; }
 Set-Content -Path hello.c -Value $source
 Set-Content -Path compile_log.txt -Value "Compiling hello.c..."
 Add-Content -Path compile_log.txt -Value "Compilation successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
 cat > hello.c <<'EOF'

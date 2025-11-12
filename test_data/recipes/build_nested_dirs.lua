@@ -23,7 +23,7 @@ build = function(ctx)
       Set-Content -Path output/include/app.h -Value "header"
       Set-Content -Path output/include/subproject/sub.h -Value "nested_header"
       Set-Content -Path output/share/doc/README.md -Value "documentation"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       mkdir -p output/bin
@@ -65,7 +65,7 @@ build = function(ctx)
         exit 1
       }
       Write-Output "Nested directory operations successful"
-    ]], { shell = "powershell" })
+    ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[
       test -f copied_output/bin/app || exit 1
