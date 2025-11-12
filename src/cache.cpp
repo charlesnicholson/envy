@@ -96,8 +96,33 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     remove_all_noexcept(fetch_dir());
     platform::touch_file(m->entry_dir_ / "envy-complete");
   } else {
+    // Check if install_dir AND fetch_dir are empty (programmatic package didn't use cache
+    // at all)
+    std::error_code ec;
+    bool install_dir_empty{ true };
+    for (std::filesystem::directory_iterator it{ install_dir(), ec };
+         !ec && it != std::filesystem::directory_iterator{};
+         ++it) {
+      install_dir_empty = false;
+      break;
+    }
+
+    bool fetch_dir_empty{ true };
+    for (std::filesystem::directory_iterator it{ fetch_dir(), ec };
+         !ec && it != std::filesystem::directory_iterator{};
+         ++it) {
+      fetch_dir_empty = false;
+      break;
+    }
+
     remove_all_noexcept(install_dir());
     remove_all_noexcept(work_dir());
+
+    // If both install_dir and fetch_dir were completely empty, wipe entire cache entry
+    if (!ec && install_dir_empty && fetch_dir_empty) {
+      remove_all_noexcept(fetch_dir());
+      remove_all_noexcept(m->asset_dir());
+    }
   }
 
   platform::unlock_file(m->lock_handle_);
@@ -123,6 +148,8 @@ void cache::scoped_entry_lock::mark_fetch_complete() {
   std::filesystem::create_directories(fetch_dir());
   platform::touch_file(fetch_dir() / "envy-complete");
 }
+
+bool cache::scoped_entry_lock::is_install_complete() const { return m->completed_; }
 
 bool cache::scoped_entry_lock::is_fetch_complete() const {
   return std::filesystem::exists(fetch_dir() / "envy-complete");

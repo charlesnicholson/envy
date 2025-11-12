@@ -25,6 +25,7 @@ class cache : unmovable {
 
     void mark_install_complete();
     void mark_fetch_complete();
+    bool is_install_complete() const;
     bool is_fetch_complete() const;
 
     path install_dir() const;
