@@ -1,6 +1,6 @@
 #include "phase_recipe_fetch.h"
 
-#include "create_recipe_nodes.h"
+#include "../create_recipe_nodes.h"
 #include "fetch.h"
 #include "sha256.h"
 #include "tui.h"

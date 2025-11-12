@@ -1,6 +1,6 @@
 #pragma once
 
-#include "graph_state.h"
+#include "../graph_state.h"
 
 #include <string>
 

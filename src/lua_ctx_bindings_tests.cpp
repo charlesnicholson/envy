@@ -1,5 +1,5 @@
-#include "engine_phases/graph_state.h"
-#include "engine_phases/lua_ctx_bindings.h"
+#include "graph_state.h"
+#include "lua_ctx_bindings.h"
 
 #include "doctest.h"
 

@@ -1,13 +1,13 @@
 #include "create_recipe_nodes.h"
 
-#include "phase_build.h"
-#include "phase_check.h"
-#include "phase_completion.h"
-#include "phase_deploy.h"
-#include "phase_fetch.h"
-#include "phase_install.h"
-#include "phase_recipe_fetch.h"
-#include "phase_stage.h"
+#include "engine_phases/phase_build.h"
+#include "engine_phases/phase_check.h"
+#include "engine_phases/phase_completion.h"
+#include "engine_phases/phase_deploy.h"
+#include "engine_phases/phase_fetch.h"
+#include "engine_phases/phase_install.h"
+#include "engine_phases/phase_recipe_fetch.h"
+#include "engine_phases/phase_stage.h"
 
 #include <stdexcept>
 
