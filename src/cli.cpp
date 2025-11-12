@@ -35,6 +35,21 @@ cli_args cli_parse(int argc, char **argv) {
   auto *version{ app.add_subcommand("version", "Show version information") };
   version->callback([&cmd_cfg] { cmd_cfg = cmd_version::cfg{}; });
 
+  // Asset subcommand
+  cmd_asset::cfg query_asset_cfg{};
+  auto *asset{ app.add_subcommand("asset",
+                                  "Query and install package, print asset path") };
+  asset
+      ->add_option("identity",
+                   query_asset_cfg.identity,
+                   "Recipe identity (namespace.name@version)")
+      ->required();
+  asset->add_option("--manifest",
+                    query_asset_cfg.manifest_path,
+                    "Path to envy.lua manifest");
+  asset->add_option("--cache-root", query_asset_cfg.cache_root, "Cache root directory");
+  asset->callback([&cmd_cfg, &query_asset_cfg] { cmd_cfg = query_asset_cfg; });
+
   // Extract subcommand
   cmd_extract::cfg extract_cfg{};
   auto *extract{ app.add_subcommand("extract", "Extract archive to destination") };

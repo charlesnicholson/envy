@@ -130,12 +130,25 @@ target_sources(envy
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
+        src/commands/cmd_asset.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
         src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_playground.cpp
         src/commands/cmd_version.cpp
+        src/engine.cpp
+        src/create_recipe_nodes.cpp
+        src/graph_state.cpp
+        src/lua_ctx_bindings.cpp
+        src/engine_phases/phase_build.cpp
+        src/engine_phases/phase_check.cpp
+        src/engine_phases/phase_completion.cpp
+        src/engine_phases/phase_deploy.cpp
+        src/engine_phases/phase_fetch.cpp
+        src/engine_phases/phase_install.cpp
+        src/engine_phases/phase_recipe_fetch.cpp
+        src/engine_phases/phase_stage.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
@@ -214,6 +227,7 @@ target_sources(envy_functional_tester
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
+        src/commands/cmd_asset.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
         src/commands/cmd_hash.cpp
@@ -320,12 +334,25 @@ target_sources(envy_unit_tests
         src/cache.cpp
         src/cli.cpp
         src/cmd.cpp
+        src/commands/cmd_asset.cpp
         src/commands/cmd_extract.cpp
         src/commands/cmd_fetch.cpp
         src/commands/cmd_hash.cpp
         src/commands/cmd_lua.cpp
         src/commands/cmd_version.cpp
         src/commands/cmd_playground.cpp
+        src/engine.cpp
+        src/create_recipe_nodes.cpp
+        src/graph_state.cpp
+        src/lua_ctx_bindings.cpp
+        src/engine_phases/phase_build.cpp
+        src/engine_phases/phase_check.cpp
+        src/engine_phases/phase_completion.cpp
+        src/engine_phases/phase_deploy.cpp
+        src/engine_phases/phase_fetch.cpp
+        src/engine_phases/phase_install.cpp
+        src/engine_phases/phase_recipe_fetch.cpp
+        src/engine_phases/phase_stage.cpp
         src/extract.cpp
         src/aws_util.cpp
         src/blake3_util.cpp
