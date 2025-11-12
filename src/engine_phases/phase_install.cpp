@@ -28,15 +28,14 @@ bool directory_has_entries(std::filesystem::path const &dir) {
   std::error_code ec;
   if (!std::filesystem::exists(dir, ec) || ec) { return false; }
 
-  std::filesystem::directory_iterator end_iter;
-  for (std::filesystem::directory_iterator it{ dir, ec }; !ec && it != end_iter; ++it) {
-    return true;
-  }
-
+  std::filesystem::directory_iterator it{ dir, ec };
   if (ec) {
     throw std::runtime_error("Failed to enumerate directory " + dir.string() + ": " +
                              ec.message());
   }
+
+  std::filesystem::directory_iterator end_iter;
+  for (; it != end_iter; ++it) { return true; }
 
   return false;
 }

@@ -96,30 +96,32 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     remove_all_noexcept(fetch_dir());
     platform::touch_file(m->entry_dir_ / "envy-complete");
   } else {
-    // Check if install_dir AND fetch_dir are empty (programmatic package didn't use cache
-    // at all)
+    // Check empty install_dir AND fetch_dir (installation didn't use cache at all)
     std::error_code ec;
-    bool install_dir_empty{ true };
-    for (std::filesystem::directory_iterator it{ install_dir(), ec };
-         !ec && it != std::filesystem::directory_iterator{};
-         ++it) {
-      install_dir_empty = false;
-      break;
-    }
 
-    bool fetch_dir_empty{ true };
-    for (std::filesystem::directory_iterator it{ fetch_dir(), ec };
-         !ec && it != std::filesystem::directory_iterator{};
-         ++it) {
-      fetch_dir_empty = false;
-      break;
-    }
+    bool const install_dir_empty{ [&] {  // Check install_dir
+      std::filesystem::directory_iterator it{ install_dir(), ec };
+      if (ec) {
+        ec.clear();
+        return false;  // Conservative assumption: treat as not empty if error
+      }
+      return it == std::filesystem::directory_iterator{};
+    }() };
+
+    bool const fetch_dir_empty{ [&] {  // Check fetch_dir
+      std::filesystem::directory_iterator it{ fetch_dir(), ec };
+      if (ec) {
+        ec.clear();
+        return false;  // Conservative assumption: treat as not empty if error
+      }
+      return it == std::filesystem::directory_iterator{};
+    }() };
 
     remove_all_noexcept(install_dir());
     remove_all_noexcept(work_dir());
 
     // If both install_dir and fetch_dir were completely empty, wipe entire cache entry
-    if (!ec && install_dir_empty && fetch_dir_empty) {
+    if (install_dir_empty && fetch_dir_empty) {
       remove_all_noexcept(fetch_dir());
       remove_all_noexcept(m->asset_dir());
     }
