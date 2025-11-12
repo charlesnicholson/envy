@@ -1,4 +1,4 @@
--- Recipe that uses needed_by="recipe_fetch" and accesses direct dependency in fetch phase
+-- Recipe with needed_by="fetch" accessing direct dependency in fetch phase
 identity = "local.dep_val_needed_by_direct@v1"
 
 dependencies = {

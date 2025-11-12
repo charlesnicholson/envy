@@ -350,7 +350,6 @@ target_sources(envy_unit_tests
         src/extract_tests.cpp
         src/fetch_tests.cpp
         src/lua_shell_tests.cpp
-        src/lua_shell.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp
