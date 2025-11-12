@@ -110,7 +110,7 @@ fetch = {{
             self.assertTrue(
                 identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
             )
-            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            variant_dirs = list(identity_dir.glob("*-blake3-*"))
             self.assertEqual(
                 len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
             )
@@ -220,7 +220,7 @@ fetch = {{
             self.assertTrue(
                 identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
             )
-            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            variant_dirs = list(identity_dir.glob("*-blake3-*"))
             self.assertEqual(
                 len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
             )
@@ -317,7 +317,7 @@ fetch = {{
             self.assertNotEqual(result_setup.returncode, 0)
 
             # Now find the fetch directory and corrupt one of the files
-            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            variant_dirs = list(identity_dir.glob("*-blake3-*"))
             self.assertEqual(
                 len(variant_dirs), 1, f"Expected 1 variant dir: {variant_dirs}"
             )
@@ -421,7 +421,7 @@ fetch = {{
             self.assertNotEqual(result_setup.returncode, 0)
 
             # Find fetch directory
-            variant_dirs = list(identity_dir.glob("*-sha256-*"))
+            variant_dirs = list(identity_dir.glob("*-blake3-*"))
             self.assertEqual(len(variant_dirs), 1)
             fetch_dir = variant_dirs[0] / "fetch"
             fetch_dir.mkdir(parents=True, exist_ok=True)

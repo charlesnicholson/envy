@@ -79,7 +79,7 @@ bool cmd_cache_ensure_asset::execute() {
 
     // Construct lock file path for reporting
     std::string entry_name{ cfg_.identity + "." + cfg_.platform + "-" + cfg_.arch +
-                            "-sha256-" + cfg_.hash_prefix };
+                            "-blake3-" + cfg_.hash_prefix };
     std::filesystem::path lock_file{ c.root() / "locks" /
                                      ("assets." + entry_name + ".lock") };
 

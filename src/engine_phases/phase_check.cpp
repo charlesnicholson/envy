@@ -40,7 +40,6 @@ void run_check_phase(std::string const &key, graph_state &state) {
     if (installed) {
       typename decltype(state.recipes)::accessor acc;
       if (state.recipes.find(acc, key)) {
-        acc->second.asset_path = "/placeholder/asset/path";
         acc->second.completion_node->try_put(tbb::flow::continue_msg{});
       }
       tui::trace("phase check: user check returned true, triggered completion");
