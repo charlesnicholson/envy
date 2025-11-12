@@ -126,36 +126,42 @@ fetch_result fetch_git_repo(std::string const &url,
 
   scoped_git_init git_guard;
 
-  git_repository *repo_raw{ nullptr };
-  git_clone_options clone_opts;
-  git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
-
-  clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
-  clone_opts.fetch_opts.callbacks.payload = const_cast<fetch_progress_cb_t *>(&progress);
-
-  if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
-    git_error const *git_err{ git_error_last() };
-    std::string msg{ "fetch_git: clone failed: " };
-    if (git_err) { msg += git_err->message; }
-    throw std::runtime_error(msg);
-  }
-
   std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{
-    repo_raw,
+    [&]() -> git_repository * {
+      git_clone_options clone_opts;
+      git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
+
+      clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
+      clone_opts.fetch_opts.callbacks.payload =
+          const_cast<fetch_progress_cb_t *>(&progress);
+
+      git_repository *repo_raw{ nullptr };
+      if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
+        git_error const *git_err{ git_error_last() };
+        std::string msg{ "fetch_git: clone failed: " };
+        if (git_err) { msg += git_err->message; }
+        throw std::runtime_error(msg);
+      }
+
+      return repo_raw;
+    }(),
     git_repository_free
   };
 
   // Look up and checkout the specified ref
-  git_object *target_obj{ nullptr };
-  if (git_revparse_single(&target_obj, repo.get(), ref.c_str())) {
-    git_error const *git_err{ git_error_last() };
-    std::string msg{ "fetch_git: failed to resolve ref '" + ref + "': " };
-    if (git_err) { msg += git_err->message; }
-    throw std::runtime_error(msg);
-  }
-
-  std::unique_ptr<git_object, decltype(&git_object_free)> target{ target_obj,
-                                                                  git_object_free };
+  std::unique_ptr<git_object, decltype(&git_object_free)> target{
+    [&]() -> git_object * {
+      git_object *target_obj{ nullptr };
+      if (git_revparse_single(&target_obj, repo.get(), ref.c_str())) {
+        git_error const *git_err{ git_error_last() };
+        std::string msg{ "fetch_git: failed to resolve ref '" + ref + "': " };
+        if (git_err) { msg += git_err->message; }
+        throw std::runtime_error(msg);
+      }
+      return target_obj;
+    }(),
+    git_object_free
+  };
 
   git_checkout_options checkout_opts;
   git_checkout_options_init(&checkout_opts, GIT_CHECKOUT_OPTIONS_VERSION);
