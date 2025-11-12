@@ -256,6 +256,57 @@ fetch = {
         self.assertIn("downloading", stderr_lower, f"Expected download log: {result.stderr}")
         self.assertIn("3", result.stderr, f"Expected 3 files mentioned: {result.stderr}")
 
+    def test_declarative_fetch_git(self):
+        """Recipe with git fetch downloads repository."""
+        recipe_content = """-- Test declarative fetch with git repository
+identity = "local.fetch_git_test@v1"
+
+fetch = {
+    source = "https://github.com/ninja-build/ninja.git",
+    ref = "v1.11.1"
+}
+
+function check(ctx)
+    return false
+end
+
+function install(ctx)
+    -- Verify the fetched git repo is available
+    local readme = ctx.fetch_dir .. "/ninja.git/README.md"
+    local f = io.open(readme, "r")
+    if not f then
+        error("Could not find README.md in fetched git repo")
+    end
+    f:close()
+
+    -- Verify .git was removed
+    local git_dir = ctx.fetch_dir .. "/ninja.git/.git"
+    local g = io.open(git_dir, "r")
+    if g then
+        g:close()
+        error(".git directory should have been removed")
+    end
+end
+"""
+        recipe_path = self.cache_root / "fetch_git_test.lua"
+        recipe_path.write_text(recipe_content)
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_git_test@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.fetch_git_test@v1", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

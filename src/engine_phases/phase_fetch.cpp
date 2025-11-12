@@ -46,6 +46,7 @@ struct fetch_spec {
 struct table_entry {
   std::string url;
   std::string sha256;
+  std::optional<std::string> ref;
 };
 
 // Context data for Lua C functions (stored as userdata upvalue)
@@ -457,7 +458,7 @@ void run_programmatic_fetch(lua_State *lua,
   std::filesystem::remove_all(tmp_dir);
 }
 
-// Extract source and sha256 from a Lua table at the top of the stack.
+// Extract source, sha256, and ref from a Lua table at the top of the stack.
 table_entry parse_table_entry(lua_State *lua, std::string const &context) {
   if (!lua_istable(lua, -1)) { throw std::runtime_error("Expected table in " + context); }
 
@@ -474,12 +475,18 @@ table_entry parse_table_entry(lua_State *lua, std::string const &context) {
   if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
   lua_pop(lua, 1);
 
-  return { std::move(url), std::move(sha256) };
+  lua_getfield(lua, -1, "ref");
+  std::optional<std::string> ref;
+  if (lua_isstring(lua, -1)) { ref = lua_tostring(lua, -1); }
+  lua_pop(lua, 1);
+
+  return { std::move(url), std::move(sha256), std::move(ref) };
 }
 
-// Create fetch_spec from URL and SHA256, checking for filename collisions.
+// Create fetch_spec from URL, SHA256, and optional ref, checking for filename collisions.
 fetch_spec create_fetch_spec(std::string url,
                              std::string sha256,
+                             std::optional<std::string> ref,
                              std::filesystem::path const &fetch_dir,
                              std::unordered_set<std::string> &basenames,
                              std::string const &context) {
@@ -522,8 +529,12 @@ fetch_spec create_fetch_spec(std::string url,
       // TODO: file_root support for declarative fetch
       break;
     case uri_scheme::GIT:
-      // TODO: ref support for declarative git fetch
-      throw std::runtime_error("Git URLs not yet supported in declarative fetch: " + context);
+      if (!ref.has_value() || ref->empty()) {
+        throw std::runtime_error("Git URLs require 'ref' field in declarative fetch: " +
+                                 context);
+      }
+      req = fetch_request_git{ .source = url, .destination = dest, .ref = *ref };
+      break;
     default:
       throw std::runtime_error("Unsupported URL scheme in " + context);
   }
@@ -571,7 +582,9 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
           req = fetch_request_file{ .source = url, .destination = dest };
           break;
         case uri_scheme::GIT:
-          throw std::runtime_error("Git URLs not yet supported in declarative fetch: " + key);
+          throw std::runtime_error(
+              "Git URLs in string format not supported. Use table format with 'ref' field: " +
+              key);
         default:
           throw std::runtime_error("Unsupported URL scheme in " + key);
       }
@@ -592,6 +605,7 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
         auto entry{ parse_table_entry(lua, key) };
         specs.push_back(create_fetch_spec(std::move(entry.url),
                                           std::move(entry.sha256),
+                                          std::move(entry.ref),
                                           fetch_dir,
                                           basenames,
                                           key));
@@ -613,8 +627,8 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
             std::string url{ lua_tostring(lua, -1) };
             lua_pop(lua, 1);
 
-            specs.push_back(
-                create_fetch_spec(std::move(url), "", fetch_dir, basenames, key));
+            specs.push_back(create_fetch_spec(
+                std::move(url), "", std::nullopt, fetch_dir, basenames, key));
           }
           break;
         }
