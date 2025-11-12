@@ -4,11 +4,11 @@ identity = "local.dep_val_transitive@v1"
 dependencies = {
   -- We depend on tool, which depends on lib
   -- So we should be able to access lib transitively
-  { recipe = "local.dep_val_tool@v1", file = "dep_val_tool.lua" }
+  { recipe = "local.dep_val_tool@v1", source = "dep_val_tool.lua" }
 }
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 

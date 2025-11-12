@@ -2,7 +2,7 @@
 identity = "local.dep_val_needed_by_direct@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_needed_by_base@v1", file = "dep_val_needed_by_base.lua", needed_by = "fetch" }
+  { recipe = "local.dep_val_needed_by_base@v1", source = "dep_val_needed_by_base.lua", needed_by = "fetch" }
 }
 
 fetch = function(ctx)

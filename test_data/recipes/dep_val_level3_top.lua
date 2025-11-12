@@ -3,11 +3,11 @@
 identity = "local.dep_val_level3_top@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_level3_mid@v1", file = "dep_val_level3_mid.lua" }
+  { recipe = "local.dep_val_level3_mid@v1", source = "dep_val_level3_mid.lua" }
 }
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 

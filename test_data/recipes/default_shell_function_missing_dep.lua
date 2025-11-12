@@ -4,7 +4,7 @@ identity = "local.default_shell_function_missing_dep@v1"
 -- Intentionally NOT declaring dependency on default_shell_dep_tool
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 

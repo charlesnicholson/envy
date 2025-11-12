@@ -4,9 +4,9 @@ identity = "local.dep_val_shell_missing_dep@v1"
 -- Depend on tool, making lib available in the graph (tool depends on lib)
 -- But we'll try to access an unrelated recipe that's also in the graph
 dependencies = {
-  { recipe = "local.dep_val_tool@v1", file = "dep_val_tool.lua" },
+  { recipe = "local.dep_val_tool@v1", source = "dep_val_tool.lua" },
   -- Also add unrelated to graph so it exists but is not our dependency
-  { recipe = "local.dep_val_unrelated@v1", file = "dep_val_unrelated.lua" }
+  { recipe = "local.dep_val_unrelated@v1", source = "dep_val_unrelated.lua" }
 }
 
 default_shell = function(ctx)
@@ -19,7 +19,7 @@ default_shell = function(ctx)
 end
 
 fetch = {
-  url = "test_data/archives/test.tar.gz",
+  source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 

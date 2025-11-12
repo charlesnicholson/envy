@@ -142,7 +142,7 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
 
 TEST_CASE("manifest::load parses simple string package") {
   char const *script{ R"(
-    packages = { { recipe = "arm.gcc@v2", file = "/fake/r.lua" } }
+    packages = { { recipe = "arm.gcc@v2", source = "/fake/r.lua" } }
   )" };
 
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
@@ -156,9 +156,9 @@ TEST_CASE("manifest::load parses simple string package") {
 TEST_CASE("manifest::load parses multiple string packages") {
   char const *script{ R"(
     packages = {
-      { recipe = "arm.gcc@v2", file = "/fake/r.lua" },
-      { recipe = "gnu.binutils@v3", file = "/fake/r.lua" },
-      { recipe = "vendor.openocd@v1", file = "/fake/r.lua" }
+      { recipe = "arm.gcc@v2", source = "/fake/r.lua" },
+      { recipe = "gnu.binutils@v3", source = "/fake/r.lua" },
+      { recipe = "vendor.openocd@v1", source = "/fake/r.lua" }
     }
   )" };
 
@@ -175,7 +175,7 @@ TEST_CASE("manifest::load parses table package with remote source") {
     packages = {
       {
         recipe = "arm.gcc@v2",
-        url = "https://example.com/gcc.lua",
+        source = "https://example.com/gcc.lua",
         sha256 = "abc123"
       }
     }
@@ -198,7 +198,7 @@ TEST_CASE("manifest::load parses table package with local source") {
     packages = {
       {
         recipe = "local.wrapper@v1",
-        file = "./recipes/wrapper.lua"
+        source = "./recipes/wrapper.lua"
       }
     }
   )" };
@@ -217,7 +217,7 @@ TEST_CASE("manifest::load parses table package with options") {
   char const *script{ R"(
     packages = {
       {
-        recipe = "arm.gcc@v2", file = "/fake/r.lua",
+        recipe = "arm.gcc@v2", source = "/fake/r.lua",
         options = {
           version = "13.2.0",
           target = "arm-none-eabi"
@@ -238,14 +238,14 @@ TEST_CASE("manifest::load parses table package with options") {
 TEST_CASE("manifest::load parses mixed string and table packages") {
   char const *script{ R"(
     packages = {
-      { recipe = "envy.homebrew@v4", file = "/fake/r.lua" },
+      { recipe = "envy.homebrew@v4", source = "/fake/r.lua" },
       {
         recipe = "arm.gcc@v2",
-        url = "https://example.com/gcc.lua",
+        source = "https://example.com/gcc.lua",
         sha256 = "abc123",
         options = { version = "13.2.0" }
       },
-      { recipe = "gnu.make@v1", file = "/fake/r.lua" }
+      { recipe = "gnu.make@v1", source = "/fake/r.lua" }
     }
   )" };
 
@@ -261,11 +261,11 @@ TEST_CASE("manifest::load allows platform conditionals") {
   char const *script{ R"(
     packages = {}
     if ENVY_PLATFORM == "darwin" then
-      packages = { { recipe = "envy.homebrew@v4", file = "/fake/r.lua" } }
+      packages = { { recipe = "envy.homebrew@v4", source = "/fake/r.lua" } }
     elseif ENVY_PLATFORM == "linux" then
-      packages = { { recipe = "system.apt@v1", file = "/fake/r.lua" } }
+      packages = { { recipe = "system.apt@v1", source = "/fake/r.lua" } }
     elseif ENVY_PLATFORM == "windows" then
-      packages = { { recipe = "system.choco@v1", file = "/fake/r.lua" } }
+      packages = { { recipe = "system.choco@v1", source = "/fake/r.lua" } }
     end
   )" };
 
@@ -295,7 +295,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
     packages = {
       {
         recipe = "local.tool@v1",
-        file = "../sibling/tool.lua"
+        source = "../sibling/tool.lua"
       }
     }
   )" };
@@ -337,7 +337,7 @@ TEST_CASE("manifest::load errors on invalid package entry type") {
 TEST_CASE("manifest::load errors on missing recipe field") {
   char const *script{ R"(
     packages = {
-      { url = "https://example.com/foo.lua" }
+      { source = "https://example.com/foo.lua" }
     }
   )" };
 
@@ -360,7 +360,7 @@ TEST_CASE("manifest::load errors on non-string recipe field") {
 
 TEST_CASE("manifest::load errors on invalid recipe identity format") {
   char const *script{ R"(
-    packages = { { recipe = "invalid-no-at-sign", file = "/fake/r.lua" } }
+    packages = { { recipe = "invalid-no-at-sign", source = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -370,7 +370,7 @@ TEST_CASE("manifest::load errors on invalid recipe identity format") {
 
 TEST_CASE("manifest::load errors on identity missing namespace") {
   char const *script{ R"(
-    packages = { { recipe = "gcc@v2", file = "/fake/r.lua" } }
+    packages = { { recipe = "gcc@v2", source = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -380,7 +380,7 @@ TEST_CASE("manifest::load errors on identity missing namespace") {
 
 TEST_CASE("manifest::load errors on identity missing version") {
   char const *script{ R"(
-    packages = { { recipe = "arm.gcc@", file = "/fake/r.lua" } }
+    packages = { { recipe = "arm.gcc@", source = "/fake/r.lua" } }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
@@ -388,28 +388,14 @@ TEST_CASE("manifest::load errors on identity missing version") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on both url and file") {
-  char const *script{ R"(
-    packages = {
-      {
-        recipe = "arm.gcc@v2",
-        url = "https://example.com/gcc.lua",
-        file = "./local.lua"
-      }
-    }
-  )" };
-
-  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe cannot specify both 'url' and 'file'",
-                       std::runtime_error);
-}
+// Test removed - can no longer specify both url and file since we unified to 'source'
 
 TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   char const *script{ R"(
     packages = {
       {
         recipe = "arm.gcc@v2",
-        url = "https://example.com/gcc.lua"
+        source = "https://example.com/gcc.lua"
       }
     }
   )" };
@@ -423,19 +409,19 @@ TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
 
-TEST_CASE("manifest::load errors on non-string url") {
+TEST_CASE("manifest::load errors on non-string source") {
   char const *script{ R"(
     packages = {
       {
         recipe = "arm.gcc@v2",
-        url = 123,
+        source = 123,
         sha256 = "abc"
       }
     }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'url' field must be string",
+                       "Recipe 'source' field must be string",
                        std::runtime_error);
 }
 
@@ -444,7 +430,7 @@ TEST_CASE("manifest::load errors on non-string sha256") {
     packages = {
       {
         recipe = "arm.gcc@v2",
-        url = "https://example.com/gcc.lua",
+        source = "https://example.com/gcc.lua",
         sha256 = 123
       }
     }
@@ -455,18 +441,18 @@ TEST_CASE("manifest::load errors on non-string sha256") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on non-string file") {
+TEST_CASE("manifest::load errors on non-string source (local)") {
   char const *script{ R"(
     packages = {
       {
         recipe = "local.tool@v1",
-        file = 123
+        source = 123
       }
     }
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'file' field must be string",
+                       "Recipe 'source' field must be string",
                        std::runtime_error);
 }
 
@@ -475,7 +461,7 @@ TEST_CASE("manifest::load errors on non-table options") {
     packages = {
       {
         recipe = "arm.gcc@v2",
-        file = "/fake/r.lua",
+        source = "/fake/r.lua",
         options = "not a table"
       }
     }
@@ -490,7 +476,7 @@ TEST_CASE("manifest::load accepts non-string option values") {
   char const *script{ R"(
     packages = {
       {
-        recipe = "arm.gcc@v2", file = "/fake/r.lua",
+        recipe = "arm.gcc@v2", source = "/fake/r.lua",
         options = { version = 123, debug = true, nested = { key = "value" } }
       }
     }
@@ -510,8 +496,8 @@ TEST_CASE("manifest::load accepts non-string option values") {
 TEST_CASE("manifest::load allows same identity with different options") {
   char const *script{ R"(
     packages = {
-      { recipe = "arm.gcc@v2", file = "/fake/r.lua", options = { version = "13.2.0" } },
-      { recipe = "arm.gcc@v2", file = "/fake/r.lua", options = { version = "12.0.0" } }
+      { recipe = "arm.gcc@v2", source = "/fake/r.lua", options = { version = "13.2.0" } },
+      { recipe = "arm.gcc@v2", source = "/fake/r.lua", options = { version = "12.0.0" } }
     }
   )" };
 
@@ -523,8 +509,8 @@ TEST_CASE("manifest::load allows same identity with different options") {
 TEST_CASE("manifest::load allows duplicate packages") {
   char const *script{ R"(
     packages = {
-      { recipe = "arm.gcc@v2", file = "/fake/r.lua" },
-      { recipe = "arm.gcc@v2", file = "/fake/r.lua" }
+      { recipe = "arm.gcc@v2", source = "/fake/r.lua" },
+      { recipe = "arm.gcc@v2", source = "/fake/r.lua" }
     }
   )" };
 

@@ -5,7 +5,7 @@ identity = "remote.badrecipe@v1"
 dependencies = {
   {
     recipe = "local.simple@v1",
-    file = "simple.lua"
+    source = "simple.lua"
   }
 }
 

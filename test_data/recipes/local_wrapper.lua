@@ -5,7 +5,7 @@ identity = "local.wrapper@v1"
 dependencies = {
   {
     recipe = "remote.base@v1",
-    url = "remote_base.lua"
+    source = "remote_base.lua"
     -- No SHA256 (permissive mode - for testing)
   }
 }
