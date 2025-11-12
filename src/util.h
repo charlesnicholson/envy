@@ -52,6 +52,10 @@ using file_ptr_t = std::unique_ptr<std::FILE, file_deleter>;
 // On Windows, uses _wfopen for proper Unicode path support.
 file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 
+// Load entire file into memory as bytes.
+// Throws std::runtime_error if file cannot be opened or read.
+std::vector<unsigned char> util_load_file(std::filesystem::path const &path);
+
 class scoped_path_cleanup : public unmovable {
  public:
   explicit scoped_path_cleanup(std::filesystem::path path);

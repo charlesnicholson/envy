@@ -7,7 +7,6 @@
 
 #include <filesystem>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <vector>
 

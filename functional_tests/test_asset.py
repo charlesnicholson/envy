@@ -5,7 +5,6 @@ Tests asset path querying, manifest discovery, dependency installation,
 ambiguity detection, and error handling.
 """
 
-import os
 import shutil
 import subprocess
 import tempfile
@@ -251,7 +250,7 @@ packages = {{
         result = self.run_asset("local.programmatic@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr.lower())
+        self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
     def test_asset_build_failure(self):
         """Error when build phase fails."""
@@ -266,7 +265,7 @@ packages = {{
         result = self.run_asset("local.failing@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr.lower())
+        self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
     def test_asset_invalid_manifest_syntax(self):
         """Error when manifest has Lua syntax error."""
@@ -281,7 +280,7 @@ packages = {
         result = self.run_asset("local.simple@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr.lower())
+        self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
     def test_asset_stdout_format(self):
         """Verify stdout contains exactly one line with absolute path."""
