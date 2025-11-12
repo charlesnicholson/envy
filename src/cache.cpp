@@ -185,7 +185,7 @@ cache::ensure_result cache::ensure_asset(std::string_view identity,
                                          std::string_view hash_prefix) {
   std::string const variant{ [&] {
     std::ostringstream oss;
-    oss << platform << "-" << arch << "-sha256-" << hash_prefix;
+    oss << platform << "-" << arch << "-blake3-" << hash_prefix;
     return oss.str();
   }() };
 

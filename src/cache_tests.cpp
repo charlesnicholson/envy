@@ -18,7 +18,7 @@ std::filesystem::path make_temp_root() {
   return root;
 }
 
-std::string make_entry_name() { return "foo.darwin-arm64-sha256-deadbeef"; }
+std::string make_entry_name() { return "foo.darwin-arm64-blake3-deadbeef"; }
 
 }  // namespace
 
@@ -102,7 +102,7 @@ TEST_CASE("ensure_asset fast path when marker present") {
   auto root = make_temp_root();
   envy::cache c{ root };
 
-  auto entry_dir = root / "assets" / "foo" / "darwin-arm64-sha256-deadbeef";
+  auto entry_dir = root / "assets" / "foo" / "darwin-arm64-blake3-deadbeef";
   auto asset_dir = entry_dir / "asset";
   std::filesystem::create_directories(asset_dir);
   std::ofstream{ asset_dir / "existing.txt" } << "cached";
