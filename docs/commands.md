@@ -14,6 +14,10 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 **`envy version`** — Print envy version and third-party component versions.
 **`envy licenses`** — Emit envy’s license followed by every bundled third-party license; canonical source for compliance exports.
 
+### Package Management
+
+**`envy asset <identity> [--manifest=...]`** — Query and install package, print asset path. Loads manifest (auto-discovered or via `--manifest`), finds matching recipe spec, installs only that package plus transitive dependencies if not cached, prints absolute path to asset directory to stdout. Other manifest packages are not processed. Errors if identity ambiguous (multiple option variants) or programmatic package (no cached artifacts). Exits 0 with path on success, exits 1 with "not found" on failure.
+
 ### Utilities
 
 **`envy fetch <url> [destination]`** — Download file from any supported transport (HTTP/HTTPS, FTP/FTPS, SMB, Git, SSH, S3). Destination defaults to current directory with URL's filename. Verifies TLS, supports authentication (SSH keys, AWS credentials). Displays progress, optionally prints SHA256 on completion.

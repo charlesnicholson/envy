@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "commands/cmd_asset.h"
 #include "commands/cmd_extract.h"
 #include "commands/cmd_fetch.h"
 #include "commands/cmd_hash.h"
@@ -265,6 +266,39 @@ TEST_CASE("cli_parse: cmd_playground") {
     REQUIRE(parsed.verbosity.has_value());
     CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
     CHECK_FALSE(parsed.structured_logging);
+  }
+}
+
+TEST_CASE("cli_parse: cmd_asset") {
+  SUBCASE("identity only") {
+    std::vector<std::string> args{ "envy", "asset", "vendor.gcc@v2" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_asset::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->identity == "vendor.gcc@v2");
+    CHECK_FALSE(cfg->manifest_path.has_value());
+  }
+
+  SUBCASE("with manifest") {
+    std::vector<std::string> args{ "envy",
+                                   "asset",
+                                   "vendor.gcc@v2",
+                                   "--manifest",
+                                   "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_asset::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->identity == "vendor.gcc@v2");
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(cfg->manifest_path->string() == "/path/to/envy.lua");
   }
 }
 

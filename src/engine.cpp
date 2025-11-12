@@ -6,9 +6,9 @@
 
 namespace envy {
 
-recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots,
-                                   cache &cache_,
-                                   manifest const &manifest_) {
+recipe_result_map_t engine_run(std::vector<recipe_spec> const &roots,
+                               cache &cache_,
+                               manifest const &manifest_) {
   tbb::flow::graph flow_graph;
   graph_state state{ .graph = flow_graph, .cache_ = cache_, .manifest_ = &manifest_ };
 
@@ -25,7 +25,7 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots,
 
   flow_graph.wait_for_all();
 
-  recipe_asset_hash_map_t result;
+  recipe_result_map_t result;
   for (auto const &entry : state.recipes) {
     auto const &key{ entry.first };
     typename decltype(state.recipes)::const_accessor acc;
@@ -35,7 +35,8 @@ recipe_asset_hash_map_t engine_run(std::vector<recipe_spec> const &roots,
       tui::warn("  asset_path: %s", acc->second.asset_path.string().c_str());
       tui::warn("  has lock: %s", acc->second.lock ? "yes" : "no");
     }
-    result[key] = acc->second.result_hash;
+    result[key] = recipe_result{ .result_hash = acc->second.result_hash,
+                                 .asset_path = acc->second.asset_path };
   }
   return result;
 }

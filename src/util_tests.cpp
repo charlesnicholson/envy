@@ -277,3 +277,87 @@ TEST_CASE("scoped_path_cleanup reset switches targets and cleans previous file")
 
   CHECK_FALSE(std::filesystem::exists(second));
 }
+
+TEST_CASE("util_load_file loads empty file") {
+  auto path = make_temp_path("empty");
+  std::ofstream{ path };  // Create empty file
+  envy::scoped_path_cleanup cleanup{ path };
+
+  auto data = envy::util_load_file(path);
+  CHECK(data.empty());
+}
+
+TEST_CASE("util_load_file loads small text file") {
+  auto path = make_temp_path("small");
+  {
+    std::ofstream out{ path, std::ios::binary };
+    out << "hello world";
+  }
+  envy::scoped_path_cleanup cleanup{ path };
+
+  auto data = envy::util_load_file(path);
+  REQUIRE(data.size() == 11);
+  CHECK(std::memcmp(data.data(), "hello world", 11) == 0);
+}
+
+TEST_CASE("util_load_file loads binary data") {
+  auto path = make_temp_path("binary");
+  unsigned char const test_data[] = {0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd};
+  {
+    std::ofstream out{ path, std::ios::binary };
+    out.write(reinterpret_cast<char const *>(test_data), sizeof(test_data));
+  }
+  envy::scoped_path_cleanup cleanup{ path };
+
+  auto data = envy::util_load_file(path);
+  REQUIRE(data.size() == 6);
+  CHECK(data[0] == 0x00);
+  CHECK(data[1] == 0x01);
+  CHECK(data[2] == 0x02);
+  CHECK(data[3] == 0xff);
+  CHECK(data[4] == 0xfe);
+  CHECK(data[5] == 0xfd);
+}
+
+TEST_CASE("util_load_file loads larger file") {
+  auto path = make_temp_path("large");
+  std::vector<unsigned char> test_data(10000);
+  for (size_t i = 0; i < test_data.size(); ++i) {
+    test_data[i] = static_cast<unsigned char>(i % 256);
+  }
+  {
+    std::ofstream out{ path, std::ios::binary };
+    out.write(reinterpret_cast<char const *>(test_data.data()), test_data.size());
+  }
+  envy::scoped_path_cleanup cleanup{ path };
+
+  auto data = envy::util_load_file(path);
+  REQUIRE(data.size() == 10000);
+  CHECK(std::memcmp(data.data(), test_data.data(), 10000) == 0);
+}
+
+TEST_CASE("util_load_file throws on nonexistent file") {
+  auto path = make_temp_path("nonexistent");
+  CHECK_THROWS_WITH(envy::util_load_file(path), doctest::Contains("failed to open file"));
+}
+
+TEST_CASE("util_load_file handles files with null bytes") {
+  auto path = make_temp_path("nullbytes");
+  unsigned char const test_data[] = {'a', 'b', 0x00, 'c', 'd', 0x00, 0x00, 'e'};
+  {
+    std::ofstream out{ path, std::ios::binary };
+    out.write(reinterpret_cast<char const *>(test_data), sizeof(test_data));
+  }
+  envy::scoped_path_cleanup cleanup{ path };
+
+  auto data = envy::util_load_file(path);
+  REQUIRE(data.size() == 8);
+  CHECK(data[0] == 'a');
+  CHECK(data[1] == 'b');
+  CHECK(data[2] == 0x00);
+  CHECK(data[3] == 'c');
+  CHECK(data[4] == 'd');
+  CHECK(data[5] == 0x00);
+  CHECK(data[6] == 0x00);
+  CHECK(data[7] == 'e');
+}

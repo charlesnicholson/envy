@@ -1,5 +1,6 @@
 #pragma once
 
+#include "commands/cmd_asset.h"
 #include "commands/cmd_extract.h"
 #include "commands/cmd_fetch.h"
 #include "commands/cmd_hash.h"
@@ -19,7 +20,8 @@
 namespace envy {
 
 struct cli_args {
-  using cmd_cfg_t = std::variant<cmd_extract::cfg,
+  using cmd_cfg_t = std::variant<cmd_asset::cfg,
+                                 cmd_extract::cfg,
                                  cmd_fetch::cfg,
                                  cmd_hash::cfg,
                                  cmd_lua::cfg,
