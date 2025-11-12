@@ -1,7 +1,7 @@
 #include "phase_fetch.h"
 
-#include "fetch.h"
 #include "../lua_ctx_bindings.h"
+#include "fetch.h"
 #include "lua_util.h"
 #include "sha256.h"
 #include "tui.h"
@@ -29,8 +29,9 @@ namespace {
 
 // Helper to extract destination from fetch_request variant
 std::filesystem::path const &get_destination(fetch_request const &req) {
-  return std::visit([](auto const &r) -> std::filesystem::path const & { return r.destination; },
-                    req);
+  return std::visit(
+      [](auto const &r) -> std::filesystem::path const & { return r.destination; },
+      req);
 }
 
 // Helper to extract source from fetch_request variant
@@ -187,9 +188,9 @@ int lua_ctx_fetch(lua_State *lua) {
         break;
       case uri_scheme::GIT:
         // TODO: ref support for programmatic git fetch
-        throw std::runtime_error("ctx.fetch: git URLs not yet supported in programmatic fetch");
-      default:
-        throw std::runtime_error("ctx.fetch: unsupported URL scheme: " + url);
+        throw std::runtime_error(
+            "ctx.fetch: git URLs not yet supported in programmatic fetch");
+      default: throw std::runtime_error("ctx.fetch: unsupported URL scheme: " + url);
     }
     requests.push_back(req);
   }
@@ -420,6 +421,7 @@ void build_fetch_context_table(lua_State *lua,
   lua_ctx_bindings_register_copy(lua, ctx);
   lua_ctx_bindings_register_move(lua, ctx);
   lua_ctx_bindings_register_extract(lua, ctx);
+  lua_ctx_bindings_register_ls(lua, ctx);
 }
 
 // fetch = function(ctx) ... end
@@ -488,6 +490,7 @@ fetch_spec create_fetch_spec(std::string url,
                              std::string sha256,
                              std::optional<std::string> ref,
                              std::filesystem::path const &fetch_dir,
+                             std::filesystem::path const &stage_dir,
                              std::unordered_set<std::string> &basenames,
                              std::string const &context) {
   std::string basename{ uri_extract_filename(url) };
@@ -501,10 +504,14 @@ fetch_spec create_fetch_spec(std::string url,
   }
   basenames.insert(basename);
 
-  std::filesystem::path dest{ fetch_dir / basename };
-
-  // Determine the request type based on the URL scheme
   auto const info{ uri_classify(url) };
+
+  // Git repos go directly to stage_dir (no extraction needed), everything else to
+  // fetch_dir
+  std::filesystem::path const dest{ info.scheme == uri_scheme::GIT
+                                        ? stage_dir / basename
+                                        : fetch_dir / basename };
+
   fetch_request req;
   switch (info.scheme) {
     case uri_scheme::HTTP:
@@ -535,8 +542,7 @@ fetch_spec create_fetch_spec(std::string url,
       }
       req = fetch_request_git{ .source = url, .destination = dest, .ref = *ref };
       break;
-    default:
-      throw std::runtime_error("Unsupported URL scheme in " + context);
+    default: throw std::runtime_error("Unsupported URL scheme in " + context);
   }
 
   return { .request = std::move(req), .sha256 = std::move(sha256) };
@@ -545,6 +551,7 @@ fetch_spec create_fetch_spec(std::string url,
 // Parse the fetch field from Lua into a vector of fetch_specs.
 std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                           std::filesystem::path const &fetch_dir,
+                                          std::filesystem::path const &stage_dir,
                                           std::string const &key) {
   int const fetch_type{ lua_type(lua, -1) };
 
@@ -583,10 +590,10 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
           break;
         case uri_scheme::GIT:
           throw std::runtime_error(
-              "Git URLs in string format not supported. Use table format with 'ref' field: " +
+              "Git URLs in string format not supported. Use table format with 'ref' "
+              "field: " +
               key);
-        default:
-          throw std::runtime_error("Unsupported URL scheme in " + key);
+        default: throw std::runtime_error("Unsupported URL scheme in " + key);
       }
 
       return { { .request = std::move(req), .sha256 = "" } };
@@ -607,6 +614,7 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                           std::move(entry.sha256),
                                           std::move(entry.ref),
                                           fetch_dir,
+                                          stage_dir,
                                           basenames,
                                           key));
       } };
@@ -627,8 +635,13 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
             std::string url{ lua_tostring(lua, -1) };
             lua_pop(lua, 1);
 
-            specs.push_back(create_fetch_spec(
-                std::move(url), "", std::nullopt, fetch_dir, basenames, key));
+            specs.push_back(create_fetch_spec(std::move(url),
+                                              "",
+                                              std::nullopt,
+                                              fetch_dir,
+                                              stage_dir,
+                                              basenames,
+                                              key));
           }
           break;
         }
@@ -746,15 +759,42 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 }
 
 // fetch = "source" or fetch = {source="..."} or fetch = {{...}}
-void run_declarative_fetch(lua_State *lua,
+// Returns true if fetch should be marked complete (cacheable), false otherwise
+bool run_declarative_fetch(lua_State *lua,
                            cache::scoped_entry_lock *lock,
                            std::string const &key) {
   tui::trace("phase fetch: executing declarative fetch");
 
-  auto fetch_specs{ parse_fetch_field(lua, lock->fetch_dir(), key) };
+  // Ensure stage_dir exists (needed for git repos that clone directly there)
+  std::filesystem::path const stage_dir{ lock->stage_dir() };
+  std::error_code ec;
+  std::filesystem::create_directories(stage_dir, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create stage directory: " + ec.message());
+  }
+
+  auto fetch_specs{ parse_fetch_field(lua, lock->fetch_dir(), stage_dir, key) };
   lua_pop(lua, 1);
-  if (fetch_specs.empty()) { return; }
+  if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
   execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), key);
+
+  // Check if we fetched any git repos - if so, don't mark fetch complete (git clones are
+  // not cacheable)
+  bool has_git_repos{ false };
+  for (auto const &spec : fetch_specs) {
+    if (std::holds_alternative<fetch_request_git>(spec.request)) {
+      has_git_repos = true;
+      break;
+    }
+  }
+
+  if (has_git_repos) {
+    tui::trace(
+        "phase fetch: skipping fetch completion marker (git repos are not cacheable)");
+    return false;  // Don't mark complete
+  }
+
+  return true;  // Mark complete
 }
 
 }  // namespace
@@ -786,6 +826,8 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
   lua_getglobal(lua, "fetch");
   int const fetch_type{ lua_type(lua, -1) };
 
+  bool should_mark_complete{ true };
+
   switch (fetch_type) {
     case LUA_TNIL:
       lua_pop(lua, 1);
@@ -794,11 +836,13 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
     case LUA_TFUNCTION:
       run_programmatic_fetch(lua, lock, identity, options, state, key);
       break;
-    default: run_declarative_fetch(lua, lock, key); break;
+    default: should_mark_complete = run_declarative_fetch(lua, lock, key); break;
   }
 
-  lock->mark_fetch_complete();
-  tui::trace("phase fetch: marked fetch complete");
+  if (should_mark_complete) {
+    lock->mark_fetch_complete();
+    tui::trace("phase fetch: marked fetch complete");
+  }
 }
 
 }  // namespace envy

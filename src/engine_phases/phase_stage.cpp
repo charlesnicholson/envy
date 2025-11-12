@@ -1,7 +1,7 @@
 #include "phase_stage.h"
 
 #include "extract.h"
-#include "../lua_ctx_bindings.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
@@ -136,6 +136,7 @@ void build_stage_context_table(lua_State *lua,
   lua_ctx_bindings_register_copy(lua, ctx);
   lua_ctx_bindings_register_move(lua, ctx);
   lua_ctx_bindings_register_extract(lua, ctx);
+  lua_ctx_bindings_register_ls(lua, ctx);
 }
 
 std::filesystem::path determine_stage_destination(lua_State *lua,

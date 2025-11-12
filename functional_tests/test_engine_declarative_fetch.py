@@ -271,16 +271,17 @@ function check(ctx)
 end
 
 function install(ctx)
-    -- Verify the fetched git repo is available
-    local readme = ctx.fetch_dir .. "/ninja.git/README.md"
+    -- Verify the fetched git repo is available in stage_dir/ninja.git/
+    ctx.ls(ctx.stage_dir)
+    local readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(readme, "r")
     if not f then
-        error("Could not find README.md in fetched git repo")
+        error("Could not find README.md at: " .. readme)
     end
     f:close()
 
     -- Verify .git was removed
-    local git_dir = ctx.fetch_dir .. "/ninja.git/.git"
+    local git_dir = ctx.stage_dir .. "/ninja.git/.git"
     local g = io.open(git_dir, "r")
     if g then
         g:close()
@@ -306,6 +307,110 @@ end
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.fetch_git_test@v1", result.stdout)
+
+    def test_declarative_git_in_stage_not_fetch(self):
+        """Git repos must be cloned to stage_dir, NOT fetch_dir."""
+        recipe_content = """-- Test that git repos go to stage_dir
+identity = "local.git_location_test@v1"
+
+fetch = {
+    source = "https://github.com/ninja-build/ninja.git",
+    ref = "v1.11.1"
+}
+
+function check(ctx)
+    return false
+end
+
+function install(ctx)
+    -- Verify git repo is in stage_dir
+    local stage_readme = ctx.stage_dir .. "/ninja.git/README.md"
+    local f = io.open(stage_readme, "r")
+    if not f then
+        error("Git repo not found in stage_dir at: " .. stage_readme)
+    end
+    f:close()
+
+    -- Verify git repo is NOT in fetch_dir
+    local fetch_readme = ctx.fetch_dir .. "/ninja.git/README.md"
+    local g = io.open(fetch_readme, "r")
+    if g then
+        g:close()
+        error("Git repo should NOT be in fetch_dir, found at: " .. fetch_readme)
+    end
+
+    ctx.mark_install_complete()
+end
+"""
+        recipe_path = self.cache_root / "git_location_test.lua"
+        recipe_path.write_text(recipe_content)
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.git_location_test@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_declarative_git_no_fetch_complete_marker(self):
+        """Git fetches should NOT create fetch completion marker (not cacheable)."""
+        recipe_content = """-- Test git fetch completion marker
+identity = "local.git_no_cache@v1"
+
+fetch = {
+    source = "https://github.com/ninja-build/ninja.git",
+    ref = "v1.11.1"
+}
+
+function check(ctx)
+    return false
+end
+
+function install(ctx)
+    local readme = ctx.stage_dir .. "/ninja.git/README.md"
+    local f = io.open(readme, "r")
+    if not f then
+        error("Git repo not found")
+    end
+    f:close()
+    ctx.mark_install_complete()
+end
+"""
+        recipe_path = self.cache_root / "git_no_cache.lua"
+        recipe_path.write_text(recipe_content)
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                "--trace",
+                "engine-test",
+                "local.git_no_cache@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify trace log shows skipping fetch completion
+        self.assertIn("skipping fetch completion marker", result.stderr.lower())
+
+        # Verify fetch completion marker does NOT exist
+        asset_dir = self.cache_root / "assets" / "local.git_no_cache@v1"
+        fetch_complete_files = list(asset_dir.rglob("fetch/envy-complete"))
+        self.assertEqual(len(fetch_complete_files), 0,
+                        f"fetch/envy-complete should not exist for git repos, found: {fetch_complete_files}")
+
 
 
 if __name__ == "__main__":

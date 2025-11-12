@@ -11,11 +11,12 @@ function check(ctx)
 end
 
 function install(ctx)
-    -- Verify the fetched git repo is available
-    local readme = ctx.fetch_dir .. "/ninja.git/README.md"
+    -- Verify the fetched git repo is available in stage_dir/ninja.git/
+    ctx.ls(ctx.stage_dir)
+    local readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(readme, "r")
     if not f then
-        error("Could not find README.md in fetched git repo")
+        error("Could not find README.md at: " .. readme)
     end
     f:close()
 end

@@ -44,6 +44,10 @@ void lua_ctx_bindings_register_move(lua_State *lua, void *context);
 // Extract single archive with optional strip_components
 void lua_ctx_bindings_register_extract(lua_State *lua, void *context);
 
+// ctx.ls(path)
+// List directory contents for debugging (prints to TUI)
+void lua_ctx_bindings_register_ls(lua_State *lua, void *context);
+
 // Check if target_identity is a transitive dependency of current_key
 // Used for ctx.asset() validation. Exposed for testing.
 bool is_transitive_dependency(graph_state *state,
