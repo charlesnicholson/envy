@@ -50,6 +50,16 @@ cli_args cli_parse(int argc, char **argv) {
   asset->add_option("--cache-root", query_asset_cfg.cache_root, "Cache root directory");
   asset->callback([&cmd_cfg, &query_asset_cfg] { cmd_cfg = query_asset_cfg; });
 
+  // Sync subcommand
+  cmd_sync::cfg sync_cfg{};
+  auto *sync{ app.add_subcommand("sync", "Install packages from manifest") };
+  sync->add_option("identities",
+                   sync_cfg.identities,
+                   "Recipe identities to sync (sync all if omitted)");
+  sync->add_option("--manifest", sync_cfg.manifest_path, "Path to envy.lua manifest");
+  sync->add_option("--cache-root", sync_cfg.cache_root, "Cache root directory");
+  sync->callback([&cmd_cfg, &sync_cfg] { cmd_cfg = sync_cfg; });
+
   // Extract subcommand
   cmd_extract::cfg extract_cfg{};
   auto *extract{ app.add_subcommand("extract", "Extract archive to destination") };
