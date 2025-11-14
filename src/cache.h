@@ -18,10 +18,11 @@ class cache : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
 
-    static ptr_t make(path entry_dir, path lock_path, platform::file_lock lock);
+    static ptr_t make(path entry_dir, platform::file_lock lock);
     ~scoped_entry_lock();
 
     void mark_install_complete();
+    void mark_user_managed();
     void mark_fetch_complete();
     bool is_install_complete() const;
     bool is_fetch_complete() const;
@@ -32,7 +33,7 @@ class cache : unmovable {
     path work_dir() const;
 
    private:
-    scoped_entry_lock(path entry_dir, path lock_path, platform::file_lock lock);
+    scoped_entry_lock(path entry_dir, platform::file_lock lock);
 
     struct impl;
     std::unique_ptr<impl> m;
