@@ -316,6 +316,7 @@ end
 
     def test_declarative_git_in_stage_not_fetch(self):
         """Git repos must be cloned to stage_dir, NOT fetch_dir."""
+        # This is a cache-managed package (no check verb) that verifies git placement
         recipe_content = """-- Test that git repos go to stage_dir
 identity = "local.git_location_test@v1"
 
@@ -323,10 +324,6 @@ fetch = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
-
-function check(ctx)
-    return false
-end
 
 function install(ctx)
     -- Verify git repo is in stage_dir
@@ -368,6 +365,7 @@ end
 
     def test_declarative_git_no_fetch_complete_marker(self):
         """Git fetches should NOT create fetch completion marker (not cacheable)."""
+        # This is a cache-managed package (no check verb) that verifies fetch marker behavior
         recipe_content = """-- Test git fetch completion marker
 identity = "local.git_no_cache@v1"
 
@@ -375,10 +373,6 @@ fetch = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
-
-function check(ctx)
-    return false
-end
 
 function install(ctx)
     local readme = ctx.stage_dir .. "/ninja.git/README.md"

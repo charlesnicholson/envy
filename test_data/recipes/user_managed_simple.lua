@@ -1,0 +1,40 @@
+-- Simple user-managed package: check verb + install, no mark_install_complete
+-- This recipe simulates a system package wrapper (like brew install python)
+identity = "local.user_managed_simple@v1"
+
+-- Check if "package" is already installed (simulated by marker file)
+function check(ctx)
+    -- Allow test to override marker path via env var for test isolation
+    local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
+    if not marker then
+        local home = os.getenv("HOME") or os.getenv("USERPROFILE") or "/tmp"
+        marker = home .. "/.envy-test-marker-simple"
+    end
+
+    local f = io.open(marker, "r")
+    if f then
+        f:close()
+        return true
+    end
+    return false
+end
+
+-- Install the "package" (create marker file)
+function install(ctx)
+    -- Allow test to override marker path via env var for test isolation
+    local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
+    if not marker then
+        local home = os.getenv("HOME") or os.getenv("USERPROFILE") or "/tmp"
+        marker = home .. "/.envy-test-marker-simple"
+    end
+
+    local f = io.open(marker, "w")
+    if not f then
+        error("Failed to create marker file: " .. marker)
+    end
+    f:write("installed by user_managed_simple")
+    f:close()
+
+    -- User-managed packages must NOT call mark_install_complete()
+    -- Cache entry will be purged after this function completes
+end
