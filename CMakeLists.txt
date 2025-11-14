@@ -365,6 +365,7 @@ target_sources(envy_unit_tests
         src/cache_tests.cpp
         src/cli_tests.cpp
         src/commands/cmd_tests.cpp
+        src/engine_phases/phase_check_tests.cpp
         src/commands/cmd_extract_tests.cpp
         src/commands/cmd_lua_tests.cpp
         src/commands/cmd_version_tests.cpp

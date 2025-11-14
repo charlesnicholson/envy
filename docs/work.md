@@ -285,7 +285,299 @@ ctx = {
 
 **Results:** Install phase implemented with all three forms. Programmatic packages supported—can skip mark_install_complete() to signal no cache usage. Cache purge logic detects empty install_dir + fetch_dir and removes entire entry. Completion phase accepts programmatic packages (result_hash="programmatic"). All 379 unit tests + 194 functional tests pass.
 
-### Phase 8: Deploy Phase Implementation
+### Phase 8: User-Managed Packages (Double-Check Lock)
+
+**Goal:** Enable packages that don't leave cache artifacts but need process coordination. User-managed packages use check function to determine install state; cache entries are ephemeral workspace (fully purged after installation).
+
+**Key Design:**
+- **Check verb presence** implies user-managed (no new recipe field needed)
+- **Double-check lock pattern** in check phase: check → acquire lock → re-check → proceed or skip
+- **Lock flag** (`mark_user_managed()`) signals destructor to purge entire `entry_dir`
+- **Check XOR cache constraint:** User-managed recipes cannot call `mark_install_complete()` (runtime validation)
+- **String check support:** `check = "command"` runs shell, returns true if exit 0
+- **All phases allowed:** User-managed packages can use fetch/stage/build as ephemeral workspace
+
+### Tasks
+
+- [x] 1. Cache Lock - Add user-managed flag
+  - [x] Add `bool user_managed_ = false;` private member to `scoped_entry_lock` class
+  - [x] Add `void mark_user_managed()` public method to set flag
+  - [x] Modify destructor three-way branch logic:
+    - [x] Success path: `if (completed_)` - existing logic unchanged (rename install→asset, touch envy-complete)
+    - [x] User-managed path: `else if (user_managed_)` - call `remove_all_noexcept(entry_dir_)` to purge entire entry
+    - [x] Cache-managed failure path: `else` - existing conditional purge logic (check install_empty && fetch_empty)
+  - [x] Verify lock file release and deletion attempt (with error_code to handle held locks)
+
+- [x] 2. Check Phase - Implement double-check lock pattern
+  - [x] Create helper: `run_check_string(recipe&, string_view check_cmd)`
+    - [x] Use shell execution with manifest's `default_shell` setting
+    - [x] Reuse shell selection logic from `ctx.run()` implementation
+    - [x] Return true if `exit_code == 0`, false otherwise
+    - [x] Handle shell execution errors with clear messages
+  - [x] Create helper: `run_check_function(recipe&, lua_State*)`
+    - [x] Extract from existing check phase Lua function call logic
+    - [x] Call user's Lua check function with empty ctx table
+    - [x] Return boolean result from `lua_toboolean()`
+    - [x] Propagate Lua errors with recipe context
+  - [x] Create helper: `run_check_verb(recipe&)`
+    - [x] Dispatch to `run_check_string()` or `run_check_function()` based on recipe verb type
+    - [x] Handle missing check verb (return false to maintain existing behavior)
+    - [x] Throw errors with clear diagnostics on execution failure
+  - [x] Create helper: `recipe_has_check_verb(recipe&, lua_State*)` for detection
+  - [x] Modify main `run_check_phase()` logic:
+    - [x] Detect if recipe has check verb using helper function
+    - [x] **First check (pre-lock):** Call `run_check_verb(r)` to get initial state
+    - [x] If check returns true: return early (no lock needed, phases skip)
+    - [x] If check returns false:
+      - [x] Call `state.cache_.ensure_asset(...)` to acquire lock (blocks if contended)
+      - [x] If lock acquired: call `lock->mark_user_managed()` to signal full purge
+      - [x] **Second check (post-lock):** Call `run_check_verb(r)` again to detect races
+      - [x] If still needed (check=false): move lock to `r->lock`, phases will execute
+      - [x] If no longer needed (check=true): let lock destructor run, purging entry, phases skip
+    - [x] Preserve existing cache-managed behavior when no check verb present
+  - [x] Add comprehensive `tui::trace` logging:
+    - [x] "phase check: running user check (pre-lock)"
+    - [x] "phase check: user check returned {true|false}"
+    - [x] "phase check: acquiring lock for user-managed package"
+    - [x] "phase check: re-running user check (post-lock)"
+    - [x] "phase check: re-check returned {true|false}"
+    - [x] "phase check: releasing lock" (when re-check succeeds)
+  - [x] Remove anonymous namespace for testability (helpers have external linkage)
+  - [x] Create comprehensive unit tests (`src/engine_phases/phase_check_tests.cpp`)
+    - [x] 25 unit tests covering all helper functions
+    - [x] Test string checks with various exit codes
+    - [x] Test function checks with various return values (bool, nil, truthy)
+    - [x] Test dispatch logic (string vs function vs missing)
+    - [x] Test error handling (invalid commands, Lua errors)
+    - [x] Use extern declarations to test helpers without header pollution
+    - [x] All 411 unit tests pass (1543 assertions)
+
+- [x] 3. Recipe Helper - Check verb detection
+  - [x] Create `recipe_has_check_verb(recipe*, lua_State*)` helper function
+    - [x] Return true if recipe has check verb defined (string or function)
+    - [x] Return false if check verb absent
+    - [x] Location: `src/engine_phases/phase_check.cpp` (external linkage, no header)
+  - [x] Use consistently in check phase (install phase validation deferred to task 4)
+
+- [ ] 4. Install Phase - Add validation for check XOR cache
+  - [ ] After user install function/string completes successfully:
+    - [ ] Check if recipe has check verb: `if (recipe_has_check_verb(r) && lock->completed())`
+    - [ ] If true, throw runtime error with clear message: [ ] "Recipe {identity} has check verb (user-managed) but called mark_install_complete()"
+      - [ ] "User-managed recipes must not populate cache. Remove check verb or remove mark_install_complete() call."
+  - [ ] Update phase comments explaining user-managed vs cache-managed distinction
+  - [ ] Document that user-managed packages CAN use fetch/stage/build (workspace gets purged regardless)
+
+- [ ] 5. Tests - User-managed package scenarios
+  - [ ] Create test recipes in `test_data/recipes/`:
+    - [ ] `user_managed_simple.lua` - function check + install verb, no mark_install_complete
+    - [ ] `user_managed_string_check.lua` - string check form: `check = "python3 --version"`
+    - [ ] `user_managed_with_fetch.lua` - has fetch/stage/build verbs, installs system tool, cache purges all dirs
+    - [ ] `user_managed_invalid.lua` - has check verb + calls mark_install_complete (should error in install phase)
+  - [ ] Create comprehensive test suite `functional_tests/test_user_managed.py`:
+    - [ ] Test: First run with check=false acquires lock, runs install, cache entry fully purged afterward
+    - [ ] Test: Second run with check=true skips all phases, no lock acquired, immediate return
+    - [ ] Test: Concurrent processes coordinate via lock, no duplicate work performed
+    - [ ] Test: Race condition - process A installs while B waits, B's re-check returns true, B releases lock
+    - [ ] Test: String check form - exit code 0 returns true, non-zero returns false
+    - [ ] Test: User-managed with fetch verb - fetch_dir gets populated during install, fully purged at end
+    - [ ] Test: Validation error - recipe with check + mark_install_complete throws clear error message
+    - [ ] Test: Cache state after install - verify entry_dir fully deleted (no directories remain)
+    - [ ] Test: Multiple runs - verify cache entry created/purged/created on each install cycle
+  - [ ] Review existing "programmatic" package tests for compatibility
+  - [ ] Update any test recipes that accidentally violate check XOR cache constraint
+  - [ ] Verify no regressions in existing test suite (all tests still pass)
+
+- [ ] 6. Documentation - Explain user-managed packages
+  - [ ] Update `docs/architecture.md`:
+    - [ ] Add new section: "User-Managed vs Cache-Managed Packages"
+    - [ ] Define user-managed: check verb present, artifacts managed by user (system installs, env changes)
+    - [ ] Define cache-managed: no check verb, artifacts in cache, envy-complete marker
+    - [ ] Document double-check lock pattern and why it's needed (race where check state changes)
+    - [ ] Show examples: system package wrappers (brew install, apt-get, python system checks)
+    - [ ] Explain constraint: check XOR cache (recipes must choose one approach, not both)
+    - [ ] Document that user-managed can use fetch/stage/build (ephemeral workspace)
+  - [ ] Update `docs/cache.md`:
+    - [ ] Add user-managed package lifecycle to existing cache diagrams
+    - [ ] Explain ephemeral entries: created during install, fully purged at completion
+    - [ ] Document lock coordination without persistent cache artifacts
+    - [ ] Show entry_dir contents during install vs after completion (empty)
+  - [ ] Update `docs/work.md`:
+    - [ ] Mark Phase 8 as complete when finished
+    - [ ] Add notes section documenting future enhancements:
+      - [ ] In-memory check result cache (avoid expensive re-checks across DAG execution)
+      - [ ] `asset` verb for custom path resolution (user-managed packages can provide paths)
+  - [ ] Update `docs/commands.md` if `asset` command behavior with user-managed packages is documented
+
+- [ ] 7. Verify All Tests Pass
+  - [ ] Run `./build.sh` - verify all unit tests pass (no regressions)
+  - [ ] Run functional tests - verify all tests pass including new user-managed suite
+  - [ ] Specifically verify no regressions in existing programmatic package behavior
+  - [ ] Test concurrent execution scenarios (multiple processes on same user-managed package)
+  - [ ] Verify cache state after failures (lock released, entry purged correctly)
+
+**Completion Criteria:** User-managed packages coordinate correctly across processes via double-check lock pattern. Check phase runs user check twice (pre-lock and post-lock) to detect races where install state changes. Cache entries fully purged (entire entry_dir deleted) for user-managed packages. String check form works (`check = "command"` runs shell). Validation errors when recipe has check verb but calls mark_install_complete(). All tests pass with no regressions.
+
+**Results:** (To be filled in when phase completes)
+
+---
+
+### Phase 9: Deploy Phase Implementation (Future)
 - Post-install actions (env setup, capability registration)
 - Call user's `deploy(ctx)` function if defined
 - Examples: PATH modification, library registration, service setup
+
+---
+
+### Phase 10: Verb Serialization and Validation (Future)
+
+**Goal:** Parse and validate recipe verbs once at load time, reject invalid types (numbers), eliminate ad-hoc Lua VM manipulation across phases.
+
+**Problem:** Currently each phase calls `lua_getglobal(lua, "verb_name")` and manually checks `lua_type()`. This leads to:
+1. **Number coercion bug:** `lua_isstring()` returns true for numbers, so `check = 42` is accepted but meaningless
+2. **Duplicate logic:** Every phase repeats the same type checking boilerplate
+3. **Late error detection:** Invalid types discovered during phase execution, not recipe load
+4. **Scattered validation:** No single source of truth for what types are valid for which verbs
+
+**Analysis of Current Pattern:**
+- **Most verbs** (stage, build, install): `nil`/`string`/`function` (string = shell command)
+- **Fetch verb**: `nil`/`string`/`table`/`function` (string/table = declarative URL specs, NOT shell)
+- **Check verb**: `nil`/`string`/`function` (string = shell with boolean result)
+- **Common pattern**: All phases do string → shell execution except fetch (declarative)
+- **Common pattern**: All phases call Lua functions with phase-specific context
+
+**Proposed Design:**
+
+```cpp
+// lua_util.h - Add function placeholder type
+struct lua_function_ref {};  // Indicates Lua function exists, must be called later
+
+using lua_value = std::variant<
+  std::monostate,
+  bool,
+  double,  // NEVER valid for verbs, but keep for general lua_value use
+  std::string,
+  std::vector<lua_value>,
+  std::unordered_map<std::string, lua_value>,
+  lua_function_ref  // NEW
+>;
+
+// Get global variable, serialize to lua_value, validate type
+// Throws if global is a number (invalid for all verbs)
+// Throws if global is a table and verb_name != "fetch" && verb_name != "stage"
+std::optional<lua_value> lua_get_verb(lua_State *L, char const *verb_name);
+```
+
+```cpp
+// recipe.h - Store parsed verbs in recipe struct
+struct recipe {
+  // ... existing fields ...
+
+  // Parsed verb values (populated once during recipe loading)
+  struct parsed_verbs {
+    std::optional<lua_value> check;
+    std::optional<lua_value> fetch;
+    std::optional<lua_value> stage;
+    std::optional<lua_value> build;
+    std::optional<lua_value> install;
+    std::optional<lua_value> deploy;
+  } verbs;
+};
+```
+
+**Benefits:**
+- ✅ **Early validation:** Invalid types caught at recipe load time with clear errors
+- ✅ **Single source of truth:** Parse once, use everywhere
+- ✅ **Type safety:** No raw Lua stack manipulation in phases
+- ✅ **Clear errors:** "check = 42 is invalid (expected string or function)"
+- ✅ **Easier testing:** Mock recipe verbs without Lua VM
+- ✅ **Better encapsulation:** Phases use structured data, not lua_State
+
+**Possible Future Enhancement:** Unified verb executor (may be overkill):
+```cpp
+enum class verb_string_mode {
+  shell_command,      // stage, build, install: exec and return
+  shell_boolean,      // check: exec, return true if exit 0
+  declarative_fetch   // fetch: parse as URL spec
+};
+
+// Unified executor handles both string and function dispatch
+template<typename ResultType = void>
+ResultType execute_verb(
+    recipe *r,
+    graph_state &state,
+    lua_value const &verb,
+    verb_string_mode mode,
+    std::function<ResultType(lua_State*, lua_ctx_common const&)> function_handler
+);
+```
+
+**Note:** Unified executor may not be worthwhile—each phase has unique context setup. Structured verb storage alone solves the main issues.
+
+### Tasks (Deferred)
+
+- [ ] 1. Extend lua_value with lua_function_ref
+  - [ ] Add `struct lua_function_ref {}` to lua_util.h
+  - [ ] Update `lua_value` variant to include `lua_function_ref`
+  - [ ] Update `lua_value_to_string()` helper if needed for diagnostics
+
+- [ ] 2. Implement lua_get_verb() with validation
+  - [ ] Accept `lua_State*` and `char const *verb_name`
+  - [ ] Call `lua_getglobal(L, verb_name)`
+  - [ ] Switch on `lua_type(L, -1)`:
+    - [ ] `LUA_TNIL` → return `std::nullopt`
+    - [ ] `LUA_TFUNCTION` → return `lua_function_ref{}`
+    - [ ] `LUA_TSTRING` → return `std::string` (copy before pop!)
+    - [ ] `LUA_TTABLE` → if verb is fetch/stage, serialize; else throw
+    - [ ] `LUA_TNUMBER` → throw with clear error: "{verb} = {number} is invalid (expected string or function)"
+    - [ ] `LUA_TBOOLEAN` → throw: booleans invalid for all verbs
+  - [ ] Pop value from stack before returning
+  - [ ] Add comprehensive unit tests (20+ cases covering all types × all verbs)
+
+- [ ] 3. Add parsed_verbs to recipe struct
+  - [ ] Define `recipe::parsed_verbs` nested struct in recipe.h
+  - [ ] Add optional<lua_value> fields for each verb
+  - [ ] Initialize during recipe loading (find where lua_state is created)
+
+- [ ] 4. Parse verbs during recipe loading
+  - [ ] Find where recipe Lua state is created/loaded
+  - [ ] After loading recipe script, call `lua_get_verb()` for each verb
+  - [ ] Store results in `r->verbs.{check,fetch,stage,build,install,deploy}`
+  - [ ] Handle errors: propagate exception with recipe identity context
+
+- [ ] 5. Update phase_check to use parsed verbs
+  - [ ] Replace `lua_getglobal(lua, "check")` with `r->verbs.check`
+  - [ ] Replace `lua_isfunction()`/`lua_isstring()` with `std::holds_alternative<>()`
+  - [ ] Update helper functions to take `lua_value const&` instead of poking VM
+  - [ ] Verify tests still pass (behavior unchanged, just refactored)
+
+- [ ] 6. Update remaining phases to use parsed verbs
+  - [ ] phase_fetch: use `r->verbs.fetch`, handle table case
+  - [ ] phase_stage: use `r->verbs.stage`
+  - [ ] phase_build: use `r->verbs.build`
+  - [ ] phase_install: use `r->verbs.install`
+  - [ ] phase_deploy: use `r->verbs.deploy` (when implemented)
+  - [ ] Remove all direct `lua_getglobal(lua, "verb")` calls from phases
+
+- [ ] 7. Update validation in phase_recipe_fetch
+  - [ ] Replace manual `lua_getglobal` checks with `r->verbs.*` access
+  - [ ] Validation already happens in lua_get_verb(), simplify logic
+
+- [ ] 8. Add tests for invalid verb types
+  - [ ] Create test recipes with invalid verbs:
+    - [ ] `check = 42` (number)
+    - [ ] `build = true` (boolean)
+    - [ ] `install = {}` (table, invalid for install)
+  - [ ] Verify clear error messages at recipe load time
+  - [ ] Test that errors include recipe identity for debugging
+
+- [ ] 9. Documentation
+  - [ ] Update architecture docs explaining verb parsing lifecycle
+  - [ ] Document valid types for each verb in recipe format docs
+  - [ ] Add rationale: early validation, type safety, single source of truth
+
+**Completion Criteria:** All recipe verbs parsed and validated at load time. Numbers and other invalid types rejected with clear errors. Phases use structured verb data (`std::optional<lua_value>`) instead of manual Lua VM manipulation. All existing tests pass with no behavior changes. New tests verify invalid types are caught early.
+
+**Notes:**
+- Unified executor may be revisited later if pattern emerges
+- Focus on verb storage first; execution pattern unification is optional
+- Number rejection is the primary bug fix; other improvements are refactoring

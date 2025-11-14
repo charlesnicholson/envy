@@ -9,24 +9,34 @@
 
 namespace {
 
-std::filesystem::path make_temp_root() {
-  static std::mt19937_64 rng{ std::random_device{}() };
-  auto suffix = std::to_string(rng());
-  auto root = std::filesystem::temp_directory_path() /
-              std::filesystem::path("envy-cache-test-unit-" + suffix);
-  std::filesystem::create_directories(root);
-  return root;
-}
-
 std::string make_entry_name() { return "foo.darwin-arm64-blake3-deadbeef"; }
 
 }  // namespace
 
-TEST_CASE("repeated mark_install_complete calls are safe") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
+// Doctest fixture for tests that need a temporary cache directory
+struct temp_cache_fixture {
+  temp_cache_fixture() {
+    static std::mt19937_64 rng{ std::random_device{}() };
+    auto suffix = std::to_string(rng());
+    temp_root = std::filesystem::temp_directory_path() /
+                std::filesystem::path("envy-cache-test-unit-" + suffix);
+    std::filesystem::create_directories(temp_root);
+    cache = std::make_unique<envy::cache>(temp_root);
+  }
 
-  auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  ~temp_cache_fixture() {
+    cache.reset();  // Destroy cache before cleaning up directory
+    std::error_code ec;
+    std::filesystem::remove_all(temp_root, ec);
+    // Ignore errors - best effort cleanup
+  }
+
+  std::filesystem::path temp_root;
+  std::unique_ptr<envy::cache> cache;
+};
+
+TEST_CASE_FIXTURE(temp_cache_fixture, "repeated mark_install_complete calls are safe") {
+  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
   REQUIRE(result.lock != nullptr);
 
   // Write something to install_dir
@@ -42,17 +52,12 @@ TEST_CASE("repeated mark_install_complete calls are safe") {
   // Should complete successfully without error
   CHECK(true);
 
-  // Explicitly destroy the lock before removing root
+  // Explicitly destroy the lock before fixture destructor runs
   result.lock.reset();
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("cache root path") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-  CHECK(c.root() == root);
-  std::filesystem::remove_all(root);
+TEST_CASE_FIXTURE(temp_cache_fixture, "cache root path") {
+  CHECK(cache->root() == temp_root);
 }
 
 TEST_CASE("cache is_entry_complete") {
@@ -74,11 +79,10 @@ TEST_CASE("scoped_entry_lock is unmovable") {
   CHECK_FALSE(std::is_copy_assignable_v<envy::cache::scoped_entry_lock>);
 }
 
-TEST_CASE("ensure_asset returns lock for cold entry and publishes asset directory") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
-  auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+TEST_CASE_FIXTURE(
+    temp_cache_fixture,
+    "ensure_asset returns lock for cold entry and publishes asset directory") {
+  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock != nullptr);
   CHECK_FALSE(result.asset_path.empty());
   CHECK(std::filesystem::exists(result.lock->install_dir()));
@@ -94,51 +98,36 @@ TEST_CASE("ensure_asset returns lock for cold entry and publishes asset director
   CHECK(std::filesystem::exists(result.entry_path / "envy-complete"));
   CHECK(std::filesystem::exists(result.asset_path / "sentinel.txt"));
   CHECK_FALSE(std::filesystem::exists(result.entry_path / "work"));
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("ensure_asset fast path when marker present") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
-  auto entry_dir = root / "assets" / "foo" / "darwin-arm64-blake3-deadbeef";
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_asset fast path when marker present") {
+  auto entry_dir = temp_root / "assets" / "foo" / "darwin-arm64-blake3-deadbeef";
   auto asset_dir = entry_dir / "asset";
   std::filesystem::create_directories(asset_dir);
   std::ofstream{ asset_dir / "existing.txt" } << "cached";
   envy::platform::touch_file(entry_dir / "envy-complete");
 
-  auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock == nullptr);
   CHECK(result.asset_path == asset_dir);
   CHECK(std::filesystem::exists(result.asset_path / "existing.txt"));
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("mark_fetch_complete creates sentinel") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
-  auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+TEST_CASE_FIXTURE(temp_cache_fixture, "mark_fetch_complete creates sentinel") {
+  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
   REQUIRE(result.lock != nullptr);
 
   CHECK_FALSE(result.lock->is_fetch_complete());
   result.lock->mark_fetch_complete();
   CHECK(result.lock->is_fetch_complete());
   CHECK(std::filesystem::exists(result.lock->fetch_dir() / "envy-complete"));
-  // Release lock before removing root on Windows to prevent removal errors.
   result.lock.reset();
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("fetch_dir preserved when marked complete") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
+TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when marked complete") {
   // First acquisition: populate fetch/ and mark complete
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     auto fetch_file = result.lock->fetch_dir() / "payload.tar.gz";
@@ -148,7 +137,7 @@ TEST_CASE("fetch_dir preserved when marked complete") {
 
   // Second acquisition: verify fetch/ survived
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     CHECK(result.lock->is_fetch_complete());
@@ -159,17 +148,12 @@ TEST_CASE("fetch_dir preserved when marked complete") {
     std::string content{ std::istreambuf_iterator<char>{ ifs }, {} };
     CHECK(content == "large download");
   }
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("fetch_dir preserved when not marked complete") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
+TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when not marked complete") {
   // First acquisition: populate fetch/ but don't mark complete (simulates crash)
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     auto fetch_file = result.lock->fetch_dir() / "partial.tar.gz";
@@ -179,7 +163,7 @@ TEST_CASE("fetch_dir preserved when not marked complete") {
 
   // Second acquisition: verify fetch/ was preserved for per-file caching
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     CHECK_FALSE(result.lock->is_fetch_complete());
@@ -190,20 +174,17 @@ TEST_CASE("fetch_dir preserved when not marked complete") {
     std::string content{ std::istreambuf_iterator<char>{ ifs }, {} };
     CHECK(content == "incomplete");
   }
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("programmatic package with empty install_dir and fetch_dir cleans up cache") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
+TEST_CASE_FIXTURE(
+    temp_cache_fixture,
+    "programmatic package with empty install_dir and fetch_dir cleans up cache") {
   auto const entry_name = make_entry_name();
   std::filesystem::path entry_dir;
 
   // Acquire lock, don't mark complete, leave directories empty
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -217,20 +198,15 @@ TEST_CASE("programmatic package with empty install_dir and fetch_dir cleans up c
   CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("programmatic package with fetch_dir preserved") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
+TEST_CASE_FIXTURE(temp_cache_fixture, "programmatic package with fetch_dir preserved") {
   std::filesystem::path entry_dir;
   std::filesystem::path fetch_file;
 
   // First acquisition: populate fetch_dir but don't mark complete
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -252,19 +228,15 @@ TEST_CASE("programmatic package with fetch_dir preserved") {
   // Verify other directories cleaned up
   CHECK_FALSE(std::filesystem::exists(entry_dir / "asset"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
-
-  std::filesystem::remove_all(root);
 }
 
-TEST_CASE("install_dir populated without mark_install_complete preserved") {
-  auto root = make_temp_root();
-  envy::cache c{ root };
-
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "install_dir populated without mark_install_complete preserved") {
   std::filesystem::path entry_dir;
 
   // Acquire lock, populate install_dir, but don't mark complete
   {
-    auto result = c.ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -282,6 +254,243 @@ TEST_CASE("install_dir populated without mark_install_complete preserved") {
 
   // Entry itself should still exist (for retry)
   CHECK(std::filesystem::exists(entry_dir));
+}
 
-  std::filesystem::remove_all(root);
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "user-managed package with empty dirs purges entire entry_dir") {
+  std::filesystem::path entry_dir;
+
+  // Acquire lock, mark as user-managed, leave directories empty
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+    entry_dir = result.entry_path;
+
+    // Mark as user-managed (simulates check phase marking)
+    result.lock->mark_user_managed();
+
+    // Don't write any files, don't call mark_install_complete()
+  }
+  // Lock destructor should purge entire entry_dir
+
+  // Verify entire entry_dir was deleted
+  CHECK_FALSE(std::filesystem::exists(entry_dir));
+}
+
+TEST_CASE_FIXTURE(
+    temp_cache_fixture,
+    "user-managed package with fetch_dir populated purges entire entry_dir") {
+  std::filesystem::path entry_dir;
+  std::filesystem::path fetch_file;
+
+  // Acquire lock, mark as user-managed, populate fetch_dir
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+    entry_dir = result.entry_path;
+
+    // Write file to fetch_dir
+    fetch_file = result.lock->fetch_dir() / "downloaded.tar.gz";
+    std::ofstream{ fetch_file } << "large payload";
+
+    // Mark as user-managed
+    result.lock->mark_user_managed();
+
+    // Don't call mark_install_complete()
+  }
+  // Lock destructor should purge entire entry_dir (including fetch_dir)
+
+  // Verify entire entry_dir was deleted (including fetch_dir with contents)
+  CHECK_FALSE(std::filesystem::exists(entry_dir));
+  CHECK_FALSE(std::filesystem::exists(fetch_file));
+}
+
+TEST_CASE_FIXTURE(
+    temp_cache_fixture,
+    "user-managed package with install_dir populated purges entire entry_dir") {
+  std::filesystem::path entry_dir;
+
+  // Acquire lock, mark as user-managed, populate install_dir
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+    entry_dir = result.entry_path;
+
+    // Write file to install_dir
+    auto install_file = result.lock->install_dir() / "artifact.so";
+    std::ofstream{ install_file } << "compiled binary";
+
+    // Mark as user-managed
+    result.lock->mark_user_managed();
+
+    // Don't call mark_install_complete()
+  }
+  // Lock destructor should purge entire entry_dir (including install_dir)
+
+  // Verify entire entry_dir was deleted
+  CHECK_FALSE(std::filesystem::exists(entry_dir));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "user-managed package with all dirs populated purges entire entry_dir") {
+  std::filesystem::path entry_dir;
+
+  // Acquire lock, mark as user-managed, populate fetch/stage/install dirs
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+    entry_dir = result.entry_path;
+
+    // Write files to all workspace directories
+    std::ofstream{ result.lock->fetch_dir() / "downloaded.tar.gz" } << "fetch payload";
+    std::ofstream{ result.lock->stage_dir() / "extracted.txt" } << "stage payload";
+    std::ofstream{ result.lock->install_dir() / "artifact.so" } << "install payload";
+
+    // Mark as user-managed
+    result.lock->mark_user_managed();
+
+    // Don't call mark_install_complete()
+  }
+  // Lock destructor should purge entire entry_dir (all subdirectories)
+
+  // Verify entire entry_dir was deleted
+  CHECK_FALSE(std::filesystem::exists(entry_dir));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "lock file deletion attempted on successful completion") {
+  std::filesystem::path lock_path;
+
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    // Capture lock path (not exposed via public API, but we can infer it)
+    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+
+    // Verify lock file exists while lock is held
+    CHECK(std::filesystem::exists(lock_path));
+
+    // Write to install_dir and mark complete
+    std::ofstream{ result.lock->install_dir() / "output.txt" } << "done";
+    result.lock->mark_install_complete();
+  }
+  // Lock destructor attempts to delete lock file
+
+  // Lock file should be deleted (no other process holding it in this test)
+  CHECK_FALSE(std::filesystem::exists(lock_path));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "lock file deletion attempted on user-managed purge") {
+  std::filesystem::path lock_path;
+
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+
+    // Verify lock file exists while lock is held
+    CHECK(std::filesystem::exists(lock_path));
+
+    // Mark as user-managed
+    result.lock->mark_user_managed();
+  }
+  // Lock destructor attempts to delete lock file
+
+  // Lock file should be deleted
+  CHECK_FALSE(std::filesystem::exists(lock_path));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "user-managed complete cleanup: entry_dir and lock file both deleted") {
+  std::filesystem::path entry_dir;
+  std::filesystem::path lock_path;
+
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    entry_dir = result.entry_path;
+    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+
+    // Verify both exist while lock is held
+    CHECK(std::filesystem::exists(entry_dir));
+    CHECK(std::filesystem::exists(lock_path));
+
+    // Populate all directories to ensure they get cleaned up
+    std::ofstream{ result.lock->fetch_dir() / "download.tar.gz" } << "fetch data";
+    std::ofstream{ result.lock->stage_dir() / "staged.txt" } << "stage data";
+    std::ofstream{ result.lock->install_dir() / "binary.so" } << "install data";
+
+    // Verify subdirectories exist
+    CHECK(std::filesystem::exists(result.lock->fetch_dir() / "download.tar.gz"));
+    CHECK(std::filesystem::exists(result.lock->stage_dir() / "staged.txt"));
+    CHECK(std::filesystem::exists(result.lock->install_dir() / "binary.so"));
+
+    // Mark as user-managed
+    result.lock->mark_user_managed();
+  }
+  // scoped_entry_lock destructor runs first: purges entry_dir
+  // Then file_lock destructor runs: deletes lock file
+
+  // Verify complete cleanup: both entry_dir and lock file deleted
+  CHECK_FALSE(std::filesystem::exists(entry_dir));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "stage"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
+  CHECK_FALSE(std::filesystem::exists(lock_path));
+}
+
+TEST_CASE_FIXTURE(
+    temp_cache_fixture,
+    "cache-managed success: entry_dir preserved with asset, temp dirs cleaned") {
+  std::filesystem::path entry_dir;
+  std::filesystem::path asset_dir;
+  std::filesystem::path lock_path;
+
+  {
+    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    entry_dir = result.entry_path;
+    asset_dir = result.asset_path;
+    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+
+    // Verify entry_dir and lock file exist while lock is held
+    CHECK(std::filesystem::exists(entry_dir));
+    CHECK(std::filesystem::exists(lock_path));
+
+    // Populate all directories
+    std::ofstream{ result.lock->fetch_dir() / "download.tar.gz" } << "fetch data";
+    std::ofstream{ result.lock->stage_dir() / "staged.txt" } << "stage data";
+    std::ofstream{ result.lock->install_dir() / "binary.so" } << "install data";
+    std::ofstream{ result.lock->install_dir() / "library.a" } << "library data";
+
+    // Mark as successfully installed (NOT user-managed)
+    result.lock->mark_install_complete();
+  }
+  // scoped_entry_lock destructor runs success path: rename install -> asset
+  // Then file_lock destructor runs: deletes lock file
+
+  // Verify entry_dir is preserved
+  CHECK(std::filesystem::exists(entry_dir));
+
+  // Verify asset/ dir exists with installed files
+  CHECK(std::filesystem::exists(asset_dir));
+  CHECK(std::filesystem::exists(asset_dir / "binary.so"));
+  CHECK(std::filesystem::exists(asset_dir / "library.a"));
+
+  // Verify envy-complete marker created
+  CHECK(std::filesystem::exists(entry_dir / "envy-complete"));
+
+  // Verify temporary directories cleaned up
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
+
+  // Verify lock file deleted
+  CHECK_FALSE(std::filesystem::exists(lock_path));
 }
