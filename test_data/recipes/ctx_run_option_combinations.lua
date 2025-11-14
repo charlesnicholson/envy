@@ -24,7 +24,7 @@ stage = function(ctx)
     ctx.run([[
       Set-Content -Path combo1_pwd.txt -Value (Get-Location).Path
       Set-Content -Path combo1_env.txt -Value ("VAR1=" + $env:VAR1)
-    ]], {cwd = "dir1", env = {VAR1 = "value1"}, shell = "powershell"})
+    ]], {cwd = "dir1", env = {VAR1 = "value1"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > combo1_pwd.txt
@@ -38,7 +38,7 @@ stage = function(ctx)
       Set-Content -Path combo2_pwd.txt -Value (Get-Location).Path
       cmd /c exit 1
       Set-Content -Path combo2_continued.txt -Value "After false"
-    ]], {cwd = "dir2", shell = "powershell"})
+    ]], {cwd = "dir2", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > combo2_pwd.txt
@@ -53,7 +53,7 @@ stage = function(ctx)
       Set-Content -Path combo3_env.txt -Value ("VAR2=" + $env:VAR2)
       cmd /c exit 1
       Add-Content -Path combo3_env.txt -Value "Continued"
-    ]], {env = {VAR2 = "value2"}, shell = "powershell"})
+    ]], {env = {VAR2 = "value2"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "VAR2=$VAR2" > combo3_env.txt
@@ -66,7 +66,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo4_env.txt -Value ("VAR3=" + $env:VAR3)
-    ]], {env = {VAR3 = "value3"}, shell = "powershell"})
+    ]], {env = {VAR3 = "value3"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "VAR3=$VAR3" > combo4_env.txt
@@ -77,7 +77,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo5_pwd.txt -Value (Get-Location).Path
-    ]], {cwd = "dir1", shell = "powershell"})
+    ]], {cwd = "dir1", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > combo5_pwd.txt
@@ -89,7 +89,7 @@ stage = function(ctx)
     ctx.run([[
       cmd /c exit 1
       Set-Content -Path combo6_continued.txt -Value "Standalone failure scenario"
-    ]], {shell = "powershell"})
+    ]], {shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       false || true
@@ -97,3 +97,4 @@ stage = function(ctx)
     ]])
   end
 end
+

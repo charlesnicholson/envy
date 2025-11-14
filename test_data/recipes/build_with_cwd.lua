@@ -23,7 +23,7 @@ build = function(ctx)
     ctx.run([[
       (Get-Location).Path | Out-File -FilePath current_dir.txt
       Set-Content -Path marker.txt -Value "In subdirectory"
-    ]], {cwd = "subdir", shell = "powershell"})
+    ]], {cwd = "subdir", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > current_dir.txt
@@ -63,7 +63,7 @@ build = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path deep_marker.txt -Value "deep"
-    ]], {cwd = "nested/deep/dir", shell = "powershell"})
+    ]], {cwd = "nested/deep/dir", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "deep" > deep_marker.txt

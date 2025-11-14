@@ -28,6 +28,11 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
+    @staticmethod
+    def lua_path(path: Path) -> str:
+        """Convert path to Lua-safe string (forward slashes work on all platforms)."""
+        return path.as_posix()
+
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
         result = subprocess.run(
@@ -231,7 +236,7 @@ fetch = {
 }
 """
         recipe_path = self.cache_root / "fetch_string_array.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -281,16 +286,17 @@ function install(ctx)
     f:close()
 
     -- Verify .git directory is present (kept for packages that need it)
-    local git_dir = ctx.stage_dir .. "/ninja.git/.git"
-    local g = io.open(git_dir, "r")
+    -- Check by opening a file that must exist in a git repo
+    local git_head = ctx.stage_dir .. "/ninja.git/.git/HEAD"
+    local g = io.open(git_head, "r")
     if not g then
-        error(".git directory should be present at: " .. git_dir)
+        error(".git directory should be present at: " .. ctx.stage_dir .. "/ninja.git/.git (tried to open HEAD file)")
     end
     g:close()
 end
 """
         recipe_path = self.cache_root / "fetch_git_test.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -343,7 +349,7 @@ function install(ctx)
 end
 """
         recipe_path = self.cache_root / "git_location_test.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -385,7 +391,7 @@ function install(ctx)
 end
 """
         recipe_path = self.cache_root / "git_no_cache.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -415,3 +421,4 @@ end
 
 if __name__ == "__main__":
     unittest.main()
+

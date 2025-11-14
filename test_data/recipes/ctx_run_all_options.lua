@@ -18,7 +18,7 @@ stage = function(ctx)
       $ErrorActionPreference = 'Continue'
       cmd /c exit 1
       Set-Content -Path all_opts_continued.txt -Value "Continued after false"
-    ]], {cwd = "subdir", env = {MY_VAR = "test", ANOTHER = "value"}, shell = "powershell"})
+    ]], {cwd = "subdir", env = {MY_VAR = "test", ANOTHER = "value"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[mkdir -p subdir]])
     ctx.run([[

@@ -6,6 +6,10 @@ if(EXISTS "${_liblzma_archive}")
 endif()
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(XZ_TOOL_XZDEC OFF CACHE BOOL "" FORCE)
+set(XZ_TOOL_LZMADEC OFF CACHE BOOL "" FORCE)
+set(XZ_TOOL_LZMAINFO OFF CACHE BOOL "" FORCE)
+set(XZ_TOOL_XZ OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(envy_liblzma
     URL ${_liblzma_url}

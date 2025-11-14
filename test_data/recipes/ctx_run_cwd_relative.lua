@@ -14,7 +14,7 @@ stage = function(ctx)
     ctx.run([[
       Set-Content -Path pwd_output.txt -Value (Get-Location).Path
       Set-Content -Path marker.txt -Value "Running in subdir"
-    ]], {cwd = "custom/subdir", shell = "powershell"})
+    ]], {cwd = "custom/subdir", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[mkdir -p custom/subdir]])
     ctx.run([[

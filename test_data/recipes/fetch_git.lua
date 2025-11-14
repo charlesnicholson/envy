@@ -21,10 +21,11 @@ function install(ctx)
     f:close()
 
     -- Verify .git directory is present (kept for packages that need it)
-    local git_dir = ctx.stage_dir .. "/ninja.git/.git"
-    local g = io.open(git_dir, "r")
+    -- Check by opening a file that must exist in a git repo
+    local git_head = ctx.stage_dir .. "/ninja.git/.git/HEAD"
+    local g = io.open(git_head, "r")
     if not g then
-        error(".git directory should be present at: " .. git_dir)
+        error(".git directory should be present at: " .. ctx.stage_dir .. "/ninja.git/.git (tried to open HEAD file)")
     end
     g:close()
 end

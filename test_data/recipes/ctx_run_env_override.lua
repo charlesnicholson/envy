@@ -14,7 +14,7 @@ stage = function(ctx)
       ctx.run([[
         if ($env:USER -ne 'test_override_user') { exit 42 }
         Set-Content -Path overridden_user.txt -Value ("USER=" + $env:USER)
-      ]], {env = {USER = "test_override_user"}, shell = "powershell"})
+      ]], {env = {USER = "test_override_user"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "USER=$USER" > overridden_user.txt

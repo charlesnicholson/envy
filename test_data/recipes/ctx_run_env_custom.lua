@@ -17,7 +17,7 @@ stage = function(ctx)
       Add-Content -Path env_output.txt -Value ("MY_NUM=" + $env:MY_NUM)
       if ($env:PATH) { $status = "yes" } else { $status = "" }
       Add-Content -Path env_output.txt -Value ("PATH_AVAILABLE=" + $status)
-    ]], {env = env_values, shell = "powershell"})
+    ]], {env = env_values, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "MY_VAR=$MY_VAR" > env_output.txt
