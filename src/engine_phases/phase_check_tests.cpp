@@ -1,0 +1,403 @@
+#include "phase_check.h"
+
+#include "cache.h"
+#include "graph_state.h"
+#include "lua_util.h"
+#include "manifest.h"
+#include "recipe.h"
+#include "recipe_spec.h"
+
+#include "doctest.h"
+
+extern "C" {
+#include "lauxlib.h"
+#include "lua.h"
+#include "lualib.h"
+}
+
+#include <tbb/flow_graph.h>
+
+#include <filesystem>
+#include <memory>
+
+namespace envy {
+
+// Extern declarations for unit testing (not in public API)
+extern bool recipe_has_check_verb(recipe *r, lua_State *lua);
+extern bool run_check_verb(recipe *r, graph_state &state, lua_State *lua);
+extern bool run_check_string(recipe *r, graph_state &state, std::string_view check_cmd);
+extern bool run_check_function(recipe *r, lua_State *lua);
+
+namespace {
+
+// Helper fixture for creating test recipes with Lua states
+struct test_recipe_fixture {
+  std::unique_ptr<recipe> r;
+
+  test_recipe_fixture() {
+    r = std::make_unique<recipe>();
+    r->spec.identity = "test-package";
+    r->lua_state = lua_make();
+    lua_add_envy(r->lua_state);
+  }
+
+  void set_check_string(std::string_view cmd) {
+    lua_pushstring(r->lua_state.get(), std::string(cmd).c_str());
+    lua_setglobal(r->lua_state.get(), "check");
+  }
+
+  void set_check_function(std::string_view lua_code) {
+    std::string code = "check = " + std::string(lua_code);
+    if (luaL_dostring(r->lua_state.get(), code.c_str()) != LUA_OK) {
+      char const *err = lua_tostring(r->lua_state.get(), -1);
+      throw std::runtime_error(std::string("Failed to set check function: ") +
+                               (err ? err : "unknown"));
+    }
+  }
+
+  void clear_check() {
+    lua_pushnil(r->lua_state.get());
+    lua_setglobal(r->lua_state.get(), "check");
+  }
+};
+
+}  // namespace
+
+// ============================================================================
+// recipe_has_check_verb() tests
+// ============================================================================
+
+TEST_CASE("recipe_has_check_verb detects string check") {
+  test_recipe_fixture f;
+  f.set_check_string("true");
+
+  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua_state.get());
+  CHECK(has_check);
+}
+
+TEST_CASE("recipe_has_check_verb detects function check") {
+  test_recipe_fixture f;
+  f.set_check_function("function(ctx) return true end");
+
+  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua_state.get());
+  CHECK(has_check);
+}
+
+TEST_CASE("recipe_has_check_verb returns false when no check verb") {
+  test_recipe_fixture f;
+  // No check verb set
+
+  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua_state.get());
+  CHECK_FALSE(has_check);
+}
+
+TEST_CASE("recipe_has_check_verb returns true for number (coercible to string)") {
+  test_recipe_fixture f;
+  lua_pushnumber(f.r->lua_state.get(), 42);
+  lua_setglobal(f.r->lua_state.get(), "check");
+
+  // lua_isstring returns true for numbers (they're coercible to strings)
+  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua_state.get());
+  CHECK(has_check);
+}
+
+TEST_CASE("recipe_has_check_verb returns false for invalid check type (table)") {
+  test_recipe_fixture f;
+  lua_newtable(f.r->lua_state.get());
+  lua_setglobal(f.r->lua_state.get(), "check");
+
+  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua_state.get());
+  CHECK_FALSE(has_check);
+}
+
+// ============================================================================
+// run_check_string() tests
+// ============================================================================
+
+TEST_CASE("run_check_string returns true when command exits 0") {
+  test_recipe_fixture f;
+
+  // Minimal graph_state (manifest_ can be nullptr for basic tests)
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_string(f.r.get(), state, "exit 0");
+  CHECK(result);
+}
+
+TEST_CASE("run_check_string returns false when command exits 1") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_string(f.r.get(), state, "exit 1");
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_string returns false when command exits non-zero") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_string(f.r.get(), state, "exit 42");
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_string returns true for successful command") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+#ifdef _WIN32
+  bool result = run_check_string(f.r.get(), state, "echo hello > nul");
+#else
+  bool result = run_check_string(f.r.get(), state, "echo hello > /dev/null");
+#endif
+  CHECK(result);
+}
+
+TEST_CASE("run_check_string returns false for failing command") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+#ifdef _WIN32
+  bool result = run_check_string(f.r.get(), state, "cmd /c exit 1");
+#else
+  bool result = run_check_string(f.r.get(), state, "false");
+#endif
+  CHECK_FALSE(result);
+}
+
+// ============================================================================
+// run_check_function() tests
+// ============================================================================
+
+TEST_CASE("run_check_function returns true when function returns true") {
+  test_recipe_fixture f;
+
+  // Set up check function on stack (run_check_function expects it there)
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) return true end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function returns false when function returns false") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) return false end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_function returns false when function returns nil") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) return nil end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_function returns true when function returns truthy value") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) return 42 end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function returns true when function returns string") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) return 'yes' end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function throws when function has Lua error") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) error('test error') end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  CHECK_THROWS_AS(run_check_function(f.r.get(), L), std::runtime_error);
+}
+
+TEST_CASE("run_check_function receives empty ctx table") {
+  test_recipe_fixture f;
+
+  lua_State *L = f.r->lua_state.get();
+  // Function that checks ctx is a table
+  luaL_dostring(L, R"(
+    return function(ctx)
+      return type(ctx) == 'table'
+    end
+  )");
+  REQUIRE(lua_isfunction(L, -1));
+
+  bool result = run_check_function(f.r.get(), L);
+  CHECK(result);
+}
+
+// ============================================================================
+// run_check_verb() tests - dispatch logic
+// ============================================================================
+
+TEST_CASE("run_check_verb dispatches to string handler") {
+  test_recipe_fixture f;
+  f.set_check_string("exit 0");
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  CHECK(result);
+}
+
+TEST_CASE("run_check_verb dispatches to function handler") {
+  test_recipe_fixture f;
+  f.set_check_function("function(ctx) return true end");
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  CHECK(result);
+}
+
+TEST_CASE("run_check_verb returns false when no check verb") {
+  test_recipe_fixture f;
+  // No check verb set
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_verb returns false for table check type") {
+  test_recipe_fixture f;
+  lua_newtable(f.r->lua_state.get());
+  lua_setglobal(f.r->lua_state.get(), "check");
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  // Tables are not functions or strings, so check verb is not present
+  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  CHECK_FALSE(result);
+}
+
+TEST_CASE("run_check_verb string check respects exit code") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  SUBCASE("exit 0 returns true") {
+    f.set_check_string("exit 0");
+    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    CHECK(result);
+  }
+
+  SUBCASE("exit 1 returns false") {
+    f.set_check_string("exit 1");
+    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    CHECK_FALSE(result);
+  }
+}
+
+TEST_CASE("run_check_verb function check respects return value") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  SUBCASE("function returns true") {
+    f.set_check_function("function(ctx) return true end");
+    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    CHECK(result);
+  }
+
+  SUBCASE("function returns false") {
+    f.set_check_function("function(ctx) return false end");
+    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    CHECK_FALSE(result);
+  }
+}
+
+// ============================================================================
+// Error handling tests
+// ============================================================================
+
+TEST_CASE("run_check_string throws on invalid shell command") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  tbb::flow::graph test_graph;
+  graph_state state{ test_graph, test_cache, nullptr };
+
+  // Command with syntax error (should throw during shell_run)
+  // Note: This might not throw on all platforms, but tests the error path
+#ifdef _WIN32
+  // Windows: invalid command syntax
+  CHECK_THROWS_AS(run_check_string(f.r.get(), state, "exit"), std::runtime_error);
+#else
+  // POSIX: command not found (exit without code is invalid in some shells)
+  // Use a definitely invalid command
+  CHECK_THROWS_AS(run_check_string(f.r.get(), state, "this-command-does-not-exist-12345"),
+                  std::runtime_error);
+#endif
+}
+
+TEST_CASE("run_check_function propagates Lua error with context") {
+  test_recipe_fixture f;
+  f.r->spec.identity = "my-package";
+
+  lua_State *L = f.r->lua_state.get();
+  luaL_dostring(L, "return function(ctx) error('something went wrong') end");
+  REQUIRE(lua_isfunction(L, -1));
+
+  try {
+    run_check_function(f.r.get(), L);
+    FAIL("Expected exception");
+  } catch (std::runtime_error const &e) {
+    std::string msg = e.what();
+    CHECK(msg.find("my-package") != std::string::npos);
+    CHECK(msg.find("something went wrong") != std::string::npos);
+  }
+}
+
+}  // namespace envy
