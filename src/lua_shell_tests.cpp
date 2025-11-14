@@ -123,7 +123,23 @@ TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
 TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   lua_State *L{ make_test_lua_state() };
 
-  // Create table: { file = "/bin/zsh", ext = ".zsh" }
+#ifdef _WIN32
+  // Windows: use PowerShell
+  lua_createtable(L, 0, 2);
+  lua_pushstring(L, "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  lua_setfield(L, -2, "file");
+  lua_pushstring(L, ".ps1");
+  lua_setfield(L, -2, "ext");
+
+  auto result{ envy::parse_shell_config_from_lua(L, -1, "test") };
+
+  CHECK(std::holds_alternative<envy::custom_shell_file>(result));
+  auto const &shell_file{ std::get<envy::custom_shell_file>(result) };
+  REQUIRE(shell_file.argv.size() == 1);
+  CHECK(shell_file.argv[0] == "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  CHECK(shell_file.ext == ".ps1");
+#else
+  // Unix: use zsh
   lua_createtable(L, 0, 2);
   lua_pushstring(L, "/bin/zsh");
   lua_setfield(L, -2, "file");
@@ -137,6 +153,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   REQUIRE(shell_file.argv.size() == 1);
   CHECK(shell_file.argv[0] == "/bin/zsh");
   CHECK(shell_file.ext == ".zsh");
+#endif
 
   lua_close(L);
 }
@@ -144,7 +161,25 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
 TEST_CASE("parse_shell_config_from_lua - custom shell inline") {
   lua_State *L{ make_test_lua_state() };
 
-  // Create table: { inline = {"/bin/sh", "-c"} }
+#ifdef _WIN32
+  // Windows: use cmd.exe
+  lua_createtable(L, 0, 1);
+  lua_createtable(L, 2, 0);  // Create array for inline
+  lua_pushstring(L, "C:\\Windows\\System32\\cmd.exe");
+  lua_rawseti(L, -2, 1);
+  lua_pushstring(L, "/c");
+  lua_rawseti(L, -2, 2);
+  lua_setfield(L, -2, "inline");
+
+  auto result{ envy::parse_shell_config_from_lua(L, -1, "test") };
+
+  CHECK(std::holds_alternative<envy::custom_shell_inline>(result));
+  auto const &shell_inline{ std::get<envy::custom_shell_inline>(result) };
+  REQUIRE(shell_inline.argv.size() == 2);
+  CHECK(shell_inline.argv[0] == "C:\\Windows\\System32\\cmd.exe");
+  CHECK(shell_inline.argv[1] == "/c");
+#else
+  // Unix: use sh
   lua_createtable(L, 0, 1);
   lua_createtable(L, 2, 0);  // Create array for inline
   lua_pushstring(L, "/bin/sh");
@@ -160,6 +195,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell inline") {
   REQUIRE(shell_inline.argv.size() == 2);
   CHECK(shell_inline.argv[0] == "/bin/sh");
   CHECK(shell_inline.argv[1] == "-c");
+#endif
 
   lua_close(L);
 }

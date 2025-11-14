@@ -18,6 +18,9 @@ bool run_check_string(recipe *r, graph_state &state, std::string_view check_cmd)
 
   // Build shell config using manifest's default_shell
   shell_run_cfg cfg;
+  cfg.on_output_line = [](std::string_view line) {
+    tui::trace("check output: %s", std::string(line).c_str());
+  };
   cfg.env = shell_getenv();
 
   // Get manifest default_shell if present
