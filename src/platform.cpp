@@ -133,10 +133,12 @@ namespace envy::platform {
 
 struct file_lock::impl {
   int fd;
-  std::mutex *path_mutex;  // owned by s_lock_mutexes
+  std::mutex *path_mutex;  // owned by the s_lock_mutexes map
   std::filesystem::path lock_path;
 
-  // POSIX file locks are per-process not per-thread, use an in-process mutex per path.
+  // POSIX file locks are per-process, not per-thread: multiple threads in the same process
+  // can bypass the file lock and acquire it simultaneously. To ensure thread-level mutual
+  // exclusion for file locks within a process, we use an in-process mutex per path.
   static std::mutex s_lock_map_mutex;
   static std::unordered_map<std::string, std::unique_ptr<std::mutex> > s_lock_mutexes;
 };
@@ -150,7 +152,7 @@ file_lock::~file_lock() {
     ::close(impl_->fd);
     if (impl_->path_mutex) { impl_->path_mutex->unlock(); }
 
-    std::error_code ec;  // Ignore errors - file may be held by another process, ok.
+    std::error_code ec;  // Ignore errors - lock file may already be deleted or inaccessible.
     std::filesystem::remove(impl_->lock_path, ec);
   }
 }

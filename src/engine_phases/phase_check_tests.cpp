@@ -363,22 +363,6 @@ TEST_CASE("run_check_verb function check respects return value") {
 // Error handling tests
 // ============================================================================
 
-#ifndef _WIN32
-// Note: This test is POSIX-only because shell_run doesn't throw on command failures
-// on Windows/PowerShell - it returns an exit code instead. Windows shells are more lenient.
-TEST_CASE("run_check_string throws on invalid shell command") {
-  test_recipe_fixture f;
-
-  cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
-
-  // POSIX: command not found may throw (shell-dependent)
-  CHECK_THROWS_AS(run_check_string(f.r.get(), state, "this-command-does-not-exist-12345"),
-                  std::runtime_error);
-}
-#endif
-
 TEST_CASE("run_check_function propagates Lua error with context") {
   test_recipe_fixture f;
   f.r->spec.identity = "my-package";

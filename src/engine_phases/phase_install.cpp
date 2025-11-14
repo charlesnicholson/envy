@@ -230,6 +230,16 @@ void run_install_phase(recipe *r, graph_state &state) {
                                r->spec.identity);
   }
 
+  // TODO(docs/work.md Phase 8, Task 4): Add validation to ensure user-managed packages
+  // (those with a check verb) do not call mark_install_complete(). This validation should
+  // check recipe_has_check_verb() and throw if lock->is_install_complete() is true:
+  //   if (recipe_has_check_verb(r, lua) && marked_complete) {
+  //     throw std::runtime_error("Recipe " + r->spec.identity + " has check verb "
+  //                              "(user-managed) but called mark_install_complete(). "
+  //                              "User-managed recipes must not populate cache.");
+  //   }
+  // This prevents cache pollution from recipes that should be ephemeral.
+
   if (marked_complete) { r->asset_path = final_asset_path; }
 }
 

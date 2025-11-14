@@ -164,7 +164,9 @@ void run_check_phase(recipe *r, graph_state &state) {
         // Race detected: another process completed work while we waited for lock
         tui::trace(
             "phase check: re-check passed, releasing lock (another process completed)");
-        // Lock destructor will run, purging entry_dir, phases skip
+        // Lock destructor will run, purging entry_dir because user_managed flag is set.
+        // This is correct: user-managed packages don't leave cache artifacts, so even
+        // if install phase ran, there's nothing to preserve.
         return;
       }
 
@@ -172,10 +174,13 @@ void run_check_phase(recipe *r, graph_state &state) {
       r->lock = std::move(cache_result.lock);
       tui::trace("phase check: re-check failed, keeping lock, phases will execute");
     } else {
-      // Cache hit (shouldn't happen for user-managed, but handle it)
+      // Cache hit for user-managed package indicates inconsistent state:
+      // check verb returned false (work needed) but cache entry exists.
+      // This may indicate a buggy/non-deterministic check verb or race condition.
       r->asset_path = cache_result.asset_path;
-      tui::trace("phase check: cache hit for user-managed package at %s",
-                 cache_result.asset_path.string().c_str());
+      tui::warn("phase check: unexpected cache hit for user-managed package at %s - "
+                "check verb may be buggy or non-deterministic",
+                cache_result.asset_path.string().c_str());
     }
 
   } else {

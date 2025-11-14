@@ -28,7 +28,11 @@ struct temp_cache_fixture {
     cache.reset();  // Destroy cache before cleaning up directory
     std::error_code ec;
     std::filesystem::remove_all(temp_root, ec);
-    // Ignore errors - best effort cleanup
+    if (ec) {
+      std::string msg = "Failed to clean up temp cache directory '" + temp_root.string() +
+                        "': " + ec.message();
+      FAIL_CHECK(msg.c_str());
+    }
   }
 
   std::filesystem::path temp_root;
