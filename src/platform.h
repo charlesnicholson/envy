@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -19,10 +18,8 @@ class file_lock {
  public:
   explicit file_lock(std::filesystem::path const &path);
   ~file_lock();
-
   file_lock(file_lock &&) noexcept;
   file_lock &operator=(file_lock &&) noexcept;
-
   file_lock(file_lock const &) = delete;
   file_lock &operator=(file_lock const &) = delete;
 

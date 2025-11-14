@@ -174,13 +174,13 @@ fetch_result fetch_git_repo(std::string const &url,
     throw std::runtime_error(msg);
   }
 
-  // Update HEAD to point to the target
+  // Update HEAD to point to the target (detached HEAD state)
   git_oid const *target_oid{ git_object_id(target.get()) };
-  git_reference *head_ref{ nullptr };
-  if (int const error{
-          git_reference_create(&head_ref, repo.get(), "HEAD", target_oid, 1, "checkout") };
-      error == 0 && head_ref) {
-    git_reference_free(head_ref);
+  if (git_repository_set_head_detached(repo.get(), target_oid)) {
+    git_error const *git_err{ git_error_last() };
+    std::string msg{ "fetch_git: failed to update HEAD: " };
+    if (git_err) { msg += git_err->message; }
+    throw std::runtime_error(msg);
   }
 
   return fetch_result{ .scheme = uri_scheme::GIT,
@@ -191,56 +191,26 @@ fetch_result fetch_git_repo(std::string const &url,
 }  // namespace
 
 fetch_result fetch_single(fetch_request const &request) {
+  // Helper for HTTP/HTTPS/FTP/FTPS requests that all use libcurl
+  auto const fetch_via_curl = [](auto const &req) -> fetch_result {
+    auto const info{ uri_classify(req.source) };
+    if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+      throw std::invalid_argument("fetch: source URI is empty");
+    }
+    return fetch_result{
+      .scheme = info.scheme,
+      .resolved_source = std::filesystem::path{ info.canonical },
+      .resolved_destination =
+          libcurl_download(info.canonical, req.destination, req.progress)
+    };
+  };
+
   return std::visit(
       match{
-          [](fetch_request_http const &req) -> fetch_result {
-            auto const info{ uri_classify(req.source) };
-            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
-              throw std::invalid_argument("fetch: source URI is empty");
-            }
-            return fetch_result{
-              .scheme = info.scheme,
-              .resolved_source = std::filesystem::path{ info.canonical },
-              .resolved_destination =
-                  libcurl_download(info.canonical, req.destination, req.progress)
-            };
-          },
-          [](fetch_request_https const &req) -> fetch_result {
-            auto const info{ uri_classify(req.source) };
-            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
-              throw std::invalid_argument("fetch: source URI is empty");
-            }
-            return fetch_result{
-              .scheme = info.scheme,
-              .resolved_source = std::filesystem::path{ info.canonical },
-              .resolved_destination =
-                  libcurl_download(info.canonical, req.destination, req.progress)
-            };
-          },
-          [](fetch_request_ftp const &req) -> fetch_result {
-            auto const info{ uri_classify(req.source) };
-            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
-              throw std::invalid_argument("fetch: source URI is empty");
-            }
-            return fetch_result{
-              .scheme = info.scheme,
-              .resolved_source = std::filesystem::path{ info.canonical },
-              .resolved_destination =
-                  libcurl_download(info.canonical, req.destination, req.progress)
-            };
-          },
-          [](fetch_request_ftps const &req) -> fetch_result {
-            auto const info{ uri_classify(req.source) };
-            if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
-              throw std::invalid_argument("fetch: source URI is empty");
-            }
-            return fetch_result{
-              .scheme = info.scheme,
-              .resolved_source = std::filesystem::path{ info.canonical },
-              .resolved_destination =
-                  libcurl_download(info.canonical, req.destination, req.progress)
-            };
-          },
+          [&](fetch_request_http const &req) { return fetch_via_curl(req); },
+          [&](fetch_request_https const &req) { return fetch_via_curl(req); },
+          [&](fetch_request_ftp const &req) { return fetch_via_curl(req); },
+          [&](fetch_request_ftps const &req) { return fetch_via_curl(req); },
           [](fetch_request_s3 const &req) -> fetch_result {
             auto const info{ uri_classify(req.source) };
             if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
