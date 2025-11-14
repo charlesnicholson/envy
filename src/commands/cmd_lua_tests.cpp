@@ -46,7 +46,7 @@ struct lua_test_fixture {
   }
 
   void run_script(std::filesystem::path const &script_path) {
-    envy::tui::run(std::nullopt);
+    envy::tui::run(envy::tui::level::TUI_INFO);
     envy::cmd_lua::cfg cfg;
     cfg.script_path = script_path;
     envy::cmd_lua cmd{ cfg };
@@ -57,8 +57,14 @@ struct lua_test_fixture {
   std::vector<std::string> filter_output() const {
     std::vector<std::string> script_output;
     for (auto const &msg : messages) {
+      // Filter out error messages, trace messages, and cache diagnostic messages
+      // Also filter messages starting with whitespace (detailed trace output)
       if (msg.find("Failed") == std::string::npos &&
-          msg.find("error") == std::string::npos) {
+          msg.find("error") == std::string::npos &&
+          msg.find("[TRC]") == std::string::npos &&
+          msg.find("ensure_entry") == std::string::npos &&
+          msg.find("scoped_entry_lock") == std::string::npos && !msg.empty() &&
+          msg[0] != ' ' && msg[0] != '\t') {
         script_output.push_back(msg);
       }
     }

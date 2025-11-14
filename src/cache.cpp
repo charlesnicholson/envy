@@ -23,9 +23,14 @@ struct cache::impl : cache_impl {};
 
 struct cache::scoped_entry_lock::impl {
   path entry_dir_;
-  path lock_path_;
-  platform::file_lock_handle_t lock_handle_{ platform::kInvalidLockHandle };
+  path lock_path_;  // Needed for cleanup in destructor
+  platform::file_lock lock_;
   bool completed_{ false };
+
+  impl(path entry_dir, path lock_path, platform::file_lock lock)
+      : entry_dir_{ std::move(entry_dir) },
+        lock_path_{ std::move(lock_path) },
+        lock_{ std::move(lock) } {}
 
   path asset_dir() const { return entry_dir_ / "asset"; }
 };
@@ -49,19 +54,30 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
                                         path const &lock_path) {
   envy::cache::ensure_result result{ entry_dir, entry_dir / "asset", nullptr };
 
-  if (envy::cache::is_entry_complete(entry_dir)) { return result; }
-
-  std::filesystem::create_directories(impl.locks_dir());
-  std::filesystem::create_directories(entry_dir);
-
-  envy::platform::file_lock_handle_t h{ envy::platform::lock_file(lock_path) };
+  envy::tui::trace("ensure_entry: checking %s", entry_dir.string().c_str());
 
   if (envy::cache::is_entry_complete(entry_dir)) {
-    envy::platform::unlock_file(h);
+    envy::tui::trace("  ensure_entry: FAST PATH - entry already complete");
     return result;
   }
 
-  result.lock = envy::cache::scoped_entry_lock::make(entry_dir, lock_path, h);
+  envy::tui::trace("  ensure_entry: not complete, acquiring lock %s",
+                   lock_path.string().c_str());
+  std::filesystem::create_directories(impl.locks_dir());
+  std::filesystem::create_directories(entry_dir);
+
+  envy::tui::trace("  ensure_entry: blocking on file_lock acquisition...");
+  envy::platform::file_lock lock{ lock_path };
+  envy::tui::trace("  ensure_entry: acquired lock!");
+
+  if (envy::cache::is_entry_complete(entry_dir)) {
+    envy::tui::trace("  ensure_entry: SLOW PATH - completed while waiting for lock");
+    // Lock automatically released when lock goes out of scope
+    return result;
+  }
+
+  envy::tui::trace("  ensure_entry: CACHE MISS - returning lock for work");
+  result.lock = envy::cache::scoped_entry_lock::make(entry_dir, lock_path, std::move(lock));
   return result;
 }
 
@@ -71,31 +87,46 @@ namespace envy {
 
 cache::scoped_entry_lock::scoped_entry_lock(path entry_dir,
                                             path lock_path,
-                                            platform::file_lock_handle_t prelocked_handle)
-    : m{ std::make_unique<impl>() } {
-  m->entry_dir_ = std::move(entry_dir);
-  m->lock_path_ = std::move(lock_path);
-  m->lock_handle_ = prelocked_handle;
+                                            platform::file_lock lock)
+    : m{ std::make_unique<impl>(std::move(entry_dir), std::move(lock_path), std::move(lock)) } {
 
+  tui::trace("scoped_entry_lock CTOR: entry_dir=%s", m->entry_dir_.string().c_str());
+  tui::trace("  lock_path=%s", m->lock_path_.string().c_str());
+  tui::trace("  about to remove_all(install_dir)");
   remove_all_noexcept(install_dir());
+  tui::trace("  about to remove_all(work_dir)");
   remove_all_noexcept(work_dir());  // always delete (purely ephemeral)
 
   // Preserve fetch/ to enable per-file caching across failed attempts
 
   // Ensure directories exist
+  tui::trace("  creating directories");
   std::filesystem::create_directories(fetch_dir());
   std::filesystem::create_directories(install_dir());
   std::filesystem::create_directories(stage_dir());
+  tui::trace("scoped_entry_lock CTOR: done");
 }
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
+  tui::trace("scoped_entry_lock DTOR: entry_dir=%s completed=%s",
+             m->entry_dir_.string().c_str(),
+             m->completed_ ? "true" : "false");
+
   if (m->completed_) {
+    tui::trace("  DTOR: removing asset_dir");
     remove_all_noexcept(m->asset_dir());
+    tui::trace("  DTOR: renaming install_dir -> asset_dir");
+    tui::trace("    from: %s", install_dir().string().c_str());
+    tui::trace("    to:   %s", m->asset_dir().string().c_str());
     platform::atomic_rename(install_dir(), m->asset_dir());
+    tui::trace("  DTOR: cleaning up work/fetch dirs");
     remove_all_noexcept(work_dir());
     remove_all_noexcept(fetch_dir());
+    tui::trace("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
+    tui::trace("  DTOR: completed path success");
   } else {
+    tui::trace("  DTOR: not completed, cleaning up");
     // Check empty install_dir AND fetch_dir (installation didn't use cache at all)
     std::error_code ec;
 
@@ -117,27 +148,34 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
       return it == std::filesystem::directory_iterator{};
     }() };
 
+    tui::trace("  DTOR: install_empty=%s fetch_empty=%s",
+               install_dir_empty ? "true" : "false",
+               fetch_dir_empty ? "true" : "false");
+
     remove_all_noexcept(install_dir());
     remove_all_noexcept(work_dir());
 
     // If both install_dir and fetch_dir were completely empty, wipe entire cache entry
     if (install_dir_empty && fetch_dir_empty) {
+      tui::trace("  DTOR: both empty, wiping entry");
       remove_all_noexcept(fetch_dir());
       remove_all_noexcept(m->asset_dir());
     }
   }
 
-  platform::unlock_file(m->lock_handle_);
+  tui::trace("  DTOR: unlocking file (automatic via file_lock destructor)");
+  // Lock automatically released when m->lock_handle_ is destroyed
   std::filesystem::remove(m->lock_path_);
+  tui::trace("scoped_entry_lock DTOR: done");
 }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
     path entry_dir,
     path lock_path,
-    platform::file_lock_handle_t lock_handle) {
-  return ptr_t{
-    new scoped_entry_lock{ std::move(entry_dir), std::move(lock_path), lock_handle }
-  };
+    platform::file_lock lock_handle) {
+  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
+                                       std::move(lock_path),
+                                       std::move(lock_handle) } };
 }
 
 cache::path cache::scoped_entry_lock::install_dir() const {

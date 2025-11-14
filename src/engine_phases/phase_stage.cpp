@@ -1,7 +1,7 @@
 #include "phase_stage.h"
 
 #include "extract.h"
-#include "../lua_ctx_bindings.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
@@ -136,6 +136,7 @@ void build_stage_context_table(lua_State *lua,
   lua_ctx_bindings_register_copy(lua, ctx);
   lua_ctx_bindings_register_move(lua, ctx);
   lua_ctx_bindings_register_extract(lua, ctx);
+  lua_ctx_bindings_register_ls(lua, ctx);
 }
 
 std::filesystem::path determine_stage_destination(lua_State *lua,
@@ -196,8 +197,8 @@ void run_default_stage(std::filesystem::path const &fetch_dir,
 void run_declarative_stage(lua_State *lua,
                            std::filesystem::path const &fetch_dir,
                            std::filesystem::path const &dest_dir,
-                           std::string const &key) {
-  stage_options const opts{ parse_stage_options(lua, key) };
+                           std::string const &identity) {
+  stage_options const opts{ parse_stage_options(lua, identity) };
   lua_pop(lua, 1);  // Pop stage table
 
   tui::trace("phase stage: declarative extraction with strip=%d", opts.strip_components);
@@ -210,14 +211,14 @@ void run_programmatic_stage(lua_State *lua,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
                             graph_state &state,
-                            std::string const &key) {
+                            recipe *r) {
   tui::trace("phase stage: running imperative stage function");
 
   stage_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = dest_dir;
   ctx.state = &state;
-  ctx.key = &key;
+  ctx.recipe_ = r;
   ctx.manifest_ = state.manifest_;
 
   build_stage_context_table(lua, identity, options, &ctx);
@@ -227,13 +228,13 @@ void run_programmatic_stage(lua_State *lua,
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };
     lua_pop(lua, 1);
-    throw std::runtime_error("Stage function failed for " + key + ": " + error_msg);
+    throw std::runtime_error("Stage function failed for " + identity + ": " + error_msg);
   }
 }
 
 void run_shell_stage(std::string_view script,
                      std::filesystem::path const &dest_dir,
-                     std::string const &key) {
+                     std::string const &identity) {
   tui::trace("phase stage: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -252,37 +253,33 @@ void run_shell_stage(std::string_view script,
 
   if (result.exit_code != 0) {
     if (result.signal) {
-      throw std::runtime_error("Stage shell script failed for " + key +
+      throw std::runtime_error("Stage shell script failed for " + identity +
                                " (terminated by signal " + std::to_string(*result.signal) +
                                ")");
     } else {
-      throw std::runtime_error("Stage shell script failed for " + key + " (exit code " +
-                               std::to_string(result.exit_code) + ")");
+      throw std::runtime_error("Stage shell script failed for " + identity +
+                               " (exit code " + std::to_string(result.exit_code) + ")");
     }
   }
 }
 
 }  // namespace
 
-void run_stage_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase stage START %s", key.c_str());
-  trace_on_exit trace_end{ "phase stage END " + key };
+void run_stage_phase(recipe *r, graph_state &state) {
+  std::string const key{ r->spec.format_key() };
+  tui::trace("phase stage START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase stage END [" + key + "]" };
 
-  auto [lua, lock, identity, options] = [&] {
-    typename decltype(state.recipes)::accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return std::tuple{ acc->second.lua_state.get(),
-                       acc->second.lock.get(),
-                       acc->second.identity,
-                       acc->second.options };
-  }();
-
-  if (!lock) {
-    throw std::runtime_error("BUG: stage phase executing without lock for " + key);
+  cache::scoped_entry_lock *lock{ r->lock.get() };
+  if (!lock) {  // Cache hit - no work to do
+    tui::trace("phase stage: no lock (cache hit), skipping");
+    return;
   }
 
+  std::string const &identity{ r->spec.identity };
+  std::unordered_map<std::string, lua_value> const &options{ r->spec.options };
+
+  lua_State *lua{ r->lua_state.get() };
   std::filesystem::path const dest_dir{ determine_stage_destination(lua, lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
 
@@ -300,20 +297,20 @@ void run_stage_phase(std::string const &key, graph_state &state) {
       char const *script{ lua_tolstring(lua, -1, &len) };
       std::string script_str{ script, len };  // Copy before popping
       lua_pop(lua, 1);
-      run_shell_stage(script_str, dest_dir, key);
+      run_shell_stage(script_str, dest_dir, identity);
       break;
     }
 
     case LUA_TFUNCTION:
-      run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, state, key);
+      run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, state, r);
       break;
 
-    case LUA_TTABLE: run_declarative_stage(lua, fetch_dir, dest_dir, key); break;
+    case LUA_TTABLE: run_declarative_stage(lua, fetch_dir, dest_dir, identity); break;
 
     default:
       lua_pop(lua, 1);
       throw std::runtime_error("stage field must be nil, string, table, or function for " +
-                               key);
+                               identity);
   }
 }
 

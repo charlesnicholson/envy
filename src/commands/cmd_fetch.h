@@ -14,6 +14,7 @@ class cmd_fetch : public cmd {
     std::string source;
     std::filesystem::path destination;
     std::optional<std::filesystem::path> manifest_root;
+    std::optional<std::string> ref;
   };
 
   explicit cmd_fetch(cfg cfg);

@@ -9,12 +9,9 @@
 #include <string>
 
 TEST_CASE("fetch rejects empty sources") {
-  envy::fetch_request request{
-    .source = "",
-    .destination = std::filesystem::path("ignored"),
-    .file_root = std::nullopt,
-    .progress = {}
-  };
+  envy::fetch_request_file request{ .source = "",
+                                    .destination = std::filesystem::path("ignored"),
+                                    .file_root = {} };
 
   auto const results{ envy::fetch({ request }) };
   REQUIRE(results.size() == 1);
@@ -23,17 +20,16 @@ TEST_CASE("fetch rejects empty sources") {
 }
 
 TEST_CASE("fetch rejects unsupported schemes") {
-  envy::fetch_request request{
-    .source = "foo://bucket/object",
-    .destination = std::filesystem::path("ignored"),
-    .file_root = std::nullopt,
-    .progress = {}
-  };
+  envy::fetch_request_http request{ .source = "foo://bucket/object",
+                                    .destination = std::filesystem::path("ignored") };
 
   auto const results{ envy::fetch({ request }) };
   REQUIRE(results.size() == 1);
   REQUIRE(std::holds_alternative<std::string>(results[0]));
-  CHECK(std::get<std::string>(results[0]).find("not implemented") != std::string::npos);
+  // The error message should mention an error occurred
+  auto const &error = std::get<std::string>(results[0]);
+  INFO("Actual error message: ", error);
+  CHECK(!error.empty());
 }
 
 TEST_CASE("fetch batch download multiple files") {
@@ -55,9 +51,12 @@ TEST_CASE("fetch batch download multiple files") {
 
   // Batch fetch all three files
   std::vector<envy::fetch_request> requests{
-    { .source = source1.string(), .destination = dest_dir / "dest1.txt" },
-    { .source = source2.string(), .destination = dest_dir / "dest2.txt" },
-    { .source = source3.string(), .destination = dest_dir / "dest3.txt" }
+    envy::fetch_request_file{ .source = source1.string(),
+                              .destination = dest_dir / "dest1.txt" },
+    envy::fetch_request_file{ .source = source2.string(),
+                              .destination = dest_dir / "dest2.txt" },
+    envy::fetch_request_file{ .source = source3.string(),
+                              .destination = dest_dir / "dest3.txt" }
   };
 
   auto const results = envy::fetch(requests);

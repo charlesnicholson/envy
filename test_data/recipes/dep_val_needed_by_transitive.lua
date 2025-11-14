@@ -2,7 +2,9 @@
 identity = "local.dep_val_needed_by_transitive@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_needed_by_mid@v1", source = "dep_val_needed_by_mid.lua", needed_by = "fetch" }
+  { recipe = "local.dep_val_needed_by_mid@v1", source = "dep_val_needed_by_mid.lua", needed_by = "fetch" },
+  -- Must explicitly declare all dependencies we access
+  { recipe = "local.dep_val_needed_by_base@v1", source = "dep_val_needed_by_base.lua", needed_by = "fetch" }
 }
 
 fetch = function(ctx)

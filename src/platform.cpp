@@ -11,7 +11,22 @@
 
 namespace envy::platform {
 
-file_lock_handle_t const kInvalidLockHandle = 0;
+struct file_lock::impl {
+  HANDLE handle;
+};
+
+file_lock::~file_lock() {
+  if (impl_) {
+    OVERLAPPED ovlp{};
+    ::UnlockFileEx(impl_->handle, 0, MAXDWORD, MAXDWORD, &ovlp);
+    ::CloseHandle(impl_->handle);
+  }
+}
+
+file_lock::file_lock(file_lock &&) noexcept = default;
+file_lock &file_lock::operator=(file_lock &&) noexcept = default;
+
+file_lock::operator bool() const { return impl_ != nullptr; }
 
 std::optional<std::filesystem::path> get_default_cache_root() {
   if (char const *local_app_data{ std::getenv("LOCALAPPDATA") }) {
@@ -37,7 +52,7 @@ void set_env_var(char const *name, char const *value) {
   }
 }
 
-file_lock_handle_t lock_file(std::filesystem::path const &path) {
+file_lock::file_lock(std::filesystem::path const &path) {
   HANDLE const h{ ::CreateFileW(path.c_str(),
                                 GENERIC_READ | GENERIC_WRITE,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -59,16 +74,9 @@ file_lock_handle_t lock_file(std::filesystem::path const &path) {
                             std::system_category(),
                             "Failed to acquire file lock: " + path.string());
   }
-  return reinterpret_cast<std::intptr_t>(h);
-}
 
-void unlock_file(file_lock_handle_t handle) {
-  if (handle != kInvalidLockHandle) {
-    HANDLE const h{ reinterpret_cast<HANDLE>(handle) };
-    OVERLAPPED ovlp{};
-    ::UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ovlp);
-    ::CloseHandle(h);
-  }
+  impl_ = std::make_unique<impl>();
+  impl_->handle = h;
 }
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to) {
@@ -111,10 +119,38 @@ bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 #include <unistd.h>
 
 #include <cerrno>
+#include <mutex>
+#include <unordered_map>
 
 namespace envy::platform {
 
-file_lock_handle_t const kInvalidLockHandle = -1;
+struct file_lock::impl {
+  int fd;
+  std::mutex *path_mutex;  // Pointer to mutex in lock_mutexes
+
+  // POSIX file locks are per-process, not per-thread. If thread A acquires a lock
+  // and thread B in the same process tries to lock, B succeeds immediately (both
+  // think they got it). Windows LockFileEx blocks thread B automatically. To handle
+  // this on POSIX, we use an in-process mutex per lock path.
+  static std::mutex s_lock_map_mutex;
+  static std::unordered_map<std::string, std::unique_ptr<std::mutex> > s_lock_mutexes;
+};
+
+std::mutex file_lock::impl::s_lock_map_mutex;
+std::unordered_map<std::string, std::unique_ptr<std::mutex> >
+    file_lock::impl::s_lock_mutexes;
+
+file_lock::~file_lock() {
+  if (impl_) {
+    ::close(impl_->fd);
+    if (impl_->path_mutex) { impl_->path_mutex->unlock(); }
+  }
+}
+
+file_lock::file_lock(file_lock &&) noexcept = default;
+file_lock &file_lock::operator=(file_lock &&) noexcept = default;
+
+file_lock::operator bool() const { return impl_ != nullptr; }
 
 std::optional<std::filesystem::path> get_default_cache_root() {
 #ifdef __APPLE__
@@ -152,7 +188,21 @@ void set_env_var(char const *name, char const *value) {
   }
 }
 
-std::intptr_t lock_file(std::filesystem::path const &path) {
+file_lock::file_lock(std::filesystem::path const &path) {
+  // Canonicalize path to ensure different representations of same path use same mutex
+  std::string const canonical_key{
+    std::filesystem::absolute(path).lexically_normal().string()
+  };
+
+  // Acquire in-process mutex for this lock path, ensure one thread per cache entry
+  std::unique_lock<std::mutex> path_lock{ [&]() {
+    std::lock_guard<std::mutex> lock(impl::s_lock_map_mutex);
+    auto &mutex_ptr{ impl::s_lock_mutexes[canonical_key] };
+    if (!mutex_ptr) { mutex_ptr = std::make_unique<std::mutex>(); }
+    return std::unique_lock<std::mutex>{ *mutex_ptr };
+  }() };
+
+  // Now acquire the file lock (blocks other processes)
   int const fd{ ::open(path.c_str(), O_CREAT | O_RDWR, 0666) };
   if (fd == -1) {
     throw std::system_error(errno,
@@ -174,11 +224,9 @@ std::intptr_t lock_file(std::filesystem::path const &path) {
                             "Failed to acquire exclusive lock: " + path.string());
   }
 
-  return fd;
-}
-
-void unlock_file(std::intptr_t handle) {
-  if (handle != kInvalidLockHandle) { ::close(static_cast<int>(handle)); }
+  impl_ = std::make_unique<impl>();
+  impl_->fd = fd;
+  impl_->path_mutex = path_lock.release();  // Transfer ownership, mutex stays locked
 }
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to) {

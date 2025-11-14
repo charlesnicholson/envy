@@ -3,8 +3,9 @@ identity = "local.dep_val_transitive@v1"
 
 dependencies = {
   -- We depend on tool, which depends on lib
-  -- So we should be able to access lib transitively
-  { recipe = "local.dep_val_tool@v1", source = "dep_val_tool.lua" }
+  { recipe = "local.dep_val_tool@v1", source = "dep_val_tool.lua" },
+  -- In the new design, we must explicitly declare all dependencies we use
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua" }
 }
 
 fetch = {

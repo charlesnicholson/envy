@@ -1,6 +1,6 @@
 #include "phase_build.h"
 
-#include "../lua_ctx_bindings.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
@@ -54,6 +54,7 @@ void build_build_context_table(lua_State *lua,
   lua_ctx_bindings_register_copy(lua, ctx);
   lua_ctx_bindings_register_move(lua, ctx);
   lua_ctx_bindings_register_extract(lua, ctx);
+  lua_ctx_bindings_register_ls(lua, ctx);
 }
 
 void run_programmatic_build(lua_State *lua,
@@ -63,14 +64,14 @@ void run_programmatic_build(lua_State *lua,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
                             graph_state &state,
-                            std::string const &key) {
+                            recipe *r) {
   tui::trace("phase build: running programmatic build function");
 
   build_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = stage_dir;
   ctx.state = &state;
-  ctx.key = &key;
+  ctx.recipe_ = r;
   ctx.manifest_ = state.manifest_;
   ctx.install_dir = install_dir;
 
@@ -81,13 +82,13 @@ void run_programmatic_build(lua_State *lua,
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };
     lua_pop(lua, 1);
-    throw std::runtime_error("Build function failed for " + key + ": " + error_msg);
+    throw std::runtime_error("Build function failed for " + identity + ": " + error_msg);
   }
 }
 
 void run_shell_build(std::string_view script,
                      std::filesystem::path const &stage_dir,
-                     std::string const &key) {
+                     std::string const &identity) {
   tui::trace("phase build: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -107,33 +108,29 @@ void run_shell_build(std::string_view script,
   if (result.exit_code != 0) {
     if (result.signal) {
       throw std::runtime_error("Build shell script terminated by signal " +
-                               std::to_string(*result.signal) + " for " + key);
+                               std::to_string(*result.signal) + " for " + identity);
     } else {
-      throw std::runtime_error("Build shell script failed for " + key + " (exit code " +
-                               std::to_string(result.exit_code) + ")");
+      throw std::runtime_error("Build shell script failed for " + identity +
+                               " (exit code " + std::to_string(result.exit_code) + ")");
     }
   }
 }
 
 }  // namespace
 
-void run_build_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase build START %s", key.c_str());
-  trace_on_exit trace_end{ "phase build END " + key };
+void run_build_phase(recipe *r, graph_state &state) {
+  std::string const key{ r->spec.format_key() };
+  tui::trace("phase build START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase build END [" + key + "]" };
 
-  auto [lua, lock, identity, options] = [&] {
-    typename decltype(state.recipes)::accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return std::tuple{ acc->second.lua_state.get(),
-                       acc->second.lock.get(),
-                       acc->second.identity,
-                       acc->second.options };
-  }();
+  lua_State *lua = r->lua_state.get();
+  cache::scoped_entry_lock *lock = r->lock.get();
+  std::string const &identity = r->spec.identity;
+  std::unordered_map<std::string, lua_value> const &options = r->spec.options;
 
-  if (!lock) {
-    throw std::runtime_error("BUG: build phase executing without lock for " + key);
+  if (!lock) {  // Cache hit - no work to do
+    tui::trace("phase build: no lock (cache hit), skipping");
+    return;
   }
 
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
@@ -149,11 +146,13 @@ void run_build_phase(std::string const &key, graph_state &state) {
       break;
 
     case LUA_TSTRING: {
-      size_t len{ 0 };
-      char const *script{ lua_tolstring(lua, -1, &len) };
-      std::string script_str{ script, len };  // Copy before popping
+      std::string const script_str = [&]() {
+        size_t len{ 0 };
+        char const *script{ lua_tolstring(lua, -1, &len) };
+        return std::string{ script, len };
+      }();
       lua_pop(lua, 1);
-      run_shell_build(script_str, stage_dir, key);
+      run_shell_build(script_str, stage_dir, identity);
       break;
     }
 
@@ -165,12 +164,13 @@ void run_build_phase(std::string const &key, graph_state &state) {
                              identity,
                              options,
                              state,
-                             key);
+                             r);
       break;
 
     default:
       lua_pop(lua, 1);
-      throw std::runtime_error("build field must be nil, string, or function for " + key);
+      throw std::runtime_error("build field must be nil, string, or function for " +
+                               identity);
   }
 }
 

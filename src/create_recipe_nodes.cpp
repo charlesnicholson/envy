@@ -8,89 +8,81 @@
 #include "engine_phases/phase_install.h"
 #include "engine_phases/phase_recipe_fetch.h"
 #include "engine_phases/phase_stage.h"
+#include "recipe.h"
 
+#include <memory>
 #include <stdexcept>
 
 namespace envy {
 
-void create_recipe_nodes(std::string const &key,
-                         recipe_spec const &spec,
-                         graph_state &state,
-                         std::unordered_set<std::string> const &ancestors) {
-  if (ancestors.contains(key)) {
-    throw std::runtime_error("Cycle detected: " + key + " depends on itself");
-  }
-
-  {
-    typename decltype(state.recipes)::const_accessor acc;
-    if (state.recipes.find(acc, key)) { return; }
+recipe *create_recipe_nodes(recipe_spec const &spec,
+                            graph_state &state,
+                            std::unordered_set<std::string> const &ancestors) {
+  // Cycle detection using identity
+  if (ancestors.contains(spec.identity)) {
+    throw std::runtime_error("Cycle detected: " + spec.identity + " depends on itself");
   }
 
   if (spec.identity.starts_with("local.") && !spec.is_local()) {
     throw std::runtime_error("Recipe 'local.*' must have local source: " + spec.identity);
   }
 
-  auto recipe_fetch_node{
-    std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
-        state.graph,
-        [spec, key, &state, ancestors](tbb::flow::continue_msg const &) {
-          run_recipe_fetch_phase(spec, key, state, ancestors);
-        })
-  };
+  auto r_ptr = std::make_unique<recipe>();
+  recipe *r = r_ptr.get();
 
-  auto check_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->spec = spec;
+
+  // Create all 8 phase nodes, capturing recipe pointer
+  r->recipe_fetch_node =
+      std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+          state.graph,
+          [r, &state, ancestors](tbb::flow::continue_msg const &) {
+            run_recipe_fetch_phase(r, state, ancestors);
+          });
+
+  r->check_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_check_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_check_phase(r, state); });
 
-  auto fetch_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->fetch_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_fetch_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_fetch_phase(r, state); });
 
-  auto stage_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->stage_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_stage_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_stage_phase(r, state); });
 
-  auto build_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->build_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_build_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_build_phase(r, state); });
 
-  auto install_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->install_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_install_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_install_phase(r, state); });
 
-  auto deploy_node{ std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+  r->deploy_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
       state.graph,
-      [key, &state](tbb::flow::continue_msg const &) { run_deploy_phase(key, state); }) };
+      [r, &state](tbb::flow::continue_msg const &) { run_deploy_phase(r, state); });
 
-  auto completion_node{
-    std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
-        state.graph,
-        [key, &state](tbb::flow::continue_msg const &) {
-          run_completion_phase(key, state);
-        })
-  };
+  r->completion_node = std::make_shared<tbb::flow::continue_node<tbb::flow::continue_msg>>(
+      state.graph,
+      [r, &state](tbb::flow::continue_msg const &) { run_completion_phase(r, state); });
 
-  tbb::flow::make_edge(*recipe_fetch_node, *check_node);
-  tbb::flow::make_edge(*fetch_node, *stage_node);
-  tbb::flow::make_edge(*stage_node, *build_node);
-  tbb::flow::make_edge(*build_node, *install_node);
-  tbb::flow::make_edge(*install_node, *deploy_node);
+  // Wire all static edges (complete 8-phase pipeline)
+  tbb::flow::make_edge(*r->recipe_fetch_node, *r->check_node);
+  tbb::flow::make_edge(*r->check_node, *r->fetch_node);
+  tbb::flow::make_edge(*r->fetch_node, *r->stage_node);
+  tbb::flow::make_edge(*r->stage_node, *r->build_node);
+  tbb::flow::make_edge(*r->build_node, *r->install_node);
+  tbb::flow::make_edge(*r->install_node, *r->deploy_node);
+  tbb::flow::make_edge(*r->deploy_node, *r->completion_node);
 
   {
-    typename decltype(state.recipes)::accessor acc;
-    if (state.recipes.insert(acc, key)) {
-      acc->second.recipe_fetch_node = recipe_fetch_node;
-      acc->second.check_node = check_node;
-      acc->second.fetch_node = fetch_node;
-      acc->second.stage_node = stage_node;
-      acc->second.build_node = build_node;
-      acc->second.install_node = install_node;
-      acc->second.deploy_node = deploy_node;
-      acc->second.completion_node = completion_node;
-      acc->second.identity = spec.identity;
-      acc->second.options = spec.options;
-    }
+    std::lock_guard lock{ state.recipes_mutex };
+    state.recipes.push_back(std::move(r_ptr));
   }
+
+  return r;
 }
 
 }  // namespace envy

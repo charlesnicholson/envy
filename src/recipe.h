@@ -2,10 +2,10 @@
 
 #include "cache.h"
 #include "lua_util.h"
+#include "recipe_spec.h"
 
 #include <tbb/flow_graph.h>
 
-#include <atomic>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -30,14 +30,11 @@ struct recipe {
   cache::scoped_entry_lock::ptr_t lock;
   std::filesystem::path asset_path;
   std::string result_hash;
+  std::string canonical_identity_hash;  // BLAKE3(format_key()) - full 64 hex chars
 
-  std::string identity;
-  std::unordered_map<std::string, lua_value> options;
-
-  std::atomic_bool completed{ false };
-
-  // Declared dependencies (identity strings) for validation
+  recipe_spec spec;  // (includes source info, identity, options, etc.)
   std::vector<std::string> declared_dependencies;
+  std::unordered_map<std::string, recipe *> dependencies;
 };
 
 }  // namespace envy
