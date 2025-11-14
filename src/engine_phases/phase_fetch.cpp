@@ -15,6 +15,7 @@ extern "C" {
 #include "lua.h"
 }
 
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <stdexcept>
@@ -780,13 +781,10 @@ bool run_declarative_fetch(lua_State *lua,
 
   // Check if we fetched any git repos - if so, don't mark fetch complete (git clones are
   // not cacheable)
-  bool has_git_repos{ false };
-  for (auto const &spec : fetch_specs) {
-    if (std::holds_alternative<fetch_request_git>(spec.request)) {
-      has_git_repos = true;
-      break;
-    }
-  }
+  bool const has_git_repos =
+      std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
+        return std::holds_alternative<fetch_request_git>(spec.request);
+      });
 
   if (has_git_repos) {
     tui::trace(

@@ -94,12 +94,9 @@ fetch_result fetch_local_file(std::string const &canonical_path,
                        .resolved_destination = dest };
 }
 
-struct scoped_git_init {
+struct scoped_git_init : unmovable {
   scoped_git_init() { git_libgit2_init(); }
   ~scoped_git_init() { git_libgit2_shutdown(); }
-
-  scoped_git_init(scoped_git_init const &) = delete;
-  scoped_git_init &operator=(scoped_git_init const &) = delete;
 };
 
 int git_fetch_progress_callback(git_indexer_progress const *stats, void *payload) {
@@ -197,12 +194,11 @@ fetch_result fetch_single(fetch_request const &request) {
     if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
       throw std::invalid_argument("fetch: source URI is empty");
     }
-    return fetch_result{
-      .scheme = info.scheme,
-      .resolved_source = std::filesystem::path{ info.canonical },
-      .resolved_destination =
-          libcurl_download(info.canonical, req.destination, req.progress)
-    };
+    return fetch_result{ .scheme = info.scheme,
+                         .resolved_source = std::filesystem::path{ info.canonical },
+                         .resolved_destination = libcurl_download(info.canonical,
+                                                                  req.destination,
+                                                                  req.progress) };
   };
 
   return std::visit(
