@@ -13,6 +13,7 @@ namespace envy::platform {
 
 struct file_lock::impl {
   HANDLE handle;
+  std::filesystem::path lock_path;
 };
 
 file_lock::~file_lock() {
@@ -20,6 +21,11 @@ file_lock::~file_lock() {
     OVERLAPPED ovlp{};
     ::UnlockFileEx(impl_->handle, 0, MAXDWORD, MAXDWORD, &ovlp);
     ::CloseHandle(impl_->handle);
+
+    // Delete lock file after closing handle
+    std::error_code ec;
+    std::filesystem::remove(impl_->lock_path, ec);
+    // Ignore errors - file may be held by another process, which is expected
   }
 }
 
@@ -77,6 +83,7 @@ file_lock::file_lock(std::filesystem::path const &path) {
 
   impl_ = std::make_unique<impl>();
   impl_->handle = h;
+  impl_->lock_path = path;
 }
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to) {
@@ -126,12 +133,10 @@ namespace envy::platform {
 
 struct file_lock::impl {
   int fd;
-  std::mutex *path_mutex;  // Pointer to mutex in lock_mutexes
+  std::mutex *path_mutex;  // owned by s_lock_mutexes
+  std::filesystem::path lock_path;
 
-  // POSIX file locks are per-process, not per-thread. If thread A acquires a lock
-  // and thread B in the same process tries to lock, B succeeds immediately (both
-  // think they got it). Windows LockFileEx blocks thread B automatically. To handle
-  // this on POSIX, we use an in-process mutex per lock path.
+  // POSIX file locks are per-process not per-thread, use an in-process mutex per path.
   static std::mutex s_lock_map_mutex;
   static std::unordered_map<std::string, std::unique_ptr<std::mutex> > s_lock_mutexes;
 };
@@ -144,6 +149,9 @@ file_lock::~file_lock() {
   if (impl_) {
     ::close(impl_->fd);
     if (impl_->path_mutex) { impl_->path_mutex->unlock(); }
+
+    std::error_code ec;  // Ignore errors - file may be held by another process, ok.
+    std::filesystem::remove(impl_->lock_path, ec);
   }
 }
 
@@ -227,6 +235,7 @@ file_lock::file_lock(std::filesystem::path const &path) {
   impl_ = std::make_unique<impl>();
   impl_->fd = fd;
   impl_->path_mutex = path_lock.release();  // Transfer ownership, mutex stays locked
+  impl_->lock_path = path;
 }
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to) {

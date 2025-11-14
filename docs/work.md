@@ -285,7 +285,133 @@ ctx = {
 
 **Results:** Install phase implemented with all three forms. Programmatic packages supported—can skip mark_install_complete() to signal no cache usage. Cache purge logic detects empty install_dir + fetch_dir and removes entire entry. Completion phase accepts programmatic packages (result_hash="programmatic"). All 379 unit tests + 194 functional tests pass.
 
-### Phase 8: Deploy Phase Implementation
+### Phase 8: User-Managed Packages (Double-Check Lock)
+
+**Goal:** Enable packages that don't leave cache artifacts but need process coordination. User-managed packages use check function to determine install state; cache entries are ephemeral workspace (fully purged after installation).
+
+**Key Design:**
+- **Check verb presence** implies user-managed (no new recipe field needed)
+- **Double-check lock pattern** in check phase: check → acquire lock → re-check → proceed or skip
+- **Lock flag** (`mark_user_managed()`) signals destructor to purge entire `entry_dir`
+- **Check XOR cache constraint:** User-managed recipes cannot call `mark_install_complete()` (runtime validation)
+- **String check support:** `check = "command"` runs shell, returns true if exit 0
+- **All phases allowed:** User-managed packages can use fetch/stage/build as ephemeral workspace
+
+### Tasks
+
+- [x] 1. Cache Lock - Add user-managed flag
+  - [x] Add `bool user_managed_ = false;` private member to `scoped_entry_lock` class
+  - [x] Add `void mark_user_managed()` public method to set flag
+  - [x] Modify destructor three-way branch logic:
+    - [x] Success path: `if (completed_)` - existing logic unchanged (rename install→asset, touch envy-complete)
+    - [x] User-managed path: `else if (user_managed_)` - call `remove_all_noexcept(entry_dir_)` to purge entire entry
+    - [x] Cache-managed failure path: `else` - existing conditional purge logic (check install_empty && fetch_empty)
+  - [x] Verify lock file release and deletion attempt (with error_code to handle held locks)
+
+- [ ] 2. Check Phase - Implement double-check lock pattern
+  - [ ] Create helper: `run_check_string(recipe&, string_view check_cmd)`
+    - [ ] Use shell execution with manifest's `default_shell` setting
+    - [ ] Reuse shell selection logic from `ctx.run()` implementation
+    - [ ] Return true if `exit_code == 0`, false otherwise
+    - [ ] Handle shell execution errors with clear messages
+  - [ ] Create helper: `run_check_function(recipe&, lua_State*)`
+    - [ ] Extract from existing check phase Lua function call logic
+    - [ ] Call user's Lua check function with empty ctx table
+    - [ ] Return boolean result from `lua_toboolean()`
+    - [ ] Propagate Lua errors with recipe context
+  - [ ] Create helper: `run_check_verb(recipe&)`
+    - [ ] Dispatch to `run_check_string()` or `run_check_function()` based on recipe verb type
+    - [ ] Handle missing check verb (return false to maintain existing behavior)
+    - [ ] Throw errors with clear diagnostics on execution failure
+  - [ ] Modify main `run_check_phase()` logic:
+    - [ ] Detect if recipe has check verb using helper function
+    - [ ] **First check (pre-lock):** Call `run_check_verb(r)` to get initial state
+    - [ ] If check returns true: return early (no lock needed, phases skip)
+    - [ ] If check returns false:
+      - [ ] Call `state.cache_.ensure_asset(...)` to acquire lock (blocks if contended)
+      - [ ] If lock acquired: call `lock->mark_user_managed()` to signal full purge
+      - [ ] **Second check (post-lock):** Call `run_check_verb(r)` again to detect races
+      - [ ] If still needed (check=false): move lock to `r->lock`, phases will execute
+      - [ ] If no longer needed (check=true): let lock destructor run, purging entry, phases skip
+    - [ ] Preserve existing cache-managed behavior when no check verb present
+  - [ ] Add comprehensive `tui::trace` logging:
+    - [ ] "phase check: running user check (pre-lock)"
+    - [ ] "phase check: user check returned {true|false}"
+    - [ ] "phase check: acquiring lock for user-managed package"
+    - [ ] "phase check: re-running user check (post-lock)"
+    - [ ] "phase check: re-check returned {true|false}"
+    - [ ] "phase check: releasing lock" (when re-check succeeds)
+
+- [ ] 3. Recipe Helper - Check verb detection
+  - [ ] Create `recipe_has_check_verb(recipe const&)` helper function
+    - [ ] Return true if recipe has check verb defined (string or function)
+    - [ ] Return false if check verb absent
+    - [ ] Location: `src/recipe.{h,cpp}` or inline in phase files as needed
+  - [ ] Use consistently in check phase and install phase validation
+
+- [ ] 4. Install Phase - Add validation for check XOR cache
+  - [ ] After user install function/string completes successfully:
+    - [ ] Check if recipe has check verb: `if (recipe_has_check_verb(r) && lock->completed())`
+    - [ ] If true, throw runtime error with clear message: [ ] "Recipe {identity} has check verb (user-managed) but called mark_install_complete()"
+      - [ ] "User-managed recipes must not populate cache. Remove check verb or remove mark_install_complete() call."
+  - [ ] Update phase comments explaining user-managed vs cache-managed distinction
+  - [ ] Document that user-managed packages CAN use fetch/stage/build (workspace gets purged regardless)
+
+- [ ] 5. Tests - User-managed package scenarios
+  - [ ] Create test recipes in `test_data/recipes/`:
+    - [ ] `user_managed_simple.lua` - function check + install verb, no mark_install_complete
+    - [ ] `user_managed_string_check.lua` - string check form: `check = "python3 --version"`
+    - [ ] `user_managed_with_fetch.lua` - has fetch/stage/build verbs, installs system tool, cache purges all dirs
+    - [ ] `user_managed_invalid.lua` - has check verb + calls mark_install_complete (should error in install phase)
+  - [ ] Create comprehensive test suite `functional_tests/test_user_managed.py`:
+    - [ ] Test: First run with check=false acquires lock, runs install, cache entry fully purged afterward
+    - [ ] Test: Second run with check=true skips all phases, no lock acquired, immediate return
+    - [ ] Test: Concurrent processes coordinate via lock, no duplicate work performed
+    - [ ] Test: Race condition - process A installs while B waits, B's re-check returns true, B releases lock
+    - [ ] Test: String check form - exit code 0 returns true, non-zero returns false
+    - [ ] Test: User-managed with fetch verb - fetch_dir gets populated during install, fully purged at end
+    - [ ] Test: Validation error - recipe with check + mark_install_complete throws clear error message
+    - [ ] Test: Cache state after install - verify entry_dir fully deleted (no directories remain)
+    - [ ] Test: Multiple runs - verify cache entry created/purged/created on each install cycle
+  - [ ] Review existing "programmatic" package tests for compatibility
+  - [ ] Update any test recipes that accidentally violate check XOR cache constraint
+  - [ ] Verify no regressions in existing test suite (all tests still pass)
+
+- [ ] 6. Documentation - Explain user-managed packages
+  - [ ] Update `docs/architecture.md`:
+    - [ ] Add new section: "User-Managed vs Cache-Managed Packages"
+    - [ ] Define user-managed: check verb present, artifacts managed by user (system installs, env changes)
+    - [ ] Define cache-managed: no check verb, artifacts in cache, envy-complete marker
+    - [ ] Document double-check lock pattern and why it's needed (race where check state changes)
+    - [ ] Show examples: system package wrappers (brew install, apt-get, python system checks)
+    - [ ] Explain constraint: check XOR cache (recipes must choose one approach, not both)
+    - [ ] Document that user-managed can use fetch/stage/build (ephemeral workspace)
+  - [ ] Update `docs/cache.md`:
+    - [ ] Add user-managed package lifecycle to existing cache diagrams
+    - [ ] Explain ephemeral entries: created during install, fully purged at completion
+    - [ ] Document lock coordination without persistent cache artifacts
+    - [ ] Show entry_dir contents during install vs after completion (empty)
+  - [ ] Update `docs/work.md`:
+    - [ ] Mark Phase 8 as complete when finished
+    - [ ] Add notes section documenting future enhancements:
+      - [ ] In-memory check result cache (avoid expensive re-checks across DAG execution)
+      - [ ] `asset` verb for custom path resolution (user-managed packages can provide paths)
+  - [ ] Update `docs/commands.md` if `asset` command behavior with user-managed packages is documented
+
+- [ ] 7. Verify All Tests Pass
+  - [ ] Run `./build.sh` - verify all unit tests pass (no regressions)
+  - [ ] Run functional tests - verify all tests pass including new user-managed suite
+  - [ ] Specifically verify no regressions in existing programmatic package behavior
+  - [ ] Test concurrent execution scenarios (multiple processes on same user-managed package)
+  - [ ] Verify cache state after failures (lock released, entry purged correctly)
+
+**Completion Criteria:** User-managed packages coordinate correctly across processes via double-check lock pattern. Check phase runs user check twice (pre-lock and post-lock) to detect races where install state changes. Cache entries fully purged (entire entry_dir deleted) for user-managed packages. String check form works (`check = "command"` runs shell). Validation errors when recipe has check verb but calls mark_install_complete(). All tests pass with no regressions.
+
+**Results:** (To be filled in when phase completes)
+
+---
+
+### Phase 9: Deploy Phase Implementation (Future)
 - Post-install actions (env setup, capability registration)
 - Call user's `deploy(ctx)` function if defined
 - Examples: PATH modification, library registration, service setup
