@@ -138,7 +138,6 @@ target_sources(envy
         src/commands/cmd_version.cpp
         src/engine.cpp
         src/create_recipe_nodes.cpp
-        src/graph_state.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -236,7 +235,6 @@ target_sources(envy_functional_tester
         src/commands/cmd_engine_functional_test.cpp
         src/engine.cpp
         src/create_recipe_nodes.cpp
-        src/graph_state.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -340,7 +338,6 @@ target_sources(envy_unit_tests
         src/commands/cmd_version.cpp
         src/engine.cpp
         src/create_recipe_nodes.cpp
-        src/graph_state.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -379,7 +376,6 @@ target_sources(envy_unit_tests
         src/recipe_spec_tests.cpp
         src/lua_ctx_bindings_tests.cpp
         src/lua_ctx_bindings.cpp
-        src/graph_state.cpp
         src/sha256_tests.cpp
         src/shell_tests_common.cpp
         $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>

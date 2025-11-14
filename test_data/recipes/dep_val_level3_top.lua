@@ -3,7 +3,9 @@
 identity = "local.dep_val_level3_top@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_level3_mid@v1", source = "dep_val_level3_mid.lua" }
+  { recipe = "local.dep_val_level3_mid@v1", source = "dep_val_level3_mid.lua" },
+  -- Must explicitly declare all dependencies we access
+  { recipe = "local.dep_val_level3_base@v1", source = "dep_val_level3_base.lua" }
 }
 
 fetch = {

@@ -5,6 +5,14 @@
 
 #include <tbb/flow_graph.h>
 
+// NOTE: Tests disabled during graph redesign (2025-11-13)
+// The new architecture removed is_transitive_dependency() in favor of
+// is_declared_dependency() which only checks direct dependencies.
+// Graph topology enforces synchronization instead of transitive dependency tracking.
+// These tests are obsolete and need to be rewritten or removed.
+
+#if 0
+
 namespace {
 
 // Helper to create a minimal graph_state for testing
@@ -157,3 +165,5 @@ TEST_CASE("is_transitive_dependency - multiple dependencies") {
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "C") == true);
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "D") == true);
 }
+
+#endif  // Tests disabled

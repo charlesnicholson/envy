@@ -342,6 +342,70 @@ packages = {{
         self.assertTrue(asset_path.exists())
         # The canonical key will include options, affecting the hash in the path
 
+    def test_asset_different_options_separate_cache_entries(self):
+        """Different options produce separate cache entries with distinct content."""
+        # Create recipe that writes option value to a file
+        recipe_content = """identity = "local.test_options_cache@v1"
+
+function check(ctx)
+    return false
+end
+
+function install(ctx)
+    local f = io.open(ctx.install_dir .. "/variant.txt", "w")
+    f:write(ctx.options.variant or "none")
+    f:close()
+    ctx.mark_install_complete()
+end
+"""
+        recipe_path = self.test_dir / "test_options_cache.lua"
+        recipe_path.write_text(recipe_content)
+
+        # Manifest with variant=foo
+        manifest_foo = self.create_manifest(
+            f"""
+packages = {{
+    {{ recipe = "local.test_options_cache@v1", source = "{recipe_path}", options = {{ variant = "foo" }} }}
+}}
+""",
+            subdir="foo",
+        )
+
+        # Manifest with variant=bar
+        manifest_bar = self.create_manifest(
+            f"""
+packages = {{
+    {{ recipe = "local.test_options_cache@v1", source = "{recipe_path}", options = {{ variant = "bar" }} }}
+}}
+""",
+            subdir="bar",
+        )
+
+        # Install foo variant
+        result_foo = self.run_asset("local.test_options_cache@v1", manifest_foo)
+        self.assertEqual(result_foo.returncode, 0, f"stderr: {result_foo.stderr}")
+        path_foo = Path(result_foo.stdout.strip())
+        self.assertTrue(path_foo.exists())
+
+        # Install bar variant
+        result_bar = self.run_asset("local.test_options_cache@v1", manifest_bar)
+        self.assertEqual(result_bar.returncode, 0, f"stderr: {result_bar.stderr}")
+        path_bar = Path(result_bar.stdout.strip())
+        self.assertTrue(path_bar.exists())
+
+        # Verify different cache paths
+        self.assertNotEqual(
+            path_foo,
+            path_bar,
+            "Different options must produce different cache paths",
+        )
+
+        # Verify correct content in each cache entry
+        variant_foo = (path_foo / "variant.txt").read_text()
+        variant_bar = (path_bar / "variant.txt").read_text()
+        self.assertEqual(variant_foo, "foo", "Foo variant should contain 'foo'")
+        self.assertEqual(variant_bar, "bar", "Bar variant should contain 'bar'")
+
     def test_asset_transitive_dependency_chain(self):
         """Install package with transitive dependencies (diamond structure)."""
         # NOTE: diamond_a is programmatic, test expects failure

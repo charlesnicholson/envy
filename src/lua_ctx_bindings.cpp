@@ -4,6 +4,7 @@
 #include "graph_state.h"
 #include "lua_shell.h"
 #include "manifest.h"
+#include "recipe.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -14,61 +15,24 @@ extern "C" {
 
 #include <filesystem>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace envy {
 
-bool is_transitive_dependency_impl(graph_state *state,
-                                   std::string const &current_key,
-                                   std::string const &target_identity,
-                                   std::unordered_set<std::string> &visited) {
-  if (current_key == target_identity) { return true; }  // Base case: found the target
-  if (visited.contains(current_key)) { return false; }  // already visited this node
-  visited.insert(current_key);
-
-  typename decltype(state->recipes)::const_accessor acc;
-  if (!state->recipes.find(acc, current_key)) {
-    return false;  // Recipe not in graph - can't reach target through this path
-  }
-
-  for (auto const &dep_identity : acc->second.declared_dependencies) {  // recurse
-    if (is_transitive_dependency_impl(state, dep_identity, target_identity, visited)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool is_transitive_dependency(graph_state *state,
-                              std::string const &current_key,
-                              std::string const &target_identity) {
-  if (current_key == target_identity) { return true; }  // Base case: self
-
-  typename decltype(state->recipes)::const_accessor acc;
-  if (!state->recipes.find(acc, current_key)) { return false; }
-
-  // Check direct dependencies first
-  for (std::string const &dep_identity : acc->second.declared_dependencies) {
+// Check if target_identity is a declared dependency of current recipe
+bool is_declared_dependency(recipe *r, std::string const &target_identity) {
+  for (std::string const &dep_identity : r->declared_dependencies) {
     if (dep_identity == target_identity) { return true; }
   }
-
-  // Check transitive dependencies with cycle detection
-  std::unordered_set<std::string> visited{ current_key };
-  for (std::string const &dep_identity : acc->second.declared_dependencies) {
-    if (is_transitive_dependency_impl(state, dep_identity, target_identity, visited)) {
-      return true;
-    }
-  }
-
   return false;
 }
 
 // Lua C function: ctx.asset(identity) -> path
+// Graph topology guarantees dependency completion before parent accesses it
 int lua_ctx_asset(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.asset: missing context"); }
+  auto const *ctx{ static_cast<lua_ctx_common *>(
+      lua_touserdata(lua, lua_upvalueindex(1))) };
+  if (!ctx || !ctx->recipe_) { return luaL_error(lua, "ctx.asset: missing context"); }
 
   // Arg 1: identity (required)
   if (!lua_isstring(lua, 1)) {
@@ -76,27 +40,30 @@ int lua_ctx_asset(lua_State *lua) {
   }
   char const *identity{ lua_tostring(lua, 1) };
 
-  // Validate dependency declaration
-  if (!is_transitive_dependency(ctx->state, *ctx->key, identity)) {
+  // Validate dependency declaration (only checks direct dependencies)
+  if (!is_declared_dependency(ctx->recipe_, identity)) {
     return luaL_error(lua,
                       "ctx.asset: recipe '%s' does not declare dependency on '%s'",
-                      ctx->key->c_str(),
+                      ctx->recipe_->spec.identity.c_str(),
                       identity);
   }
 
-  // Look up dependency in graph_state
-  typename decltype(ctx->state->recipes)::const_accessor acc;
-  if (!ctx->state->recipes.find(acc, identity)) {
-    return luaL_error(lua, "ctx.asset: dependency not found: %s", identity);
-  }
+  // Look up dependency in recipe's dependency map
+  recipe const *dep{ [&]() -> recipe const * {
+    auto it{ ctx->recipe_->dependencies.find(identity) };
+    if (it == ctx->recipe_->dependencies.end()) {
+      luaL_error(lua, "ctx.asset: dependency not found in map: %s", identity);
+    }
+    return it->second;
+  }() };
 
-  // Verify dependency is completed
-  if (!acc->second.completed.load()) {
-    return luaL_error(lua, "ctx.asset: dependency not completed: %s", identity);
-  }
+  if (!dep) { return luaL_error(lua, "ctx.asset: null dependency pointer: %s", identity); }
+
+  // No need to check completion - graph edges guarantee dependency completed
+  // before parent phase can run (via needed_by topology)
 
   // Return asset_path
-  std::string const path{ acc->second.asset_path.string() };
+  std::string const path{ dep->asset_path.string() };
   lua_pushstring(lua, path.c_str());
   return 1;
 }
@@ -105,7 +72,8 @@ namespace {
 
 // Lua C function: ctx.run(script, opts?) -> {stdout, stderr}
 int lua_ctx_run(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto const *ctx{ static_cast<lua_ctx_common *>(
+      lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx) { return luaL_error(lua, "ctx.run: missing context"); }
 
   // Arg 1: script (required)
@@ -220,12 +188,12 @@ int lua_ctx_run(lua_State *lua) {
         return luaL_error(lua,
                           "ctx.run: shell script terminated by signal %d for %s",
                           *result.signal,
-                          ctx->key->c_str());
+                          ctx->recipe_->spec.identity.c_str());
       } else {
         return luaL_error(lua,
                           "ctx.run: shell script failed with exit code %d for %s",
                           result.exit_code,
-                          ctx->key->c_str());
+                          ctx->recipe_->spec.identity.c_str());
       }
     }
 
@@ -248,7 +216,8 @@ int lua_ctx_run(lua_State *lua) {
 
 // Lua C function: ctx.copy(src, dst)
 int lua_ctx_copy(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto const *ctx{ static_cast<lua_ctx_common *>(
+      lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx) { return luaL_error(lua, "ctx.copy: missing context"); }
 
   // Arg 1: source path (required)
@@ -297,7 +266,8 @@ int lua_ctx_copy(lua_State *lua) {
 
 // Lua C function: ctx.move(src, dst)
 int lua_ctx_move(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto const *ctx{ static_cast<lua_ctx_common *>(
+      lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx) { return luaL_error(lua, "ctx.move: missing context"); }
 
   // Arg 1: source path (required)
@@ -343,7 +313,8 @@ int lua_ctx_move(lua_State *lua) {
 
 // Lua C function: ctx.extract(filename, opts?)
 int lua_ctx_extract(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto const *ctx{ static_cast<lua_ctx_common *>(
+      lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx) { return luaL_error(lua, "ctx.extract: missing context"); }
 
   // Arg 1: filename (required)
@@ -387,8 +358,11 @@ int lua_ctx_extract(lua_State *lua) {
 // Lua C function: ctx.ls(path)
 // List directory contents for debugging, prints to TUI
 int lua_ctx_ls(lua_State *lua) {
-  auto *ctx{ static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.ls: missing context"); }
+  if (auto const *ctx{
+          static_cast<lua_ctx_common *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+      !ctx) {
+    return luaL_error(lua, "ctx.ls: missing context");
+  }
 
   if (lua_gettop(lua) < 1 || !lua_isstring(lua, 1)) {
     return luaL_error(lua, "ctx.ls: requires path argument");

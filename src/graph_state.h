@@ -1,17 +1,16 @@
 #pragma once
 
 #include "cache.h"
-#include "lua_util.h"
 #include "recipe.h"
 #include "tui.h"
 
-#include <tbb/concurrent_hash_map.h>
-#include <tbb/concurrent_unordered_set.h>
 #include <tbb/flow_graph.h>
 
+#include <memory>
+#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace envy {
 
@@ -26,15 +25,10 @@ struct trace_on_exit {
 struct graph_state {
   tbb::flow::graph &graph;
   cache &cache_;
-  manifest const *manifest_;  // Manifest (for default_shell resolution, always non-null)
+  manifest const *manifest_;
 
-  using node_ptr = recipe::node_ptr;
-  tbb::concurrent_hash_map<std::string, recipe> recipes;
-  tbb::concurrent_unordered_set<std::string> triggered;
-  tbb::concurrent_unordered_set<std::string> executed;
+  std::vector<std::unique_ptr<recipe>> recipes;
+  std::mutex recipes_mutex;
 };
-
-std::string make_canonical_key(std::string const &identity,
-                               std::unordered_map<std::string, lua_value> const &options);
 
 }  // namespace envy

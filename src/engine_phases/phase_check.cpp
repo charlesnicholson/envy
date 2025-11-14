@@ -9,17 +9,13 @@
 
 namespace envy {
 
-void run_check_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase check START %s", key.c_str());
-  trace_on_exit trace_end{ "phase check END " + key };
+void run_check_phase(recipe *r, graph_state &state) {
+  std::string const key{ r->spec.format_key() };
+  tui::trace("phase check START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase check END [" + key + "]" };
 
-  lua_State *lua{ [&] {
-    typename decltype(state.recipes)::const_accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return acc->second.lua_state.get();
-  }() };
+  lua_State *lua = r->lua_state.get();
+  if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec.identity); }
 
   lua_getglobal(lua, "check");
   bool const has_check{ lua_isfunction(lua, -1) };
@@ -30,7 +26,7 @@ void run_check_phase(std::string const &key, graph_state &state) {
     if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
       char const *err{ lua_tostring(lua, -1) };
       lua_pop(lua, 1);
-      throw std::runtime_error("check() failed for " + key + ": " +
+      throw std::runtime_error("check() failed for " + r->spec.identity + ": " +
                                (err ? err : "unknown error"));
     }
 
@@ -38,43 +34,34 @@ void run_check_phase(std::string const &key, graph_state &state) {
     lua_pop(lua, 1);
 
     if (installed) {
-      typename decltype(state.recipes)::accessor acc;
-      if (state.recipes.find(acc, key)) {
-        acc->second.completion_node->try_put(tbb::flow::continue_msg{});
-      }
-      tui::trace("phase check: user check returned true, triggered completion");
+      tui::trace("phase check: user check returned true, asset already installed");
       return;
     }
   } else {
     lua_pop(lua, 1);
   }
 
-  auto const digest{ blake3_hash(key.data(), key.size()) };
+  std::string const key_for_hash{ r->spec.format_key() };
 
-  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
+  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
+  r->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };  // For cache path: 16 hex chars
 
   std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
   std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
 
-  std::string identity{ key };
-  if (auto const brace_pos{ key.find('{') }; brace_pos != std::string::npos) {
-    identity = key.substr(0, brace_pos);
-  }
+  auto cache_result{
+    state.cache_.ensure_asset(r->spec.identity, platform, arch, hash_prefix)
+  };
 
-  auto cache_result{ state.cache_.ensure_asset(identity, platform, arch, hash_prefix) };
-
-  typename decltype(state.recipes)::accessor acc;
-  if (state.recipes.find(acc, key)) {
-    if (cache_result.lock) {
-      acc->second.lock = std::move(cache_result.lock);
-      tui::trace("phase check: cache miss for %s, triggering fetch", key.c_str());
-      tbb::flow::make_edge(*acc->second.deploy_node, *acc->second.completion_node);
-      acc->second.fetch_node->try_put(tbb::flow::continue_msg{});
-    } else {
-      acc->second.asset_path = cache_result.asset_path;
-      tui::trace("phase check: cache hit for %s, triggering completion", key.c_str());
-      acc->second.completion_node->try_put(tbb::flow::continue_msg{});
-    }
+  if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
+    r->lock = std::move(cache_result.lock);
+    tui::trace("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
+  } else {  // Cache hit - store asset_path, no lock means subsequent phases skip
+    r->asset_path = cache_result.asset_path;
+    tui::trace("phase check: [%s] CACHE HIT at %s - phases will skip",
+               key.c_str(),
+               cache_result.asset_path.string().c_str());
   }
 }
 

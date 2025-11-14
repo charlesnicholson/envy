@@ -4,7 +4,9 @@ identity = "local.dep_val_diamond_top@v1"
 
 dependencies = {
   { recipe = "local.dep_val_diamond_left@v1", source = "dep_val_diamond_left.lua" },
-  { recipe = "local.dep_val_diamond_right@v1", source = "dep_val_diamond_right.lua" }
+  { recipe = "local.dep_val_diamond_right@v1", source = "dep_val_diamond_right.lua" },
+  -- Must explicitly declare all dependencies we access
+  { recipe = "local.dep_val_diamond_base@v1", source = "dep_val_diamond_base.lua" }
 }
 
 fetch = {

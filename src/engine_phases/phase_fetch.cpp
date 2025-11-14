@@ -1,7 +1,7 @@
 #include "phase_fetch.h"
 
-#include "../lua_ctx_bindings.h"
 #include "fetch.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "sha256.h"
 #include "tui.h"
@@ -430,7 +430,7 @@ void run_programmatic_fetch(lua_State *lua,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
                             graph_state &state,
-                            std::string const &key) {
+                            recipe *r) {
   tui::trace("phase fetch: executing fetch function");
 
   // Create temp workspace for ctx.tmp
@@ -442,7 +442,7 @@ void run_programmatic_fetch(lua_State *lua,
   ctx.fetch_dir = lock->fetch_dir();
   ctx.run_dir = tmp_dir;
   ctx.state = &state;
-  ctx.key = &key;
+  ctx.recipe_ = r;
   ctx.manifest_ = state.manifest_;
   ctx.used_basenames = {};
 
@@ -454,7 +454,7 @@ void run_programmatic_fetch(lua_State *lua,
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };
     lua_pop(lua, 1);
-    throw std::runtime_error("Fetch function failed for " + key + ": " + error_msg);
+    throw std::runtime_error("Fetch function failed for " + identity + ": " + error_msg);
   }
 
   std::filesystem::remove_all(tmp_dir);
@@ -762,7 +762,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 // Returns true if fetch should be marked complete (cacheable), false otherwise
 bool run_declarative_fetch(lua_State *lua,
                            cache::scoped_entry_lock *lock,
-                           std::string const &key) {
+                           std::string const &identity) {
   tui::trace("phase fetch: executing declarative fetch");
 
   // Ensure stage_dir exists (needed for git repos that clone directly there)
@@ -773,10 +773,10 @@ bool run_declarative_fetch(lua_State *lua,
     throw std::runtime_error("Failed to create stage directory: " + ec.message());
   }
 
-  auto fetch_specs{ parse_fetch_field(lua, lock->fetch_dir(), stage_dir, key) };
+  auto fetch_specs{ parse_fetch_field(lua, lock->fetch_dir(), stage_dir, identity) };
   lua_pop(lua, 1);
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
-  execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), key);
+  execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
 
   // Check if we fetched any git repos - if so, don't mark fetch complete (git clones are
   // not cacheable)
@@ -799,23 +799,15 @@ bool run_declarative_fetch(lua_State *lua,
 
 }  // namespace
 
-void run_fetch_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase fetch START %s", key.c_str());
-  trace_on_exit trace_end{ "phase fetch END " + key };
+void run_fetch_phase(recipe *r, graph_state &state) {
+  std::string const key{ r->spec.format_key() };
+  tui::trace("phase fetch START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase fetch END [" + key + "]" };
 
-  auto [lua, lock, identity, options] = [&] {
-    typename decltype(state.recipes)::accessor acc;
-    if (!state.recipes.find(acc, key)) {
-      throw std::runtime_error("Recipe not found for " + key);
-    }
-    return std::tuple{ acc->second.lua_state.get(),
-                       acc->second.lock.get(),
-                       acc->second.identity,
-                       acc->second.options };
-  }();
-
-  if (!lock) {  // Phase should only execute if we have work to do
-    throw std::runtime_error("BUG: fetch phase executing without lock for " + key);
+  cache::scoped_entry_lock *lock = r->lock.get();
+  if (!lock) {
+    tui::trace("phase fetch: no lock (cache hit), skipping");
+    return;
   }
 
   if (lock->is_fetch_complete()) {
@@ -823,6 +815,10 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
     return;
   }
 
+  std::string const &identity{ r->spec.identity };
+  std::unordered_map<std::string, lua_value> const &options{ r->spec.options };
+
+  lua_State *lua{ r->lua_state.get() };
   lua_getglobal(lua, "fetch");
   int const fetch_type{ lua_type(lua, -1) };
 
@@ -834,9 +830,9 @@ void run_fetch_phase(std::string const &key, graph_state &state) {
       tui::trace("phase fetch: no fetch field, skipping");
       return;
     case LUA_TFUNCTION:
-      run_programmatic_fetch(lua, lock, identity, options, state, key);
+      run_programmatic_fetch(lua, lock, identity, options, state, r);
       break;
-    default: should_mark_complete = run_declarative_fetch(lua, lock, key); break;
+    default: should_mark_complete = run_declarative_fetch(lua, lock, identity); break;
   }
 
   if (should_mark_complete) {

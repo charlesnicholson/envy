@@ -16,7 +16,7 @@ struct lua_ctx_common;
 
 struct manifest : unmovable {
   std::vector<recipe_spec> packages;
-  std::filesystem::path manifest_path;  // Absolute path to envy.lua
+  std::filesystem::path manifest_path;
 
   manifest() = default;
 

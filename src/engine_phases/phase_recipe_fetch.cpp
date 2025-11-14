@@ -1,6 +1,6 @@
 #include "phase_recipe_fetch.h"
 
-#include "../create_recipe_nodes.h"
+#include "create_recipe_nodes.h"
 #include "fetch.h"
 #include "sha256.h"
 #include "tui.h"
@@ -37,10 +37,14 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 
 }  // namespace
 
-void run_recipe_fetch_phase(recipe_spec const &spec,
-                            std::string const &key,
+void run_recipe_fetch_phase(recipe *r,
                             graph_state &state,
                             std::unordered_set<std::string> const &ancestors) {
+  recipe_spec const &spec = r->spec;
+  std::string const key{ spec.format_key() };
+  tui::trace("phase recipe_fetch START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase recipe_fetch END [" + key + "]" };
+
   auto lua_state{ lua_make() };
   lua_add_envy(lua_state);
 
@@ -68,7 +72,8 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
           req = fetch_request_http{ .source = remote_src->url, .destination = fetch_dest };
           break;
         case uri_scheme::HTTPS:
-          req = fetch_request_https{ .source = remote_src->url, .destination = fetch_dest };
+          req =
+              fetch_request_https{ .source = remote_src->url, .destination = fetch_dest };
           break;
         case uri_scheme::FTP:
           req = fetch_request_ftp{ .source = remote_src->url, .destination = fetch_dest };
@@ -121,8 +126,8 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
       std::filesystem::path install_dir{ cache_result.lock->install_dir() };
 
       auto const results{ fetch({ fetch_request_git{ .source = git_src->url,
-                                                      .destination = install_dir,
-                                                      .ref = git_src->ref } }) };
+                                                     .destination = install_dir,
+                                                     .ref = git_src->ref } }) };
       if (results.empty() || std::holds_alternative<std::string>(results[0])) {
         throw std::runtime_error(
             "Failed to fetch git recipe: " +
@@ -141,14 +146,14 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
     throw std::runtime_error("Unsupported source type: " + spec.identity);
   }
 
-  std::string const declared_identity = [&] {
+  std::string const declared_identity{ [&] {
     try {
       return lua_global_to_string(lua_state.get(), "identity");
     } catch (std::runtime_error const &e) {
       throw std::runtime_error(std::string(e.what()) + " (in recipe: " + spec.identity +
                                ")");
     }
-  }();
+  }() };
 
   if (declared_identity != spec.identity) {
     throw std::runtime_error("Identity mismatch: expected '" + spec.identity +
@@ -173,45 +178,52 @@ void run_recipe_fetch_phase(recipe_spec const &spec,
   }
 
   // Extract dependency identities for validation
-  std::vector<std::string> dep_identities;
-  dep_identities.reserve(dep_configs.size());
-  for (auto const &dep_cfg : dep_configs) { dep_identities.push_back(dep_cfg.identity); }
+  std::vector<std::string> const dep_identities{ [&]() {
+    std::vector<std::string> result;
+    result.reserve(dep_configs.size());
+    for (auto const &dep_cfg : dep_configs) { result.push_back(dep_cfg.identity); }
+    return result;
+  }() };
 
-  {
-    typename decltype(state.recipes)::accessor acc;
-    if (state.recipes.find(acc, key)) {
-      acc->second.lua_state = std::move(lua_state);
-      acc->second.declared_dependencies = std::move(dep_identities);
-    }
-  }
+  // Store lua_state and declared dependencies in recipe
+  r->lua_state = std::move(lua_state);
+  r->declared_dependencies = std::move(dep_identities);
 
+  // Build dependency graph: create child graphs, wire edges, start them
   std::unordered_set<std::string> dep_ancestors{ ancestors };
-  dep_ancestors.insert(key);
+  dep_ancestors.insert(spec.identity);
 
   for (auto const &dep_cfg : dep_configs) {
-    auto const dep_key{ make_canonical_key(dep_cfg.identity, dep_cfg.options) };
+    // Create dependency's complete graph (8-phase pipeline)
+    recipe *dep{ create_recipe_nodes(dep_cfg, state, dep_ancestors) };
 
-    create_recipe_nodes(dep_key, dep_cfg, state, dep_ancestors);
+    // Store dependency in parent's map for ctx.asset() lookup
+    r->dependencies[dep_cfg.identity] = dep;
 
-    {
-      typename decltype(state.recipes)::const_accessor dep_acc, parent_acc;
-      if (state.recipes.find(dep_acc, dep_key) && state.recipes.find(parent_acc, key)) {
-        tbb::flow::make_edge(*dep_acc->second.completion_node,
-                             *parent_acc->second.check_node);
+    // Wire edge: dep.completion_node → parent.{needed_by}_node
+    // Default to check phase if not specified (conservative: parent waits before doing
+    // anything)
+    auto *target_node{ [&]() -> tbb::flow::continue_node<tbb::flow::continue_msg> * {
+      if (!dep_cfg.needed_by) { return r->check_node.get(); }
 
-        if (dep_acc->second.completed) {
-          parent_acc->second.check_node->try_put(tbb::flow::continue_msg{});
-        }
+      switch (*dep_cfg.needed_by) {
+        case phase::asset_check: return r->check_node.get();
+        case phase::asset_fetch: return r->fetch_node.get();
+        case phase::asset_stage: return r->stage_node.get();
+        case phase::asset_build: return r->build_node.get();
+        case phase::asset_install: return r->install_node.get();
+        case phase::asset_deploy: return r->deploy_node.get();
+        case phase::recipe_fetch:
+          throw std::runtime_error("recipe_fetch is not a valid needed_by phase for " +
+                                   dep_cfg.identity);
       }
-    }
+      throw std::runtime_error("Invalid needed_by phase for " + dep_cfg.identity);
+    }() };
 
-    auto [iter, inserted]{ state.triggered.insert(dep_key) };
-    if (inserted) {
-      typename decltype(state.recipes)::const_accessor acc;
-      if (state.recipes.find(acc, dep_key)) {
-        acc->second.recipe_fetch_node->try_put(tbb::flow::continue_msg{});
-      }
-    }
+    tbb::flow::make_edge(*dep->completion_node, *target_node);
+
+    // Start the dependency's recipe_fetch phase
+    dep->recipe_fetch_node->try_put(tbb::flow::continue_msg{});
   }
 }
 

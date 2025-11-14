@@ -2,15 +2,23 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "graph_state.h"
 #include "manifest.h"
 #include "platform.h"
+#include "recipe_spec.h"
 #include "tui.h"
 #include "util.h"
 
+#include <sstream>
 #include <stdexcept>
 
 namespace envy {
+
+// Helper to format a canonical key (identity or identity{options})
+static std::string format_result_key(
+    std::string const &identity,
+    std::unordered_map<std::string, lua_value> const &options) {
+  return recipe_spec::format_key(identity, options);
+}
 
 cmd_asset::cmd_asset(cfg cfg) : cfg_{ std::move(cfg) } {}
 
@@ -49,10 +57,10 @@ bool cmd_asset::execute() {
     }
 
     if (matches.size() > 1) {
-      std::string first_key{ make_canonical_key(matches[0]->identity,
-                                                matches[0]->options) };
+      std::string first_key{ format_result_key(matches[0]->identity,
+                                               matches[0]->options) };
       for (size_t i{ 1 }; i < matches.size(); ++i) {
-        std::string key{ make_canonical_key(matches[i]->identity, matches[i]->options) };
+        std::string key{ format_result_key(matches[i]->identity, matches[i]->options) };
         if (key != first_key) {
           tui::error("identity '%s' appears multiple times with different options",
                      cfg_.identity.c_str());
@@ -77,7 +85,7 @@ bool cmd_asset::execute() {
     recipe_spec const &target{ *matches[0] };
     auto result{ engine_run({ target }, c, *m) };
 
-    auto it{ result.find(make_canonical_key(target.identity, target.options)) };
+    auto it{ result.find(format_result_key(target.identity, target.options)) };
     if (it == result.end() || it->second.result_hash.empty()) {
       tui::error("not found");
       return false;
@@ -88,7 +96,6 @@ bool cmd_asset::execute() {
       return false;
     }
 
-    // 6. Success - print asset path
     tui::print_stdout("%s\n", it->second.asset_path.string().c_str());
     return true;
 

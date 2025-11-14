@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 
 // Platform-specific unreachable hint. Use compiler intrinsics where available
@@ -14,10 +15,23 @@
 
 namespace envy::platform {
 
-using file_lock_handle_t = std::intptr_t;
-extern file_lock_handle_t const kInvalidLockHandle;
-file_lock_handle_t lock_file(std::filesystem::path const &path);
-void unlock_file(file_lock_handle_t handle);
+class file_lock {
+ public:
+  explicit file_lock(std::filesystem::path const &path);
+  ~file_lock();
+
+  file_lock(file_lock &&) noexcept;
+  file_lock &operator=(file_lock &&) noexcept;
+
+  file_lock(file_lock const &) = delete;
+  file_lock &operator=(file_lock const &) = delete;
+
+  explicit operator bool() const;
+
+ private:
+  struct impl;
+  std::unique_ptr<impl> impl_;
+};
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to);
 void touch_file(std::filesystem::path const &path);

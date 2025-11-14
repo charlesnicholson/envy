@@ -1,7 +1,10 @@
 #pragma once
 
-#include "../graph_state.h"
+#include "graph_state.h"
 
-#include <string>
+namespace envy {
 
-namespace envy { void run_install_phase(std::string const &key, graph_state &state); }
+struct recipe;
+void run_install_phase(recipe *r, graph_state &state);
+
+}  // namespace envy

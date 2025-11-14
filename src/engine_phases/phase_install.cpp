@@ -1,6 +1,6 @@
 #include "phase_install.h"
 
-#include "../lua_ctx_bindings.h"
+#include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
@@ -95,14 +95,14 @@ bool run_programmatic_install(lua_State *lua,
                               std::string const &identity,
                               std::unordered_map<std::string, lua_value> const &options,
                               graph_state &state,
-                              std::string const &key) {
+                              recipe *r) {
   tui::trace("phase install: running programmatic install function");
 
   install_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = install_dir;
   ctx.state = &state;
-  ctx.key = &key;
+  ctx.recipe_ = r;
   ctx.manifest_ = state.manifest_;
   ctx.install_dir = install_dir;
   ctx.stage_dir = stage_dir;
@@ -114,7 +114,7 @@ bool run_programmatic_install(lua_State *lua,
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };
     lua_pop(lua, 1);
-    throw std::runtime_error("Install function failed for " + key + ": " + error_msg);
+    throw std::runtime_error("Install function failed for " + identity + ": " + error_msg);
   }
 
   return lock->is_install_complete();
@@ -123,7 +123,7 @@ bool run_programmatic_install(lua_State *lua,
 bool run_shell_install(std::string_view script,
                        std::filesystem::path const &install_dir,
                        cache::scoped_entry_lock *lock,
-                       std::string const &key) {
+                       std::string const &identity) {
   tui::trace("phase install: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -140,10 +140,10 @@ bool run_shell_install(std::string_view script,
   if (result.exit_code != 0) {
     if (result.signal) {
       throw std::runtime_error("Install shell script terminated by signal " +
-                               std::to_string(*result.signal) + " for " + key);
+                               std::to_string(*result.signal) + " for " + identity);
     }
-    throw std::runtime_error("Install shell script failed for " + key + " (exit code " +
-                             std::to_string(result.exit_code) + ")");
+    throw std::runtime_error("Install shell script failed for " + identity +
+                             " (exit code " + std::to_string(result.exit_code) + ")");
   }
 
   lock->mark_install_complete();
@@ -175,26 +175,23 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
 
 }  // namespace
 
-void run_install_phase(std::string const &key, graph_state &state) {
-  tui::trace("phase install START %s", key.c_str());
-  trace_on_exit trace_end{ "phase install END " + key };
+void run_install_phase(recipe *r, graph_state &state) {
+  std::string const key{ r->spec.format_key() };
+  tui::trace("phase install START [%s]", key.c_str());
+  trace_on_exit trace_end{ "phase install END [" + key + "]" };
 
-  typename decltype(state.recipes)::accessor acc;
-  if (!state.recipes.find(acc, key)) {
-    throw std::runtime_error("Recipe not found for " + key);
+  if (!r->lock) {  // Cache hit - no work to do
+    tui::trace("phase install: no lock (cache hit), skipping");
+    return;
   }
 
-  if (!acc->second.lock) {
-    throw std::runtime_error("BUG: install phase executing without lock for " + key);
-  }
-
-  cache::scoped_entry_lock::ptr_t lock{ std::move(acc->second.lock) };
+  cache::scoped_entry_lock::ptr_t lock{ std::move(r->lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
   std::filesystem::path const stage_dir{ lock->stage_dir() };
   std::filesystem::path const install_dir{ lock->install_dir() };
   std::filesystem::path const final_asset_path{ install_dir.parent_path() / "asset" };
 
-  lua_State *lua{ acc->second.lua_state.get() };
+  lua_State *lua{ r->lua_state.get() };
   lua_getglobal(lua, "install");
   int const install_type{ lua_type(lua, -1) };
 
@@ -210,7 +207,8 @@ void run_install_phase(std::string const &key, graph_state &state) {
       size_t len{ 0 };
       std::string script{ lua_tolstring(lua, -1, &len), len };
       lua_pop(lua, 1);
-      marked_complete = run_shell_install(script, install_dir, lock.get(), key);
+      marked_complete =
+          run_shell_install(script, install_dir, lock.get(), r->spec.identity);
       break;
     }
 
@@ -220,19 +218,19 @@ void run_install_phase(std::string const &key, graph_state &state) {
                                                  fetch_dir,
                                                  stage_dir,
                                                  install_dir,
-                                                 acc->second.identity,
-                                                 acc->second.options,
+                                                 r->spec.identity,
+                                                 r->spec.options,
                                                  state,
-                                                 key);
+                                                 r);
       break;
 
     default:
       lua_pop(lua, 1);
       throw std::runtime_error("install field must be nil, string, or function for " +
-                               key);
+                               r->spec.identity);
   }
 
-  if (marked_complete) { acc->second.asset_path = final_asset_path; }
+  if (marked_complete) { r->asset_path = final_asset_path; }
 }
 
 }  // namespace envy

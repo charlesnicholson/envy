@@ -9,14 +9,15 @@ namespace envy {
 
 struct graph_state;
 struct manifest;
+struct recipe;
 
 // Common context fields that all phase contexts must provide.
 // Phase-specific contexts should embed this as their first member.
 struct lua_ctx_common {
   std::filesystem::path fetch_dir;
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
-  graph_state *state;
-  std::string const *key;
+  graph_state *state;             // Still needed for cache access
+  recipe *recipe_;                // Current recipe (for ctx.asset() lookups)
   manifest const *manifest_;  // Manifest (for default_shell resolution, always non-null)
 };
 
@@ -48,11 +49,9 @@ void lua_ctx_bindings_register_extract(lua_State *lua, void *context);
 // List directory contents for debugging (prints to TUI)
 void lua_ctx_bindings_register_ls(lua_State *lua, void *context);
 
-// Check if target_identity is a transitive dependency of current_key
+// Check if target_identity is a declared dependency of current recipe
 // Used for ctx.asset() validation. Exposed for testing.
-bool is_transitive_dependency(graph_state *state,
-                              std::string const &current_key,
-                              std::string const &target_identity);
+bool is_declared_dependency(recipe *r, std::string const &target_identity);
 
 // Lua C function: ctx.asset(identity) -> path
 // Exposed for use in default_shell functions (in manifest.cpp)

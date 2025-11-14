@@ -42,6 +42,14 @@ struct recipe_spec {
   // Serialize lua_value to canonical string for stable recipe option hashing
   static std::string serialize_option_table(lua_value const &val);
 
+  // Format canonical key: "identity" or "identity{opt=val,...}"
+  // Used for logging, result maps, and any place needing a unique recipe identifier
+  static std::string format_key(std::string const &identity,
+                                std::unordered_map<std::string, lua_value> const &options);
+
+  // Instance method convenience wrapper
+  std::string format_key() const;
+
   bool is_remote() const;
   bool is_local() const;
   bool is_git() const;

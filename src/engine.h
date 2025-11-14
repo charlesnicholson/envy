@@ -13,7 +13,7 @@ namespace envy {
 struct manifest;
 
 struct recipe_result {
-  std::string result_hash;           // Hash or "programmatic" or empty (failed)
+  std::string result_hash;           // BLAKE3(format_key()) or "programmatic" or empty (failed)
   std::filesystem::path asset_path;  // Path to asset/ dir (empty if programmatic/failed)
 };
 

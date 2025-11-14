@@ -31,15 +31,18 @@ def _flatten_suite(suite: unittest.TestSuite) -> list[unittest.TestCase]:
     return tests
 
 
-def _run_single_test(test: unittest.TestCase) -> unittest.TestResult:
+def _run_single_test(test: unittest.TestCase, verbose: bool = False) -> unittest.TestResult:
     """Run a single test case and return its result."""
+    if verbose:
+        test_name = f"{test.__class__.__module__}.{test.__class__.__name__}.{test._testMethodName}"
+        print(f"\nRunning: {test_name}", flush=True)
     suite = unittest.TestSuite([test])
     result = unittest.TestResult()
     suite.run(result)
     return result
 
 
-def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int) -> None:
+def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, verbose: bool = False) -> None:
     """Run tests in parallel using ThreadPoolExecutor."""
     start_time = time.time()
 
@@ -52,7 +55,7 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int) ->
         print("No tests found")
         return
 
-    print(f"Running {total_tests} tests with {jobs} workers...")
+    print(f"Running {total_tests} tests with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
 
     # Counters for results
     passed = 0
@@ -65,7 +68,7 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int) ->
     with ThreadPoolExecutor(max_workers=jobs) as executor:
         # Submit all tests
         future_to_test = {
-            executor.submit(_run_single_test, test): test for test in test_cases
+            executor.submit(_run_single_test, test, verbose): test for test in test_cases
         }
 
         # Collect results as they complete
@@ -141,6 +144,7 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int) ->
 def main() -> None:
     # Determine number of jobs for parallel execution
     jobs_env = os.environ.get("ENVY_TEST_JOBS")
+    verbose = os.environ.get("ENVY_TEST_VERBOSE", "").lower() in ("1", "true", "yes")
 
     if jobs_env:
         # Explicit override via environment variable
@@ -168,11 +172,13 @@ def main() -> None:
         # Parallel execution
         root = pathlib.Path(__file__).resolve().parent
         loader = unittest.TestLoader()
-        _run_parallel(loader, root, jobs)
+        _run_parallel(loader, root, jobs, verbose)
         return
 
     # Sequential execution (explicit or fallback)
     argv = sys.argv if len(sys.argv) > 1 else _build_default_argv()
+    if verbose:
+        argv.append("-v")
     unittest.main(module=None, argv=argv)
 
 

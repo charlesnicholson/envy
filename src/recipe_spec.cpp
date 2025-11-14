@@ -139,6 +139,31 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
     }
   }
 
+  if (auto const needed_by_it{ table->find("needed_by") }; needed_by_it != table->end()) {
+    if (auto const *needed_by_str{ needed_by_it->second.get<std::string>() }) {
+      if (*needed_by_str == "check") {
+        result.needed_by = phase::asset_check;
+      } else if (*needed_by_str == "fetch") {
+        result.needed_by = phase::asset_fetch;
+      } else if (*needed_by_str == "stage") {
+        result.needed_by = phase::asset_stage;
+      } else if (*needed_by_str == "build") {
+        result.needed_by = phase::asset_build;
+      } else if (*needed_by_str == "install") {
+        result.needed_by = phase::asset_install;
+      } else if (*needed_by_str == "deploy") {
+        result.needed_by = phase::asset_deploy;
+      } else {
+        throw std::runtime_error(
+            "Recipe 'needed_by' must be one of: check, fetch, stage, "
+            "build, install, deploy (got: " +
+            *needed_by_str + ")");
+      }
+    } else {
+      throw std::runtime_error("Recipe 'needed_by' field must be string");
+    }
+  }
+
   return result;
 }
 
@@ -218,4 +243,22 @@ std::string recipe_spec::serialize_option_table(lua_value const &val) {
   ENVY_UNREACHABLE();
 }
 
+std::string recipe_spec::format_key(
+    std::string const &identity,
+    std::unordered_map<std::string, lua_value> const &options) {
+  if (options.empty()) { return identity; }
+
+  std::ostringstream oss;
+  oss << identity << '{';
+  bool first = true;
+  for (auto const &[k, v] : options) {
+    if (!first) oss << ',';
+    oss << k << '=' << serialize_option_table(v);
+    first = false;
+  }
+  oss << '}';
+  return oss.str();
+}
+
+std::string recipe_spec::format_key() const { return format_key(identity, options); }
 }  // namespace envy
