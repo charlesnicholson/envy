@@ -5,10 +5,8 @@ import os
 import shutil
 import subprocess
 import tempfile
-import time
 from pathlib import Path
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 
 
 class TestUserManagedPackages(unittest.TestCase):
@@ -37,6 +35,10 @@ class TestUserManagedPackages(unittest.TestCase):
         """Remove test marker files for this test instance."""
         if hasattr(self, 'marker_simple') and self.marker_simple.exists():
             self.marker_simple.unlink()
+        # Also clean up marker from with_fetch test
+        marker_with_fetch = Path.home() / ".envy-test-marker-with-fetch"
+        if marker_with_fetch.exists():
+            marker_with_fetch.unlink()
 
     def lua_path(self, path: Path) -> str:
         """Convert path to Lua string literal with forward slashes."""
@@ -77,7 +79,6 @@ class TestUserManagedPackages(unittest.TestCase):
         asset_dir = self.cache_root / "assets" / "local.user_managed_simple@v1"
         if asset_dir.exists():
             # Should be empty or minimal (no asset/ directory)
-            asset_subdir = asset_dir / "*" / "asset"
             self.assertFalse(any(asset_dir.glob("*/asset")),
                            "User-managed packages should not leave asset/ in cache")
 

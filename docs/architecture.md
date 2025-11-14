@@ -189,9 +189,11 @@ identity = "python.interpreter@v3"
 
 -- Check if Python already installed via system package manager
 check = function(ctx)
-  -- Try running python3 --version
-  local result = ctx:run_capture("python3", "--version")
-  return result.exit_code == 0
+  -- Try running python3 --version (returns true/false on success/failure)
+  local success = pcall(function()
+    ctx:run("python3", "--version")
+  end)
+  return success
 end
 
 -- Install via platform package manager
