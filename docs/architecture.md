@@ -145,17 +145,79 @@ Recipes define verbs describing how to acquire, validate, and install packages:
 - **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
 
-**Example with check verb:**
+### User-Managed vs Cache-Managed Packages
+
+Envy supports two distinct package management models based on check verb presence:
+
+**Cache-Managed Packages** (no check verb):
+- Default behavior—artifacts stored in cache
+- Install phase writes to `install_dir`, calls `ctx.mark_install_complete()`
+- Cache entry persists: `install/` renamed to `asset/`, marked with `envy-complete`
+- Subsequent runs detect marker and skip all phases (cache hit)
+- Example: compiled toolchains, libraries, build tools
+
+**User-Managed Packages** (check verb present):
+- Artifacts managed outside envy's cache (system installs, environment state)
+- Check verb determines install state (returns true if already satisfied)
+- Install phase modifies system but does NOT call `ctx.mark_install_complete()`
+- Cache entry is ephemeral workspace—fully purged after install completes
+- Subsequent runs call check verb to skip work
+- Example: system package wrappers (brew, apt), Python venv setup, credential files
+
+**Check XOR Cache Constraint:**
+Recipes must choose one model—cannot mix both:
+- ✅ Check verb + no `mark_install_complete()` → user-managed, cache purged
+- ✅ No check verb + `mark_install_complete()` → cache-managed, artifacts persist
+- ❌ Check verb + `mark_install_complete()` → **ERROR** (validation enforced at runtime)
+
+**Double-Check Lock Pattern:**
+User-managed packages use double-check locking to coordinate concurrent processes:
+1. **Pre-lock check:** Run check verb; if true (satisfied), skip all phases
+2. **Acquire lock:** Block while another process installs
+3. **Post-lock re-check:** Run check verb again; if now true (race), release lock and skip
+4. **Install:** If still needed, run install phase; lock destructor purges cache entry
+
+This prevents duplicate work when check state changes between initial check and lock acquisition (e.g., another process completed install while waiting for lock).
+
+**Ephemeral Workspace:**
+User-managed packages can use fetch/stage/build phases—workspace directories created during install, fully deleted after completion. This enables complex system installations that need downloaded files or build artifacts without polluting cache.
+
+**Example: System Package Wrapper**
 ```lua
--- python.interpreter@v3
-check = "python3 --version"  -- System package manager wrapper
+-- python.interpreter@v3 (user-managed)
+identity = "python.interpreter@v3"
+
+-- Check if Python already installed via system package manager
+check = function(ctx)
+  -- Try running python3 --version
+  local result = ctx:run_capture("python3", "--version")
+  return result.exit_code == 0
+end
+
+-- Install via platform package manager
+install = function(ctx)
+  if ENVY_PLATFORM == "darwin" then
+    ctx:run("brew", "install", "python3")
+  elseif ENVY_PLATFORM == "linux" then
+    ctx:run("apt-get", "install", "-y", "python3")
+  end
+  -- No ctx.mark_install_complete() call—artifacts managed by brew/apt
+end
+```
+
+**Example: Cache-Managed Toolchain**
+```lua
+-- arm.gcc@v2 (cache-managed)
+identity = "arm.gcc@v2"
+-- No check verb—use cache marker
+
+fetch = {url = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
+
+stage = function(ctx) ctx:extract_all() end
 
 install = function(ctx)
-  if ctx.platform == "darwin" then
-    ctx:run("brew install python3")
-  elseif ctx.platform == "linux" then
-    ctx:run("apt-get install python3")
-  end
+  ctx:copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
+  ctx.mark_install_complete()  -- Required—signals cache persistence
 end
 ```
 

@@ -357,10 +357,12 @@ packages = {{
     def test_asset_different_options_separate_cache_entries(self):
         """Different options produce separate cache entries with distinct content."""
         # Create recipe that writes option value to a file
+        # This is a cache-managed package (no check verb) that writes artifacts to cache
         recipe_content = """identity = "local.test_options_cache@v1"
 
-function check(ctx)
-    return false
+-- Empty fetch - recipe generates content directly in install phase
+function fetch(ctx)
+    -- Nothing to fetch
 end
 
 function install(ctx)
