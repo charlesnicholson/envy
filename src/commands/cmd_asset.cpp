@@ -40,8 +40,9 @@ bool cmd_asset::execute() {
 
     auto const m{ [&]() -> std::unique_ptr<manifest> {  // load manifest
       auto const content{ util_load_file(manifest_path) };
-      auto manifest{ manifest::load(reinterpret_cast<char const *>(content.data()),
-                                    manifest_path) };
+      // Convert to string to ensure null-termination (Lua requires null-terminated strings)
+      std::string const content_str{ reinterpret_cast<char const *>(content.data()), content.size() };
+      auto manifest{ manifest::load(content_str.c_str(), manifest_path) };
       if (!manifest) { throw std::runtime_error("could not load manifest"); }
       return manifest;
     }() };
