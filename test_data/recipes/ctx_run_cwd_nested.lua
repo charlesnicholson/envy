@@ -17,7 +17,7 @@ stage = function(ctx)
     ctx.run([[
       Set-Content -Path pwd_nested.txt -Value (Get-Location).Path
       Set-Content -Path nested_marker.txt -Value "Deep nesting works"
-    ]], {cwd = "level1/level2/level3/level4", shell = "powershell"})
+    ]], {cwd = "level1/level2/level3/level4", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       mkdir -p level1/level2/level3/level4

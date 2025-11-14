@@ -24,7 +24,7 @@ build = function(ctx)
         BUILD_MODE = "release",
         CUSTOM_VAR = "test_value"
       },
-      shell = "powershell"
+      shell = ENVY_SHELL.POWERSHELL
     })
   else
     result = ctx.run([[

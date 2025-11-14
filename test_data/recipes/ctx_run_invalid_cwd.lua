@@ -16,7 +16,7 @@ stage = function(ctx)
     script = [[
       Write-Output "Should not execute"
     ]]
-    ctx.run(script, {cwd = invalid_cwd, shell = "powershell"})
+    ctx.run(script, {cwd = invalid_cwd, shell = ENVY_SHELL.POWERSHELL})
   else
     invalid_cwd = "/nonexistent/directory/that/does/not/exist"
     ctx.run([[

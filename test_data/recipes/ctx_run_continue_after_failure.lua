@@ -14,7 +14,7 @@ stage = function(ctx)
     ctx.run([[
       cmd /c exit 1
       Set-Content -Path continued.txt -Value "This executes even after false"
-    ]], {shell = "powershell"})
+    ]], {shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       false || true

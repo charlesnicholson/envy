@@ -16,7 +16,7 @@ stage = function(ctx)
     ctx.run(string.format([[
       Set-Content -Path pwd_absolute.txt -Value (Get-Location).Path
       Set-Content -Path "%s" -Value "Running in TEMP"
-    ]], target), {cwd = temp, shell = "powershell"})
+    ]], target), {cwd = temp, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > pwd_absolute.txt

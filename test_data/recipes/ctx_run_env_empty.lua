@@ -15,7 +15,7 @@ stage = function(ctx)
       if ($env:PATH) {
         Add-Content -Path empty_env.txt -Value "PATH still available"
       }
-    ]], {env = {}, shell = "powershell"})
+    ]], {env = {}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "Empty env table works" > empty_env.txt

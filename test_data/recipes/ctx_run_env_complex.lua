@@ -23,7 +23,7 @@ stage = function(ctx)
         Add-Content -Path env_complex.txt -Value ("NUMBER=" + $env:NUMBER)
         Add-Content -Path env_complex.txt -Value ("WITH_SPACE=" + $env:WITH_SPACE)
         Add-Content -Path env_complex.txt -Value ("SPECIAL=" + $env:SPECIAL)
-      ]], {env = env_values, shell = "powershell"})
+      ]], {env = env_values, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "STRING=$STRING" > env_complex.txt

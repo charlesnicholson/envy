@@ -17,7 +17,7 @@ stage = function(ctx)
     ctx.run([[
       Set-Content -Path pwd_from_parent.txt -Value (Get-Location).Path
       Set-Content -Path parent_marker.txt -Value "Using parent dir"
-    ]], {cwd = "deep/nested/..", shell = "powershell"})
+    ]], {cwd = "deep/nested/..", shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       mkdir -p deep/nested/dir

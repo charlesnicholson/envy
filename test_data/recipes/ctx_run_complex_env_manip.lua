@@ -13,7 +13,7 @@ stage = function(ctx)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path env_step1.txt -Value ("BASE_VAR=" + $env:BASE_VAR)
-    ]], {env = {BASE_VAR = "base_value"}, shell = "powershell"})
+    ]], {env = {BASE_VAR = "base_value"}, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "BASE_VAR=$BASE_VAR" > env_step1.txt
@@ -29,7 +29,7 @@ stage = function(ctx)
       BASE_VAR = "modified",
       EXTRA_VAR = "extra",
       ANOTHER = "another"
-    }, shell = "powershell"})
+    }, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "BASE_VAR=$BASE_VAR" > env_step2.txt
@@ -51,7 +51,7 @@ stage = function(ctx)
       CONFIG_DIR = "C:/etc/myapp",
       DATA_DIR = "C:/var/lib/myapp",
       LOG_LEVEL = "debug"
-    }, shell = "powershell"})
+    }, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       echo "CONFIG_DIR=$CONFIG_DIR" > env_step3.txt

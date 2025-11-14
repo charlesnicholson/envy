@@ -26,6 +26,11 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
+    @staticmethod
+    def lua_path(path: Path) -> str:
+        """Convert path to Lua-safe string (forward slashes work on all platforms)."""
+        return path.as_posix()
+
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
         result = subprocess.run(
@@ -52,7 +57,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_single.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -92,7 +97,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_array.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -125,7 +130,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_table.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -161,7 +166,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_table_array.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -197,7 +202,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_commit_scalar.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -233,7 +238,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_commit_sha256.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -267,7 +272,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_commit_bad_sha256.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -299,7 +304,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_commit_array.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -326,7 +331,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_commit_missing.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -366,7 +371,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_selective_commit.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -398,7 +403,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_identity.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -430,7 +435,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_options.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -471,7 +476,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_options_empty.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -521,7 +526,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_serial_fetches.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -547,7 +552,7 @@ function fetch(ctx)
 end
 """
         recipe_path = self.cache_root / "prog_error_prop.lua"
-        recipe_path.write_text(recipe_content)
+        recipe_path.write_text(recipe_content, encoding='utf-8')
 
         result = subprocess.run(
             [
@@ -570,3 +575,4 @@ end
 
 if __name__ == "__main__":
     unittest.main()
+
