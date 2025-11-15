@@ -35,8 +35,59 @@ std::optional<std::filesystem::path> manifest::discover() {
   }
 }
 
+std::filesystem::path manifest::find_manifest_path(
+    std::optional<std::filesystem::path> const &explicit_path) {
+  if (explicit_path) {
+    auto path{ std::filesystem::absolute(*explicit_path) };
+    if (!std::filesystem::exists(path)) {
+      throw std::runtime_error("manifest not found");
+    }
+    return path;
+  } else {
+    auto discovered{ discover() };
+    if (!discovered) { throw std::runtime_error("manifest not found"); }
+    return *discovered;
+  }
+}
+
+std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
+  tui::trace("Loading manifest from file: %s", manifest_path.string().c_str());
+  auto const content{ util_load_file(manifest_path) };
+  return load(content, manifest_path);
+}
+
+std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &content,
+                                         std::filesystem::path const &manifest_path) {
+  tui::trace("Loading manifest (%zu bytes)", content.size());
+  // Ensure null-termination for Lua (create string with guaranteed null terminator)
+  std::string const script{ reinterpret_cast<char const *>(content.data()), content.size() };
+
+  auto state{ lua_make() };
+  if (!state) { throw std::runtime_error("Failed to create Lua state"); }
+
+  lua_add_envy(state);
+
+  if (!lua_run_string(state, script.c_str())) {
+    throw std::runtime_error("Failed to execute manifest script");
+  }
+
+  auto m{ std::make_unique<manifest>() };
+  m->manifest_path = manifest_path;
+  m->lua_state_ = std::move(state);  // Keep lua_state alive for default_shell access
+
+  auto packages{ lua_global_to_array(m->lua_state_.get(), "packages") };
+  if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
+
+  for (auto const &package : *packages) {
+    m->packages.push_back(recipe_spec::parse(package, manifest_path));
+  }
+
+  return m;
+}
+
 std::unique_ptr<manifest> manifest::load(char const *script,
                                          std::filesystem::path const &manifest_path) {
+  tui::trace("Loading manifest from C string");
   auto state{ lua_make() };
   if (!state) { throw std::runtime_error("Failed to create Lua state"); }
 
@@ -48,7 +99,7 @@ std::unique_ptr<manifest> manifest::load(char const *script,
 
   auto m{ std::make_unique<manifest>() };
   m->manifest_path = manifest_path;
-  m->lua_state_ = std::move(state);  // Keep lua_state alive for default_shell access
+  m->lua_state_ = std::move(state);
 
   auto packages{ lua_global_to_array(m->lua_state_.get(), "packages") };
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
