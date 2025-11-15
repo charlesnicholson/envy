@@ -94,11 +94,6 @@ fetch_result fetch_local_file(std::string const &canonical_path,
                        .resolved_destination = dest };
 }
 
-struct scoped_git_init : unmovable {
-  scoped_git_init() { git_libgit2_init(); }
-  ~scoped_git_init() { git_libgit2_shutdown(); }
-};
-
 int git_fetch_progress_callback(git_indexer_progress const *stats, void *payload) {
   auto *cb{ static_cast<fetch_progress_cb_t *>(payload) };
   if (!cb || !*cb) { return 0; }
@@ -120,8 +115,6 @@ fetch_result fetch_git_repo(std::string const &url,
                             std::filesystem::path const &destination,
                             fetch_progress_cb_t const &progress) {
   auto const dest{ prepare_destination(destination) };
-
-  scoped_git_init git_guard;
 
   std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{
     [&]() -> git_repository * {
