@@ -20,7 +20,21 @@ struct manifest : unmovable {
 
   manifest() = default;
 
+  // Find manifest path: use provided path if given, otherwise discover from current directory
+  // Returns absolute path or throws if not found
+  static std::filesystem::path find_manifest_path(
+      std::optional<std::filesystem::path> const &explicit_path);
+
   static std::optional<std::filesystem::path> discover();
+
+  // Load manifest from file path (loads file and adds null terminator for Lua safety)
+  static std::unique_ptr<manifest> load(std::filesystem::path const &manifest_path);
+
+  // Load manifest from file contents (adds null terminator internally for Lua safety)
+  static std::unique_ptr<manifest> load(std::vector<unsigned char> const &content,
+                                        std::filesystem::path const &manifest_path);
+
+  // Load manifest from C string (for tests)
   static std::unique_ptr<manifest> load(char const *script,
                                         std::filesystem::path const &manifest_path);
 

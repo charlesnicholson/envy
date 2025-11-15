@@ -6,46 +6,18 @@
 #include "platform.h"
 #include "recipe_spec.h"
 #include "tui.h"
-#include "util.h"
 
 #include <sstream>
 #include <stdexcept>
 
 namespace envy {
 
-// Helper to format a canonical key (identity or identity{options})
-static std::string format_result_key(
-    std::string const &identity,
-    std::unordered_map<std::string, lua_value> const &options) {
-  return recipe_spec::format_key(identity, options);
-}
-
 cmd_asset::cmd_asset(cfg cfg) : cfg_{ std::move(cfg) } {}
 
 bool cmd_asset::execute() {
   try {
-    auto const manifest_path{ [&]() -> std::filesystem::path {  // find manifest
-      if (cfg_.manifest_path) {
-        auto path{ std::filesystem::absolute(*cfg_.manifest_path) };
-        if (!std::filesystem::exists(path)) {
-          throw std::runtime_error("manifest not found");
-        }
-        return path;
-      } else {
-        auto discovered{ manifest::discover() };
-        if (!discovered) { throw std::runtime_error("manifest not found"); }
-        return *discovered;
-      }
-    }() };
-
-    auto const m{ [&]() -> std::unique_ptr<manifest> {  // load manifest
-      auto const content{ util_load_file(manifest_path) };
-      // Convert to string to ensure null-termination (Lua requires null-terminated strings)
-      std::string const content_str{ reinterpret_cast<char const *>(content.data()), content.size() };
-      auto manifest{ manifest::load(content_str.c_str(), manifest_path) };
-      if (!manifest) { throw std::runtime_error("could not load manifest"); }
-      return manifest;
-    }() };
+    auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
+    if (!m) { throw std::runtime_error("could not load manifest"); }
 
     std::vector<recipe_spec const *> matches;
     for (auto const &pkg : m->packages) {
@@ -58,10 +30,11 @@ bool cmd_asset::execute() {
     }
 
     if (matches.size() > 1) {
-      std::string first_key{ format_result_key(matches[0]->identity,
-                                               matches[0]->options) };
+      std::string first_key{ recipe_spec::format_key(matches[0]->identity,
+                                                     matches[0]->options) };
       for (size_t i{ 1 }; i < matches.size(); ++i) {
-        std::string key{ format_result_key(matches[i]->identity, matches[i]->options) };
+        std::string key{ recipe_spec::format_key(matches[i]->identity,
+                                                 matches[i]->options) };
         if (key != first_key) {
           tui::error("identity '%s' appears multiple times with different options",
                      cfg_.identity.c_str());
@@ -86,7 +59,7 @@ bool cmd_asset::execute() {
     recipe_spec const &target{ *matches[0] };
     auto result{ engine_run({ target }, c, *m) };
 
-    auto it{ result.find(format_result_key(target.identity, target.options)) };
+    auto it{ result.find(recipe_spec::format_key(target.identity, target.options)) };
     if (it == result.end() || it->second.result_hash.empty()) {
       tui::error("not found");
       return false;
