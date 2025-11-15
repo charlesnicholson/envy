@@ -735,6 +735,12 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
       errors.push_back(get_source(specs[spec_idx].request) + ": " + *err);
     } else {
       // File downloaded successfully
+      auto const *result{ std::get_if<fetch_result>(&results[i]) };
+      if (result) {
+        tui::trace("phase fetch: downloaded %s",
+                   result->resolved_destination.filename().string().c_str());
+      }
+
 #ifdef ENVY_FUNCTIONAL_TESTER
       try {
         test::decrement_fail_counter();
