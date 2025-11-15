@@ -141,6 +141,7 @@ Recipes define verbs describing how to acquire, validate, and install packages:
   - Single file: `fetch = {url="...", sha256="..."}` (optional verification)
   - Multiple files: `fetch = {{url="..."}, {url="..."}}` (concurrent, optional verification per-file)
   - Custom function: `fetch = function(ctx) ctx.fetch(...) end` (imperative with `ctx.fetch()` API)
+  - Function returning declarative: `fetch = function(ctx) return "https://..." end` (enables templating with `ctx.options`; return value can be any declarative form: string, table, array; can mix with imperative `ctx.fetch()` calls)
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
 - **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.

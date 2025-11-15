@@ -51,6 +51,16 @@ struct table_entry {
   std::optional<std::string> ref;
 };
 
+// Forward declarations
+std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
+                                          std::filesystem::path const &fetch_dir,
+                                          std::filesystem::path const &stage_dir,
+                                          std::string const &key);
+std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs);
+void execute_downloads(std::vector<fetch_spec> const &specs,
+                       std::vector<size_t> const &to_download_indices,
+                       std::string const &key);
+
 // Context data for Lua C functions (stored as userdata upvalue)
 struct fetch_context : lua_ctx_common {
   std::unordered_set<std::string> used_basenames;  // Track collisions across calls
@@ -426,7 +436,8 @@ void build_fetch_context_table(lua_State *lua,
 }
 
 // fetch = function(ctx) ... end
-void run_programmatic_fetch(lua_State *lua,
+// Returns true if fetch should be marked complete (cacheable), false otherwise
+bool run_programmatic_fetch(lua_State *lua,
                             cache::scoped_entry_lock *lock,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
@@ -451,14 +462,69 @@ void run_programmatic_fetch(lua_State *lua,
 
   // Call fetch(ctx)
   // Stack: fetch function at -2, context table at -1 (ready for pcall)
-  if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
+  if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
     char const *err{ lua_tostring(lua, -1) };
     std::string error_msg{ err ? err : "unknown error" };
     lua_pop(lua, 1);
     throw std::runtime_error("Fetch function failed for " + identity + ": " + error_msg);
   }
 
+  // Check return value: nil (imperative only) or string/table (declarative)
+  int const return_type{ lua_type(lua, -1) };
+  bool should_mark_complete{ true };
+
+  switch (return_type) {
+    case LUA_TNIL:
+    case LUA_TNONE:
+      // Imperative only - no declarative fetch to process
+      tui::trace("phase fetch: function returned nil, imperative mode only");
+      lua_pop(lua, 1);
+      break;
+
+    case LUA_TSTRING:
+    case LUA_TTABLE: {
+      // Declarative return - reuse existing declarative fetch machinery
+      tui::trace("phase fetch: function returned declarative spec, processing");
+
+      // Ensure stage_dir exists (needed for git repos)
+      std::filesystem::path const stage_dir{ lock->stage_dir() };
+      std::error_code ec;
+      std::filesystem::create_directories(stage_dir, ec);
+      if (ec) {
+        lua_pop(lua, 1);
+        throw std::runtime_error("Failed to create stage directory: " + ec.message());
+      }
+
+      // Parse and execute declarative fetch from return value
+      auto fetch_specs{ parse_fetch_field(lua, lock->fetch_dir(), stage_dir, identity) };
+      lua_pop(lua, 1);
+
+      if (!fetch_specs.empty()) {
+        execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
+
+        // Check if we fetched any git repos - if so, don't mark fetch complete
+        bool const has_git_repos =
+            std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
+              return std::holds_alternative<fetch_request_git>(spec.request);
+            });
+
+        if (has_git_repos) {
+          tui::trace("phase fetch: returned spec contains git repos, not cacheable");
+          should_mark_complete = false;
+        }
+      }
+      break;
+    }
+
+    default:
+      lua_pop(lua, 1);
+      throw std::runtime_error("Fetch function for " + identity +
+                               " must return nil, string, or table (got " +
+                               lua_typename(lua, return_type) + ")");
+  }
+
   std::filesystem::remove_all(tmp_dir);
+  return should_mark_complete;
 }
 
 // Extract source, sha256, and ref from a Lua table at the top of the stack.
@@ -828,9 +894,16 @@ void run_fetch_phase(recipe *r, graph_state &state) {
       tui::trace("phase fetch: no fetch field, skipping");
       return;
     case LUA_TFUNCTION:
-      run_programmatic_fetch(lua, lock, identity, options, state, r);
+      should_mark_complete = run_programmatic_fetch(lua, lock, identity, options, state, r);
       break;
-    default: should_mark_complete = run_declarative_fetch(lua, lock, identity); break;
+    case LUA_TSTRING:
+    case LUA_TTABLE:
+      should_mark_complete = run_declarative_fetch(lua, lock, identity);
+      break;
+    default:
+      lua_pop(lua, 1);
+      throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
+                               identity);
   }
 
   if (should_mark_complete) {

@@ -572,6 +572,258 @@ end
         self.assertIn("local.prog_error_prop@v1", result.stderr)
         self.assertIn("Intentional test error", result.stderr)
 
+    def test_fetch_function_returns_string(self):
+        """fetch = function(ctx) return \"url\" end (declarative string shorthand)."""
+        recipe_content = """identity = "local.prog_return_string@v1"
+
+fetch = function(ctx)
+  return "test_data/lua/simple.lua"
+end
+"""
+        recipe_path = self.cache_root / "prog_return_string.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_string@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.prog_return_string@v1", result.stdout)
+
+    def test_fetch_function_returns_table_single(self):
+        """fetch = function(ctx) return {source=\"...\", sha256=\"...\"} end."""
+        # Get hash of test file
+        test_file = Path(__file__).parent.parent / "test_data" / "lua" / "simple.lua"
+        hash_result = subprocess.run(
+            [str(self.envy), "hash", str(test_file)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        file_hash = hash_result.stdout.split()[0]
+
+        recipe_content = f"""identity = "local.prog_return_table@v1"
+
+fetch = function(ctx)
+  return {{source = "test_data/lua/simple.lua", sha256 = "{file_hash}"}}
+end
+"""
+        recipe_path = self.cache_root / "prog_return_table.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_table@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_table_array(self):
+        """fetch = function(ctx) return {{source=\"...\"}, {source=\"...\"}} end."""
+        recipe_content = """identity = "local.prog_return_array@v1"
+
+fetch = function(ctx)
+  return {
+    {source = "test_data/lua/simple.lua"},
+    {source = "test_data/lua/print_single.lua"}
+  }
+end
+"""
+        recipe_path = self.cache_root / "prog_return_array.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_array@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_string_array(self):
+        """fetch = function(ctx) return {\"url1\", \"url2\"} end."""
+        recipe_content = """identity = "local.prog_return_str_array@v1"
+
+fetch = function(ctx)
+  return {
+    "test_data/lua/simple.lua",
+    "test_data/lua/print_single.lua"
+  }
+end
+"""
+        recipe_path = self.cache_root / "prog_return_str_array.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_str_array@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_with_options_templating(self):
+        """fetch = function(ctx) return with ctx.options templating."""
+        recipe_content = """identity = "local.prog_options_template@v1"
+
+fetch = function(ctx)
+  local version = ctx.options.version or "default"
+  local filename = ctx.options.filename or "simple.lua"
+  return "test_data/lua/" .. filename
+end
+"""
+        recipe_path = self.cache_root / "prog_options_template.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        manifest_content = f"""
+packages = {{
+  {{
+    recipe = "local.prog_options_template@v1",
+    file = "{self.lua_path(recipe_path)}",
+    options = {{
+      version = "1.2.3",
+      filename = "print_single.lua"
+    }}
+  }}
+}}
+"""
+        manifest_path = self.cache_root / "envy.lua"
+        manifest_path.write_text(manifest_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy),
+                *self.trace_flag,
+                "sync",
+                f"--manifest={manifest_path}",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_mixed_imperative_and_declarative(self):
+        """fetch = function(ctx) calls ctx.fetch() and returns table (mixed mode)."""
+        recipe_content = """identity = "local.prog_mixed_mode@v1"
+
+fetch = function(ctx)
+  -- Imperative: fetch and commit one file
+  local file1 = ctx.fetch("test_data/lua/simple.lua")
+  ctx.commit_fetch(file1)
+
+  -- Declarative: return spec for more files
+  return {
+    "test_data/lua/print_single.lua",
+    "test_data/lua/print_multiple.lua"
+  }
+end
+"""
+        recipe_path = self.cache_root / "prog_mixed_mode.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_mixed_mode@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_nil(self):
+        """fetch = function(ctx) with explicit return nil (imperative mode)."""
+        recipe_content = """identity = "local.prog_return_nil@v1"
+
+fetch = function(ctx)
+  local file = ctx.fetch("test_data/lua/simple.lua")
+  ctx.commit_fetch(file)
+  return nil
+end
+"""
+        recipe_path = self.cache_root / "prog_return_nil.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_nil@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_invalid_type(self):
+        """fetch = function(ctx) returns number (error)."""
+        recipe_content = """identity = "local.prog_return_invalid@v1"
+
+fetch = function(ctx)
+  return 42
+end
+"""
+        recipe_path = self.cache_root / "prog_return_invalid.lua"
+        recipe_path.write_text(recipe_content, encoding='utf-8')
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_invalid@v1",
+                str(recipe_path),
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0, "Expected error for invalid return type")
+        self.assertIn("must return nil, string, or table", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
