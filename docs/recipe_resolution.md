@@ -161,9 +161,9 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 
 ### Custom Fetch Functions
 
-**Use case:** Authenticated sources, custom tools (JFrog, Artifactory), dynamic recipe generation.
+**Use case:** Authenticated sources, custom tools (JFrog, Artifactory), dynamic recipe generation, templating with `ctx.options`.
 
-**Example:**
+**Imperative mode** (calls `ctx.fetch()` + `ctx.commit_fetch()`):
 ```lua
 {
   recipe = "corporate.toolchain@v1",
@@ -175,12 +175,51 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
       {url = "https://internal.com/toolchain.tar.gz", sha256 = "abc123..."},
       {url = "https://internal.com/helpers.lua", sha256 = "def456..."}
     })
+    ctx.commit_fetch({"toolchain.tar.gz", "helpers.lua"})
   end,
   dependencies = {
     { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
 ```
+
+**Declarative return mode** (returns declarative spec):
+```lua
+{
+  recipe = "vendor.gcc@v2",
+  fetch = function(ctx)
+    -- Template URL with options
+    local version = ctx.options.version or "13.2.0"
+    local arch = ctx.options.arch or ENVY_ARCH
+    return {
+      url = string.format("https://arm.com/gcc-%s-%s.tar.gz", version, arch),
+      sha256 = ctx.options.sha256
+    }
+  end
+}
+```
+
+**Mixed mode** (imperative + declarative):
+```lua
+fetch = function(ctx)
+  -- Fetch authenticated file imperatively
+  local secret = os.getenv("API_TOKEN")
+  ctx.fetch("https://internal.com/file?token=" .. secret)
+  ctx.commit_fetch("file")
+
+  -- Return declarative spec for public files
+  return {
+    {url = "https://public.com/gcc.tar.gz", sha256 = "abc123..."},
+    {url = "https://public.com/gcc.sig", sha256 = "def456..."}
+  }
+end
+```
+
+**Return value semantics:**
+- `nil` or no return → imperative mode only
+- String → declarative shorthand (no SHA256)
+- Table → declarative spec (single file or array)
+- All declarative forms supported: `"url"`, `{url="..."}`, `{{"url1"}, {"url2"}}`, `{"url1", "url2"}`
 
 **Security boundary:** Custom fetch functions cannot access cache paths directly. All downloads go through `ctx.fetch()` API, which enforces optional SHA256 verification.
 
