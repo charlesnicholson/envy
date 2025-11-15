@@ -1,5 +1,6 @@
 #include "aws_util.h"
 #include "cli.h"
+#include "libgit2_util.h"
 #include "tui.h"
 
 #include "tbb/task_arena.h"
@@ -13,6 +14,7 @@ int main(int argc, char **argv) {
   auto args{ envy::cli_parse(argc, argv) };
 
   envy::aws_shutdown_guard aws_guard;
+  envy::libgit2_scope git_guard;
   envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };
 
   if (!args.cli_output.empty()) {
