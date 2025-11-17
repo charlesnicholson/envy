@@ -57,7 +57,8 @@ bool cmd_asset::execute() {
 
     cache c{ cache_root };
     recipe_spec const &target{ *matches[0] };
-    auto result{ engine_run({ target }, c, *m) };
+    engine eng{ c, m->get_default_shell(nullptr) };
+    auto result{ eng.run_full({ target }) };
 
     auto it{ result.find(recipe_spec::format_key(target.identity, target.options)) };
     if (it == result.end() || it->second.result_hash.empty()) {

@@ -292,6 +292,29 @@ stderr_reader.join();
 
 **Alternative:** Add configuration option for max line length with truncation warning if pathologically long lines become an issue.
 
+## Dynamic Alias Computation
+
+Allow recipe files to compute aliases from options passed by manifest. String form is static; function form takes options table and returns alias string. Enables single recipe to generate descriptive aliases like `python3.13` or `gcc-arm-13.2` based on version option.
+
+```lua
+-- local.python@r4.lua (recipe file)
+identity = "local.python@r4"
+
+-- Static alias (current)
+alias = "python"
+
+-- Dynamic alias (proposed)
+alias = function(options)
+  return "python" .. options.version
+end
+
+-- Manifest usage:
+-- { recipe = "local.python@r4", source = "...", options = {version = "3.13"} }
+-- Result: registered as alias "python3.13"
+```
+
+**Implementation:** Function evaluated during recipe_fetch phase after loading recipe Lua. Takes `options` table from recipe_spec (not full ctx—aliases needed before asset phases). Cached per recipe instance. String result must be unique (enforced at registration time).
+
 ## Cross-Platform Recipe Variants
 
 Higher-level abstraction for platform-specific variants within a single recipe identity. Current Lua approach handles this programmatically.

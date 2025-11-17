@@ -1,7 +1,7 @@
 #include "phase_check.h"
 
 #include "cache.h"
-#include "graph_state.h"
+#include "engine.h"
 #include "lua_util.h"
 #include "manifest.h"
 #include "recipe.h"
@@ -24,8 +24,8 @@ namespace envy {
 
 // Extern declarations for unit testing (not in public API)
 extern bool recipe_has_check_verb(recipe *r, lua_State *lua);
-extern bool run_check_verb(recipe *r, graph_state &state, lua_State *lua);
-extern bool run_check_string(recipe *r, graph_state &state, std::string_view check_cmd);
+extern bool run_check_verb(recipe *r, engine &eng, lua_State *lua);
+extern bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd);
 extern bool run_check_function(recipe *r, lua_State *lua);
 
 namespace {
@@ -35,9 +35,23 @@ struct test_recipe_fixture {
   std::unique_ptr<recipe> r;
 
   test_recipe_fixture() {
-    r = std::make_unique<recipe>();
-    r->spec.identity = "test-package";
-    r->lua_state = lua_make();
+    recipe_spec spec;
+    spec.identity = "test.package@v1";
+
+    r = std::make_unique<recipe>(recipe{
+        .key = recipe_key(spec),
+        .spec = spec,
+        .lua_state = lua_make(),
+        .lock = nullptr,
+        .declared_dependencies = {},
+        .dependencies = {},
+        .canonical_identity_hash = {},
+        .asset_path = {},
+        .result_hash = {},
+        .cache_ptr = nullptr,
+        .default_shell_ptr = nullptr,
+    });
+
     lua_add_envy(r->lua_state);
   }
 
@@ -117,12 +131,10 @@ TEST_CASE("recipe_has_check_verb returns false for invalid check type (table)") 
 TEST_CASE("run_check_string returns true when command exits 0") {
   test_recipe_fixture f;
 
-  // Minimal graph_state (manifest_ can be nullptr for basic tests)
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_string(f.r.get(), state, "exit 0");
+  bool result = run_check_string(f.r.get(), eng, "exit 0");
   CHECK(result);
 }
 
@@ -130,10 +142,9 @@ TEST_CASE("run_check_string returns false when command exits 1") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_string(f.r.get(), state, "exit 1");
+  bool result = run_check_string(f.r.get(), eng, "exit 1");
   CHECK_FALSE(result);
 }
 
@@ -141,10 +152,9 @@ TEST_CASE("run_check_string returns false when command exits non-zero") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_string(f.r.get(), state, "exit 42");
+  bool result = run_check_string(f.r.get(), eng, "exit 42");
   CHECK_FALSE(result);
 }
 
@@ -152,13 +162,12 @@ TEST_CASE("run_check_string returns true for successful command") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
 #ifdef _WIN32
-  bool result = run_check_string(f.r.get(), state, "echo hello > nul");
+  bool result = run_check_string(f.r.get(), eng, "echo hello > nul");
 #else
-  bool result = run_check_string(f.r.get(), state, "echo hello > /dev/null");
+  bool result = run_check_string(f.r.get(), eng, "echo hello > /dev/null");
 #endif
   CHECK(result);
 }
@@ -167,14 +176,13 @@ TEST_CASE("run_check_string returns false for failing command") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
 #ifdef _WIN32
   // PowerShell: exit with non-zero code
-  bool result = run_check_string(f.r.get(), state, "exit 1");
+  bool result = run_check_string(f.r.get(), eng, "exit 1");
 #else
-  bool result = run_check_string(f.r.get(), state, "false");
+  bool result = run_check_string(f.r.get(), eng, "false");
 #endif
   CHECK_FALSE(result);
 }
@@ -274,10 +282,9 @@ TEST_CASE("run_check_verb dispatches to string handler") {
   f.set_check_string("exit 0");
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
   CHECK(result);
 }
 
@@ -286,10 +293,9 @@ TEST_CASE("run_check_verb dispatches to function handler") {
   f.set_check_function("function(ctx) return true end");
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
   CHECK(result);
 }
 
@@ -298,10 +304,9 @@ TEST_CASE("run_check_verb returns false when no check verb") {
   // No check verb set
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
   CHECK_FALSE(result);
 }
 
@@ -311,11 +316,10 @@ TEST_CASE("run_check_verb returns false for table check type") {
   lua_setglobal(f.r->lua_state.get(), "check");
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
   // Tables are not functions or strings, so check verb is not present
-  bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+  bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
   CHECK_FALSE(result);
 }
 
@@ -323,18 +327,17 @@ TEST_CASE("run_check_verb string check respects exit code") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
   SUBCASE("exit 0 returns true") {
     f.set_check_string("exit 0");
-    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
     CHECK(result);
   }
 
   SUBCASE("exit 1 returns false") {
     f.set_check_string("exit 1");
-    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
     CHECK_FALSE(result);
   }
 }
@@ -343,18 +346,17 @@ TEST_CASE("run_check_verb function check respects return value") {
   test_recipe_fixture f;
 
   cache test_cache;
-  tbb::flow::graph test_graph;
-  graph_state state{ test_graph, test_cache, nullptr };
+  engine eng{ test_cache, std::nullopt };
 
   SUBCASE("function returns true") {
     f.set_check_function("function(ctx) return true end");
-    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
     CHECK(result);
   }
 
   SUBCASE("function returns false") {
     f.set_check_function("function(ctx) return false end");
-    bool result = run_check_verb(f.r.get(), state, f.r->lua_state.get());
+    bool result = run_check_verb(f.r.get(), eng, f.r->lua_state.get());
     CHECK_FALSE(result);
   }
 }
@@ -365,7 +367,7 @@ TEST_CASE("run_check_verb function check respects return value") {
 
 TEST_CASE("run_check_function propagates Lua error with context") {
   test_recipe_fixture f;
-  f.r->spec.identity = "my-package";
+  f.r->spec.identity = "my.package@v1";
 
   lua_State *L = f.r->lua_state.get();
   luaL_dostring(L, "return function(ctx) error('something went wrong') end");
@@ -376,7 +378,7 @@ TEST_CASE("run_check_function propagates Lua error with context") {
     FAIL("Expected exception");
   } catch (std::runtime_error const &e) {
     std::string msg = e.what();
-    CHECK(msg.find("my-package") != std::string::npos);
+    CHECK(msg.find("my.package@v1") != std::string::npos);
     CHECK(msg.find("something went wrong") != std::string::npos);
   }
 }

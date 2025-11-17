@@ -1,8 +1,11 @@
 #include "phase_check.h"
 
 #include "blake3_util.h"
+#include "cache.h"
+#include "engine.h"
 #include "lua_ctx_bindings.h"
 #include "manifest.h"
+#include "recipe.h"
 #include "shell.h"
 #include "tui.h"
 #include "util.h"
@@ -13,7 +16,7 @@
 namespace envy {
 
 // Helper: Run string-based check verb (check = "command")
-bool run_check_string(recipe *r, graph_state &state, std::string_view check_cmd) {
+bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::trace("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
   // Build shell config using manifest's default_shell
@@ -23,26 +26,14 @@ bool run_check_string(recipe *r, graph_state &state, std::string_view check_cmd)
   };
   cfg.env = shell_getenv();
 
-  // Get manifest default_shell if present
-  if (state.manifest_) {
-    // Create minimal context for get_default_shell (only used if default_shell is a
-    // function)
-    lua_ctx_common ctx{ .fetch_dir = {},  // Empty - not used in check phase
-                        .run_dir = {},    // Empty - not used in check phase
-                        .state = &state,
-                        .recipe_ = r,
-                        .manifest_ = state.manifest_ };
-
-    default_shell_cfg_t const manifest_default{ state.manifest_->get_default_shell(&ctx) };
-    if (manifest_default) {
-      std::visit(match{ [&cfg](shell_choice const &choice) { cfg.shell = choice; },
-                        [&cfg](custom_shell const &custom) {
-                          std::visit(
-                              [&cfg](auto &&custom_type) { cfg.shell = custom_type; },
-                              custom);
-                        } },
-                 *manifest_default);
-    }
+  // Use recipe's default_shell if present
+  if (r->default_shell_ptr && *r->default_shell_ptr) {
+    std::visit(match{ [&cfg](shell_choice const &choice) { cfg.shell = choice; },
+                      [&cfg](custom_shell const &custom) {
+                        std::visit([&cfg](auto &&custom_type) { cfg.shell = custom_type; },
+                                   custom);
+                      } },
+               **r->default_shell_ptr);
   }
 
   // Run the check command
@@ -82,7 +73,7 @@ bool run_check_function(recipe *r, lua_State *lua) {
 }
 
 // Helper: Run check verb (dispatches to string or function)
-bool run_check_verb(recipe *r, graph_state &state, lua_State *lua) {
+bool run_check_verb(recipe *r, engine &eng, lua_State *lua) {
   lua_getglobal(lua, "check");
 
   if (lua_isfunction(lua, -1)) {
@@ -90,7 +81,7 @@ bool run_check_verb(recipe *r, graph_state &state, lua_State *lua) {
   } else if (lua_isstring(lua, -1)) {
     std::string_view const check_cmd{ lua_tostring(lua, -1) };
     lua_pop(lua, 1);
-    return run_check_string(r, state, check_cmd);
+    return run_check_string(r, eng, check_cmd);
   } else {
     lua_pop(lua, 1);
     return false;  // No check verb, return false (work needed)
@@ -105,10 +96,9 @@ bool recipe_has_check_verb(recipe *r, lua_State *lua) {
   return has_check;
 }
 
-void run_check_phase(recipe *r, graph_state &state) {
+void run_check_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase check START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase check END [" + key + "]" };
 
   lua_State *lua = r->lua_state.get();
   if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec.identity); }
@@ -121,7 +111,7 @@ void run_check_phase(recipe *r, graph_state &state) {
 
     // First check (pre-lock): See if work is needed
     tui::trace("phase check: running user check (pre-lock)");
-    bool const check_passed_prelock{ run_check_verb(r, state, lua) };
+    bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
     tui::trace("phase check: user check returned %s",
                check_passed_prelock ? "true" : "false");
 
@@ -146,7 +136,7 @@ void run_check_phase(recipe *r, graph_state &state) {
     std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
 
     auto cache_result{
-      state.cache_.ensure_asset(r->spec.identity, platform, arch, hash_prefix)
+      r->cache_ptr->ensure_asset(r->spec.identity, platform, arch, hash_prefix)
     };
 
     if (cache_result.lock) {
@@ -156,7 +146,7 @@ void run_check_phase(recipe *r, graph_state &state) {
 
       // Second check (post-lock): Detect races where another process completed work
       tui::trace("phase check: re-running user check (post-lock)");
-      bool const check_passed_postlock{ run_check_verb(r, state, lua) };
+      bool const check_passed_postlock{ run_check_verb(r, eng, lua) };
       tui::trace("phase check: re-check returned %s",
                  check_passed_postlock ? "true" : "false");
 
@@ -178,9 +168,10 @@ void run_check_phase(recipe *r, graph_state &state) {
       // check verb returned false (work needed) but cache entry exists.
       // This may indicate a buggy/non-deterministic check verb or race condition.
       r->asset_path = cache_result.asset_path;
-      tui::warn("phase check: unexpected cache hit for user-managed package at %s - "
-                "check verb may be buggy or non-deterministic",
-                cache_result.asset_path.string().c_str());
+      tui::warn(
+          "phase check: unexpected cache hit for user-managed package at %s - "
+          "check verb may be buggy or non-deterministic",
+          cache_result.asset_path.string().c_str());
     }
 
   } else {
@@ -198,7 +189,7 @@ void run_check_phase(recipe *r, graph_state &state) {
     std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
 
     auto cache_result{
-      state.cache_.ensure_asset(r->spec.identity, platform, arch, hash_prefix)
+      r->cache_ptr->ensure_asset(r->spec.identity, platform, arch, hash_prefix)
     };
 
     if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work

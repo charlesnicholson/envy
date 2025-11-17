@@ -1,10 +1,10 @@
 #pragma once
 
-#include "graph_state.h"
-
 namespace envy {
 
+class engine;
+
 struct recipe;
-void run_build_phase(recipe *r, graph_state &state);
+void run_build_phase(recipe *r, engine &eng);
 
 }  // namespace envy

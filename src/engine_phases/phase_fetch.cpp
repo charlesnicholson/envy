@@ -1,5 +1,8 @@
 #include "phase_fetch.h"
 
+#include "cache.h"
+#include "engine.h"
+#include "recipe.h"
 #include "fetch.h"
 #include "lua_ctx_bindings.h"
 #include "lua_util.h"
@@ -443,7 +446,7 @@ bool run_programmatic_fetch(lua_State *lua,
                             cache::scoped_entry_lock *lock,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
-                            graph_state &state,
+                            engine &eng,
                             recipe *r) {
   tui::trace("phase fetch: executing fetch function");
 
@@ -455,9 +458,9 @@ bool run_programmatic_fetch(lua_State *lua,
   fetch_context ctx{};
   ctx.fetch_dir = lock->fetch_dir();
   ctx.run_dir = tmp_dir;
-  ctx.state = &state;
+  ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = state.manifest_;
+  ctx.manifest_ = nullptr;  // Not needed - default_shell already resolved in engine
   ctx.used_basenames = {};
 
   build_fetch_context_table(lua, identity, options, &ctx);
@@ -811,10 +814,9 @@ bool run_declarative_fetch(lua_State *lua,
 
 }  // namespace
 
-void run_fetch_phase(recipe *r, graph_state &state) {
+void run_fetch_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase fetch START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase fetch END [" + key + "]" };
 
   cache::scoped_entry_lock *lock = r->lock.get();
   if (!lock) {
@@ -843,7 +845,7 @@ void run_fetch_phase(recipe *r, graph_state &state) {
       return;
     case LUA_TFUNCTION:
       should_mark_complete =
-          run_programmatic_fetch(lua, lock, identity, options, state, r);
+          run_programmatic_fetch(lua, lock, identity, options, eng, r);
       break;
     case LUA_TSTRING:
     case LUA_TTABLE:

@@ -1,7 +1,8 @@
 #include "phase_recipe_fetch.h"
 
-#include "create_recipe_nodes.h"
+#include "engine.h"
 #include "fetch.h"
+#include "recipe.h"
 #include "sha256.h"
 #include "tui.h"
 
@@ -38,12 +39,11 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 }  // namespace
 
 void run_recipe_fetch_phase(recipe *r,
-                            graph_state &state,
+                            engine &eng,
                             std::unordered_set<std::string> const &ancestors) {
   recipe_spec const &spec = r->spec;
   std::string const key{ spec.format_key() };
   tui::trace("phase recipe_fetch START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase recipe_fetch END [" + key + "]" };
 
   auto lua_state{ lua_make() };
   lua_add_envy(lua_state);
@@ -56,7 +56,7 @@ void run_recipe_fetch_phase(recipe *r,
     }
   } else if (auto const *remote_src{
                  std::get_if<recipe_spec::remote_source>(&spec.source) }) {
-    auto cache_result{ state.cache_.ensure_recipe(spec.identity) };
+    auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
       tui::trace("fetch recipe %s from %s",
@@ -114,7 +114,7 @@ void run_recipe_fetch_phase(recipe *r,
       throw std::runtime_error("Failed to load recipe: " + spec.identity);
     }
   } else if (auto const *git_src{ std::get_if<recipe_spec::git_source>(&spec.source) }) {
-    auto cache_result{ state.cache_.ensure_recipe(spec.identity) };
+    auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
       tui::trace("fetch recipe %s from git %s @ %s",
@@ -194,36 +194,16 @@ void run_recipe_fetch_phase(recipe *r,
   dep_ancestors.insert(spec.identity);
 
   for (auto const &dep_cfg : dep_configs) {
-    // Create dependency's complete graph (8-phase pipeline)
-    recipe *dep{ create_recipe_nodes(dep_cfg, state, dep_ancestors) };
+    // Create dependency recipe via engine factory
+    recipe *dep{ eng.ensure_recipe(dep_cfg) };
 
     // Store dependency in parent's map for ctx.asset() lookup
     r->dependencies[dep_cfg.identity] = dep;
 
-    // Wire edge: dep.completion_node → parent.{needed_by}_node
-    // Default to check phase if not specified (conservative: parent waits before doing
-    // anything)
-    auto *target_node{ [&]() -> tbb::flow::continue_node<tbb::flow::continue_msg> * {
-      if (!dep_cfg.needed_by) { return r->check_node.get(); }
-
-      switch (*dep_cfg.needed_by) {
-        case phase::asset_check: return r->check_node.get();
-        case phase::asset_fetch: return r->fetch_node.get();
-        case phase::asset_stage: return r->stage_node.get();
-        case phase::asset_build: return r->build_node.get();
-        case phase::asset_install: return r->install_node.get();
-        case phase::asset_deploy: return r->deploy_node.get();
-        case phase::recipe_fetch:
-          throw std::runtime_error("recipe_fetch is not a valid needed_by phase for " +
-                                   dep_cfg.identity);
-      }
-      throw std::runtime_error("Invalid needed_by phase for " + dep_cfg.identity);
-    }() };
-
-    tbb::flow::make_edge(*dep->completion_node, *target_node);
-
-    // Start the dependency's recipe_fetch phase
-    dep->recipe_fetch_node->try_put(tbb::flow::continue_msg{});
+    // Note: In the new architecture, the engine manages recipe threads and phase
+    // progression. Dependencies are started by engine::resolve_graph(), and the
+    // needed_by field will be used during phase coordination via
+    // engine::ensure_recipe_at_phase().
   }
 }
 

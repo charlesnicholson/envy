@@ -1,7 +1,7 @@
 #include "lua_ctx_bindings.h"
 
 #include "extract.h"
-#include "graph_state.h"
+#include "engine.h"
 #include "lua_shell.h"
 #include "manifest.h"
 #include "recipe.h"

@@ -1,7 +1,7 @@
 #include "phase_install.h"
 
 #include "cache.h"
-#include "graph_state.h"
+#include "engine.h"
 #include "lua_util.h"
 #include "phase_check.h"
 #include "recipe.h"
@@ -29,9 +29,8 @@ namespace {
 struct install_test_fixture {
   std::unique_ptr<recipe> r;
   std::filesystem::path temp_root;
-  tbb::flow::graph test_graph;
   cache test_cache;
-  graph_state state;
+  engine eng;
 
   install_test_fixture()
       : temp_root{ []() {
@@ -41,14 +40,28 @@ struct install_test_fixture {
                  std::filesystem::path("envy-install-test-" + suffix);
         }() },
         test_cache{ temp_root },
-        state{ test_graph, test_cache, nullptr } {
+        eng{ test_cache, std::nullopt } {
     // Create temp cache directory
     std::filesystem::create_directories(temp_root);
 
     // Create recipe
-    r = std::make_unique<recipe>();
-    r->spec.identity = "test.package@v1";
-    r->lua_state = lua_make();
+    recipe_spec spec;
+    spec.identity = "test.package@v1";
+
+    r = std::make_unique<recipe>(recipe{
+        .key = recipe_key(spec),
+        .spec = spec,
+        .lua_state = lua_make(),
+        .lock = nullptr,
+        .declared_dependencies = {},
+        .dependencies = {},
+        .canonical_identity_hash = {},
+        .asset_path = {},
+        .result_hash = {},
+        .cache_ptr = &test_cache,
+        .default_shell_ptr = nullptr,
+    });
+
     lua_add_envy(r->lua_state);
   }
 
@@ -112,7 +125,7 @@ TEST_CASE_FIXTURE(
   bool exception_thrown = false;
   std::string exception_msg;
   try {
-    run_install_phase(r.get(), state);
+    run_install_phase(r.get(), eng);
   } catch (std::runtime_error const &e) {
     exception_thrown = true;
     exception_msg = e.what();
@@ -138,7 +151,7 @@ TEST_CASE_FIXTURE(
   acquire_lock();
 
   // Should not throw
-  CHECK_NOTHROW(run_install_phase(r.get(), state));
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(
@@ -159,7 +172,7 @@ TEST_CASE_FIXTURE(
   write_install_content();
 
   // Should not throw
-  CHECK_NOTHROW(run_install_phase(r.get(), state));
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(
@@ -180,7 +193,7 @@ TEST_CASE_FIXTURE(
   acquire_lock();
 
   // Should not throw
-  CHECK_NOTHROW(run_install_phase(r.get(), state));
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
@@ -204,7 +217,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   bool exception_thrown = false;
   std::string exception_msg;
   try {
-    run_install_phase(r.get(), state);
+    run_install_phase(r.get(), eng);
   } catch (std::runtime_error const &e) {
     exception_thrown = true;
     exception_msg = e.what();
@@ -226,7 +239,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   acquire_lock();
 
   // Should not throw - nil install doesn't call mark_install_complete
-  CHECK_NOTHROW(run_install_phase(r.get(), state));
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
@@ -245,7 +258,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   bool exception_thrown = false;
   std::string exception_msg;
   try {
-    run_install_phase(r.get(), state);
+    run_install_phase(r.get(), eng);
   } catch (std::runtime_error const &e) {
     exception_thrown = true;
     exception_msg = e.what();
@@ -268,7 +281,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   )");
 
   // Should not throw or run install function
-  CHECK_NOTHROW(run_install_phase(r.get(), state));
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 }  // namespace envy

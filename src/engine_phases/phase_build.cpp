@@ -1,7 +1,10 @@
 #include "phase_build.h"
 
+#include "cache.h"
+#include "engine.h"
 #include "lua_ctx_bindings.h"
 #include "lua_util.h"
+#include "recipe.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -63,16 +66,16 @@ void run_programmatic_build(lua_State *lua,
                             std::filesystem::path const &install_dir,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
-                            graph_state &state,
+                            engine &eng,
                             recipe *r) {
   tui::trace("phase build: running programmatic build function");
 
   build_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = stage_dir;
-  ctx.state = &state;
+  ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = state.manifest_;
+  ctx.manifest_ = nullptr;  // Not needed - default_shell already resolved in engine
   ctx.install_dir = install_dir;
 
   build_build_context_table(lua, identity, options, &ctx);
@@ -118,10 +121,9 @@ void run_shell_build(std::string_view script,
 
 }  // namespace
 
-void run_build_phase(recipe *r, graph_state &state) {
+void run_build_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase build START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase build END [" + key + "]" };
 
   lua_State *lua = r->lua_state.get();
   cache::scoped_entry_lock *lock = r->lock.get();
@@ -163,7 +165,7 @@ void run_build_phase(recipe *r, graph_state &state) {
                              install_dir,
                              identity,
                              options,
-                             state,
+                             eng,
                              r);
       break;
 

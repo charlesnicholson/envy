@@ -1,14 +1,16 @@
 #pragma once
 
-#include "graph_state.h"
+
 
 #include <unordered_set>
 
 namespace envy {
 
+class engine;
+
 struct recipe;
 void run_recipe_fetch_phase(recipe *r,
-                            graph_state &state,
+                            engine &eng,
                             std::unordered_set<std::string> const &ancestors);
 
 }  // namespace envy
