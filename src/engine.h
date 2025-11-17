@@ -2,6 +2,7 @@
 
 #include "cache.h"
 #include "recipe_key.h"
+#include "recipe_phase.h"
 #include "recipe_spec.h"
 #include "shell.h"
 #include "util.h"
@@ -40,9 +41,10 @@ class engine : unmovable {
   std::vector<recipe *> find_matches(std::string_view query) const;
 
   // Phase coordination (thread-safe)
-  void ensure_recipe_at_phase(recipe_key const &key, int phase);
+  void ensure_recipe_at_phase(recipe_key const &key, recipe_phase phase);
+  void start_recipe_thread(recipe *r, recipe_phase initial_target);
   void wait_for_resolution_phase();
-  void notify_phase_complete(recipe_key const &key, int phase);
+  void notify_phase_complete(recipe_key const &key, recipe_phase phase);
   void on_recipe_fetch_start();
   void on_recipe_fetch_complete();
 
@@ -58,9 +60,12 @@ class engine : unmovable {
     std::thread worker;
     std::mutex mutex;
     std::condition_variable cv;
-    std::atomic_int current_phase{ -1 };  // Last completed phase (-1 = not started)
-    std::atomic_int target_phase{ -1 };   // Run until this phase (inclusive)
+    std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // Last completed phase
+    std::atomic<recipe_phase> target_phase{ recipe_phase::none };
     std::atomic_bool failed{ false };
+
+    void set_target_phase(recipe_phase target);
+    void start(recipe *r, engine *eng);
   };
 
   void run_recipe_thread(recipe *r);  // Thread entry point

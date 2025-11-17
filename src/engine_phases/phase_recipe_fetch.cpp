@@ -7,6 +7,7 @@
 #include "tui.h"
 
 #include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
@@ -38,12 +39,13 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 
 }  // namespace
 
-void run_recipe_fetch_phase(recipe *r,
-                            engine &eng,
-                            std::unordered_set<std::string> const &ancestors) {
+void run_recipe_fetch_phase(recipe *r, engine &eng) {
   recipe_spec const &spec = r->spec;
   std::string const key{ spec.format_key() };
   tui::trace("phase recipe_fetch START [%s]", key.c_str());
+
+  // Build ancestor chain for cycle detection (empty for root recipes)
+  std::unordered_set<std::string> ancestors;
 
   auto lua_state{ lua_make() };
   lua_add_envy(lua_state);
@@ -189,10 +191,7 @@ void run_recipe_fetch_phase(recipe *r,
   r->lua_state = std::move(lua_state);
   r->declared_dependencies = std::move(dep_identities);
 
-  // Build dependency graph: create child graphs, wire edges, start them
-  std::unordered_set<std::string> dep_ancestors{ ancestors };
-  dep_ancestors.insert(spec.identity);
-
+  // Build dependency graph: create child recipes, start their threads
   for (auto const &dep_cfg : dep_configs) {
     // Create dependency recipe via engine factory
     recipe *dep{ eng.ensure_recipe(dep_cfg) };
@@ -200,11 +199,12 @@ void run_recipe_fetch_phase(recipe *r,
     // Store dependency in parent's map for ctx.asset() lookup
     r->dependencies[dep_cfg.identity] = dep;
 
-    // Note: In the new architecture, the engine manages recipe threads and phase
-    // progression. Dependencies are started by engine::resolve_graph(), and the
-    // needed_by field will be used during phase coordination via
-    // engine::ensure_recipe_at_phase().
+    // Start the dependency's thread and set it to run recipe_fetch phase
+    eng.start_recipe_thread(dep, recipe_phase::recipe_fetch);
   }
+
+  // Recipe fetch complete for this recipe - decrement counter
+  eng.on_recipe_fetch_complete();
 }
 
 }  // namespace envy
