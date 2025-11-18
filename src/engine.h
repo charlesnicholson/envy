@@ -63,6 +63,7 @@ class engine : unmovable {
     std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // Last completed phase
     std::atomic<recipe_phase> target_phase{ recipe_phase::none };
     std::atomic_bool failed{ false };
+    std::atomic_bool started{ false };  // True if worker thread has been created
 
     void set_target_phase(recipe_phase target);
     void start(recipe *r, engine *eng);

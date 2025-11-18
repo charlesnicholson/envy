@@ -8,7 +8,6 @@
 #include "engine_phases/phase_install.h"
 #include "engine_phases/phase_recipe_fetch.h"
 #include "engine_phases/phase_stage.h"
-#include "manifest.h"
 #include "recipe.h"
 #include "recipe_key.h"
 #include "recipe_phase.h"
@@ -77,6 +76,7 @@ recipe *engine::ensure_recipe(recipe_spec const &spec) {
           .canonical_identity_hash = key.canonical(),
           .asset_path = {},
           .result_hash = {},
+          .ancestor_chain = {},
           .cache_ptr = &cache_,
           .default_shell_ptr = &default_shell_,
       })) };
@@ -124,8 +124,10 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
 void engine::start_recipe_thread(recipe *r, recipe_phase initial_target) {
   auto &ctx{ *execution_ctxs_.at(r->key) };
 
-  // Only start thread if not already started (handles diamond dependencies)
-  if (!ctx.worker.joinable()) {
+  // Use atomic flag to prevent race condition with diamond dependencies
+  bool expected = false;
+  if (ctx.started.compare_exchange_strong(expected, true)) {
+    // We won the race - start the thread
     if (initial_target >= recipe_phase::recipe_fetch) { on_recipe_fetch_start(); }
     ctx.start(r, this);
   }
@@ -196,6 +198,17 @@ void engine::run_recipe_thread(recipe *r) {
         throw std::runtime_error("Invalid phase: " +
                                  std::to_string(static_cast<int>(next)));
       }
+
+      // Wait for dependencies that are needed by this phase
+      // If dependency has needed_by=build, we must wait for it before entering build phase
+      for (auto const &[dep_identity, dep_info] : r->dependencies) {
+        if (next >= dep_info.needed_by) {
+          // This dependency is needed by this phase or earlier - ensure it's fully
+          // complete
+          ensure_recipe_at_phase(dep_info.recipe_ptr->key, recipe_phase::completion);
+        }
+      }
+
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
       ctx.current_phase = next;

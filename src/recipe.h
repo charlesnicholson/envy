@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "lua_util.h"
 #include "recipe_key.h"
+#include "recipe_phase.h"
 #include "recipe_spec.h"
 #include "shell.h"
 
@@ -22,11 +23,20 @@ struct recipe {
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;
-  std::unordered_map<std::string, recipe *> dependencies;
+
+  // Dependency info: maps identity -> (recipe pointer, needed_by phase)
+  struct dependency_info {
+    recipe *recipe_ptr;
+    recipe_phase needed_by;  // Phase by which this dependency must be complete
+  };
+  std::unordered_map<std::string, dependency_info> dependencies;
 
   std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;
   std::string result_hash;
+
+  // Cycle detection: ancestor chain for detecting dependency cycles
+  std::vector<std::string> ancestor_chain;
 
   // Phase functions need access to these (not owned by recipe)
   cache *cache_ptr;

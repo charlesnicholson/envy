@@ -187,23 +187,38 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     return result;
   }() };
 
-  // Store lua_state and declared dependencies in recipe
   r->lua_state = std::move(lua_state);
   r->declared_dependencies = std::move(dep_identities);
 
   // Build dependency graph: create child recipes, start their threads
   for (auto const &dep_cfg : dep_configs) {
-    // Create dependency recipe via engine factory
+    for (auto const &ancestor : r->ancestor_chain) {
+      if (ancestor == dep_cfg.identity) {  // cycle- build error message with cycle path
+        std::string cycle_path{ ancestor };
+        bool found_start{ false };
+        for (auto const &a : r->ancestor_chain) {
+          if (a == ancestor) { found_start = true; }
+          if (found_start) { cycle_path += " -> " + a; }
+        }
+        cycle_path += " -> " + dep_cfg.identity;
+        throw std::runtime_error("Dependency cycle detected: " + cycle_path);
+      }
+    }
+
     recipe *dep{ eng.ensure_recipe(dep_cfg) };
+    dep->ancestor_chain = r->ancestor_chain;
+    dep->ancestor_chain.push_back(r->spec.identity);
 
-    // Store dependency in parent's map for ctx.asset() lookup
-    r->dependencies[dep_cfg.identity] = dep;
+    recipe_phase const needed_by_phase{ dep_cfg.needed_by.has_value()
+                                            ? static_cast<recipe_phase>(*dep_cfg.needed_by)
+                                            : recipe_phase::check };
 
-    // Start the dependency's thread and set it to run recipe_fetch phase
+    // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
+    r->dependencies[dep_cfg.identity] = { dep, needed_by_phase };
+
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch);
   }
 
-  // Recipe fetch complete for this recipe - decrement counter
   eng.on_recipe_fetch_complete();
 }
 

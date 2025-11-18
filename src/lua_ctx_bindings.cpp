@@ -1,7 +1,7 @@
 #include "lua_ctx_bindings.h"
 
-#include "extract.h"
 #include "engine.h"
+#include "extract.h"
 #include "lua_shell.h"
 #include "manifest.h"
 #include "recipe.h"
@@ -54,15 +54,11 @@ int lua_ctx_asset(lua_State *lua) {
     if (it == ctx->recipe_->dependencies.end()) {
       luaL_error(lua, "ctx.asset: dependency not found in map: %s", identity);
     }
-    return it->second;
+    return it->second.recipe_ptr;
   }() };
 
   if (!dep) { return luaL_error(lua, "ctx.asset: null dependency pointer: %s", identity); }
 
-  // No need to check completion - graph edges guarantee dependency completed
-  // before parent phase can run (via needed_by topology)
-
-  // Return asset_path
   std::string const path{ dep->asset_path.string() };
   lua_pushstring(lua, path.c_str());
   return 1;
