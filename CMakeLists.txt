@@ -378,6 +378,7 @@ target_sources(envy_unit_tests
         src/commands/cmd_lua_tests.cpp
         src/commands/cmd_version_tests.cpp
         src/extract_tests.cpp
+        src/engine_target_phase_tests.cpp
         src/fetch_tests.cpp
         src/lua_shell_tests.cpp
         src/lua_util_tests.cpp

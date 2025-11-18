@@ -20,7 +20,6 @@ namespace envy {
 
 namespace {
 
-// Phase dispatch table
 using phase_func_t = void (*)(recipe *, engine &);
 
 constexpr std::array<phase_func_t, phase_count> phase_dispatch_table{
@@ -45,12 +44,18 @@ engine::~engine() {
   }
 }
 
+void engine::notify_all_global_locked() {
+  std::lock_guard const lock(mutex_);
+  cv_.notify_all();
+}
+
 void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
-  recipe_phase current_target = target_phase;
+  recipe_phase current_target = target_phase.load();
   while (current_target < target) {
     if (target_phase.compare_exchange_weak(current_target, target)) {
+      std::lock_guard const lock(mutex);
       cv.notify_one();
-      break;
+      return;
     }
   }
 }
@@ -122,7 +127,19 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
 }
 
 void engine::start_recipe_thread(recipe *r, recipe_phase initial_target) {
-  auto &ctx{ *execution_ctxs_.at(r->key) };
+  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
+    std::lock_guard const lock(mutex_);
+    auto const it{ execution_ctxs_.find(r->key) };
+    if (it == execution_ctxs_.end()) {
+      throw std::runtime_error("Recipe not found: " + r->key.canonical());
+    }
+    return *it->second;
+  }() };
+
+  tui::trace("engine: start_recipe_thread %s target=%d started=%s",
+             r->spec.identity.c_str(),
+             static_cast<int>(initial_target),
+             ctx.started.load() ? "true" : "false");
 
   // Use atomic flag to prevent race condition with diamond dependencies
   bool expected = false;
@@ -138,6 +155,7 @@ void engine::start_recipe_thread(recipe *r, recipe_phase initial_target) {
 
 void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const target) {
   auto &ctx{ [this, &key]() -> recipe_execution_ctx & {
+    std::lock_guard const lock(mutex_);
     auto const it{ execution_ctxs_.find(key) };
     if (it == execution_ctxs_.end()) {
       throw std::runtime_error("Recipe not found: " + key.canonical());
@@ -162,17 +180,26 @@ void engine::wait_for_resolution_phase() {
 void engine::notify_phase_complete(recipe_key const &key, recipe_phase phase) {
   std::ignore = key;
   std::ignore = phase;
-  cv_.notify_all();
+  notify_all_global_locked();
 }
 
 void engine::on_recipe_fetch_start() { pending_recipe_fetches_.fetch_add(1); }
 
 void engine::on_recipe_fetch_complete() {
-  if (pending_recipe_fetches_.fetch_sub(1) == 1) { cv_.notify_all(); }
+  if (pending_recipe_fetches_.fetch_sub(1) == 1) { notify_all_global_locked(); }
 }
 
 void engine::run_recipe_thread(recipe *r) {
-  auto &ctx{ *execution_ctxs_.at(r->key) };
+  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
+    std::lock_guard const lock(mutex_);
+    auto const it{ execution_ctxs_.find(r->key) };
+    if (it == execution_ctxs_.end()) {
+      throw std::runtime_error("Recipe not found: " + r->key.canonical());
+    }
+    return *it->second;
+  }() };
+
+  tui::trace("engine: recipe thread start %s", r->spec.identity.c_str());
 
   try {
     while (true) {
@@ -189,6 +216,9 @@ void engine::run_recipe_thread(recipe *r) {
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
 
         if (ctx.target_phase == current || ctx.failed) break;
+        tui::trace("engine: %s target extended to %d",
+                   r->spec.identity.c_str(),
+                   static_cast<int>(ctx.target_phase.load()));
       }
 
       // Run next phase
@@ -203,32 +233,36 @@ void engine::run_recipe_thread(recipe *r) {
       // If dependency has needed_by=build, we must wait for it before entering build phase
       for (auto const &[dep_identity, dep_info] : r->dependencies) {
         if (next >= dep_info.needed_by) {
-          // This dependency is needed by this phase or earlier - ensure it's fully
-          // complete
+          // Dependency is needed by this or earlier phase, ensure it's fully complete
+          tui::trace("engine: %s waiting for dep %s to reach completion for phase %d",
+                     r->spec.identity.c_str(),
+                     dep_identity.c_str(),
+                     static_cast<int>(next));
           ensure_recipe_at_phase(dep_info.recipe_ptr->key, recipe_phase::completion);
         }
       }
 
+      tui::trace("engine: %s running phase %d",
+                 r->spec.identity.c_str(),
+                 static_cast<int>(next));
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
       ctx.current_phase = next;
+      tui::trace("engine: %s completed phase %d",
+                 r->spec.identity.c_str(),
+                 static_cast<int>(next));
       notify_phase_complete(r->key, next);
     }
-  } catch (std::exception const &e) {
-    tui::error("Recipe thread failed: %s", e.what());
-    ctx.failed = true;
+  } catch (...) {  // Log the error (inspect exception type to get message if available)
+    try {
+      throw;  // rethrow to inspect
+    } catch (std::exception const &e) {
+      tui::error("Recipe thread failed: %s", e.what());
+    } catch (...) { tui::error("Recipe thread failed with unknown exception"); }
 
-    // If we failed during or before recipe_fetch, decrement the counter
-    // to unblock wait_for_resolution_phase()
-    if (ctx.current_phase < recipe_phase::check) { on_recipe_fetch_complete(); }
-    cv_.notify_all();
-  } catch (...) {
-    tui::error("Recipe thread failed with unknown exception");
     ctx.failed = true;
-
-    // If we failed during or before recipe_fetch, decrement the counter
     if (ctx.current_phase < recipe_phase::check) { on_recipe_fetch_complete(); }
-    cv_.notify_all();
+    notify_all_global_locked();
   }
 }
 
@@ -240,10 +274,12 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec> const &roots) {
     ctx->set_target_phase(recipe_phase::completion);
   }
 
+  tui::trace("engine: joining %zu recipe threads", execution_ctxs_.size());
   // Wait for all recipes to complete
   for (auto &[key, ctx] : execution_ctxs_) {
     if (ctx->worker.joinable()) { ctx->worker.join(); }
   }
+  tui::trace("engine: all recipe threads joined");
 
   // Check for failures
   for (auto const &[key, ctx] : execution_ctxs_) {
@@ -261,6 +297,7 @@ void engine::resolve_graph(std::vector<recipe_spec> const &roots) {
   for (auto const &spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
     if (spec.alias) { register_alias(*spec.alias, r->key); }
+    tui::trace("engine: resolve_graph start thread for %s", spec.identity.c_str());
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 

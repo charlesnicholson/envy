@@ -56,6 +56,9 @@ class engine : unmovable {
   cache &cache_;
   default_shell_cfg_t default_shell_;
 
+  // Helper to ensure correct lock-then-notify pattern for global cv_
+  void notify_all_global_locked();
+
   struct recipe_execution_ctx {
     std::thread worker;
     std::mutex mutex;

@@ -124,6 +124,36 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("local.diamond_c@v1", output)
         self.assertIn("local.diamond_d@v1", output)
 
+    def test_dependency_completion_blocks_parent_check(self):
+        """Dependency marked needed_by=check runs to completion and graph fully resolves."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_dep_blocked@v1",
+                "test_data/recipes/fetch_dep_blocked.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        )
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines),
+            2,
+            f"Expected 2 recipes (parent + helper), got: {result.stdout}",
+        )
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.fetch_dep_blocked@v1", output)
+        self.assertIn("local.fetch_dep_helper@v1", output)
+
     def test_multiple_independent_roots(self):
         """Engine resolves multiple independent dependency trees."""
         result = subprocess.run(
