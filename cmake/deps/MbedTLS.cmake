@@ -22,6 +22,10 @@ configure_file(
 )
 set(MBEDTLS_USER_CONFIG_FILE "${_mbedtls_user_config}" CACHE PATH "" FORCE)
 
+# Add src/mbedtls_alt to mbedtls include path so it can find threading_alt.h
+cmake_path(APPEND CMAKE_CURRENT_SOURCE_DIR "src" "mbedtls_alt" OUTPUT_VARIABLE _mbedtls_alt_dir)
+include_directories(BEFORE SYSTEM "${_mbedtls_alt_dir}")
+
 FetchContent_Declare(mbedtls
     URL ${_mbedtls_url}
     URL_HASH SHA256=${ENVY_MBEDTLS_SHA256}
@@ -68,3 +72,4 @@ unset(_mbedtls_archive_norm)
 unset(_mbedtls_url)
 unset(_mbedtls_config_dir)
 unset(_mbedtls_user_config)
+unset(_mbedtls_alt_dir)

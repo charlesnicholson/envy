@@ -244,6 +244,34 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("test.ninja@v1", result.stdout)
 
+    # ========================================================================
+    # Parallel Git Fetching
+    # ========================================================================
+
+    def test_parallel_git_fetch(self):
+        """Recipe with multiple git sources fetches concurrently."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_git_parallel@v1",
+                "test_data/recipes/fetch_git_parallel.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.fetch_git_parallel@v1", result.stdout)
+
+        # Verify fetch phase executed
+        stderr_lower = result.stderr.lower()
+        self.assertIn(
+            "fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

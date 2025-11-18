@@ -3,6 +3,10 @@
 #include "libgit2_util.h"
 #include "tui.h"
 
+#ifdef _WIN32
+#include "mbedtls_threading_windows.h"
+#endif
+
 #include <cstdlib>
 #include <variant>
 
@@ -11,6 +15,9 @@ int main(int argc, char **argv) {
 
   auto args{ envy::cli_parse(argc, argv) };
 
+#ifdef _WIN32
+  envy::mbedtls_threading_scope mbedtls_guard;
+#endif
   envy::aws_shutdown_guard aws_guard;
   envy::libgit2_scope git_guard;
   envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };

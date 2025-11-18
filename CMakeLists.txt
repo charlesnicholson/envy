@@ -152,6 +152,7 @@ target_sources(envy
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
@@ -251,6 +252,7 @@ target_sources(envy_functional_tester
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
@@ -356,6 +358,7 @@ target_sources(envy_unit_tests
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
