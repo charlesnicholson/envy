@@ -4,13 +4,13 @@
 #include "libcurl_util.h"
 #include "util.h"
 
-#include <git2.h>
-#include <tbb/task_group.h>
+#include "git2.h"
 
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace envy {
@@ -231,10 +231,11 @@ fetch_result fetch_single(fetch_request const &request) {
 std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {
   std::vector<fetch_result_t> results(requests.size());
 
-  tbb::task_group tg;
+  std::vector<std::thread> workers;
+  workers.reserve(requests.size());
 
   for (size_t i = 0; i < requests.size(); ++i) {
-    tg.run([i, &requests, &results]() {
+    workers.emplace_back([i, &requests, &results]() {
       try {
         results[i] = fetch_single(requests[i]);
       } catch (std::exception const &e) {
@@ -243,7 +244,7 @@ std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {
     });
   }
 
-  tg.wait();
+  for (auto &t : workers) { t.join(); }
 
   return results;
 }

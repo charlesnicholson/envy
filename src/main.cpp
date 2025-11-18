@@ -3,8 +3,6 @@
 #include "libgit2_util.h"
 #include "tui.h"
 
-#include "tbb/task_arena.h"
-
 #include <cstdlib>
 #include <variant>
 
@@ -32,7 +30,7 @@ int main(int argc, char **argv) {
 
   bool ok{ false };
   try {
-    tbb::task_arena().execute([&cmd, &ok]() { ok = cmd->execute(); });
+    ok = cmd->execute();
   } catch (std::exception const &ex) {
     envy::tui::error("Execution failed: %s", ex.what());
     return EXIT_FAILURE;

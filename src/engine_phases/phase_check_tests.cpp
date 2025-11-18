@@ -15,8 +15,6 @@ extern "C" {
 #include "lualib.h"
 }
 
-#include <tbb/flow_graph.h>
-
 #include <filesystem>
 #include <memory>
 
