@@ -88,6 +88,11 @@ if(TARGET libcurl_static)
         add_dependencies(libcurl_static ${_libssh2_primary_target})
     endif()
     set_target_properties(libcurl_static PROPERTIES INTERFACE_LINK_LIBRARIES "")
+    # Ensure libcurl sees the same mbedTLS config as mbedTLS library itself
+    if(DEFINED MBEDTLS_USER_CONFIG_FILE)
+        target_compile_definitions(libcurl_static PRIVATE
+            MBEDTLS_USER_CONFIG_FILE="${MBEDTLS_USER_CONFIG_FILE}")
+    endif()
 endif()
 if(TARGET ZLIB::ZLIB)
     if(NOT CMAKE_VERSION VERSION_LESS "3.21")

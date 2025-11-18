@@ -70,6 +70,11 @@ if(_envy_libssh2_actual STREQUAL "libssh2::libssh2")
 endif()
 if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
     target_compile_definitions(${_envy_libssh2_actual} PRIVATE __STDC_WANT_LIB_EXT1__=1)
+    # Ensure libssh2 sees the same mbedTLS config as mbedTLS library itself
+    if(DEFINED MBEDTLS_USER_CONFIG_FILE)
+        target_compile_definitions(${_envy_libssh2_actual} PRIVATE
+            MBEDTLS_USER_CONFIG_FILE="${MBEDTLS_USER_CONFIG_FILE}")
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         target_compile_definitions(${_envy_libssh2_actual} PRIVATE _DEFAULT_SOURCE)
     endif()

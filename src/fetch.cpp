@@ -126,6 +126,7 @@ fetch_result fetch_git_repo(std::string const &url,
           const_cast<fetch_progress_cb_t *>(&progress);
 
       git_repository *repo_raw{ nullptr };
+
       if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
         git_error const *git_err{ git_error_last() };
         std::string msg{ "fetch_git: clone failed: " };
