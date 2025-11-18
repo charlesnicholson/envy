@@ -4,6 +4,8 @@
 
 #ifdef _WIN32
 
+#include "platform_windows.h"
+
 namespace envy {
 
 // RAII wrapper for mbedtls threading initialization/cleanup on Windows.

@@ -4,8 +4,6 @@
 
 #include "mbedtls_threading_windows.h"
 
-#include "platform_windows.h"
-
 #include <mbedtls/threading.h>
 
 namespace envy {
