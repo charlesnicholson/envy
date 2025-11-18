@@ -75,7 +75,6 @@ void run_programmatic_build(lua_State *lua,
   ctx.run_dir = stage_dir;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = nullptr;  // Not needed - default_shell already resolved in engine
   ctx.install_dir = install_dir;
 
   build_build_context_table(lua, identity, options, &ctx);

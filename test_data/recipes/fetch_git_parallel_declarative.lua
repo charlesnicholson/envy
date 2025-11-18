@@ -1,13 +1,17 @@
--- Test recipe with multiple parallel git fetches (programmatic)
-identity = "local.fetch_git_parallel@v1"
+-- Test recipe with multiple parallel git fetches (declarative)
+identity = "local.fetch_git_parallel_declarative@v1"
 
-function fetch(ctx)
-    -- Programmatic fetch with multiple git repos (should parallelize)
-    ctx.fetch({
-        {source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1"},
-        {source = "https://github.com/google/re2.git", ref = "2024-07-02"}
-    })
-end
+-- Declarative fetch with multiple repos triggers parallel fetch
+fetch = {
+  {
+    source = "https://github.com/ninja-build/ninja.git",
+    ref = "v1.11.1"
+  },
+  {
+    source = "https://github.com/google/re2.git",
+    ref = "2024-07-02"
+  }
+}
 
 function check(ctx)
     return false

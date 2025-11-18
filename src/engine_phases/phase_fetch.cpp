@@ -95,6 +95,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
 // Context data for Lua C functions (stored as userdata upvalue)
 struct fetch_context : lua_ctx_common {
+  std::filesystem::path stage_dir;  // For git repos (go directly to stage, not tmp)
   std::unordered_set<std::string> used_basenames;  // Track collisions across calls
 };
 
@@ -106,6 +107,7 @@ int lua_ctx_fetch(lua_State *lua) {
   if (!ctx) { return luaL_error(lua, "ctx.fetch: missing context"); }
 
   std::vector<std::string> urls;
+  std::vector<std::optional<std::string>> refs;
   std::vector<std::string> basenames;
   bool is_array{ false };
 
@@ -116,6 +118,7 @@ int lua_ctx_fetch(lua_State *lua) {
     case LUA_TSTRING:
       // Scalar string
       urls.push_back(lua_tostring(lua, 1));
+      refs.push_back(std::nullopt);
       break;
 
     case LUA_TTABLE: {
@@ -125,15 +128,24 @@ int lua_ctx_fetch(lua_State *lua) {
       lua_pop(lua, 1);
 
       switch (first_elem_type) {
-        case LUA_TNIL:
-          // Single table {source="..."}
+        case LUA_TNIL: {
+          // Single table {source="...", ref="..."}
           lua_getfield(lua, 1, "source");
           if (!lua_isstring(lua, -1)) {
             return luaL_error(lua, "ctx.fetch: table missing 'source' field");
           }
           urls.push_back(lua_tostring(lua, -1));
           lua_pop(lua, 1);
+
+          lua_getfield(lua, 1, "ref");
+          if (lua_isstring(lua, -1)) {
+            refs.push_back(lua_tostring(lua, -1));
+          } else {
+            refs.push_back(std::nullopt);
+          }
+          lua_pop(lua, 1);
           break;
+        }
 
         case LUA_TSTRING: {
           // Array of strings {"url1", "url2"}
@@ -145,13 +157,14 @@ int lua_ctx_fetch(lua_State *lua) {
               return luaL_error(lua, "ctx.fetch: array element %zu must be string", i);
             }
             urls.push_back(lua_tostring(lua, -1));
+            refs.push_back(std::nullopt);
             lua_pop(lua, 1);
           }
           break;
         }
 
         case LUA_TTABLE: {
-          // Array of tables {{source="..."}, {...}}
+          // Array of tables {{source="...", ref="..."}, {...}}
           is_array = true;
           size_t const len{ lua_rawlen(lua, 1) };
           for (size_t i = 1; i <= len; ++i) {
@@ -163,7 +176,15 @@ int lua_ctx_fetch(lua_State *lua) {
                                 i);
             }
             urls.push_back(lua_tostring(lua, -1));
-            lua_pop(lua, 2);  // pop source string and table
+            lua_pop(lua, 1);  // pop source string
+
+            lua_getfield(lua, -1, "ref");
+            if (lua_isstring(lua, -1)) {
+              refs.push_back(lua_tostring(lua, -1));
+            } else {
+              refs.push_back(std::nullopt);
+            }
+            lua_pop(lua, 2);  // pop ref string/nil and table
           }
           break;
         }
@@ -178,7 +199,9 @@ int lua_ctx_fetch(lua_State *lua) {
 
   // Build requests with collision handling
   std::vector<fetch_request> requests;
-  for (auto const &url : urls) {
+  for (size_t idx = 0; idx < urls.size(); ++idx) {
+    auto const &url{ urls[idx] };
+    auto const &ref{ refs[idx] };
     std::string basename{ uri_extract_filename(url) };
     if (basename.empty()) {
       return luaL_error(lua,
@@ -202,10 +225,14 @@ int lua_ctx_fetch(lua_State *lua) {
     ctx->used_basenames.insert(final_basename);
     basenames.push_back(final_basename);
 
-    std::filesystem::path dest{ ctx->run_dir / final_basename };
+    // Git repos go to stage_dir, everything else to run_dir (tmp)
+    auto const info{ uri_classify(url) };
+    std::filesystem::path dest{ info.scheme == uri_scheme::GIT
+                                    ? ctx->stage_dir / final_basename
+                                    : ctx->run_dir / final_basename };
 
     try {
-      requests.push_back(url_to_fetch_request(url, dest, std::nullopt, "ctx.fetch"));
+      requests.push_back(url_to_fetch_request(url, dest, ref, "ctx.fetch"));
     } catch (std::exception const &e) {
       return luaL_error(lua, "ctx.fetch: %s", e.what());
     }
@@ -454,13 +481,20 @@ bool run_programmatic_fetch(lua_State *lua,
   std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
   std::filesystem::create_directories(tmp_dir);
 
+  // Ensure stage_dir exists (needed for git repos)
+  std::error_code ec;
+  std::filesystem::create_directories(lock->stage_dir(), ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create stage directory: " + ec.message());
+  }
+
   // Build context (inherits from lua_ctx_common)
   fetch_context ctx{};
   ctx.fetch_dir = lock->fetch_dir();
   ctx.run_dir = tmp_dir;
+  ctx.stage_dir = lock->stage_dir();
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = nullptr;  // Not needed - default_shell already resolved in engine
   ctx.used_basenames = {};
 
   build_fetch_context_table(lua, identity, options, &ctx);
@@ -490,14 +524,6 @@ bool run_programmatic_fetch(lua_State *lua,
     case LUA_TTABLE: {
       // Declarative return - reuse existing declarative fetch machinery
       tui::trace("phase fetch: function returned declarative spec, processing");
-
-      // Ensure stage_dir exists (needed for git repos)
-      std::error_code ec;
-      std::filesystem::create_directories(lock->stage_dir(), ec);
-      if (ec) {
-        lua_pop(lua, 1);
-        throw std::runtime_error("Failed to create stage directory: " + ec.message());
-      }
 
       // Parse and execute declarative fetch from return value
       auto const fetch_specs{

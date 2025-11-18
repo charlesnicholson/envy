@@ -18,7 +18,6 @@ struct lua_ctx_common {
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
   engine *engine_;                // Engine for cache access
   recipe *recipe_;                // Current recipe (for ctx.asset() lookups)
-  manifest const *manifest_;      // Manifest (for default_shell resolution, always non-null)
 };
 
 // Register common Lua context functions available to all phases.

@@ -94,21 +94,6 @@ int lua_ctx_run(lua_State *lua) {
 #endif
   };
 
-  // Tier 2: Get manifest default_shell (if present)
-  if (ctx->manifest_) {
-    default_shell_cfg_t const manifest_default{ ctx->manifest_->get_default_shell(ctx) };
-    if (manifest_default) {  // Convert default_shell_value to shell_run_cfg variant
-      std::visit(match{
-                     [&shell](shell_choice const &choice) { shell = choice; },
-                     [&shell](custom_shell const &custom) {
-                       std::visit([&shell](auto &&custom_type) { shell = custom_type; },
-                                  custom);
-                     },
-                 },
-                 *manifest_default);
-    }
-  }
-
   if (lua_gettop(lua) >= 2) {
     if (!lua_istable(lua, 2)) {
       return luaL_error(lua, "ctx.run: second argument must be a table (options)");

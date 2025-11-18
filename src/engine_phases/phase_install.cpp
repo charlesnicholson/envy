@@ -107,7 +107,6 @@ bool run_programmatic_install(lua_State *lua,
   ctx.run_dir = install_dir;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = nullptr;  // Not needed - default_shell already resolved in engine
   ctx.install_dir = install_dir;
   ctx.stage_dir = stage_dir;
   ctx.lock = lock;
