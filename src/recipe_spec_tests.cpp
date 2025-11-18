@@ -572,3 +572,118 @@ TEST_CASE("serialize_option_table mixed nesting with all types") {
   CHECK(result.find("features=") < result.find("nil_val="));
   CHECK(result.find("nil_val=") < result.find("version="));
 }
+
+// format_key tests with nested options ---------------------------------------
+
+TEST_CASE("format_key with no options") {
+  std::unordered_map<std::string, envy::lua_value> options;
+  auto const result{ envy::recipe_spec::format_key("local.python@r4", options) };
+  CHECK(result == "local.python@r4");
+}
+
+TEST_CASE("format_key with single option") {
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "3.14" } } };
+  auto const result{ envy::recipe_spec::format_key("local.python@r4", options) };
+  CHECK(result == "local.python@r4{version=\"3.14\"}");
+}
+
+TEST_CASE("format_key sorts multiple options deterministically") {
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "3.14" } } };
+  options["arch"] = envy::lua_value{ envy::lua_variant{ std::string{ "arm64" } } };
+  options["mode"] = envy::lua_value{ envy::lua_variant{ std::string{ "debug" } } };
+
+  auto const result{ envy::recipe_spec::format_key("local.python@r4", options) };
+  // Keys should be alphabetically sorted: arch, mode, version
+  CHECK(result == "local.python@r4{arch=\"arm64\",mode=\"debug\",version=\"3.14\"}");
+}
+
+TEST_CASE("format_key with nested table option") {
+  envy::lua_table compiler;
+  compiler["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "13.2" } } };
+  compiler["flags"] = envy::lua_value{ envy::lua_variant{ std::string{ "-O2" } } };
+
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["arch"] = envy::lua_value{ envy::lua_variant{ std::string{ "arm64" } } };
+  options["compiler"] = envy::lua_value{ envy::lua_variant{ std::move(compiler) } };
+
+  auto const result{ envy::recipe_spec::format_key("arm.gcc@v2", options) };
+  // Both outer and inner keys should be sorted
+  CHECK(result == "arm.gcc@v2{arch=\"arm64\",compiler={flags=\"-O2\",version=\"13.2\"}}");
+}
+
+TEST_CASE("format_key with deeply nested tables") {
+  // Build 3-level nesting: build -> optimizations -> level
+  envy::lua_table opt_config;
+  opt_config["level"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+  opt_config["inline"] = envy::lua_value{ envy::lua_variant{ true } };
+
+  envy::lua_table build_config;
+  build_config["optimizations"] = envy::lua_value{ envy::lua_variant{ std::move(opt_config) } };
+  build_config["debug"] = envy::lua_value{ envy::lua_variant{ false } };
+
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["arch"] = envy::lua_value{ envy::lua_variant{ std::string{ "x64" } } };
+  options["build"] = envy::lua_value{ envy::lua_variant{ std::move(build_config) } };
+
+  auto const result{ envy::recipe_spec::format_key("vendor.lib@r1", options) };
+  // Sorted at each level: arch, build / debug, optimizations / inline, level
+  CHECK(result == "vendor.lib@r1{arch=\"x64\",build={debug=false,optimizations={inline=true,level=3}}}");
+}
+
+TEST_CASE("format_key with multiple nested tables at same level") {
+  envy::lua_table features;
+  features["ssl"] = envy::lua_value{ envy::lua_variant{ true } };
+  features["zlib"] = envy::lua_value{ envy::lua_variant{ true } };
+
+  envy::lua_table platform;
+  platform["os"] = envy::lua_value{ envy::lua_variant{ std::string{ "linux" } } };
+  platform["arch"] = envy::lua_value{ envy::lua_variant{ std::string{ "arm64" } } };
+
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["version"] = envy::lua_value{ envy::lua_variant{ std::string{ "2.0" } } };
+  options["features"] = envy::lua_value{ envy::lua_variant{ std::move(features) } };
+  options["platform"] = envy::lua_value{ envy::lua_variant{ std::move(platform) } };
+
+  auto const result{ envy::recipe_spec::format_key("curl.lib@r8", options) };
+  // All keys sorted at every level
+  CHECK(result.find("features={ssl=true,zlib=true}") != std::string::npos);
+  CHECK(result.find("platform={arch=\"arm64\",os=\"linux\"}") != std::string::npos);
+  CHECK(result.find("features=") < result.find("platform="));
+  CHECK(result.find("platform=") < result.find("version="));
+}
+
+TEST_CASE("format_key with mixed value types in nested tables") {
+  envy::lua_table config;
+  config["threads"] = envy::lua_value{ envy::lua_variant{ int64_t{ 8 } } };
+  config["timeout"] = envy::lua_value{ envy::lua_variant{ 30.5 } };
+  config["enabled"] = envy::lua_value{ envy::lua_variant{ true } };
+  config["name"] = envy::lua_value{ envy::lua_variant{ std::string{ "worker" } } };
+
+  std::unordered_map<std::string, envy::lua_value> options;
+  options["config"] = envy::lua_value{ envy::lua_variant{ std::move(config) } };
+
+  auto const result{ envy::recipe_spec::format_key("local.service@r1", options) };
+  // Keys sorted: enabled, name, threads, timeout
+  CHECK(result == "local.service@r1{config={enabled=true,name=\"worker\",threads=8,timeout=30.5}}");
+}
+
+TEST_CASE("format_key deterministic with unordered insertion") {
+  // Insert keys in different order, verify same output
+  std::unordered_map<std::string, envy::lua_value> options1;
+  options1["zebra"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+  options1["apple"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+  options1["middle"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+
+  std::unordered_map<std::string, envy::lua_value> options2;
+  options2["middle"] = envy::lua_value{ envy::lua_variant{ int64_t{ 2 } } };
+  options2["apple"] = envy::lua_value{ envy::lua_variant{ int64_t{ 1 } } };
+  options2["zebra"] = envy::lua_value{ envy::lua_variant{ int64_t{ 3 } } };
+
+  auto const result1{ envy::recipe_spec::format_key("test.pkg@r1", options1) };
+  auto const result2{ envy::recipe_spec::format_key("test.pkg@r1", options2) };
+
+  CHECK(result1 == result2);
+  CHECK(result1 == "test.pkg@r1{apple=1,middle=2,zebra=3}");
+}
