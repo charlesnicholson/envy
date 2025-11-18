@@ -12,6 +12,7 @@ extern "C" {
 #include "lua.h"
 }
 
+#include <cstring>
 #include <stdexcept>
 
 namespace envy {
