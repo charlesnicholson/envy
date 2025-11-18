@@ -172,10 +172,41 @@ std::wstring normalize_newlines(std::wstring_view input) {
 }
 
 // Build script contents for PowerShell only (wide). For cmd we emit narrow text later.
+// Wraps user script to tag output streams for proper tui routing.
 std::wstring build_powershell_script_contents(std::string_view script) {
-  std::wstring normalized{ normalize_newlines(utf8_to_wstring(script)) };
-  if (!normalized.empty() && !ends_with_crlf(normalized)) { normalized.append(L"\r\n"); }
-  return normalized;
+  std::wstring user_script{ normalize_newlines(utf8_to_wstring(script)) };
+  if (!user_script.empty() && !ends_with_crlf(user_script)) { user_script.append(L"\r\n"); }
+
+  // Wrapper that captures and tags each PowerShell stream with C0 control characters:
+  // Errors (2) → 0x1C (FS), Warnings (3) → 0x1D (GS),
+  // Verbose (4) + Debug (5) → 0x1F (US), Info/Host (6) + stdout (1) → 0x1E (RS)
+  std::wstring wrapper;
+  wrapper.reserve(user_script.size() + 512);
+  wrapper.append(L"$ErrorActionPreference = 'Continue'\r\n");
+  wrapper.append(L"$WarningPreference = 'Continue'\r\n");
+  wrapper.append(L"$VerbosePreference = 'Continue'\r\n");
+  wrapper.append(L"$DebugPreference = 'Continue'\r\n");
+  wrapper.append(L"$InformationPreference = 'Continue'\r\n");
+  wrapper.append(L"$__user_script = {\r\n");
+  wrapper.append(user_script);
+  wrapper.append(L"}\r\n");
+  wrapper.append(L"& $__user_script 2>&1 3>&1 4>&1 5>&1 6>&1 | ForEach-Object {\r\n");
+  wrapper.append(L"  if ($_ -is [System.Management.Automation.ErrorRecord]) {\r\n");
+  wrapper.append(L"    [char]0x1C + $_.Exception.Message\r\n");
+  wrapper.append(L"  } elseif ($_ -is [System.Management.Automation.WarningRecord]) {\r\n");
+  wrapper.append(L"    [char]0x1D + $_.Message\r\n");
+  wrapper.append(L"  } elseif ($_ -is [System.Management.Automation.VerboseRecord]) {\r\n");
+  wrapper.append(L"    [char]0x1F + $_.Message\r\n");
+  wrapper.append(L"  } elseif ($_ -is [System.Management.Automation.DebugRecord]) {\r\n");
+  wrapper.append(L"    [char]0x1F + $_.Message\r\n");
+  wrapper.append(L"  } elseif ($_ -is [System.Management.Automation.InformationRecord]) {\r\n");
+  wrapper.append(L"    [char]0x1E + $_.MessageData\r\n");
+  wrapper.append(L"  } else {\r\n");
+  wrapper.append(L"    [char]0x1E + $_\r\n");
+  wrapper.append(L"  }\r\n");
+  wrapper.append(L"}\r\n");
+  wrapper.append(L"exit 0\r\n");
+  return wrapper;
 }
 
 std::filesystem::path create_temp_script(std::string_view script,
@@ -491,6 +522,7 @@ std::wstring build_command_line_builtin(shell_choice shell,
   if (shell == shell_choice::powershell) {
     // -NoProfile: Skip user profile for consistent, fast startup (intentionally breaks
     // profile-dependent scripts)
+    // Script file contains wrapper that tags streams for proper tui routing.
     return L"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass "
            L"-File " +
            quoted;
