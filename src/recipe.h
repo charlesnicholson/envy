@@ -2,39 +2,45 @@
 
 #include "cache.h"
 #include "lua_util.h"
+#include "recipe_key.h"
+#include "recipe_phase.h"
 #include "recipe_spec.h"
-
-#include <tbb/flow_graph.h>
+#include "shell.h"
 
 #include <filesystem>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace envy {
 
+// Plain data struct - engine orchestrates, phases operate on this
 struct recipe {
-  using node_ptr = std::shared_ptr<tbb::flow::continue_node<tbb::flow::continue_msg>>;
-
-  node_ptr recipe_fetch_node;
-  node_ptr check_node;
-  node_ptr fetch_node;
-  node_ptr stage_node;
-  node_ptr build_node;
-  node_ptr install_node;
-  node_ptr deploy_node;
-  node_ptr completion_node;
+  recipe_key key;
+  recipe_spec spec;
 
   lua_state_ptr lua_state;
   cache::scoped_entry_lock::ptr_t lock;
+
+  std::vector<std::string> declared_dependencies;
+
+  // Dependency info: maps identity -> (recipe pointer, needed_by phase)
+  struct dependency_info {
+    recipe *recipe_ptr;
+    recipe_phase needed_by;  // Phase by which this dependency must be complete
+  };
+  std::unordered_map<std::string, dependency_info> dependencies;
+
+  std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;
   std::string result_hash;
-  std::string canonical_identity_hash;  // BLAKE3(format_key()) - full 64 hex chars
 
-  recipe_spec spec;  // (includes source info, identity, options, etc.)
-  std::vector<std::string> declared_dependencies;
-  std::unordered_map<std::string, recipe *> dependencies;
+  // Cycle detection: ancestor chain for detecting dependency cycles
+  std::vector<std::string> ancestor_chain;
+
+  // Phase functions need access to these (not owned by recipe)
+  cache *cache_ptr;
+  default_shell_cfg_t const *default_shell_ptr;
 };
 
 }  // namespace envy

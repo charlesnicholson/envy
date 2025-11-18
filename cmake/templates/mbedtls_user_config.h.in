@@ -5,6 +5,27 @@
 #define MBEDTLS_SSL_PROTO_TLS1_3
 #endif
 
+/* Enable threading for TLS 1.3 PSA API thread safety.
+ * TLS 1.3 uses PSA crypto internally, which requires MBEDTLS_THREADING_C
+ * in multithreaded applications to avoid race conditions during SSL context
+ * initialization. libgit2 must be compiled with the same config to avoid
+ * struct layout mismatches (configured in cmake/deps/Libgit2.cmake).
+ * Unix/macOS: MBEDTLS_THREADING_PTHREAD
+ * Windows: MBEDTLS_THREADING_ALT with SRWLOCK-based mutex (see mbedtls_threading_windows.cpp) */
+#ifndef MBEDTLS_THREADING_C
+#define MBEDTLS_THREADING_C
+#endif
+
+#if defined(_WIN32)
+#ifndef MBEDTLS_THREADING_ALT
+#define MBEDTLS_THREADING_ALT
+#endif
+#else
+#ifndef MBEDTLS_THREADING_PTHREAD
+#define MBEDTLS_THREADING_PTHREAD
+#endif
+#endif
+
 #if !defined(__cplusplus)
 #if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L
 #if defined(__clang__) || defined(__GNUC__)

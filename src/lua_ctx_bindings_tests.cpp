@@ -1,9 +1,7 @@
-#include "graph_state.h"
+#include "engine.h"
 #include "lua_ctx_bindings.h"
 
 #include "doctest.h"
-
-#include <tbb/flow_graph.h>
 
 // NOTE: Tests disabled during graph redesign (2025-11-13)
 // The new architecture removed is_transitive_dependency() in favor of
@@ -17,11 +15,11 @@ namespace {
 
 // Helper to create a minimal graph_state for testing
 struct test_graph_state {
-  tbb::flow::graph graph;
+  // tbb::flow::graph graph;  // Removed - TBB no longer in codebase
   envy::cache cache_;
-  envy::graph_state state;
+  // envy::graph_state state;  // Removed - graph_state obsolete
 
-  test_graph_state() : cache_(std::nullopt), state{ graph, cache_, nullptr } {}
+  test_graph_state() : cache_(std::nullopt) {}  // , state{ graph, cache_, nullptr } {}
 
   // Add a recipe with given identity and dependencies
   void add_recipe(std::string const &identity,

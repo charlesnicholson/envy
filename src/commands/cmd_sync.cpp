@@ -60,7 +60,8 @@ bool cmd_sync::execute() {
     }() };
 
     cache c{ cache_root };
-    auto result{ engine_run(targets, c, *m) };
+    engine eng{ c, m->get_default_shell(nullptr) };
+    auto result{ eng.run_full(targets) };
 
     // Report results
     size_t completed{ 0 };

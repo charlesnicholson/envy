@@ -248,16 +248,9 @@ std::string recipe_spec::format_key(
     std::unordered_map<std::string, lua_value> const &options) {
   if (options.empty()) { return identity; }
 
-  std::ostringstream oss;
-  oss << identity << '{';
-  bool first = true;
-  for (auto const &[k, v] : options) {
-    if (!first) oss << ',';
-    oss << k << '=' << serialize_option_table(v);
-    first = false;
-  }
-  oss << '}';
-  return oss.str();
+  // Wrap options in lua_value and use serialize_option_table for consistency
+  lua_value options_as_value{ lua_variant{ options } };
+  return identity + serialize_option_table(options_as_value);
 }
 
 std::string recipe_spec::format_key() const { return format_key(identity, options); }

@@ -17,7 +17,6 @@ build = function(ctx)
       Get-ChildItem
       if (-not (Test-Path build_output/artifact.txt)) { Write-Error "artifact missing"; exit 1 }
       Write-Output "Build string shell success"
-      exit 0
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run([[

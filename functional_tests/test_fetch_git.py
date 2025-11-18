@@ -244,6 +244,46 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("test.ninja@v1", result.stdout)
 
+    # ========================================================================
+    # Parallel Git Fetching
+    # ========================================================================
+
+    def test_parallel_git_fetch(self):
+        """Recipe with multiple git sources fetches concurrently (programmatic)."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_git_parallel@v1",
+                "test_data/recipes/fetch_git_parallel.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.fetch_git_parallel@v1", result.stdout)
+
+    def test_parallel_git_fetch_declarative(self):
+        """Recipe with multiple git sources fetches concurrently (declarative)."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_git_parallel_declarative@v1",
+                "test_data/recipes/fetch_git_parallel_declarative.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.fetch_git_parallel_declarative@v1", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

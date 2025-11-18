@@ -14,7 +14,6 @@
 #include "git2.h"
 #include "lzma.h"
 #include "mbedtls/version.h"
-#include "oneapi/tbb/version.h"
 #include "tui.h"
 #include "zlib.h"
 #include "zstd.h"
@@ -72,7 +71,6 @@ bool cmd_version::execute() {
 
   tui::info("  libarchive: %s", archive_version_details());
   tui::info("  Lua: %s", LUA_RELEASE);
-  tui::info("  oneTBB: %s", TBB_runtime_version());
   tui::info("  BLAKE3: %s", BLAKE3_VERSION_STRING);
   tui::info("  zlib: %s", zlibVersion());
   tui::info("  bzip2: %s", BZ2_bzlibVersion());

@@ -1,7 +1,7 @@
 #include "lua_ctx_bindings.h"
 
+#include "engine.h"
 #include "extract.h"
-#include "graph_state.h"
 #include "lua_shell.h"
 #include "manifest.h"
 #include "recipe.h"
@@ -54,15 +54,11 @@ int lua_ctx_asset(lua_State *lua) {
     if (it == ctx->recipe_->dependencies.end()) {
       luaL_error(lua, "ctx.asset: dependency not found in map: %s", identity);
     }
-    return it->second;
+    return it->second.recipe_ptr;
   }() };
 
   if (!dep) { return luaL_error(lua, "ctx.asset: null dependency pointer: %s", identity); }
 
-  // No need to check completion - graph edges guarantee dependency completed
-  // before parent phase can run (via needed_by topology)
-
-  // Return asset_path
   std::string const path{ dep->asset_path.string() };
   lua_pushstring(lua, path.c_str());
   return 1;
@@ -97,21 +93,6 @@ int lua_ctx_run(lua_State *lua) {
     shell_choice::bash
 #endif
   };
-
-  // Tier 2: Get manifest default_shell (if present)
-  if (ctx->manifest_) {
-    default_shell_cfg_t const manifest_default{ ctx->manifest_->get_default_shell(ctx) };
-    if (manifest_default) {  // Convert default_shell_value to shell_run_cfg variant
-      std::visit(match{
-                     [&shell](shell_choice const &choice) { shell = choice; },
-                     [&shell](custom_shell const &custom) {
-                       std::visit([&shell](auto &&custom_type) { shell = custom_type; },
-                                  custom);
-                     },
-                 },
-                 *manifest_default);
-    }
-  }
 
   if (lua_gettop(lua) >= 2) {
     if (!lua_istable(lua, 2)) {
@@ -172,14 +153,45 @@ int lua_ctx_run(lua_State *lua) {
     std::string combined_output;
     std::vector<std::string> output_lines;
 
-    shell_run_cfg inv{ .on_output_line =
-                           [&](std::string_view line) {
-                             tui::info("%s", std::string{ line }.c_str());
-                             output_lines.emplace_back(line);
-                           },
-                       .cwd = cwd,
-                       .env = std::move(env),
-                       .shell = shell };
+    // Select output callback based on shell type (determined once, not per-line)
+#if defined(_WIN32)
+    bool const use_powershell_parsing{
+        std::holds_alternative<shell_choice>(shell) &&
+        std::get<shell_choice>(shell) == shell_choice::powershell};
+#else
+    bool constexpr use_powershell_parsing{false};
+#endif
+
+    std::function<void(std::string_view)> on_line{[&, use_powershell_parsing]() {
+      if (use_powershell_parsing) {
+        return std::function<void(std::string_view)>{[&](std::string_view line) {
+          // PowerShell: Parse C0 control chars (0x1C-0x1F), route to appropriate level
+          std::string const msg{!line.empty() && line[0] >= '\x1C' && line[0] <= '\x1F'
+                                    ? line.substr(1)
+                                    : line};
+          if (line.starts_with('\x1C')) {
+            tui::error("%s", msg.c_str());
+          } else if (line.starts_with('\x1D')) {
+            tui::warn("%s", msg.c_str());
+          } else if (line.starts_with('\x1F')) {
+            tui::debug("%s", msg.c_str());
+          } else {
+            tui::info("%s", msg.c_str());
+          }
+          output_lines.emplace_back(msg);
+        }};
+      } else {
+        return std::function<void(std::string_view)>{[&](std::string_view line) {
+          // All other shells: Route to info
+          std::string const msg{line};
+          tui::info("%s", msg.c_str());
+          output_lines.emplace_back(msg);
+        }};
+      }
+    }()};
+
+    shell_run_cfg inv{
+        .on_output_line = std::move(on_line), .cwd = cwd, .env = std::move(env), .shell = shell};
 
     shell_result const result{ shell_run(script_view, inv) };
 

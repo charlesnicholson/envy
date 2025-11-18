@@ -138,7 +138,7 @@ target_sources(envy
         src/commands/cmd_sync.cpp
         src/commands/cmd_version.cpp
         src/engine.cpp
-        src/create_recipe_nodes.cpp
+        src/recipe_key.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -152,6 +152,7 @@ target_sources(envy
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
@@ -237,7 +238,7 @@ target_sources(envy_functional_tester
         src/commands/cmd_cache_functional_test.cpp
         src/commands/cmd_engine_functional_test.cpp
         src/engine.cpp
-        src/create_recipe_nodes.cpp
+        src/recipe_key.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -251,6 +252,7 @@ target_sources(envy_functional_tester
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
@@ -342,7 +344,7 @@ target_sources(envy_unit_tests
         src/commands/cmd_sync.cpp
         src/commands/cmd_version.cpp
         src/engine.cpp
-        src/create_recipe_nodes.cpp
+        src/recipe_key.cpp
         src/lua_ctx_bindings.cpp
         src/engine_phases/phase_build.cpp
         src/engine_phases/phase_check.cpp
@@ -356,6 +358,7 @@ target_sources(envy_unit_tests
         src/aws_util.cpp
         src/blake3_util.cpp
         src/libgit2_util.cpp
+        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
         src/lua_shell.cpp
         src/lua_util.cpp
         src/manifest.cpp
@@ -378,11 +381,13 @@ target_sources(envy_unit_tests
         src/commands/cmd_lua_tests.cpp
         src/commands/cmd_version_tests.cpp
         src/extract_tests.cpp
+        src/engine_target_phase_tests.cpp
         src/fetch_tests.cpp
         src/lua_shell_tests.cpp
         src/lua_util_tests.cpp
         src/manifest_tests.cpp
         src/recipe_spec_tests.cpp
+        src/recipe_key_tests.cpp
         src/lua_ctx_bindings_tests.cpp
         src/lua_ctx_bindings.cpp
         src/sha256_tests.cpp

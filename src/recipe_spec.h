@@ -34,7 +34,8 @@ struct recipe_spec {
   std::string identity;  // "namespace.name@version"
   source_t source;
   std::unordered_map<std::string, lua_value> options;
-  std::optional<phase> needed_by;  // Phase dependency annotation
+  std::optional<std::string> alias;  // User-friendly short name
+  std::optional<phase> needed_by;    // Phase dependency annotation
 
   static recipe_spec parse(lua_value const &lua_val,
                            std::filesystem::path const &base_path);

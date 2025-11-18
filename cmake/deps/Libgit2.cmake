@@ -107,6 +107,11 @@ set(_envy_libgit2_warning_silencers
 foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
     if(TARGET ${_libgit2_target})
         target_compile_options(${_libgit2_target} PRIVATE ${_envy_libgit2_warning_silencers})
+        # Ensure libgit2 sees the same mbedTLS config as mbedTLS library itself
+        if(DEFINED MBEDTLS_USER_CONFIG_FILE)
+            target_compile_definitions(${_libgit2_target} PRIVATE
+                MBEDTLS_USER_CONFIG_FILE="${MBEDTLS_USER_CONFIG_FILE}")
+        endif()
     endif()
 endforeach()
 

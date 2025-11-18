@@ -35,7 +35,8 @@ bool cmd_engine_functional_test::execute() {
   auto m{ manifest::load("packages = {}", cfg_.recipe_path) };
 
   // Run engine
-  auto result{ engine_run({ recipe_cfg }, c, *m) };
+  engine eng{ c, m->get_default_shell(nullptr) };
+  auto result{ eng.run_full({ recipe_cfg }) };
 
   // Output results as key -> value lines (avoid = which appears in option keys)
   for (auto const &[id, res] : result) {

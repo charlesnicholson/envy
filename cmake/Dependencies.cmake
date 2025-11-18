@@ -46,11 +46,6 @@ set(ENVY_LIBCURL_ARCHIVE "curl-${ENVY_LIBCURL_VERSION}.tar.xz")
 set(ENVY_LIBCURL_URL "https://curl.se/download/${ENVY_LIBCURL_ARCHIVE}")
 set(ENVY_LIBCURL_SHA256 40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d)
 
-set(ENVY_ONETBB_VERSION "2022.2.0")
-set(ENVY_ONETBB_ARCHIVE "oneTBB-${ENVY_ONETBB_VERSION}.tar.gz")
-set(ENVY_ONETBB_URL "https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v${ENVY_ONETBB_VERSION}.tar.gz")
-set(ENVY_ONETBB_SHA256 f0f78001c8c8edb4bddc3d4c5ee7428d56ae313254158ad1eec49eced57f6a5b)
-
 set(ENVY_AWS_SDK_VERSION "1.11.661")
 set(ENVY_AWS_SDK_ARCHIVE "aws-sdk-cpp-${ENVY_AWS_SDK_VERSION}.zip")
 set(ENVY_AWS_SDK_URL "https://github.com/aws/aws-sdk-cpp/archive/refs/tags/${ENVY_AWS_SDK_VERSION}.zip")
@@ -121,7 +116,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libcurl.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/deps/OneTBB.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/AwsSdk.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libarchive.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Blake3.cmake")
@@ -145,7 +139,6 @@ target_link_libraries(envy_thirdparty
         BZip2::BZip2
         ${PLATFORM_NETWORK_LIBS}
         CURL::libcurl
-        TBB::tbb
         libarchive::libarchive
         lua::lua
         blake3::blake3

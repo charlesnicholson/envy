@@ -1,5 +1,8 @@
 #include "phase_stage.h"
 
+#include "cache.h"
+#include "engine.h"
+#include "recipe.h"
 #include "extract.h"
 #include "lua_ctx_bindings.h"
 #include "lua_util.h"
@@ -210,16 +213,15 @@ void run_programmatic_stage(lua_State *lua,
                             std::filesystem::path const &dest_dir,
                             std::string const &identity,
                             std::unordered_map<std::string, lua_value> const &options,
-                            graph_state &state,
+                            engine &eng,
                             recipe *r) {
   tui::trace("phase stage: running imperative stage function");
 
   stage_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = dest_dir;
-  ctx.state = &state;
+  ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = state.manifest_;
 
   build_stage_context_table(lua, identity, options, &ctx);
 
@@ -265,10 +267,9 @@ void run_shell_stage(std::string_view script,
 
 }  // namespace
 
-void run_stage_phase(recipe *r, graph_state &state) {
+void run_stage_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase stage START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase stage END [" + key + "]" };
 
   cache::scoped_entry_lock *lock{ r->lock.get() };
   if (!lock) {  // Cache hit - no work to do
@@ -302,7 +303,7 @@ void run_stage_phase(recipe *r, graph_state &state) {
     }
 
     case LUA_TFUNCTION:
-      run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, state, r);
+      run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, eng, r);
       break;
 
     case LUA_TTABLE: run_declarative_stage(lua, fetch_dir, dest_dir, identity); break;

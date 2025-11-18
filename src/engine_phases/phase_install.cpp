@@ -1,5 +1,8 @@
 #include "phase_install.h"
 
+#include "cache.h"
+#include "engine.h"
+#include "recipe.h"
 #include "lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "phase_check.h"
@@ -95,16 +98,15 @@ bool run_programmatic_install(lua_State *lua,
                               std::filesystem::path const &install_dir,
                               std::string const &identity,
                               std::unordered_map<std::string, lua_value> const &options,
-                              graph_state &state,
+                              engine &eng,
                               recipe *r) {
   tui::trace("phase install: running programmatic install function");
 
   install_context ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = install_dir;
-  ctx.state = &state;
+  ctx.engine_ = &eng;
   ctx.recipe_ = r;
-  ctx.manifest_ = state.manifest_;
   ctx.install_dir = install_dir;
   ctx.stage_dir = stage_dir;
   ctx.lock = lock;
@@ -176,10 +178,9 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
 
 }  // namespace
 
-void run_install_phase(recipe *r, graph_state &state) {
+void run_install_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase install START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase install END [" + key + "]" };
 
   if (!r->lock) {  // Cache hit - no work to do
     tui::trace("phase install: no lock (cache hit), skipping");
@@ -221,7 +222,7 @@ void run_install_phase(recipe *r, graph_state &state) {
                                                  install_dir,
                                                  r->spec.identity,
                                                  r->spec.options,
-                                                 state,
+                                                 eng,
                                                  r);
       break;
 

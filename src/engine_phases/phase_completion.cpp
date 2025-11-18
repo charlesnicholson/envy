@@ -5,10 +5,9 @@
 
 namespace envy {
 
-void run_completion_phase(recipe *r, graph_state &state) {
+void run_completion_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
   tui::trace("phase completion START [%s]", key.c_str());
-  trace_on_exit trace_end{ "phase completion END [" + key + "]" };
 
   if (!r->asset_path.empty()) {
     r->result_hash = r->canonical_identity_hash;
