@@ -80,3 +80,23 @@ if(TARGET aws-c-io)
 endif()
 set(BUILD_TESTING ${_envy_prev_build_testing} CACHE BOOL "Restart project testing flag" FORCE)
 unset(_envy_prev_build_testing)
+
+# Disable sanitizers for AWS CRT libraries due to false positive in hashlittle2
+# lookup3.inl hash intentionally overreads strings; gets inlined via headers into many compilation units
+set(_envy_aws_crt_targets
+    aws-c-common aws-c-io aws-c-http aws-c-auth aws-c-cal aws-c-compression
+    aws-c-event-stream aws-c-mqtt aws-c-s3 aws-c-sdkutils aws-checksums aws-crt-cpp
+)
+foreach(_envy_target IN LISTS _envy_aws_crt_targets)
+    if(TARGET ${_envy_target})
+        # Disable LTO and sanitizers to prevent inlining false positives into main executable
+        set_property(TARGET ${_envy_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+            # Clang uses -fsanitize-blacklist (configured globally in envy targets)
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${_envy_target} PRIVATE -fno-sanitize=all)
+        endif()
+    endif()
+endforeach()
+unset(_envy_aws_crt_targets)
+unset(_envy_target)

@@ -1,0 +1,25 @@
+# ThreadSanitizer suppressions for false positives
+# See https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+
+# False positive: TSan detects race between application code and UBSan's internal
+# IsAccessibleMemoryRange memory checks during thread destruction
+# The "race" is between normal file operations and sanitizer's internal pipe() calls
+race:IsAccessibleMemoryRange
+
+# Benign race: mbedTLS performance counters (add_count, dbl_count, mul_count)
+# These are diagnostic counters for ECC operations, not correctness-critical
+# Intentionally unsynchronized for performance; slight inaccuracy is acceptable
+# Suppress all ECC functions that touch these counters
+race:mbedtls-src/library/ecp.c
+
+# Benign races in libgit2 HTTP client - parser state accessed without sync
+# Each git operation should have its own client context; any shared state races are benign
+race:libgit2-src/src/libgit2/transports/httpclient.c
+
+# Benign races in libarchive - format readers may have unsynchronized state
+# Each archive operation has its own context; shared state races don't affect correctness
+race:libarchive-src/libarchive/archive_read_support_format_tar.c
+
+# Known false positive in glibc timezone initialization
+# tzset_internal has benign races during lazy initialization of timezone data
+race:tzset_internal

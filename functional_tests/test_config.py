@@ -1,5 +1,6 @@
 """Shared configuration for functional tests."""
 
+import os
 import sys
 import threading
 from pathlib import Path
@@ -32,3 +33,20 @@ def get_envy_executable() -> Path:
         executable_name += ".exe"
 
     return root / executable_name
+
+
+def get_test_env() -> dict[str, str]:
+    """Get environment variables for running tests with the current sanitizer variant.
+
+    Returns a copy of os.environ with sanitizer-specific options set.
+    """
+    env = os.environ.copy()
+    variant = getattr(_thread_local, 'sanitizer_variant', 'asan_ubsan')
+    root = Path(__file__).parent.parent
+
+    if variant == 'tsan_ubsan':
+        # Set TSAN_OPTIONS with suppression file
+        tsan_supp = root / "tsan.supp"
+        env['TSAN_OPTIONS'] = f'suppressions={tsan_supp}'
+
+    return env

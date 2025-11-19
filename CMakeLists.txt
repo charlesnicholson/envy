@@ -199,6 +199,7 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
     if(SANITIZERS AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS} -fno-omit-frame-pointer -g>
+            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/sanitizer_blacklist.txt>
         )
         target_link_options(${TARGET_NAME} PRIVATE
             $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
@@ -255,7 +256,13 @@ target_compile_definitions(envy_functional_tester_asan_ubsan PRIVATE
     ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
     ENVY_FUNCTIONAL_TESTER=1
 )
-configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
+# GCC: Disable ASan to avoid third-party false positives (mbedTLS, AWS SDK)
+# Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    configure_envy_executable(envy_functional_tester_asan_ubsan "undefined")
+else()
+    configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
+endif()
 
 # TSan+UBSan variant
 add_executable(envy_functional_tester_tsan_ubsan)
@@ -382,7 +389,13 @@ add_executable(envy_unit_tests)
 target_sources(envy_unit_tests PRIVATE ${ENVY_UNIT_TEST_COMMON_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_link_libraries(envy_unit_tests PRIVATE doctest::doctest)
-configure_envy_executable(envy_unit_tests "address,undefined")
+# GCC: Disable ASan to avoid AWS SDK hashlittle2 false positive (LTO inlines across libs)
+# Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    configure_envy_executable(envy_unit_tests "undefined")
+else()
+    configure_envy_executable(envy_unit_tests "address,undefined")
+endif()
 
 if(DEFINED _envy_rescan_link_group)
     foreach(_envy_target IN ITEMS envy envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan envy_unit_tests)

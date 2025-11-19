@@ -164,6 +164,12 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
 
 
 def main() -> None:
+    # Set up sanitizer options for the test process
+    root = pathlib.Path(__file__).parent.parent
+    tsan_supp = root / "tsan.supp"
+    if tsan_supp.exists():
+        os.environ.setdefault('TSAN_OPTIONS', f'suppressions={tsan_supp}')
+
     # Determine number of jobs for parallel execution
     jobs_env = os.environ.get("ENVY_TEST_JOBS")
     verbose = os.environ.get("ENVY_TEST_VERBOSE", "").lower() in ("1", "true", "yes")
