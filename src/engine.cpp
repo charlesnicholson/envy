@@ -157,13 +157,14 @@ void engine::start_recipe_thread(recipe *r,
   // Use atomic flag to prevent race condition with diamond dependencies
   bool expected = false;
   if (ctx.started.compare_exchange_strong(expected, true)) {
-    // We won the race - start the thread
+    // We won the race - set target phase then start the thread
     if (initial_target >= recipe_phase::recipe_fetch) { on_recipe_fetch_start(); }
+    ctx.set_target_phase(initial_target);
     ctx.start(r, this, std::move(ancestor_chain));
+  } else {
+    // Thread already started - extend target if needed
+    ctx.set_target_phase(initial_target);
   }
-
-  // Always update target phase (may extend existing target)
-  ctx.set_target_phase(initial_target);
 }
 
 void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const target) {

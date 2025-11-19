@@ -85,6 +85,28 @@ class TestEngineDependencyResolution(unittest.TestCase):
             f"Expected cycle error, got: {result.stderr}",
         )
 
+    def test_self_dependency_detection(self):
+        """Engine detects and rejects recipe depending on itself."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "local.self_dep@v1",
+                "test_data/recipes/self_dep.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0, "Expected self-dependency to cause failure")
+        self.assertIn(
+            "cycle",
+            result.stderr.lower(),
+            f"Expected cycle error, got: {result.stderr}",
+        )
+
     def test_diamond_dependency_memoization(self):
         """Engine memoizes shared dependencies (diamond: A->B,C; B,C->D)."""
         result = subprocess.run(

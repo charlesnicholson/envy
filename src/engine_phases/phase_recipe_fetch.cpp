@@ -196,7 +196,12 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   // Build dependency graph: create child recipes, start their threads
   for (auto const &dep_cfg : dep_configs) {
-    // Cycle detection: check if dependency is already in our ancestor chain
+    // Cycle detection: check for self-loops and cycles in ancestor chain
+    if (r->spec.identity == dep_cfg.identity) {
+      throw std::runtime_error("Dependency cycle detected: " + r->spec.identity + " -> " +
+                               dep_cfg.identity);
+    }
+
     for (auto const &ancestor : ancestor_chain) {
       if (ancestor == dep_cfg.identity) {
         // Build error message with cycle path

@@ -168,7 +168,7 @@ class TestFetchGit(unittest.TestCase):
             )
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertTrue(len(result.stderr) > 0)
+            self.assertGreater(len(result.stderr), 0)
 
     def test_missing_ref_flag(self):
         """Git URL without --ref flag should fail."""
