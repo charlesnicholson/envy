@@ -12,15 +12,15 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestStagePhase(unittest.TestCase):
     """Tests for stage phase (archive extraction and preparation)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-stage-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):

@@ -8,6 +8,8 @@ import uuid
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 def parse_keyvalue(output: str) -> dict:
     """Parse key=value output into dict."""
@@ -21,9 +23,7 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -173,9 +173,7 @@ class TestStagingAndCommit(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -274,9 +272,7 @@ class TestCrashRecovery(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -380,9 +376,7 @@ class TestLockFileLifecycle(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -464,9 +458,7 @@ class TestEntryPathsAndStructure(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -573,9 +565,7 @@ class TestEdgeCases(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
@@ -711,9 +701,7 @@ class TestSubprocessConcurrency(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
+        self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")

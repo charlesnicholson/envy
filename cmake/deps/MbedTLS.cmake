@@ -67,6 +67,23 @@ if(DEFINED mbedtls_SOURCE_DIR AND DEFINED mbedtls_BINARY_DIR)
     unset(_mbedtls_libsuffix)
 endif()
 
+# Disable sanitizers for mbedTLS due to false positives in crypto code
+# (buffer overreads in optimized crypto routines, benign diagnostic counter races)
+set(_envy_mbedtls_targets mbedtls mbedx509 mbedcrypto)
+foreach(_envy_target IN LISTS _envy_mbedtls_targets)
+    if(TARGET ${_envy_target})
+        # Disable LTO and sanitizers to prevent inlining false positives into main executable
+        set_property(TARGET ${_envy_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+            # Clang uses -fsanitize-blacklist (configured globally in envy targets)
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${_envy_target} PRIVATE -fno-sanitize=all)
+        endif()
+    endif()
+endforeach()
+unset(_envy_mbedtls_targets)
+unset(_envy_target)
+
 unset(_mbedtls_archive)
 unset(_mbedtls_archive_norm)
 unset(_mbedtls_url)

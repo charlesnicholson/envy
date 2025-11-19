@@ -60,7 +60,10 @@ void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
   }
 }
 
-void engine::recipe_execution_ctx::start(recipe *r, engine *eng) {
+void engine::recipe_execution_ctx::start(recipe *r,
+                                         engine *eng,
+                                         std::vector<std::string> chain) {
+  ancestor_chain = std::move(chain);
   worker = std::thread([r, eng] { eng->run_recipe_thread(r); });
 }
 
@@ -81,7 +84,6 @@ recipe *engine::ensure_recipe(recipe_spec const &spec) {
           .canonical_identity_hash = key.canonical(),
           .asset_path = {},
           .result_hash = {},
-          .ancestor_chain = {},
           .cache_ptr = &cache_,
           .default_shell_ptr = &default_shell_,
       })) };
@@ -126,7 +128,18 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
   return matches;
 }
 
-void engine::start_recipe_thread(recipe *r, recipe_phase initial_target) {
+engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
+  std::lock_guard const lock(mutex_);
+  auto const it{ execution_ctxs_.find(r->key) };
+  if (it == execution_ctxs_.end()) {
+    throw std::runtime_error("Recipe execution context not found: " + r->key.canonical());
+  }
+  return *it->second;
+}
+
+void engine::start_recipe_thread(recipe *r,
+                                 recipe_phase initial_target,
+                                 std::vector<std::string> ancestor_chain) {
   auto &ctx{ [this, r]() -> recipe_execution_ctx & {
     std::lock_guard const lock(mutex_);
     auto const it{ execution_ctxs_.find(r->key) };
@@ -144,13 +157,14 @@ void engine::start_recipe_thread(recipe *r, recipe_phase initial_target) {
   // Use atomic flag to prevent race condition with diamond dependencies
   bool expected = false;
   if (ctx.started.compare_exchange_strong(expected, true)) {
-    // We won the race - start the thread
+    // We won the race - set target phase then start the thread
     if (initial_target >= recipe_phase::recipe_fetch) { on_recipe_fetch_start(); }
-    ctx.start(r, this);
+    ctx.set_target_phase(initial_target);
+    ctx.start(r, this, std::move(ancestor_chain));
+  } else {
+    // Thread already started - extend target if needed
+    ctx.set_target_phase(initial_target);
   }
-
-  // Always update target phase (may extend existing target)
-  ctx.set_target_phase(initial_target);
 }
 
 void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const target) {

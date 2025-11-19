@@ -10,7 +10,11 @@ fetch = {
 
 function check(ctx)
     -- Check if installation marker exists (simulates system check)
-    local marker = os.getenv("HOME") .. "/.envy-test-marker-with-fetch"
+    local marker = os.getenv("ENVY_TEST_MARKER_WITH_FETCH")
+    if not marker then
+        error("ENVY_TEST_MARKER_WITH_FETCH must be set")
+    end
+
     local f = io.open(marker, "r")
     if f then
         f:close()
@@ -42,10 +46,14 @@ end
 
 function install(ctx)
     -- Simulate system installation (create marker)
-    local marker = os.getenv("HOME") .. "/.envy-test-marker-with-fetch"
+    local marker = os.getenv("ENVY_TEST_MARKER_WITH_FETCH")
+    if not marker then
+        error("ENVY_TEST_MARKER_WITH_FETCH must be set")
+    end
+
     local f = io.open(marker, "w")
     if not f then
-        error("Failed to create marker file")
+        error("Failed to create marker file: " .. marker)
     end
     f:write("installed with fetch/stage/build")
     f:close()

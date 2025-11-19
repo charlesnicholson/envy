@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestFetchGit(unittest.TestCase):
     """Tests for git repository fetching via fetch command."""
@@ -19,8 +21,8 @@ class TestFetchGit(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-git-test-"))
         root = Path(__file__).resolve().parent.parent
-        self.envy = root / "out" / "build" / "envy"
-        self.envy_test = root / "out" / "build" / "envy_functional_tester"
+        self.envy = test_config.get_envy_executable()
+        self.envy_test = test_config.get_envy_executable()
         self.project_root = root
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
@@ -42,7 +44,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
-                    "--ref", "v1.11.1",
+                    "--ref",
+                    "v1.11.1",
                 ],
                 capture_output=True,
                 text=True,
@@ -55,7 +58,9 @@ class TestFetchGit(unittest.TestCase):
             self.assertTrue((dest / "src").is_dir(), "src directory should exist")
 
             # Verify .git directory is present (kept for packages that need it)
-            self.assertTrue((dest / ".git").exists(), ".git directory should be present")
+            self.assertTrue(
+                (dest / ".git").exists(), ".git directory should be present"
+            )
 
     def test_clone_public_https_branch(self):
         """Clone a public HTTPS repository with a branch ref."""
@@ -68,7 +73,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
-                    "--ref", "master",  # ninja's default branch
+                    "--ref",
+                    "master",  # ninja's default branch
                 ],
                 capture_output=True,
                 text=True,
@@ -77,7 +83,9 @@ class TestFetchGit(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
             self.assertTrue(dest.exists())
-            self.assertTrue((dest / ".git").exists(), ".git directory should be present")
+            self.assertTrue(
+                (dest / ".git").exists(), ".git directory should be present"
+            )
 
     def test_verify_file_contents_correct(self):
         """Verify that cloned repository has correct file contents."""
@@ -90,7 +98,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
-                    "--ref", "v1.11.1",
+                    "--ref",
+                    "v1.11.1",
                 ],
                 capture_output=True,
                 text=True,
@@ -124,7 +133,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/this-org-does-not-exist-12345/repo.git",
                     str(dest),
-                    "--ref", "main",
+                    "--ref",
+                    "main",
                 ],
                 capture_output=True,
                 text=True,
@@ -135,7 +145,7 @@ class TestFetchGit(unittest.TestCase):
             stderr_lower = result.stderr.lower()
             self.assertTrue(
                 "clone failed" in stderr_lower or "failed" in stderr_lower,
-                f"Expected clone error, got: {result.stderr}"
+                f"Expected clone error, got: {result.stderr}",
             )
 
     def test_valid_repo_nonexistent_ref(self):
@@ -149,7 +159,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
-                    "--ref", "this-ref-does-not-exist-12345",
+                    "--ref",
+                    "this-ref-does-not-exist-12345",
                 ],
                 capture_output=True,
                 text=True,
@@ -157,7 +168,7 @@ class TestFetchGit(unittest.TestCase):
             )
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertTrue(len(result.stderr) > 0)
+            self.assertGreater(len(result.stderr), 0)
 
     def test_missing_ref_flag(self):
         """Git URL without --ref flag should fail."""
@@ -194,7 +205,8 @@ class TestFetchGit(unittest.TestCase):
                     "fetch",
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
-                    "--ref", "v1.11.1",
+                    "--ref",
+                    "v1.11.1",
                 ],
                 capture_output=True,
                 text=True,

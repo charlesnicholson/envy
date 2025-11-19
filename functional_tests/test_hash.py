@@ -7,18 +7,15 @@ import sys
 import unittest
 from pathlib import Path
 
+from . import test_config
+
 
 class TestHash(unittest.TestCase):
     """Tests for 'envy hash' command."""
 
     def setUp(self):
         self.project_root = Path(__file__).resolve().parent.parent
-        self.envy = (
-            self.project_root
-            / "out"
-            / "build"
-            / ("envy.exe" if sys.platform == "win32" else "envy")
-        )
+        self.envy = test_config.get_envy_executable()
 
     def test_hash_binary_file_matches_external_tool(self):
         """Verify envy hash matches external SHA256 computation (ground truth)."""

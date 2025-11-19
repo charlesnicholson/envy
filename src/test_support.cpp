@@ -7,7 +7,7 @@ namespace envy::test {
 
 namespace { std::atomic<int> fail_after_fetch_count_{ -1 }; }
 
-int get_fail_after_fetch_count() { return fail_after_fetch_count_; }
+int get_fail_after_fetch_count() { return fail_after_fetch_count_.load(); }
 
 void set_fail_after_fetch_count(int count) { fail_after_fetch_count_ = count; }
 

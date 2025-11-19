@@ -21,7 +21,22 @@
       "displayName": "Release (LTO On)",
       "inherits": "envy-base",
       "cacheVariables": {
-        "ENABLE_LTO": "ON"
+        "ENABLE_LTO": "ON",
+        "ENVY_ENABLE_ASAN": "OFF"
+      }
+    },
+    {
+      "name": "release-asan-lto-on",
+      "displayName": "Release with ASan (LTO On, Windows only)",
+      "inherits": "envy-base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "ENABLE_LTO": "ON",
+        "ENVY_ENABLE_ASAN": "ON"
       }
     }
   ],
@@ -30,6 +45,12 @@
       "name": "release-lto-on",
       "displayName": "Build envy (LTO On)",
       "configurePreset": "release-lto-on",
+      "jobs": 0
+    },
+    {
+      "name": "release-asan-lto-on",
+      "displayName": "Build envy with ASan (LTO On, Windows only)",
+      "configurePreset": "release-asan-lto-on",
       "jobs": 0
     }
   ]

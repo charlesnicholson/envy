@@ -155,43 +155,43 @@ int lua_ctx_run(lua_State *lua) {
 
     // Select output callback based on shell type (determined once, not per-line)
 #if defined(_WIN32)
-    bool const use_powershell_parsing{
-        std::holds_alternative<shell_choice>(shell) &&
-        std::get<shell_choice>(shell) == shell_choice::powershell};
+    bool const use_powershell_parsing{ std::holds_alternative<shell_choice>(shell) &&
+                                       std::get<shell_choice>(shell) ==
+                                           shell_choice::powershell };
 #else
-    bool constexpr use_powershell_parsing{false};
+    bool constexpr use_powershell_parsing{ false };
 #endif
 
-    std::function<void(std::string_view)> on_line{[&, use_powershell_parsing]() {
-      if (use_powershell_parsing) {
-        return std::function<void(std::string_view)>{[&](std::string_view line) {
-          // PowerShell: Parse C0 control chars (0x1C-0x1F), route to appropriate level
-          std::string const msg{!line.empty() && line[0] >= '\x1C' && line[0] <= '\x1F'
-                                    ? line.substr(1)
-                                    : line};
-          if (line.starts_with('\x1C')) {
-            tui::error("%s", msg.c_str());
-          } else if (line.starts_with('\x1D')) {
-            tui::warn("%s", msg.c_str());
-          } else if (line.starts_with('\x1F')) {
-            tui::debug("%s", msg.c_str());
-          } else {
-            tui::info("%s", msg.c_str());
-          }
-          output_lines.emplace_back(msg);
-        }};
-      } else {
-        return std::function<void(std::string_view)>{[&](std::string_view line) {
-          // All other shells: Route to info
-          std::string const msg{line};
-          tui::info("%s", msg.c_str());
-          output_lines.emplace_back(msg);
-        }};
-      }
-    }()};
+    std::function<void(std::string_view)> on_line;
 
-    shell_run_cfg inv{
-        .on_output_line = std::move(on_line), .cwd = cwd, .env = std::move(env), .shell = shell};
+    if (use_powershell_parsing) {
+      on_line = [&](std::string_view line) {  // Parse C0 chars (0x1C-0x1F) and route
+        std::string const msg{ !line.empty() && line[0] >= '\x1C' && line[0] <= '\x1F'
+                                   ? line.substr(1)
+                                   : line };
+        if (line.starts_with('\x1C')) {
+          tui::error("%s", msg.c_str());
+        } else if (line.starts_with('\x1D')) {
+          tui::warn("%s", msg.c_str());
+        } else if (line.starts_with('\x1F')) {
+          tui::debug("%s", msg.c_str());
+        } else {
+          tui::info("%s", msg.c_str());
+        }
+        output_lines.emplace_back(msg);
+      };
+    } else {
+      on_line = [&](std::string_view line) {  // All other shells: Route to info
+        std::string const msg{ line };
+        tui::info("%s", msg.c_str());
+        output_lines.emplace_back(msg);
+      };
+    }
+
+    shell_run_cfg const inv{ .on_output_line = std::move(on_line),
+                             .cwd = cwd,
+                             .env = std::move(env),
+                             .shell = shell };
 
     shell_result const result{ shell_run(script_view, inv) };
 

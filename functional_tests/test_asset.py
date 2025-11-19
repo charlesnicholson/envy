@@ -5,12 +5,15 @@ Tests asset path querying, manifest discovery, dependency installation,
 ambiguity detection, and error handling.
 """
 
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
+
+from . import test_config
 
 
 class TestAssetCommand(unittest.TestCase):
@@ -19,7 +22,7 @@ class TestAssetCommand(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-asset-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-asset-manifest-"))
-        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
+        self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
         self.test_data = self.project_root / "test_data"
 

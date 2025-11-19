@@ -15,12 +15,19 @@ stage = function(ctx)
     local target = temp .. (needs_sep and "\\\\" or "") .. "envy_ctx_run_test.txt"
     ctx.run(string.format([[
       Set-Content -Path pwd_absolute.txt -Value (Get-Location).Path
-      Set-Content -Path "%s" -Value "Running in TEMP"
-    ]], target), {cwd = temp, shell = ENVY_SHELL.POWERSHELL})
+      # Use Out-File with -Force to ensure file is created and flushed
+      "Running in TEMP" | Out-File -FilePath "%s" -Force -Encoding ascii
+      # Verify file was created
+      if (-Not (Test-Path "%s")) {
+        throw "Failed to create test file"
+      }
+    ]], target, target), {cwd = temp, shell = ENVY_SHELL.POWERSHELL})
   else
     ctx.run([[
       pwd > pwd_absolute.txt
       echo "Running in /tmp" > /tmp/envy_ctx_run_test.txt
+      # Verify file was created
+      test -f /tmp/envy_ctx_run_test.txt || exit 1
     ]], {cwd = "/tmp"})
   end
 end

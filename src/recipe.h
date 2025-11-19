@@ -35,9 +35,6 @@ struct recipe {
   std::filesystem::path asset_path;
   std::string result_hash;
 
-  // Cycle detection: ancestor chain for detecting dependency cycles
-  std::vector<std::string> ancestor_chain;
-
   // Phase functions need access to these (not owned by recipe)
   cache *cache_ptr;
   default_shell_cfg_t const *default_shell_ptr;
