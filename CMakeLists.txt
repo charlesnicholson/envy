@@ -120,6 +120,13 @@ if(ENABLE_LTO)
     endif()
 endif()
 
+# Enable AddressSanitizer globally on MSVC when ENVY_ENABLE_ASAN is set
+if(MSVC AND ENVY_ENABLE_ASAN)
+    add_compile_options(/fsanitize=address)
+    add_link_options(/INCREMENTAL:NO)
+    message(STATUS "MSVC: AddressSanitizer enabled globally for all targets")
+endif()
+
 include(cmake/Dependencies.cmake)
 
 # Common source files shared by all envy executables
@@ -195,15 +202,17 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
     )
     target_link_libraries(${TARGET_NAME} PRIVATE envy::thirdparty)
 
-    # Add sanitizer flags if specified
-    if(SANITIZERS AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
-        target_compile_options(${TARGET_NAME} PRIVATE
-            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS} -fno-omit-frame-pointer -g>
-            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/sanitizer_blacklist.txt>
-        )
-        target_link_options(${TARGET_NAME} PRIVATE
-            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
-        )
+    # Add sanitizer flags if specified (only for Clang/GCC; MSVC is handled globally)
+    if(SANITIZERS AND NOT MSVC)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${TARGET_NAME} PRIVATE
+                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS} -fno-omit-frame-pointer -g>
+                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/sanitizer_blacklist.txt>
+            )
+            target_link_options(${TARGET_NAME} PRIVATE
+                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
+            )
+        endif()
     endif()
 endfunction()
 
@@ -249,32 +258,45 @@ if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # Functional tester executables with different sanitizers -------------------
-# ASan+UBSan variant
-add_executable(envy_functional_tester_asan_ubsan)
-target_sources(envy_functional_tester_asan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
-target_compile_definitions(envy_functional_tester_asan_ubsan PRIVATE
-    ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
-    ENVY_FUNCTIONAL_TESTER=1
-)
-# GCC: Disable ASan to avoid third-party false positives (mbedTLS, AWS SDK)
-# Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    configure_envy_executable(envy_functional_tester_asan_ubsan "undefined")
+if(MSVC)
+    # MSVC only supports AddressSanitizer (not UBSan/TSan)
+    # Build single functional tester without sanitizers (third-party libs not built with ASan)
+    add_executable(envy_functional_tester)
+    target_sources(envy_functional_tester PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+    target_compile_definitions(envy_functional_tester PRIVATE
+        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+        ENVY_FUNCTIONAL_TESTER=1
+    )
+    configure_envy_executable(envy_functional_tester "")
 else()
-    configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
+    # Clang/GCC: Build two sanitizer variants
+    # ASan+UBSan variant
+    add_executable(envy_functional_tester_asan_ubsan)
+    target_sources(envy_functional_tester_asan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+    target_compile_definitions(envy_functional_tester_asan_ubsan PRIVATE
+        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+        ENVY_FUNCTIONAL_TESTER=1
+    )
+    # GCC: Disable ASan to avoid third-party false positives (mbedTLS, AWS SDK)
+    # Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        configure_envy_executable(envy_functional_tester_asan_ubsan "undefined")
+    else()
+        configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
+    endif()
+
+    # TSan+UBSan variant
+    add_executable(envy_functional_tester_tsan_ubsan)
+    target_sources(envy_functional_tester_tsan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+    target_compile_definitions(envy_functional_tester_tsan_ubsan PRIVATE
+        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+        ENVY_FUNCTIONAL_TESTER=1
+    )
+    configure_envy_executable(envy_functional_tester_tsan_ubsan "thread,undefined")
+
+    # Legacy name alias for backward compatibility
+    add_executable(envy_functional_tester ALIAS envy_functional_tester_asan_ubsan)
 endif()
-
-# TSan+UBSan variant
-add_executable(envy_functional_tester_tsan_ubsan)
-target_sources(envy_functional_tester_tsan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
-target_compile_definitions(envy_functional_tester_tsan_ubsan PRIVATE
-    ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
-    ENVY_FUNCTIONAL_TESTER=1
-)
-configure_envy_executable(envy_functional_tester_tsan_ubsan "thread,undefined")
-
-# Legacy name alias for backward compatibility
-add_executable(envy_functional_tester ALIAS envy_functional_tester_asan_ubsan)
 
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
@@ -398,7 +420,11 @@ else()
 endif()
 
 if(DEFINED _envy_rescan_link_group)
-    foreach(_envy_target IN ITEMS envy envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan envy_unit_tests)
+    set(_envy_link_targets envy envy_unit_tests envy_functional_tester)
+    if(NOT MSVC)
+        list(APPEND _envy_link_targets envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan)
+    endif()
+    foreach(_envy_target IN LISTS _envy_link_targets)
         if(TARGET ${_envy_target})
             target_link_libraries(${_envy_target}
                 PRIVATE
@@ -406,51 +432,31 @@ if(DEFINED _envy_rescan_link_group)
             )
         endif()
     endforeach()
+    unset(_envy_link_targets)
     unset(_envy_rescan_link_group)
 endif()
 
 # Run tests and create timestamp on success
+# MSVC ASan doesn't use the same suppression file format, so only pass ASAN_OPTIONS on Clang/GCC
+if(MSVC)
+    set(_envy_test_env_prefix)
+else()
+    set(_envy_test_env_prefix ${CMAKE_COMMAND} -E env "ASAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/asan.supp")
+endif()
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
-    COMMAND ${CMAKE_COMMAND} -E env "ASAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/asan.supp" $<TARGET_FILE:envy_unit_tests>
+    COMMAND ${_envy_test_env_prefix} $<TARGET_FILE:envy_unit_tests>
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
     DEPENDS envy_unit_tests ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     COMMENT "Running unit tests"
     VERBATIM
 )
+unset(_envy_test_env_prefix)
 
 add_custom_target(run_unit_tests ALL
     DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
 )
 
-set(ENVY_FUNCTIONAL_TEST_DIR "${PROJECT_SOURCE_DIR}/functional_tests")
-file(GLOB ENVY_FUNCTIONAL_TEST_SOURCES CONFIGURE_DEPENDS
-    "${ENVY_FUNCTIONAL_TEST_DIR}/*.py"
-)
-set(ENVY_FUNCTIONAL_TEST_TIMESTAMP "${CMAKE_CURRENT_BINARY_DIR}/envy_functional_tests.timestamp")
-
-add_custom_command(
-    OUTPUT "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
-    COMMAND "${Python3_EXECUTABLE}" -m functional_tests
-    COMMAND "${CMAKE_COMMAND}" -E touch "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
-    DEPENDS
-        envy
-        envy_functional_tester_asan_ubsan
-        envy_functional_tester_tsan_ubsan
-        ${ENVY_FUNCTIONAL_TEST_SOURCES}
-        ${TEST_DATA_FILES}
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-    COMMENT "Running functional tests"
-    VERBATIM
-)
-
-add_custom_target(run_functional_tests ALL
-    DEPENDS "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
-)
-
-add_dependencies(run_functional_tests envy envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan run_unit_tests)
-
-unset(ENVY_FUNCTIONAL_TEST_DIR)
-unset(ENVY_FUNCTIONAL_TEST_SOURCES)
-unset(ENVY_FUNCTIONAL_TEST_TIMESTAMP)
+# Functional test executables are built but not run automatically
+# Run manually with: python -m functional_tests

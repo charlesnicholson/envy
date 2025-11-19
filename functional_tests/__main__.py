@@ -63,9 +63,14 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
         print("No tests found")
         return
 
-    # Create test cases for both sanitizer variants
+    # Discover available sanitizer variants from filesystem
+    sanitizer_variants = test_config.get_sanitizer_variants()
+    if not sanitizer_variants:
+        print("ERROR: No functional tester executables found")
+        sys.exit(1)
+
+    # Create test cases for all available sanitizer variants
     # IMPORTANT: Create NEW test instances for each variant to avoid sharing state
-    sanitizer_variants = ["asan_ubsan", "tsan_ubsan"]
     test_cases = []
     for test in base_test_cases:
         for variant in sanitizer_variants:
@@ -76,7 +81,8 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
             test_cases.append((new_test, variant))
 
     total_tests = len(test_cases)
-    print(f"Running {total_tests} tests ({len(base_test_cases)} tests × {len(sanitizer_variants)} sanitizer variants) with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
+    variant_desc = f"{len(sanitizer_variants)} sanitizer variant{'s' if len(sanitizer_variants) > 1 else ''}"
+    print(f"Running {total_tests} tests ({len(base_test_cases)} tests × {variant_desc}) with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
 
     # Counters for results
     passed = 0
