@@ -12,16 +12,16 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestEngineDeclarativeFetch(unittest.TestCase):
     """Tests for declarative fetch phase (asset fetching)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
-        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy"
+        self.envy_test = test_config.get_envy_executable()
+        self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
@@ -236,7 +236,7 @@ fetch = {
 }
 """
         recipe_path = self.cache_root / "fetch_string_array.lua"
-        recipe_path.write_text(recipe_content, encoding='utf-8')
+        recipe_path.write_text(recipe_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -258,8 +258,12 @@ fetch = {
 
         # Verify downloading log mentions 3 files
         stderr_lower = result.stderr.lower()
-        self.assertIn("downloading", stderr_lower, f"Expected download log: {result.stderr}")
-        self.assertIn("3", result.stderr, f"Expected 3 files mentioned: {result.stderr}")
+        self.assertIn(
+            "downloading", stderr_lower, f"Expected download log: {result.stderr}"
+        )
+        self.assertIn(
+            "3", result.stderr, f"Expected 3 files mentioned: {result.stderr}"
+        )
 
     def test_declarative_fetch_git(self):
         """Recipe with git fetch downloads repository."""
@@ -296,7 +300,7 @@ function install(ctx)
 end
 """
         recipe_path = self.cache_root / "fetch_git_test.lua"
-        recipe_path.write_text(recipe_content, encoding='utf-8')
+        recipe_path.write_text(recipe_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -346,7 +350,7 @@ function install(ctx)
 end
 """
         recipe_path = self.cache_root / "git_location_test.lua"
-        recipe_path.write_text(recipe_content, encoding='utf-8')
+        recipe_path.write_text(recipe_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -385,7 +389,7 @@ function install(ctx)
 end
 """
         recipe_path = self.cache_root / "git_no_cache.lua"
-        recipe_path.write_text(recipe_content, encoding='utf-8')
+        recipe_path.write_text(recipe_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -408,11 +412,12 @@ end
         # Verify fetch completion marker does NOT exist
         asset_dir = self.cache_root / "assets" / "local.git_no_cache@v1"
         fetch_complete_files = list(asset_dir.rglob("fetch/envy-complete"))
-        self.assertEqual(len(fetch_complete_files), 0,
-                        f"fetch/envy-complete should not exist for git repos, found: {fetch_complete_files}")
-
+        self.assertEqual(
+            len(fetch_complete_files),
+            0,
+            f"fetch/envy-complete should not exist for git repos, found: {fetch_complete_files}",
+        )
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -7,6 +7,8 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from . import test_config
+
 
 def _build_default_argv() -> list[str]:
     root = pathlib.Path(__file__).resolve().parent
@@ -31,14 +33,21 @@ def _flatten_suite(suite: unittest.TestSuite) -> list[unittest.TestCase]:
     return tests
 
 
-def _run_single_test(test: unittest.TestCase, verbose: bool = False) -> unittest.TestResult:
+def _run_single_test(test: unittest.TestCase, sanitizer_variant: str = "", verbose: bool = False) -> unittest.TestResult:
     """Run a single test case and return its result."""
     if verbose:
         test_name = f"{test.__class__.__module__}.{test.__class__.__name__}.{test._testMethodName}"
-        print(f"\nRunning: {test_name}", flush=True)
+        variant_suffix = f" [{sanitizer_variant}]" if sanitizer_variant else ""
+        print(f"\nRunning: {test_name}{variant_suffix}", flush=True)
+
+    # Set which sanitizer variant to use for this test
+    if sanitizer_variant:
+        test_config.set_sanitizer_variant(sanitizer_variant)
+
     suite = unittest.TestSuite([test])
     result = unittest.TestResult()
     suite.run(result)
+
     return result
 
 
@@ -48,14 +57,26 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
 
     # Discover all tests
     suite = loader.discover(str(root), top_level_dir=str(root.parent))
-    test_cases = _flatten_suite(suite)
-    total_tests = len(test_cases)
+    base_test_cases = _flatten_suite(suite)
 
-    if total_tests == 0:
+    if len(base_test_cases) == 0:
         print("No tests found")
         return
 
-    print(f"Running {total_tests} tests with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
+    # Create test cases for both sanitizer variants
+    # IMPORTANT: Create NEW test instances for each variant to avoid sharing state
+    sanitizer_variants = ["asan_ubsan", "tsan_ubsan"]
+    test_cases = []
+    for test in base_test_cases:
+        for variant in sanitizer_variants:
+            # Create a fresh test instance for this variant
+            test_class = test.__class__
+            test_method = test._testMethodName
+            new_test = test_class(test_method)
+            test_cases.append((new_test, variant))
+
+    total_tests = len(test_cases)
+    print(f"Running {total_tests} tests ({len(base_test_cases)} tests × {len(sanitizer_variants)} sanitizer variants) with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
 
     # Counters for results
     passed = 0
@@ -68,18 +89,19 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
     with ThreadPoolExecutor(max_workers=jobs) as executor:
         # Submit all tests
         future_to_test = {
-            executor.submit(_run_single_test, test, verbose): test for test in test_cases
+            executor.submit(_run_single_test, test, variant, verbose): (test, variant)
+            for test, variant in test_cases
         }
 
         # Collect results as they complete
         for i, future in enumerate(as_completed(future_to_test), 1):
-            test = future_to_test[future]
+            test, variant = future_to_test[future]
             try:
                 result = future.result(timeout=60)
             except Exception as e:
                 sys.stdout.write("E")
                 errors += 1
-                failure_details.append(("ERROR", test, f"Test execution failed: {e}\n"))
+                failure_details.append(("ERROR", f"{test} [{variant}]", f"Test execution failed: {e}\n"))
                 sys.stdout.flush()
                 continue
 

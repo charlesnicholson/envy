@@ -190,13 +190,19 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   r->lua_state = std::move(lua_state);
   r->declared_dependencies = std::move(dep_identities);
 
+  // Get ancestor chain from execution context (per-thread traversal state)
+  auto &ctx{ eng.get_execution_ctx(r) };
+  std::vector<std::string> const &ancestor_chain{ ctx.ancestor_chain };
+
   // Build dependency graph: create child recipes, start their threads
   for (auto const &dep_cfg : dep_configs) {
-    for (auto const &ancestor : r->ancestor_chain) {
-      if (ancestor == dep_cfg.identity) {  // cycle- build error message with cycle path
+    // Cycle detection: check if dependency is already in our ancestor chain
+    for (auto const &ancestor : ancestor_chain) {
+      if (ancestor == dep_cfg.identity) {
+        // Build error message with cycle path
         std::string cycle_path{ ancestor };
         bool found_start{ false };
-        for (auto const &a : r->ancestor_chain) {
+        for (auto const &a : ancestor_chain) {
           if (a == ancestor) { found_start = true; }
           if (found_start) { cycle_path += " -> " + a; }
         }
@@ -206,8 +212,10 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     }
 
     recipe *dep{ eng.ensure_recipe(dep_cfg) };
-    dep->ancestor_chain = r->ancestor_chain;
-    dep->ancestor_chain.push_back(r->spec.identity);
+
+    // Build child ancestor chain (local to this thread path)
+    std::vector<std::string> child_chain{ ancestor_chain };
+    child_chain.push_back(r->spec.identity);
 
     recipe_phase const needed_by_phase{ dep_cfg.needed_by.has_value()
                                             ? static_cast<recipe_phase>(*dep_cfg.needed_by)
@@ -216,7 +224,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
     r->dependencies[dep_cfg.identity] = { dep, needed_by_phase };
 
-    eng.start_recipe_thread(dep, recipe_phase::recipe_fetch);
+    eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
   }
 
   eng.on_recipe_fetch_complete();

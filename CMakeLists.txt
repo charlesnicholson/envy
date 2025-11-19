@@ -122,56 +122,61 @@ endif()
 
 include(cmake/Dependencies.cmake)
 
-add_executable(envy)
-
-target_sources(envy
-    PRIVATE
-        src/main.cpp
-        src/cache.cpp
-        src/cli.cpp
-        src/cmd.cpp
-        src/commands/cmd_asset.cpp
-        src/commands/cmd_extract.cpp
-        src/commands/cmd_fetch.cpp
-        src/commands/cmd_hash.cpp
-        src/commands/cmd_lua.cpp
-        src/commands/cmd_sync.cpp
-        src/commands/cmd_version.cpp
-        src/engine.cpp
-        src/recipe_key.cpp
-        src/lua_ctx_bindings.cpp
-        src/engine_phases/phase_build.cpp
-        src/engine_phases/phase_check.cpp
-        src/engine_phases/phase_completion.cpp
-        src/engine_phases/phase_deploy.cpp
-        src/engine_phases/phase_fetch.cpp
-        src/engine_phases/phase_install.cpp
-        src/engine_phases/phase_recipe_fetch.cpp
-        src/engine_phases/phase_stage.cpp
-        src/extract.cpp
-        src/aws_util.cpp
-        src/blake3_util.cpp
-        src/libgit2_util.cpp
-        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
-        src/lua_shell.cpp
-        src/lua_util.cpp
-        src/manifest.cpp
-        src/recipe_spec.cpp
-        src/sha256.cpp
-        src/fetch.cpp
-        src/libcurl_util.cpp
-        src/platform.cpp
-        src/shell.cpp
-        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
-        src/tui.cpp
-        src/uri.cpp
-        src/util.cpp
+# Common source files shared by all envy executables
+set(ENVY_COMMON_SOURCES
+    src/main.cpp
+    src/cache.cpp
+    src/cli.cpp
+    src/cmd.cpp
+    src/commands/cmd_asset.cpp
+    src/commands/cmd_extract.cpp
+    src/commands/cmd_fetch.cpp
+    src/commands/cmd_hash.cpp
+    src/commands/cmd_lua.cpp
+    src/commands/cmd_sync.cpp
+    src/commands/cmd_version.cpp
+    src/engine.cpp
+    src/recipe_key.cpp
+    src/lua_ctx_bindings.cpp
+    src/engine_phases/phase_build.cpp
+    src/engine_phases/phase_check.cpp
+    src/engine_phases/phase_completion.cpp
+    src/engine_phases/phase_deploy.cpp
+    src/engine_phases/phase_fetch.cpp
+    src/engine_phases/phase_install.cpp
+    src/engine_phases/phase_recipe_fetch.cpp
+    src/engine_phases/phase_stage.cpp
+    src/extract.cpp
+    src/aws_util.cpp
+    src/blake3_util.cpp
+    src/libgit2_util.cpp
+    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
+    src/lua_shell.cpp
+    src/lua_util.cpp
+    src/manifest.cpp
+    src/recipe_spec.cpp
+    src/sha256.cpp
+    src/fetch.cpp
+    src/libcurl_util.cpp
+    src/platform.cpp
+    src/shell.cpp
+    $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/tui.cpp
+    src/uri.cpp
+    src/util.cpp
 )
 
-target_compile_features(envy PRIVATE cxx_std_20)
-target_include_directories(envy PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_options(envy PRIVATE
+# Functional test-specific sources
+set(ENVY_FUNCTIONAL_TEST_SOURCES
+    src/commands/cmd_cache_functional_test.cpp
+    src/commands/cmd_engine_functional_test.cpp
+    src/phase.cpp
+    src/test_support.cpp
+)
+
+# Common compile options
+set(ENVY_COMMON_COMPILE_OPTIONS
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
@@ -179,10 +184,33 @@ target_compile_options(envy PRIVATE
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
     $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
 )
+
+# Function to configure an envy executable
+function(configure_envy_executable TARGET_NAME SANITIZERS)
+    target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
+    target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_options(${TARGET_NAME} PRIVATE ${ENVY_COMMON_COMPILE_OPTIONS})
+    target_link_options(${TARGET_NAME} PRIVATE
+        $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
+    )
+    target_link_libraries(${TARGET_NAME} PRIVATE envy::thirdparty)
+
+    # Add sanitizer flags if specified
+    if(SANITIZERS AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+        target_compile_options(${TARGET_NAME} PRIVATE
+            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS} -fno-omit-frame-pointer -g>
+        )
+        target_link_options(${TARGET_NAME} PRIVATE
+            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
+        )
+    endif()
+endfunction()
+
+# Production executable -------------------------------------------------------
+add_executable(envy)
+target_sources(envy PRIVATE ${ENVY_COMMON_SOURCES})
 target_compile_definitions(envy PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
-target_link_options(envy PRIVATE
-    $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
-)
+configure_envy_executable(envy "")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CMAKE_C_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE CACHE BOOL "" FORCE)
@@ -219,79 +247,27 @@ if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 endif()
 
-# Functional tester executable -----------------------------------------------
-add_executable(envy_functional_tester)
-
-target_sources(envy_functional_tester
-    PRIVATE
-        src/main.cpp
-        src/cache.cpp
-        src/cli.cpp
-        src/cmd.cpp
-        src/commands/cmd_asset.cpp
-        src/commands/cmd_extract.cpp
-        src/commands/cmd_fetch.cpp
-        src/commands/cmd_hash.cpp
-        src/commands/cmd_lua.cpp
-        src/commands/cmd_sync.cpp
-        src/commands/cmd_version.cpp
-        src/commands/cmd_cache_functional_test.cpp
-        src/commands/cmd_engine_functional_test.cpp
-        src/engine.cpp
-        src/recipe_key.cpp
-        src/lua_ctx_bindings.cpp
-        src/engine_phases/phase_build.cpp
-        src/engine_phases/phase_check.cpp
-        src/engine_phases/phase_completion.cpp
-        src/engine_phases/phase_deploy.cpp
-        src/engine_phases/phase_fetch.cpp
-        src/engine_phases/phase_install.cpp
-        src/engine_phases/phase_recipe_fetch.cpp
-        src/engine_phases/phase_stage.cpp
-        src/extract.cpp
-        src/aws_util.cpp
-        src/blake3_util.cpp
-        src/libgit2_util.cpp
-        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
-        src/lua_shell.cpp
-        src/lua_util.cpp
-        src/manifest.cpp
-        src/phase.cpp
-        src/recipe_spec.cpp
-        src/sha256.cpp
-        src/fetch.cpp
-        src/libcurl_util.cpp
-        src/platform.cpp
-        src/shell.cpp
-        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
-        src/test_support.cpp
-        src/tui.cpp
-        src/uri.cpp
-        src/util.cpp
-)
-
-target_compile_features(envy_functional_tester PRIVATE cxx_std_20)
-target_include_directories(envy_functional_tester PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(envy_functional_tester PRIVATE
+# Functional tester executables with different sanitizers -------------------
+# ASan+UBSan variant
+add_executable(envy_functional_tester_asan_ubsan)
+target_sources(envy_functional_tester_asan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+target_compile_definitions(envy_functional_tester_asan_ubsan PRIVATE
     ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
     ENVY_FUNCTIONAL_TESTER=1
 )
-target_compile_options(envy_functional_tester PRIVATE
-    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
-    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
-    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
-    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
-    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
-    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
+configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
+
+# TSan+UBSan variant
+add_executable(envy_functional_tester_tsan_ubsan)
+target_sources(envy_functional_tester_tsan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+target_compile_definitions(envy_functional_tester_tsan_ubsan PRIVATE
+    ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+    ENVY_FUNCTIONAL_TESTER=1
 )
-target_link_options(envy_functional_tester PRIVATE
-    $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
-)
-target_link_libraries(envy_functional_tester
-    PRIVATE
-        envy::thirdparty
-)
+configure_envy_executable(envy_functional_tester_tsan_ubsan "thread,undefined")
+
+# Legacy name alias for backward compatibility
+add_executable(envy_functional_tester ALIAS envy_functional_tester_asan_ubsan)
 
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(_envy_rescan_targets
@@ -328,95 +304,88 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
 endif()
 
 # Unit tests ---------------------------------------------------------------
+# Common sources minus main.cpp for unit tests (which have unit_test_main.cpp)
+set(ENVY_UNIT_TEST_COMMON_SOURCES
+    src/cache.cpp
+    src/cli.cpp
+    src/cmd.cpp
+    src/commands/cmd_asset.cpp
+    src/commands/cmd_extract.cpp
+    src/commands/cmd_fetch.cpp
+    src/commands/cmd_hash.cpp
+    src/commands/cmd_lua.cpp
+    src/commands/cmd_sync.cpp
+    src/commands/cmd_version.cpp
+    src/engine.cpp
+    src/recipe_key.cpp
+    src/lua_ctx_bindings.cpp
+    src/engine_phases/phase_build.cpp
+    src/engine_phases/phase_check.cpp
+    src/engine_phases/phase_completion.cpp
+    src/engine_phases/phase_deploy.cpp
+    src/engine_phases/phase_fetch.cpp
+    src/engine_phases/phase_install.cpp
+    src/engine_phases/phase_recipe_fetch.cpp
+    src/engine_phases/phase_stage.cpp
+    src/extract.cpp
+    src/aws_util.cpp
+    src/blake3_util.cpp
+    src/libgit2_util.cpp
+    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
+    src/lua_shell.cpp
+    src/lua_util.cpp
+    src/manifest.cpp
+    src/recipe_spec.cpp
+    src/sha256.cpp
+    src/fetch.cpp
+    src/libcurl_util.cpp
+    src/platform.cpp
+    src/shell.cpp
+    $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/tui.cpp
+    src/uri.cpp
+    src/util.cpp
+)
+
+set(ENVY_UNIT_TEST_SOURCES
+    src/unit_test_main.cpp
+    src/blake3_util_tests.cpp
+    src/cache_tests.cpp
+    src/cli_tests.cpp
+    src/commands/cmd_tests.cpp
+    src/engine_phases/phase_check_tests.cpp
+    src/engine_phases/phase_fetch_tests.cpp
+    src/engine_phases/phase_install_tests.cpp
+    src/commands/cmd_extract_tests.cpp
+    src/commands/cmd_lua_tests.cpp
+    src/commands/cmd_version_tests.cpp
+    src/extract_tests.cpp
+    src/engine_target_phase_tests.cpp
+    src/fetch_tests.cpp
+    src/lua_shell_tests.cpp
+    src/lua_util_tests.cpp
+    src/manifest_tests.cpp
+    src/recipe_spec_tests.cpp
+    src/recipe_key_tests.cpp
+    src/lua_ctx_bindings_tests.cpp
+    src/sha256_tests.cpp
+    src/shell_tests_common.cpp
+    $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>
+    src/uri_tests.cpp
+    src/tui_tests.cpp
+    src/util_tests.cpp
+)
+
 add_executable(envy_unit_tests)
-
-target_sources(envy_unit_tests
-    PRIVATE
-        src/unit_test_main.cpp
-        src/cache.cpp
-        src/cli.cpp
-        src/cmd.cpp
-        src/commands/cmd_asset.cpp
-        src/commands/cmd_extract.cpp
-        src/commands/cmd_fetch.cpp
-        src/commands/cmd_hash.cpp
-        src/commands/cmd_lua.cpp
-        src/commands/cmd_sync.cpp
-        src/commands/cmd_version.cpp
-        src/engine.cpp
-        src/recipe_key.cpp
-        src/lua_ctx_bindings.cpp
-        src/engine_phases/phase_build.cpp
-        src/engine_phases/phase_check.cpp
-        src/engine_phases/phase_completion.cpp
-        src/engine_phases/phase_deploy.cpp
-        src/engine_phases/phase_fetch.cpp
-        src/engine_phases/phase_install.cpp
-        src/engine_phases/phase_recipe_fetch.cpp
-        src/engine_phases/phase_stage.cpp
-        src/extract.cpp
-        src/aws_util.cpp
-        src/blake3_util.cpp
-        src/libgit2_util.cpp
-        $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
-        src/lua_shell.cpp
-        src/lua_util.cpp
-        src/manifest.cpp
-        src/recipe_spec.cpp
-        src/sha256.cpp
-        src/fetch.cpp
-        src/libcurl_util.cpp
-        src/platform.cpp
-        src/shell.cpp
-        $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
-        src/blake3_util_tests.cpp
-        src/cache_tests.cpp
-        src/cli_tests.cpp
-        src/commands/cmd_tests.cpp
-        src/engine_phases/phase_check_tests.cpp
-        src/engine_phases/phase_fetch_tests.cpp
-        src/engine_phases/phase_install_tests.cpp
-        src/commands/cmd_extract_tests.cpp
-        src/commands/cmd_lua_tests.cpp
-        src/commands/cmd_version_tests.cpp
-        src/extract_tests.cpp
-        src/engine_target_phase_tests.cpp
-        src/fetch_tests.cpp
-        src/lua_shell_tests.cpp
-        src/lua_util_tests.cpp
-        src/manifest_tests.cpp
-        src/recipe_spec_tests.cpp
-        src/recipe_key_tests.cpp
-        src/lua_ctx_bindings_tests.cpp
-        src/lua_ctx_bindings.cpp
-        src/sha256_tests.cpp
-        src/shell_tests_common.cpp
-        $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>
-        src/uri.cpp
-        src/uri_tests.cpp
-        src/tui_tests.cpp
-        src/tui.cpp
-        src/util.cpp
-        src/util_tests.cpp
-)
-
-target_compile_features(envy_unit_tests PRIVATE cxx_std_20)
-target_include_directories(envy_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_sources(envy_unit_tests PRIVATE ${ENVY_UNIT_TEST_COMMON_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
-target_compile_options(envy_unit_tests PRIVATE
-    $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
-    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
-)
-target_link_libraries(envy_unit_tests
-    PRIVATE
-        doctest::doctest
-        envy::thirdparty
-)
+target_link_libraries(envy_unit_tests PRIVATE doctest::doctest)
+configure_envy_executable(envy_unit_tests "address,undefined")
 
 if(DEFINED _envy_rescan_link_group)
-    foreach(_envy_target IN ITEMS envy envy_functional_tester envy_unit_tests)
+    foreach(_envy_target IN ITEMS envy envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan envy_unit_tests)
         if(TARGET ${_envy_target})
             target_link_libraries(${_envy_target}
                 PRIVATE
@@ -454,7 +423,8 @@ add_custom_command(
     COMMAND "${CMAKE_COMMAND}" -E touch "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
     DEPENDS
         envy
-        envy_functional_tester
+        envy_functional_tester_asan_ubsan
+        envy_functional_tester_tsan_ubsan
         ${ENVY_FUNCTIONAL_TEST_SOURCES}
         ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
@@ -466,7 +436,7 @@ add_custom_target(run_functional_tests ALL
     DEPENDS "${ENVY_FUNCTIONAL_TEST_TIMESTAMP}"
 )
 
-add_dependencies(run_functional_tests envy envy_functional_tester run_unit_tests)
+add_dependencies(run_functional_tests envy envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan run_unit_tests)
 
 unset(ENVY_FUNCTIONAL_TEST_DIR)
 unset(ENVY_FUNCTIONAL_TEST_SOURCES)

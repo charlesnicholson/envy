@@ -31,6 +31,23 @@ using recipe_result_map_t = std::unordered_map<std::string, recipe_result>;
 
 class engine : unmovable {
  public:
+  // Execution context for recipe threads
+  struct recipe_execution_ctx {
+    std::thread worker;
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // Last completed phase
+    std::atomic<recipe_phase> target_phase{ recipe_phase::none };
+    std::atomic_bool failed{ false };
+    std::atomic_bool started{ false };  // True if worker thread has been created
+
+    // Per-thread traversal state for cycle detection
+    std::vector<std::string> ancestor_chain;
+
+    void set_target_phase(recipe_phase target);
+    void start(recipe *r, engine *eng, std::vector<std::string> chain);
+  };
+
   engine(cache &cache, default_shell_cfg_t default_shell);
   ~engine();
 
@@ -40,9 +57,14 @@ class engine : unmovable {
   recipe *find_exact(recipe_key const &key) const;
   std::vector<recipe *> find_matches(std::string_view query) const;
 
+  // Access to execution context for phase functions
+  recipe_execution_ctx &get_execution_ctx(recipe *r);
+
   // Phase coordination (thread-safe)
   void ensure_recipe_at_phase(recipe_key const &key, recipe_phase phase);
-  void start_recipe_thread(recipe *r, recipe_phase initial_target);
+  void start_recipe_thread(recipe *r,
+                           recipe_phase initial_target,
+                           std::vector<std::string> ancestor_chain = {});
   void wait_for_resolution_phase();
   void notify_phase_complete(recipe_key const &key, recipe_phase phase);
   void on_recipe_fetch_start();
@@ -58,20 +80,6 @@ class engine : unmovable {
 
   // Helper to ensure correct lock-then-notify pattern for global cv_
   void notify_all_global_locked();
-
-  struct recipe_execution_ctx {
-    std::thread worker;
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // Last completed phase
-    std::atomic<recipe_phase> target_phase{ recipe_phase::none };
-    std::atomic_bool failed{ false };
-    std::atomic_bool started{ false };  // True if worker thread has been created
-
-    void set_target_phase(recipe_phase target);
-    void start(recipe *r, engine *eng);
-  };
-
   void run_recipe_thread(recipe *r);  // Thread entry point
 
   std::unordered_map<recipe_key, std::unique_ptr<recipe>> recipes_;

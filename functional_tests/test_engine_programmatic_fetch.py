@@ -11,16 +11,16 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestEngineProgrammaticFetch(unittest.TestCase):
     """Tests for programmatic fetch phase (fetch functions)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-prog-fetch-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
-        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy"
+        self.envy_test = test_config.get_envy_executable()
+        self.envy = test_config.get_envy_executable()
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):

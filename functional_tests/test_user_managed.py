@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestUserManagedPackages(unittest.TestCase):
     """Test user-managed package behavior with check verbs."""
@@ -15,30 +17,18 @@ class TestUserManagedPackages(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-user-managed-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-user-managed-work-"))
-        self.envy_test = Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
+        self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-user-managed-markers-"))
+        self.envy_test = test_config.get_envy_executable()
         self.recipe_dir = Path(__file__).parent.parent / "test_data" / "recipes"
 
-        # Create unique marker for this test instance to avoid parallel test conflicts
-        import uuid
-        self.test_id = str(uuid.uuid4())[:8]
-        self.marker_simple = Path.home() / f".envy-test-marker-simple-{self.test_id}"
-
-        # Clean up any leftover marker files from previous test runs
-        self.cleanup_markers()
+        # Create marker paths in temp directory
+        self.marker_simple = self.marker_dir / "marker-simple"
+        self.marker_with_fetch = self.marker_dir / "marker-with-fetch"
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        self.cleanup_markers()
-
-    def cleanup_markers(self):
-        """Remove test marker files for this test instance."""
-        if hasattr(self, 'marker_simple') and self.marker_simple.exists():
-            self.marker_simple.unlink()
-        # Also clean up marker from with_fetch test
-        marker_with_fetch = Path.home() / ".envy-test-marker-with-fetch"
-        if marker_with_fetch.exists():
-            marker_with_fetch.unlink()
+        shutil.rmtree(self.marker_dir, ignore_errors=True)
 
     def lua_path(self, path: Path) -> str:
         """Convert path to Lua string literal with forward slashes."""
@@ -151,14 +141,14 @@ class TestUserManagedPackages(unittest.TestCase):
     def test_user_managed_with_fetch_purges_all_dirs(self):
         """User-managed with fetch verb: fetch_dir populated, fully purged after."""
         recipe_path = self.recipe_dir / "user_managed_with_fetch.lua"
+        env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
         # First run: install (downloads file, runs fetch/stage/build/install)
-        result = self.run_envy("local.user_managed_with_fetch@v1", recipe_path, trace=True)
+        result = self.run_envy("local.user_managed_with_fetch@v1", recipe_path, trace=True, env_vars=env)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify marker created
-        marker = Path.home() / ".envy-test-marker-with-fetch"
-        self.assertTrue(marker.exists())
+        self.assertTrue(self.marker_with_fetch.exists())
 
         # Verify cache entry purged (no fetch/, work/, or asset/ remain)
         asset_dir = self.cache_root / "assets" / "local.user_managed_with_fetch@v1"

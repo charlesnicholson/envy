@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from typing import Optional, List
 
+from . import test_config
+
 
 class TestSyncCommand(unittest.TestCase):
     """Tests for 'envy sync' command."""
@@ -19,7 +21,7 @@ class TestSyncCommand(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-sync-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-sync-manifest-"))
-        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
+        self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
         self.test_data = self.project_root / "test_data"
 

@@ -4,11 +4,9 @@ identity = "local.user_managed_simple@v1"
 
 -- Check if "package" is already installed (simulated by marker file)
 function check(ctx)
-    -- Allow test to override marker path via env var for test isolation
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
-        local home = os.getenv("HOME") or os.getenv("USERPROFILE") or "/tmp"
-        marker = home .. "/.envy-test-marker-simple"
+        error("ENVY_TEST_MARKER_SIMPLE must be set")
     end
 
     local f = io.open(marker, "r")
@@ -21,11 +19,9 @@ end
 
 -- Install the "package" (create marker file)
 function install(ctx)
-    -- Allow test to override marker path via env var for test isolation
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
-        local home = os.getenv("HOME") or os.getenv("USERPROFILE") or "/tmp"
-        marker = home .. "/.envy-test-marker-simple"
+        error("ENVY_TEST_MARKER_SIMPLE must be set")
     end
 
     local f = io.open(marker, "w")

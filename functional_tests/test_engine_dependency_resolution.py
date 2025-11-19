@@ -12,16 +12,16 @@ import tempfile
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class TestEngineDependencyResolution(unittest.TestCase):
     """Tests for dependency graph construction and validation."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
-        self.envy_test = (
-            Path(__file__).parent.parent / "out" / "build" / "envy_functional_tester"
-        )
-        self.envy = Path(__file__).parent.parent / "out" / "build" / "envy"
+        self.envy_test = test_config.get_envy_executable()
+        self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
