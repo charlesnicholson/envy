@@ -399,7 +399,7 @@ endif()
 # Run tests and create timestamp on success
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
-    COMMAND envy_unit_tests
+    COMMAND ${CMAKE_COMMAND} -E env "ASAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/asan.supp" $<TARGET_FILE:envy_unit_tests>
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
     DEPENDS envy_unit_tests ${TEST_DATA_FILES}
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
