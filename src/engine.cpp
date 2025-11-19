@@ -61,8 +61,8 @@ void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
 }
 
 void engine::recipe_execution_ctx::start(recipe *r,
-                                          engine *eng,
-                                          std::vector<std::string> chain) {
+                                         engine *eng,
+                                         std::vector<std::string> chain) {
   ancestor_chain = std::move(chain);
   worker = std::thread([r, eng] { eng->run_recipe_thread(r); });
 }
@@ -138,8 +138,8 @@ engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
 }
 
 void engine::start_recipe_thread(recipe *r,
-                                  recipe_phase initial_target,
-                                  std::vector<std::string> ancestor_chain) {
+                                 recipe_phase initial_target,
+                                 std::vector<std::string> ancestor_chain) {
   auto &ctx{ [this, r]() -> recipe_execution_ctx & {
     std::lock_guard const lock(mutex_);
     auto const it{ execution_ctxs_.find(r->key) };
