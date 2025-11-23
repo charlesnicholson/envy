@@ -3,7 +3,7 @@
 #include "blake3_util.h"
 #include "cache.h"
 #include "engine.h"
-#include "lua_ctx_bindings.h"
+#include "lua_ctx/lua_ctx_bindings.h"
 #include "manifest.h"
 #include "recipe.h"
 #include "shell.h"

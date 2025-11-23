@@ -1,7 +1,7 @@
 #include "manifest.h"
 
 #include "engine.h"
-#include "lua_ctx_bindings.h"
+#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_shell.h"
 #include "lua_util.h"
 #include "shell.h"

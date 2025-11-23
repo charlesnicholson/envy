@@ -39,6 +39,11 @@ int lua_ctx_move(lua_State *lua) {
       return luaL_error(lua, "ctx.move: source not found: %s", src_str);
     }
 
+    // If src is a file and dst is an existing directory, move file into directory
+    if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
+      dst = dst / src.filename();
+    }
+
     if (dst.has_parent_path()) { std::filesystem::create_directories(dst.parent_path()); }
 
     // Error if destination already exists (don't delete anything automatically)

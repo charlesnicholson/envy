@@ -39,6 +39,11 @@ int lua_ctx_copy(lua_State *lua) {
       return luaL_error(lua, "ctx.copy: source not found: %s", src_str);
     }
 
+    // If src is a file and dst is an existing directory, copy file into directory
+    if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
+      dst = dst / src.filename();
+    }
+
     // Auto-detect file vs directory
     if (std::filesystem::is_directory(src)) {
       std::filesystem::copy(src,

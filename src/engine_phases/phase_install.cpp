@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "recipe.h"
-#include "lua_ctx_bindings.h"
+#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "phase_check.h"
 #include "shell.h"

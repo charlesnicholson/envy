@@ -4,7 +4,7 @@
 #include "engine.h"
 #include "recipe.h"
 #include "extract.h"
-#include "lua_ctx_bindings.h"
+#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
