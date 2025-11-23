@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_set>
 
 struct lua_State;
 
@@ -18,6 +19,13 @@ struct lua_ctx_common {
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
   engine *engine_;                // Engine for cache access
   recipe *recipe_;                // Current recipe (for ctx.asset() lookups)
+};
+
+// Fetch-phase-specific context (extends lua_ctx_common).
+// Used by both recipe_fetch and asset_fetch phases.
+struct fetch_phase_ctx : lua_ctx_common {
+  std::filesystem::path stage_dir;  // Git repos bypass tmp, go directly here
+  std::unordered_set<std::string> used_basenames;  // Collision detection across ctx.fetch() calls
 };
 
 // Register common Lua context functions available to all phases.
@@ -48,12 +56,23 @@ void lua_ctx_bindings_register_extract(lua_State *lua, void *context);
 // List directory contents for debugging (prints to TUI)
 void lua_ctx_bindings_register_ls(lua_State *lua, void *context);
 
+// Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)
+// Requires fetch_phase_ctx* as context (extends lua_ctx_common)
+// Used by both recipe_fetch and asset_fetch phases
+void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *context);
+
 // Check if target_identity is a declared dependency of current recipe
 // Used for ctx.asset() validation. Exposed for testing.
 bool is_declared_dependency(recipe *r, std::string const &target_identity);
 
-// Lua C function: ctx.asset(identity) -> path
-// Exposed for use in default_shell functions (in manifest.cpp)
+// Lua C function implementations (one per file)
+int lua_ctx_run(lua_State *lua);
 int lua_ctx_asset(lua_State *lua);
+int lua_ctx_copy(lua_State *lua);
+int lua_ctx_move(lua_State *lua);
+int lua_ctx_extract(lua_State *lua);
+int lua_ctx_ls(lua_State *lua);
+int lua_ctx_fetch(lua_State *lua);
+int lua_ctx_commit_fetch(lua_State *lua);
 
 }  // namespace envy

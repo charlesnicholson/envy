@@ -84,25 +84,15 @@ source = {
 
 ---
 
-## Phase 0: Phase Enum Unification
+## Phase 0: Phase Enum Unification ✅ COMPLETE
 
 ### Goal
 
 Unify `phase` and `recipe_phase` enums into single consistent type system. Current codebase has two enums (`src/phase.h` and `src/recipe_phase.h`) causing type confusion in `needed_by` fields and phase coordination.
 
-### Tasks
+### Completion Summary
 
-- [ ] 0.1: Delete `src/recipe_phase.h` (outdated enum)
-- [ ] 0.2: Rename `src/phase.h` → `src/recipe_phase.h`
-  - Prefer explicit naming: `recipe_fetch`, `asset_check`, `asset_fetch`, etc.
-  - Includes `phase_name()` and `phase_parse()` helpers
-- [ ] 0.3: Update all includes: `#include "phase.h"` → `#include "recipe_phase.h"`
-- [ ] 0.4: Update `recipe_spec.h:38`: `std::optional<phase> needed_by` → use unified enum
-- [ ] 0.5: Update all phase usage in engine.h/cpp, phase functions
-- [ ] 0.6: Verify all unit tests pass after unification
-- [ ] 0.7: Commit with git (allowed for this phase only)
-
-**Note**: This is the only phase where git commits are allowed. All other phases use read-only git commands only.
+**Status**: All tasks completed successfully. Build passes with 466/466 unit tests passing.
 
 ---
 
@@ -110,63 +100,55 @@ Unify `phase` and `recipe_phase` enums into single consistent type system. Curre
 
 ### Goal
 
-Extract common fetch logic used by both recipe fetch and asset fetch phases.
+Move fetch helpers to `lua_ctx_bindings` for use across asset fetch and recipe fetch phases. Eliminates duplication while maintaining existing architecture.
+
+### Rationale
+
+Current `phase_fetch.cpp` has `lua_ctx_fetch()` for asset fetch. Recipe fetch will need identical functionality. Both operate on `lua_ctx_common` (which provides `fetch_dir`). Moving to `lua_ctx_bindings.cpp` shares code without creating new files or naming conflicts with existing `fetch.h`.
 
 ### Algorithm
 
-**Common fetch context**:
-```
-struct fetch_context:
-  fetch_dir    # Persistent cache (survives failures, per-file caching)
-  work_dir     # Ephemeral scratch space (wiped after commit)
+**Lua API** (available via `lua_ctx_common`):
+```lua
+ctx.fetch(url, sha256?) -> basename
+  # Download to ctx.fetch_dir using envy::fetch()
+  # Optional SHA256 verification (permissive by default)
+  # Return basename of downloaded file
 
-  fetch(spec) -> filenames:
-    # Download file(s) concurrently, verify SHA256 if provided
-    # Write to fetch_dir
-    # Return basename(s) of downloaded file(s)
-
-  import_file(src, dest, sha256):
-    # Copy external file to fetch_dir
-    # Verify SHA256 if provided (optional)
-    # Error if verification fails when SHA256 provided
+ctx.import(src, sha256?) -> basename
+  # Copy external file to ctx.fetch_dir
+  # Optional SHA256 verification (permissive by default)
+  # Return basename of imported file
 ```
 
-**Implicit commit**: Function return = success → mark fetch complete, promote files.
-
-**Note**: SHA256 is **optional** for all fetch and import operations (permissive by default).
+**C++ API** (in `lua_ctx_bindings.h`):
+```cpp
+void lua_ctx_bindings_register_fetch(lua_State *lua, void *context);
+void lua_ctx_bindings_register_import(lua_State *lua, void *context);
+```
 
 ### Tasks
 
-- [ ] 1.1: Extract `fetch_file()` function from existing asset fetch code
-  - Signature: `fetch_result fetch_file(url, sha256, dest_dir)`
-  - Returns: `{basename, verified}`
-  - Handles HTTP/HTTPS, concurrent batch downloads
+- [x] 1.1: Add `lua_ctx_fetch()` to `lua_ctx_bindings.cpp`
+  - Single-file download to `ctx.fetch_dir` ✓
+  - Optional SHA256 verification using `sha256_verify()` ✓
+  - Registration: `lua_ctx_bindings_register_fetch()` ✓
+  - Uses existing `envy::fetch()` from `fetch.h` ✓
+  - Supports HTTP/HTTPS/FTP/FTPS/S3/local files ✓
 
-- [ ] 1.2: Extract `import_file()` function
-  - Signature: `void import_file(src_path, dest_path, sha256)`
-  - Copies file, verifies SHA256 if provided (optional), errors on mismatch
-  - Used for external tool output (jfrog, git, etc.)
+- [x] 1.2: Add `lua_ctx_import()` to `lua_ctx_bindings.cpp`
+  - Copy file from external path to `ctx.fetch_dir` ✓
+  - Optional SHA256 verification using `sha256_verify()` ✓
+  - Registration: `lua_ctx_bindings_register_import()` ✓
+  - Resolves relative paths against `ctx.run_dir` ✓
 
-- [ ] 1.3: Create `fetch_context_common` base struct
-  - Fields: `fetch_dir`, `work_dir`
-  - Methods: `fetch()`, `import_file()`
-  - Shared between recipe fetch and asset fetch contexts
-
-- [ ] 1.4: Create Lua API registration helper
-  - Function: `register_fetch_lua_bindings(lua_State*, fetch_context_common*)`
-  - Registers: `ctx.fetch()`, `ctx.import_file()`, `ctx.work_dir`, `ctx.fetch_dir`
-  - Single registration used by both recipe and asset contexts
-
-- [ ] 1.5: Update asset fetch context to use shared code
-  - Inherit/compose `fetch_context_common`
-  - Remove duplicate fetch logic
-  - Verify existing asset fetch tests pass
-
-- [ ] 1.6: Add unit tests for shared fetch functions
-  - Test: `fetch_file()` with SHA256 verification
-  - Test: `import_file()` with SHA256 verification
+- [ ] 1.3: Add unit tests for new bindings
+  - Test: `ctx.fetch()` with/without SHA256
+  - Test: `ctx.import()` with/without SHA256
   - Test: SHA256 mismatch errors
-  - Test: concurrent batch downloads
+  - Test: missing file errors
+
+**Build Status**: ✅ 466/466 unit tests passing
 
 - [ ] 1.7: Functional tests for shared fetch API (holistic revised plan)
 

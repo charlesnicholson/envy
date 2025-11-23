@@ -22,7 +22,7 @@ extern "C" {
 namespace envy {
 namespace {
 
-struct install_context : lua_ctx_common {
+struct install_phase_ctx : lua_ctx_common {
   std::filesystem::path install_dir;
   std::filesystem::path stage_dir;
   cache::scoped_entry_lock *lock{ nullptr };
@@ -45,7 +45,7 @@ bool directory_has_entries(std::filesystem::path const &dir) {
 }
 
 int lua_ctx_mark_install_complete(lua_State *lua) {
-  auto *ctx{ static_cast<install_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto *ctx{ static_cast<install_phase_ctx *>(lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx || !ctx->lock) {
     return luaL_error(lua, "ctx.mark_install_complete: missing install context");
   }
@@ -54,10 +54,10 @@ int lua_ctx_mark_install_complete(lua_State *lua) {
   return 0;
 }
 
-void build_install_context_table(lua_State *lua,
+void build_install_phase_ctx_table(lua_State *lua,
                                  std::string const &identity,
                                  std::unordered_map<std::string, lua_value> const &options,
-                                 install_context *ctx) {
+                                 install_phase_ctx *ctx) {
   lua_createtable(lua, 0, 11);
 
   lua_pushstring(lua, identity.c_str());
@@ -102,7 +102,7 @@ bool run_programmatic_install(lua_State *lua,
                               recipe *r) {
   tui::trace("phase install: running programmatic install function");
 
-  install_context ctx{};
+  install_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = install_dir;
   ctx.engine_ = &eng;
@@ -111,7 +111,7 @@ bool run_programmatic_install(lua_State *lua,
   ctx.stage_dir = stage_dir;
   ctx.lock = lock;
 
-  build_install_context_table(lua, identity, options, &ctx);
+  build_install_phase_ctx_table(lua, identity, options, &ctx);
 
   if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
     char const *err{ lua_tostring(lua, -1) };

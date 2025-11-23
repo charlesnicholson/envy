@@ -145,6 +145,14 @@ set(ENVY_COMMON_SOURCES
     src/engine.cpp
     src/recipe_key.cpp
     src/lua_ctx_bindings.cpp
+    src/lua_ctx_asset.cpp
+    src/lua_ctx_commit_fetch.cpp
+    src/lua_ctx_copy.cpp
+    src/lua_ctx_extract.cpp
+    src/lua_ctx_fetch.cpp
+    src/lua_ctx_ls.cpp
+    src/lua_ctx_move.cpp
+    src/lua_ctx_run.cpp
     src/engine_phases/phase_build.cpp
     src/engine_phases/phase_check.cpp
     src/engine_phases/phase_completion.cpp
@@ -348,6 +356,14 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/engine.cpp
     src/recipe_key.cpp
     src/lua_ctx_bindings.cpp
+    src/lua_ctx_asset.cpp
+    src/lua_ctx_commit_fetch.cpp
+    src/lua_ctx_copy.cpp
+    src/lua_ctx_extract.cpp
+    src/lua_ctx_fetch.cpp
+    src/lua_ctx_ls.cpp
+    src/lua_ctx_move.cpp
+    src/lua_ctx_run.cpp
     src/engine_phases/phase_build.cpp
     src/engine_phases/phase_check.cpp
     src/engine_phases/phase_completion.cpp

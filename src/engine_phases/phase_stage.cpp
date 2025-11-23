@@ -23,7 +23,7 @@ namespace envy {
 namespace {
 
 // Context data for Lua C functions (stored as userdata upvalue)
-struct stage_context : lua_ctx_common {
+struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
 };
 
@@ -78,7 +78,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
 
 // Lua C function: ctx.extract_all({strip=0})
 int lua_ctx_extract_all(lua_State *lua) {
-  auto *ctx{ static_cast<stage_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
+  auto *ctx{ static_cast<stage_phase_ctx *>(lua_touserdata(lua, lua_upvalueindex(1))) };
   if (!ctx) { return luaL_error(lua, "ctx.extract_all: missing context"); }
 
   int strip_components{ 0 };
@@ -106,10 +106,10 @@ int lua_ctx_extract_all(lua_State *lua) {
   return 0;  // No return values
 }
 
-void build_stage_context_table(lua_State *lua,
+void build_stage_phase_ctx_table(lua_State *lua,
                                std::string const &identity,
                                std::unordered_map<std::string, lua_value> const &options,
-                               stage_context *ctx) {
+                               stage_phase_ctx *ctx) {
   lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
 
   lua_pushstring(lua, identity.c_str());
@@ -217,13 +217,13 @@ void run_programmatic_stage(lua_State *lua,
                             recipe *r) {
   tui::trace("phase stage: running imperative stage function");
 
-  stage_context ctx{};
+  stage_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = dest_dir;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
 
-  build_stage_context_table(lua, identity, options, &ctx);
+  build_stage_phase_ctx_table(lua, identity, options, &ctx);
 
   // Stack: stage_function at -2, ctx_table at -1 (ready for pcall)
   if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {

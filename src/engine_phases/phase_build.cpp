@@ -21,15 +21,15 @@ namespace envy {
 namespace {
 
 // Context data for Lua C functions (stored as userdata upvalue)
-struct build_context : lua_ctx_common {
+struct build_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is stage_dir (build working directory)
   std::filesystem::path install_dir;  // Additional field for build phase
 };
 
-void build_build_context_table(lua_State *lua,
+void build_build_phase_ctx_table(lua_State *lua,
                                std::string const &identity,
                                std::unordered_map<std::string, lua_value> const &options,
-                               build_context *ctx) {
+                               build_phase_ctx *ctx) {
   lua_createtable(lua, 0, 9);  // Pre-allocate space for 9 fields
 
   lua_pushstring(lua, identity.c_str());
@@ -70,14 +70,14 @@ void run_programmatic_build(lua_State *lua,
                             recipe *r) {
   tui::trace("phase build: running programmatic build function");
 
-  build_context ctx{};
+  build_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = stage_dir;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
 
-  build_build_context_table(lua, identity, options, &ctx);
+  build_build_phase_ctx_table(lua, identity, options, &ctx);
 
   // Stack: build_function at -2, ctx_table at -1 (ready for pcall)
   if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
