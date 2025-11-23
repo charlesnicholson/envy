@@ -32,5 +32,4 @@ std::filesystem::path uri_resolve_local_file_relative(
     std::string_view local_file,
     std::optional<std::filesystem::path> const &anchor);
 
-
 }  // namespace envy

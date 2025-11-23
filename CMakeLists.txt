@@ -415,6 +415,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/recipe_key_tests.cpp
     src/lua_ctx/lua_ctx_bindings_tests.cpp
     src/lua_ctx/lua_ctx_copy_tests.cpp
+    src/lua_ctx/lua_ctx_fetch_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
     src/sha256_tests.cpp
     src/shell_tests_common.cpp

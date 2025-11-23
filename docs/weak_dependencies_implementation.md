@@ -108,93 +108,45 @@ Current `phase_fetch.cpp` has `lua_ctx_fetch()` for asset fetch. Recipe fetch wi
 
 ### Algorithm
 
-**Lua API** (available via `lua_ctx_common`):
+**Two-Step Fetch Pattern** (security gating):
+1. **Ungated fetch**: Download files to `ctx.run_dir` (tmp workspace) without verification
+2. **Gated commit**: Move files from tmp to `ctx.fetch_dir` with SHA256 verification
+
+This pattern allows users to download manifests, inspect them, download additional files based on manifest contents, then commit all files together with SHA256 verification.
+
+**Lua API** (available via `fetch_phase_ctx`):
 ```lua
-ctx.fetch(url, sha256?) -> basename
-  # Download to ctx.fetch_dir using envy::fetch()
-  # Optional SHA256 verification (permissive by default)
-  # Return basename of downloaded file
+ctx.fetch(url) -> basename
+ctx.fetch({source="...", ref="..."}) -> basename
+ctx.fetch({"url1", "url2"}) -> {"file1.tar.gz", "file2.tar.gz"}
+  # Download to ctx.run_dir (tmp) using envy::fetch()
+  # NO SHA256 verification (ungated)
+  # Git repos go to ctx.stage_dir, other files go to ctx.run_dir
+  # Return basename(s) of downloaded file(s)
+  # Handles filename collisions with -2, -3 suffix
 
-ctx.import(src, sha256?) -> basename
-  # Copy external file to ctx.fetch_dir
-  # Optional SHA256 verification (permissive by default)
-  # Return basename of imported file
+ctx.commit_fetch(filename) -> nil
+ctx.commit_fetch({filename="...", sha256="..."}) -> nil
+ctx.commit_fetch({"file1.tar.gz", "file2.tar.gz"}) -> nil
+ctx.commit_fetch({{filename="...", sha256="..."}, ...}) -> nil
+  # Move file(s) from ctx.run_dir to ctx.fetch_dir
+  # SHA256 verification if provided (gated)
+  # Errors if file missing in tmp or SHA256 mismatch
 ```
 
-**C++ API** (in `lua_ctx_bindings.h`):
+**C++ API** (in `lua_ctx/lua_ctx_bindings.h`):
 ```cpp
-void lua_ctx_bindings_register_fetch(lua_State *lua, void *context);
-void lua_ctx_bindings_register_import(lua_State *lua, void *context);
+void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *context);
+  // Registers both ctx.fetch and ctx.commit_fetch
 ```
 
-### Tasks
+### Test Coverage
 
-- [x] 1.1: Add `lua_ctx_fetch()` to `lua_ctx_bindings.cpp`
-  - Single-file download to `ctx.fetch_dir` ✓
-  - Optional SHA256 verification using `sha256_verify()` ✓
-  - Registration: `lua_ctx_bindings_register_fetch()` ✓
-  - Uses existing `envy::fetch()` from `fetch.h` ✓
-  - Supports HTTP/HTTPS/FTP/FTPS/S3/local files ✓
-
-- [x] 1.2: Add `lua_ctx_import()` to `lua_ctx_bindings.cpp`
-  - Copy file from external path to `ctx.fetch_dir` ✓
-  - Optional SHA256 verification using `sha256_verify()` ✓
-  - Registration: `lua_ctx_bindings_register_import()` ✓
-  - Resolves relative paths against `ctx.run_dir` ✓
-
-- [ ] 1.3: Add unit tests for new bindings
-  - Test: `ctx.fetch()` with/without SHA256
-  - Test: `ctx.import()` with/without SHA256
-  - Test: SHA256 mismatch errors
-  - Test: missing file errors
-
-**Build Status**: ✅ 466/466 unit tests passing
-
-- [ ] 1.7: Functional tests for shared fetch API (holistic revised plan)
-
-  **Note**: Envy already has 106+ functional tests covering fetch operations. This plan identifies:
-  - ✓ **Existing coverage** (reuse/verify still passes)
-  - ⚠️ **Adaptation needed** (modify existing test)
-  - ✗ **New test required** (gap in coverage)
+Future test work needed (✗ indicates gaps in current coverage):
 
   ---
 
-  ### A. Declarative Fetch Syntax (WELL COVERED)
-
-  **Existing Coverage** (`test_engine_declarative_fetch.py` - 9 tests):
-  - ✓ `test_declarative_fetch_string` - `fetch = "url"`
-  - ✓ `test_declarative_fetch_single_table` - `fetch = {source="...", sha256="..."}`
-  - ✓ `test_declarative_fetch_array` - `fetch = [...]` (3 files, concurrent)
-  - ✓ `test_declarative_fetch_string_array` - `fetch = {"url1", "url2"}`
-  - ✓ `test_declarative_fetch_bad_sha256` - SHA256 mismatch error
-  - ✓ `test_declarative_fetch_collision` - duplicate filename error
-
-  **Action**: Verify these tests still pass after shared API refactor. No new tests needed.
-
-  ---
-
-  ### B. Programmatic Fetch API (EXTREMELY WELL COVERED)
-
-  **Existing Coverage** (`test_engine_programmatic_fetch.py` - 24 tests):
-  - ✓ `test_fetch_single_string/table/array` - all ctx.fetch() variants
-  - ✓ `test_commit_fetch_*` - all ctx.commit_fetch() variants (7 tests)
-  - ✓ `test_ctx_identity/options` - context variables
-  - ✓ `test_fetch_function_returns_*` - all return types (6 tests)
-  - ✓ `test_fetch_function_mixed_imperative_and_declarative` - hybrid
-
-  **Action**: Verify these tests still pass. No new tests needed (comprehensive coverage).
-
-  ---
-
-  ### C. Per-File Caching (GOOD COVERAGE)
-
-  **Existing Coverage** (`test_engine_fetch_caching.py` - 4 tests):
-  - ✓ `test_declarative_fetch_partial_failure_then_complete` - cache hits after partial failure
-  - ✓ `test_declarative_fetch_intrusive_partial_failure` - with `--fail-after-fetch-count`
-  - ✓ `test_declarative_fetch_corrupted_cache` - corruption detection & re-download
-  - ✓ `test_declarative_fetch_complete_but_unmarked` - revalidation without marker
-
-  **Action**: Verify these tests exercise shared fetch API correctly.
+  ### C. Per-File Caching
 
   **New Tests Needed**:
   - ✗ Cache hit with multiple files → log "cache hit: file1.tar.gz", "cache hit: file2.tar.gz"
@@ -203,44 +155,27 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
 
   ---
 
-  ### D. Import File Operations (PARTIAL COVERAGE)
+  ### D. Commit File Operations
 
-  **Existing Coverage**:
-  - ✓ `test_commit_fetch_with_sha256` - programmatic import with verification
-  - ✓ `test_commit_fetch_sha256_mismatch` - import error handling
-  - ✓ `test_commit_fetch_missing_file` - missing file error
-
-  **New Tests Needed**:
-  - ✗ `ctx.import_file()` from work_dir to fetch_dir (explicit API, not commit_fetch)
-  - ✗ Import with relative path → error (validate absolute path requirement)
-  - ✗ Import zero-byte file → SHA256 verified correctly
-  - ✗ Import idempotent (file already exists with correct SHA256) → no error, unchanged
+  **New Tests Needed** (defer to tmp lifecycle tests):
+  - ✗ Commit zero-byte file → SHA256 verified correctly
+  - ✗ Fetch without commit → files remain in tmp (not in fetch_dir)
 
   ---
 
-  ### E. Fetch/Work Directory Lifecycle (PARTIAL COVERAGE)
+  ### E. Tmp Directory Lifecycle
 
-  **Existing Coverage**:
-  - ✓ Cache tests verify fetch_dir structure (`test_cache.py`)
-  - ✓ Programmatic tests verify tmp cleanup (`test_selective_commit`)
-
-  **New Tests Needed**:
-  - ✗ Fetch dir auto-created with correct permissions
-  - ✗ Work dir auto-created, writable
-  - ✗ Work dir cleaned after successful implicit commit (function return)
-  - ✗ Work dir preserved after function error (debugging)
-  - ✗ Multiple work_dir usage patterns (external tool writes, then import)
-  - ✗ envy-complete marker created correctly
-  - ✗ Lock-free read after completion marker present
+  **New Tests Needed** (defer to separate task):
+  - ✗ `ctx.run_dir` (tmp) auto-created, writable
+  - ✗ Tmp cleaned after successful commit (files moved to fetch_dir)
+  - ✗ Tmp preserved after fetch error (debugging)
+  - ✗ Tmp preserved if commit not called (files remain in tmp)
+  - ✗ Multiple tmp usage patterns: fetch manifest → read → fetch more → commit all
+  - ✗ envy-complete marker created in fetch_dir after successful commit
 
   ---
 
-  ### F. Concurrent Operations (GOOD COVERAGE)
-
-  **Existing Coverage**:
-  - ✓ `test_declarative_fetch_array` - concurrent batch downloads (3 files)
-  - ✓ `test_cache.py` - extensive concurrency tests (25+ cache locking tests)
-  - ✓ `test_parallel_git_fetch` - concurrent git clones
+  ### F. Concurrent Operations
 
   **New Tests Needed**:
   - ✗ Large-scale concurrent fetch (100+ files) → verify parallelism effective
@@ -249,14 +184,7 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
 
   ---
 
-  ### G. Error Handling (PARTIAL COVERAGE)
-
-  **Existing Coverage**:
-  - ✓ `test_fetch_local_file_nonexistent` - missing file error
-  - ✓ `test_declarative_fetch_bad_sha256` - SHA256 mismatch
-  - ✓ `test_commit_fetch_sha256_mismatch` - commit error
-  - ✓ `test_nonexistent_repository` - git clone failure
-  - ✓ `test_fetch_function_error_propagation` - Lua errors include recipe identity
+  ### G. Error Handling
 
   **New Tests Needed**:
   - ✗ Network timeout (simulated) → error with timeout message
@@ -269,11 +197,7 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
 
   ---
 
-  ### H. Edge Cases (MINIMAL COVERAGE)
-
-  **Existing Coverage**:
-  - ✓ `test_extract_*` - various archive formats (not fetch, but related)
-  - ✓ `test_clone_to_path_with_spaces` - git path handling
+  ### H. Edge Cases
 
   **New Tests Needed**:
   - ✗ Empty fetch (no files) → noop, no error
@@ -288,36 +212,13 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
 
   ### I. Integration Tests (Recipe + Asset Fetch)
 
-  **Existing Coverage**:
-  - ✓ `test_engine_recipe_loading.py` - recipe fetch with SHA256 (10 tests)
-  - ✓ `test_asset.py` - asset command end-to-end (20 tests)
-  - ✓ Programmatic tests implicitly test recipe fetch context
-
-  **Adaptation Needed**:
-  - ⚠️ Verify recipe fetch uses shared `fetch_context_common`
-  - ⚠️ Verify asset fetch uses shared `fetch_context_common`
-  - ⚠️ Verify `ctx.fetch_dir` and `ctx.work_dir` accessible in both contexts
-  - ⚠️ Verify implicit commit on function return works for both
-
-  **New Tests Needed**:
-  - ✗ Recipe with custom fetch using shared API → verify fetch_dir correct path
-  - ✗ Asset with custom fetch using shared API → verify fetch_dir correct path
-  - ✗ Recipe fetch error → fetch_dir preserved for debugging
-  - ✗ Asset fetch error → fetch_dir preserved for debugging
+  **New Tests Needed** (defer to Phase 2):
+  - ✗ Recipe with custom fetch using two-step pattern → verify tmp workflow
+  - ✗ Recipe fetch error → tmp preserved for debugging
 
   ---
 
-  ### J. Backwards Compatibility (CRITICAL)
-
-  **Action**:
-  - [ ] Run ALL existing fetch tests (`test_engine_declarative_fetch.py`, `test_engine_programmatic_fetch.py`, `test_engine_fetch_caching.py`)
-  - [ ] Run ALL recipe loading tests (`test_engine_recipe_loading.py`)
-  - [ ] Run ALL asset tests (`test_asset.py`)
-  - [ ] Verify NO regressions (all 60+ tests pass)
-
-  ---
-
-  ### K. Performance & Scale (NEW COVERAGE AREA)
+  ### K. Performance & Scale
 
   **New Tests Needed**:
   - ✗ Large file (1GB+) download → reasonable speed, progress reporting
@@ -327,13 +228,7 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
 
   ---
 
-  ### L. Git-Specific (WELL COVERED)
-
-  **Existing Coverage** (`test_fetch_git.py` - 9 tests):
-  - ✓ Clone with tag/branch/SHA refs
-  - ✓ .git directory preservation
-  - ✓ Error handling (bad repo, bad ref, missing --ref)
-  - ✓ Parallel git cloning
+  ### L. Git-Specific
 
   **New Tests Needed**:
   - ✗ SSH cloning (if supporting SSH) → credential handling
@@ -341,27 +236,6 @@ void lua_ctx_bindings_register_import(lua_State *lua, void *context);
   - ✗ Submodules → recursive clone
 
   ---
-
-  ### Summary: Test Count
-
-  **Existing (verify still pass)**: 60+ tests
-  - Declarative: 9 tests
-  - Programmatic: 24 tests
-  - Caching: 4 tests
-  - Recipe loading: 10 tests
-  - Git: 9 tests
-  - Asset: 20 tests (subset relevant)
-
-  **New tests needed**: ~35 tests
-  - Import operations: 4
-  - Directory lifecycle: 7
-  - Error handling: 7
-  - Edge cases: 7
-  - Integration: 4
-  - Performance: 4
-  - Git advanced: 3 (optional)
-
-  **Total Phase 1 coverage**: 95+ tests (60 existing + 35 new)
 
 ---
 
