@@ -11,6 +11,21 @@ Both integrate via iterative graph expansion/resolution with convergence.
 
 ---
 
+## Terminology
+
+**Reference-only dependency**: Partial identity match (e.g., `{reference = "python"}`) without fallback. Recipe declares "I need something matching 'python' but won't tell you how to get it—someone else must provide it." Errors if no match found after resolution.
+
+**Weak dependency**: Partial identity match with fallback recipe (e.g., `{reference = "python", weak = {...}}`). Recipe declares "I prefer something matching 'python' from elsewhere, but here's a fallback if not found." Uses fallback only if no match exists after strong closure.
+
+**Partial identity matching**: Query matches namespace/name/revision (ignoring options). Examples:
+- `"python"` matches `*.python@*` (any namespace, any revision, any options)
+- `"local.python@r4"` matches `local.python@r4{...}` (exact identity, any options)
+- Ambiguity (multiple matches with different options/revisions) → error
+
+**Nested source dependency**: Prerequisite for fetching a recipe's source (e.g., "install jfrog before fetching toolchain recipe from Artifactory"). Declared in `source.dependencies`, must complete before outer recipe can be fetched.
+
+---
+
 ## Core Concepts
 
 ### Nested Source Dependencies
@@ -69,6 +84,28 @@ source = {
 
 ---
 
+## Phase 0: Phase Enum Unification
+
+### Goal
+
+Unify `phase` and `recipe_phase` enums into single consistent type system. Current codebase has two enums (`src/phase.h` and `src/recipe_phase.h`) causing type confusion in `needed_by` fields and phase coordination.
+
+### Tasks
+
+- [ ] 0.1: Delete `src/recipe_phase.h` (outdated enum)
+- [ ] 0.2: Rename `src/phase.h` → `src/recipe_phase.h`
+  - Prefer explicit naming: `recipe_fetch`, `asset_check`, `asset_fetch`, etc.
+  - Includes `phase_name()` and `phase_parse()` helpers
+- [ ] 0.3: Update all includes: `#include "phase.h"` → `#include "recipe_phase.h"`
+- [ ] 0.4: Update `recipe_spec.h:38`: `std::optional<phase> needed_by` → use unified enum
+- [ ] 0.5: Update all phase usage in engine.h/cpp, phase functions
+- [ ] 0.6: Verify all unit tests pass after unification
+- [ ] 0.7: Commit with git (allowed for this phase only)
+
+**Note**: This is the only phase where git commits are allowed. All other phases use read-only git commands only.
+
+---
+
 ## Phase 1: Shared Fetch API
 
 ### Goal
@@ -90,11 +127,13 @@ struct fetch_context:
 
   import_file(src, dest, sha256):
     # Copy external file to fetch_dir
-    # Verify SHA256 (required)
-    # Error if verification fails
+    # Verify SHA256 if provided (optional)
+    # Error if verification fails when SHA256 provided
 ```
 
 **Implicit commit**: Function return = success → mark fetch complete, promote files.
+
+**Note**: SHA256 is **optional** for all fetch and import operations (permissive by default).
 
 ### Tasks
 
@@ -105,7 +144,7 @@ struct fetch_context:
 
 - [ ] 1.2: Extract `import_file()` function
   - Signature: `void import_file(src_path, dest_path, sha256)`
-  - Copies file, computes SHA256, errors on mismatch
+  - Copies file, verifies SHA256 if provided (optional), errors on mismatch
   - Used for external tool output (jfrog, git, etc.)
 
 - [ ] 1.3: Create `fetch_context_common` base struct
@@ -378,20 +417,35 @@ parse_recipe_spec(lua_value):
 **Execution** (during phase_recipe_fetch):
 ```
 phase_recipe_fetch(recipe):
+  # Get ancestor chain from execution context (per-thread traversal state)
+  ancestor_chain = engine.get_execution_ctx(recipe).ancestor_chain
+
   # Process dependencies discovered in recipe Lua
   for dep_spec in recipe.dependencies:
 
     if dep_spec.source has custom_fetch:
       # Nested source dependencies
       for fetch_dep_spec in dep_spec.source.dependencies:
+        # Cycle detection: check if fetch_dep already in ancestor chain
+        if fetch_dep_spec.identity == recipe.identity:
+          error("Self-loop: " + recipe.identity + " → " + fetch_dep_spec.identity)
+
+        for ancestor in ancestor_chain:
+          if ancestor == fetch_dep_spec.identity:
+            error("Fetch dependency cycle: " + build_cycle_path(ancestor_chain, fetch_dep_spec.identity))
+
         # Create child recipe node
         fetch_dep = ensure_recipe(fetch_dep_spec)
 
-        # Implicit needed_by: fetch dep completes before outer recipe's recipe_fetch
-        fetch_dep.needed_by = recipe_phase::completion  # Fully install first
+        # Build child ancestor chain including nested context
+        fetch_dep_chain = ancestor_chain
+        fetch_dep_chain.append(recipe.identity)          # Current recipe
+        fetch_dep_chain.append(dep_spec.identity)        # Outer dep (whose fetch needs this)
 
-        # Start thread, wait for completion
-        start_recipe_thread(fetch_dep, recipe_phase::recipe_fetch)
+        # Implicit needed_by: fetch dep fully completes before outer recipe's recipe_fetch
+        # NOTE: completion phase intentional - bootstrap tools (e.g., jfrog) must be fully
+        # installed before they can be used to fetch recipes from authenticated sources
+        start_recipe_thread(fetch_dep, recipe_phase::completion, fetch_dep_chain)
         ensure_recipe_at_phase(fetch_dep.key, recipe_phase::completion)
 
       # Now run custom fetch function (prerequisites available)
@@ -403,7 +457,7 @@ phase_recipe_fetch(recipe):
     # Continue with normal dep processing...
 ```
 
-**Cycle detection**: Fetch dependencies participate in ancestor chain (same as regular deps).
+**Cycle detection**: Fetch dependencies added to ancestor chain before recursing. Current implementation (engine.cpp:195-223) checks identity against ancestor chain; same mechanism applies to nested fetch deps if added properly during processing.
 
 ### Tasks
 
@@ -419,7 +473,10 @@ phase_recipe_fetch(recipe):
 
 - [ ] 2.3: Implement fetch dependency processing in `phase_recipe_fetch`
   - Before processing outer dep, check if `source` has `custom_fetch`
-  - For each fetch dep: `ensure_recipe()` + `start_recipe_thread()`
+  - For each fetch dep:
+    - Check for cycles against ancestor_chain (same as regular deps)
+    - Build child ancestor chain: `ancestor_chain + current_identity + outer_dep_identity`
+    - `ensure_recipe()` + `start_recipe_thread(completion, child_chain)`
   - Implicit `needed_by = completion` (fetch dep fully installs before outer recipe_fetch)
   - Wait for all fetch deps via `ensure_recipe_at_phase(completion)`
 
@@ -435,24 +492,19 @@ phase_recipe_fetch(recipe):
   - Implicit commit on successful return
 
 - [ ] 2.6: Cycle detection for fetch dependencies
-  - Add fetch deps to ancestor chain before recursing
+  - Integrated into Task 2.3 (same mechanism as regular deps)
+  - Build child chain including nested context before starting thread
   - Error if cycle detected with full path
   - Unit test: A→B (fetch needs C), C→D (fetch needs A) → cycle error
 
-- [ ] 2.7: Validate `needed_by="recipe_fetch"` restriction
-  - Error if recipe-declared dep has `needed_by="recipe_fetch"`
-  - Message: "needed_by='recipe_fetch' only valid in manifest"
-  - Manifest-declared deps: allow any `needed_by`
-  - Unit test: recipe file with `needed_by="recipe_fetch"` → error
-  - Functional test: manifest with `needed_by="recipe_fetch"` → works
-
-- [ ] 2.8: Functional tests for nested source dependencies
+- [ ] 2.7: Functional tests for nested source dependencies
   - Test: JFrog bootstrap (A→toolchain, toolchain fetch needs jfrog)
   - Test: Multi-level nesting (A→B fetch needs C, C fetch needs D)
   - Test: Fetch dep with options (verify correct version installed)
   - Test: Multiple fetch deps (parallel install, then fetch)
   - Test: Fetch dep cycle detection
-  - Test: needed_by="recipe_fetch" validation (manifest vs recipe file)
+
+**Note**: Old `needed_by="recipe_fetch"` manifest syntax is deprecated. Use `source.dependencies` instead. No validation task needed—old syntax can be removed in separate cleanup.
 
 ---
 
@@ -484,11 +536,18 @@ resolve_weak_references():
     for weak_ref in recipe.weak_references:
       unresolved.add((recipe, weak_ref))
 
-  # Convergence loop
-  MAX_ITERATIONS = 100
-  for iteration in 1..MAX_ITERATIONS:
+  # Convergence loop with stuck detection
+  MAX_STUCK_ITERATIONS = 3  # Allow 3 iterations with no progress before error
+  stuck_count = 0
+  iteration = 0
+
+  while True:
+    iteration += 1
+
     if unresolved.empty():
-      break  # All resolved
+      break  # Success: all resolved
+
+    tui::info("Weak resolution iteration {}: {} unresolved refs", iteration, unresolved.size())
 
     # Queue weak fallbacks for unmatched refs
     queue = []
@@ -504,10 +563,11 @@ resolve_weak_references():
     # Create + fetch weak fallback nodes
     newly_fetched = set()
     for (parent, ref, fallback_spec) in queue:
-      node = ensure_recipe(fallback_spec)  # Memoized
+      ensure_result = cache.ensure_recipe(fallback_spec.identity)
 
-      # Only fetch if newly created (not already in graph)
-      if node not in graph.recipes.values():
+      # Only fetch if newly created (lock present = needs installation)
+      if ensure_result.lock:
+        node = engine.ensure_recipe(fallback_spec)
         start_recipe_thread(node, recipe_phase::recipe_fetch)
         newly_fetched.add(node)
 
@@ -540,11 +600,16 @@ resolve_weak_references():
     for pair in to_remove:
       unresolved.remove(pair)
 
-    # Convergence check
+    tui::info("  Fetched {} new, resolved {} refs", newly_fetched.size(), to_remove.size())
+
+    # Stuck detection: no progress means either done or error
     if newly_fetched.empty() and to_remove.empty():
-      break  # Stuck (no progress) or done (all resolved)
-  else:
-    error("Weak resolution did not converge after {} iterations", MAX_ITERATIONS)
+      stuck_count += 1
+      if stuck_count >= MAX_STUCK_ITERATIONS:
+        # No progress for 3 iterations → likely missing reference-only deps
+        break  # Exit to final validation (will error if unresolved remain)
+    else:
+      stuck_count = 0  # Reset on progress
 
   # Final validation: error on remaining reference-only refs
   for (recipe, ref) in unresolved:
@@ -566,10 +631,11 @@ resolve_weak_references():
 ### Tasks
 
 - [ ] 3.1: Extend `recipe_spec` for weak dependencies
-  - Add `reference` field (std::optional<std::string>)
-  - Add `weak` field (std::optional<recipe_spec>)
+  - Add `reference` field (std::optional<std::string>) representing partial identity query
+  - Add `weak` field (std::optional<recipe_spec>) as fallback recipe
   - Parse: `{ reference = "...", weak = {...} }` or `{ reference = "..." }`
-  - Validate: `reference` and `recipe` mutually exclusive
+  - Validate: `reference` and `recipe` mutually exclusive (can't be both strong and weak)
+  - Note: "reference" is predicate for matching, not a recipe member—tests "is this weak?"
   - Unit test: parse reference-only, weak, error on exclusive violation
 
 - [ ] 3.2: Add `weak_references` to recipe struct
@@ -585,10 +651,11 @@ resolve_weak_references():
 
 - [ ] 3.4: Implement `engine::resolve_weak_references()`
   - Collect all weak refs into `unresolved` set
-  - Convergence loop as described in algorithm
+  - Convergence loop with stuck detection (3 no-progress iterations)
   - Use existing `find_matches()` for candidate lookup
-  - Track `newly_fetched` and `to_remove` for convergence detection
-  - MAX_ITERATIONS = 100 guard
+  - Track `newly_fetched` and `to_remove` for progress monitoring
+  - Use `cache.ensure_recipe().lock` emptiness to detect newly created recipes
+  - Log iteration count and progress at info level
 
 - [ ] 3.5: Integrate into `engine::resolve_graph()`
   - After strong closure: call `resolve_weak_references()`
@@ -608,7 +675,7 @@ resolve_weak_references():
   - Test: reference-only, no match → error after convergence
   - Test: ambiguous match (two candidates) → error with list
   - Test: convergence after 2 iterations (cascading weak)
-  - Test: MAX_ITERATIONS exceeded → error
+  - Test: Stuck detection (3 iterations no progress) → error with iteration count
 
 - [ ] 3.8: Functional tests for weak dependencies
   - Test: Simple weak (A-weak→B{v=1}, no B in manifest → B{v=1} used)
@@ -627,6 +694,11 @@ resolve_weak_references():
 ### Goal
 
 Nested source dependencies can be weak, enabling recipes to express "if jfrog not in graph, use fallback before fetching my recipe."
+
+**Execution model**: Iterative progression algorithm with distinct phases:
+1. **Strong closure**: Resolve all strong references, accumulate weak/reference-only deps
+2. **Weak resolution waves**: Resolve unresolved refs → fetch fallbacks → resolve new refs → repeat until convergence
+3. **Ambiguity validation**: Error if any weak resolutions are ambiguous (same recipe, different revision/options)
 
 ### Algorithm
 
@@ -701,9 +773,10 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 - [ ] 5.1: Update `docs/architecture.md`
   - Add "Nested Source Dependencies" section with JFrog example
   - Add "Weak Dependencies" section with reference/weak syntax
-  - Document convergence algorithm, ambiguity resolution
-  - Document `needed_by="recipe_fetch"` restriction (manifest-only)
-  - Remove TBB references, document std::thread model
+  - Document iterative progression model (strong closure → weak resolution waves)
+  - Document convergence algorithm, ambiguity resolution, stuck detection
+  - Remove TBB references throughout (outdated - envy uses std::thread now)
+  - Note: `needed_by="recipe_fetch"` is deprecated syntax, use `source.dependencies` instead
 
 - [ ] 5.2: Update `docs/recipe_resolution.md`
   - Explain two-phase resolution (strong closure, then weak convergence)
@@ -718,10 +791,10 @@ for fetch_dep_spec in outer_dep.source.dependencies:
   - Example: Nested weak fetch dependency
 
 - [ ] 5.4: Error message review
-  - Ambiguous reference: clear candidate list, suggest how to resolve
-  - Reference-only not found: suggest adding to manifest or using weak
-  - Convergence failure: suggest checking for cycles, file bug if not
-  - `needed_by="recipe_fetch"` in recipe file: suggest manifest or later phase
+  - Ambiguous reference: clear candidate list (show all candidates with full keys)
+  - Ambiguous with options: explain partial matching ignores options
+  - Reference-only not found: suggest adding to manifest or using weak fallback
+  - Stuck after 3 iterations: suggest missing deps or circular weak refs, iteration count in message
 
 - [ ] 5.5: Performance validation
   - Profile `find_matches()` with 100+ recipe graph
@@ -785,21 +858,20 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 
 ### Validation Tests
 
-- `needed_by="recipe_fetch"` in manifest → works (any dep type)
-- `needed_by="recipe_fetch"` in recipe file → error (any dep type)
 - Nested source without fetch function → parse error
 - Reference + recipe in same dep → parse error
-- Convergence >100 iterations → error with message
+- Stuck after 3 no-progress iterations → error with iteration count and unresolved count
 
 ---
 
 ## Implementation Order
 
-1. **Phase 1** - Shared Fetch API (foundation for both features)
-2. **Phase 2** - Nested Source Dependencies (establish robust fetch-time dep handling)
-3. **Phase 3** - Weak Resolution (iterative convergence algorithm)
-4. **Phase 4** - Integration (nested + weak together)
-5. **Phase 5** - Documentation & Polish
+1. **Phase 0** - Phase Enum Unification (prerequisite cleanup)
+2. **Phase 1** - Shared Fetch API (foundation for both features)
+3. **Phase 2** - Nested Source Dependencies (establish robust fetch-time dep handling)
+4. **Phase 3** - Weak Resolution (iterative convergence algorithm)
+5. **Phase 4** - Integration (nested + weak together)
+6. **Phase 5** - Documentation & Polish
 
 Each phase independently testable, can ship incrementally if needed.
 

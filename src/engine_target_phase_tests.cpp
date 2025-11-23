@@ -41,7 +41,6 @@ TEST_CASE("engine: set_target_phase promotes and notifies") {
 
   ctx.set_target_phase(recipe_phase::completion);
   waiter.join();
-
   CHECK(ctx.target_phase.load() == recipe_phase::completion);
   CHECK(woken);
 }
@@ -49,19 +48,15 @@ TEST_CASE("engine: set_target_phase promotes and notifies") {
 TEST_CASE("engine: set_target_phase is idempotent when already reached") {
   test_ctx ctx;
   ctx.target_phase = recipe_phase::completion;
-
-  ctx.set_target_phase(recipe_phase::check);
-
+  ctx.set_target_phase(recipe_phase::asset_check);
   CHECK(ctx.target_phase.load() == recipe_phase::completion);
 }
 
 TEST_CASE("engine: set_target_phase promotes from none to check") {
   test_ctx ctx;
   ctx.target_phase = recipe_phase::none;
-
-  ctx.set_target_phase(recipe_phase::check);
-
-  CHECK(ctx.target_phase.load() == recipe_phase::check);
+  ctx.set_target_phase(recipe_phase::asset_check);
+  CHECK(ctx.target_phase.load() == recipe_phase::asset_check);
 }
 
 }  // namespace envy

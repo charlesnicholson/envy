@@ -142,17 +142,17 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
   if (auto const needed_by_it{ table->find("needed_by") }; needed_by_it != table->end()) {
     if (auto const *needed_by_str{ needed_by_it->second.get<std::string>() }) {
       if (*needed_by_str == "check") {
-        result.needed_by = phase::asset_check;
+        result.needed_by = recipe_phase::asset_check;
       } else if (*needed_by_str == "fetch") {
-        result.needed_by = phase::asset_fetch;
+        result.needed_by = recipe_phase::asset_fetch;
       } else if (*needed_by_str == "stage") {
-        result.needed_by = phase::asset_stage;
+        result.needed_by = recipe_phase::asset_stage;
       } else if (*needed_by_str == "build") {
-        result.needed_by = phase::asset_build;
+        result.needed_by = recipe_phase::asset_build;
       } else if (*needed_by_str == "install") {
-        result.needed_by = phase::asset_install;
+        result.needed_by = recipe_phase::asset_install;
       } else if (*needed_by_str == "deploy") {
-        result.needed_by = phase::asset_deploy;
+        result.needed_by = recipe_phase::asset_deploy;
       } else {
         throw std::runtime_error(
             "Recipe 'needed_by' must be one of: check, fetch, stage, "

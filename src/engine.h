@@ -61,12 +61,12 @@ class engine : unmovable {
   recipe_execution_ctx &get_execution_ctx(recipe *r);
 
   // Phase coordination (thread-safe)
-  void ensure_recipe_at_phase(recipe_key const &key, recipe_phase phase);
+  void ensure_recipe_at_phase(recipe_key const &key, recipe_phase target_phase);
   void start_recipe_thread(recipe *r,
                            recipe_phase initial_target,
                            std::vector<std::string> ancestor_chain = {});
   void wait_for_resolution_phase();
-  void notify_phase_complete(recipe_key const &key, recipe_phase phase);
+  void notify_phase_complete(recipe_key const &key, recipe_phase completed_phase);
   void on_recipe_fetch_start();
   void on_recipe_fetch_complete();
 

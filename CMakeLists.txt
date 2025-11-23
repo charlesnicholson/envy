@@ -178,7 +178,7 @@ set(ENVY_COMMON_SOURCES
 set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/commands/cmd_cache_functional_test.cpp
     src/commands/cmd_engine_functional_test.cpp
-    src/phase.cpp
+    src/recipe_phase.cpp
     src/test_support.cpp
 )
 

@@ -22,14 +22,14 @@ namespace {
 
 using phase_func_t = void (*)(recipe *, engine &);
 
-constexpr std::array<phase_func_t, phase_count> phase_dispatch_table{
+constexpr std::array<phase_func_t, recipe_phase_count> phase_dispatch_table{
   run_recipe_fetch_phase,  // recipe_phase::recipe_fetch
-  run_check_phase,         // recipe_phase::check
-  run_fetch_phase,         // recipe_phase::fetch
-  run_stage_phase,         // recipe_phase::stage
-  run_build_phase,         // recipe_phase::build
-  run_install_phase,       // recipe_phase::install
-  run_deploy_phase,        // recipe_phase::deploy
+  run_check_phase,         // recipe_phase::asset_check
+  run_fetch_phase,         // recipe_phase::asset_fetch
+  run_stage_phase,         // recipe_phase::asset_stage
+  run_build_phase,         // recipe_phase::asset_build
+  run_install_phase,       // recipe_phase::asset_install
+  run_deploy_phase,        // recipe_phase::asset_deploy
   run_completion_phase,    // recipe_phase::completion
 };
 
@@ -238,7 +238,7 @@ void engine::run_recipe_thread(recipe *r) {
       // Run next phase
       recipe_phase const next{ static_cast<recipe_phase>(static_cast<int>(current) + 1) };
 
-      if (static_cast<int>(next) < 0 || static_cast<int>(next) >= phase_count) {
+      if (static_cast<int>(next) < 0 || static_cast<int>(next) >= recipe_phase_count) {
         throw std::runtime_error("Invalid phase: " +
                                  std::to_string(static_cast<int>(next)));
       }
@@ -275,7 +275,7 @@ void engine::run_recipe_thread(recipe *r) {
     } catch (...) { tui::error("Recipe thread failed with unknown exception"); }
 
     ctx.failed = true;
-    if (ctx.current_phase < recipe_phase::check) { on_recipe_fetch_complete(); }
+    if (ctx.current_phase < recipe_phase::asset_check) { on_recipe_fetch_complete(); }
     notify_all_global_locked();
   }
 }
