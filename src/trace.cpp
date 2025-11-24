@@ -4,6 +4,7 @@
 #include "util.h"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <sstream>
@@ -86,7 +87,7 @@ void append_kv(std::string &out, char const *key, std::string_view value) {
   out.push_back('"');
 }
 
-void append_kv(std::string &out, char const *key, long long value) {
+void append_kv(std::string &out, char const *key, std::int64_t value) {
   out.push_back(',');
   out.push_back('"');
   out.append(key);
@@ -107,7 +108,7 @@ void append_phase(std::string &out, char const *key, recipe_phase phase) {
 
   char number_key[64]{};
   std::snprintf(number_key, sizeof number_key, "%s_num", key);
-  append_kv(out, number_key, static_cast<long long>(static_cast<int>(phase)));
+  append_kv(out, number_key, static_cast<std::int64_t>(static_cast<int>(phase)));
 }
 
 }  // namespace
@@ -351,7 +352,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
           [&](trace_events::phase_complete const &value) {
             append_recipe(value.recipe);
             append_phase(output, "phase", value.phase);
-            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
           [&](trace_events::thread_start const &value) {
             append_recipe(value.recipe);
@@ -378,8 +379,8 @@ std::string trace_event_to_json(trace_event_t const &event) {
           },
           [&](trace_events::lua_ctx_run_complete const &value) {
             append_recipe(value.recipe);
-            append_kv(output, "exit_code", static_cast<long long>(value.exit_code));
-            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "exit_code", static_cast<std::int64_t>(value.exit_code));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
           [&](trace_events::lua_ctx_fetch_start const &value) {
             append_recipe(value.recipe);
@@ -390,7 +391,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "url", value.url);
             append_kv(output, "bytes_downloaded", value.bytes_downloaded);
-            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
           [&](trace_events::lua_ctx_extract_start const &value) {
             append_recipe(value.recipe);
@@ -400,7 +401,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
           [&](trace_events::lua_ctx_extract_complete const &value) {
             append_recipe(value.recipe);
             append_kv(output, "files_extracted", value.files_extracted);
-            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
           [&](trace_events::cache_hit const &value) {
             append_recipe(value.recipe);
@@ -430,7 +431,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "url", value.url);
             append_kv(output, "bytes_downloaded", value.bytes_downloaded);
-            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
             append_kv(output, "from_cache", value.from_cache);
           },
           [](auto const &) {},
