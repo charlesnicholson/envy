@@ -133,11 +133,22 @@ void flush_messages(std::queue<log_entry> &pending,
       }
     } else if (auto *trace_ptr{ std::get_if<envy::trace_event_t>(&entry) }) {
       if (s_tui.trace_stderr) {
-        auto const line{ envy::trace_event_to_string(*trace_ptr) + "\n" };
-        if (handler) {
-          handler(line);
+        std::string output;
+        if (s_tui.decorated) {
+          auto const prefix{ format_prefix(level::TUI_TRACE) };
+          auto const trace_str{ envy::trace_event_to_string(*trace_ptr) };
+          output.reserve(prefix.size() + trace_str.size() + 1);
+          output.append(prefix);
+          output.append(trace_str);
         } else {
-          std::fwrite(line.data(), 1, line.size(), stderr);
+          output = envy::trace_event_to_string(*trace_ptr);
+        }
+        output.push_back('\n');
+
+        if (handler) {
+          handler(output);
+        } else {
+          std::fwrite(output.data(), 1, output.size(), stderr);
           wrote_to_stderr = true;
         }
       }
