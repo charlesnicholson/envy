@@ -6,6 +6,8 @@
 #include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_util.h"
+#include "sha256.h"
+#include "trace.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -31,7 +33,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
                           int strip_components) {
   if (!std::filesystem::exists(fetch_dir)) {
-    tui::trace("phase stage: fetch_dir does not exist, nothing to extract");
+    tui::debug("phase stage: fetch_dir does not exist, nothing to extract");
     return;
   }
 
@@ -48,7 +50,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     if (filename == "envy-complete") { continue; }
 
     if (extract_is_archive_extension(path)) {
-      tui::trace("phase stage: extracting archive %s (strip=%d)",
+      tui::debug("phase stage: extracting archive %s (strip=%d)",
                  filename.c_str(),
                  strip_components);
 
@@ -56,11 +58,11 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
       std::uint64_t const files{ extract(path, dest_dir, opts) };
       total_files_extracted += files;
 
-      tui::trace("phase stage: extracted %llu files from %s",
+      tui::debug("phase stage: extracted %llu files from %s",
                  static_cast<unsigned long long>(files),
                  filename.c_str());
     } else {
-      tui::trace("phase stage: copying non-archive %s", filename.c_str());
+      tui::debug("phase stage: copying non-archive %s", filename.c_str());
 
       std::filesystem::path const dest_path{ dest_dir / filename };
       std::filesystem::copy_file(path,
@@ -70,7 +72,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     }
   }
 
-  tui::trace(
+  tui::debug(
       "phase stage: extraction complete (%llu files from archives, %llu files copied)",
       static_cast<unsigned long long>(total_files_extracted),
       static_cast<unsigned long long>(total_files_copied));
@@ -161,7 +163,7 @@ std::filesystem::path determine_stage_destination(lua_State *lua,
   std::filesystem::path const dest_dir{ has_custom_phases ? lock->stage_dir()
                                                           : lock->install_dir() };
 
-  tui::trace("phase stage: destination=%s (custom_phases=%s)",
+  tui::debug("phase stage: destination=%s (custom_phases=%s)",
              dest_dir.string().c_str(),
              has_custom_phases ? "true" : "false");
 
@@ -193,7 +195,7 @@ stage_options parse_stage_options(lua_State *lua, std::string const &key) {
 
 void run_default_stage(std::filesystem::path const &fetch_dir,
                        std::filesystem::path const &dest_dir) {
-  tui::trace("phase stage: no stage field, running default extraction");
+  tui::debug("phase stage: no stage field, running default extraction");
   extract_all_archives(fetch_dir, dest_dir, 0);
 }
 
@@ -204,7 +206,7 @@ void run_declarative_stage(lua_State *lua,
   stage_options const opts{ parse_stage_options(lua, identity) };
   lua_pop(lua, 1);  // Pop stage table
 
-  tui::trace("phase stage: declarative extraction with strip=%d", opts.strip_components);
+  tui::debug("phase stage: declarative extraction with strip=%d", opts.strip_components);
   extract_all_archives(fetch_dir, dest_dir, opts.strip_components);
 }
 
@@ -215,7 +217,7 @@ void run_programmatic_stage(lua_State *lua,
                             std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
-  tui::trace("phase stage: running imperative stage function");
+  tui::debug("phase stage: running imperative stage function");
 
   stage_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
@@ -237,7 +239,7 @@ void run_programmatic_stage(lua_State *lua,
 void run_shell_stage(std::string_view script,
                      std::filesystem::path const &dest_dir,
                      std::string const &identity) {
-  tui::trace("phase stage: running shell script");
+  tui::debug("phase stage: running shell script");
 
   shell_env_t env{ shell_getenv() };
 
@@ -268,12 +270,13 @@ void run_shell_stage(std::string_view script,
 }  // namespace
 
 void run_stage_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase stage START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec.identity,
+                                       recipe_phase::asset_stage,
+                                       std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock{ r->lock.get() };
   if (!lock) {  // Cache hit - no work to do
-    tui::trace("phase stage: no lock (cache hit), skipping");
+    tui::debug("phase stage: no lock (cache hit), skipping");
     return;
   }
 

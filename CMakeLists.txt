@@ -143,6 +143,7 @@ set(ENVY_COMMON_SOURCES
     src/commands/cmd_sync.cpp
     src/commands/cmd_version.cpp
     src/engine.cpp
+    src/recipe_phase.cpp
     src/recipe_key.cpp
     src/lua_ctx/lua_ctx_bindings.cpp
     src/lua_ctx/lua_ctx_asset.cpp
@@ -177,6 +178,7 @@ set(ENVY_COMMON_SOURCES
     src/shell.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/trace.cpp
     src/tui.cpp
     src/uri.cpp
     src/util.cpp
@@ -380,6 +382,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/lua_shell.cpp
     src/lua_util.cpp
     src/manifest.cpp
+    src/recipe_phase.cpp
     src/recipe_spec.cpp
     src/sha256.cpp
     src/fetch.cpp
@@ -388,6 +391,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/shell.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/trace.cpp
     src/tui.cpp
     src/uri.cpp
     src/util.cpp

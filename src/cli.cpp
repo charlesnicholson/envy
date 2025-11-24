@@ -14,10 +14,16 @@ cli_args cli_parse(int argc, char **argv) {
   app.allow_windows_style_options(false);
 
   bool verbose{ false };
-  app.add_flag("--verbose", verbose, "Enable structured verbose logging");
+  app.add_flag(
+      "--verbose",
+      verbose,
+      "Enable decorated verbose logging (prefix stdout/stderr with timestamp and level)");
 
   bool trace{ false };
-  app.add_flag("--trace", trace, "Enable structured trace logging");
+  app.add_flag("--trace",
+               trace,
+               "Enable structured trace logging (human-readable to stderr or structured "
+               "JSON when configured)");
 
   // Support version flags (-v / --version) triggering version command directly.
   bool version_flag_short{ false };
@@ -199,13 +205,13 @@ cli_args cli_parse(int argc, char **argv) {
 
   if (trace) {
     args.verbosity = tui::level::TUI_TRACE;
-    args.structured_logging = true;
+    args.decorated_logging = true;
   } else if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;
-    args.structured_logging = true;
+    args.decorated_logging = true;
   } else {
     args.verbosity = tui::level::TUI_INFO;
-    args.structured_logging = false;
+    args.decorated_logging = false;
   }
 
   if (version_flag_short || version_flag_long) {

@@ -129,7 +129,7 @@ void commit_files(std::vector<commit_entry> const &entries,
     // Verify SHA256 if provided
     if (!entry.sha256.empty()) {
       try {
-        tui::trace("ctx.commit_fetch: verifying SHA256 for %s", entry.filename.c_str());
+        tui::debug("ctx.commit_fetch: verifying SHA256 for %s", entry.filename.c_str());
         sha256_verify(entry.sha256, sha256(src));
       } catch (std::exception const &e) {
         errors.push_back(entry.filename + ": " + e.what());
@@ -140,7 +140,7 @@ void commit_files(std::vector<commit_entry> const &entries,
     // Move file
     try {
       std::filesystem::rename(src, dest);
-      tui::trace("ctx.commit_fetch: moved %s to fetch_dir", entry.filename.c_str());
+      tui::debug("ctx.commit_fetch: moved %s to fetch_dir", entry.filename.c_str());
     } catch (std::exception const &e) {
       errors.push_back(entry.filename + ": failed to move: " + e.what());
     }

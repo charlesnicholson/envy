@@ -1,5 +1,7 @@
 #pragma once
 
+#include "trace.h"
+
 #include <functional>
 #include <optional>
 #include <string_view>
@@ -12,15 +14,16 @@
 
 namespace envy::tui {
 
-// Logging levels renamed with TUI_ prefix to avoid collisions with external macros (DOCTEST, system headers).
 enum class level { TUI_TRACE, TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
 
 void init();
 void set_output_handler(std::function<void(std::string_view)> handler);
-void run(std::optional<level> threshold = std::nullopt, bool structured_logging = false);
+void run(std::optional<level> threshold = std::nullopt, bool decorated_logging = false);
 void shutdown();
 
-void trace(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
+extern bool g_trace_enabled;
+
+void trace(trace_event_t event);
 void debug(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
 void info(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
 void warn(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
@@ -34,7 +37,7 @@ void resume_rendering();
 
 struct scope {  // raii helper
   explicit scope(std::optional<level> threshold = std::nullopt,
-                 bool structured_logging = false);
+                 bool decorated_logging = false);
   ~scope();
 
  private:

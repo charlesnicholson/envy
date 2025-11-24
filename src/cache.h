@@ -3,9 +3,11 @@
 #include "platform.h"
 #include "util.h"
 
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace envy {
@@ -18,7 +20,11 @@ class cache : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
 
-    static ptr_t make(path entry_dir, platform::file_lock lock);
+    static ptr_t make(path entry_dir,
+                      platform::file_lock lock,
+                      path lock_path,
+                      std::string recipe_identity,
+                      std::chrono::steady_clock::time_point lock_acquired_at);
     ~scoped_entry_lock();
 
     void mark_install_complete();
@@ -33,7 +39,11 @@ class cache : unmovable {
     path work_dir() const;
 
    private:
-    scoped_entry_lock(path entry_dir, platform::file_lock lock);
+    scoped_entry_lock(path entry_dir,
+                      platform::file_lock lock,
+                      path lock_path,
+                      std::string recipe_identity,
+                      std::chrono::steady_clock::time_point lock_acquired_at);
 
     struct impl;
     std::unique_ptr<impl> m;

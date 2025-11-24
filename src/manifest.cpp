@@ -52,14 +52,14 @@ std::filesystem::path manifest::find_manifest_path(
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest from file: %s", manifest_path.string().c_str());
+  tui::debug("Loading manifest from file: %s", manifest_path.string().c_str());
   auto const content{ util_load_file(manifest_path) };
   return load(content, manifest_path);
 }
 
 std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &content,
                                          std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest (%zu bytes)", content.size());
+  tui::debug("Loading manifest (%zu bytes)", content.size());
   // Ensure null-termination for Lua (create string with guaranteed null terminator)
   std::string const script{ reinterpret_cast<char const *>(content.data()), content.size() };
 
@@ -88,7 +88,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
 std::unique_ptr<manifest> manifest::load(char const *script,
                                          std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest from C string");
+  tui::debug("Loading manifest from C string");
   // Convert C string to vector and delegate to vector overload
   std::vector<unsigned char> content(script, script + std::strlen(script));
   return load(content, manifest_path);

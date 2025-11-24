@@ -30,9 +30,11 @@ struct tui {
   std::condition_variable cv;
   std::atomic_bool stop_requested{ false };
   std::optional<envy::tui::level> level_threshold;
-  bool structured{ false };
+  bool decorated{ false };
   bool initialized{ false };
 } s_tui{};
+
+bool envy::tui::g_trace_enabled{ false };
 
 namespace {
 
@@ -91,78 +93,63 @@ std::string_view level_to_string(level value) {
 }
 
 std::tm make_local_tm(std::time_t time) {
+  std::tm result{};
+
 #if defined(_WIN32)
-  std::tm result{};
   localtime_s(&result, &time);
-  return result;
 #else
-  std::tm result{};
   localtime_r(&time, &result);
-  return result;
 #endif
+
+  return result;
 }
 
-void log_formatted(level severity, char const *fmt, va_list args) {
-  if (!s_tui.initialized || fmt == nullptr) { return; }
+std::string format_prefix(level severity) {
+  if (!s_tui.decorated) { return {}; }
 
-  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+  auto const now{ std::chrono::system_clock::now() };
+  auto const seconds{ std::chrono::time_point_cast<std::chrono::seconds>(now) };
+  auto const millis{
+    std::chrono::duration_cast<std::chrono::milliseconds>(now - seconds).count()
+  };
+
+  std::time_t const timestamp{ std::chrono::system_clock::to_time_t(now) };
+  std::tm const local_tm{ make_local_tm(timestamp) };
+
+  char timestamp_buf[32]{};
+  if (std::strftime(timestamp_buf, sizeof timestamp_buf, "%Y-%m-%d %H:%M:%S", &local_tm) ==
+      0) {
+    return {};
+  }
 
   char prefix_buf[96]{};
-  std::size_t prefix_len{ 0 };
+  int const written_prefix{ std::snprintf(prefix_buf,
+                                          sizeof prefix_buf,
+                                          "[%s.%03lld] [%-*s] ",
+                                          timestamp_buf,
+                                          static_cast<long long>(millis),
+                                          static_cast<int>(kSeverityLabelWidth),
+                                          level_to_string(severity).data()) };
 
-  if (s_tui.structured) {
-    auto const now{ std::chrono::system_clock::now() };
-    auto const seconds{ std::chrono::time_point_cast<std::chrono::seconds>(now) };
-    auto const millis{
-      std::chrono::duration_cast<std::chrono::milliseconds>(now - seconds).count()
-    };
+  if (written_prefix <= 0) { return {}; }
 
-    std::time_t const timestamp{ std::chrono::system_clock::to_time_t(now) };
-    std::tm const local_tm{ make_local_tm(timestamp) };
-    char timestamp_buf[32]{};
-    if (std::strftime(timestamp_buf,
-                      sizeof timestamp_buf,
-                      "%Y-%m-%d %H:%M:%S",
-                      &local_tm) != 0) {
-      int const written_prefix{ std::snprintf(prefix_buf,
-                                              sizeof prefix_buf,
-                                              "[%s.%03lld] [%-*s] ",
-                                              timestamp_buf,
-                                              static_cast<long long>(millis),
-                                              static_cast<int>(kSeverityLabelWidth),
-                                              level_to_string(severity).data()) };
+  return std::string{ prefix_buf, static_cast<std::size_t>(written_prefix) };
+}
 
-      if (written_prefix > 0) { prefix_len = static_cast<std::size_t>(written_prefix); }
-    }
+void enqueue(level severity, std::string message) {
+  if (!s_tui.initialized || message.empty()) { return; }
+  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+
+  std::string buffer;
+  if (s_tui.decorated) {
+    auto const prefix{ format_prefix(severity) };
+    buffer.reserve(prefix.size() + message.size() + 1);
+    buffer.append(prefix);
+  } else {
+    buffer.reserve(message.size() + 1);
   }
 
-  std::string buffer(1024 + prefix_len, '\0');
-  std::size_t offset{ 0 };
-  if (prefix_len > 0) {
-    std::memcpy(buffer.data(), prefix_buf, prefix_len);
-    offset = prefix_len;
-  }
-
-  va_list args_copy;
-  va_copy(args_copy, args);
-  int written{ std::vsnprintf(buffer.data() + offset, buffer.size() - offset, fmt, args) };
-  if (written <= 0) {
-    va_end(args_copy);
-    return;
-  }
-
-  if (offset + static_cast<std::size_t>(written) >= buffer.size()) {
-    buffer.resize(offset + static_cast<std::size_t>(written) + 1);
-    written =
-        std::vsnprintf(buffer.data() + offset, buffer.size() - offset, fmt, args_copy);
-  }
-  va_end(args_copy);
-
-  if (written <= 0) { return; }
-
-  buffer.resize(offset + static_cast<std::size_t>(written));
-  if (buffer.empty()) { return; }
-
+  buffer.append(message);
   buffer.push_back('\n');
 
   {
@@ -171,6 +158,34 @@ void log_formatted(level severity, char const *fmt, va_list args) {
   }
 
   s_tui.cv.notify_one();
+}
+
+void log_formatted(level severity, char const *fmt, va_list args) {
+  if (!s_tui.initialized || fmt == nullptr) { return; }
+  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+
+  std::string buffer(1024, '\0');
+
+  va_list args_copy;
+  va_copy(args_copy, args);
+  int written{ std::vsnprintf(buffer.data(), buffer.size(), fmt, args) };
+  if (written <= 0) {
+    va_end(args_copy);
+    return;
+  }
+
+  if (static_cast<std::size_t>(written) >= buffer.size()) {
+    buffer.resize(static_cast<std::size_t>(written) + 1);
+    written = std::vsnprintf(buffer.data(), buffer.size(), fmt, args_copy);
+  }
+  va_end(args_copy);
+
+  if (written <= 0) { return; }
+
+  buffer.resize(static_cast<std::size_t>(written));
+  if (buffer.empty()) { return; }
+
+  enqueue(severity, std::move(buffer));
 }
 
 }  // namespace
@@ -183,11 +198,12 @@ void init() {
   }
 
   s_tui.level_threshold = std::nullopt;
-  s_tui.structured = false;
+  s_tui.decorated = false;
   s_tui.initialized = true;
+  g_trace_enabled = false;
 }
 
-void run(std::optional<level> threshold, bool structured_logging) {
+void run(std::optional<level> threshold, bool decorated_logging) {
   if (!s_tui.initialized) {
     throw std::logic_error{ "envy::tui::run called before init" };
   }
@@ -197,8 +213,10 @@ void run(std::optional<level> threshold, bool structured_logging) {
   }
 
   s_tui.level_threshold = std::move(threshold);
-  s_tui.structured = structured_logging;
+  s_tui.decorated = decorated_logging;
   s_tui.stop_requested = false;
+  g_trace_enabled =
+      s_tui.level_threshold.has_value() && *s_tui.level_threshold <= level::TUI_TRACE;
   s_tui.worker = std::thread{ worker_thread };
 }
 
@@ -212,15 +230,14 @@ void shutdown() {
   s_tui.worker.join();
   s_tui.worker = std::thread{};
   s_tui.stop_requested = false;
+  g_trace_enabled = false;
 }
 
 bool is_tty() { return platform::is_tty(); }
 
-void trace(char const *fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  log_formatted(level::TUI_TRACE, fmt, args);
-  va_end(args);
+void trace(trace_event_t event) {
+  if (!g_trace_enabled) { return; }
+  enqueue(level::TUI_TRACE, trace_event_to_string(event));
 }
 
 void debug(char const *fmt, ...) {
@@ -281,9 +298,9 @@ void set_output_handler(std::function<void(std::string_view)> handler) {
   s_tui.output_handler = std::move(handler);
 }
 
-scope::scope(std::optional<level> threshold, bool structured_logging) {
+scope::scope(std::optional<level> threshold, bool decorated_logging) {
   if (!s_tui.initialized) { return; }
-  run(std::move(threshold), structured_logging);
+  run(std::move(threshold), decorated_logging);
   active = true;
 }
 

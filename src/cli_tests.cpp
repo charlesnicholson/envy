@@ -278,5 +278,5 @@ TEST_CASE("cli_parse: verbose flag") {
   REQUIRE(parsed.cmd_cfg.has_value());
   REQUIRE(parsed.verbosity.has_value());
   CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
-  CHECK(parsed.structured_logging);
+  CHECK(parsed.decorated_logging);
 }

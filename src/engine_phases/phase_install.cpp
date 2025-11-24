@@ -16,6 +16,7 @@ extern "C" {
 
 #include <filesystem>
 #include <stdexcept>
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -100,7 +101,7 @@ bool run_programmatic_install(lua_State *lua,
                               std::unordered_map<std::string, lua_value> const &options,
                               engine &eng,
                               recipe *r) {
-  tui::trace("phase install: running programmatic install function");
+  tui::debug("phase install: running programmatic install function");
 
   install_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
@@ -127,7 +128,7 @@ bool run_shell_install(std::string_view script,
                        std::filesystem::path const &install_dir,
                        cache::scoped_entry_lock *lock,
                        std::string const &identity) {
-  tui::trace("phase install: running shell script");
+  tui::debug("phase install: running shell script");
 
   shell_env_t env{ shell_getenv() };
   shell_run_cfg cfg{
@@ -158,13 +159,13 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
   auto const stage_dir{ lock->stage_dir() };
 
   if (directory_has_entries(install_dir)) {
-    tui::trace("phase install: install_dir already populated, marking complete");
+    tui::debug("phase install: install_dir already populated, marking complete");
     lock->mark_install_complete();
     return true;
   }
 
   if (directory_has_entries(stage_dir)) {
-    tui::trace("phase install: promoting stage_dir contents to install_dir");
+    tui::debug("phase install: promoting stage_dir contents to install_dir");
     std::filesystem::remove_all(install_dir);
     std::filesystem::create_directories(install_dir.parent_path());
     std::filesystem::rename(stage_dir, install_dir);
@@ -172,18 +173,19 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
     return true;
   }
 
-  tui::trace("phase install: no outputs detected, leaving entry unmarked");
+  tui::debug("phase install: no outputs detected, leaving entry unmarked");
   return false;
 }
 
 }  // namespace
 
 void run_install_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase install START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec.identity,
+                                       recipe_phase::asset_install,
+                                       std::chrono::steady_clock::now() };
 
   if (!r->lock) {  // Cache hit - no work to do
-    tui::trace("phase install: no lock (cache hit), skipping");
+    tui::debug("phase install: no lock (cache hit), skipping");
     return;
   }
 

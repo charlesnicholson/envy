@@ -186,7 +186,7 @@ void lua_add_envy(lua_state_ptr const &state) {
   lua_setglobal(lua, "print");
 
   lua_newtable(lua);
-  lua_pushcfunction(lua, lua_print_tui<tui::trace>);
+  lua_pushcfunction(lua, lua_print_tui<tui::debug>);
   lua_setfield(lua, -2, "trace");
   lua_pushcfunction(lua, lua_print_tui<tui::debug>);
   lua_setfield(lua, -2, "debug");
@@ -203,14 +203,21 @@ void lua_add_envy(lua_state_ptr const &state) {
 
   // ENVY_SHELL table with built-in shell constants
   lua_newtable(lua);
-  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
+  lua_pushlightuserdata(
+      lua,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
   lua_setfield(lua, -2, "BASH");
-  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
+  lua_pushlightuserdata(
+      lua,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
   lua_setfield(lua, -2, "SH");
-  lua_pushlightuserdata(lua, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
+  lua_pushlightuserdata(
+      lua,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
   lua_setfield(lua, -2, "CMD");
-  lua_pushlightuserdata(lua,
-                        reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
+  lua_pushlightuserdata(
+      lua,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
   lua_setfield(lua, -2, "POWERSHELL");
   lua_setglobal(lua, "ENVY_SHELL");
 }

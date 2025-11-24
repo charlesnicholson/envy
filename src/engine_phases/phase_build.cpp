@@ -6,12 +6,14 @@
 #include "lua_util.h"
 #include "recipe.h"
 #include "shell.h"
+#include "trace.h"
 #include "tui.h"
 
 extern "C" {
 #include "lua.h"
 }
 
+#include <chrono>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -27,9 +29,9 @@ struct build_phase_ctx : lua_ctx_common {
 };
 
 void build_build_phase_ctx_table(lua_State *lua,
-                               std::string const &identity,
-                               std::unordered_map<std::string, lua_value> const &options,
-                               build_phase_ctx *ctx) {
+                                 std::string const &identity,
+                                 std::unordered_map<std::string, lua_value> const &options,
+                                 build_phase_ctx *ctx) {
   lua_createtable(lua, 0, 9);  // Pre-allocate space for 9 fields
 
   lua_pushstring(lua, identity.c_str());
@@ -68,7 +70,7 @@ void run_programmatic_build(lua_State *lua,
                             std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
-  tui::trace("phase build: running programmatic build function");
+  tui::debug("phase build: running programmatic build function");
 
   build_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
@@ -91,7 +93,7 @@ void run_programmatic_build(lua_State *lua,
 void run_shell_build(std::string_view script,
                      std::filesystem::path const &stage_dir,
                      std::string const &identity) {
-  tui::trace("phase build: running shell script");
+  tui::debug("phase build: running shell script");
 
   shell_env_t env{ shell_getenv() };
 
@@ -121,49 +123,44 @@ void run_shell_build(std::string_view script,
 }  // namespace
 
 void run_build_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase build START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec.identity,
+                                       recipe_phase::asset_build,
+                                       std::chrono::steady_clock::now() };
 
-  lua_State *lua = r->lua_state.get();
-  cache::scoped_entry_lock *lock = r->lock.get();
-  std::string const &identity = r->spec.identity;
-  std::unordered_map<std::string, lua_value> const &options = r->spec.options;
+  lua_State *lua{ r->lua_state.get() };
+  cache::scoped_entry_lock *lock{ r->lock.get() };
 
-  if (!lock) {  // Cache hit - no work to do
-    tui::trace("phase build: no lock (cache hit), skipping");
+  if (!lock) {
+    tui::debug("phase build: no lock (cache hit), skipping");
     return;
   }
-
-  std::filesystem::path const fetch_dir{ lock->fetch_dir() };
-  std::filesystem::path const stage_dir{ lock->stage_dir() };
-  std::filesystem::path const install_dir{ lock->install_dir() };
 
   lua_getglobal(lua, "build");
 
   switch (lua_type(lua, -1)) {
     case LUA_TNIL:
       lua_pop(lua, 1);
-      tui::trace("phase build: no build field, skipping");
+      tui::debug("phase build: no build field, skipping");
       break;
 
     case LUA_TSTRING: {
-      std::string const script_str = [&]() {
+      std::string const script_str{ [&]() {
         size_t len{ 0 };
         char const *script{ lua_tolstring(lua, -1, &len) };
         return std::string{ script, len };
-      }();
+      }() };
       lua_pop(lua, 1);
-      run_shell_build(script_str, stage_dir, identity);
+      run_shell_build(script_str, lock->stage_dir(), r->spec.identity);
       break;
     }
 
     case LUA_TFUNCTION:
       run_programmatic_build(lua,
-                             fetch_dir,
-                             stage_dir,
-                             install_dir,
-                             identity,
-                             options,
+                             lock->fetch_dir(),
+                             lock->stage_dir(),
+                             lock->install_dir(),
+                             r->spec.identity,
+                             r->spec.options,
                              eng,
                              r);
       break;
@@ -171,7 +168,7 @@ void run_build_phase(recipe *r, engine &eng) {
     default:
       lua_pop(lua, 1);
       throw std::runtime_error("build field must be nil, string, or function for " +
-                               identity);
+                               r->spec.identity);
   }
 }
 

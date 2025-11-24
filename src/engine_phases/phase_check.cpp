@@ -7,9 +7,11 @@
 #include "manifest.h"
 #include "recipe.h"
 #include "shell.h"
+#include "trace.h"
 #include "tui.h"
 #include "util.h"
 
+#include <chrono>
 #include <stdexcept>
 #include <utility>
 
@@ -17,12 +19,12 @@ namespace envy {
 
 // Helper: Run string-based check verb (check = "command")
 bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
-  tui::trace("phase check: executing string check: %s", std::string(check_cmd).c_str());
+  tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
   // Build shell config using manifest's default_shell
   shell_run_cfg cfg;
   cfg.on_output_line = [](std::string_view line) {
-    tui::trace("check output: %s", std::string(line).c_str());
+    tui::debug("check output: %s", std::string(line).c_str());
   };
   cfg.env = shell_getenv();
 
@@ -46,7 +48,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   }
 
   bool const check_passed{ result.exit_code == 0 };
-  tui::trace("phase check: string check exit_code=%d (check %s)",
+  tui::debug("phase check: string check exit_code=%d (check %s)",
              result.exit_code,
              check_passed ? "passed" : "failed");
   return check_passed;
@@ -54,7 +56,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
 
 // Helper: Run function-based check verb (check = function(ctx) ...)
 bool run_check_function(recipe *r, lua_State *lua) {
-  tui::trace("phase check: executing function check");
+  tui::debug("phase check: executing function check");
 
   lua_newtable(lua);  // Empty ctx table
 
@@ -68,7 +70,7 @@ bool run_check_function(recipe *r, lua_State *lua) {
   bool const check_passed{ static_cast<bool>(lua_toboolean(lua, -1)) };
   lua_pop(lua, 1);
 
-  tui::trace("phase check: function check returned %s", check_passed ? "true" : "false");
+  tui::debug("phase check: function check returned %s", check_passed ? "true" : "false");
   return check_passed;
 }
 
@@ -98,7 +100,9 @@ bool recipe_has_check_verb(recipe *r, lua_State *lua) {
 
 void run_check_phase(recipe *r, engine &eng) {
   std::string const key{ r->spec.format_key() };
-  tui::trace("phase check START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec.identity,
+                                       recipe_phase::asset_check,
+                                       std::chrono::steady_clock::now() };
 
   lua_State *lua = r->lua_state.get();
   if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec.identity); }
@@ -110,19 +114,19 @@ void run_check_phase(recipe *r, engine &eng) {
     // USER-MANAGED PACKAGE PATH: Double-check lock pattern
 
     // First check (pre-lock): See if work is needed
-    tui::trace("phase check: running user check (pre-lock)");
+    tui::debug("phase check: running user check (pre-lock)");
     bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
-    tui::trace("phase check: user check returned %s",
+    tui::debug("phase check: user check returned %s",
                check_passed_prelock ? "true" : "false");
 
     if (check_passed_prelock) {
       // Check passed - no work needed, skip all phases
-      tui::trace("phase check: check passed (pre-lock), skipping all phases");
+      tui::debug("phase check: check passed (pre-lock), skipping all phases");
       return;
     }
 
     // Check failed - work might be needed, acquire lock
-    tui::trace(
+    tui::debug(
         "phase check: check failed (pre-lock), acquiring lock for user-managed package");
 
     std::string const key_for_hash{ r->spec.format_key() };
@@ -142,17 +146,17 @@ void run_check_phase(recipe *r, engine &eng) {
     if (cache_result.lock) {
       // Got lock - mark as user-managed for proper cleanup
       cache_result.lock->mark_user_managed();
-      tui::trace("phase check: lock acquired, marked as user-managed");
+      tui::debug("phase check: lock acquired, marked as user-managed");
 
       // Second check (post-lock): Detect races where another process completed work
-      tui::trace("phase check: re-running user check (post-lock)");
+      tui::debug("phase check: re-running user check (post-lock)");
       bool const check_passed_postlock{ run_check_verb(r, eng, lua) };
-      tui::trace("phase check: re-check returned %s",
+      tui::debug("phase check: re-check returned %s",
                  check_passed_postlock ? "true" : "false");
 
       if (check_passed_postlock) {
         // Race detected: another process completed work while we waited for lock
-        tui::trace(
+        tui::debug(
             "phase check: re-check passed, releasing lock (another process completed)");
         // Lock destructor will run, purging entry_dir because user_managed flag is set.
         // This is correct: user-managed packages don't leave cache artifacts, so even
@@ -162,7 +166,7 @@ void run_check_phase(recipe *r, engine &eng) {
 
       // Still needed - keep lock, phases will execute
       r->lock = std::move(cache_result.lock);
-      tui::trace("phase check: re-check failed, keeping lock, phases will execute");
+      tui::debug("phase check: re-check failed, keeping lock, phases will execute");
     } else {
       // Cache hit for user-managed package indicates inconsistent state:
       // check verb returned false (work needed) but cache entry exists.
@@ -194,10 +198,10 @@ void run_check_phase(recipe *r, engine &eng) {
 
     if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
       r->lock = std::move(cache_result.lock);
-      tui::trace("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
+      tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
     } else {  // Cache hit - store asset_path, no lock means subsequent phases skip
       r->asset_path = cache_result.asset_path;
-      tui::trace("phase check: [%s] CACHE HIT at %s - phases will skip",
+      tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
                  key.c_str(),
                  cache_result.asset_path.string().c_str());
     }

@@ -107,14 +107,16 @@ std::vector<unsigned char> util_load_file(std::filesystem::path const &path) {
   if (file_size > 0) {
     size_t const bytes_read{ std::fread(buffer.data(), 1, buffer.size(), file.get()) };
     if (bytes_read != buffer.size()) {
-      throw std::runtime_error("util_load_file: failed to read entire file: " + path.string());
+      throw std::runtime_error("util_load_file: failed to read entire file: " +
+                               path.string());
     }
   }
 
   return buffer;
 }
 
-scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path) : path_{ std::move(path) } {}
+scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path)
+    : path_{ std::move(path) } {}
 
 scoped_path_cleanup::~scoped_path_cleanup() { cleanup(); }
 

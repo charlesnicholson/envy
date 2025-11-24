@@ -4,15 +4,18 @@
 #include "fetch.h"
 #include "recipe.h"
 #include "sha256.h"
+#include "trace.h"
 #include "tui.h"
 
 #include <stdexcept>
+#include <chrono>
 #include <unordered_set>
 #include <vector>
 
 namespace envy {
 
 namespace {
+
 
 void validate_phases(lua_State *lua, std::string const &identity) {
   lua_getglobal(lua, "fetch");
@@ -41,8 +44,9 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 
 void run_recipe_fetch_phase(recipe *r, engine &eng) {
   recipe_spec const &spec = r->spec;
-  std::string const key{ spec.format_key() };
-  tui::trace("phase recipe_fetch START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ spec.identity,
+                                       recipe_phase::recipe_fetch,
+                                       std::chrono::steady_clock::now() };
 
   // Build ancestor chain for cycle detection (empty for root recipes)
   std::unordered_set<std::string> ancestors;
@@ -61,7 +65,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
-      tui::trace("fetch recipe %s from %s",
+      tui::debug("fetch recipe %s from %s",
                  spec.identity.c_str(),
                  remote_src->url.c_str());
       std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "recipe.lua" };
@@ -103,7 +107,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       }
 
       if (!remote_src->sha256.empty()) {
-        tui::trace("verifying SHA256 for recipe %s", spec.identity.c_str());
+        tui::debug("verifying SHA256 for recipe %s", spec.identity.c_str());
         sha256_verify(remote_src->sha256, sha256(fetch_dest));
       }
 
@@ -119,7 +123,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
-      tui::trace("fetch recipe %s from git %s @ %s",
+      tui::debug("fetch recipe %s from git %s @ %s",
                  spec.identity.c_str(),
                  git_src->url.c_str(),
                  git_src->ref.c_str());
@@ -228,6 +232,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
     r->dependencies[dep_cfg.identity] = { dep, needed_by_phase };
+    ENVY_TRACE_DEPENDENCY_ADDED(r->spec.identity, dep_cfg.identity, needed_by_phase);
 
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
   }

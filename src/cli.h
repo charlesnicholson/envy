@@ -37,7 +37,7 @@ struct cli_args {
 
   std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
-  bool structured_logging{ false };
+  bool decorated_logging{ false };
   std::string cli_output;
 };
 

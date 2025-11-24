@@ -7,6 +7,7 @@
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_util.h"
 #include "sha256.h"
+#include "trace.h"
 #include "tui.h"
 #include "uri.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
@@ -19,6 +20,7 @@ extern "C" {
 }
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <sstream>
 #include <stdexcept>
@@ -136,7 +138,7 @@ bool run_programmatic_fetch(lua_State *lua,
                             std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
-  tui::trace("phase fetch: executing fetch function");
+  tui::debug("phase fetch: executing fetch function");
 
   // Create temp workspace for ctx.tmp
   std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
@@ -177,14 +179,14 @@ bool run_programmatic_fetch(lua_State *lua,
     case LUA_TNIL:
     case LUA_TNONE:
       // Imperative only - no declarative fetch to process
-      tui::trace("phase fetch: function returned nil, imperative mode only");
+      tui::debug("phase fetch: function returned nil, imperative mode only");
       lua_pop(lua, 1);
       break;
 
     case LUA_TSTRING:
     case LUA_TTABLE: {
       // Declarative return - reuse existing declarative fetch machinery
-      tui::trace("phase fetch: function returned declarative spec, processing");
+      tui::debug("phase fetch: function returned declarative spec, processing");
 
       // Parse and execute declarative fetch from return value
       auto const fetch_specs{
@@ -202,7 +204,7 @@ bool run_programmatic_fetch(lua_State *lua,
             });
 
         if (has_git_repos) {
-          tui::trace("phase fetch: returned spec contains git repos, not cacheable");
+          tui::debug("phase fetch: returned spec contains git repos, not cacheable");
           should_mark_complete = false;
         }
       }
@@ -379,7 +381,7 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
     }
 
     if (spec.sha256.empty()) {  // No SHA256: always re-download (no cache trust)
-      tui::trace("phase fetch: no SHA256 for %s, re-downloading (no cache)",
+      tui::debug("phase fetch: no SHA256 for %s, re-downloading (no cache)",
                  dest.filename().string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
@@ -388,11 +390,11 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
 
     // File exists with SHA256 - verify cached version
     try {
-      tui::trace("phase fetch: verifying cached file %s", dest.string().c_str());
+      tui::debug("phase fetch: verifying cached file %s", dest.string().c_str());
       sha256_verify(spec.sha256, sha256(dest));
-      tui::trace("phase fetch: cache hit for %s", dest.filename().string().c_str());
+      tui::debug("phase fetch: cache hit for %s", dest.filename().string().c_str());
     } catch (std::exception const &e) {  // hash mismatch, delete and re-download
-      tui::trace("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
+      tui::debug("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
     }
@@ -406,11 +408,11 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key) {
   if (to_download_indices.empty()) {
-    tui::trace("phase fetch: all files cached, no downloads needed");
+    tui::debug("phase fetch: all files cached, no downloads needed");
     return;
   }
 
-  tui::trace("phase fetch: downloading %zu file(s)", to_download_indices.size());
+  tui::debug("phase fetch: downloading %zu file(s)", to_download_indices.size());
 
   std::vector<fetch_request> requests;
   requests.reserve(to_download_indices.size());
@@ -427,7 +429,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
       // File downloaded successfully
       auto const *result{ std::get_if<fetch_result>(&results[i]) };
       if (result) {
-        tui::trace("phase fetch: downloaded %s",
+        tui::debug("phase fetch: downloaded %s",
                    result->resolved_destination.filename().string().c_str());
       }
 
@@ -444,7 +446,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
         try {
           auto const *result{ std::get_if<fetch_result>(&results[i]) };
           if (!result) { throw std::runtime_error("Unexpected result type"); }
-          tui::trace("phase fetch: verifying SHA256 for %s",
+          tui::debug("phase fetch: verifying SHA256 for %s",
                      result->resolved_destination.string().c_str());
           sha256_verify(specs[spec_idx].sha256, sha256(result->resolved_destination));
         } catch (std::exception const &e) {
@@ -467,7 +469,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 bool run_declarative_fetch(lua_State *lua,
                            cache::scoped_entry_lock *lock,
                            std::string const &identity) {
-  tui::trace("phase fetch: executing declarative fetch");
+  tui::debug("phase fetch: executing declarative fetch");
 
   // Ensure stage_dir exists (needed for git repos that clone directly there)
   std::error_code ec;
@@ -491,7 +493,7 @@ bool run_declarative_fetch(lua_State *lua,
       });
 
   if (has_git_repos) {
-    tui::trace(
+    tui::debug(
         "phase fetch: skipping fetch completion marker (git repos are not cacheable)");
     return false;  // Don't mark complete
   }
@@ -502,17 +504,18 @@ bool run_declarative_fetch(lua_State *lua,
 }  // namespace
 
 void run_fetch_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase fetch START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec.identity,
+                                       recipe_phase::asset_fetch,
+                                       std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock = r->lock.get();
   if (!lock) {
-    tui::trace("phase fetch: no lock (cache hit), skipping");
+    tui::debug("phase fetch: no lock (cache hit), skipping");
     return;
   }
 
   if (lock->is_fetch_complete()) {
-    tui::trace("phase fetch: fetch already complete, skipping");
+    tui::debug("phase fetch: fetch already complete, skipping");
     return;
   }
 
@@ -528,7 +531,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
   switch (fetch_type) {
     case LUA_TNIL:
       lua_pop(lua, 1);
-      tui::trace("phase fetch: no fetch field, skipping");
+      tui::debug("phase fetch: no fetch field, skipping");
       return;
     case LUA_TFUNCTION:
       should_mark_complete =
@@ -546,7 +549,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
 
   if (should_mark_complete) {
     lock->mark_fetch_complete();
-    tui::trace("phase fetch: marked fetch complete");
+    tui::debug("phase fetch: marked fetch complete");
   }
 }
 

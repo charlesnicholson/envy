@@ -163,7 +163,7 @@ int lua_ctx_fetch(lua_State *lua) {
   }
 
   // Execute downloads (blocking, synchronous)
-  tui::trace("ctx.fetch: downloading %zu file(s) to %s",
+  tui::debug("ctx.fetch: downloading %zu file(s) to %s",
              urls.size(),
              ctx->run_dir.string().c_str());
 

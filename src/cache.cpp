@@ -1,8 +1,10 @@
 #include "cache.h"
 
 #include "platform.h"
+#include "trace.h"
 #include "tui.h"
 
+#include <chrono>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -24,11 +26,22 @@ struct cache::impl : cache_impl {};
 struct cache::scoped_entry_lock::impl {
   path entry_dir_;
   platform::file_lock lock_;
+  path lock_path_;
+  std::string recipe_identity_;
+  std::chrono::steady_clock::time_point lock_acquired_time{};
   bool completed_{ false };
   bool user_managed_{ false };
 
-  impl(path entry_dir, platform::file_lock lock)
-      : entry_dir_{ std::move(entry_dir) }, lock_{ std::move(lock) } {}
+  impl(path entry_dir,
+       platform::file_lock lock,
+       path lock_path,
+       std::string recipe_identity,
+       std::chrono::steady_clock::time_point lock_acquired_at)
+      : entry_dir_{ std::move(entry_dir) },
+        lock_{ std::move(lock) },
+        lock_path_{ std::move(lock_path) },
+        recipe_identity_{ std::move(recipe_identity) },
+        lock_acquired_time{ lock_acquired_at } {}
 
   path asset_dir() const { return entry_dir_ / "asset"; }
 };
@@ -49,33 +62,46 @@ void remove_all_noexcept(path const &target) {
 
 envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
                                         path const &entry_dir,
-                                        path const &lock_path) {
+                                        path const &lock_path,
+                                        std::string_view recipe_identity,
+                                        std::string_view cache_key) {
   envy::cache::ensure_result result{ entry_dir, entry_dir / "asset", nullptr };
 
-  envy::tui::trace("ensure_entry: checking %s", entry_dir.string().c_str());
-
   if (envy::cache::is_entry_complete(entry_dir)) {
-    envy::tui::trace("  ensure_entry: FAST PATH - entry already complete");
+    ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
+                         std::string(cache_key),
+                         result.asset_path.string());
     return result;
   }
 
-  envy::tui::trace("  ensure_entry: not complete, acquiring lock %s",
-                   lock_path.string().c_str());
   std::filesystem::create_directories(impl.locks_dir());
   std::filesystem::create_directories(entry_dir);
 
-  envy::tui::trace("  ensure_entry: blocking on file_lock acquisition...");
+  auto const lock_wait_start{ std::chrono::steady_clock::now() };
   envy::platform::file_lock lock{ lock_path };
-  envy::tui::trace("  ensure_entry: acquired lock!");
+  auto const wait_duration_ms{
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - lock_wait_start)
+        .count()
+  };
+  ENVY_TRACE_LOCK_ACQUIRED(std::string(recipe_identity),
+                           lock_path.string(),
+                           static_cast<std::int64_t>(wait_duration_ms));
 
   if (envy::cache::is_entry_complete(entry_dir)) {
-    envy::tui::trace("  ensure_entry: SLOW PATH - completed while waiting for lock");
-    // Lock automatically released when lock goes out of scope
+    ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
+                         std::string(cache_key),
+                         result.asset_path.string());
     return result;
   }
 
-  envy::tui::trace("  ensure_entry: CACHE MISS - returning lock for work");
-  result.lock = envy::cache::scoped_entry_lock::make(entry_dir, std::move(lock));
+  ENVY_TRACE_CACHE_MISS(std::string(recipe_identity), std::string(cache_key));
+  auto const lock_acquired_at{ std::chrono::steady_clock::now() };
+  result.lock = envy::cache::scoped_entry_lock::make(entry_dir,
+                                                     std::move(lock),
+                                                     lock_path,
+                                                     std::string{ recipe_identity },
+                                                     lock_acquired_at);
   return result;
 }
 
@@ -83,48 +109,62 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
 
 namespace envy {
 
-cache::scoped_entry_lock::scoped_entry_lock(path entry_dir, platform::file_lock lock)
-    : m{ std::make_unique<impl>(std::move(entry_dir), std::move(lock)) } {
-  tui::trace("scoped_entry_lock CTOR: entry_dir=%s", m->entry_dir_.string().c_str());
-  tui::trace("  about to remove_all(install_dir)");
+cache::scoped_entry_lock::scoped_entry_lock(
+    path entry_dir,
+    platform::file_lock lock,
+    path lock_path,
+    std::string recipe_identity,
+    std::chrono::steady_clock::time_point lock_acquired_at)
+    : m{ std::make_unique<impl>(std::move(entry_dir),
+                                std::move(lock),
+                                std::move(lock_path),
+                                std::move(recipe_identity),
+                                lock_acquired_at) } {
+  tui::debug("scoped_entry_lock CTOR: entry_dir=%s", m->entry_dir_.string().c_str());
+  tui::debug("  about to remove_all(install_dir)");
   remove_all_noexcept(install_dir());
-  tui::trace("  about to remove_all(work_dir)");
+  tui::debug("  about to remove_all(work_dir)");
   remove_all_noexcept(work_dir());  // always delete (purely ephemeral)
 
   // Preserve fetch/ to enable per-file caching across failed attempts
 
   // Ensure directories exist
-  tui::trace("  creating directories");
+  tui::debug("  creating directories");
   std::filesystem::create_directories(fetch_dir());
   std::filesystem::create_directories(install_dir());
   std::filesystem::create_directories(stage_dir());
-  tui::trace("scoped_entry_lock CTOR: done");
+  tui::debug("scoped_entry_lock CTOR: done");
 }
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
-  tui::trace("scoped_entry_lock DTOR: entry_dir=%s completed=%s user_managed=%s",
+  auto const hold_duration_ms{
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - m->lock_acquired_time)
+        .count()
+  };
+  tui::debug("scoped_entry_lock DTOR: entry_dir=%s completed=%s user_managed=%s",
              m->entry_dir_.string().c_str(),
              m->completed_ ? "true" : "false",
              m->user_managed_ ? "true" : "false");
 
   if (m->completed_) {
-    tui::trace("  DTOR: SUCCESS PATH - renaming install_dir -> asset_dir");
+    tui::debug("  DTOR: SUCCESS PATH - renaming install_dir -> asset_dir");
     remove_all_noexcept(m->asset_dir());
-    tui::trace("    from: %s", install_dir().string().c_str());
-    tui::trace("    to:   %s", m->asset_dir().string().c_str());
+    tui::debug("    from: %s", install_dir().string().c_str());
+    tui::debug("    to:   %s", m->asset_dir().string().c_str());
     platform::atomic_rename(install_dir(), m->asset_dir());
-    tui::trace("  DTOR: cleaning up work/fetch dirs");
+    tui::debug("  DTOR: cleaning up work/fetch dirs");
     remove_all_noexcept(work_dir());
     remove_all_noexcept(fetch_dir());
-    tui::trace("  DTOR: touching envy-complete");
+    tui::debug("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
-    tui::trace("  DTOR: completed path success");
+    tui::debug("  DTOR: completed path success");
   } else if (m->user_managed_) {
-    tui::trace("  DTOR: USER-MANAGED PATH - purging entire entry_dir");
+    tui::debug("  DTOR: USER-MANAGED PATH - purging entire entry_dir");
     remove_all_noexcept(m->entry_dir_);
-    tui::trace("  DTOR: user-managed purge complete");
+    tui::debug("  DTOR: user-managed purge complete");
   } else {
-    tui::trace("  DTOR: CACHE-MANAGED FAILURE PATH - cleaning up");
+    tui::debug("  DTOR: CACHE-MANAGED FAILURE PATH - cleaning up");
     // Check empty install_dir AND fetch_dir (installation didn't use cache at all)
     std::error_code ec;
 
@@ -146,7 +186,7 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
       return it == std::filesystem::directory_iterator{};
     }() };
 
-    tui::trace("  DTOR: install_empty=%s fetch_empty=%s",
+    tui::debug("  DTOR: install_empty=%s fetch_empty=%s",
                install_dir_empty ? "true" : "false",
                fetch_dir_empty ? "true" : "false");
 
@@ -154,21 +194,31 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     remove_all_noexcept(work_dir());
 
     if (install_dir_empty && fetch_dir_empty) {
-      tui::trace("  DTOR: both empty, wiping entry");
+      tui::debug("  DTOR: both empty, wiping entry");
       remove_all_noexcept(fetch_dir());
       remove_all_noexcept(m->asset_dir());
     }
   }
 
-  tui::trace(
+  tui::debug(
       "  DTOR: lock will be released and lock file deleted by file_lock destructor");
-  tui::trace("scoped_entry_lock DTOR: done");
+  ENVY_TRACE_LOCK_RELEASED(m->recipe_identity_,
+                           m->lock_path_.string(),
+                           static_cast<std::int64_t>(hold_duration_ms));
+  tui::debug("scoped_entry_lock DTOR: done");
 }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
     path entry_dir,
-    platform::file_lock lock_handle) {
-  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir), std::move(lock_handle) } };
+    platform::file_lock lock_handle,
+    path lock_path,
+    std::string recipe_identity,
+    std::chrono::steady_clock::time_point lock_acquired_at) {
+  return ptr_t{ new scoped_entry_lock{ std::move(entry_dir),
+                                       std::move(lock_handle),
+                                       std::move(lock_path),
+                                       std::move(recipe_identity),
+                                       lock_acquired_at } };
 }
 
 cache::path cache::scoped_entry_lock::install_dir() const {
@@ -231,14 +281,16 @@ cache::ensure_result cache::ensure_asset(std::string_view identity,
 
   path const entry_dir{ m->assets_dir() / std::string(identity) / variant };
 
-  return ensure_entry(*m, entry_dir, m->locks_dir() / lock_name);
+  return ensure_entry(*m, entry_dir, m->locks_dir() / lock_name, identity, variant);
 }
 
 cache::ensure_result cache::ensure_recipe(std::string_view identity) {
   std::string const id{ identity };
   return ensure_entry(*m,
                       m->recipes_dir() / id,
-                      m->locks_dir() / ("recipe." + id + ".lock"));
+                      m->locks_dir() / ("recipe." + id + ".lock"),
+                      identity,
+                      id);
 }
 
 }  // namespace envy

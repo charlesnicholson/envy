@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 #endif
   envy::aws_shutdown_guard aws_guard;
   envy::libgit2_scope git_guard;
-  envy::tui::scope tui_scope{ args.verbosity, args.structured_logging };
+  envy::tui::scope tui_scope{ args.verbosity, args.decorated_logging };
 
   if (!args.cli_output.empty()) {
     if (!args.cmd_cfg.has_value()) {
