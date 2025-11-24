@@ -228,7 +228,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
     recipe_phase const needed_by_phase{ dep_cfg.needed_by.has_value()
                                             ? static_cast<recipe_phase>(*dep_cfg.needed_by)
-                                            : recipe_phase::asset_check };
+                                            : recipe_phase::asset_build };
 
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
     r->dependencies[dep_cfg.identity] = { dep, needed_by_phase };

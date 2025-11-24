@@ -1,0 +1,20 @@
+-- Tests default needed_by - no explicit needed_by specified
+identity = "local.default_needed_by_parent@v1"
+
+dependencies = {
+  { recipe = "local.simple@v1", source = "simple.lua" }
+  -- No needed_by specified - should default to "build"
+}
+
+fetch = function(ctx)
+  return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+end
+
+stage = function(ctx)
+  ctx.extract_all({strip = 1})
+end
+
+build = function(ctx)
+  -- Dependency should be available here by default
+  local dep_path = ctx.asset("local.simple@v1")
+end
