@@ -3,6 +3,7 @@
 #include "lua_shell.h"
 #include "recipe.h"
 #include "shell.h"
+#include "trace.h"
 #include "tui.h"
 
 extern "C" {
@@ -10,6 +11,7 @@ extern "C" {
 #include "lua.h"
 }
 
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -103,6 +105,18 @@ int lua_ctx_run(lua_State *lua) {
 
   if (!cwd) { cwd = ctx->run_dir; }  // Use run_dir as default cwd
 
+  auto const start_time{ std::chrono::steady_clock::now() };
+
+  if (tui::trace_enabled()) {
+    std::string sanitized_script{ script_view };
+    if (sanitized_script.size() > 100) {
+      sanitized_script = sanitized_script.substr(0, 97) + "...";
+    }
+    ENVY_TRACE_LUA_CTX_RUN_START(ctx->recipe_->spec.identity,
+                                 sanitized_script,
+                                 cwd->string());
+  }
+
   try {
     std::string combined_output;
     std::vector<std::string> output_lines;
@@ -148,6 +162,14 @@ int lua_ctx_run(lua_State *lua) {
                              .shell = shell };
 
     shell_result const result{ shell_run(script_view, inv) };
+
+    auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - start_time)
+                                .count() };
+
+    ENVY_TRACE_LUA_CTX_RUN_COMPLETE(ctx->recipe_->spec.identity,
+                                     result.exit_code,
+                                     static_cast<std::int64_t>(duration_ms));
 
     if (result.exit_code != 0) {
       if (result.signal) {

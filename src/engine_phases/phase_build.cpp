@@ -128,9 +128,8 @@ void run_build_phase(recipe *r, engine &eng) {
                                        std::chrono::steady_clock::now() };
 
   lua_State *lua{ r->lua_state.get() };
-  cache::scoped_entry_lock *lock{ r->lock.get() };
 
-  if (!lock) {
+  if (!r->lock) {
     tui::debug("phase build: no lock (cache hit), skipping");
     return;
   }
@@ -150,15 +149,15 @@ void run_build_phase(recipe *r, engine &eng) {
         return std::string{ script, len };
       }() };
       lua_pop(lua, 1);
-      run_shell_build(script_str, lock->stage_dir(), r->spec.identity);
+      run_shell_build(script_str, r->lock->stage_dir(), r->spec.identity);
       break;
     }
 
     case LUA_TFUNCTION:
       run_programmatic_build(lua,
-                             lock->fetch_dir(),
-                             lock->stage_dir(),
-                             lock->install_dir(),
+                             r->lock->fetch_dir(),
+                             r->lock->stage_dir(),
+                             r->lock->install_dir(),
                              r->spec.identity,
                              r->spec.options,
                              eng,

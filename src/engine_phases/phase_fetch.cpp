@@ -2,10 +2,10 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "recipe.h"
 #include "fetch.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_util.h"
+#include "recipe.h"
 #include "sha256.h"
 #include "trace.h"
 #include "tui.h"
@@ -15,7 +15,6 @@
 #endif
 
 extern "C" {
-#include "lauxlib.h"
 #include "lua.h"
 }
 
@@ -97,9 +96,9 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
 // Build context table for fetch function
 void build_fetch_phase_ctx_table(lua_State *lua,
-                               std::string const &identity,
-                               std::unordered_map<std::string, lua_value> const &options,
-                               fetch_phase_ctx *ctx) {
+                                 std::string const &identity,
+                                 std::unordered_map<std::string, lua_value> const &options,
+                                 fetch_phase_ctx *ctx) {
   lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
 
   // ctx.identity
@@ -418,13 +417,17 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
   requests.reserve(to_download_indices.size());
   for (auto idx : to_download_indices) { requests.push_back(specs[idx].request); }
 
+  // TODO: Add FETCH_FILE_START/COMPLETE trace events (requires passing recipe identity)
+
   auto const results{ fetch(requests) };
 
   std::vector<std::string> errors;
   for (size_t i = 0; i < results.size(); ++i) {
     auto const spec_idx{ to_download_indices[i] };
+    std::string url{ get_source(specs[spec_idx].request) };
+
     if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-      errors.push_back(get_source(specs[spec_idx].request) + ": " + *err);
+      errors.push_back(url + ": " + *err);
     } else {
       // File downloaded successfully
       auto const *result{ std::get_if<fetch_result>(&results[i]) };
@@ -534,8 +537,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
       tui::debug("phase fetch: no fetch field, skipping");
       return;
     case LUA_TFUNCTION:
-      should_mark_complete =
-          run_programmatic_fetch(lua, lock, identity, options, eng, r);
+      should_mark_complete = run_programmatic_fetch(lua, lock, identity, options, eng, r);
       break;
     case LUA_TSTRING:
     case LUA_TTABLE:

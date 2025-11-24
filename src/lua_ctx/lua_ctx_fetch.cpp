@@ -1,6 +1,8 @@
 #include "lua_ctx_bindings.h"
 
 #include "fetch.h"
+#include "recipe.h"
+#include "trace.h"
 #include "tui.h"
 #include "uri.h"
 
@@ -9,6 +11,7 @@ extern "C" {
 #include "lua.h"
 }
 
+#include <chrono>
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -167,7 +170,32 @@ int lua_ctx_fetch(lua_State *lua) {
              urls.size(),
              ctx->run_dir.string().c_str());
 
+  auto const start_time{ std::chrono::steady_clock::now() };
+
+  if (tui::trace_enabled()) {
+    std::string trace_url{ urls.empty() ? "" : urls[0] };
+    if (urls.size() > 1) {
+      trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
+    }
+    std::string const trace_dest{ urls.empty() ? "" : basenames[0] };
+    ENVY_TRACE_LUA_CTX_FETCH_START(ctx->recipe_->spec.identity, trace_url, trace_dest);
+  }
+
   auto const results{ fetch(requests) };
+  auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start_time)
+                              .count() };
+
+  if (tui::trace_enabled()) {
+    std::string trace_url{ urls.empty() ? "" : urls[0] };
+    if (urls.size() > 1) {
+      trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
+    }
+    ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->recipe_->spec.identity,
+                                      trace_url,
+                                      0,
+                                      static_cast<std::int64_t>(duration_ms));
+  }
 
   // Check for errors (no SHA256 verification here)
   std::vector<std::string> errors;

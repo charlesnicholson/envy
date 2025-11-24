@@ -61,7 +61,8 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
                                          std::filesystem::path const &manifest_path) {
   tui::debug("Loading manifest (%zu bytes)", content.size());
   // Ensure null-termination for Lua (create string with guaranteed null terminator)
-  std::string const script{ reinterpret_cast<char const *>(content.data()), content.size() };
+  std::string const script{ reinterpret_cast<char const *>(content.data()),
+                            content.size() };
 
   auto state{ lua_make() };
   if (!state) { throw std::runtime_error("Failed to create Lua state"); }

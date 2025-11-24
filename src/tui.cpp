@@ -9,20 +9,30 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <mutex>
 #include <queue>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
+#include <variant>
 
 using envy::tui::level;
 
 constexpr std::size_t kSeverityLabelWidth{ 3 };
 constexpr std::chrono::milliseconds kRefreshIntervalMs{ 16 };
 
+struct log_event {
+  std::chrono::system_clock::time_point timestamp;
+  envy::tui::level severity;
+  std::string message;
+};
+
+using log_entry = std::variant<log_event, envy::trace_event_t>;
+
 struct tui {
-  std::queue<std::string> messages;
+  std::queue<log_entry> messages;
   std::function<void(std::string_view)> output_handler;
   std::thread worker;
   std::mutex mutex;         // protects messages queue and cv
@@ -32,54 +42,13 @@ struct tui {
   std::optional<envy::tui::level> level_threshold;
   bool decorated{ false };
   bool initialized{ false };
+  bool trace_stderr{ false };
+  std::FILE *trace_file{ nullptr };
 } s_tui{};
 
 bool envy::tui::g_trace_enabled{ false };
 
 namespace {
-
-void flush_messages(std::queue<std::string> &pending,
-                    std::function<void(std::string_view)> const &handler) {
-  bool wrote_to_stderr{ false };
-
-  while (!pending.empty()) {
-    auto const &message{ pending.front() };
-
-    if (handler) {
-      handler(message);
-    } else {
-      if (!message.empty()) { std::fwrite(message.data(), 1, message.size(), stderr); }
-      wrote_to_stderr = true;
-    }
-
-    pending.pop();
-  }
-
-  if (!handler && wrote_to_stderr) { std::fflush(stderr); }
-}
-
-void worker_thread() {
-  std::unique_lock<std::mutex> lock{ s_tui.mutex };
-
-  while (!s_tui.stop_requested) {
-    std::queue<std::string> pending;
-    pending.swap(s_tui.messages);
-
-    lock.unlock();
-    flush_messages(pending, s_tui.output_handler);
-    lock.lock();
-
-    s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
-      return s_tui.stop_requested.load();
-    });
-  }
-
-  std::queue<std::string> pending;
-  pending.swap(s_tui.messages);
-
-  lock.unlock();
-  flush_messages(pending, s_tui.output_handler);
-}
 
 std::string_view level_to_string(level value) {
   switch (value) {
@@ -136,28 +105,80 @@ std::string format_prefix(level severity) {
   return std::string{ prefix_buf, static_cast<std::size_t>(written_prefix) };
 }
 
-void enqueue(level severity, std::string message) {
-  if (!s_tui.initialized || message.empty()) { return; }
-  if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
+void flush_messages(std::queue<log_entry> &pending,
+                    std::function<void(std::string_view)> const &handler) {
+  bool wrote_to_stderr{ false };
 
-  std::string buffer;
-  if (s_tui.decorated) {
-    auto const prefix{ format_prefix(severity) };
-    buffer.reserve(prefix.size() + message.size() + 1);
-    buffer.append(prefix);
-  } else {
-    buffer.reserve(message.size() + 1);
+  while (!pending.empty()) {
+    auto entry{ std::move(pending.front()) };
+    pending.pop();
+
+    if (auto *log_ptr{ std::get_if<log_event>(&entry) }) {
+      std::string output;
+      if (s_tui.decorated) {
+        auto const prefix{ format_prefix(log_ptr->severity) };
+        output.reserve(prefix.size() + log_ptr->message.size() + 1);
+        output.append(prefix);
+      } else {
+        output.reserve(log_ptr->message.size() + 1);
+      }
+      output.append(log_ptr->message);
+      output.push_back('\n');
+
+      if (handler) {
+        handler(output);
+      } else {
+        if (!output.empty()) { std::fwrite(output.data(), 1, output.size(), stderr); }
+        wrote_to_stderr = true;
+      }
+    } else if (auto *trace_ptr{ std::get_if<envy::trace_event_t>(&entry) }) {
+      if (s_tui.trace_stderr) {
+        auto const line{ envy::trace_event_to_string(*trace_ptr) + "\n" };
+        if (handler) {
+          handler(line);
+        } else {
+          std::fwrite(line.data(), 1, line.size(), stderr);
+          wrote_to_stderr = true;
+        }
+      }
+
+      if (s_tui.trace_file) {
+        auto const json{ envy::trace_event_to_json(*trace_ptr) + "\n" };
+        if (std::fwrite(json.data(), 1, json.size(), s_tui.trace_file) != json.size() ||
+            std::fflush(s_tui.trace_file) != 0) {
+          std::fflush(stderr);
+          std::fprintf(stderr, "Fatal: failed to write trace file\n");
+          std::fflush(stderr);
+          std::abort();
+        }
+      }
+    }
   }
 
-  buffer.append(message);
-  buffer.push_back('\n');
+  if (!handler && wrote_to_stderr) { std::fflush(stderr); }
+}
 
-  {
-    std::lock_guard<std::mutex> lock{ s_tui.mutex };
-    s_tui.messages.push(std::move(buffer));
+void worker_thread() {
+  std::unique_lock<std::mutex> lock{ s_tui.mutex };
+
+  while (!s_tui.stop_requested) {
+    std::queue<log_entry> pending;
+    pending.swap(s_tui.messages);
+
+    lock.unlock();
+    flush_messages(pending, s_tui.output_handler);
+    lock.lock();
+
+    s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
+      return s_tui.stop_requested.load();
+    });
   }
 
-  s_tui.cv.notify_one();
+  std::queue<log_entry> pending;
+  pending.swap(s_tui.messages);
+
+  lock.unlock();
+  flush_messages(pending, s_tui.output_handler);
 }
 
 void log_formatted(level severity, char const *fmt, va_list args) {
@@ -185,7 +206,16 @@ void log_formatted(level severity, char const *fmt, va_list args) {
   buffer.resize(static_cast<std::size_t>(written));
   if (buffer.empty()) { return; }
 
-  enqueue(severity, std::move(buffer));
+  log_event ev{ .timestamp = std::chrono::system_clock::now(),
+                .severity = severity,
+                .message = std::move(buffer) };
+
+  {
+    std::lock_guard<std::mutex> lock{ s_tui.mutex };
+    s_tui.messages.push(log_entry{ std::move(ev) });
+  }
+
+  s_tui.cv.notify_one();
 }
 
 }  // namespace
@@ -203,6 +233,40 @@ void init() {
   g_trace_enabled = false;
 }
 
+void configure_trace_outputs(std::vector<trace_output_spec> outputs) {
+  if (!s_tui.initialized) {
+    throw std::logic_error{ "envy::tui::configure_trace_outputs called before init" };
+  }
+
+  if (s_tui.worker.joinable()) {
+    throw std::logic_error{ "envy::tui::configure_trace_outputs called while running" };
+  }
+
+  // Close previous file if any
+  if (s_tui.trace_file) {
+    std::fclose(s_tui.trace_file);
+    s_tui.trace_file = nullptr;
+  }
+
+  s_tui.trace_stderr = false;
+
+  for (auto const &spec : outputs) {
+    if (spec.type == trace_output_type::stderr) {
+      s_tui.trace_stderr = true;
+    } else if (spec.type == trace_output_type::file && spec.file_path) {
+      if (s_tui.trace_file) {
+        throw std::logic_error{ "Only one trace file output supported" };
+      }
+      s_tui.trace_file = std::fopen(spec.file_path->string().c_str(), "w");
+      if (!s_tui.trace_file) {
+        throw std::runtime_error("Failed to open trace file: " + spec.file_path->string());
+      }
+    }
+  }
+
+  g_trace_enabled = s_tui.trace_stderr || s_tui.trace_file;
+}
+
 void run(std::optional<level> threshold, bool decorated_logging) {
   if (!s_tui.initialized) {
     throw std::logic_error{ "envy::tui::run called before init" };
@@ -215,8 +279,6 @@ void run(std::optional<level> threshold, bool decorated_logging) {
   s_tui.level_threshold = std::move(threshold);
   s_tui.decorated = decorated_logging;
   s_tui.stop_requested = false;
-  g_trace_enabled =
-      s_tui.level_threshold.has_value() && *s_tui.level_threshold <= level::TUI_TRACE;
   s_tui.worker = std::thread{ worker_thread };
 }
 
@@ -231,13 +293,21 @@ void shutdown() {
   s_tui.worker = std::thread{};
   s_tui.stop_requested = false;
   g_trace_enabled = false;
+  if (s_tui.trace_file) {
+    std::fclose(s_tui.trace_file);
+    s_tui.trace_file = nullptr;
+  }
 }
 
 bool is_tty() { return platform::is_tty(); }
 
 void trace(trace_event_t event) {
   if (!g_trace_enabled) { return; }
-  enqueue(level::TUI_TRACE, trace_event_to_string(event));
+  {
+    std::lock_guard<std::mutex> lock{ s_tui.mutex };
+    s_tui.messages.push(log_entry{ std::move(event) });
+  }
+  s_tui.cv.notify_one();
 }
 
 void debug(char const *fmt, ...) {

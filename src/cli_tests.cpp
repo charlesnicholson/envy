@@ -280,3 +280,69 @@ TEST_CASE("cli_parse: verbose flag") {
   CHECK(parsed.verbosity == envy::tui::level::TUI_DEBUG);
   CHECK(parsed.decorated_logging);
 }
+
+TEST_CASE("cli_parse: trace flag enables structured outputs") {
+  SUBCASE("stderr trace explicit") {
+    std::vector<std::string> args{ "envy", "--trace=stderr", "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.verbosity.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
+    CHECK(parsed.decorated_logging);
+    REQUIRE(parsed.trace_outputs.size() == 1);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
+  }
+
+  SUBCASE("file trace target") {
+    std::filesystem::path const trace_path{ "/tmp/envy-trace.jsonl" };
+    std::vector<std::string> args{ "envy",
+                                   "--trace=file:" + trace_path.string(),
+                                   "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.verbosity.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
+    REQUIRE(parsed.trace_outputs.size() == 1);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::file);
+    REQUIRE(parsed.trace_outputs[0].file_path.has_value());
+    CHECK(parsed.trace_outputs[0].file_path->string() == trace_path.string());
+  }
+
+  SUBCASE("multiple trace destinations") {
+    std::filesystem::path const trace_path{ "/tmp/envy-trace.jsonl" };
+    std::vector<std::string> args{ "envy",
+                                   "--trace=stderr,file:" + trace_path.string(),
+                                   "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.verbosity.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
+    REQUIRE(parsed.trace_outputs.size() == 2);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
+    CHECK(parsed.trace_outputs[1].type == envy::tui::trace_output_type::file);
+    REQUIRE(parsed.trace_outputs[1].file_path.has_value());
+    CHECK(parsed.trace_outputs[1].file_path->string() == trace_path.string());
+  }
+
+  SUBCASE("invalid trace spec rejected") {
+    std::vector<std::string> args{ "envy", "--trace=bogus", "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+    CHECK(parsed.trace_outputs.empty());
+  }
+}

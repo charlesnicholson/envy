@@ -3,7 +3,11 @@
 
 #include "CLI11.hpp"
 
+#include <filesystem>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace envy {
 
@@ -19,11 +23,14 @@ cli_args cli_parse(int argc, char **argv) {
       verbose,
       "Enable decorated verbose logging (prefix stdout/stderr with timestamp and level)");
 
-  bool trace{ false };
-  app.add_flag("--trace",
-               trace,
-               "Enable structured trace logging (human-readable to stderr or structured "
-               "JSON when configured)");
+  std::string trace_spec;
+  auto *trace_option{ app.add_option("--trace",
+                                     trace_spec,
+                                     "Enable trace logging. Provide a comma-separated "
+                                     "list: 'stderr' for human-readable stderr and/or "
+                                     "'file:<path>' for JSONL file output. Defaults to "
+                                     "stderr if no value provided.") };
+  trace_option->expected(0, 1);
 
   // Support version flags (-v / --version) triggering version command directly.
   bool version_flag_short{ false };
@@ -203,9 +210,43 @@ cli_args cli_parse(int argc, char **argv) {
     args.cli_output = app.help();
   } catch (CLI::ParseError const &e) { args.cli_output = std::string(e.what()); }
 
-  if (trace) {
+  // Handle trace logging: --trace defaults to stderr if no value provided
+  bool const trace_requested{ trace_option->count() > 0 };
+  std::vector<std::string> trace_specs_tokens;
+
+  if (trace_requested) {
+    if (trace_spec.empty()) {
+      trace_specs_tokens.push_back("stderr");
+    } else {
+      for (std::string_view sv{ trace_spec }; !sv.empty();) {
+        auto const pos{ sv.find(',') };
+        auto const token{ sv.substr(0, pos) };
+        if (!token.empty()) { trace_specs_tokens.emplace_back(token); }
+        sv = (pos == std::string_view::npos) ? std::string_view{} : sv.substr(pos + 1);
+      }
+    }
+  }
+
+  if (!trace_specs_tokens.empty()) {
     args.verbosity = tui::level::TUI_TRACE;
     args.decorated_logging = true;
+    for (auto const &spec : trace_specs_tokens) {
+      if (spec.empty() || spec == "stderr") {
+        args.trace_outputs.push_back({ tui::trace_output_type::stderr, std::nullopt });
+      } else if (spec.rfind("file:", 0) == 0 && spec.size() > 5) {
+        args.trace_outputs.push_back(
+            { tui::trace_output_type::file, std::filesystem::path{ spec.substr(5) } });
+      } else {
+        args.cli_output = "Invalid trace output spec: " + spec;
+        args.trace_outputs.clear();
+        args.cmd_cfg.reset();
+        cmd_cfg.reset();
+        break;
+      }
+    }
+    if (args.trace_outputs.empty() && args.cli_output.empty()) {
+      args.trace_outputs.push_back({ tui::trace_output_type::stderr, std::nullopt });
+    }
   } else if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;
     args.decorated_logging = true;

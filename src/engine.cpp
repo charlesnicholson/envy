@@ -14,8 +14,6 @@
 #include "tui.h"
 
 #include <array>
-#include <chrono>
-#include <cstdint>
 #include <vector>
 
 namespace envy {
@@ -90,7 +88,10 @@ recipe *engine::ensure_recipe(recipe_spec const &spec) {
           .default_shell_ptr = &default_shell_,
       })) };
 
-  if (inserted) { execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>(); }
+  if (inserted) {
+    execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>();
+    ENVY_TRACE_RECIPE_REGISTERED(spec.identity, key.canonical(), false);
+  }
   return it->second.get();
 }
 

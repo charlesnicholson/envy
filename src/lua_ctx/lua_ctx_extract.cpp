@@ -1,12 +1,15 @@
 #include "lua_ctx_bindings.h"
 
 #include "extract.h"
+#include "recipe.h"
+#include "trace.h"
 
 extern "C" {
 #include "lauxlib.h"
 #include "lua.h"
 }
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 
@@ -45,10 +48,25 @@ int lua_ctx_extract(lua_State *lua) {
     return luaL_error(lua, "ctx.extract: file not found: %s", filename);
   }
 
+  ENVY_TRACE_LUA_CTX_EXTRACT_START(ctx->recipe_->spec.identity,
+                                   archive_path.string(),
+                                   ctx->run_dir.string());
+
+  auto const start_time{ std::chrono::steady_clock::now() };
+
   try {
     std::uint64_t const files{
       extract(archive_path, ctx->run_dir, { .strip_components = strip_components })
     };
+
+    auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - start_time)
+                                .count() };
+
+    ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(ctx->recipe_->spec.identity,
+                                        static_cast<std::int64_t>(files),
+                                        static_cast<std::int64_t>(duration_ms));
+
     lua_pushinteger(lua, static_cast<lua_Integer>(files));
     return 1;  // Return file count
   } catch (std::exception const &e) {

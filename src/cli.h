@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace envy {
 
@@ -38,6 +39,7 @@ struct cli_args {
   std::optional<cmd_cfg_t> cmd_cfg;
   std::optional<tui::level> verbosity;
   bool decorated_logging{ false };
+  std::vector<tui::trace_output_spec> trace_outputs;
   std::string cli_output;
 };
 

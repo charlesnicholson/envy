@@ -2,6 +2,7 @@
 
 #include "recipe_phase.h"
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -163,10 +164,13 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);
+std::string trace_event_to_json(trace_event_t const &event);
 
 namespace tui {
 extern bool g_trace_enabled;
 void trace(trace_event_t event);
+
+inline bool trace_enabled() { return g_trace_enabled; }
 }  // namespace tui
 
 struct phase_trace_scope {

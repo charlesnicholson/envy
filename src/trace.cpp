@@ -3,6 +3,9 @@
 #include "recipe_phase.h"
 #include "util.h"
 
+#include <chrono>
+#include <cstdio>
+#include <ctime>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -13,8 +16,99 @@ namespace {
 
 std::string_view bool_string(bool value) { return value ? "true" : "false"; }
 
-#define TRACE_NAME(type) \
-  [](trace_events::type const &) -> std::string_view { return #type; }
+std::tm make_utc_tm(std::time_t time) {
+  std::tm result{};
+
+#if defined(_WIN32)
+  gmtime_s(&result, &time);
+#else
+  gmtime_r(&time, &result);
+#endif
+
+  return result;
+}
+
+std::string format_timestamp(std::chrono::system_clock::time_point tp) {
+  auto const seconds{ std::chrono::time_point_cast<std::chrono::seconds>(tp) };
+  auto const millis{
+    std::chrono::duration_cast<std::chrono::milliseconds>(tp - seconds).count()
+  };
+
+  std::time_t const timestamp{ std::chrono::system_clock::to_time_t(seconds) };
+  std::tm const utc_tm{ make_utc_tm(timestamp) };
+
+  char base[32]{};
+  if (std::strftime(base, sizeof base, "%Y-%m-%dT%H:%M:%S", &utc_tm) == 0) { return {}; }
+
+  char buffer[64]{};
+  int const written{ std::snprintf(buffer,
+                                   sizeof buffer,
+                                   "%s.%03lldZ",
+                                   base,
+                                   static_cast<long long>(millis)) };
+  if (written <= 0) { return {}; }
+
+  return std::string{ buffer, static_cast<std::size_t>(written) };
+}
+
+void append_json_string(std::string &out, std::string_view value) {
+  for (char const ch : value) {
+    switch (ch) {
+      case '\\': out.append("\\\\"); break;
+      case '"': out.append("\\\""); break;
+      case '\b': out.append("\\b"); break;
+      case '\f': out.append("\\f"); break;
+      case '\n': out.append("\\n"); break;
+      case '\r': out.append("\\r"); break;
+      case '\t': out.append("\\t"); break;
+      default:
+        if (static_cast<unsigned char>(ch) < 0x20) {
+          char escape[7]{};
+          std::snprintf(escape,
+                        sizeof escape,
+                        "\\u%04x",
+                        static_cast<unsigned int>(static_cast<unsigned char>(ch)));
+          out.append(escape);
+        } else {
+          out.push_back(ch);
+        }
+        break;
+    }
+  }
+}
+
+void append_kv(std::string &out, char const *key, std::string_view value) {
+  out.push_back(',');
+  out.push_back('"');
+  out.append(key);
+  out.append("\":\"");
+  append_json_string(out, value);
+  out.push_back('"');
+}
+
+void append_kv(std::string &out, char const *key, long long value) {
+  out.push_back(',');
+  out.push_back('"');
+  out.append(key);
+  out.append("\":");
+  out.append(std::to_string(value));
+}
+
+void append_kv(std::string &out, char const *key, bool value) {
+  out.push_back(',');
+  out.push_back('"');
+  out.append(key);
+  out.append("\":");
+  out.append(value ? "true" : "false");
+}
+
+void append_phase(std::string &out, char const *key, recipe_phase phase) {
+  append_kv(out, key, recipe_phase_name(phase));
+
+  char number_key[64]{};
+  std::snprintf(number_key, sizeof number_key, "%s_num", key);
+  append_kv(out, number_key, static_cast<long long>(static_cast<int>(phase)));
+}
 
 }  // namespace
 
@@ -31,6 +125,9 @@ phase_trace_scope::~phase_trace_scope() {
                               .count() };
   ENVY_TRACE_PHASE_COMPLETE(recipe, phase, static_cast<std::int64_t>(duration_ms));
 }
+
+#define TRACE_NAME(type) \
+  [](trace_events::type const &) -> std::string_view { return #type; }
 
 std::string_view trace_event_name(trace_event_t const &event) {
   return std::visit(
@@ -60,6 +157,8 @@ std::string_view trace_event_name(trace_event_t const &event) {
       },
       event);
 }
+
+#undef TRACE_NAME
 
 std::string trace_event_to_string(trace_event_t const &event) {
   return std::visit(
@@ -211,6 +310,135 @@ std::string trace_event_to_string(trace_event_t const &event) {
           },
       },
       event);
+}
+
+std::string trace_event_to_json(trace_event_t const &event) {
+  std::string output;
+  output.reserve(256);
+
+  output.append("{\"ts\":\"");
+  output.append(format_timestamp(std::chrono::system_clock::now()));
+  output.append("\",\"event\":\"");
+  output.append(trace_event_name(event));
+  output.push_back('"');
+
+  auto const append_recipe{ [&](std::string_view value) {
+    append_kv(output, "recipe", value);
+  } };
+
+  std::visit(
+      match{
+          [&](trace_events::phase_blocked const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "blocked_at_phase", value.blocked_at_phase);
+            append_kv(output, "waiting_for", value.waiting_for);
+            append_phase(output, "target_phase", value.target_phase);
+          },
+          [&](trace_events::phase_unblocked const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "unblocked_at_phase", value.unblocked_at_phase);
+            append_kv(output, "dependency", value.dependency);
+          },
+          [&](trace_events::dependency_added const &value) {
+            append_kv(output, "parent", value.parent);
+            append_kv(output, "dependency", value.dependency);
+            append_phase(output, "needed_by", value.needed_by);
+          },
+          [&](trace_events::phase_start const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "phase", value.phase);
+          },
+          [&](trace_events::phase_complete const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "phase", value.phase);
+            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+          },
+          [&](trace_events::thread_start const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "target_phase", value.target_phase);
+          },
+          [&](trace_events::thread_complete const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "final_phase", value.final_phase);
+          },
+          [&](trace_events::recipe_registered const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "key", value.key);
+            append_kv(output, "has_dependencies", value.has_dependencies);
+          },
+          [&](trace_events::target_extended const &value) {
+            append_recipe(value.recipe);
+            append_phase(output, "old_target", value.old_target);
+            append_phase(output, "new_target", value.new_target);
+          },
+          [&](trace_events::lua_ctx_run_start const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "command", value.command);
+            append_kv(output, "cwd", value.cwd);
+          },
+          [&](trace_events::lua_ctx_run_complete const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "exit_code", static_cast<long long>(value.exit_code));
+            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+          },
+          [&](trace_events::lua_ctx_fetch_start const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "url", value.url);
+            append_kv(output, "destination", value.destination);
+          },
+          [&](trace_events::lua_ctx_fetch_complete const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "url", value.url);
+            append_kv(output, "bytes_downloaded", value.bytes_downloaded);
+            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+          },
+          [&](trace_events::lua_ctx_extract_start const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "archive_path", value.archive_path);
+            append_kv(output, "destination", value.destination);
+          },
+          [&](trace_events::lua_ctx_extract_complete const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "files_extracted", value.files_extracted);
+            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+          },
+          [&](trace_events::cache_hit const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "cache_key", value.cache_key);
+            append_kv(output, "asset_path", value.asset_path);
+          },
+          [&](trace_events::cache_miss const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "cache_key", value.cache_key);
+          },
+          [&](trace_events::lock_acquired const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "lock_path", value.lock_path);
+            append_kv(output, "wait_duration_ms", value.wait_duration_ms);
+          },
+          [&](trace_events::lock_released const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "lock_path", value.lock_path);
+            append_kv(output, "hold_duration_ms", value.hold_duration_ms);
+          },
+          [&](trace_events::fetch_file_start const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "url", value.url);
+            append_kv(output, "destination", value.destination);
+          },
+          [&](trace_events::fetch_file_complete const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "url", value.url);
+            append_kv(output, "bytes_downloaded", value.bytes_downloaded);
+            append_kv(output, "duration_ms", static_cast<long long>(value.duration_ms));
+            append_kv(output, "from_cache", value.from_cache);
+          },
+          [](auto const &) {},
+      },
+      event);
+
+  output.push_back('}');
+  return output;
 }
 
 }  // namespace envy
