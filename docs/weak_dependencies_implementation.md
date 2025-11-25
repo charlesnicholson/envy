@@ -9,6 +9,17 @@ Two complementary features:
 
 Both integrate via iterative graph expansion/resolution with convergence.
 
+## Implementation Status
+
+- ✅ **Phase 0**: Phase Enum Unification (complete)
+- ✅ **Phase 1**: Shared Fetch API (complete)
+- ⚠️ **Phase 2**: Nested Source Dependencies (parsing complete, execution pending)
+- ❌ **Phase 3**: Weak Dependency Resolution (not started)
+- ❌ **Phase 4**: Integration (not started)
+- ❌ **Phase 5**: Documentation & Polish (not started)
+
+**Current State**: recipe_spec can parse `source.dependencies` with validation. Dynamic function lookup via `lookup_and_push_source_fetch()`. Execution in phase_recipe_fetch and recipe_fetch_context not yet implemented.
+
 ---
 
 ## Terminology
@@ -30,33 +41,30 @@ Both integrate via iterative graph expansion/resolution with convergence.
 
 ### Nested Source Dependencies
 
-**Syntax**:
+**Status**: Parsing ✅ implemented, Execution ❌ not yet implemented
+
+**Supported Syntax** (parsing complete):
 ```lua
-dependencies = {
-  {
-    recipe = "corporate.toolchain@v1",
-    source = {
-      dependencies = {  -- Prerequisites for fetching toolchain's recipe
-        { recipe = "jfrog.cli@v2", source = "...", sha256 = "..." }
-      },
-      fetch = function(ctx)
-        local jfrog = ctx:asset("jfrog.cli@v2")
-        ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", ...)
-        ctx:import_file("./toolchain.lua", "recipe.lua", "sha256...")
-      end
-    },
-    needed_by = "build"
-  }
+source = {
+  dependencies = {  -- Prerequisites for fetching this recipe
+    { recipe = "jfrog.cli@v2", source = "...", sha256 = "..." }
+  },
+  fetch = function(ctx)
+    -- Fetch function body (execution not yet implemented)
+    -- Will have access to ctx:asset(), ctx:fetch(), etc.
+  end
 }
 ```
 
-**Semantics**: "To fetch toolchain's recipe, first install jfrog, then run custom fetch using jfrog."
+**Semantics**: "To fetch this recipe, first install dependencies, then run custom fetch function."
 
-**Implicit needed_by**: Inner dependencies get `needed_by = recipe_fetch` (relative to outer recipe).
+**Implicit needed_by**: Fetch dependencies must reach `completion` phase before outer recipe's recipe_fetch runs.
 
 ### Weak Dependencies
 
-**Syntax**:
+**Status**: ❌ NOT IMPLEMENTED (Phase 3)
+
+**Planned Syntax**:
 ```lua
 dependencies = {
   { reference = "python" },  -- Reference-only: error if not found
@@ -68,11 +76,13 @@ dependencies = {
 }
 ```
 
-**Semantics**: Reference matches via partial identity (namespace/name/revision, options ignored). Weak provides fallback if no match exists after strong closure.
+**Planned Semantics**: Reference matches via partial identity (namespace/name/revision, options ignored). Weak provides fallback if no match exists after strong closure.
 
 ### Integration
 
-Nested source dependencies can be weak:
+**Status**: ❌ NOT IMPLEMENTED (Phase 4)
+
+Nested source dependencies will support weak references:
 ```lua
 source = {
   dependencies = {
@@ -96,181 +106,50 @@ Unify `phase` and `recipe_phase` enums into single consistent type system. Curre
 
 ---
 
-## Phase 1: Shared Fetch API
+## Phase 1: Shared Fetch API - ✅ COMPLETE
 
 ### Goal
 
 Move fetch helpers to `lua_ctx_bindings` for use across asset fetch and recipe fetch phases. Eliminates duplication while maintaining existing architecture.
 
-### Rationale
+### Status
 
-Current `phase_fetch.cpp` has `lua_ctx_fetch()` for asset fetch. Recipe fetch will need identical functionality. Both operate on `lua_ctx_common` (which provides `fetch_dir`). Moving to `lua_ctx_bindings.cpp` shares code without creating new files or naming conflicts with existing `fetch.h`.
+✅ **Implemented**: `lua_ctx_bindings_register_fetch_phase()` provides two-step fetch pattern (ungated download to tmp, gated commit with SHA256 verification)
 
-### Algorithm
+✅ **In use**: Asset fetch phase (phase_fetch.cpp) uses this API
 
-**Two-Step Fetch Pattern** (security gating):
-1. **Ungated fetch**: Download files to `ctx.run_dir` (tmp workspace) without verification
-2. **Gated commit**: Move files from tmp to `ctx.fetch_dir` with SHA256 verification
-
-This pattern allows users to download manifests, inspect them, download additional files based on manifest contents, then commit all files together with SHA256 verification.
-
-**Lua API** (available via `fetch_phase_ctx`):
-```lua
-ctx.fetch(url) -> basename
-ctx.fetch({source="...", ref="..."}) -> basename
-ctx.fetch({"url1", "url2"}) -> {"file1.tar.gz", "file2.tar.gz"}
-  # Download to ctx.run_dir (tmp) using envy::fetch()
-  # NO SHA256 verification (ungated)
-  # Git repos go to ctx.stage_dir, other files go to ctx.run_dir
-  # Return basename(s) of downloaded file(s)
-  # Handles filename collisions with -2, -3 suffix
-
-ctx.commit_fetch(filename) -> nil
-ctx.commit_fetch({filename="...", sha256="..."}) -> nil
-ctx.commit_fetch({"file1.tar.gz", "file2.tar.gz"}) -> nil
-ctx.commit_fetch({{filename="...", sha256="..."}, ...}) -> nil
-  # Move file(s) from ctx.run_dir to ctx.fetch_dir
-  # SHA256 verification if provided (gated)
-  # Errors if file missing in tmp or SHA256 mismatch
-```
-
-**C++ API** (in `lua_ctx/lua_ctx_bindings.h`):
-```cpp
-void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *context);
-  // Registers both ctx.fetch and ctx.commit_fetch
-```
-
-### Test Coverage
-
-Future test work needed (✗ indicates gaps in current coverage):
-
-  ---
-
-  ### C. Per-File Caching
-
-  **New Tests Needed**:
-  - ✗ Cache hit with multiple files → log "cache hit: file1.tar.gz", "cache hit: file2.tar.gz"
-  - ✗ Cache miss → log "downloading file3.tar.gz"
-  - ✗ Mixed cache hits + misses → partial cache reuse across 5+ files
-
-  ---
-
-  ### D. Commit File Operations
-
-  **New Tests Needed** (defer to tmp lifecycle tests):
-  - ✗ Commit zero-byte file → SHA256 verified correctly
-  - ✗ Fetch without commit → files remain in tmp (not in fetch_dir)
-
-  ---
-
-  ### E. Tmp Directory Lifecycle
-
-  **New Tests Needed** (defer to separate task):
-  - ✗ `ctx.run_dir` (tmp) auto-created, writable
-  - ✗ Tmp cleaned after successful commit (files moved to fetch_dir)
-  - ✗ Tmp preserved after fetch error (debugging)
-  - ✗ Tmp preserved if commit not called (files remain in tmp)
-  - ✗ Multiple tmp usage patterns: fetch manifest → read → fetch more → commit all
-  - ✗ envy-complete marker created in fetch_dir after successful commit
-
-  ---
-
-  ### F. Concurrent Operations
-
-  **New Tests Needed**:
-  - ✗ Large-scale concurrent fetch (100+ files) → verify parallelism effective
-  - ✗ Concurrent fetches to same fetch_dir from different recipes → lock contention handled
-  - ✗ Concurrent imports → no corruption
-
-  ---
-
-  ### G. Error Handling
-
-  **New Tests Needed**:
-  - ✗ Network timeout (simulated) → error with timeout message
-  - ✗ Connection refused → clear error message
-  - ✗ Disk full during download → error, partial file cleaned
-  - ✗ Permission denied writing to fetch_dir → error with permission message
-  - ✗ Invalid URL format → error before network attempt
-  - ✗ Unsupported protocol (ftp://) → clear error (if not supported)
-  - ✗ Interrupted download (SIGINT simulation) → clean state, no partial files
-
-  ---
-
-  ### H. Edge Cases
-
-  **New Tests Needed**:
-  - ✗ Empty fetch (no files) → noop, no error
-  - ✗ Fetch same file twice in batch → idempotent, downloaded once
-  - ✗ Fetch with empty SHA256 string → treated as permissive (no verification)
-  - ✗ Fetch with invalid SHA256 format (wrong length, non-hex) → error before download
-  - ✗ Filename with special characters (spaces, unicode, etc.) → sanitized, no path traversal
-  - ✗ Very long filename (>255 chars) → error or truncation
-  - ✗ Windows path handling (backslashes, drive letters) → works correctly
-
-  ---
-
-  ### I. Integration Tests (Recipe + Asset Fetch)
-
-  **New Tests Needed** (defer to Phase 2):
-  - ✗ Recipe with custom fetch using two-step pattern → verify tmp workflow
-  - ✗ Recipe fetch error → tmp preserved for debugging
-
-  ---
-
-  ### K. Performance & Scale
-
-  **New Tests Needed**:
-  - ✗ Large file (1GB+) download → reasonable speed, progress reporting
-  - ✗ Many small files (1000+) batch download → parallelism effective
-  - ✗ Cache lookup performance (1000+ recipes) → fast lookups
-  - ✗ Memory usage with large files → no excessive memory consumption
-
-  ---
-
-  ### L. Git-Specific
-
-  **New Tests Needed**:
-  - ✗ SSH cloning (if supporting SSH) → credential handling
-  - ✗ Shallow clone → --depth flag
-  - ✗ Submodules → recursive clone
-
-  ---
+❌ **Pending**: Recipe fetch context needs to use this API once custom fetch execution is implemented (Phase 2)
 
 ---
 
-## Phase 2: Nested Source Dependencies (Recipe Fetch Prerequisites)
+## Phase 2: Nested Source Dependencies (Recipe Fetch Prerequisites) - ⚠️ PARTIALLY COMPLETE
 
 ### Goal
 
 Enable recipes to declare dependencies needed for fetching other recipes' Lua files.
 
-### Algorithm
+### Status Summary
 
-**Parsing**:
-```
-parse_recipe_spec(lua_value):
-  if lua_value has "source" field:
-    if source is table:
-      if source has "dependencies" field:
-        # Nested source dependencies
-        fetch_deps = []
-        for dep_val in source.dependencies:
-          dep_spec = parse_recipe_spec(dep_val)  # Recursive
-          fetch_deps.append(dep_spec)
+- ✅ Parsing: recipe_spec parses `source.dependencies` and validates constraints
+- ❌ Execution: phase_recipe_fetch does not yet handle fetch_function sources
+- ❌ Context API: No recipe_fetch_context implementation yet
+- ❌ Functional tests: Only parsing unit tests exist
 
-        fetch_func = source.fetch  # Must be function
-        validate(fetch_func is function, "source.dependencies requires source.fetch function")
+### Key Implementation Details
 
-        return recipe_spec{
-          source = custom_fetch{
-            dependencies: fetch_deps,
-            function: fetch_func
-          }
-        }
-```
+**recipe_spec changes** (src/recipe_spec.h/cpp):
+- Added `fetch_function{}` empty struct variant to source_t
+- Added `source_dependencies` field for nested prerequisites
+- parse_source_table() validates and recursively parses dependencies
+- lookup_and_push_source_fetch() dynamically retrieves functions (no caching)
 
-**Execution** (during phase_recipe_fetch):
+**Design principle**: recipe_spec remains POD-like. No lua_State pointers cached. Functions looked up on-demand from owning recipe's lua_State.
+
+### Remaining Work
+
+Execution in phase_recipe_fetch:
+
+During phase_recipe_fetch:
 ```
 phase_recipe_fetch(recipe):
   # Get ancestor chain from execution context (per-thread traversal state)
@@ -317,19 +196,21 @@ phase_recipe_fetch(recipe):
 
 ### Tasks
 
-- [ ] 2.1: Extend `recipe_spec` to support nested source dependencies
-  - Add `custom_fetch` variant to `source_t`
-  - Fields: `std::vector<recipe_spec> dependencies`, `lua_function fetch`
-  - Parse in `recipe_spec::parse()` when source table has "dependencies" field
+- [x] 2.1: Extend `recipe_spec` to support nested source dependencies
+  - ✅ Added `fetch_function` empty struct variant to `source_t`
+  - ✅ Added `source_dependencies` field (std::vector<recipe_spec>)
+  - ✅ Parse in `parse_source_table()` when source table has "dependencies" field
+  - ✅ Recursive parsing via `recipe_spec::parse()`
 
-- [ ] 2.2: Validate `source.dependencies` constraints
-  - Error if `source.dependencies` present but `source.fetch` not function
-  - Error if `source.fetch` function but `source.dependencies` invalid type
-  - Unit test: parse valid nested source, error on invalid combinations
+- [x] 2.2: Validate `source.dependencies` constraints
+  - ✅ Error if `source.dependencies` present but `source.fetch` not function
+  - ✅ Error if `source.dependencies` not a table
+  - ✅ Error if source table has neither dependencies nor fetch
+  - ✅ Unit tests in recipe_spec_custom_source_tests.cpp validate all constraints
 
 - [ ] 2.3: Implement fetch dependency processing in `phase_recipe_fetch`
-  - Before processing outer dep, check if `source` has `custom_fetch`
-  - For each fetch dep:
+  - Check if `spec.source` is `fetch_function` variant
+  - For each dep in `spec.source_dependencies`:
     - Check for cycles against ancestor_chain (same as regular deps)
     - Build child ancestor chain: `ancestor_chain + current_identity + outer_dep_identity`
     - `ensure_recipe()` + `start_recipe_thread(completion, child_chain)`
@@ -342,7 +223,7 @@ phase_recipe_fetch(recipe):
   - Use shared Lua API registration from Phase 1
 
 - [ ] 2.5: Run custom fetch function with recipe_fetch_context
-  - Load Lua function from `source.fetch`
+  - Use `recipe_spec::lookup_and_push_source_fetch()` to get function
   - Create context with fetch_dir/work_dir
   - Call function, handle errors
   - Implicit commit on successful return
@@ -364,7 +245,7 @@ phase_recipe_fetch(recipe):
 
 ---
 
-## Phase 3: Weak Dependency Resolution
+## Phase 3: Weak Dependency Resolution - ❌ NOT STARTED
 
 ### Goal
 
@@ -545,7 +426,7 @@ resolve_weak_references():
 
 ---
 
-## Phase 4: Integration (Nested Source + Weak)
+## Phase 4: Integration (Nested Source + Weak) - ❌ NOT STARTED
 
 ### Goal
 
@@ -622,7 +503,7 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 
 ---
 
-## Phase 5: Documentation & Polish
+## Phase 5: Documentation & Polish - ❌ NOT STARTED
 
 ### Tasks
 
