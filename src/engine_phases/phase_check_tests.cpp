@@ -3,7 +3,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_util.h"
-#include "manifest.h"
 #include "recipe.h"
 #include "recipe_spec.h"
 
@@ -12,10 +11,8 @@
 extern "C" {
 #include "lauxlib.h"
 #include "lua.h"
-#include "lualib.h"
 }
 
-#include <filesystem>
 #include <memory>
 
 namespace envy {
@@ -30,18 +27,19 @@ namespace {
 
 // Helper fixture for creating test recipes with Lua states
 struct test_recipe_fixture {
+  recipe_spec spec;
   std::unique_ptr<recipe> r;
 
   test_recipe_fixture() {
-    recipe_spec spec;
     spec.identity = "test.package@v1";
 
     r = std::make_unique<recipe>(recipe{
         .key = recipe_key(spec),
-        .spec = spec,
+        .spec = &spec,
         .lua_state = lua_make(),
         .lock = nullptr,
         .declared_dependencies = {},
+        .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
         .asset_path = {},
@@ -365,7 +363,7 @@ TEST_CASE("run_check_verb function check respects return value") {
 
 TEST_CASE("run_check_function propagates Lua error with context") {
   test_recipe_fixture f;
-  f.r->spec.identity = "my.package@v1";
+  f.spec.identity = "my.package@v1";
 
   lua_State *L = f.r->lua_state.get();
   luaL_dostring(L, "return function(ctx) error('something went wrong') end");

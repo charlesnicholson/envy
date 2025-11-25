@@ -180,7 +180,7 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
 }  // namespace
 
 void run_install_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec.identity,
+  phase_trace_scope const phase_scope{ r->spec->identity,
                                        recipe_phase::asset_install,
                                        std::chrono::steady_clock::now() };
 
@@ -212,7 +212,7 @@ void run_install_phase(recipe *r, engine &eng) {
       std::string script{ lua_tolstring(lua, -1, &len), len };
       lua_pop(lua, 1);
       marked_complete =
-          run_shell_install(script, install_dir, lock.get(), r->spec.identity);
+          run_shell_install(script, install_dir, lock.get(), r->spec->identity);
       break;
     }
 
@@ -222,8 +222,8 @@ void run_install_phase(recipe *r, engine &eng) {
                                                  fetch_dir,
                                                  stage_dir,
                                                  install_dir,
-                                                 r->spec.identity,
-                                                 r->spec.options,
+                                                 r->spec->identity,
+                                                 r->spec->options,
                                                  eng,
                                                  r);
       break;
@@ -231,7 +231,7 @@ void run_install_phase(recipe *r, engine &eng) {
     default:
       lua_pop(lua, 1);
       throw std::runtime_error("install field must be nil, string, or function for " +
-                               r->spec.identity);
+                               r->spec->identity);
   }
 
   // Validation: User-managed packages (with check verb) must not call
@@ -241,7 +241,7 @@ void run_install_phase(recipe *r, engine &eng) {
   // persist in cache with envy-complete marker.
   if (recipe_has_check_verb(r, lua) && marked_complete) {
     throw std::runtime_error(
-        "Recipe " + r->spec.identity +
+        "Recipe " + r->spec->identity +
         " has check verb (user-managed) "
         "but called mark_install_complete(). User-managed recipes must not "
         "populate cache. Remove check verb or remove mark_install_complete() call.");

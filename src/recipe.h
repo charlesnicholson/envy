@@ -14,15 +14,18 @@
 
 namespace envy {
 
-// Plain data struct - engine orchestrates, phases operate on this
 struct recipe {
   recipe_key key;
-  recipe_spec spec;
+  recipe_spec const *spec;  // Non-ownership
 
   lua_state_ptr lua_state;
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;
+
+  // Owned specs for dependencies declared in this recipe's Lua file
+  // (Root recipes reference specs in manifest; dependencies reference specs here)
+  std::vector<recipe_spec> owned_dependency_specs;
 
   // Dependency info: maps identity -> (recipe pointer, needed_by phase)
   struct dependency_info {

@@ -421,7 +421,7 @@ TEST_CASE("manifest::load errors on non-string source") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'source' field must be string",
+                       "Recipe 'source' field must be string or table",
                        std::runtime_error);
 }
 
@@ -452,7 +452,7 @@ TEST_CASE("manifest::load errors on non-string source (local)") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'source' field must be string",
+                       "Recipe 'source' field must be string or table",
                        std::runtime_error);
 }
 

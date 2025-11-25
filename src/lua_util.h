@@ -31,8 +31,15 @@ bool lua_run_string(lua_state_ptr const &state, char const *script);
 struct lua_value;
 using lua_table = std::unordered_map<std::string, lua_value>;
 
-using lua_variant =
-    std::variant<std::monostate, bool, int64_t, double, std::string, lua_table>;
+struct lua_function_placeholder {};
+
+using lua_variant = std::variant<std::monostate,
+                                 bool,
+                                 int64_t,
+                                 double,
+                                 std::string,
+                                 lua_table,
+                                 lua_function_placeholder>;
 
 struct lua_value {
   lua_variant v;
@@ -46,9 +53,17 @@ struct lua_value {
   bool is_number() const;
   bool is_string() const;
   bool is_table() const;
+  bool is_function() const;
 
   template <typename T>
-    requires one_of<T, std::monostate, bool, int64_t, double, std::string, lua_table>
+    requires one_of<T,
+                    std::monostate,
+                    bool,
+                    int64_t,
+                    double,
+                    std::string,
+                    lua_table,
+                    lua_function_placeholder>
   T const *get() const;
 };
 
@@ -68,7 +83,14 @@ void value_to_lua_global(lua_State *L, char const *name, lua_value const &val);
 // implementation details
 
 template <typename T>
-  requires one_of<T, std::monostate, bool, int64_t, double, std::string, lua_table>
+  requires one_of<T,
+                  std::monostate,
+                  bool,
+                  int64_t,
+                  double,
+                  std::string,
+                  lua_table,
+                  lua_function_placeholder>
 T const *lua_value::get() const {
   if (!std::holds_alternative<T>(v)) { return nullptr; }
   return &std::get<T>(v);

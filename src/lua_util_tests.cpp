@@ -556,7 +556,7 @@ TEST_CASE("lua_stack_to_value extracts mixed type table") {
   CHECK(table_it->second.is_table());
 }
 
-TEST_CASE("lua_stack_to_value ignores numeric keys") {
+TEST_CASE("lua_stack_to_value handles numeric keys") {
   auto const L{ envy::lua_make() };
   REQUIRE(L != nullptr);
 
@@ -568,9 +568,13 @@ TEST_CASE("lua_stack_to_value ignores numeric keys") {
   REQUIRE(val.is_table());
   auto const &table{ std::get<envy::lua_table>(val.v) };
 
-  // Only string key should be extracted
-  CHECK(table.size() == 1);
+  // Numeric keys are converted to string keys
+  CHECK(table.size() == 3);
   CHECK(table.find("str") != table.end());
+  CHECK(table.find("1") != table.end());
+  CHECK(table.find("2") != table.end());
+  CHECK(std::get<std::string>(table.at("1").v) == "one");
+  CHECK(std::get<std::string>(table.at("2").v) == "two");
 }
 
 TEST_CASE("lua_global_to_value returns nullopt for nonexistent global") {
@@ -1141,7 +1145,7 @@ TEST_CASE("lua_value::get<T>() pointer remains valid") {
   CHECK(*ptr1 == "persistent");
 }
 
-TEST_CASE("lua_stack_to_value throws on function type") {
+TEST_CASE("lua_stack_to_value returns placeholder for function") {
   auto const L{ envy::lua_make() };
   REQUIRE(L != nullptr);
 
@@ -1149,12 +1153,12 @@ TEST_CASE("lua_stack_to_value throws on function type") {
   lua_getglobal(L.get(), "func");
   CHECK(lua_isfunction(L.get(), -1));
 
-  CHECK_THROWS_WITH_AS(envy::lua_stack_to_value(L.get(), -1),
-                       "Unsupported Lua type: function",
-                       std::runtime_error);
+  auto const val{ envy::lua_stack_to_value(L.get(), -1) };
+  CHECK(val.is_function());
+  CHECK(val.get<envy::lua_function_placeholder>() != nullptr);
 }
 
-TEST_CASE("lua_stack_to_value throws on function in table") {
+TEST_CASE("lua_stack_to_value handles function in table") {
   auto const L{ envy::lua_make() };
   REQUIRE(L != nullptr);
 
@@ -1166,18 +1170,25 @@ TEST_CASE("lua_stack_to_value throws on function in table") {
   )"));
   lua_getglobal(L.get(), "t");
 
-  // Table extraction itself doesn't throw (functions are skipped during iteration)
-  // But if we try to serialize a value containing a function, it would fail at serialize
-  // time Since lua_stack_to_value only processes string keys and recursively converts
-  // values, and our default case now throws, this should catch it
+  // Table extraction converts functions to placeholders
+  auto const val{ envy::lua_stack_to_value(L.get(), -1) };
+  CHECK(val.is_table());
 
-  // Actually, looking at the code, lua_stack_to_value processes tables with lua_next,
-  // and only processes string keys. When it encounters a function value, it calls
-  // lua_stack_to_value recursively, which will hit the default case and throw.
+  auto const* table{ val.get<envy::lua_table>() };
+  REQUIRE(table != nullptr);
+  CHECK(table->size() == 2);
 
-  CHECK_THROWS_WITH_AS(envy::lua_stack_to_value(L.get(), -1),
-                       "Unsupported Lua type: function",
-                       std::runtime_error);
+  // Check that "name" field is a string
+  auto const name_it{ table->find("name") };
+  CHECK(name_it != table->end());
+  CHECK(name_it->second.is_string());
+  CHECK(*name_it->second.get<std::string>() == "test");
+
+  // Check that "func" field is a function placeholder
+  auto const func_it{ table->find("func") };
+  CHECK(func_it != table->end());
+  CHECK(func_it->second.is_function());
+  CHECK(func_it->second.get<envy::lua_function_placeholder>() != nullptr);
 }
 
 TEST_CASE("envy.template substitutes placeholders") {

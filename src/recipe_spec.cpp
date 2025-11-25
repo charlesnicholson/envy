@@ -2,6 +2,10 @@
 
 #include "uri.h"
 
+extern "C" {
+#include "lua.h"
+}
+
 #include <algorithm>
 #include <charconv>
 #include <ranges>
@@ -33,10 +37,138 @@ bool parse_identity(std::string const &identity,
   return !out_namespace.empty() && !out_name.empty() && !out_version.empty();
 }
 
+bool contains_function(lua_value const &val) {
+  if (val.is_function()) { return true; }
+  if (auto const *tbl{ val.get<lua_table>() }) {
+    for (auto const &[key, nested_val] : *tbl) {
+      if (contains_function(nested_val)) { return true; }
+    }
+  }
+  return false;
+}
+
+// Parse source table (custom source fetch with dependencies)
+recipe_spec::source_t parse_source_table(lua_table const *source_table,
+                                         std::filesystem::path const &base_path,
+                                         lua_State *L,
+                                         std::vector<recipe_spec> &out_dependencies) {
+  // Custom source fetch requires lua_State to validate functions
+  if (!L) {
+    throw std::runtime_error(
+        "Custom source fetch requires lua_State (use parse() overload with lua_State "
+        "parameter)");
+  }
+
+  // Check for dependencies field (need to parse as array)
+  bool has_dependencies{ false };
+  if (auto const deps_it{ source_table->find("dependencies") };
+      deps_it != source_table->end()) {
+    if (auto const *deps_table{ deps_it->second.get<lua_table>() }) {
+      has_dependencies = true;
+      // Iterate lua_table by numeric string keys ("1", "2", "3", ...)
+      // lua_stack_to_value converts Lua arrays to maps with string keys
+      for (size_t i{ 1 };; ++i) {
+        std::string const key{ std::to_string(i) };
+        auto const dep_it{ deps_table->find(key) };
+        if (dep_it == deps_table->end()) { break; }
+        out_dependencies.push_back(recipe_spec::parse(dep_it->second, base_path, L));
+      }
+    } else {
+      throw std::runtime_error("source.dependencies must be array (table)");
+    }
+  }
+
+  // Check for fetch function (will be a placeholder in lua_value)
+  bool const has_fetch{ [&]() {
+    if (auto const fetch_it{ source_table->find("fetch") };
+        fetch_it != source_table->end()) {
+      if (!fetch_it->second.is_function()) {
+        throw std::runtime_error("source.fetch must be a function");
+      }
+      return true;
+    }
+    return false;
+  }() };
+
+  // Validation: dependencies requires fetch, fetch can exist alone
+  if (has_dependencies && !has_fetch) {
+    throw std::runtime_error("source.dependencies requires source.fetch function");
+  }
+
+  if (!has_dependencies && !has_fetch) {
+    throw std::runtime_error(
+        "source table must have either URL string or dependencies+fetch function");
+  }
+
+  // Custom source fetch - no URL-based source
+  return recipe_spec::fetch_function{};
+}
+
+// Parse source string (URI-based sources)
+recipe_spec::source_t parse_source_string(std::string const &source_uri,
+                                          lua_table const *table,
+                                          std::filesystem::path const &base_path) {
+  auto const info{ uri_classify(source_uri) };
+
+  // Check if this is a git repository
+  if (info.scheme == uri_scheme::GIT) {
+    auto const *ref_str{ [&]() -> std::string const * {
+      auto const ref_it{ table->find("ref") };
+      if (ref_it == table->end()) {
+        throw std::runtime_error("Recipe with git source must specify 'ref' field");
+      }
+      auto const *ref{ ref_it->second.get<std::string>() };
+      if (!ref) { throw std::runtime_error("Recipe 'ref' field must be string"); }
+      if (ref->empty()) { throw std::runtime_error("Recipe 'ref' field cannot be empty"); }
+      return ref;
+    }() };
+
+    return recipe_spec::git_source{ .url = info.canonical, .ref = *ref_str };
+  }
+
+  auto const sha256{ [&]() -> std::optional<std::string> {
+    auto const sha256_it{ table->find("sha256") };
+    if (sha256_it == table->end()) { return std::nullopt; }
+    if (auto const *sha256_str{ sha256_it->second.get<std::string>() }) {
+      return *sha256_str;
+    }
+    throw std::runtime_error("Recipe 'sha256' field must be string");
+  }() };
+
+  // If SHA256 is provided, always treat as remote_source (needs verification)
+  // Otherwise, local files use local_source, remote URIs use remote_source
+  if (sha256.has_value() || (info.scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
+                             info.scheme != uri_scheme::LOCAL_FILE_RELATIVE)) {
+    // Remote source or local file with SHA256 verification
+    std::string const resolved_uri{ [&]() -> std::string {
+      if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+        std::filesystem::path p{ info.canonical };
+        p = base_path.parent_path() / p;
+        return "file://" + p.lexically_normal().string();
+      } else if (info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
+        return "file://" + info.canonical;
+      } else {
+        return info.canonical;
+      }
+    }() };
+    return recipe_spec::remote_source{ .url = resolved_uri,
+                                       .sha256 = sha256.value_or("") };
+  }
+
+  // Local file without SHA256 - use local_source (no verification)
+  std::filesystem::path p{ info.canonical };
+  if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+    p = base_path.parent_path() / p;
+    p = p.lexically_normal();
+  }
+  return recipe_spec::local_source{ .file_path = p };
+}
+
 }  // namespace
 
 recipe_spec recipe_spec::parse(lua_value const &lua_val,
-                               std::filesystem::path const &base_path) {
+                               std::filesystem::path const &base_path,
+                               lua_State *L) {
   recipe_spec result;
 
   //  "namespace.name@version" shorthand requires url or file
@@ -65,74 +197,26 @@ recipe_spec recipe_spec::parse(lua_value const &lua_val,
   }
 
   auto const source_it{ table->find("source") };
-
   if (source_it == table->end()) {
     throw std::runtime_error("Recipe must specify 'source' field");
   }
 
-  if (auto const *source_uri{ source_it->second.get<std::string>() }) {
-    auto const info{ uri_classify(*source_uri) };
-
-    // Check if this is a git repository
-    if (info.scheme == uri_scheme::GIT) {
-      auto const *ref_str{ [&]() -> std::string const * {
-        auto const ref_it{ table->find("ref") };
-        if (ref_it == table->end()) {
-          throw std::runtime_error("Recipe with git source must specify 'ref' field");
-        }
-        auto const *ref{ ref_it->second.get<std::string>() };
-        if (!ref) { throw std::runtime_error("Recipe 'ref' field must be string"); }
-        if (ref->empty()) {
-          throw std::runtime_error("Recipe 'ref' field cannot be empty");
-        }
-        return ref;
-      }() };
-
-      result.source = git_source{ .url = info.canonical, .ref = *ref_str };
-    } else {
-      auto const sha256{ [&]() -> std::optional<std::string> {
-        auto const sha256_it{ table->find("sha256") };
-        if (sha256_it == table->end()) { return std::nullopt; }
-        if (auto const *sha256_str{ sha256_it->second.get<std::string>() }) {
-          return *sha256_str;
-        }
-        throw std::runtime_error("Recipe 'sha256' field must be string");
-      }() };
-
-      // If SHA256 is provided, always treat as remote_source (needs verification)
-      // Otherwise, local files use local_source, remote URIs use remote_source
-      if (sha256.has_value() || (info.scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
-                                 info.scheme != uri_scheme::LOCAL_FILE_RELATIVE)) {
-        // Remote source or local file with SHA256 verification
-        std::string const resolved_uri{ [&]() -> std::string {
-          if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-            std::filesystem::path p{ info.canonical };
-            p = base_path.parent_path() / p;
-            return "file://" + p.lexically_normal().string();
-          } else if (info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
-            return "file://" + info.canonical;
-          } else {
-            return info.canonical;
-          }
-        }() };
-        result.source =
-            remote_source{ .url = resolved_uri, .sha256 = sha256.value_or("") };
-      } else {
-        // Local file without SHA256 - use local_source (no verification)
-        std::filesystem::path p{ info.canonical };
-        if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-          p = base_path.parent_path() / p;
-          p = p.lexically_normal();
-        }
-        result.source = local_source{ .file_path = p };
-      }
-    }
+  // Check if source is a table (custom source fetch with dependencies)
+  if (auto const *source_table{ source_it->second.get<lua_table>() }) {
+    result.source =
+        parse_source_table(source_table, base_path, L, result.source_dependencies);
+  } else if (auto const *source_uri{ source_it->second.get<std::string>() }) {
+    result.source = parse_source_string(*source_uri, table, base_path);
   } else {
-    throw std::runtime_error("Recipe 'source' field must be string");
+    throw std::runtime_error("Recipe 'source' field must be string or table");
   }
 
   if (auto const options_it{ table->find("options") }; options_it != table->end()) {
     if (auto const *options_table{ options_it->second.get<lua_table>() }) {
+      // Validate options don't contain functions (can't be serialized)
+      if (contains_function(options_it->second)) {
+        throw std::runtime_error("Unsupported Lua type: function");
+      }
       for (auto const &[key, val] : *options_table) { result.options[key] = val; }
     } else {
       throw std::runtime_error("Recipe 'options' field must be table");
@@ -254,4 +338,73 @@ std::string recipe_spec::format_key(
 }
 
 std::string recipe_spec::format_key() const { return format_key(identity, options); }
+
+recipe_spec recipe_spec::parse_from_stack(lua_State *L,
+                                          int index,
+                                          std::filesystem::path const &base_path) {
+  // Normalize negative indices
+  int const abs_index{ index < 0 ? lua_gettop(L) + index + 1 : index };
+
+  if (!lua_istable(L, abs_index)) {
+    throw std::runtime_error("parse_from_stack: expected table at stack index");
+  }
+
+  // Convert table to lua_value (functions become placeholders)
+  lua_value recipe_val{ lua_stack_to_value(L, abs_index) };
+  return parse(recipe_val, base_path, L);
+}
+
+bool recipe_spec::lookup_and_push_source_fetch(lua_State *L,
+                                               std::string const &dep_identity) {
+  // Look up the dependency in the dependencies global array
+  lua_getglobal(L, "dependencies");
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return false;
+  }
+
+  // Iterate through dependencies array to find matching identity
+  size_t const dep_count{ lua_rawlen(L, -1) };
+  for (size_t i{ 1 }; i <= dep_count; ++i) {
+    lua_rawgeti(L, -1, static_cast<lua_Integer>(i));  // Push dependencies[i]
+
+    // Check if this entry has matching recipe identity
+    lua_getfield(L, -1, "recipe");
+    if (lua_isstring(L, -1)) {
+      std::string const identity{ lua_tostring(L, -1) };
+      lua_pop(L, 1);  // Pop recipe field
+
+      if (identity == dep_identity) {
+        // Found matching dependency - get source.fetch
+        lua_getfield(L, -1, "source");
+        if (!lua_istable(L, -1)) {
+          lua_pop(L, 3);  // Pop source, dep entry, dependencies
+          return false;
+        }
+
+        lua_getfield(L, -1, "fetch");
+        if (!lua_isfunction(L, -1)) {
+          lua_pop(L, 4);  // Pop fetch, source, dep entry, dependencies
+          return false;
+        }
+
+        // Stack: dependencies, dep_entry, source, fetch_function
+        // Remove everything except the function
+        lua_remove(L, -2);  // Remove source
+        lua_remove(L, -2);  // Remove dep_entry
+        lua_remove(L, -2);  // Remove dependencies
+        // Stack now has just: fetch_function
+        return true;
+      }
+    } else {
+      lua_pop(L, 1);  // Pop non-string recipe field
+    }
+
+    lua_pop(L, 1);  // Pop dependencies[i]
+  }
+
+  lua_pop(L, 1);  // Pop dependencies table
+  return false;
+}
+
 }  // namespace envy

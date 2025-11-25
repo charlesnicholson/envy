@@ -178,7 +178,7 @@ int lua_ctx_fetch(lua_State *lua) {
       trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
     }
     std::string const trace_dest{ urls.empty() ? "" : basenames[0] };
-    ENVY_TRACE_LUA_CTX_FETCH_START(ctx->recipe_->spec.identity, trace_url, trace_dest);
+    ENVY_TRACE_LUA_CTX_FETCH_START(ctx->recipe_->spec->identity, trace_url, trace_dest);
   }
 
   auto const results{ fetch(requests) };
@@ -191,7 +191,7 @@ int lua_ctx_fetch(lua_State *lua) {
     if (urls.size() > 1) {
       trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
     }
-    ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->recipe_->spec.identity,
+    ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->recipe_->spec->identity,
                                       trace_url,
                                       0,
                                       static_cast<std::int64_t>(duration_ms));

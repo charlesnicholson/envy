@@ -507,7 +507,7 @@ bool run_declarative_fetch(lua_State *lua,
 }  // namespace
 
 void run_fetch_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec.identity,
+  phase_trace_scope const phase_scope{ r->spec->identity,
                                        recipe_phase::asset_fetch,
                                        std::chrono::steady_clock::now() };
 
@@ -522,8 +522,8 @@ void run_fetch_phase(recipe *r, engine &eng) {
     return;
   }
 
-  std::string const &identity{ r->spec.identity };
-  std::unordered_map<std::string, lua_value> const &options{ r->spec.options };
+  std::string const &identity{ r->spec->identity };
+  std::unordered_map<std::string, lua_value> const &options{ r->spec->options };
 
   lua_State *lua{ r->lua_state.get() };
   lua_getglobal(lua, "fetch");

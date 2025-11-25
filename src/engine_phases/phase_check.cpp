@@ -4,7 +4,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
-#include "manifest.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
@@ -43,7 +42,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   try {
     result = shell_run(check_cmd, cfg);
   } catch (std::exception const &e) {
-    throw std::runtime_error("check command failed for " + r->spec.identity + ": " +
+    throw std::runtime_error("check command failed for " + r->spec->identity + ": " +
                              e.what());
   }
 
@@ -63,7 +62,7 @@ bool run_check_function(recipe *r, lua_State *lua) {
   if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
     char const *err{ lua_tostring(lua, -1) };
     lua_pop(lua, 1);
-    throw std::runtime_error("check() failed for " + r->spec.identity + ": " +
+    throw std::runtime_error("check() failed for " + r->spec->identity + ": " +
                              (err ? err : "unknown error"));
   }
 
@@ -98,113 +97,118 @@ bool recipe_has_check_verb(recipe *r, lua_State *lua) {
   return has_check;
 }
 
+// USER-MANAGED PACKAGE PATH: Double-check lock pattern
+void run_check_phase_user_managed(recipe *r, engine &eng, lua_State *lua) {
+  // First check (pre-lock): See if work is needed
+  tui::debug("phase check: running user check (pre-lock)");
+  bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
+  tui::debug("phase check: user check returned %s",
+             check_passed_prelock ? "true" : "false");
+
+  if (check_passed_prelock) {
+    // Check passed - no work needed, skip all phases
+    tui::debug("phase check: check passed (pre-lock), skipping all phases");
+    return;
+  }
+
+  // Check failed - work might be needed, acquire lock
+  tui::debug("phase check: check failed (pre-lock), acquiring lock for user-managed package");
+
+  std::string const key_for_hash{ r->spec->format_key() };
+  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
+  r->canonical_identity_hash =
+      util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
+                                                   8) };  // For cache path: 16 hex chars
+
+  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
+  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
+
+  auto cache_result{
+    r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
+  };
+
+  if (cache_result.lock) {
+    // Got lock - mark as user-managed for proper cleanup
+    cache_result.lock->mark_user_managed();
+    tui::debug("phase check: lock acquired, marked as user-managed");
+
+    // Second check (post-lock): Detect races where another process completed work
+    tui::debug("phase check: re-running user check (post-lock)");
+    bool const check_passed_postlock{ run_check_verb(r, eng, lua) };
+    tui::debug("phase check: re-check returned %s",
+               check_passed_postlock ? "true" : "false");
+
+    if (check_passed_postlock) {
+      // Race detected: another process completed work while we waited for lock
+      tui::debug(
+          "phase check: re-check passed, releasing lock (another process completed)");
+      // Lock destructor will run, purging entry_dir because user_managed flag is set.
+      // This is correct: user-managed packages don't leave cache artifacts, so even
+      // if install phase ran, there's nothing to preserve.
+      return;
+    }
+
+    // Still needed - keep lock, phases will execute
+    r->lock = std::move(cache_result.lock);
+    tui::debug("phase check: re-check failed, keeping lock, phases will execute");
+  } else {
+    // Cache hit for user-managed package indicates inconsistent state:
+    // check verb returned false (work needed) but cache entry exists.
+    // This may indicate a buggy/non-deterministic check verb or race condition.
+    r->asset_path = cache_result.asset_path;
+    tui::warn(
+        "phase check: unexpected cache hit for user-managed package at %s - "
+        "check verb may be buggy or non-deterministic",
+        cache_result.asset_path.string().c_str());
+  }
+}
+
+// CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
+void run_check_phase_cache_managed(recipe *r) {
+  std::string const key{ r->spec->format_key() };
+  lua_State *lua{ r->lua_state.get() };
+
+  std::string const key_for_hash{ r->spec->format_key() };
+  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
+  r->canonical_identity_hash =
+      util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
+                                                   8) };  // For cache path: 16 hex chars
+
+  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
+  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
+
+  auto cache_result{
+    r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
+  };
+
+  if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
+    r->lock = std::move(cache_result.lock);
+    tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
+  } else {  // Cache hit - store asset_path, no lock means subsequent phases skip
+    r->asset_path = cache_result.asset_path;
+    tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
+               key.c_str(),
+               cache_result.asset_path.string().c_str());
+  }
+}
+
 void run_check_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  phase_trace_scope const phase_scope{ r->spec.identity,
+  phase_trace_scope const phase_scope{ r->spec->identity,
                                        recipe_phase::asset_check,
                                        std::chrono::steady_clock::now() };
 
-  lua_State *lua = r->lua_state.get();
-  if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec.identity); }
+  lua_State *lua{ r->lua_state.get() };
+  if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec->identity); }
 
   // Check if recipe has check verb (user-managed package indicator)
   bool const has_check{ recipe_has_check_verb(r, lua) };
 
   if (has_check) {
-    // USER-MANAGED PACKAGE PATH: Double-check lock pattern
-
-    // First check (pre-lock): See if work is needed
-    tui::debug("phase check: running user check (pre-lock)");
-    bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
-    tui::debug("phase check: user check returned %s",
-               check_passed_prelock ? "true" : "false");
-
-    if (check_passed_prelock) {
-      // Check passed - no work needed, skip all phases
-      tui::debug("phase check: check passed (pre-lock), skipping all phases");
-      return;
-    }
-
-    // Check failed - work might be needed, acquire lock
-    tui::debug(
-        "phase check: check failed (pre-lock), acquiring lock for user-managed package");
-
-    std::string const key_for_hash{ r->spec.format_key() };
-    auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
-    r->canonical_identity_hash =
-        util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
-    std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
-                                                     8) };  // For cache path: 16 hex chars
-
-    std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
-    std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
-
-    auto cache_result{
-      r->cache_ptr->ensure_asset(r->spec.identity, platform, arch, hash_prefix)
-    };
-
-    if (cache_result.lock) {
-      // Got lock - mark as user-managed for proper cleanup
-      cache_result.lock->mark_user_managed();
-      tui::debug("phase check: lock acquired, marked as user-managed");
-
-      // Second check (post-lock): Detect races where another process completed work
-      tui::debug("phase check: re-running user check (post-lock)");
-      bool const check_passed_postlock{ run_check_verb(r, eng, lua) };
-      tui::debug("phase check: re-check returned %s",
-                 check_passed_postlock ? "true" : "false");
-
-      if (check_passed_postlock) {
-        // Race detected: another process completed work while we waited for lock
-        tui::debug(
-            "phase check: re-check passed, releasing lock (another process completed)");
-        // Lock destructor will run, purging entry_dir because user_managed flag is set.
-        // This is correct: user-managed packages don't leave cache artifacts, so even
-        // if install phase ran, there's nothing to preserve.
-        return;
-      }
-
-      // Still needed - keep lock, phases will execute
-      r->lock = std::move(cache_result.lock);
-      tui::debug("phase check: re-check failed, keeping lock, phases will execute");
-    } else {
-      // Cache hit for user-managed package indicates inconsistent state:
-      // check verb returned false (work needed) but cache entry exists.
-      // This may indicate a buggy/non-deterministic check verb or race condition.
-      r->asset_path = cache_result.asset_path;
-      tui::warn(
-          "phase check: unexpected cache hit for user-managed package at %s - "
-          "check verb may be buggy or non-deterministic",
-          cache_result.asset_path.string().c_str());
-    }
-
+    run_check_phase_user_managed(r, eng, lua);
   } else {
-    // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-
-    std::string const key_for_hash{ r->spec.format_key() };
-
-    auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
-    r->canonical_identity_hash =
-        util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
-    std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
-                                                     8) };  // For cache path: 16 hex chars
-
-    std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
-    std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
-
-    auto cache_result{
-      r->cache_ptr->ensure_asset(r->spec.identity, platform, arch, hash_prefix)
-    };
-
-    if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
-      r->lock = std::move(cache_result.lock);
-      tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
-    } else {  // Cache hit - store asset_path, no lock means subsequent phases skip
-      r->asset_path = cache_result.asset_path;
-      tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
-                 key.c_str(),
-                 cache_result.asset_path.string().c_str());
-    }
+    run_check_phase_cache_managed(r);
   }
 }
 

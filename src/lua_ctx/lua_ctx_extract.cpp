@@ -48,7 +48,7 @@ int lua_ctx_extract(lua_State *lua) {
     return luaL_error(lua, "ctx.extract: file not found: %s", filename);
   }
 
-  ENVY_TRACE_LUA_CTX_EXTRACT_START(ctx->recipe_->spec.identity,
+  ENVY_TRACE_LUA_CTX_EXTRACT_START(ctx->recipe_->spec->identity,
                                    archive_path.string(),
                                    ctx->run_dir.string());
 
@@ -63,7 +63,7 @@ int lua_ctx_extract(lua_State *lua) {
                                 std::chrono::steady_clock::now() - start_time)
                                 .count() };
 
-    ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(ctx->recipe_->spec.identity,
+    ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(ctx->recipe_->spec->identity,
                                         static_cast<std::int64_t>(files),
                                         static_cast<std::int64_t>(duration_ms));
 

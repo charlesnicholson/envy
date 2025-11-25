@@ -112,7 +112,7 @@ int lua_ctx_run(lua_State *lua) {
     if (sanitized_script.size() > 100) {
       sanitized_script = sanitized_script.substr(0, 97) + "...";
     }
-    ENVY_TRACE_LUA_CTX_RUN_START(ctx->recipe_->spec.identity,
+    ENVY_TRACE_LUA_CTX_RUN_START(ctx->recipe_->spec->identity,
                                  sanitized_script,
                                  cwd->string());
   }
@@ -167,7 +167,7 @@ int lua_ctx_run(lua_State *lua) {
                                 std::chrono::steady_clock::now() - start_time)
                                 .count() };
 
-    ENVY_TRACE_LUA_CTX_RUN_COMPLETE(ctx->recipe_->spec.identity,
+    ENVY_TRACE_LUA_CTX_RUN_COMPLETE(ctx->recipe_->spec->identity,
                                      result.exit_code,
                                      static_cast<std::int64_t>(duration_ms));
 
@@ -176,12 +176,12 @@ int lua_ctx_run(lua_State *lua) {
         return luaL_error(lua,
                           "ctx.run: shell script terminated by signal %d for %s",
                           *result.signal,
-                          ctx->recipe_->spec.identity.c_str());
+                          ctx->recipe_->spec->identity.c_str());
       } else {
         return luaL_error(lua,
                           "ctx.run: shell script failed with exit code %d for %s",
                           result.exit_code,
-                          ctx->recipe_->spec.identity.c_str());
+                          ctx->recipe_->spec->identity.c_str());
       }
     }
 

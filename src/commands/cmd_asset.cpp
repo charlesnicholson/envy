@@ -56,22 +56,26 @@ bool cmd_asset::execute() {
     }() };
 
     cache c{ cache_root };
-    recipe_spec const &target{ *matches[0] };
     engine eng{ c, m->get_default_shell(nullptr) };
-    auto result{ eng.run_full({ target }) };
+    auto result{ eng.run_full({ matches[0] }) };
 
-    auto it{ result.find(recipe_spec::format_key(target.identity, target.options)) };
-    if (it == result.end() || it->second.result_hash.empty()) {
+    auto const *recipe_result{ [&]() {
+      auto it{ result.find(
+          recipe_spec::format_key(matches[0]->identity, matches[0]->options)) };
+      return (it != result.end()) ? &it->second : nullptr;
+    }() };
+
+    if (!recipe_result || recipe_result->result_hash.empty()) {
       tui::error("not found");
       return false;
     }
 
-    if (it->second.result_hash == "programmatic") {
+    if (recipe_result->result_hash == "programmatic") {
       tui::error("not found");
       return false;
     }
 
-    tui::print_stdout("%s\n", it->second.asset_path.string().c_str());
+    tui::print_stdout("%s\n", recipe_result->asset_path.string().c_str());
     return true;
 
   } catch (std::exception const &ex) {

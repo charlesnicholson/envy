@@ -123,7 +123,7 @@ void run_shell_build(std::string_view script,
 }  // namespace
 
 void run_build_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec.identity,
+  phase_trace_scope const phase_scope{ r->spec->identity,
                                        recipe_phase::asset_build,
                                        std::chrono::steady_clock::now() };
 
@@ -149,7 +149,7 @@ void run_build_phase(recipe *r, engine &eng) {
         return std::string{ script, len };
       }() };
       lua_pop(lua, 1);
-      run_shell_build(script_str, r->lock->stage_dir(), r->spec.identity);
+      run_shell_build(script_str, r->lock->stage_dir(), r->spec->identity);
       break;
     }
 
@@ -158,8 +158,8 @@ void run_build_phase(recipe *r, engine &eng) {
                              r->lock->fetch_dir(),
                              r->lock->stage_dir(),
                              r->lock->install_dir(),
-                             r->spec.identity,
-                             r->spec.options,
+                             r->spec->identity,
+                             r->spec->options,
                              eng,
                              r);
       break;
@@ -167,7 +167,7 @@ void run_build_phase(recipe *r, engine &eng) {
     default:
       lua_pop(lua, 1);
       throw std::runtime_error("build field must be nil, string, or function for " +
-                               r->spec.identity);
+                               r->spec->identity);
   }
 }
 

@@ -31,8 +31,7 @@ using recipe_result_map_t = std::unordered_map<std::string, recipe_result>;
 
 class engine : unmovable {
  public:
-  // Execution context for recipe threads
-  struct recipe_execution_ctx {
+  struct recipe_execution_ctx {  // Execution context for recipe threads
     std::thread worker;
     std::mutex mutex;
     std::condition_variable cv;
@@ -41,8 +40,7 @@ class engine : unmovable {
     std::atomic_bool failed{ false };
     std::atomic_bool started{ false };  // True if worker thread has been created
 
-    // Per-thread traversal state for cycle detection
-    std::vector<std::string> ancestor_chain;
+    std::vector<std::string> ancestor_chain;  // Per-thread  for cycle detection
 
     void set_target_phase(recipe_phase target);
     void start(recipe *r, engine *eng, std::vector<std::string> chain);
@@ -51,13 +49,12 @@ class engine : unmovable {
   engine(cache &cache, default_shell_cfg_t default_shell);
   ~engine();
 
-  recipe *ensure_recipe(recipe_spec const &spec);
+  recipe *ensure_recipe(recipe_spec const *spec);
   void register_alias(std::string const &alias, recipe_key const &key);
 
   recipe *find_exact(recipe_key const &key) const;
   std::vector<recipe *> find_matches(std::string_view query) const;
 
-  // Access to execution context for phase functions
   recipe_execution_ctx &get_execution_ctx(recipe *r);
 
   // Phase coordination (thread-safe)
@@ -71,14 +68,13 @@ class engine : unmovable {
   void on_recipe_fetch_complete();
 
   // High-level execution
-  recipe_result_map_t run_full(std::vector<recipe_spec> const &roots);
-  void resolve_graph(std::vector<recipe_spec> const &roots);
+  recipe_result_map_t run_full(std::vector<recipe_spec const *> const &roots);
+  void resolve_graph(std::vector<recipe_spec const *> const &roots);
 
  private:
   cache &cache_;
   default_shell_cfg_t default_shell_;
 
-  // Helper to ensure correct lock-then-notify pattern for global cv_
   void notify_all_global_locked();
   void run_recipe_thread(recipe *r);  // Thread entry point
 

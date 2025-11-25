@@ -286,6 +286,9 @@ bool lua_value::is_integer() const { return std::holds_alternative<int64_t>(v); 
 bool lua_value::is_number() const { return std::holds_alternative<double>(v); }
 bool lua_value::is_string() const { return std::holds_alternative<std::string>(v); }
 bool lua_value::is_table() const { return std::holds_alternative<lua_table>(v); }
+bool lua_value::is_function() const {
+  return std::holds_alternative<lua_function_placeholder>(v);
+}
 
 lua_value lua_stack_to_value(lua_State *L, int index) {
   int const type{ lua_type(L, index) };
@@ -319,11 +322,20 @@ lua_value lua_stack_to_value(lua_State *L, int index) {
       while (lua_next(L, abs_index) != 0) {
         // Key at -2, value at -1
 
-        // Only process string keys
+        // Process string keys
         if (lua_type(L, -2) == LUA_TSTRING) {
           size_t key_len{ 0 };
           char const *key_str{ lua_tolstring(L, -2, &key_len) };
           std::string key{ key_str, key_len };
+
+          // Recursively convert value
+          lua_value value{ lua_stack_to_value(L, -1) };
+          table[std::move(key)] = std::move(value);
+        }
+        // Also process numeric keys (for arrays) - convert to strings
+        else if (lua_type(L, -2) == LUA_TNUMBER && lua_isinteger(L, -2)) {
+          lua_Integer const idx{ lua_tointeger(L, -2) };
+          std::string key{ std::to_string(idx) };
 
           // Recursively convert value
           lua_value value{ lua_stack_to_value(L, -1) };
@@ -335,6 +347,10 @@ lua_value lua_stack_to_value(lua_State *L, int index) {
 
       return lua_value{ lua_variant{ std::move(table) } };
     }
+
+    case LUA_TFUNCTION:
+      // Functions can't be stored outside their lua_State, return placeholder
+      return lua_value{ lua_variant{ lua_function_placeholder{} } };
 
     default:
       throw std::runtime_error(std::string("Unsupported Lua type: ") +
@@ -441,6 +457,8 @@ void value_to_lua_stack(lua_State *L, lua_value const &val) {
   static_assert(std::is_same_v<std::variant_alternative_t<3, lua_variant>, double>);
   static_assert(std::is_same_v<std::variant_alternative_t<4, lua_variant>, std::string>);
   static_assert(std::is_same_v<std::variant_alternative_t<5, lua_variant>, lua_table>);
+  static_assert(std::is_same_v<std::variant_alternative_t<6, lua_variant>,
+                               lua_function_placeholder>);
 
   switch (val.v.index()) {
     case 0: lua_pushnil(L); break;
@@ -465,6 +483,12 @@ void value_to_lua_stack(lua_State *L, lua_value const &val) {
       }
       break;
     }
+
+    case 6:
+      throw std::runtime_error(
+          "Cannot push function placeholder to Lua stack - "
+          "function placeholders are markers only and must be accessed from original "
+          "lua_State");
   }
 }
 

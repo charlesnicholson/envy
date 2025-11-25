@@ -67,30 +67,28 @@ void engine::recipe_execution_ctx::start(recipe *r,
   worker = std::thread([r, eng] { eng->run_recipe_thread(r); });
 }
 
-recipe *engine::ensure_recipe(recipe_spec const &spec) {
+recipe *engine::ensure_recipe(recipe_spec const *spec) {
   std::lock_guard const lock(mutex_);
 
-  recipe_key const key(spec);
+  recipe_key const key(*spec);
 
   auto const [it, inserted]{ recipes_.try_emplace(
       key,
-      std::make_unique<recipe>(recipe{
-          .key = key,
-          .spec = spec,
-          .lua_state = nullptr,
-          .lock = nullptr,
-          .declared_dependencies = {},
-          .dependencies = {},
-          .canonical_identity_hash = key.canonical(),
-          .asset_path = {},
-          .result_hash = {},
-          .cache_ptr = &cache_,
-          .default_shell_ptr = &default_shell_,
-      })) };
-
+      std::make_unique<recipe>(recipe{ .key = key,
+                                       .spec = spec,
+                                       .lua_state = nullptr,
+                                       .lock = nullptr,
+                                       .declared_dependencies = {},
+                                       .owned_dependency_specs = {},
+                                       .dependencies = {},
+                                       .canonical_identity_hash = key.canonical(),
+                                       .asset_path = {},
+                                       .result_hash = {},
+                                       .cache_ptr = &cache_,
+                                       .default_shell_ptr = &default_shell_ })) };
   if (inserted) {
     execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>();
-    ENVY_TRACE_RECIPE_REGISTERED(spec.identity, key.canonical(), false);
+    ENVY_TRACE_RECIPE_REGISTERED(spec->identity, key.canonical(), false);
   }
   return it->second.get();
 }
@@ -152,16 +150,13 @@ void engine::start_recipe_thread(recipe *r,
     return *it->second;
   }() };
 
-  // Use atomic flag to prevent race condition with diamond dependencies
   bool expected = false;
-  if (ctx.started.compare_exchange_strong(expected, true)) {
-    // We won the race - set target phase then start the thread
+  if (ctx.started.compare_exchange_strong(expected, true)) {  // set phase then start
     if (initial_target >= recipe_phase::recipe_fetch) { on_recipe_fetch_start(); }
     ctx.set_target_phase(initial_target);
-    ENVY_TRACE_THREAD_START(r->spec.identity, initial_target);
+    ENVY_TRACE_THREAD_START(r->spec->identity, initial_target);
     ctx.start(r, this, std::move(ancestor_chain));
-  } else {
-    // Thread already started - extend target if needed
+  } else {  // already started, extend target if needed
     ctx.set_target_phase(initial_target);
   }
 }
@@ -227,7 +222,7 @@ void engine::run_recipe_thread(recipe *r) {
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
 
         if (ctx.target_phase == current || ctx.failed) break;
-        ENVY_TRACE_TARGET_EXTENDED(r->spec.identity, current, ctx.target_phase.load());
+        ENVY_TRACE_TARGET_EXTENDED(r->spec->identity, current, ctx.target_phase.load());
       }
 
       // Run next phase
@@ -243,12 +238,12 @@ void engine::run_recipe_thread(recipe *r) {
       for (auto const &[dep_identity, dep_info] : r->dependencies) {
         if (next >= dep_info.needed_by) {
           // Dependency is needed by this or earlier phase, ensure it's fully complete
-          ENVY_TRACE_PHASE_BLOCKED(r->spec.identity,
+          ENVY_TRACE_PHASE_BLOCKED(r->spec->identity,
                                    next,
                                    dep_identity,
                                    recipe_phase::completion);
           ensure_recipe_at_phase(dep_info.recipe_ptr->key, recipe_phase::completion);
-          ENVY_TRACE_PHASE_UNBLOCKED(r->spec.identity, next, dep_identity);
+          ENVY_TRACE_PHASE_UNBLOCKED(r->spec->identity, next, dep_identity);
         }
       }
 
@@ -258,7 +253,7 @@ void engine::run_recipe_thread(recipe *r) {
       notify_phase_complete(r->key, next);
     }
     recipe_phase const final_phase{ ctx.current_phase };
-    ENVY_TRACE_THREAD_COMPLETE(r->spec.identity, final_phase);
+    ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, final_phase);
   } catch (...) {  // Log the error (inspect exception type to get message if available)
     try {
       throw;  // rethrow to inspect
@@ -272,7 +267,7 @@ void engine::run_recipe_thread(recipe *r) {
   }
 }
 
-recipe_result_map_t engine::run_full(std::vector<recipe_spec> const &roots) {
+recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roots) {
   resolve_graph(roots);
 
   // Start all recipes running to completion (non-blocking)
@@ -299,11 +294,11 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec> const &roots) {
   return results;
 }
 
-void engine::resolve_graph(std::vector<recipe_spec> const &roots) {
-  for (auto const &spec : roots) {
+void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
+  for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
-    if (spec.alias) { register_alias(*spec.alias, r->key); }
-    tui::debug("engine: resolve_graph start thread for %s", spec.identity.c_str());
+    if (spec->alias) { register_alias(*spec->alias, r->key); }
+    tui::debug("engine: resolve_graph start thread for %s", spec->identity.c_str());
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 

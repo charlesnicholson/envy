@@ -26,7 +26,7 @@ int lua_ctx_asset(lua_State *lua) {
   if (!is_declared_dependency(ctx->recipe_, identity)) {
     return luaL_error(lua,
                       "ctx.asset: recipe '%s' does not declare dependency on '%s'",
-                      ctx->recipe_->spec.identity.c_str(),
+                      ctx->recipe_->spec->identity.c_str(),
                       identity);
   }
 

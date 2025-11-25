@@ -25,6 +25,7 @@ namespace {
 
 // Fixture for testing install phase with temporary cache
 struct install_test_fixture {
+  recipe_spec spec;
   std::unique_ptr<recipe> r;
   std::filesystem::path temp_root;
   cache test_cache;
@@ -43,15 +44,15 @@ struct install_test_fixture {
     std::filesystem::create_directories(temp_root);
 
     // Create recipe
-    recipe_spec spec;
     spec.identity = "test.package@v1";
 
     r = std::make_unique<recipe>(recipe{
         .key = recipe_key(spec),
-        .spec = spec,
+        .spec = &spec,
         .lua_state = lua_make(),
         .lock = nullptr,
         .declared_dependencies = {},
+        .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
         .asset_path = {},

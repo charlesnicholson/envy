@@ -18,19 +18,17 @@ bool cmd_sync::execute() {
     auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
     if (!m) { throw std::runtime_error("could not load manifest"); }
 
-    // Build set of targets to sync
-    std::vector<recipe_spec> targets;
+    // Build set of targets to sync (pointers to specs in manifest)
+    std::vector<recipe_spec const *> targets;
 
-    if (cfg_.identities.empty()) {
-      // Sync entire manifest
-      for (auto const &pkg : m->packages) { targets.push_back(pkg); }
-    } else {
-      // Sync specific identities - validate all exist first
+    if (cfg_.identities.empty()) {  // Sync entire manifest
+      for (auto const &pkg : m->packages) { targets.push_back(&pkg); }
+    } else {  // Sync specific identities - validate all exist first
       for (auto const &identity : cfg_.identities) {
         bool found{ false };
         for (auto const &pkg : m->packages) {
           if (pkg.identity == identity) {
-            targets.push_back(pkg);
+            targets.push_back(&pkg);
             found = true;
             break;  // Take first match for this identity
           }
@@ -63,7 +61,6 @@ bool cmd_sync::execute() {
     engine eng{ c, m->get_default_shell(nullptr) };
     auto result{ eng.run_full(targets) };
 
-    // Report results
     size_t completed{ 0 };
     size_t programmatic{ 0 };
     size_t failed{ 0 };

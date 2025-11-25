@@ -81,7 +81,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
 
   for (auto const &package : *packages) {
-    m->packages.push_back(recipe_spec::parse(package, manifest_path));
+    m->packages.push_back(recipe_spec::parse(package, manifest_path, m->lua_state_.get()));
   }
 
   return m;
