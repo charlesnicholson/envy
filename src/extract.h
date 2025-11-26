@@ -25,4 +25,9 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
+// Extract all archives in a directory
+void extract_all_archives(std::filesystem::path const &fetch_dir,
+                          std::filesystem::path const &dest_dir,
+                          int strip_components);
+
 }  // namespace envy

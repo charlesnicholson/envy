@@ -1,13 +1,15 @@
 #pragma once
 
 #include "cache.h"
-#include "lua_util.h"
 #include "recipe_key.h"
 #include "recipe_phase.h"
 #include "recipe_spec.h"
 #include "shell.h"
 
+#include "sol/sol.hpp"
+
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,7 +20,7 @@ struct recipe {
   recipe_key key;
   recipe_spec const *spec;  // Non-ownership
 
-  lua_state_ptr lua_state;
+  std::unique_ptr<sol::state> lua;
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;

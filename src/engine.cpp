@@ -76,7 +76,7 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
       key,
       std::make_unique<recipe>(recipe{ .key = key,
                                        .spec = spec,
-                                       .lua_state = nullptr,
+                                       .lua = nullptr,
                                        .lock = nullptr,
                                        .declared_dependencies = {},
                                        .owned_dependency_specs = {},

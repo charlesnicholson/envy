@@ -2,7 +2,9 @@
 
 #include "cache.h"
 #include "engine.h"
+#include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_shell.h"
 #include "lua_util.h"
 #include "recipe.h"
 #include "shell.h"
@@ -14,55 +16,52 @@ extern "C" {
 }
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace envy {
 namespace {
 
-// Context data for Lua C functions (stored as userdata upvalue)
 struct build_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is stage_dir (build working directory)
-  std::filesystem::path install_dir;  // Additional field for build phase
+  std::filesystem::path install_dir;
 };
 
-void build_build_phase_ctx_table(lua_State *lua,
-                                 std::string const &identity,
-                                 std::unordered_map<std::string, lua_value> const &options,
-                                 build_phase_ctx *ctx) {
-  lua_createtable(lua, 0, 9);  // Pre-allocate space for 9 fields
+sol::table build_build_phase_ctx_table(
+    lua_State *lua,
+    std::string const &identity,
+    std::unordered_map<std::string, lua_value> const &options,
+    build_phase_ctx *ctx) {
+  sol::state_view lua_view{ lua };
+  sol::table ctx_table{ lua_view.create_table() };
 
-  lua_pushstring(lua, identity.c_str());
-  lua_setfield(lua, -2, "identity");
+  ctx_table["identity"] = identity;
 
-  lua_createtable(lua, 0, static_cast<int>(options.size()));
+  sol::table opts_table{ lua_view.create_table() };
   for (auto const &[key, val] : options) {
     value_to_lua_stack(lua, val);
-    lua_setfield(lua, -2, key.c_str());
+    opts_table.raw_set(key, sol::stack_object{ lua, -1 });
+    lua_pop(lua, 1);
   }
-  lua_setfield(lua, -2, "options");
+  ctx_table["options"] = opts_table;
 
-  lua_pushstring(lua, ctx->fetch_dir.string().c_str());
-  lua_setfield(lua, -2, "fetch_dir");
+  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
+  ctx_table["stage_dir"] = ctx->run_dir.string();
+  ctx_table["install_dir"] = ctx->install_dir.string();
 
-  lua_pushstring(lua, ctx->run_dir.string().c_str());
-  lua_setfield(lua, -2, "stage_dir");
+  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
+  lua_ctx_add_common_bindings(ctx_table, ctx);
 
-  lua_pushstring(lua, ctx->install_dir.string().c_str());
-  lua_setfield(lua, -2, "install_dir");
-
-  // Common context bindings (all phases)
-  lua_ctx_bindings_register_run(lua, ctx);
-  lua_ctx_bindings_register_asset(lua, ctx);
-  lua_ctx_bindings_register_copy(lua, ctx);
-  lua_ctx_bindings_register_move(lua, ctx);
-  lua_ctx_bindings_register_extract(lua, ctx);
-  lua_ctx_bindings_register_ls(lua, ctx);
+  return ctx_table;
 }
 
-void run_programmatic_build(lua_State *lua,
+void run_programmatic_build(sol::protected_function build_func,
                             std::filesystem::path const &fetch_dir,
                             std::filesystem::path const &stage_dir,
                             std::filesystem::path const &install_dir,
@@ -79,14 +78,14 @@ void run_programmatic_build(lua_State *lua,
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
 
-  build_build_phase_ctx_table(lua, identity, options, &ctx);
+  sol::table ctx_table{
+    build_build_phase_ctx_table(build_func.lua_state(), identity, options, &ctx)
+  };
 
-  // Stack: build_function at -2, ctx_table at -1 (ready for pcall)
-  if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
-    char const *err{ lua_tostring(lua, -1) };
-    std::string error_msg{ err ? err : "unknown error" };
-    lua_pop(lua, 1);
-    throw std::runtime_error("Build function failed for " + identity + ": " + error_msg);
+  sol::protected_function_result result{ build_func(ctx_table) };
+  if (!result.valid()) {
+    sol::error err{ result };
+    throw std::runtime_error("Build function failed for " + identity + ": " + err.what());
   }
 }
 
@@ -127,47 +126,32 @@ void run_build_phase(recipe *r, engine &eng) {
                                        recipe_phase::asset_build,
                                        std::chrono::steady_clock::now() };
 
-  lua_State *lua{ r->lua_state.get() };
+  lua_State *lua{ r->lua->lua_state() };
 
   if (!r->lock) {
     tui::debug("phase build: no lock (cache hit), skipping");
     return;
   }
 
-  lua_getglobal(lua, "build");
+  sol::state_view lua_view{ lua };
+  sol::object build_obj{ lua_view["build"] };
 
-  switch (lua_type(lua, -1)) {
-    case LUA_TNIL:
-      lua_pop(lua, 1);
-      tui::debug("phase build: no build field, skipping");
-      break;
-
-    case LUA_TSTRING: {
-      std::string const script_str{ [&]() {
-        size_t len{ 0 };
-        char const *script{ lua_tolstring(lua, -1, &len) };
-        return std::string{ script, len };
-      }() };
-      lua_pop(lua, 1);
-      run_shell_build(script_str, r->lock->stage_dir(), r->spec->identity);
-      break;
-    }
-
-    case LUA_TFUNCTION:
-      run_programmatic_build(lua,
-                             r->lock->fetch_dir(),
-                             r->lock->stage_dir(),
-                             r->lock->install_dir(),
-                             r->spec->identity,
-                             r->spec->options,
-                             eng,
-                             r);
-      break;
-
-    default:
-      lua_pop(lua, 1);
-      throw std::runtime_error("build field must be nil, string, or function for " +
-                               r->spec->identity);
+  if (!build_obj.valid()) {
+    tui::debug("phase build: no build field, skipping");
+  } else if (build_obj.is<std::string>()) {
+    run_shell_build(build_obj.as<std::string>(), r->lock->stage_dir(), r->spec->identity);
+  } else if (build_obj.is<sol::protected_function>()) {
+    run_programmatic_build(build_obj.as<sol::protected_function>(),
+                           r->lock->fetch_dir(),
+                           r->lock->stage_dir(),
+                           r->lock->install_dir(),
+                           r->spec->identity,
+                           r->spec->options,
+                           eng,
+                           r);
+  } else {
+    throw std::runtime_error("build field must be nil, string, or function for " +
+                             r->spec->identity);
   }
 }
 

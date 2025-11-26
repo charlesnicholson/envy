@@ -1,8 +1,15 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <unordered_set>
+
+extern "C" {
+#include "lua.h"
+}
+
+#include "sol/sol.hpp"
 
 struct lua_State;
 
@@ -25,36 +32,50 @@ struct lua_ctx_common {
 // Used by both recipe_fetch and asset_fetch phases.
 struct fetch_phase_ctx : lua_ctx_common {
   std::filesystem::path stage_dir;  // Git repos bypass tmp, go directly here
-  std::unordered_set<std::string> used_basenames;  // Collision detection across ctx.fetch() calls
+  std::unordered_set<std::string> used_basenames;  // Collision detection for ctx.fetch()
 };
 
-// Register common Lua context functions available to all phases.
-// Each function expects the ctx table to be at the top of the Lua stack.
-// The context pointer is bound as an upvalue for the registered function.
+// Add common Lua context bindings to a Sol2 table.
+// Adds: copy, move, extract, extract_all, asset, ls, run
+// All phases should call this to get the standard context functions.
+void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx);
 
-// ctx.run(script, opts?) -> {stdout, stderr}
-// Execute shell script, log output to TUI, return captured output
-void lua_ctx_bindings_register_run(lua_State *lua, void *context);
+// Factory functions that return lambdas for common context functions.
+// Each factory captures the context pointer and returns a lambda that implements
+// the corresponding ctx.XXX function behavior.
 
-// ctx.asset(identity) -> path
-// Look up dependency in graph_state, verify completed, return asset_path
-void lua_ctx_bindings_register_asset(lua_State *lua, void *context);
+// ctx.copy(src, dst) - copy file or directory
+std::function<void(std::string const &, std::string const &)> make_ctx_copy(
+    lua_ctx_common *ctx);
 
-// ctx.copy(src, dst)
-// Copy file or directory (auto-detected)
-void lua_ctx_bindings_register_copy(lua_State *lua, void *context);
+// ctx.move(src, dst) - move/rename file or directory
+std::function<void(std::string const &, std::string const &)> make_ctx_move(
+    lua_ctx_common *ctx);
 
-// ctx.move(src, dst)
-// Move/rename file or directory (uses rename when possible)
-void lua_ctx_bindings_register_move(lua_State *lua, void *context);
+// ctx.extract(filename, opts?) - extract single archive with optional strip_components
+std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extract(
+    lua_ctx_common *ctx);
 
-// ctx.extract(filename, opts?)
-// Extract single archive with optional strip_components
-void lua_ctx_bindings_register_extract(lua_State *lua, void *context);
+// ctx.extract_all(opts?) - extract all archives in fetch_dir
+std::function<void(sol::optional<sol::table>)> make_ctx_extract_all(lua_ctx_common *ctx);
 
-// ctx.ls(path)
-// List directory contents for debugging (prints to TUI)
-void lua_ctx_bindings_register_ls(lua_State *lua, void *context);
+// ctx.asset(identity) -> path - look up dependency asset path
+std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *ctx);
+
+// ctx.ls(path) - list directory contents for debugging (prints to TUI)
+std::function<void(std::string const &)> make_ctx_ls(lua_ctx_common *ctx);
+
+// ctx.run(script, opts?) - run shell script with optional cwd/env/shell config
+std::function<sol::table(sol::object, sol::optional<sol::object>, sol::this_state)>
+make_ctx_run(lua_ctx_common *ctx);
+
+// ctx.fetch(url_or_table) - download file(s) to tmp directory
+// Returns: basename string or array of basenames
+std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
+    fetch_phase_ctx *ctx);
+
+// ctx.commit_fetch(filename_or_table) - move file(s) from tmp to fetch_dir with SHA256 check
+std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx);
 
 // Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)
 // Requires fetch_phase_ctx* as context (extends lua_ctx_common)
@@ -64,15 +85,5 @@ void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *cont
 // Check if target_identity is a declared dependency of current recipe
 // Used for ctx.asset() validation. Exposed for testing.
 bool is_declared_dependency(recipe *r, std::string const &target_identity);
-
-// Lua C function implementations (one per file)
-int lua_ctx_run(lua_State *lua);
-int lua_ctx_asset(lua_State *lua);
-int lua_ctx_copy(lua_State *lua);
-int lua_ctx_move(lua_State *lua);
-int lua_ctx_extract(lua_State *lua);
-int lua_ctx_ls(lua_State *lua);
-int lua_ctx_fetch(lua_State *lua);
-int lua_ctx_commit_fetch(lua_State *lua);
 
 }  // namespace envy

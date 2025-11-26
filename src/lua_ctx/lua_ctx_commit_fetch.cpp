@@ -3,12 +3,8 @@
 #include "sha256.h"
 #include "tui.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
-
 #include <filesystem>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -24,87 +20,54 @@ struct commit_entry {
 };
 
 // Parse ctx.commit_fetch() arguments into commit entries
-std::vector<commit_entry> parse_commit_fetch_args(lua_State *lua) {
+std::vector<commit_entry> parse_commit_fetch_args(sol::object const &arg) {
   std::vector<commit_entry> entries;
-  int const arg_type{ lua_type(lua, 1) };
 
-  switch (arg_type) {
-    case LUA_TSTRING:
-      // Scalar string
-      entries.push_back({ lua_tostring(lua, 1), "" });
-      break;
+  if (arg.is<std::string>()) {
+    // Single string: "filename"
+    entries.push_back({ arg.as<std::string>(), "" });
+  } else if (arg.is<sol::table>()) {
+    sol::table tbl{ arg.as<sol::table>() };
 
-    case LUA_TTABLE: {
-      // Check if array or single table
-      lua_rawgeti(lua, 1, 1);
-      int const first_elem_type{ lua_type(lua, -1) };
-      lua_pop(lua, 1);
+    // Check if it's an array or a single table
+    sol::object first_elem{ tbl[1] };
 
-      switch (first_elem_type) {
-        case LUA_TNIL: {
-          // Single table {filename="...", sha256="..."}
-          lua_getfield(lua, 1, "filename");
-          if (!lua_isstring(lua, -1)) {
-            throw std::runtime_error("table missing 'filename' field");
-          }
-          std::string filename{ lua_tostring(lua, -1) };
-          lua_pop(lua, 1);
-
-          lua_getfield(lua, 1, "sha256");
-          std::string sha256;
-          if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-          lua_pop(lua, 1);
-
-          entries.push_back({ std::move(filename), std::move(sha256) });
-          break;
-        }
-
-        case LUA_TSTRING: {
-          // Array of strings {"file1", "file2"}
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-            if (!lua_isstring(lua, -1)) {
-              throw std::runtime_error("array element " + std::to_string(i) +
-                                       " must be string");
-            }
-            entries.push_back({ lua_tostring(lua, -1), "" });
-            lua_pop(lua, 1);
-          }
-          break;
-        }
-
-        case LUA_TTABLE: {
-          // Array of tables {{filename="...", sha256="..."}, {...}}
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-
-            lua_getfield(lua, -1, "filename");
-            if (!lua_isstring(lua, -1)) {
-              throw std::runtime_error("array element " + std::to_string(i) +
-                                       " missing 'filename' field");
-            }
-            std::string filename{ lua_tostring(lua, -1) };
-            lua_pop(lua, 1);
-
-            lua_getfield(lua, -1, "sha256");
-            std::string sha256;
-            if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-            lua_pop(lua, 1);
-
-            entries.push_back({ std::move(filename), std::move(sha256) });
-            lua_pop(lua, 1);  // pop table
-          }
-          break;
-        }
-
-        default: throw std::runtime_error("invalid array element type");
+    if (first_elem.get_type() == sol::type::lua_nil) {
+      // Single table: {filename="...", sha256="..."}
+      sol::optional<std::string> filename{ tbl["filename"] };
+      if (!filename) {
+        throw std::runtime_error("ctx.commit_fetch: table missing 'filename' field");
       }
-      break;
+      sol::optional<std::string> sha256{ tbl["sha256"] };
+      entries.push_back({ *filename, sha256.value_or("") });
+    } else if (first_elem.is<std::string>()) {
+      // Array of strings: {"file1", "file2"}
+      for (auto const &[key, value] : tbl) {
+        if (!value.is<std::string>()) {
+          throw std::runtime_error("ctx.commit_fetch: array elements must be strings");
+        }
+        entries.push_back({ value.as<std::string>(), "" });
+      }
+    } else if (first_elem.is<sol::table>()) {
+      // Array of tables: {{filename="...", sha256="..."}, {...}}
+      for (auto const &[key, value] : tbl) {
+        if (!value.is<sol::table>()) {
+          throw std::runtime_error("ctx.commit_fetch: array elements must be tables");
+        }
+        sol::table item_tbl{ value.as<sol::table>() };
+        sol::optional<std::string> filename{ item_tbl["filename"] };
+        if (!filename) {
+          throw std::runtime_error(
+              "ctx.commit_fetch: array element missing 'filename' field");
+        }
+        sol::optional<std::string> sha256{ item_tbl["sha256"] };
+        entries.push_back({ *filename, sha256.value_or("") });
+      }
+    } else {
+      throw std::runtime_error("ctx.commit_fetch: invalid array element type");
     }
-
-    default: throw std::runtime_error("argument must be string or table");
+  } else {
+    throw std::runtime_error("ctx.commit_fetch: argument must be string or table");
   }
 
   return entries;
@@ -156,19 +119,10 @@ void commit_files(std::vector<commit_entry> const &entries,
 
 }  // namespace
 
-// Lua C function: ctx.commit_fetch(filename) or ctx.commit_fetch({filename, sha256})
-// Moves file(s) from ctx.tmp to fetch_dir with optional SHA256 verification
-int lua_ctx_commit_fetch(lua_State *lua) {
-  auto *ctx{ static_cast<fetch_phase_ctx *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.commit_fetch: missing context"); }
-
-  try {
-    commit_files(parse_commit_fetch_args(lua), ctx->run_dir, ctx->fetch_dir);
-  } catch (std::exception const &e) {
-    return luaL_error(lua, "ctx.commit_fetch: %s", e.what());
-  }
-
-  return 0;  // No return values
+std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx) {
+  return [ctx](sol::object arg) {
+    commit_files(parse_commit_fetch_args(arg), ctx->run_dir, ctx->fetch_dir);
+  };
 }
 
 }  // namespace envy

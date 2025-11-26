@@ -2,11 +2,14 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "recipe.h"
+#include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_shell.h"
 #include "lua_util.h"
 #include "phase_check.h"
+#include "recipe.h"
 #include "shell.h"
+#include "trace.h"
 #include "tui.h"
 
 extern "C" {
@@ -14,11 +17,15 @@ extern "C" {
 #include "lua.h"
 }
 
-#include <filesystem>
-#include <stdexcept>
 #include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace envy {
 namespace {
@@ -45,54 +52,41 @@ bool directory_has_entries(std::filesystem::path const &dir) {
   return false;
 }
 
-int lua_ctx_mark_install_complete(lua_State *lua) {
-  auto *ctx{ static_cast<install_phase_ctx *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx || !ctx->lock) {
-    return luaL_error(lua, "ctx.mark_install_complete: missing install context");
-  }
+sol::table build_install_phase_ctx_table(
+    lua_State *lua,
+    std::string const &identity,
+    std::unordered_map<std::string, lua_value> const &options,
+    install_phase_ctx *ctx) {
+  sol::state_view lua_view{ lua };
+  sol::table ctx_table{ lua_view.create_table() };
 
-  ctx->lock->mark_install_complete();
-  return 0;
-}
+  ctx_table["identity"] = identity;
 
-void build_install_phase_ctx_table(lua_State *lua,
-                                 std::string const &identity,
-                                 std::unordered_map<std::string, lua_value> const &options,
-                                 install_phase_ctx *ctx) {
-  lua_createtable(lua, 0, 11);
-
-  lua_pushstring(lua, identity.c_str());
-  lua_setfield(lua, -2, "identity");
-
-  lua_createtable(lua, 0, static_cast<int>(options.size()));
+  sol::table opts_table{ lua_view.create_table() };
   for (auto const &[key, val] : options) {
     value_to_lua_stack(lua, val);
-    lua_setfield(lua, -2, key.c_str());
+    opts_table.raw_set(key, sol::stack_object{ lua, -1 });
+    lua_pop(lua, 1);
   }
-  lua_setfield(lua, -2, "options");
+  ctx_table["options"] = opts_table;
 
-  lua_pushstring(lua, ctx->fetch_dir.string().c_str());
-  lua_setfield(lua, -2, "fetch_dir");
+  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
+  ctx_table["stage_dir"] = ctx->stage_dir.string();
+  ctx_table["install_dir"] = ctx->install_dir.string();
 
-  lua_pushstring(lua, ctx->stage_dir.string().c_str());
-  lua_setfield(lua, -2, "stage_dir");
+  ctx_table["mark_install_complete"] = [ctx]() {
+    if (!ctx->lock) {
+      throw std::runtime_error("ctx.mark_install_complete: missing install context");
+    }
+    ctx->lock->mark_install_complete();
+  };
 
-  lua_pushstring(lua, ctx->install_dir.string().c_str());
-  lua_setfield(lua, -2, "install_dir");
-
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_mark_install_complete, 1);
-  lua_setfield(lua, -2, "mark_install_complete");
-
-  lua_ctx_bindings_register_run(lua, ctx);
-  lua_ctx_bindings_register_asset(lua, ctx);
-  lua_ctx_bindings_register_copy(lua, ctx);
-  lua_ctx_bindings_register_move(lua, ctx);
-  lua_ctx_bindings_register_extract(lua, ctx);
-  lua_ctx_bindings_register_ls(lua, ctx);
+  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
+  lua_ctx_add_common_bindings(ctx_table, ctx);
+  return ctx_table;
 }
 
-bool run_programmatic_install(lua_State *lua,
+bool run_programmatic_install(sol::protected_function install_func,
                               cache::scoped_entry_lock *lock,
                               std::filesystem::path const &fetch_dir,
                               std::filesystem::path const &stage_dir,
@@ -112,13 +106,15 @@ bool run_programmatic_install(lua_State *lua,
   ctx.stage_dir = stage_dir;
   ctx.lock = lock;
 
-  build_install_phase_ctx_table(lua, identity, options, &ctx);
+  sol::table ctx_table{
+    build_install_phase_ctx_table(install_func.lua_state(), identity, options, &ctx)
+  };
 
-  if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
-    char const *err{ lua_tostring(lua, -1) };
-    std::string error_msg{ err ? err : "unknown error" };
-    lua_pop(lua, 1);
-    throw std::runtime_error("Install function failed for " + identity + ": " + error_msg);
+  sol::protected_function_result result{ install_func(ctx_table) };
+  if (!result.valid()) {
+    sol::error err{ result };
+    throw std::runtime_error("Install function failed for " + identity + ": " +
+                             err.what());
   }
 
   return lock->is_install_complete();
@@ -190,48 +186,34 @@ void run_install_phase(recipe *r, engine &eng) {
   }
 
   cache::scoped_entry_lock::ptr_t lock{ std::move(r->lock) };
-  std::filesystem::path const fetch_dir{ lock->fetch_dir() };
-  std::filesystem::path const stage_dir{ lock->stage_dir() };
-  std::filesystem::path const install_dir{ lock->install_dir() };
-  std::filesystem::path const final_asset_path{ install_dir.parent_path() / "asset" };
+  std::filesystem::path const final_asset_path{ lock->install_dir().parent_path() /
+                                                "asset" };
 
-  lua_State *lua{ r->lua_state.get() };
-  lua_getglobal(lua, "install");
-  int const install_type{ lua_type(lua, -1) };
+  lua_State *lua{ r->lua->lua_state() };
+  sol::state_view lua_view{ lua };
+  sol::object install_obj{ lua_view["install"] };
 
   bool marked_complete{ false };
 
-  switch (install_type) {
-    case LUA_TNIL:
-      lua_pop(lua, 1);
-      marked_complete = promote_stage_to_install(lock.get());
-      break;
-
-    case LUA_TSTRING: {
-      size_t len{ 0 };
-      std::string script{ lua_tolstring(lua, -1, &len), len };
-      lua_pop(lua, 1);
-      marked_complete =
-          run_shell_install(script, install_dir, lock.get(), r->spec->identity);
-      break;
-    }
-
-    case LUA_TFUNCTION:
-      marked_complete = run_programmatic_install(lua,
-                                                 lock.get(),
-                                                 fetch_dir,
-                                                 stage_dir,
-                                                 install_dir,
-                                                 r->spec->identity,
-                                                 r->spec->options,
-                                                 eng,
-                                                 r);
-      break;
-
-    default:
-      lua_pop(lua, 1);
-      throw std::runtime_error("install field must be nil, string, or function for " +
-                               r->spec->identity);
+  if (!install_obj.valid()) {
+    marked_complete = promote_stage_to_install(lock.get());
+  } else if (install_obj.is<std::string>()) {
+    std::string script{ install_obj.as<std::string>() };
+    marked_complete =
+        run_shell_install(script, lock->install_dir(), lock.get(), r->spec->identity);
+  } else if (install_obj.is<sol::protected_function>()) {
+    marked_complete = run_programmatic_install(install_obj.as<sol::protected_function>(),
+                                               lock.get(),
+                                               lock->fetch_dir(),
+                                               lock->stage_dir(),
+                                               lock->install_dir(),
+                                               r->spec->identity,
+                                               r->spec->options,
+                                               eng,
+                                               r);
+  } else {
+    throw std::runtime_error("install field must be nil, string, or function for " +
+                             r->spec->identity);
   }
 
   // Validation: User-managed packages (with check verb) must not call

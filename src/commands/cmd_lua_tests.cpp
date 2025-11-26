@@ -61,6 +61,7 @@ struct lua_test_fixture {
       // Also filter messages starting with whitespace (detailed trace output)
       if (msg.find("Failed") == std::string::npos &&
           msg.find("error") == std::string::npos &&
+          msg.find("cannot open") == std::string::npos &&
           msg.find("[TRC]") == std::string::npos &&
           msg.find("ensure_entry") == std::string::npos &&
           msg.find("scoped_entry_lock") == std::string::npos && !msg.empty() &&

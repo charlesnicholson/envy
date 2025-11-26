@@ -1,9 +1,10 @@
 #pragma once
 
-#include "lua_util.h"
 #include "recipe_spec.h"
 #include "shell.h"
 #include "util.h"
+
+#include "sol/sol.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -38,7 +39,7 @@ struct manifest : unmovable {
   default_shell_cfg_t get_default_shell(lua_ctx_common const *ctx) const;
 
  private:
-  lua_state_ptr lua_state_;  // Lua state (kept alive for default_shell function access)
+  std::unique_ptr<sol::state> lua_;
 };
 
 }  // namespace envy

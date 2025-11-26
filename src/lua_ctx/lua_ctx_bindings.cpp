@@ -2,10 +2,7 @@
 
 #include "recipe.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
+#include <string>
 
 namespace envy {
 
@@ -18,54 +15,22 @@ bool is_declared_dependency(recipe *r, std::string const &target_identity) {
   return false;
 }
 
-// Registration functions
-
-void lua_ctx_bindings_register_run(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_run, 1);
-  lua_setfield(lua, -2, "run");
-}
-
-void lua_ctx_bindings_register_asset(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_asset, 1);
-  lua_setfield(lua, -2, "asset");
-}
-
-void lua_ctx_bindings_register_copy(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_copy, 1);
-  lua_setfield(lua, -2, "copy");
-}
-
-void lua_ctx_bindings_register_move(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_move, 1);
-  lua_setfield(lua, -2, "move");
-}
-
-void lua_ctx_bindings_register_extract(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_extract, 1);
-  lua_setfield(lua, -2, "extract");
-}
-
-void lua_ctx_bindings_register_ls(lua_State *lua, void *context) {
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_ls, 1);
-  lua_setfield(lua, -2, "ls");
+void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx) {
+  ctx_table["copy"] = make_ctx_copy(ctx);
+  ctx_table["move"] = make_ctx_move(ctx);
+  ctx_table["extract"] = make_ctx_extract(ctx);
+  ctx_table["extract_all"] = make_ctx_extract_all(ctx);
+  ctx_table["asset"] = make_ctx_asset(ctx);
+  ctx_table["ls"] = make_ctx_ls(ctx);
+  ctx_table["run"] = make_ctx_run(ctx);
 }
 
 void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *context) {
-  // ctx.fetch
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_fetch, 1);
-  lua_setfield(lua, -2, "fetch");
+  sol::state_view lua_view{ lua };
+  sol::table ctx_table{ lua_view, sol::stack_reference(lua, -1) };
 
-  // ctx.commit_fetch
-  lua_pushlightuserdata(lua, context);
-  lua_pushcclosure(lua, lua_ctx_commit_fetch, 1);
-  lua_setfield(lua, -2, "commit_fetch");
+  ctx_table["fetch"] = make_ctx_fetch(context);
+  ctx_table["commit_fetch"] = make_ctx_commit_fetch(context);
 }
 
 }  // namespace envy

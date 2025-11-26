@@ -150,6 +150,7 @@ set(ENVY_COMMON_SOURCES
     src/lua_ctx/lua_ctx_commit_fetch.cpp
     src/lua_ctx/lua_ctx_copy.cpp
     src/lua_ctx/lua_ctx_extract.cpp
+    src/lua_ctx/lua_ctx_extract_all.cpp
     src/lua_ctx/lua_ctx_fetch.cpp
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
@@ -168,6 +169,7 @@ set(ENVY_COMMON_SOURCES
     src/libgit2_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
+    src/lua_envy.cpp
     src/lua_util.cpp
     src/manifest.cpp
     src/recipe_spec.cpp
@@ -362,6 +364,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/lua_ctx/lua_ctx_commit_fetch.cpp
     src/lua_ctx/lua_ctx_copy.cpp
     src/lua_ctx/lua_ctx_extract.cpp
+    src/lua_ctx/lua_ctx_extract_all.cpp
     src/lua_ctx/lua_ctx_fetch.cpp
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
@@ -380,6 +383,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/libgit2_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
+    src/lua_envy.cpp
     src/lua_util.cpp
     src/manifest.cpp
     src/recipe_phase.cpp
