@@ -46,10 +46,10 @@ TEST_CASE("engine: different options create different recipes") {
   engine eng{c, std::nullopt};
 
   recipe_spec spec1 = make_test_spec("local.python@r4");
-  spec1.options = {{"version", lua_value(std::string("3.13"))}};
+  spec1.serialized_options = R"({version="3.13"})";
 
   recipe_spec spec2 = make_test_spec("local.python@r4");
-  spec2.options = {{"version", lua_value(std::string("3.14"))}};
+  spec2.serialized_options = R"({version="3.14"})";
 
   recipe *r1 = eng.ensure_recipe(spec1);
   recipe *r2 = eng.ensure_recipe(spec2);

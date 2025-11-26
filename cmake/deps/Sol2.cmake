@@ -64,11 +64,15 @@ if(NOT EXISTS "${SOL2_AMALGAMATION}")
   message(FATAL_ERROR "Sol2 amalgamation not generated at ${SOL2_AMALGAMATION}")
 endif()
 
+# Extract short SHA (first 7 chars) from git tag for version display
+string(SUBSTRING "${ENVY_SOL2_GIT_TAG}" 0 7 SOL2_SHORT_SHA)
+
 # Create interface target
 if(NOT TARGET sol2::sol2)
   add_library(sol2 INTERFACE)
   target_include_directories(sol2 INTERFACE "${SOL2_GENERATED_DIR}")
   target_link_libraries(sol2 INTERFACE lua::lua)
+  target_compile_definitions(sol2 INTERFACE "SOL2_GIT_SHA_SHORT=\"${SOL2_SHORT_SHA}\"")
   add_library(sol2::sol2 ALIAS sol2)
 endif()
 
