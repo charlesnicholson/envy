@@ -5,10 +5,10 @@ dependencies = {
   { recipe = "local.simple@v1", source = "simple.lua" }
 }
 
-fetch = function(ctx)
+fetch = function(ctx, opts)
   ctx.run("echo 'testing ctx.run in fetch'")
 end
 
-install = function(ctx)
+install = function(ctx, opts)
   -- Programmatic package
 end

@@ -45,7 +45,7 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
         """ctx.fetch(\"url\") returns scalar string basename."""
         recipe_content = """identity = "local.prog_fetch_single@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local file = ctx.fetch("test_data/lua/simple.lua")
 
   -- Verify return is scalar string, not array
@@ -79,7 +79,7 @@ end
         """ctx.fetch({\"url1\", \"url2\"}) returns array of basenames."""
         recipe_content = """identity = "local.prog_fetch_array@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local files = ctx.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua"
@@ -118,7 +118,7 @@ end
         """ctx.fetch({url=\"...\"}) returns scalar basename."""
         recipe_content = """identity = "local.prog_fetch_table@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local file = ctx.fetch({source = "test_data/lua/simple.lua"})
 
   -- Verify return is scalar string
@@ -151,7 +151,7 @@ end
         """ctx.fetch({{url=\"...\"}, {...}}) returns array."""
         recipe_content = """identity = "local.prog_fetch_table_array@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local files = ctx.fetch({
     {source = "test_data/lua/simple.lua"},
     {source = "test_data/lua/print_single.lua"}
@@ -187,7 +187,7 @@ end
         """ctx.commit_fetch(\"file.tar.gz\") moves file to fetch_dir."""
         recipe_content = """identity = "local.prog_commit_scalar@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local file = ctx.fetch("test_data/lua/simple.lua")
 
   -- File should be in tmp before commit
@@ -227,7 +227,7 @@ end
 
         recipe_content = f"""identity = "local.prog_commit_sha256@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local file = ctx.fetch("test_data/lua/simple.lua")
 
   -- Commit with SHA256 verification
@@ -261,7 +261,7 @@ end
         """Wrong SHA256 in commit_fetch causes verification error."""
         recipe_content = """identity = "local.prog_commit_bad_sha256@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local file = ctx.fetch("test_data/lua/simple.lua")
 
   -- Commit with wrong SHA256
@@ -294,7 +294,7 @@ end
         """ctx.commit_fetch({\"file1\", \"file2\"}) commits multiple files."""
         recipe_content = """identity = "local.prog_commit_array@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local files = ctx.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua"
@@ -325,7 +325,7 @@ end
         """Trying to commit file not in ctx.tmp fails with clear error."""
         recipe_content = """identity = "local.prog_commit_missing@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   -- Try to commit file that was never fetched
   ctx.commit_fetch("nonexistent.tar.gz")
 end
@@ -357,7 +357,7 @@ end
         """Fetch 3 files, commit 2, verify tmp cleanup removes uncommitted."""
         recipe_content = """identity = "local.prog_selective_commit@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   local files = ctx.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua",
@@ -392,7 +392,7 @@ end
         """ctx.identity contains recipe identity."""
         recipe_content = """identity = "local.prog_ctx_identity@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   if ctx.identity ~= "local.prog_ctx_identity@v1" then
     error("Expected identity 'local.prog_ctx_identity@v1', got: " .. ctx.identity)
   end
@@ -421,13 +421,13 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_ctx_options(self):
-        """ctx.options is accessible as a table (empty when no options passed)."""
+        """opts is accessible as a table (empty when no options passed)."""
         recipe_content = """identity = "local.prog_ctx_options@v1"
 
-function fetch(ctx)
-  -- Verify ctx.options exists and is a table
-  if type(ctx.options) ~= "table" then
-    error("Expected ctx.options to be table, got: " .. type(ctx.options))
+function fetch(ctx, opts)
+  -- Verify opts exists and is a table
+  if type(opts) ~= "table" then
+    error("Expected opts to be table, got: " .. type(opts))
   end
 
   local file = ctx.fetch("test_data/lua/simple.lua")
@@ -453,17 +453,17 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_ctx_options_empty(self):
-        """ctx.options exists as empty table when no options specified."""
+        """opts exists as empty table when no options specified."""
         recipe_content = """identity = "local.prog_ctx_options_empty@v1"
 
-function fetch(ctx)
-  if type(ctx.options) ~= "table" then
-    error("Expected ctx.options to be table, got: " .. type(ctx.options))
+function fetch(ctx, opts)
+  if type(opts) ~= "table" then
+    error("Expected opts to be table, got: " .. type(opts))
   end
 
   -- Check it's empty
   local count = 0
-  for k, v in pairs(ctx.options) do
+  for k, v in pairs(opts) do
     count = count + 1
   end
 
@@ -497,7 +497,7 @@ end
         """Multiple ctx.fetch() calls execute serially, files accumulate."""
         recipe_content = """identity = "local.prog_serial_fetches@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   -- First fetch
   local file1 = ctx.fetch("test_data/lua/simple.lua")
 
@@ -547,7 +547,7 @@ end
         """Lua errors in fetch function propagate with recipe identity."""
         recipe_content = """identity = "local.prog_error_prop@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   error("Intentional test error")
 end
 """
@@ -694,13 +694,13 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_function_returns_with_options_templating(self):
-        """fetch = function(ctx) return with ctx.options templating."""
+        """fetch = function(ctx, opts) return with opts templating."""
         # Note: engine-test doesn't support passing options, so we use default behavior
         # Real-world usage would pass options via manifest
         recipe_content = """identity = "local.prog_options_template@v1"
 
-fetch = function(ctx)
-  local filename = ctx.options.filename or "simple.lua"
+fetch = function(ctx, opts)
+  local filename = opts.filename or "simple.lua"
   return "test_data/lua/" .. filename
 end
 """

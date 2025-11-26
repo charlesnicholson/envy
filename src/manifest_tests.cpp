@@ -1,5 +1,7 @@
 #include "manifest.h"
 
+#include "sol/sol.hpp"
+
 #include "doctest.h"
 
 #include <filesystem>
@@ -150,7 +152,7 @@ TEST_CASE("manifest::load parses simple string package") {
   REQUIRE(m->packages.size() == 1);
   CHECK(m->packages[0].identity == "arm.gcc@v2");
   CHECK(m->packages[0].is_local());
-  CHECK(m->packages[0].options.empty());
+  CHECK(m->packages[0].serialized_options == "{}");
 }
 
 TEST_CASE("manifest::load parses multiple string packages") {
@@ -208,7 +210,8 @@ TEST_CASE("manifest::load parses table package with local source") {
   REQUIRE(m->packages.size() == 1);
   CHECK(m->packages[0].identity == "local.wrapper@v1");
 
-  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&m->packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(
+      &m->packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
 }
@@ -230,9 +233,14 @@ TEST_CASE("manifest::load parses table package with options") {
 
   REQUIRE(m->packages.size() == 1);
   CHECK(m->packages[0].identity == "arm.gcc@v2");
-  REQUIRE(m->packages[0].options.size() == 2);
-  CHECK(*m->packages[0].options.at("version").get<std::string>() == "13.2.0");
-  CHECK(*m->packages[0].options.at("target").get<std::string>() == "arm-none-eabi");
+
+  // Deserialize and check
+  sol::state lua;
+  auto opts_result{ lua.safe_script("return " + m->packages[0].serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts{ opts_result };
+  CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
+  CHECK(sol::object(opts["target"]).as<std::string>() == "arm-none-eabi");
 }
 
 TEST_CASE("manifest::load parses mixed string and table packages") {
@@ -303,7 +311,8 @@ TEST_CASE("manifest::load resolves relative file paths") {
   auto m{ envy::manifest::load(script, fs::path("/project/sub/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&m->packages[0].source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(
+      &m->packages[0].source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -314,7 +323,7 @@ TEST_CASE("manifest::load errors on missing packages global") {
   char const *script{ "-- no packages" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Manifest must define 'packages' global",
+                       "Manifest must define 'packages' global as a table",
                        std::runtime_error);
 }
 
@@ -322,7 +331,7 @@ TEST_CASE("manifest::load errors on non-table packages") {
   char const *script{ "packages = 'not a table'" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Global 'packages' is not a table",
+                       "Manifest must define 'packages' global as a table",
                        std::runtime_error);
 }
 
@@ -404,7 +413,8 @@ TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   REQUIRE(result->packages.size() == 1);
   CHECK(result->packages[0].identity == "arm.gcc@v2");
   CHECK(result->packages[0].is_remote());
-  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&result->packages[0].source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(
+      &result->packages[0].source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
@@ -421,7 +431,7 @@ TEST_CASE("manifest::load errors on non-string source") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'source' field must be string",
+                       "Recipe 'source' field must be string or table",
                        std::runtime_error);
 }
 
@@ -452,7 +462,7 @@ TEST_CASE("manifest::load errors on non-string source (local)") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'source' field must be string",
+                       "Recipe 'source' field must be string or table",
                        std::runtime_error);
 }
 
@@ -485,12 +495,17 @@ TEST_CASE("manifest::load accepts non-string option values") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  REQUIRE(m->packages[0].options.size() == 3);
-  CHECK(m->packages[0].options.at("version").is_integer());
-  CHECK(*m->packages[0].options.at("version").get<int64_t>() == 123);
-  CHECK(m->packages[0].options.at("debug").is_bool());
-  CHECK(*m->packages[0].options.at("debug").get<bool>() == true);
-  CHECK(m->packages[0].options.at("nested").is_table());
+
+  // Deserialize and check
+  sol::state lua;
+  auto opts_result{ lua.safe_script("return " + m->packages[0].serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts{ opts_result };
+  CHECK(sol::object(opts["version"]).is<lua_Integer>());
+  CHECK(sol::object(opts["version"]).as<int64_t>() == 123);
+  CHECK(sol::object(opts["debug"]).is<bool>());
+  CHECK(sol::object(opts["debug"]).as<bool>() == true);
+  CHECK(sol::object(opts["nested"]).is<sol::table>());
 }
 
 TEST_CASE("manifest::load allows same identity with different options") {

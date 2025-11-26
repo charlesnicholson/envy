@@ -1,28 +1,33 @@
 #pragma once
 
 #include "cache.h"
-#include "lua_util.h"
 #include "recipe_key.h"
 #include "recipe_phase.h"
 #include "recipe_spec.h"
 #include "shell.h"
 
+#include "sol/sol.hpp"
+
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace envy {
 
-// Plain data struct - engine orchestrates, phases operate on this
 struct recipe {
   recipe_key key;
-  recipe_spec spec;
+  recipe_spec const *spec;  // Non-ownership
 
-  lua_state_ptr lua_state;
+  std::unique_ptr<sol::state> lua;
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;
+
+  // Owned specs for dependencies declared in this recipe's Lua file
+  // (Root recipes reference specs in manifest; dependencies reference specs here)
+  std::vector<recipe_spec> owned_dependency_specs;
 
   // Dependency info: maps identity -> (recipe pointer, needed_by phase)
   struct dependency_info {

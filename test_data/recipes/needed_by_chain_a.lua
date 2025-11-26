@@ -12,7 +12,7 @@ fetch = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx)
+stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
   -- Can access chain_b in stage phase
   ctx.asset("local.needed_by_chain_b@v1")

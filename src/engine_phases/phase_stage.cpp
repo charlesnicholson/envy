@@ -2,166 +2,60 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "recipe.h"
 #include "extract.h"
-#include "lua_ctx_bindings.h"
-#include "lua_util.h"
+#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_envy.h"
+#include "recipe.h"
 #include "shell.h"
+#include "trace.h"
 #include "tui.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
-
+#include <chrono>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
+#include <vector>
 
 namespace envy {
 namespace {
 
 // Context data for Lua C functions (stored as userdata upvalue)
-struct stage_context : lua_ctx_common {
+struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
 };
 
-void extract_all_archives(std::filesystem::path const &fetch_dir,
-                          std::filesystem::path const &dest_dir,
-                          int strip_components) {
-  if (!std::filesystem::exists(fetch_dir)) {
-    tui::trace("phase stage: fetch_dir does not exist, nothing to extract");
-    return;
-  }
+sol::table build_stage_phase_ctx_table(lua_State *lua,
+                                       std::string const &identity,
+                                       stage_phase_ctx *ctx) {
+  sol::state_view lua_view{ lua };
+  sol::table ctx_table{ lua_view.create_table() };
 
-  std::uint64_t total_files_extracted{ 0 };
-  std::uint64_t total_files_copied{ 0 };
+  ctx_table["identity"] = identity;
+  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
+  ctx_table["stage_dir"] = ctx->run_dir.string();
 
-  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
-    if (!entry.is_regular_file()) { continue; }
+  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
+  lua_ctx_add_common_bindings(ctx_table, ctx);
 
-    auto const &path{ entry.path() };
-    std::string const filename{ path.filename().string() };
-
-    // Skip envy-complete marker
-    if (filename == "envy-complete") { continue; }
-
-    if (extract_is_archive_extension(path)) {
-      tui::trace("phase stage: extracting archive %s (strip=%d)",
-                 filename.c_str(),
-                 strip_components);
-
-      extract_options opts{ .strip_components = strip_components };
-      std::uint64_t const files{ extract(path, dest_dir, opts) };
-      total_files_extracted += files;
-
-      tui::trace("phase stage: extracted %llu files from %s",
-                 static_cast<unsigned long long>(files),
-                 filename.c_str());
-    } else {
-      tui::trace("phase stage: copying non-archive %s", filename.c_str());
-
-      std::filesystem::path const dest_path{ dest_dir / filename };
-      std::filesystem::copy_file(path,
-                                 dest_path,
-                                 std::filesystem::copy_options::overwrite_existing);
-      ++total_files_copied;
-    }
-  }
-
-  tui::trace(
-      "phase stage: extraction complete (%llu files from archives, %llu files copied)",
-      static_cast<unsigned long long>(total_files_extracted),
-      static_cast<unsigned long long>(total_files_copied));
-}
-
-// Lua C function: ctx.extract_all({strip=0})
-int lua_ctx_extract_all(lua_State *lua) {
-  auto *ctx{ static_cast<stage_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.extract_all: missing context"); }
-
-  int strip_components{ 0 };
-
-  // Parse optional options table argument
-  if (lua_gettop(lua) >= 1 && lua_istable(lua, 1)) {
-    lua_getfield(lua, 1, "strip");
-    if (lua_isnumber(lua, -1)) {
-      strip_components = static_cast<int>(lua_tointeger(lua, -1));
-      if (strip_components < 0) {
-        return luaL_error(lua, "ctx.extract_all: strip must be non-negative");
-      }
-    } else if (!lua_isnil(lua, -1)) {
-      return luaL_error(lua, "ctx.extract_all: strip must be a number");
-    }
-    lua_pop(lua, 1);  // Pop strip field
-  }
-
-  try {
-    extract_all_archives(ctx->fetch_dir, ctx->run_dir, strip_components);
-  } catch (std::exception const &e) {
-    return luaL_error(lua, "ctx.extract_all: %s", e.what());
-  }
-
-  return 0;  // No return values
-}
-
-void build_stage_context_table(lua_State *lua,
-                               std::string const &identity,
-                               std::unordered_map<std::string, lua_value> const &options,
-                               stage_context *ctx) {
-  lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
-
-  lua_pushstring(lua, identity.c_str());
-  lua_setfield(lua, -2, "identity");
-
-  lua_createtable(lua, 0, static_cast<int>(options.size()));
-  for (auto const &[key, val] : options) {
-    value_to_lua_stack(lua, val);
-    lua_setfield(lua, -2, key.c_str());
-  }
-  lua_setfield(lua, -2, "options");
-
-  lua_pushstring(lua, ctx->fetch_dir.string().c_str());
-  lua_setfield(lua, -2, "fetch_dir");
-
-  lua_pushstring(lua, ctx->run_dir.string().c_str());
-  lua_setfield(lua, -2, "stage_dir");
-
-  // Phase-specific: ctx.extract_all (convenience wrapper)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_extract_all, 1);
-  lua_setfield(lua, -2, "extract_all");
-
-  // Common context bindings (all phases)
-  lua_ctx_bindings_register_run(lua, ctx);
-  lua_ctx_bindings_register_asset(lua, ctx);
-  lua_ctx_bindings_register_copy(lua, ctx);
-  lua_ctx_bindings_register_move(lua, ctx);
-  lua_ctx_bindings_register_extract(lua, ctx);
-  lua_ctx_bindings_register_ls(lua, ctx);
+  return ctx_table;
 }
 
 std::filesystem::path determine_stage_destination(lua_State *lua,
                                                   cache::scoped_entry_lock const *lock) {
-  lua_getglobal(lua, "stage");
-  lua_getglobal(lua, "build");
-  lua_getglobal(lua, "install");
+  sol::state_view lua_view{ lua };
+  sol::object stage_obj{ lua_view["stage"] };
+  sol::object build_obj{ lua_view["build"] };
+  sol::object install_obj{ lua_view["install"] };
 
-  int const stage_type{ lua_type(lua, -3) };
-  int const build_type{ lua_type(lua, -2) };
-  int const install_type{ lua_type(lua, -1) };
-
-  bool const has_custom_phases{ stage_type == LUA_TFUNCTION ||
-                                build_type == LUA_TFUNCTION ||
-                                install_type == LUA_TFUNCTION };
-
-  lua_pop(lua, 3);
+  bool const has_custom_phases{ stage_obj.is<sol::protected_function>() ||
+                                build_obj.is<sol::protected_function>() ||
+                                install_obj.is<sol::protected_function>() };
 
   std::filesystem::path const dest_dir{ has_custom_phases ? lock->stage_dir()
                                                           : lock->install_dir() };
 
-  tui::trace("phase stage: destination=%s (custom_phases=%s)",
+  tui::debug("phase stage: destination=%s (custom_phases=%s)",
              dest_dir.string().c_str(),
              has_custom_phases ? "true" : "false");
 
@@ -193,7 +87,7 @@ stage_options parse_stage_options(lua_State *lua, std::string const &key) {
 
 void run_default_stage(std::filesystem::path const &fetch_dir,
                        std::filesystem::path const &dest_dir) {
-  tui::trace("phase stage: no stage field, running default extraction");
+  tui::debug("phase stage: no stage field, running default extraction");
   extract_all_archives(fetch_dir, dest_dir, 0);
 }
 
@@ -204,40 +98,44 @@ void run_declarative_stage(lua_State *lua,
   stage_options const opts{ parse_stage_options(lua, identity) };
   lua_pop(lua, 1);  // Pop stage table
 
-  tui::trace("phase stage: declarative extraction with strip=%d", opts.strip_components);
+  tui::debug("phase stage: declarative extraction with strip=%d", opts.strip_components);
   extract_all_archives(fetch_dir, dest_dir, opts.strip_components);
 }
 
-void run_programmatic_stage(lua_State *lua,
+void run_programmatic_stage(sol::protected_function stage_func,
                             std::filesystem::path const &fetch_dir,
                             std::filesystem::path const &dest_dir,
                             std::string const &identity,
-                            std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
-  tui::trace("phase stage: running imperative stage function");
+  tui::debug("phase stage: running imperative stage function");
 
-  stage_context ctx{};
+  stage_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
   ctx.run_dir = dest_dir;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
 
-  build_stage_context_table(lua, identity, options, &ctx);
+  lua_State *L{ stage_func.lua_state() };
+  sol::table ctx_table{ build_stage_phase_ctx_table(L, identity, &ctx) };
 
-  // Stack: stage_function at -2, ctx_table at -1 (ready for pcall)
-  if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
-    char const *err{ lua_tostring(lua, -1) };
-    std::string error_msg{ err ? err : "unknown error" };
-    lua_pop(lua, 1);
-    throw std::runtime_error("Stage function failed for " + identity + ": " + error_msg);
+  // Get options from registry and pass as 2nd arg
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+  sol::object opts{ sol::stack_object{ L, -1 } };
+  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+
+  sol::protected_function_result result{ stage_func(ctx_table, opts) };
+
+  if (!result.valid()) {
+    sol::error err{ result };
+    throw std::runtime_error("Stage function failed for " + identity + ": " + err.what());
   }
 }
 
 void run_shell_stage(std::string_view script,
                      std::filesystem::path const &dest_dir,
                      std::string const &identity) {
-  tui::trace("phase stage: running shell script");
+  tui::debug("phase stage: running shell script");
 
   shell_env_t env{ shell_getenv() };
 
@@ -268,50 +166,42 @@ void run_shell_stage(std::string_view script,
 }  // namespace
 
 void run_stage_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase stage START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec->identity,
+                                       recipe_phase::asset_stage,
+                                       std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock{ r->lock.get() };
   if (!lock) {  // Cache hit - no work to do
-    tui::trace("phase stage: no lock (cache hit), skipping");
+    tui::debug("phase stage: no lock (cache hit), skipping");
     return;
   }
 
-  std::string const &identity{ r->spec.identity };
-  std::unordered_map<std::string, lua_value> const &options{ r->spec.options };
-
-  lua_State *lua{ r->lua_state.get() };
+  std::string const &identity{ r->spec->identity };
+  lua_State *lua{ r->lua->lua_state() };
   std::filesystem::path const dest_dir{ determine_stage_destination(lua, lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
 
-  lua_getglobal(lua, "stage");
-  int const stage_type{ lua_type(lua, -1) };
+  sol::state_view lua_view{ lua };
+  sol::object stage_obj{ lua_view["stage"] };
 
-  switch (stage_type) {
-    case LUA_TNIL:
-      lua_pop(lua, 1);
-      run_default_stage(fetch_dir, dest_dir);
-      break;
-
-    case LUA_TSTRING: {
-      size_t len{ 0 };
-      char const *script{ lua_tolstring(lua, -1, &len) };
-      std::string script_str{ script, len };  // Copy before popping
-      lua_pop(lua, 1);
-      run_shell_stage(script_str, dest_dir, identity);
-      break;
-    }
-
-    case LUA_TFUNCTION:
-      run_programmatic_stage(lua, fetch_dir, dest_dir, identity, options, eng, r);
-      break;
-
-    case LUA_TTABLE: run_declarative_stage(lua, fetch_dir, dest_dir, identity); break;
-
-    default:
-      lua_pop(lua, 1);
-      throw std::runtime_error("stage field must be nil, string, table, or function for " +
-                               identity);
+  if (!stage_obj.valid()) {
+    run_default_stage(fetch_dir, dest_dir);
+  } else if (stage_obj.is<std::string>()) {
+    auto const script_str{ stage_obj.as<std::string>() };
+    run_shell_stage(script_str, dest_dir, identity);
+  } else if (stage_obj.is<sol::protected_function>()) {
+    run_programmatic_stage(stage_obj.as<sol::protected_function>(),
+                           fetch_dir,
+                           dest_dir,
+                           identity,
+                           eng,
+                           r);
+  } else if (stage_obj.is<sol::table>()) {
+    stage_obj.push(lua);
+    run_declarative_stage(lua, fetch_dir, dest_dir, identity);
+  } else {
+    throw std::runtime_error("stage field must be nil, string, table, or function for " +
+                             identity);
   }
 }
 

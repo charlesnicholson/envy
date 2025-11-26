@@ -12,7 +12,7 @@ fetch = {
 
 stage = {strip = 1}
 
-build = function(ctx)
+build = function(ctx, opts)
   print("Accessing dependency via ctx.asset()")
 
   local dep_path = ctx.asset("local.build_dependency@v1")

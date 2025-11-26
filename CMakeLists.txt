@@ -143,8 +143,18 @@ set(ENVY_COMMON_SOURCES
     src/commands/cmd_sync.cpp
     src/commands/cmd_version.cpp
     src/engine.cpp
+    src/recipe_phase.cpp
     src/recipe_key.cpp
-    src/lua_ctx_bindings.cpp
+    src/lua_ctx/lua_ctx_bindings.cpp
+    src/lua_ctx/lua_ctx_asset.cpp
+    src/lua_ctx/lua_ctx_commit_fetch.cpp
+    src/lua_ctx/lua_ctx_copy.cpp
+    src/lua_ctx/lua_ctx_extract.cpp
+    src/lua_ctx/lua_ctx_extract_all.cpp
+    src/lua_ctx/lua_ctx_fetch.cpp
+    src/lua_ctx/lua_ctx_ls.cpp
+    src/lua_ctx/lua_ctx_move.cpp
+    src/lua_ctx/lua_ctx_run.cpp
     src/engine_phases/phase_build.cpp
     src/engine_phases/phase_check.cpp
     src/engine_phases/phase_completion.cpp
@@ -159,7 +169,7 @@ set(ENVY_COMMON_SOURCES
     src/libgit2_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
-    src/lua_util.cpp
+    src/lua_envy.cpp
     src/manifest.cpp
     src/recipe_spec.cpp
     src/sha256.cpp
@@ -169,6 +179,7 @@ set(ENVY_COMMON_SOURCES
     src/shell.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/trace.cpp
     src/tui.cpp
     src/uri.cpp
     src/util.cpp
@@ -178,7 +189,7 @@ set(ENVY_COMMON_SOURCES
 set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/commands/cmd_cache_functional_test.cpp
     src/commands/cmd_engine_functional_test.cpp
-    src/phase.cpp
+    src/recipe_phase.cpp
     src/test_support.cpp
 )
 
@@ -347,7 +358,16 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/commands/cmd_version.cpp
     src/engine.cpp
     src/recipe_key.cpp
-    src/lua_ctx_bindings.cpp
+    src/lua_ctx/lua_ctx_bindings.cpp
+    src/lua_ctx/lua_ctx_asset.cpp
+    src/lua_ctx/lua_ctx_commit_fetch.cpp
+    src/lua_ctx/lua_ctx_copy.cpp
+    src/lua_ctx/lua_ctx_extract.cpp
+    src/lua_ctx/lua_ctx_extract_all.cpp
+    src/lua_ctx/lua_ctx_fetch.cpp
+    src/lua_ctx/lua_ctx_ls.cpp
+    src/lua_ctx/lua_ctx_move.cpp
+    src/lua_ctx/lua_ctx_run.cpp
     src/engine_phases/phase_build.cpp
     src/engine_phases/phase_check.cpp
     src/engine_phases/phase_completion.cpp
@@ -362,8 +382,9 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/libgit2_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
-    src/lua_util.cpp
+    src/lua_envy.cpp
     src/manifest.cpp
+    src/recipe_phase.cpp
     src/recipe_spec.cpp
     src/sha256.cpp
     src/fetch.cpp
@@ -372,6 +393,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/shell.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
+    src/trace.cpp
     src/tui.cpp
     src/uri.cpp
     src/util.cpp
@@ -393,11 +415,14 @@ set(ENVY_UNIT_TEST_SOURCES
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp
     src/lua_shell_tests.cpp
-    src/lua_util_tests.cpp
     src/manifest_tests.cpp
     src/recipe_spec_tests.cpp
+    src/recipe_spec_custom_source_tests.cpp
     src/recipe_key_tests.cpp
-    src/lua_ctx_bindings_tests.cpp
+    src/lua_ctx/lua_ctx_bindings_tests.cpp
+    src/lua_ctx/lua_ctx_copy_tests.cpp
+    src/lua_ctx/lua_ctx_fetch_tests.cpp
+    src/lua_ctx/lua_ctx_move_tests.cpp
     src/sha256_tests.cpp
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>

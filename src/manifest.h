@@ -1,9 +1,10 @@
 #pragma once
 
-#include "lua_util.h"
 #include "recipe_spec.h"
 #include "shell.h"
 #include "util.h"
+
+#include "sol/sol.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -20,21 +21,16 @@ struct manifest : unmovable {
 
   manifest() = default;
 
-  // Find manifest path: use provided path if given, otherwise discover from current directory
-  // Returns absolute path or throws if not found
+  // Find manifest path: use provided path if given, otherwise discover from current
+  // directory. Returns absolute path or throws if not found
   static std::filesystem::path find_manifest_path(
       std::optional<std::filesystem::path> const &explicit_path);
 
   static std::optional<std::filesystem::path> discover();
 
-  // Load manifest from file path (loads file and adds null terminator for Lua safety)
   static std::unique_ptr<manifest> load(std::filesystem::path const &manifest_path);
-
-  // Load manifest from file contents (adds null terminator internally for Lua safety)
   static std::unique_ptr<manifest> load(std::vector<unsigned char> const &content,
                                         std::filesystem::path const &manifest_path);
-
-  // Load manifest from C string (for tests)
   static std::unique_ptr<manifest> load(char const *script,
                                         std::filesystem::path const &manifest_path);
 
@@ -43,7 +39,7 @@ struct manifest : unmovable {
   default_shell_cfg_t get_default_shell(lua_ctx_common const *ctx) const;
 
  private:
-  lua_state_ptr lua_state_;  // Lua state (kept alive for default_shell function access)
+  std::unique_ptr<sol::state> lua_;
 };
 
 }  // namespace envy

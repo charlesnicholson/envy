@@ -8,7 +8,7 @@ fetch = {
 
 stage = {strip = 1}
 
-build = function(ctx)
+build = function(ctx, opts)
   print("Testing directory access")
   print("fetch_dir: " .. ctx.fetch_dir)
   print("stage_dir: " .. ctx.stage_dir)

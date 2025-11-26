@@ -2,11 +2,15 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "recipe.h"
+#include "extract.h"
 #include "fetch.h"
-#include "lua_ctx_bindings.h"
-#include "lua_util.h"
+#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_envy.h"
+#include "lua_shell.h"
+#include "recipe.h"
 #include "sha256.h"
+#include "shell.h"
+#include "trace.h"
 #include "tui.h"
 #include "uri.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
@@ -14,12 +18,15 @@
 #endif
 
 extern "C" {
-#include "lauxlib.h"
 #include "lua.h"
 }
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -93,389 +100,273 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key);
 
-// Context data for Lua C functions (stored as userdata upvalue)
-struct fetch_context : lua_ctx_common {
-  std::filesystem::path stage_dir;  // For git repos (go directly to stage, not tmp)
-  std::unordered_set<std::string> used_basenames;  // Track collisions across calls
-};
+sol::table build_fetch_phase_ctx_table(lua_State *lua,
+                                       std::string const &identity,
+                                       fetch_phase_ctx *ctx) {
+  sol::state_view lua_view{ lua };
+  sol::table ctx_table{ lua_view.create_table() };
 
-// Lua C function: ctx.fetch(url) or ctx.fetch({url1, url2}) or ctx.fetch({url="..."})
-// Returns: basename string (scalar) or array of basenames (array)
-// Never does SHA256 verification - that's for ctx.commit_fetch()
-int lua_ctx_fetch(lua_State *lua) {
-  auto *ctx{ static_cast<fetch_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.fetch: missing context"); }
+  ctx_table["identity"] = identity;
 
-  std::vector<std::string> urls;
-  std::vector<std::optional<std::string>> refs;
-  std::vector<std::string> basenames;
-  bool is_array{ false };
+  ctx_table["tmp"] = ctx->run_dir.string();
 
-  // Parse argument: string, string array, table, or table array
-  int const arg_type{ lua_type(lua, 1) };
+  // ctx.fetch - downloads files from URLs
+  ctx_table["fetch"] = [ctx, lua](sol::object arg) -> sol::object {
+    sol::state_view lua_view{ lua };
+    std::vector<std::string> urls;
+    std::vector<std::optional<std::string>> refs;
+    std::vector<std::string> basenames;
+    bool is_array{ false };
 
-  switch (arg_type) {
-    case LUA_TSTRING:
-      // Scalar string
-      urls.push_back(lua_tostring(lua, 1));
+    // Parse argument: string, string array, table, or table array
+    if (arg.is<std::string>()) {
+      urls.push_back(arg.as<std::string>());
       refs.push_back(std::nullopt);
-      break;
+    } else if (arg.is<sol::table>()) {
+      sol::table tbl{ arg.as<sol::table>() };
+      sol::optional<sol::object> first_elem{ tbl[1] };
 
-    case LUA_TTABLE: {
-      // Check if array or single table
-      lua_rawgeti(lua, 1, 1);
-      int const first_elem_type{ lua_type(lua, -1) };
-      lua_pop(lua, 1);
-
-      switch (first_elem_type) {
-        case LUA_TNIL: {
-          // Single table {source="...", ref="..."}
-          lua_getfield(lua, 1, "source");
-          if (!lua_isstring(lua, -1)) {
-            return luaL_error(lua, "ctx.fetch: table missing 'source' field");
-          }
-          urls.push_back(lua_tostring(lua, -1));
-          lua_pop(lua, 1);
-
-          lua_getfield(lua, 1, "ref");
-          if (lua_isstring(lua, -1)) {
-            refs.push_back(lua_tostring(lua, -1));
-          } else {
-            refs.push_back(std::nullopt);
-          }
-          lua_pop(lua, 1);
-          break;
+      if (!first_elem || first_elem->get_type() == sol::type::lua_nil) {
+        // Single table {source="...", ref="..."}
+        sol::optional<std::string> source{ tbl["source"] };
+        if (!source) {
+          throw std::runtime_error("ctx.fetch: table missing 'source' field");
         }
+        urls.push_back(*source);
 
-        case LUA_TSTRING: {
-          // Array of strings {"url1", "url2"}
-          is_array = true;
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-            if (!lua_isstring(lua, -1)) {
-              return luaL_error(lua, "ctx.fetch: array element %zu must be string", i);
-            }
-            urls.push_back(lua_tostring(lua, -1));
-            refs.push_back(std::nullopt);
-            lua_pop(lua, 1);
-          }
-          break;
+        sol::optional<std::string> ref{ tbl["ref"] };
+        refs.push_back(ref ? std::optional<std::string>{ *ref } : std::nullopt);
+      } else if (first_elem->is<std::string>()) {
+        // Array of strings {"url1", "url2"}
+        is_array = true;
+        for (size_t i = 1;; ++i) {
+          sol::optional<std::string> elem{ tbl[i] };
+          if (!elem) break;
+          urls.push_back(*elem);
+          refs.push_back(std::nullopt);
         }
+      } else if (first_elem->is<sol::table>()) {
+        // Array of tables {{source="...", ref="..."}, {...}}
+        is_array = true;
+        for (size_t i = 1;; ++i) {
+          sol::optional<sol::table> elem{ tbl[i] };
+          if (!elem) break;
 
-        case LUA_TTABLE: {
-          // Array of tables {{source="...", ref="..."}, {...}}
-          is_array = true;
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-            lua_getfield(lua, -1, "source");
-            if (!lua_isstring(lua, -1)) {
-              return luaL_error(lua,
-                                "ctx.fetch: array element %zu missing 'source' field",
-                                i);
-            }
-            urls.push_back(lua_tostring(lua, -1));
-            lua_pop(lua, 1);  // pop source string
-
-            lua_getfield(lua, -1, "ref");
-            if (lua_isstring(lua, -1)) {
-              refs.push_back(lua_tostring(lua, -1));
-            } else {
-              refs.push_back(std::nullopt);
-            }
-            lua_pop(lua, 2);  // pop ref string/nil and table
+          sol::optional<std::string> source{ (*elem)["source"] };
+          if (!source) {
+            throw std::runtime_error("ctx.fetch: array element " + std::to_string(i) +
+                                     " missing 'source' field");
           }
-          break;
+          urls.push_back(*source);
+
+          sol::optional<std::string> ref{ (*elem)["ref"] };
+          refs.push_back(ref ? std::optional<std::string>{ *ref } : std::nullopt);
         }
-
-        default: return luaL_error(lua, "ctx.fetch: invalid array element type");
-      }
-      break;
-    }
-
-    default: return luaL_error(lua, "ctx.fetch: argument must be string or table");
-  }
-
-  // Build requests with collision handling
-  std::vector<fetch_request> requests;
-  for (size_t idx = 0; idx < urls.size(); ++idx) {
-    auto const &url{ urls[idx] };
-    auto const &ref{ refs[idx] };
-    std::string basename{ uri_extract_filename(url) };
-    if (basename.empty()) {
-      return luaL_error(lua,
-                        "ctx.fetch: cannot extract filename from URL: %s",
-                        url.c_str());
-    }
-
-    // Handle collisions: append -2, -3, etc.
-    std::string final_basename{ basename };
-    int suffix{ 2 };
-    while (ctx->used_basenames.contains(final_basename)) {
-      size_t const dot_pos{ basename.find_last_of('.') };
-      if (dot_pos != std::string::npos) {
-        final_basename = basename.substr(0, dot_pos) + "-" + std::to_string(suffix) +
-                         basename.substr(dot_pos);
       } else {
-        final_basename = basename + "-" + std::to_string(suffix);
+        throw std::runtime_error("ctx.fetch: invalid array element type");
       }
-      ++suffix;
+    } else {
+      throw std::runtime_error("ctx.fetch: argument must be string or table");
     }
-    ctx->used_basenames.insert(final_basename);
-    basenames.push_back(final_basename);
 
-    // Git repos go to stage_dir, everything else to run_dir (tmp)
-    auto const info{ uri_classify(url) };
-    std::filesystem::path dest{ info.scheme == uri_scheme::GIT
-                                    ? ctx->stage_dir / final_basename
-                                    : ctx->run_dir / final_basename };
-
-    try {
-      requests.push_back(url_to_fetch_request(url, dest, ref, "ctx.fetch"));
-    } catch (std::exception const &e) {
-      return luaL_error(lua, "ctx.fetch: %s", e.what());
-    }
-  }
-
-  // Execute downloads (blocking, synchronous)
-  tui::trace("ctx.fetch: downloading %zu file(s) to %s",
-             urls.size(),
-             ctx->run_dir.string().c_str());
-
-  auto const results{ fetch(requests) };
-
-  // Check for errors (no SHA256 verification here)
-  std::vector<std::string> errors;
-  for (size_t i = 0; i < results.size(); ++i) {
-    if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-      errors.push_back(urls[i] + ": " + *err);
-    }
-  }
-
-  if (!errors.empty()) {
-    std::ostringstream oss;
-    oss << "ctx.fetch failed:\n";
-    for (auto const &err : errors) { oss << "  " << err << "\n"; }
-    return luaL_error(lua, "%s", oss.str().c_str());
-  }
-
-  // Return basename(s) to Lua
-  if (is_array || urls.size() > 1) {
-    lua_createtable(lua, static_cast<int>(basenames.size()), 0);
-    for (size_t i = 0; i < basenames.size(); ++i) {
-      lua_pushstring(lua, basenames[i].c_str());
-      lua_rawseti(lua, -2, i + 1);
-    }
-  } else {
-    lua_pushstring(lua, basenames[0].c_str());
-  }
-
-  return 1;
-}
-
-struct commit_entry {
-  std::string filename;
-  std::string sha256;  // empty = no verification
-};
-
-// Parse ctx.commit_fetch() arguments into commit entries
-std::vector<commit_entry> parse_commit_fetch_args(lua_State *lua) {
-  std::vector<commit_entry> entries;
-  int const arg_type{ lua_type(lua, 1) };
-
-  switch (arg_type) {
-    case LUA_TSTRING:
-      // Scalar string
-      entries.push_back({ lua_tostring(lua, 1), "" });
-      break;
-
-    case LUA_TTABLE: {
-      // Check if array or single table
-      lua_rawgeti(lua, 1, 1);
-      int const first_elem_type{ lua_type(lua, -1) };
-      lua_pop(lua, 1);
-
-      switch (first_elem_type) {
-        case LUA_TNIL: {
-          // Single table {filename="...", sha256="..."}
-          lua_getfield(lua, 1, "filename");
-          if (!lua_isstring(lua, -1)) {
-            throw std::runtime_error("table missing 'filename' field");
-          }
-          std::string filename{ lua_tostring(lua, -1) };
-          lua_pop(lua, 1);
-
-          lua_getfield(lua, 1, "sha256");
-          std::string sha256;
-          if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-          lua_pop(lua, 1);
-
-          entries.push_back({ std::move(filename), std::move(sha256) });
-          break;
-        }
-
-        case LUA_TSTRING: {
-          // Array of strings {"file1", "file2"}
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-            if (!lua_isstring(lua, -1)) {
-              throw std::runtime_error("array element " + std::to_string(i) +
-                                       " must be string");
-            }
-            entries.push_back({ lua_tostring(lua, -1), "" });
-            lua_pop(lua, 1);
-          }
-          break;
-        }
-
-        case LUA_TTABLE: {
-          // Array of tables {{filename="...", sha256="..."}, {...}}
-          size_t const len{ lua_rawlen(lua, 1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, 1, i);
-
-            lua_getfield(lua, -1, "filename");
-            if (!lua_isstring(lua, -1)) {
-              throw std::runtime_error("array element " + std::to_string(i) +
-                                       " missing 'filename' field");
-            }
-            std::string filename{ lua_tostring(lua, -1) };
-            lua_pop(lua, 1);
-
-            lua_getfield(lua, -1, "sha256");
-            std::string sha256;
-            if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-            lua_pop(lua, 1);
-
-            entries.push_back({ std::move(filename), std::move(sha256) });
-            lua_pop(lua, 1);  // pop table
-          }
-          break;
-        }
-
-        default: throw std::runtime_error("invalid array element type");
+    // Build requests with collision handling
+    std::vector<fetch_request> requests;
+    for (size_t idx = 0; idx < urls.size(); ++idx) {
+      auto const &url{ urls[idx] };
+      auto const &ref{ refs[idx] };
+      std::string basename{ uri_extract_filename(url) };
+      if (basename.empty()) {
+        throw std::runtime_error("ctx.fetch: cannot extract filename from URL: " + url);
       }
-      break;
-    }
 
-    default: throw std::runtime_error("argument must be string or table");
-  }
+      // Handle collisions: append -2, -3, etc.
+      std::string final_basename{ basename };
+      int suffix{ 2 };
+      while (ctx->used_basenames.contains(final_basename)) {
+        size_t const dot_pos{ basename.find_last_of('.') };
+        if (dot_pos != std::string::npos) {
+          final_basename = basename.substr(0, dot_pos) + "-" + std::to_string(suffix) +
+                           basename.substr(dot_pos);
+        } else {
+          final_basename = basename + "-" + std::to_string(suffix);
+        }
+        ++suffix;
+      }
+      ctx->used_basenames.insert(final_basename);
+      basenames.push_back(final_basename);
 
-  return entries;
-}
+      // Git repos go to stage_dir, everything else to run_dir (tmp)
+      auto const info{ uri_classify(url) };
+      std::filesystem::path dest{ info.scheme == uri_scheme::GIT
+                                      ? ctx->stage_dir / final_basename
+                                      : ctx->run_dir / final_basename };
 
-// Verify SHA256 and move files from tmp_dir to fetch_dir
-void commit_files(std::vector<commit_entry> const &entries,
-                  std::filesystem::path const &tmp_dir,
-                  std::filesystem::path const &fetch_dir) {
-  std::vector<std::string> errors;
-
-  for (auto const &entry : entries) {
-    std::filesystem::path const src{ tmp_dir / entry.filename };
-    std::filesystem::path const dest{ fetch_dir / entry.filename };
-
-    // Check source exists
-    if (!std::filesystem::exists(src)) {
-      errors.push_back(entry.filename + ": file not found in tmp directory");
-      continue;
-    }
-
-    // Verify SHA256 if provided
-    if (!entry.sha256.empty()) {
       try {
-        tui::trace("ctx.commit_fetch: verifying SHA256 for %s", entry.filename.c_str());
-        sha256_verify(entry.sha256, sha256(src));
+        requests.push_back(url_to_fetch_request(url, dest, ref, "ctx.fetch"));
       } catch (std::exception const &e) {
-        errors.push_back(entry.filename + ": " + e.what());
+        throw std::runtime_error(std::string("ctx.fetch: ") + e.what());
+      }
+    }
+
+    // Execute downloads
+    tui::debug("ctx.fetch: downloading %zu file(s) to %s",
+               urls.size(),
+               ctx->run_dir.string().c_str());
+
+    auto const start_time{ std::chrono::steady_clock::now() };
+
+    if (tui::trace_enabled()) {
+      std::string trace_url{ urls.empty() ? "" : urls[0] };
+      if (urls.size() > 1) {
+        trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
+      }
+      std::string const trace_dest{ urls.empty() ? "" : basenames[0] };
+      ENVY_TRACE_LUA_CTX_FETCH_START(ctx->recipe_->spec->identity, trace_url, trace_dest);
+    }
+
+    auto const results{ fetch(requests) };
+    auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - start_time)
+                                .count() };
+
+    if (tui::trace_enabled()) {
+      std::string trace_url{ urls.empty() ? "" : urls[0] };
+      if (urls.size() > 1) {
+        trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
+      }
+      ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->recipe_->spec->identity,
+                                        trace_url,
+                                        0,
+                                        static_cast<std::int64_t>(duration_ms));
+    }
+
+    // Check for errors
+    std::vector<std::string> errors;
+    for (size_t i = 0; i < results.size(); ++i) {
+      if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
+        errors.push_back(urls[i] + ": " + *err);
+      }
+    }
+
+    if (!errors.empty()) {
+      std::ostringstream oss;
+      oss << "ctx.fetch failed:\n";
+      for (auto const &err : errors) { oss << "  " << err << "\n"; }
+      throw std::runtime_error(oss.str());
+    }
+
+    // Return basename(s) to Lua
+    if (is_array || urls.size() > 1) {
+      sol::table result{ lua_view.create_table() };
+      for (size_t i = 0; i < basenames.size(); ++i) { result[i + 1] = basenames[i]; }
+      return result;
+    } else {
+      return sol::make_object(lua, basenames[0]);
+    }
+  };
+
+  // ctx.commit_fetch - verifies SHA256 and moves files from tmp to fetch_dir
+  ctx_table["commit_fetch"] = [ctx, lua](sol::object arg) {
+    struct commit_entry {
+      std::string filename;
+      std::string sha256;
+    };
+
+    std::vector<commit_entry> entries;
+
+    // Parse argument: string, string array, table, or table array
+    if (arg.is<std::string>()) {
+      entries.push_back({ arg.as<std::string>(), "" });
+    } else if (arg.is<sol::table>()) {
+      sol::table tbl{ arg.as<sol::table>() };
+      sol::optional<sol::object> first_elem{ tbl[1] };
+
+      if (!first_elem || first_elem->get_type() == sol::type::lua_nil) {
+        // Single table {filename="...", sha256="..."}
+        sol::optional<std::string> filename{ tbl["filename"] };
+        if (!filename) {
+          throw std::runtime_error("ctx.commit_fetch: table missing 'filename' field");
+        }
+        sol::optional<std::string> sha256_str{ tbl["sha256"] };
+        entries.push_back({ *filename, sha256_str.value_or("") });
+      } else if (first_elem->is<std::string>()) {
+        // Array of strings {"file1", "file2"}
+        for (size_t i = 1;; ++i) {
+          sol::optional<std::string> elem{ tbl[i] };
+          if (!elem) break;
+          entries.push_back({ *elem, "" });
+        }
+      } else if (first_elem->is<sol::table>()) {
+        // Array of tables {{filename="...", sha256="..."}, {...}}
+        for (size_t i = 1;; ++i) {
+          sol::optional<sol::table> elem{ tbl[i] };
+          if (!elem) break;
+
+          sol::optional<std::string> filename{ (*elem)["filename"] };
+          if (!filename) {
+            throw std::runtime_error("ctx.commit_fetch: array element " +
+                                     std::to_string(i) + " missing 'filename' field");
+          }
+          sol::optional<std::string> sha256_str{ (*elem)["sha256"] };
+          entries.push_back({ *filename, sha256_str.value_or("") });
+        }
+      } else {
+        throw std::runtime_error("ctx.commit_fetch: invalid array element type");
+      }
+    } else {
+      throw std::runtime_error("ctx.commit_fetch: argument must be string or table");
+    }
+
+    // Verify and move files
+    std::vector<std::string> errors;
+    for (auto const &entry : entries) {
+      std::filesystem::path const src{ ctx->run_dir / entry.filename };
+      std::filesystem::path const dest{ ctx->fetch_dir / entry.filename };
+
+      if (!std::filesystem::exists(src)) {
+        errors.push_back(entry.filename + ": file not found in tmp directory");
         continue;
       }
+
+      // Verify SHA256 if provided
+      if (!entry.sha256.empty()) {
+        try {
+          tui::debug("ctx.commit_fetch: verifying SHA256 for %s", entry.filename.c_str());
+          sha256_verify(entry.sha256, sha256(src));
+        } catch (std::exception const &e) {
+          errors.push_back(entry.filename + ": " + e.what());
+          continue;
+        }
+      }
+
+      // Move file
+      try {
+        std::filesystem::rename(src, dest);
+        tui::debug("ctx.commit_fetch: moved %s to fetch_dir", entry.filename.c_str());
+      } catch (std::exception const &e) {
+        errors.push_back(entry.filename + ": failed to move: " + e.what());
+      }
     }
 
-    // Move file
-    try {
-      std::filesystem::rename(src, dest);
-      tui::trace("ctx.commit_fetch: moved %s to fetch_dir", entry.filename.c_str());
-    } catch (std::exception const &e) {
-      errors.push_back(entry.filename + ": failed to move: " + e.what());
+    if (!errors.empty()) {
+      std::ostringstream oss;
+      oss << "ctx.commit_fetch failed:\n";
+      for (auto const &err : errors) { oss << "  " << err << "\n"; }
+      throw std::runtime_error(oss.str());
     }
-  }
+  };
 
-  if (!errors.empty()) {
-    std::ostringstream oss;
-    oss << "ctx.commit_fetch failed:\n";
-    for (auto const &err : errors) { oss << "  " << err << "\n"; }
-    throw std::runtime_error(oss.str());
-  }
+  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
+  lua_ctx_add_common_bindings(ctx_table, ctx);
+  return ctx_table;
 }
 
-// Lua C function: ctx.commit_fetch(filename) or ctx.commit_fetch({filename, sha256})
-// Moves file(s) from ctx.tmp to fetch_dir with optional SHA256 verification
-int lua_ctx_commit_fetch(lua_State *lua) {
-  auto *ctx{ static_cast<fetch_context *>(lua_touserdata(lua, lua_upvalueindex(1))) };
-  if (!ctx) { return luaL_error(lua, "ctx.commit_fetch: missing context"); }
-
-  try {
-    commit_files(parse_commit_fetch_args(lua), ctx->run_dir, ctx->fetch_dir);
-  } catch (std::exception const &e) {
-    return luaL_error(lua, "ctx.commit_fetch: %s", e.what());
-  }
-
-  return 0;  // No return values
-}
-
-// Build context table for fetch function
-void build_fetch_context_table(lua_State *lua,
-                               std::string const &identity,
-                               std::unordered_map<std::string, lua_value> const &options,
-                               fetch_context *ctx) {
-  lua_createtable(lua, 0, 10);  // Pre-allocate space for 10 fields
-
-  // ctx.identity
-  lua_pushstring(lua, identity.c_str());
-  lua_setfield(lua, -2, "identity");
-
-  // ctx.options (always present, even if empty)
-  lua_createtable(lua, 0, static_cast<int>(options.size()));
-  for (auto const &[key, val] : options) {
-    value_to_lua_stack(lua, val);
-    lua_setfield(lua, -2, key.c_str());
-  }
-  lua_setfield(lua, -2, "options");
-
-  // ctx.tmp
-  lua_pushstring(lua, ctx->run_dir.string().c_str());
-  lua_setfield(lua, -2, "tmp");
-
-  // ctx.fetch (phase-specific: C closure with context as upvalue)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_fetch, 1);
-  lua_setfield(lua, -2, "fetch");
-
-  // ctx.commit_fetch (phase-specific: C closure with context as upvalue)
-  lua_pushlightuserdata(lua, ctx);
-  lua_pushcclosure(lua, lua_ctx_commit_fetch, 1);
-  lua_setfield(lua, -2, "commit_fetch");
-
-  // Common context bindings (all phases)
-  lua_ctx_bindings_register_run(lua, ctx);
-  lua_ctx_bindings_register_asset(lua, ctx);
-  lua_ctx_bindings_register_copy(lua, ctx);
-  lua_ctx_bindings_register_move(lua, ctx);
-  lua_ctx_bindings_register_extract(lua, ctx);
-  lua_ctx_bindings_register_ls(lua, ctx);
-}
-
-// fetch = function(ctx) ... end
-// Returns true if fetch should be marked complete (cacheable), false otherwise
-bool run_programmatic_fetch(lua_State *lua,
+bool run_programmatic_fetch(sol::protected_function fetch_func,
                             cache::scoped_entry_lock *lock,
                             std::string const &identity,
-                            std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
-  tui::trace("phase fetch: executing fetch function");
+  tui::debug("phase fetch: executing fetch function");
 
   // Create temp workspace for ctx.tmp
   std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
@@ -489,7 +380,7 @@ bool run_programmatic_fetch(lua_State *lua,
   }
 
   // Build context (inherits from lua_ctx_common)
-  fetch_context ctx{};
+  fetch_phase_ctx ctx{};
   ctx.fetch_dir = lock->fetch_dir();
   ctx.run_dir = tmp_dir;
   ctx.stage_dir = lock->stage_dir();
@@ -497,62 +388,54 @@ bool run_programmatic_fetch(lua_State *lua,
   ctx.recipe_ = r;
   ctx.used_basenames = {};
 
-  build_fetch_context_table(lua, identity, options, &ctx);
+  lua_State *L{ fetch_func.lua_state() };
+  sol::table ctx_table{ build_fetch_phase_ctx_table(L, identity, &ctx) };
 
-  // Call fetch(ctx)
-  // Stack: fetch function at -2, context table at -1 (ready for pcall)
-  if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
-    char const *err{ lua_tostring(lua, -1) };
-    std::string error_msg{ err ? err : "unknown error" };
-    lua_pop(lua, 1);
-    throw std::runtime_error("Fetch function failed for " + identity + ": " + error_msg);
+  // Get options from registry and pass as 2nd arg
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+  sol::object opts{ sol::stack_object{ L, -1 } };
+  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+
+  sol::protected_function_result result{ fetch_func(ctx_table, opts) };
+
+  if (!result.valid()) {
+    sol::error err{ result };
+    throw std::runtime_error("Fetch function failed for " + identity + ": " + err.what());
   }
 
-  // Check return value: nil (imperative only) or string/table (declarative)
-  int const return_type{ lua_type(lua, -1) };
   bool should_mark_complete{ true };
+  lua_State *lua{ fetch_func.lua_state() };
+  sol::object return_value{ result };
 
-  switch (return_type) {
-    case LUA_TNIL:
-    case LUA_TNONE:
-      // Imperative only - no declarative fetch to process
-      tui::trace("phase fetch: function returned nil, imperative mode only");
-      lua_pop(lua, 1);
-      break;
+  if (return_value.get_type() == sol::type::none ||
+      return_value.get_type() == sol::type::lua_nil) {
+    tui::debug("phase fetch: function returned nil, imperative mode only");
+  } else if (return_value.is<std::string>() || return_value.is<sol::table>()) {
+    tui::debug("phase fetch: function returned declarative spec, processing");
 
-    case LUA_TSTRING:
-    case LUA_TTABLE: {
-      // Declarative return - reuse existing declarative fetch machinery
-      tui::trace("phase fetch: function returned declarative spec, processing");
+    return_value.push(lua);
+    auto const fetch_specs{
+      parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
+    };
+    lua_pop(lua, 1);
 
-      // Parse and execute declarative fetch from return value
-      auto const fetch_specs{
-        parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
-      };
-      lua_pop(lua, 1);
+    if (!fetch_specs.empty()) {
+      execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
 
-      if (!fetch_specs.empty()) {
-        execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
+      bool const has_git_repos =
+          std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
+            return std::holds_alternative<fetch_request_git>(spec.request);
+          });
 
-        // Check if we fetched any git repos - if so, don't mark fetch complete
-        bool const has_git_repos =
-            std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
-              return std::holds_alternative<fetch_request_git>(spec.request);
-            });
-
-        if (has_git_repos) {
-          tui::trace("phase fetch: returned spec contains git repos, not cacheable");
-          should_mark_complete = false;
-        }
+      if (has_git_repos) {
+        tui::debug("phase fetch: returned spec contains git repos, not cacheable");
+        should_mark_complete = false;
       }
-      break;
     }
-
-    default:
-      lua_pop(lua, 1);
-      throw std::runtime_error("Fetch function for " + identity +
-                               " must return nil, string, or table (got " +
-                               lua_typename(lua, return_type) + ")");
+  } else {
+    throw std::runtime_error("Fetch function for " + identity +
+                             " must return nil, string, or table (got " +
+                             sol::type_name(lua, return_value.get_type()) + ")");
   }
 
   std::filesystem::remove_all(tmp_dir);
@@ -640,10 +523,11 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
       std::vector<fetch_spec> specs;
       std::unordered_set<std::string> basenames;
 
-      // Detect array type: check first element
-      lua_rawgeti(lua, -1, 1);
-      int const first_elem_type{ lua_type(lua, -1) };
-      lua_pop(lua, 1);
+      sol::state_view lua_view{ lua };
+      sol::table tbl{ lua_view, -1 };
+
+      sol::object first_elem{ tbl[1] };
+      sol::type first_elem_type{ first_elem.get_type() };
 
       auto process_table_entry{ [&]() {
         auto entry{ parse_table_entry(lua, key) };
@@ -656,44 +540,36 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                                           key));
       } };
 
-      switch (first_elem_type) {
-        case LUA_TNIL:  // Single table {url="...", sha256="..."}
+      if (first_elem_type == sol::type::none || first_elem_type == sol::type::lua_nil) {
+        process_table_entry();
+      } else if (first_elem_type == sol::type::string) {
+        size_t const len{ tbl.size() };
+        for (size_t i = 1; i <= len; ++i) {
+          sol::object elem{ tbl[i] };
+          if (!elem.is<std::string>()) {
+            throw std::runtime_error("Array element " + std::to_string(i) +
+                                     " must be string in " + key);
+          }
+          std::string url{ elem.as<std::string>() };
+
+          specs.push_back(create_fetch_spec(std::move(url),
+                                            "",
+                                            std::nullopt,
+                                            fetch_dir,
+                                            stage_dir,
+                                            basenames,
+                                            key));
+        }
+      } else if (first_elem_type == sol::type::table) {
+        size_t const len{ tbl.size() };
+        for (size_t i = 1; i <= len; ++i) {
+          sol::table elem{ tbl[i] };
+          elem.push(lua);
           process_table_entry();
-          break;
-
-        case LUA_TSTRING: {  // Array of strings {"url1", "url2", ...}
-          size_t const len{ lua_rawlen(lua, -1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, -1, i);
-            if (!lua_isstring(lua, -1)) {
-              throw std::runtime_error("Array element " + std::to_string(i) +
-                                       " must be string in " + key);
-            }
-            std::string url{ lua_tostring(lua, -1) };
-            lua_pop(lua, 1);
-
-            specs.push_back(create_fetch_spec(std::move(url),
-                                              "",
-                                              std::nullopt,
-                                              fetch_dir,
-                                              stage_dir,
-                                              basenames,
-                                              key));
-          }
-          break;
+          lua_pop(lua, 1);
         }
-
-        case LUA_TTABLE: {  // Array of tables {{url="...", sha256="..."}, {...}}
-          size_t const len{ lua_rawlen(lua, -1) };
-          for (size_t i = 1; i <= len; ++i) {
-            lua_rawgeti(lua, -1, i);
-            process_table_entry();
-            lua_pop(lua, 1);
-          }
-          break;
-        }
-
-        default: throw std::runtime_error("Invalid fetch array element type in " + key);
+      } else {
+        throw std::runtime_error("Invalid fetch array element type in " + key);
       }
 
       return specs;
@@ -718,7 +594,7 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
     }
 
     if (spec.sha256.empty()) {  // No SHA256: always re-download (no cache trust)
-      tui::trace("phase fetch: no SHA256 for %s, re-downloading (no cache)",
+      tui::debug("phase fetch: no SHA256 for %s, re-downloading (no cache)",
                  dest.filename().string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
@@ -727,11 +603,11 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
 
     // File exists with SHA256 - verify cached version
     try {
-      tui::trace("phase fetch: verifying cached file %s", dest.string().c_str());
+      tui::debug("phase fetch: verifying cached file %s", dest.string().c_str());
       sha256_verify(spec.sha256, sha256(dest));
-      tui::trace("phase fetch: cache hit for %s", dest.filename().string().c_str());
+      tui::debug("phase fetch: cache hit for %s", dest.filename().string().c_str());
     } catch (std::exception const &e) {  // hash mismatch, delete and re-download
-      tui::trace("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
+      tui::debug("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
     }
@@ -745,28 +621,32 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key) {
   if (to_download_indices.empty()) {
-    tui::trace("phase fetch: all files cached, no downloads needed");
+    tui::debug("phase fetch: all files cached, no downloads needed");
     return;
   }
 
-  tui::trace("phase fetch: downloading %zu file(s)", to_download_indices.size());
+  tui::debug("phase fetch: downloading %zu file(s)", to_download_indices.size());
 
   std::vector<fetch_request> requests;
   requests.reserve(to_download_indices.size());
   for (auto idx : to_download_indices) { requests.push_back(specs[idx].request); }
+
+  // TODO: Add FETCH_FILE_START/COMPLETE trace events (requires passing recipe identity)
 
   auto const results{ fetch(requests) };
 
   std::vector<std::string> errors;
   for (size_t i = 0; i < results.size(); ++i) {
     auto const spec_idx{ to_download_indices[i] };
+    std::string url{ get_source(specs[spec_idx].request) };
+
     if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-      errors.push_back(get_source(specs[spec_idx].request) + ": " + *err);
+      errors.push_back(url + ": " + *err);
     } else {
       // File downloaded successfully
       auto const *result{ std::get_if<fetch_result>(&results[i]) };
       if (result) {
-        tui::trace("phase fetch: downloaded %s",
+        tui::debug("phase fetch: downloaded %s",
                    result->resolved_destination.filename().string().c_str());
       }
 
@@ -783,7 +663,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
         try {
           auto const *result{ std::get_if<fetch_result>(&results[i]) };
           if (!result) { throw std::runtime_error("Unexpected result type"); }
-          tui::trace("phase fetch: verifying SHA256 for %s",
+          tui::debug("phase fetch: verifying SHA256 for %s",
                      result->resolved_destination.string().c_str());
           sha256_verify(specs[spec_idx].sha256, sha256(result->resolved_destination));
         } catch (std::exception const &e) {
@@ -806,7 +686,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 bool run_declarative_fetch(lua_State *lua,
                            cache::scoped_entry_lock *lock,
                            std::string const &identity) {
-  tui::trace("phase fetch: executing declarative fetch");
+  tui::debug("phase fetch: executing declarative fetch");
 
   // Ensure stage_dir exists (needed for git repos that clone directly there)
   std::error_code ec;
@@ -830,7 +710,7 @@ bool run_declarative_fetch(lua_State *lua,
       });
 
   if (has_git_repos) {
-    tui::trace(
+    tui::debug(
         "phase fetch: skipping fetch completion marker (git repos are not cacheable)");
     return false;  // Don't mark complete
   }
@@ -841,51 +721,49 @@ bool run_declarative_fetch(lua_State *lua,
 }  // namespace
 
 void run_fetch_phase(recipe *r, engine &eng) {
-  std::string const key{ r->spec.format_key() };
-  tui::trace("phase fetch START [%s]", key.c_str());
+  phase_trace_scope const phase_scope{ r->spec->identity,
+                                       recipe_phase::asset_fetch,
+                                       std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock = r->lock.get();
   if (!lock) {
-    tui::trace("phase fetch: no lock (cache hit), skipping");
+    tui::debug("phase fetch: no lock (cache hit), skipping");
     return;
   }
 
   if (lock->is_fetch_complete()) {
-    tui::trace("phase fetch: fetch already complete, skipping");
+    tui::debug("phase fetch: fetch already complete, skipping");
     return;
   }
 
-  std::string const &identity{ r->spec.identity };
-  std::unordered_map<std::string, lua_value> const &options{ r->spec.options };
+  std::string const &identity{ r->spec->identity };
 
-  lua_State *lua{ r->lua_state.get() };
-  lua_getglobal(lua, "fetch");
-  int const fetch_type{ lua_type(lua, -1) };
+  lua_State *lua{ r->lua->lua_state() };
+  sol::state_view lua_view{ lua };
+  sol::object fetch_obj{ lua_view["fetch"] };
 
   bool should_mark_complete{ true };
 
-  switch (fetch_type) {
-    case LUA_TNIL:
-      lua_pop(lua, 1);
-      tui::trace("phase fetch: no fetch field, skipping");
-      return;
-    case LUA_TFUNCTION:
-      should_mark_complete =
-          run_programmatic_fetch(lua, lock, identity, options, eng, r);
-      break;
-    case LUA_TSTRING:
-    case LUA_TTABLE:
-      should_mark_complete = run_declarative_fetch(lua, lock, identity);
-      break;
-    default:
-      lua_pop(lua, 1);
-      throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
-                               identity);
+  if (!fetch_obj.valid()) {
+    tui::debug("phase fetch: no fetch field, skipping");
+    return;
+  } else if (fetch_obj.is<sol::protected_function>()) {
+    should_mark_complete = run_programmatic_fetch(fetch_obj.as<sol::protected_function>(),
+                                                  lock,
+                                                  identity,
+                                                  eng,
+                                                  r);
+  } else if (fetch_obj.is<std::string>() || fetch_obj.is<sol::table>()) {
+    fetch_obj.push(lua);
+    should_mark_complete = run_declarative_fetch(lua, lock, identity);
+  } else {
+    throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
+                             identity);
   }
 
   if (should_mark_complete) {
     lock->mark_fetch_complete();
-    tui::trace("phase fetch: marked fetch complete");
+    tui::debug("phase fetch: marked fetch complete");
   }
 }
 

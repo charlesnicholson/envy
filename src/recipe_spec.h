@@ -1,16 +1,22 @@
 #pragma once
 
-#include "lua_util.h"
-#include "phase.h"
+#include "recipe_phase.h"
+#include "util.h"
+
+#include "sol/sol.hpp"
 
 #include <filesystem>
 #include <string>
-#include <unordered_map>
 #include <variant>
 
 namespace envy {
 
-struct recipe_spec {
+struct recipe_spec : uncopyable {
+  recipe_spec() = default;
+  ~recipe_spec() = default;
+  recipe_spec(recipe_spec &&other) noexcept = default;
+  recipe_spec &operator=(recipe_spec &&other) noexcept = default;
+
   struct remote_source {
     std::string url;
     std::string sha256;
@@ -33,28 +39,42 @@ struct recipe_spec {
 
   std::string identity;  // "namespace.name@version"
   source_t source;
-  std::unordered_map<std::string, lua_value> options;
+  std::string serialized_options;    // Serialized Lua table literal (empty "{}" if none)
   std::optional<std::string> alias;  // User-friendly short name
-  std::optional<phase> needed_by;    // Phase dependency annotation
+  std::optional<recipe_phase> needed_by;  // Phase dependency annotation
 
-  static recipe_spec parse(lua_value const &lua_val,
-                           std::filesystem::path const &base_path);
+  // Custom source fetch (nested source dependencies)
+  std::vector<recipe_spec> source_dependencies{};  // Needed for fetching this recipe
 
-  // Serialize lua_value to canonical string for stable recipe option hashing
-  static std::string serialize_option_table(lua_value const &val);
+  // Parse recipe_spec from Sol2 object
+  static recipe_spec parse(sol::object const &lua_val,
+                           std::filesystem::path const &base_path,
+                           lua_State *L);
+
+  // Parse recipe_spec directly from Lua stack (for tables containing functions)
+  // Used primarily for testing; production code should use parse() with sol::object
+  static recipe_spec parse_from_stack(lua_State *L,
+                                      int index,
+                                      std::filesystem::path const &base_path);
+
+  // Serialize sol::object to canonical string for stable recipe option hashing
+  static std::string serialize_option_table(sol::object const &val);
 
   // Format canonical key: "identity" or "identity{opt=val,...}"
   // Used for logging, result maps, and any place needing a unique recipe identifier
   static std::string format_key(std::string const &identity,
-                                std::unordered_map<std::string, lua_value> const &options);
+                                std::string const &serialized_options);
 
-  // Instance method convenience wrapper
   std::string format_key() const;
-
   bool is_remote() const;
   bool is_local() const;
   bool is_git() const;
   bool has_fetch_function() const;
+
+  // Look up source.fetch function for a dependency from Lua state's dependencies global
+  // Pushes the function onto the stack if found, returns true
+  // Returns false if not found (leaves stack unchanged)
+  static bool lookup_and_push_source_fetch(lua_State *L, std::string const &dep_identity);
 };
 
 }  // namespace envy

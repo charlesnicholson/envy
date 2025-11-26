@@ -1,5 +1,4 @@
 #include "recipe_key.h"
-
 #include "recipe_spec.h"
 
 #include <stdexcept>

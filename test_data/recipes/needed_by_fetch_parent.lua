@@ -5,12 +5,12 @@ dependencies = {
   { recipe = "local.needed_by_fetch_dep@v1", source = "needed_by_fetch_dep.lua", needed_by = "fetch" }
 }
 
-fetch = function(ctx)
+fetch = function(ctx, opts)
   -- Can access dependency in fetch phase
   local dep_path = ctx.asset("local.needed_by_fetch_dep@v1")
   return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 end
 
-stage = function(ctx)
+stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
 end

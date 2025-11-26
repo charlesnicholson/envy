@@ -2,7 +2,7 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "lua_util.h"
+#include "lua_envy.h"
 #include "phase_check.h"
 #include "recipe.h"
 #include "recipe_spec.h"
@@ -25,6 +25,7 @@ namespace {
 
 // Fixture for testing install phase with temporary cache
 struct install_test_fixture {
+  recipe_spec spec;
   std::unique_ptr<recipe> r;
   std::filesystem::path temp_root;
   cache test_cache;
@@ -43,15 +44,26 @@ struct install_test_fixture {
     std::filesystem::create_directories(temp_root);
 
     // Create recipe
-    recipe_spec spec;
     spec.identity = "test.package@v1";
+
+    // Create Lua state first
+    auto lua_state = std::make_unique<sol::state>();
+    lua_state->open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine,
+                              sol::lib::string, sol::lib::os, sol::lib::math,
+                              sol::lib::table, sol::lib::debug, sol::lib::bit32,
+                              sol::lib::io);
+    lua_envy_install(*lua_state);
+
+    // Initialize options to empty table
+    spec.serialized_options = "{}";
 
     r = std::make_unique<recipe>(recipe{
         .key = recipe_key(spec),
-        .spec = spec,
-        .lua_state = lua_make(),
+        .spec = &spec,
+        .lua = std::move(lua_state),
         .lock = nullptr,
         .declared_dependencies = {},
+        .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
         .asset_path = {},
@@ -59,8 +71,6 @@ struct install_test_fixture {
         .cache_ptr = &test_cache,
         .default_shell_ptr = nullptr,
     });
-
-    lua_add_envy(r->lua_state);
   }
 
   ~install_test_fixture() {
@@ -70,14 +80,14 @@ struct install_test_fixture {
   }
 
   void set_check_verb(std::string_view check_code) {
-    lua_pushstring(r->lua_state.get(), std::string(check_code).c_str());
-    lua_setglobal(r->lua_state.get(), "check");
+    lua_pushstring(r->lua->lua_state(), std::string(check_code).c_str());
+    lua_setglobal(r->lua->lua_state(), "check");
   }
 
   void set_install_function(std::string_view install_code) {
     std::string code = "install = " + std::string(install_code);
-    if (luaL_dostring(r->lua_state.get(), code.c_str()) != LUA_OK) {
-      char const *err = lua_tostring(r->lua_state.get(), -1);
+    if (luaL_dostring(r->lua->lua_state(), code.c_str()) != LUA_OK) {
+      char const *err = lua_tostring(r->lua->lua_state(), -1);
       throw std::runtime_error(std::string("Failed to set install function: ") +
                                (err ? err : "unknown"));
     }
@@ -156,8 +166,8 @@ TEST_CASE_FIXTURE(
     install_test_fixture,
     "install phase allows cache-managed package with mark_install_complete") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua_state.get());
-  lua_setglobal(r->lua_state.get(), "check");
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
 
   // Install function that calls mark_install_complete (correct for cache-managed)
   set_install_function(R"(
@@ -178,8 +188,8 @@ TEST_CASE_FIXTURE(
     "install phase allows cache-managed package without mark_install_complete "
     "(programmatic)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua_state.get());
-  lua_setglobal(r->lua_state.get(), "check");
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
 
   // Install function that does NOT call mark_install_complete (programmatic package)
   set_install_function(R"(
@@ -198,8 +208,8 @@ TEST_CASE_FIXTURE(install_test_fixture,
                   "install phase rejects user-managed with string check that calls "
                   "mark_install_complete") {
   // String check verb (user-managed)
-  lua_pushstring(r->lua_state.get(), "echo test");
-  lua_setglobal(r->lua_state.get(), "check");
+  lua_pushstring(r->lua->lua_state(), "echo test");
+  lua_setglobal(r->lua->lua_state(), "check");
 
   // Install that incorrectly calls mark_install_complete
   set_install_function(R"(
@@ -231,8 +241,8 @@ TEST_CASE_FIXTURE(install_test_fixture,
   set_check_verb("echo test");
 
   // Nil install - default behavior (promote stage to install)
-  lua_pushnil(r->lua_state.get());
-  lua_setglobal(r->lua_state.get(), "install");
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "install");
 
   acquire_lock();
 
@@ -247,8 +257,8 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
   // String install - shell script that doesn't call mark_install_complete
   // Note: shell installs auto-call mark_install_complete, so this SHOULD error
-  lua_pushstring(r->lua_state.get(), "echo 'installing'");
-  lua_setglobal(r->lua_state.get(), "install");
+  lua_pushstring(r->lua->lua_state(), "echo 'installing'");
+  lua_setglobal(r->lua->lua_state(), "install");
 
   acquire_lock();
 

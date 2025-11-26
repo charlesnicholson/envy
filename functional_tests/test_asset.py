@@ -364,13 +364,13 @@ packages = {{
         recipe_content = """identity = "local.test_options_cache@v1"
 
 -- Empty fetch - recipe generates content directly in install phase
-function fetch(ctx)
+function fetch(ctx, opts)
     -- Nothing to fetch
 end
 
-function install(ctx)
+function install(ctx, opts)
     local f = io.open(ctx.install_dir .. "/variant.txt", "w")
-    f:write(ctx.options.variant or "none")
+    f:write(opts.variant or "none")
     f:close()
     ctx.mark_install_complete()
 end

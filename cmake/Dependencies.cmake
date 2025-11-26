@@ -66,6 +66,8 @@ set(ENVY_LUA_ARCHIVE "lua-${ENVY_LUA_VERSION}.tar.gz")
 set(ENVY_LUA_URL "https://www.lua.org/ftp/lua-${ENVY_LUA_VERSION}.tar.gz")
 set(ENVY_LUA_SHA256 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae)
 
+set(ENVY_SOL2_GIT_TAG "c1f95a773c6f8f4fde8ca3efe872e7286afe4444")
+
 set(ENVY_ZLIB_VERSION "1.3.1")
 set(ENVY_ZLIB_ARCHIVE "zlib-${ENVY_ZLIB_VERSION}.tar.gz")
 set(ENVY_ZLIB_URL "https://zlib.net/${ENVY_ZLIB_ARCHIVE}")
@@ -120,6 +122,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/AwsSdk.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libarchive.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Blake3.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Lua.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Sol2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/CLI11.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Doctest.cmake")
 
@@ -141,6 +144,7 @@ target_link_libraries(envy_thirdparty
         CURL::libcurl
         libarchive::libarchive
         lua::lua
+        sol2::sol2
         blake3::blake3
         CLI11::CLI11
         AWS::aws-cpp-sdk-s3

@@ -2,10 +2,13 @@
 
 #include "engine.h"
 #include "fetch.h"
+#include "lua_envy.h"
 #include "recipe.h"
 #include "sha256.h"
+#include "trace.h"
 #include "tui.h"
 
+#include <chrono>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -15,21 +18,19 @@ namespace envy {
 namespace {
 
 void validate_phases(lua_State *lua, std::string const &identity) {
-  lua_getglobal(lua, "fetch");
-  int const fetch_type{ lua_type(lua, -1) };
-  bool const has_fetch{ fetch_type == LUA_TFUNCTION || fetch_type == LUA_TSTRING ||
-                        fetch_type == LUA_TTABLE };
-  lua_pop(lua, 1);
+  sol::state_view lua_view{ lua };
+  sol::object fetch_obj{ lua_view["fetch"] };
 
-  if (has_fetch) { return; }
+  if (bool const has_fetch{ fetch_obj.is<sol::protected_function>() ||
+                            fetch_obj.is<std::string>() || fetch_obj.is<sol::table>() }) {
+    return;
+  }
 
-  lua_getglobal(lua, "check");
-  bool const has_check{ lua_isfunction(lua, -1) };
-  lua_pop(lua, 1);
+  sol::object check_obj{ lua_view["check"] };
+  bool const has_check{ check_obj.is<sol::protected_function>() };
 
-  lua_getglobal(lua, "install");
-  bool const has_install{ lua_isfunction(lua, -1) };
-  lua_pop(lua, 1);
+  sol::object install_obj{ lua_view["install"] };
+  bool const has_install{ install_obj.is<sol::protected_function>() };
 
   if (!has_check || !has_install) {
     throw std::runtime_error("Recipe must define 'fetch' or both 'check' and 'install': " +
@@ -40,28 +41,44 @@ void validate_phases(lua_State *lua, std::string const &identity) {
 }  // namespace
 
 void run_recipe_fetch_phase(recipe *r, engine &eng) {
-  recipe_spec const &spec = r->spec;
-  std::string const key{ spec.format_key() };
-  tui::trace("phase recipe_fetch START [%s]", key.c_str());
+  recipe_spec const &spec{ *r->spec };
+  phase_trace_scope const phase_scope{ spec.identity,
+                                       recipe_phase::recipe_fetch,
+                                       std::chrono::steady_clock::now() };
 
   // Build ancestor chain for cycle detection (empty for root recipes)
   std::unordered_set<std::string> ancestors;
 
-  auto lua_state{ lua_make() };
-  lua_add_envy(lua_state);
+  auto lua{ std::make_unique<sol::state>() };
+  lua->open_libraries(sol::lib::base,
+                      sol::lib::package,
+                      sol::lib::coroutine,
+                      sol::lib::string,
+                      sol::lib::os,
+                      sol::lib::math,
+                      sol::lib::table,
+                      sol::lib::debug,
+                      sol::lib::bit32,
+                      sol::lib::io);
+  lua_envy_install(*lua);
 
   std::filesystem::path recipe_path;
   if (auto const *local_src{ std::get_if<recipe_spec::local_source>(&spec.source) }) {
     recipe_path = local_src->file_path;
-    if (!lua_run_file(lua_state, recipe_path)) {
-      throw std::runtime_error("Failed to load recipe: " + spec.identity);
+
+    if (sol::protected_function_result result{
+            lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
+        !result.valid()) {
+      sol::error err{ result };
+      throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
+                               err.what());
     }
   } else if (auto const *remote_src{
                  std::get_if<recipe_spec::remote_source>(&spec.source) }) {
     auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
-      tui::trace("fetch recipe %s from %s",
+      tui::debug("fetch recipe %s from %s",
                  spec.identity.c_str(),
                  remote_src->url.c_str());
       std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "recipe.lua" };
@@ -103,7 +120,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       }
 
       if (!remote_src->sha256.empty()) {
-        tui::trace("verifying SHA256 for recipe %s", spec.identity.c_str());
+        tui::debug("verifying SHA256 for recipe %s", spec.identity.c_str());
         sha256_verify(remote_src->sha256, sha256(fetch_dest));
       }
 
@@ -112,14 +129,19 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     }
 
     recipe_path = cache_result.asset_path / "recipe.lua";
-    if (!lua_run_file(lua_state, recipe_path)) {
-      throw std::runtime_error("Failed to load recipe: " + spec.identity);
+
+    if (sol::protected_function_result result{
+            lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
+        !result.valid()) {
+      sol::error err{ result };
+      throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
+                               err.what());
     }
   } else if (auto const *git_src{ std::get_if<recipe_spec::git_source>(&spec.source) }) {
     auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
     if (cache_result.lock) {
-      tui::trace("fetch recipe %s from git %s @ %s",
+      tui::debug("fetch recipe %s from git %s @ %s",
                  spec.identity.c_str(),
                  git_src->url.c_str(),
                  git_src->ref.c_str());
@@ -141,8 +163,12 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     }
 
     recipe_path = cache_result.asset_path / "recipe.lua";
-    if (!lua_run_file(lua_state, recipe_path)) {
-      throw std::runtime_error("Failed to load recipe: " + spec.identity);
+    sol::protected_function_result result =
+        lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error);
+    if (!result.valid()) {
+      sol::error err = result;
+      throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
+                               err.what());
     }
   } else {
     throw std::runtime_error("Unsupported source type: " + spec.identity);
@@ -150,7 +176,11 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   std::string const declared_identity{ [&] {
     try {
-      return lua_global_to_string(lua_state.get(), "identity");
+      sol::object identity_obj = (*lua)["identity"];
+      if (!identity_obj.valid() || identity_obj.get_type() != sol::type::string) {
+        throw std::runtime_error("Recipe must define 'identity' global as a string");
+      }
+      return identity_obj.as<std::string>();
     } catch (std::runtime_error const &e) {
       throw std::runtime_error(std::string(e.what()) + " (in recipe: " + spec.identity +
                                ")");
@@ -162,12 +192,18 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
                              "' but recipe declares '" + declared_identity + "'");
   }
 
-  validate_phases(lua_state.get(), spec.identity);
+  validate_phases(lua->lua_state(), spec.identity);
 
-  std::vector<recipe_spec> dep_configs;
-  if (auto const deps_array{ lua_global_to_array(lua_state.get(), "dependencies") }) {
-    for (auto const &dep_val : *deps_array) {
-      auto dep_cfg{ recipe_spec::parse(dep_val, recipe_path) };
+  // Parse dependencies and move into recipe's owned storage
+  sol::object deps_obj{ (*lua)["dependencies"] };
+  if (deps_obj.valid() && deps_obj.get_type() == sol::type::table) {
+    sol::table deps_table{ deps_obj.as<sol::table>() };
+    lua_State *L{ lua->lua_state() };
+
+    for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
+      deps_table[i].push(L);
+      auto dep_cfg{ recipe_spec::parse_from_stack(L, -1, recipe_path) };
+      lua_pop(L, 1);
 
       if (!spec.identity.starts_with("local.") && dep_cfg.identity.starts_with("local.")) {
         throw std::runtime_error("Security violation: non-local recipe '" + spec.identity +
@@ -175,19 +211,34 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
                                  "'");
       }
 
-      dep_configs.push_back(dep_cfg);
+      r->owned_dependency_specs.push_back(std::move(dep_cfg));
     }
   }
 
   // Extract dependency identities for validation
   std::vector<std::string> const dep_identities{ [&]() {
     std::vector<std::string> result;
-    result.reserve(dep_configs.size());
-    for (auto const &dep_cfg : dep_configs) { result.push_back(dep_cfg.identity); }
+    result.reserve(r->owned_dependency_specs.size());
+    for (auto const &dep_spec : r->owned_dependency_specs) {
+      result.push_back(dep_spec.identity);
+    }
     return result;
   }() };
 
-  r->lua_state = std::move(lua_state);
+  // Deserialize options into Lua registry for phase functions
+  lua_State *L{ lua->lua_state() };
+  sol::protected_function_result opts_result{
+    lua->safe_script("return " + spec.serialized_options, sol::script_pass_on_error)
+  };
+  if (!opts_result.valid()) {
+    sol::error err{ opts_result };
+    throw std::runtime_error("Failed to deserialize options for " + spec.identity + ": " +
+                             err.what());
+  }
+  opts_result.get<sol::object>().push(L);
+  lua_rawseti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+
+  r->lua = std::move(lua);
   r->declared_dependencies = std::move(dep_identities);
 
   // Get ancestor chain from execution context (per-thread traversal state)
@@ -195,15 +246,15 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   std::vector<std::string> const &ancestor_chain{ ctx.ancestor_chain };
 
   // Build dependency graph: create child recipes, start their threads
-  for (auto const &dep_cfg : dep_configs) {
+  for (auto &dep_spec : r->owned_dependency_specs) {
     // Cycle detection: check for self-loops and cycles in ancestor chain
-    if (r->spec.identity == dep_cfg.identity) {
-      throw std::runtime_error("Dependency cycle detected: " + r->spec.identity + " -> " +
-                               dep_cfg.identity);
+    if (r->spec->identity == dep_spec.identity) {
+      throw std::runtime_error("Dependency cycle detected: " + r->spec->identity + " -> " +
+                               dep_spec.identity);
     }
 
     for (auto const &ancestor : ancestor_chain) {
-      if (ancestor == dep_cfg.identity) {
+      if (ancestor == dep_spec.identity) {
         // Build error message with cycle path
         std::string cycle_path{ ancestor };
         bool found_start{ false };
@@ -211,23 +262,25 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
           if (a == ancestor) { found_start = true; }
           if (found_start) { cycle_path += " -> " + a; }
         }
-        cycle_path += " -> " + dep_cfg.identity;
+        cycle_path += " -> " + dep_spec.identity;
         throw std::runtime_error("Dependency cycle detected: " + cycle_path);
       }
     }
 
-    recipe *dep{ eng.ensure_recipe(dep_cfg) };
+    recipe_phase const needed_by_phase{
+      dep_spec.needed_by.has_value() ? static_cast<recipe_phase>(*dep_spec.needed_by)
+                                     : recipe_phase::asset_build
+    };
+
+    recipe *dep{ eng.ensure_recipe(&dep_spec) };
 
     // Build child ancestor chain (local to this thread path)
     std::vector<std::string> child_chain{ ancestor_chain };
-    child_chain.push_back(r->spec.identity);
-
-    recipe_phase const needed_by_phase{ dep_cfg.needed_by.has_value()
-                                            ? static_cast<recipe_phase>(*dep_cfg.needed_by)
-                                            : recipe_phase::check };
+    child_chain.push_back(r->spec->identity);
 
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
-    r->dependencies[dep_cfg.identity] = { dep, needed_by_phase };
+    r->dependencies[dep_spec.identity] = { dep, needed_by_phase };
+    ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep_spec.identity, needed_by_phase);
 
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
   }

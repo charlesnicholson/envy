@@ -117,7 +117,7 @@ function check(ctx)
   return false
 end
 
-function install(ctx)
+function install(ctx, opts)
   envy.info("SHA256 verification succeeded")
 end
 """)
@@ -169,7 +169,7 @@ function check(ctx)
   return false
 end
 
-function install(ctx)
+function install(ctx, opts)
   envy.info("This should not execute")
 end
 """)
@@ -244,7 +244,7 @@ end
             result.returncode, 0, "Expected missing identity to cause failure"
         )
         self.assertIn(
-            "must declare 'identity' field",
+            "must define 'identity' global as a string",
             result.stderr.lower(),
             f"Expected identity field error, got: {result.stderr}",
         )
@@ -307,7 +307,7 @@ end
             result.returncode, 0, "Expected wrong type to cause failure"
         )
         self.assertIn(
-            "must be a string",
+            "must define 'identity' global as a string",
             result.stderr.lower(),
             f"Expected type error, got: {result.stderr}",
         )
@@ -325,7 +325,7 @@ end
 -- Missing identity in local recipe
 dependencies = {}
 function check(ctx) return false end
-function install(ctx) end
+function install(ctx, opts) end
 """)
             tmp_path = tmp.name
 
@@ -347,7 +347,7 @@ function install(ctx) end
                 result.returncode, 0, "Expected local recipe without identity to fail"
             )
             self.assertIn(
-                "must declare 'identity' field",
+                "must define 'identity' global as a string",
                 result.stderr.lower(),
                 f"Expected identity field error for local recipe, got: {result.stderr}",
             )

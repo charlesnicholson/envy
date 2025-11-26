@@ -1,14 +1,13 @@
 #include "manifest.h"
 
 #include "engine.h"
-#include "lua_ctx_bindings.h"
+#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_envy.h"
 #include "lua_shell.h"
-#include "lua_util.h"
 #include "shell.h"
 #include "tui.h"
 
 extern "C" {
-#include "lauxlib.h"
 #include "lua.h"
 }
 
@@ -52,35 +51,56 @@ std::filesystem::path manifest::find_manifest_path(
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest from file: %s", manifest_path.string().c_str());
+  tui::debug("Loading manifest from file: %s", manifest_path.string().c_str());
   auto const content{ util_load_file(manifest_path) };
   return load(content, manifest_path);
 }
 
 std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &content,
                                          std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest (%zu bytes)", content.size());
+  tui::debug("Loading manifest (%zu bytes)", content.size());
   // Ensure null-termination for Lua (create string with guaranteed null terminator)
-  std::string const script{ reinterpret_cast<char const *>(content.data()), content.size() };
+  std::string const script{ reinterpret_cast<char const *>(content.data()),
+                            content.size() };
 
-  auto state{ lua_make() };
-  if (!state) { throw std::runtime_error("Failed to create Lua state"); }
+  auto state{ std::make_unique<sol::state>() };
+  state->open_libraries(sol::lib::base,
+                        sol::lib::package,
+                        sol::lib::coroutine,
+                        sol::lib::string,
+                        sol::lib::os,
+                        sol::lib::math,
+                        sol::lib::table,
+                        sol::lib::debug,
+                        sol::lib::bit32,
+                        sol::lib::io);
+  lua_envy_install(*state);
 
-  lua_add_envy(state);
-
-  if (!lua_run_string(state, script.c_str())) {
-    throw std::runtime_error("Failed to execute manifest script");
+  sol::protected_function_result result =
+      state->safe_script(script, sol::script_pass_on_error);
+  if (!result.valid()) {
+    sol::error err = result;
+    throw std::runtime_error(std::string("Failed to execute manifest script: ") +
+                             err.what());
   }
 
   auto m{ std::make_unique<manifest>() };
   m->manifest_path = manifest_path;
-  m->lua_state_ = std::move(state);  // Keep lua_state alive for default_shell access
+  m->lua_ = std::move(state);  // Keep lua state alive for default_shell access
 
-  auto packages{ lua_global_to_array(m->lua_state_.get(), "packages") };
-  if (!packages) { throw std::runtime_error("Manifest must define 'packages' global"); }
+  sol::object packages_obj = (*m->lua_)["packages"];
+  if (!packages_obj.valid() || packages_obj.get_type() != sol::type::table) {
+    throw std::runtime_error("Manifest must define 'packages' global as a table");
+  }
 
-  for (auto const &package : *packages) {
-    m->packages.push_back(recipe_spec::parse(package, manifest_path));
+  sol::table packages_table = packages_obj.as<sol::table>();
+  lua_State *L{ m->lua_->lua_state() };
+
+  for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
+    sol::object pkg = packages_table[i];
+    pkg.push(L);
+    m->packages.push_back(recipe_spec::parse_from_stack(L, -1, manifest_path));
+    lua_pop(L, 1);
   }
 
   return m;
@@ -88,66 +108,49 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
 std::unique_ptr<manifest> manifest::load(char const *script,
                                          std::filesystem::path const &manifest_path) {
-  tui::trace("Loading manifest from C string");
-  // Convert C string to vector and delegate to vector overload
+  tui::debug("Loading manifest from C string");
   std::vector<unsigned char> content(script, script + std::strlen(script));
   return load(content, manifest_path);
 }
 
 default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
-  lua_State *L{ lua_state_.get() };
-  if (!L) { return std::nullopt; }
+  if (!lua_) { return std::nullopt; }
+  lua_State *L{ lua_->lua_state() };
 
-  // Get default_shell global (evaluated fresh every time)
-  lua_getglobal(L, "default_shell");
-  if (lua_isnil(L, -1)) {
+  sol::object default_shell_obj{ (*lua_)["default_shell"] };
+  if (!default_shell_obj.valid()) { return std::nullopt; }
+
+  if (default_shell_obj.is<sol::protected_function>()) {
+    sol::protected_function default_shell_func{
+      default_shell_obj.as<sol::protected_function>()
+    };
+
+    sol::table ctx_table{ lua_->create_table() };
+    ctx_table["asset"] = make_ctx_asset(const_cast<lua_ctx_common *>(ctx));
+
+    sol::protected_function_result result{ default_shell_func(ctx_table) };
+    if (!result.valid()) {
+      sol::error err{ result };
+      throw std::runtime_error("default_shell function failed: " +
+                               std::string{ err.what() });
+    }
+
+    result.get<sol::object>().push(L);
+    auto parsed{ parse_shell_config_from_lua(L, -1, "default_shell function") };
     lua_pop(L, 1);
-    return std::nullopt;
+
+    default_shell_value result_val;
+    if (std::holds_alternative<shell_choice>(parsed)) {
+      result_val = std::get<shell_choice>(parsed);
+    } else if (std::holds_alternative<custom_shell_file>(parsed)) {
+      result_val = custom_shell{ std::get<custom_shell_file>(parsed) };
+    } else {
+      result_val = custom_shell{ std::get<custom_shell_inline>(parsed) };
+    }
+    return result_val;
   }
 
-  int const value_type{ lua_type(L, -1) };
-
-  // Function - evaluate dynamically with current ctx
-  if (value_type == LUA_TFUNCTION) {
-    // Build ctx table with ctx.asset() binding
-    lua_createtable(L, 0, 1);  // Create ctx table
-
-    // Register ctx.asset() - use the regular validated version
-    lua_pushlightuserdata(L, const_cast<lua_ctx_common *>(ctx));
-    lua_pushcclosure(L, lua_ctx_asset, 1);
-    lua_setfield(L, -2, "asset");
-
-    // Call function(ctx)
-    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-      char const *err{ lua_tostring(L, -1) };
-      std::string error_msg{ err ? err : "unknown error" };
-      lua_pop(L, 1);
-      throw std::runtime_error("default_shell function failed: " + error_msg);
-    }
-
-    // Parse returned value using unified parser
-    try {
-      auto parsed{ parse_shell_config_from_lua(L, -1, "default_shell function") };
-      lua_pop(L, 1);
-
-      // Convert flat variant to nested variant structure
-      default_shell_value result;
-      if (std::holds_alternative<shell_choice>(parsed)) {
-        result = std::get<shell_choice>(parsed);
-      } else if (std::holds_alternative<custom_shell_file>(parsed)) {
-        result = custom_shell{ std::get<custom_shell_file>(parsed) };
-      } else {
-        result = custom_shell{ std::get<custom_shell_inline>(parsed) };
-      }
-      return result;
-    } catch (std::exception const &e) {
-      lua_pop(L, 1);
-      throw;
-    }
-  }
-
-  // Parse constant or table using unified parser
-  try {
+  try {  // Parse constant or table using unified parser
     auto parsed{ parse_shell_config_from_lua(L, -1, "default_shell") };
     lua_pop(L, 1);
 

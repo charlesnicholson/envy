@@ -1,4 +1,5 @@
 #include "extract.h"
+#include "tui.h"
 #include "util.h"
 
 #include "archive.h"
@@ -224,6 +225,54 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
 
   return path.stem().has_extension() &&
          archive_extensions.contains(path.stem().extension().string() + ext);
+}
+
+void extract_all_archives(std::filesystem::path const &fetch_dir,
+                          std::filesystem::path const &dest_dir,
+                          int strip_components) {
+  if (!std::filesystem::exists(fetch_dir)) {
+    tui::debug("extract_all_archives: fetch_dir does not exist, nothing to extract");
+    return;
+  }
+
+  std::uint64_t total_files_extracted{ 0 };
+  std::uint64_t total_files_copied{ 0 };
+
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+
+    auto const &path{ entry.path() };
+    std::string const filename{ path.filename().string() };
+
+    // Skip envy-complete marker
+    if (filename == "envy-complete") { continue; }
+
+    if (extract_is_archive_extension(path)) {
+      tui::debug("extract_all_archives: extracting archive %s (strip=%d)",
+                 filename.c_str(),
+                 strip_components);
+
+      extract_options opts{ .strip_components = strip_components };
+      std::uint64_t const files{ extract(path, dest_dir, opts) };
+      total_files_extracted += files;
+
+      tui::debug("extract_all_archives: extracted %llu files from %s",
+                 static_cast<unsigned long long>(files),
+                 filename.c_str());
+    } else {
+      tui::debug("extract_all_archives: copying non-archive %s", filename.c_str());
+
+      std::filesystem::path const dest_path{ dest_dir / filename };
+      std::filesystem::copy_file(path,
+                                 dest_path,
+                                 std::filesystem::copy_options::overwrite_existing);
+      ++total_files_copied;
+    }
+  }
+
+  tui::debug("extract_all_archives: complete (%llu files from archives, %llu files copied)",
+             static_cast<unsigned long long>(total_files_extracted),
+             static_cast<unsigned long long>(total_files_copied));
 }
 
 }  // namespace envy
