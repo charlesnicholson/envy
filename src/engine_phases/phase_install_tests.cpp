@@ -3,7 +3,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_envy.h"
-#include "lua_util.h"
 #include "phase_check.h"
 #include "recipe.h"
 #include "recipe_spec.h"
@@ -47,10 +46,21 @@ struct install_test_fixture {
     // Create recipe
     spec.identity = "test.package@v1";
 
+    // Create Lua state first
+    auto lua_state = std::make_unique<sol::state>();
+    lua_state->open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine,
+                              sol::lib::string, sol::lib::os, sol::lib::math,
+                              sol::lib::table, sol::lib::debug, sol::lib::bit32,
+                              sol::lib::io);
+    lua_envy_install(*lua_state);
+
+    // Initialize options to empty table
+    spec.serialized_options = "{}";
+
     r = std::make_unique<recipe>(recipe{
         .key = recipe_key(spec),
         .spec = &spec,
-        .lua = std::make_unique<sol::state>(),
+        .lua = std::move(lua_state),
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
@@ -61,12 +71,6 @@ struct install_test_fixture {
         .cache_ptr = &test_cache,
         .default_shell_ptr = nullptr,
     });
-
-    r->lua->open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine,
-                           sol::lib::string, sol::lib::os, sol::lib::math,
-                           sol::lib::table, sol::lib::debug, sol::lib::bit32,
-                           sol::lib::io);
-    lua_envy_install(*r->lua);
   }
 
   ~install_test_fixture() {

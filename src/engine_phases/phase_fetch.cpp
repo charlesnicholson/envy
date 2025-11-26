@@ -5,8 +5,8 @@
 #include "extract.h"
 #include "fetch.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_envy.h"
 #include "lua_shell.h"
-#include "lua_util.h"
 #include "recipe.h"
 #include "sha256.h"
 #include "shell.h"
@@ -100,23 +100,13 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key);
 
-sol::table build_fetch_phase_ctx_table(
-    lua_State *lua,
-    std::string const &identity,
-    std::unordered_map<std::string, lua_value> const &options,
-    fetch_phase_ctx *ctx) {
+sol::table build_fetch_phase_ctx_table(lua_State *lua,
+                                       std::string const &identity,
+                                       fetch_phase_ctx *ctx) {
   sol::state_view lua_view{ lua };
   sol::table ctx_table{ lua_view.create_table() };
 
   ctx_table["identity"] = identity;
-
-  sol::table opts_table{ lua_view.create_table() };
-  for (auto const &[key, val] : options) {
-    value_to_lua_stack(lua, val);
-    opts_table.raw_set(key, sol::stack_object{ lua, -1 });
-    lua_pop(lua, 1);
-  }
-  ctx_table["options"] = opts_table;
 
   ctx_table["tmp"] = ctx->run_dir.string();
 
@@ -374,7 +364,6 @@ sol::table build_fetch_phase_ctx_table(
 bool run_programmatic_fetch(sol::protected_function fetch_func,
                             cache::scoped_entry_lock *lock,
                             std::string const &identity,
-                            std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
   tui::debug("phase fetch: executing fetch function");
@@ -399,11 +388,16 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   ctx.recipe_ = r;
   ctx.used_basenames = {};
 
-  sol::table ctx_table{
-    build_fetch_phase_ctx_table(fetch_func.lua_state(), identity, options, &ctx)
-  };
+  lua_State *L{ fetch_func.lua_state() };
+  sol::table ctx_table{ build_fetch_phase_ctx_table(L, identity, &ctx) };
 
-  sol::protected_function_result result{ fetch_func(ctx_table) };
+  // Get options from registry and pass as 2nd arg
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+  sol::object opts{ sol::stack_object{ L, -1 } };
+  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+
+  sol::protected_function_result result{ fetch_func(ctx_table, opts) };
+
   if (!result.valid()) {
     sol::error err{ result };
     throw std::runtime_error("Fetch function failed for " + identity + ": " + err.what());
@@ -743,7 +737,6 @@ void run_fetch_phase(recipe *r, engine &eng) {
   }
 
   std::string const &identity{ r->spec->identity };
-  std::unordered_map<std::string, lua_value> const &options{ r->spec->options };
 
   lua_State *lua{ r->lua->lua_state() };
   sol::state_view lua_view{ lua };
@@ -758,7 +751,6 @@ void run_fetch_phase(recipe *r, engine &eng) {
     should_mark_complete = run_programmatic_fetch(fetch_obj.as<sol::protected_function>(),
                                                   lock,
                                                   identity,
-                                                  options,
                                                   eng,
                                                   r);
   } else if (fetch_obj.is<std::string>() || fetch_obj.is<sol::table>()) {

@@ -1,7 +1,6 @@
 #include "recipe_spec.h"
 
 #include "doctest.h"
-#include "lua_util.h"
 
 extern "C" {
 #include "lauxlib.h"
@@ -18,16 +17,18 @@ namespace {
 
 // Helper: Set up a Lua environment simulating a recipe with dependencies
 // Creates a dependencies global array with the given recipe table
-void setup_recipe_environment(lua_State* L,
-                               std::string const& identity,
-                               std::vector<std::string> const& dep_identities = {}) {
+void setup_recipe_environment(lua_State *L,
+                              std::string const &identity,
+                              std::vector<std::string> const &dep_identities = {}) {
   // Build Lua code that creates a dependencies global
-  std::string lua_code = "dependencies = {\n  {\n    recipe = \"" + identity + "\",\n    source = {\n";
+  std::string lua_code =
+      "dependencies = {\n  {\n    recipe = \"" + identity + "\",\n    source = {\n";
 
   if (!dep_identities.empty()) {
     lua_code += "      dependencies = {\n";
-    for (auto const& dep_id : dep_identities) {
-      lua_code += "        { recipe = \"" + dep_id + "\", source = \"file:///tmp/" + dep_id + ".lua\" },\n";
+    for (auto const &dep_id : dep_identities) {
+      lua_code += "        { recipe = \"" + dep_id + "\", source = \"file:///tmp/" +
+                  dep_id + ".lua\" },\n";
     }
     lua_code += "      },\n";
   }
@@ -48,10 +49,9 @@ void setup_recipe_environment(lua_State* L,
 // Helper: Create and parse a recipe_spec with custom source fetch
 // The fetch function returns the recipe identity for verification
 envy::recipe_spec create_recipe_with_custom_fetch(
-    lua_State* L,
-    std::string const& identity,
-    std::vector<std::string> const& dep_identities = {}) {
-
+    lua_State *L,
+    std::string const &identity,
+    std::vector<std::string> const &dep_identities = {}) {
   // Set up dependencies global for lookup
   setup_recipe_environment(L, identity, dep_identities);
 
@@ -60,8 +60,9 @@ envy::recipe_spec create_recipe_with_custom_fetch(
 
   if (!dep_identities.empty()) {
     lua_code += "    dependencies = {\n";
-    for (auto const& dep_id : dep_identities) {
-      lua_code += "      { recipe = \"" + dep_id + "\", source = \"file:///tmp/" + dep_id + ".lua\" },\n";
+    for (auto const &dep_id : dep_identities) {
+      lua_code += "      { recipe = \"" + dep_id + "\", source = \"file:///tmp/" + dep_id +
+                  ".lua\" },\n";
     }
     lua_code += "    },\n";
   }
@@ -78,7 +79,9 @@ envy::recipe_spec create_recipe_with_custom_fetch(
   }
 
   // Convert stack top to lua_value and parse
-  envy::lua_value recipe_val = envy::lua_stack_to_value(L, -1);
+  sol::state_view lua_view(L);
+  sol::stack_object stack_obj(lua_view, -1);
+  sol::object recipe_val(stack_obj);
   lua_pop(L, 1);
 
   envy::recipe_spec result = envy::recipe_spec::parse(recipe_val, fs::current_path(), L);
@@ -86,7 +89,7 @@ envy::recipe_spec create_recipe_with_custom_fetch(
 }
 
 // Helper: Call a recipe_spec's custom fetch function and return result
-std::string call_custom_fetch(lua_State* L, envy::recipe_spec const& spec) {
+std::string call_custom_fetch(lua_State *L, envy::recipe_spec const &spec) {
   if (!spec.has_fetch_function()) {
     throw std::runtime_error("recipe_spec has no custom fetch function");
   }
@@ -116,7 +119,7 @@ std::string call_custom_fetch(lua_State* L, envy::recipe_spec const& spec) {
 }  // namespace
 
 TEST_CASE("recipe_spec - function returns correct identity") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   envy::recipe_spec spec = create_recipe_with_custom_fetch(L, "local.foo@v1");
@@ -132,7 +135,7 @@ TEST_CASE("recipe_spec - function returns correct identity") {
 }
 
 TEST_CASE("recipe_spec - multiple specs have correct functions") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   // Set up dependencies global with all three recipes
@@ -164,17 +167,21 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
   // Parse each spec (they'll all use the same dependencies global)
   lua_getglobal(L, "dependencies");
   lua_rawgeti(L, -1, 1);
-  envy::lua_value val_foo = envy::lua_stack_to_value(L, -1);
+  sol::state_view lua_view(L);
+  sol::stack_object stack_obj_foo(lua_view, -1);
+  sol::object val_foo(stack_obj_foo);
   lua_pop(L, 1);
   envy::recipe_spec spec_foo = envy::recipe_spec::parse(val_foo, fs::current_path(), L);
 
   lua_rawgeti(L, -1, 2);
-  envy::lua_value val_bar = envy::lua_stack_to_value(L, -1);
+  sol::stack_object stack_obj_bar(lua_view, -1);
+  sol::object val_bar(stack_obj_bar);
   lua_pop(L, 1);
   envy::recipe_spec spec_bar = envy::recipe_spec::parse(val_bar, fs::current_path(), L);
 
   lua_rawgeti(L, -1, 3);
-  envy::lua_value val_baz = envy::lua_stack_to_value(L, -1);
+  sol::stack_object stack_obj_baz(lua_view, -1);
+  sol::object val_baz(stack_obj_baz);
   lua_pop(L, 1);
   envy::recipe_spec spec_baz = envy::recipe_spec::parse(val_baz, fs::current_path(), L);
 
@@ -194,11 +201,13 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
 }
 
 TEST_CASE("recipe_spec - with source dependencies") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
-  envy::recipe_spec spec = create_recipe_with_custom_fetch(
-      L, "local.parent@v1", {"local.tool1@v1", "local.tool2@v1"});
+  envy::recipe_spec spec =
+      create_recipe_with_custom_fetch(L,
+                                      "local.parent@v1",
+                                      { "local.tool1@v1", "local.tool2@v1" });
 
   CHECK(spec.identity == "local.parent@v1");
   CHECK(spec.source_dependencies.size() == 2);
@@ -212,7 +221,7 @@ TEST_CASE("recipe_spec - with source dependencies") {
 }
 
 TEST_CASE("recipe_spec - function persists across multiple calls") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   envy::recipe_spec spec = create_recipe_with_custom_fetch(L, "local.persistent@v1");
@@ -226,7 +235,7 @@ TEST_CASE("recipe_spec - function persists across multiple calls") {
 }
 
 TEST_CASE("recipe_spec - error on dependencies without fetch") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -243,7 +252,9 @@ TEST_CASE("recipe_spec - error on dependencies without fetch") {
   CHECK_THROWS_WITH(
       [&]() {
         luaL_dostring(L, lua_code.c_str());
-        envy::lua_value val = envy::lua_stack_to_value(L, -1);
+        sol::state_view lua_view(L);
+        sol::stack_object stack_obj(lua_view, -1);
+        sol::object val(stack_obj);
         envy::recipe_spec::parse(val, fs::current_path(), L);
       }(),
       "source.dependencies requires source.fetch function");
@@ -252,7 +263,7 @@ TEST_CASE("recipe_spec - error on dependencies without fetch") {
 }
 
 TEST_CASE("recipe_spec - error on fetch not a function") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -270,7 +281,10 @@ TEST_CASE("recipe_spec - error on fetch not a function") {
   CHECK_THROWS_WITH(
       [&]() {
         luaL_dostring(L, lua_code.c_str());
-        envy::lua_value val = envy::lua_stack_to_value(L, -1); envy::recipe_spec::parse(val, fs::current_path(), L);
+        sol::state_view lua_view(L);
+        sol::stack_object stack_obj(lua_view, -1);
+        sol::object val(stack_obj);
+        envy::recipe_spec::parse(val, fs::current_path(), L);
       }(),
       "source.fetch must be a function");
 
@@ -278,7 +292,7 @@ TEST_CASE("recipe_spec - error on fetch not a function") {
 }
 
 TEST_CASE("recipe_spec - error on dependencies not array") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -294,7 +308,10 @@ TEST_CASE("recipe_spec - error on dependencies not array") {
   CHECK_THROWS_WITH(
       [&]() {
         luaL_dostring(L, lua_code.c_str());
-        envy::lua_value val = envy::lua_stack_to_value(L, -1); envy::recipe_spec::parse(val, fs::current_path(), L);
+        sol::state_view lua_view(L);
+        sol::stack_object stack_obj(lua_view, -1);
+        sol::object val(stack_obj);
+        envy::recipe_spec::parse(val, fs::current_path(), L);
       }(),
       "source.dependencies must be array (table)");
 
@@ -302,7 +319,7 @@ TEST_CASE("recipe_spec - error on dependencies not array") {
 }
 
 TEST_CASE("recipe_spec - error on empty source table") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -315,7 +332,10 @@ TEST_CASE("recipe_spec - error on empty source table") {
   CHECK_THROWS_WITH(
       [&]() {
         luaL_dostring(L, lua_code.c_str());
-        envy::lua_value val = envy::lua_stack_to_value(L, -1); envy::recipe_spec::parse(val, fs::current_path(), L);
+        sol::state_view lua_view(L);
+        sol::stack_object stack_obj(lua_view, -1);
+        sol::object val(stack_obj);
+        envy::recipe_spec::parse(val, fs::current_path(), L);
       }(),
       "source table must have either URL string or dependencies+fetch function");
 
@@ -323,7 +343,7 @@ TEST_CASE("recipe_spec - error on empty source table") {
 }
 
 TEST_CASE("recipe_spec - error on parse without lua_State") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -338,14 +358,16 @@ TEST_CASE("recipe_spec - error on parse without lua_State") {
   luaL_dostring(L, lua_code.c_str());
 
   // Verify parsing with lua_State works for custom source.fetch
-  envy::lua_value val = envy::lua_stack_to_value(L, -1);
+  sol::state_view lua_view(L);
+  sol::stack_object stack_obj(lua_view, -1);
+  sol::object val(stack_obj);
   CHECK_NOTHROW(envy::recipe_spec::parse(val, fs::current_path(), L));
 
   lua_close(L);
 }
 
 TEST_CASE("recipe_spec - no function without source table") {
-  lua_State* L = luaL_newstate();
+  lua_State *L = luaL_newstate();
   luaL_openlibs(L);
 
   std::string lua_code = R"(
@@ -356,7 +378,9 @@ TEST_CASE("recipe_spec - no function without source table") {
   )";
 
   luaL_dostring(L, lua_code.c_str());
-  envy::lua_value val = envy::lua_stack_to_value(L, -1);
+  sol::state_view lua_view(L);
+  sol::stack_object stack_obj(lua_view, -1);
+  sol::object val(stack_obj);
   envy::recipe_spec spec = envy::recipe_spec::parse(val, fs::current_path(), nullptr);
 
   CHECK(spec.identity == "local.normal@v1");

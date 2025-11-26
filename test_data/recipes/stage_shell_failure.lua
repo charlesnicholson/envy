@@ -7,7 +7,7 @@ fetch = {
 }
 
 -- Shell script that intentionally fails
-stage = function(ctx)
+stage = function(ctx, opts)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Write-Output "About to fail"

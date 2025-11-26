@@ -50,7 +50,7 @@ class TestEngineTwoStepFetch(unittest.TestCase):
 
         recipe_content = f"""identity = "local.two_step_sha256@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   -- Step 1: Download to tmp (ungated)
   local file = ctx.fetch("{self.lua_path(test_file)}")
 
@@ -101,7 +101,7 @@ end
 
         recipe_content = f"""identity = "local.manifest_workflow@v1"
 
-function fetch(ctx)
+function fetch(ctx, opts)
   -- Step 1: Fetch manifest
   local manifest_file = ctx.fetch("{self.lua_path(manifest_file)}")
 

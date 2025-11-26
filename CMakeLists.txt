@@ -170,7 +170,6 @@ set(ENVY_COMMON_SOURCES
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
-    src/lua_util.cpp
     src/manifest.cpp
     src/recipe_spec.cpp
     src/sha256.cpp
@@ -384,7 +383,6 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
-    src/lua_util.cpp
     src/manifest.cpp
     src/recipe_phase.cpp
     src/recipe_spec.cpp
@@ -417,7 +415,6 @@ set(ENVY_UNIT_TEST_SOURCES
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp
     src/lua_shell_tests.cpp
-    src/lua_util_tests.cpp
     src/manifest_tests.cpp
     src/recipe_spec_tests.cpp
     src/recipe_spec_custom_source_tests.cpp

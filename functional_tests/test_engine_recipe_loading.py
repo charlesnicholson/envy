@@ -117,7 +117,7 @@ function check(ctx)
   return false
 end
 
-function install(ctx)
+function install(ctx, opts)
   envy.info("SHA256 verification succeeded")
 end
 """)
@@ -169,7 +169,7 @@ function check(ctx)
   return false
 end
 
-function install(ctx)
+function install(ctx, opts)
   envy.info("This should not execute")
 end
 """)
@@ -325,7 +325,7 @@ end
 -- Missing identity in local recipe
 dependencies = {}
 function check(ctx) return false end
-function install(ctx) end
+function install(ctx, opts) end
 """)
             tmp_path = tmp.name
 

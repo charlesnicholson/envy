@@ -7,7 +7,7 @@ fetch = {
 }
 
 -- Skip stage phase, extract manually in build
-stage = function(ctx)
+stage = function(ctx, opts)
   -- Don't extract yet, just prepare
   if ENVY_PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
@@ -16,7 +16,7 @@ stage = function(ctx)
   end
 end
 
-build = function(ctx)
+build = function(ctx, opts)
   print("Testing ctx.extract()")
 
   -- Extract the archive from fetch_dir into current directory

@@ -7,7 +7,7 @@ fetch = {
   { source = "https://github.com/google/googletest.git", ref = "v1.16.0" }
 }
 
-build = function(ctx)
+build = function(ctx, opts)
   local cmd = envy.template([[
 {{python}} ./configure.py --bootstrap --gtest-source-dir={{googletest}}
 ./ninja all
@@ -18,7 +18,7 @@ build = function(ctx)
   ctx.run(cmd, { cwd = ctx.stage_dir .. "/ninja.git" })
 end
 
-install = function(ctx)
+install = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/ninja.git/ninja", ctx.install_dir .. "/ninja")
   ctx.mark_install_complete()
 end

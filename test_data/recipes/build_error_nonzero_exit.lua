@@ -8,7 +8,7 @@ fetch = {
 
 stage = {strip = 1}
 
-build = function(ctx)
+build = function(ctx, opts)
   print("Testing error handling")
 
   -- This should fail and abort the build

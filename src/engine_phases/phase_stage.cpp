@@ -4,26 +4,17 @@
 #include "engine.h"
 #include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
-#include "lua_shell.h"
-#include "lua_util.h"
+#include "lua_envy.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
-
 #include <chrono>
-#include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <vector>
 
 namespace envy {
@@ -34,25 +25,13 @@ struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
 };
 
-
-sol::table build_stage_phase_ctx_table(
-    lua_State *lua,
-    std::string const &identity,
-    std::unordered_map<std::string, lua_value> const &options,
-    stage_phase_ctx *ctx) {
+sol::table build_stage_phase_ctx_table(lua_State *lua,
+                                       std::string const &identity,
+                                       stage_phase_ctx *ctx) {
   sol::state_view lua_view{ lua };
   sol::table ctx_table{ lua_view.create_table() };
 
   ctx_table["identity"] = identity;
-
-  sol::table opts_table{ lua_view.create_table() };
-  for (auto const &[key, val] : options) {
-    value_to_lua_stack(lua, val);
-    opts_table.raw_set(key, sol::stack_object{ lua, -1 });
-    lua_pop(lua, 1);
-  }
-  ctx_table["options"] = opts_table;
-
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
 
@@ -127,7 +106,6 @@ void run_programmatic_stage(sol::protected_function stage_func,
                             std::filesystem::path const &fetch_dir,
                             std::filesystem::path const &dest_dir,
                             std::string const &identity,
-                            std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
   tui::debug("phase stage: running imperative stage function");
@@ -138,11 +116,16 @@ void run_programmatic_stage(sol::protected_function stage_func,
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
 
-  sol::table ctx_table{
-    build_stage_phase_ctx_table(stage_func.lua_state(), identity, options, &ctx)
-  };
+  lua_State *L{ stage_func.lua_state() };
+  sol::table ctx_table{ build_stage_phase_ctx_table(L, identity, &ctx) };
 
-  sol::protected_function_result result{ stage_func(ctx_table) };
+  // Get options from registry and pass as 2nd arg
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+  sol::object opts{ sol::stack_object{ L, -1 } };
+  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+
+  sol::protected_function_result result{ stage_func(ctx_table, opts) };
+
   if (!result.valid()) {
     sol::error err{ result };
     throw std::runtime_error("Stage function failed for " + identity + ": " + err.what());
@@ -194,8 +177,6 @@ void run_stage_phase(recipe *r, engine &eng) {
   }
 
   std::string const &identity{ r->spec->identity };
-  std::unordered_map<std::string, lua_value> const &options{ r->spec->options };
-
   lua_State *lua{ r->lua->lua_state() };
   std::filesystem::path const dest_dir{ determine_stage_destination(lua, lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
@@ -206,14 +187,13 @@ void run_stage_phase(recipe *r, engine &eng) {
   if (!stage_obj.valid()) {
     run_default_stage(fetch_dir, dest_dir);
   } else if (stage_obj.is<std::string>()) {
-    std::string script_str{ stage_obj.as<std::string>() };
+    auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str, dest_dir, identity);
   } else if (stage_obj.is<sol::protected_function>()) {
     run_programmatic_stage(stage_obj.as<sol::protected_function>(),
                            fetch_dir,
                            dest_dir,
                            identity,
-                           options,
                            eng,
                            r);
   } else if (stage_obj.is<sol::table>()) {

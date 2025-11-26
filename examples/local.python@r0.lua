@@ -4,7 +4,7 @@ fetch = "https://github.com/astral-sh/python-build-standalone/releases/download/
 
 stage = { strip = 1 }
 
-products = function(ctx) return {
+products = function(ctx, opts) return {
   python3 = "install/bin/python",
   ["python"] = ctx.options.version .. "install/bin/python"
 } end

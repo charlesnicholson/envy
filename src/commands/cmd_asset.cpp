@@ -31,10 +31,10 @@ bool cmd_asset::execute() {
 
     if (matches.size() > 1) {
       std::string first_key{ recipe_spec::format_key(matches[0]->identity,
-                                                     matches[0]->options) };
+                                                     matches[0]->serialized_options) };
       for (size_t i{ 1 }; i < matches.size(); ++i) {
         std::string key{ recipe_spec::format_key(matches[i]->identity,
-                                                 matches[i]->options) };
+                                                 matches[i]->serialized_options) };
         if (key != first_key) {
           tui::error("identity '%s' appears multiple times with different options",
                      cfg_.identity.c_str());
@@ -61,7 +61,7 @@ bool cmd_asset::execute() {
 
     auto const *recipe_result{ [&]() {
       auto it{ result.find(
-          recipe_spec::format_key(matches[0]->identity, matches[0]->options)) };
+          recipe_spec::format_key(matches[0]->identity, matches[0]->serialized_options)) };
       return (it != result.end()) ? &it->second : nullptr;
     }() };
 

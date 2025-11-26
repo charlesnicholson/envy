@@ -233,7 +233,7 @@ function check(ctx)
     return false
 end
 
-function install(ctx)
+function install(ctx, opts)
     -- Nothing needed - source is already fetched by git
 end
 """

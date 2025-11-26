@@ -28,7 +28,7 @@ bool cmd_engine_functional_test::execute() {
   recipe_spec recipe_cfg;
   recipe_cfg.identity = cfg_.identity;
   recipe_cfg.source = recipe_spec::local_source{ .file_path = cfg_.recipe_path };
-  recipe_cfg.options = {};
+  recipe_cfg.serialized_options = "{}";
   recipe_cfg.needed_by = std::nullopt;
 
   // Create minimal manifest for engine (no default_shell for tests)

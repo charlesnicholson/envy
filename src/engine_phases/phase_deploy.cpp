@@ -2,7 +2,6 @@
 
 #include "recipe.h"
 #include "trace.h"
-#include "tui.h"
 
 #include <chrono>
 

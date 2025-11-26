@@ -1,6 +1,7 @@
 #include "recipe_key.h"
-
 #include "recipe_spec.h"
+
+#include "sol/sol.hpp"
 
 #include "doctest.h"
 
@@ -54,8 +55,7 @@ TEST_CASE("recipe_key: from recipe_spec with no options") {
 TEST_CASE("recipe_key: from recipe_spec with options") {
   recipe_spec spec;
   spec.identity = "local.python@r4";
-  spec.options = { { "version", lua_value(std::string("3.14")) },
-                   { "arch", lua_value(std::string("arm64")) } };
+  spec.serialized_options = "{arch=\"arm64\",version=\"3.14\"}";
 
   recipe_key key(spec);
 

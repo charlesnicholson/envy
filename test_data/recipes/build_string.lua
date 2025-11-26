@@ -8,7 +8,7 @@ fetch = {
 
 stage = {strip = 1}
 
-build = function(ctx)
+build = function(ctx, opts)
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Write-Host "Building in shell script mode"

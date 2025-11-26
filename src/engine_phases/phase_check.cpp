@@ -112,8 +112,9 @@ void run_check_phase_user_managed(recipe *r, engine &eng, lua_State *lua) {
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
                                                    8) };  // For cache path: 16 hex chars
 
-  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
-  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
+  sol::state_view lua_view{ lua };
+  std::string const platform{ lua_view["ENVY_PLATFORM"].get<std::string>() };
+  std::string const arch{ lua_view["ENVY_ARCH"].get<std::string>() };
 
   auto cache_result{
     r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
@@ -167,8 +168,9 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
                                                    8) };  // For cache path: 16 hex chars
 
-  std::string const platform{ lua_global_to_string(lua, "ENVY_PLATFORM") };
-  std::string const arch{ lua_global_to_string(lua, "ENVY_ARCH") };
+  sol::state_view lua_view{ lua };
+  std::string const platform{ lua_view["ENVY_PLATFORM"].get<std::string>() };
+  std::string const arch{ lua_view["ENVY_ARCH"].get<std::string>() };
 
   auto cache_result{
     r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)

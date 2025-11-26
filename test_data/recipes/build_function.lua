@@ -1,4 +1,4 @@
--- Test build phase: build = function(ctx) (programmatic with ctx.run())
+-- Test build phase: build = function(ctx, opts) (programmatic with ctx.run())
 identity = "local.build_function@v1"
 
 fetch = {
@@ -8,7 +8,7 @@ fetch = {
 
 stage = {strip = 1}
 
-build = function(ctx)
+build = function(ctx, opts)
   print("Building with ctx.run()")
 
   -- Create build artifacts

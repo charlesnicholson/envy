@@ -279,7 +279,7 @@ function check(ctx)
     return false
 end
 
-function install(ctx)
+function install(ctx, opts)
     -- Verify the fetched git repo is available in stage_dir/ninja.git/
     ctx.ls(ctx.stage_dir)
     local readme = ctx.stage_dir .. "/ninja.git/README.md"
@@ -329,7 +329,7 @@ fetch = {
     ref = "v1.11.1"
 }
 
-function install(ctx)
+function install(ctx, opts)
     -- Verify git repo is in stage_dir
     local stage_readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(stage_readme, "r")
@@ -378,7 +378,7 @@ fetch = {
     ref = "v1.11.1"
 }
 
-function install(ctx)
+function install(ctx, opts)
     local readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(readme, "r")
     if not f then

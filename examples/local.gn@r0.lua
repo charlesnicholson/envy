@@ -10,7 +10,7 @@ fetch = {
   ref = "748c9571f3d18820a7989a880d5ddf220e54af1b"
 }
 
-build = function(ctx)
+build = function(ctx, opts)
   local cmd = envy.template([[
 {{python}} build/gen.py
 {{ninja}} -C out
@@ -21,7 +21,7 @@ out/gn_unittests
   ctx.run(cmd, { cwd = ctx.stage_dir .. "/gn.git" })
 end
 
-install = function(ctx)
+install = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/gn.git/out/gn", ctx.install_dir .. "/gn")
   ctx.mark_install_complete()
 end

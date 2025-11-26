@@ -2,27 +2,18 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
-#include "lua_shell.h"
-#include "lua_util.h"
+#include "lua_envy.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 #include <chrono>
-#include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <vector>
 
 namespace envy {
@@ -33,24 +24,13 @@ struct build_phase_ctx : lua_ctx_common {
   std::filesystem::path install_dir;
 };
 
-sol::table build_build_phase_ctx_table(
-    lua_State *lua,
-    std::string const &identity,
-    std::unordered_map<std::string, lua_value> const &options,
-    build_phase_ctx *ctx) {
+sol::table build_build_phase_ctx_table(lua_State *lua,
+                                       std::string const &identity,
+                                       build_phase_ctx *ctx) {
   sol::state_view lua_view{ lua };
   sol::table ctx_table{ lua_view.create_table() };
 
   ctx_table["identity"] = identity;
-
-  sol::table opts_table{ lua_view.create_table() };
-  for (auto const &[key, val] : options) {
-    value_to_lua_stack(lua, val);
-    opts_table.raw_set(key, sol::stack_object{ lua, -1 });
-    lua_pop(lua, 1);
-  }
-  ctx_table["options"] = opts_table;
-
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
   ctx_table["install_dir"] = ctx->install_dir.string();
@@ -66,7 +46,6 @@ void run_programmatic_build(sol::protected_function build_func,
                             std::filesystem::path const &stage_dir,
                             std::filesystem::path const &install_dir,
                             std::string const &identity,
-                            std::unordered_map<std::string, lua_value> const &options,
                             engine &eng,
                             recipe *r) {
   tui::debug("phase build: running programmatic build function");
@@ -78,11 +57,16 @@ void run_programmatic_build(sol::protected_function build_func,
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
 
-  sol::table ctx_table{
-    build_build_phase_ctx_table(build_func.lua_state(), identity, options, &ctx)
-  };
+  lua_State *L{ build_func.lua_state() };
+  sol::table ctx_table{ build_build_phase_ctx_table(L, identity, &ctx) };
 
-  sol::protected_function_result result{ build_func(ctx_table) };
+  // Get options from registry and pass as 2nd arg
+  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+  sol::object opts{ sol::stack_object{ L, -1 } };
+  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+
+  sol::protected_function_result result{ build_func(ctx_table, opts) };
+
   if (!result.valid()) {
     sol::error err{ result };
     throw std::runtime_error("Build function failed for " + identity + ": " + err.what());
@@ -146,7 +130,6 @@ void run_build_phase(recipe *r, engine &eng) {
                            r->lock->stage_dir(),
                            r->lock->install_dir(),
                            r->spec->identity,
-                           r->spec->options,
                            eng,
                            r);
   } else {

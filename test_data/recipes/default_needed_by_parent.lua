@@ -6,15 +6,15 @@ dependencies = {
   -- No needed_by specified - should default to "build"
 }
 
-fetch = function(ctx)
+fetch = function(ctx, opts)
   return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 end
 
-stage = function(ctx)
+stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
 end
 
-build = function(ctx)
+build = function(ctx, opts)
   -- Dependency should be available here by default
   local dep_path = ctx.asset("local.simple@v1")
 end

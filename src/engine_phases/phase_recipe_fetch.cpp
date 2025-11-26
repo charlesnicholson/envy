@@ -49,25 +49,25 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   // Build ancestor chain for cycle detection (empty for root recipes)
   std::unordered_set<std::string> ancestors;
 
-  auto lua_state{ std::make_unique<sol::state>() };
-  lua_state->open_libraries(sol::lib::base,
-                            sol::lib::package,
-                            sol::lib::coroutine,
-                            sol::lib::string,
-                            sol::lib::os,
-                            sol::lib::math,
-                            sol::lib::table,
-                            sol::lib::debug,
-                            sol::lib::bit32,
-                            sol::lib::io);
-  lua_envy_install(*lua_state);
+  auto lua{ std::make_unique<sol::state>() };
+  lua->open_libraries(sol::lib::base,
+                      sol::lib::package,
+                      sol::lib::coroutine,
+                      sol::lib::string,
+                      sol::lib::os,
+                      sol::lib::math,
+                      sol::lib::table,
+                      sol::lib::debug,
+                      sol::lib::bit32,
+                      sol::lib::io);
+  lua_envy_install(*lua);
 
   std::filesystem::path recipe_path;
   if (auto const *local_src{ std::get_if<recipe_spec::local_source>(&spec.source) }) {
     recipe_path = local_src->file_path;
 
     if (sol::protected_function_result result{
-            lua_state->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
+            lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
         !result.valid()) {
       sol::error err{ result };
       throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
@@ -131,7 +131,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     recipe_path = cache_result.asset_path / "recipe.lua";
 
     if (sol::protected_function_result result{
-            lua_state->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
+            lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error) };
         !result.valid()) {
       sol::error err{ result };
       throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
@@ -164,7 +164,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
     recipe_path = cache_result.asset_path / "recipe.lua";
     sol::protected_function_result result =
-        lua_state->safe_script_file(recipe_path.string(), sol::script_pass_on_error);
+        lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error);
     if (!result.valid()) {
       sol::error err = result;
       throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
@@ -176,7 +176,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   std::string const declared_identity{ [&] {
     try {
-      sol::object identity_obj = (*lua_state)["identity"];
+      sol::object identity_obj = (*lua)["identity"];
       if (!identity_obj.valid() || identity_obj.get_type() != sol::type::string) {
         throw std::runtime_error("Recipe must define 'identity' global as a string");
       }
@@ -192,17 +192,16 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
                              "' but recipe declares '" + declared_identity + "'");
   }
 
-  validate_phases(lua_state->lua_state(), spec.identity);
+  validate_phases(lua->lua_state(), spec.identity);
 
   // Parse dependencies and move into recipe's owned storage
-  sol::object deps_obj{ (*lua_state)["dependencies"] };
+  sol::object deps_obj{ (*lua)["dependencies"] };
   if (deps_obj.valid() && deps_obj.get_type() == sol::type::table) {
     sol::table deps_table{ deps_obj.as<sol::table>() };
-    lua_State *L{ lua_state->lua_state() };
+    lua_State *L{ lua->lua_state() };
 
     for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
-      sol::object dep_obj{ deps_table[i] };
-      dep_obj.push(L);
+      deps_table[i].push(L);
       auto dep_cfg{ recipe_spec::parse_from_stack(L, -1, recipe_path) };
       lua_pop(L, 1);
 
@@ -226,7 +225,20 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     return result;
   }() };
 
-  r->lua = std::move(lua_state);
+  // Deserialize options into Lua registry for phase functions
+  lua_State *L{ lua->lua_state() };
+  sol::protected_function_result opts_result{
+    lua->safe_script("return " + spec.serialized_options, sol::script_pass_on_error)
+  };
+  if (!opts_result.valid()) {
+    sol::error err{ opts_result };
+    throw std::runtime_error("Failed to deserialize options for " + spec.identity + ": " +
+                             err.what());
+  }
+  opts_result.get<sol::object>().push(L);
+  lua_rawseti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+
+  r->lua = std::move(lua);
   r->declared_dependencies = std::move(dep_identities);
 
   // Get ancestor chain from execution context (per-thread traversal state)

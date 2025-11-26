@@ -119,8 +119,7 @@ void lua_envy_install(sol::state &lua) {
     tui::info("%s", oss.str().c_str());
   };
 
-  // envy table with logging functions
-  auto envy_table = lua.create_table();
+  auto envy_table{ lua.create_table() };  // envy table with logging functions
   envy_table["trace"] = [](std::string_view msg) { tui::debug("%s", msg.data()); };
   envy_table["debug"] = [](std::string_view msg) { tui::debug("%s", msg.data()); };
   envy_table["info"] = [](std::string_view msg) { tui::info("%s", msg.data()); };
@@ -129,8 +128,8 @@ void lua_envy_install(sol::state &lua) {
   envy_table["stdout"] = [](std::string_view msg) { tui::print_stdout("%s", msg.data()); };
 
   // envy.template (load Lua code)
-  sol::protected_function_result result =
-      lua.safe_script(kEnvyTemplateLua, sol::script_pass_on_error);
+  sol::protected_function_result result{ lua.safe_script(kEnvyTemplateLua,
+                                                         sol::script_pass_on_error) };
   if (result.valid()) {
     envy_table["template"] = result;
   } else {
@@ -145,24 +144,28 @@ void lua_envy_install(sol::state &lua) {
 
 #if defined(__APPLE__) || defined(__linux__)
   lua_pushlightuserdata(
-      L, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
   shell_table["BASH"] = sol::stack_object{ L, -1 };
   lua_pop(L, 1);
 
   lua_pushlightuserdata(
-      L, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
   shell_table["SH"] = sol::stack_object{ L, -1 };
   lua_pop(L, 1);
 #endif
 
 #if defined(_WIN32)
   lua_pushlightuserdata(
-      L, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
   shell_table["CMD"] = sol::stack_object{ L, -1 };
   lua_pop(L, 1);
 
   lua_pushlightuserdata(
-      L, reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
+      L,
+      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
   shell_table["POWERSHELL"] = sol::stack_object{ L, -1 };
   lua_pop(L, 1);
 #endif
