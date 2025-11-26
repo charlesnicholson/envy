@@ -58,20 +58,14 @@ void shell_validate_custom(custom_shell const &cfg) {
   std::visit([](auto const &shell_cfg) { validate_shell_config(shell_cfg); }, cfg);
 }
 
-custom_shell shell_parse_custom_from_lua(::lua_State *L) {
-  if (!lua_istable(L, -1)) {
-    throw std::runtime_error("custom shell must be a table with 'file' or 'inline' key");
-  }
+custom_shell shell_parse_custom_from_lua(sol::table const &tbl) {
+  // Check for 'file' and 'inline' keys
+  sol::object file_obj{ tbl["file"] };
+  sol::object inline_obj{ tbl["inline"] };
 
-  // Check for 'file' key
-  lua_getfield(L, -1, "file");
-  bool const has_file{ !lua_isnil(L, -1) };
-  lua_pop(L, 1);
-
-  // Check for 'inline' key
-  lua_getfield(L, -1, "inline");
-  bool const has_inline{ !lua_isnil(L, -1) };
-  lua_pop(L, 1);
+  bool const has_file{ file_obj.valid() && file_obj.get_type() != sol::type::lua_nil };
+  bool const has_inline{ inline_obj.valid() &&
+                         inline_obj.get_type() != sol::type::lua_nil };
 
   if (has_file && has_inline) {
     throw std::runtime_error(
@@ -82,66 +76,58 @@ custom_shell shell_parse_custom_from_lua(::lua_State *L) {
   }
 
   if (has_file) {
-    // Parse file mode
-    lua_getfield(L, -1, "file");
-
-    // Handle string shorthand: file = "/path" → file = {"/path"}
+    // Parse file mode - handle string shorthand: file = "/path" → file = {"/path"}
     std::vector<std::string> argv;
-    if (lua_isstring(L, -1)) {
-      argv.push_back(lua_tostring(L, -1));
-    } else if (lua_istable(L, -1)) {
-      // Parse array of strings
-      size_t const len{ lua_rawlen(L, -1) };
+
+    if (file_obj.is<std::string>()) {
+      argv.push_back(file_obj.as<std::string>());
+    } else if (file_obj.is<sol::table>()) {
+      sol::table arr{ file_obj.as<sol::table>() };
+      size_t const len{ arr.size() };
       if (len == 0) {
         throw std::runtime_error(
             "file mode argv must be non-empty (at least shell executable path)");
       }
       for (size_t i{ 1 }; i <= len; ++i) {
-        lua_rawgeti(L, -1, static_cast<lua_Integer>(i));
-        if (!lua_isstring(L, -1)) {
+        sol::object elem{ arr[i] };
+        if (!elem.is<std::string>()) {
           throw std::runtime_error("file mode argv must contain only strings");
         }
-        argv.push_back(lua_tostring(L, -1));
-        lua_pop(L, 1);
+        argv.push_back(elem.as<std::string>());
       }
     } else {
       throw std::runtime_error("'file' key must be a string (path) or array of strings");
     }
-    lua_pop(L, 1);  // Pop 'file' value
 
     // Get 'ext' field (required for file mode)
-    lua_getfield(L, -1, "ext");
-    if (!lua_isstring(L, -1)) {
+    sol::object ext_obj{ tbl["ext"] };
+    if (!ext_obj.is<std::string>()) {
       throw std::runtime_error("file mode requires 'ext' field (e.g., \".sh\", \".tcl\")");
     }
-    std::string ext{ lua_tostring(L, -1) };
-    lua_pop(L, 1);  // Pop 'ext' value
+    std::string ext{ ext_obj.as<std::string>() };
 
     return custom_shell_file{ std::move(argv), std::move(ext) };
   } else {
     // Parse inline mode
-    lua_getfield(L, -1, "inline");
-
     std::vector<std::string> argv;
-    if (lua_istable(L, -1)) {
-      // Parse array of strings
-      size_t const len{ lua_rawlen(L, -1) };
+
+    if (inline_obj.is<sol::table>()) {
+      sol::table arr{ inline_obj.as<sol::table>() };
+      size_t const len{ arr.size() };
       if (len == 0) {
         throw std::runtime_error(
             "inline mode argv must be non-empty (at least shell executable path)");
       }
       for (size_t i{ 1 }; i <= len; ++i) {
-        lua_rawgeti(L, -1, static_cast<lua_Integer>(i));
-        if (!lua_isstring(L, -1)) {
+        sol::object elem{ arr[i] };
+        if (!elem.is<std::string>()) {
           throw std::runtime_error("inline mode argv must contain only strings");
         }
-        argv.push_back(lua_tostring(L, -1));
-        lua_pop(L, 1);
+        argv.push_back(elem.as<std::string>());
       }
     } else {
       throw std::runtime_error("'inline' key must be an array of strings");
     }
-    lua_pop(L, 1);  // Pop 'inline' value
 
     return custom_shell_inline{ std::move(argv) };
   }

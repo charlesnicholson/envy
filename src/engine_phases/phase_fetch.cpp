@@ -100,11 +100,10 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key);
 
-sol::table build_fetch_phase_ctx_table(lua_State *lua,
+sol::table build_fetch_phase_ctx_table(sol::state_view lua,
                                        std::string const &identity,
                                        fetch_phase_ctx *ctx) {
-  sol::state_view lua_view{ lua };
-  sol::table ctx_table{ lua_view.create_table() };
+  sol::table ctx_table{ lua.create_table() };
 
   ctx_table["identity"] = identity;
 
@@ -112,7 +111,6 @@ sol::table build_fetch_phase_ctx_table(lua_State *lua,
 
   // ctx.fetch - downloads files from URLs
   ctx_table["fetch"] = [ctx, lua](sol::object arg) -> sol::object {
-    sol::state_view lua_view{ lua };
     std::vector<std::string> urls;
     std::vector<std::optional<std::string>> refs;
     std::vector<std::string> basenames;
@@ -257,11 +255,11 @@ sol::table build_fetch_phase_ctx_table(lua_State *lua,
 
     // Return basename(s) to Lua
     if (is_array || urls.size() > 1) {
-      sol::table result{ lua_view.create_table() };
+      sol::table result{ sol::state_view::create_table(lua.lua_state()) };
       for (size_t i = 0; i < basenames.size(); ++i) { result[i + 1] = basenames[i]; }
       return result;
     } else {
-      return sol::make_object(lua, basenames[0]);
+      return sol::make_object(lua.lua_state(), basenames[0]);
     }
   };
 
@@ -388,13 +386,11 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   ctx.recipe_ = r;
   ctx.used_basenames = {};
 
-  lua_State *L{ fetch_func.lua_state() };
-  sol::table ctx_table{ build_fetch_phase_ctx_table(L, identity, &ctx) };
+  sol::state_view lua{ fetch_func.lua_state() };
+  sol::table ctx_table{ build_fetch_phase_ctx_table(lua, identity, &ctx) };
 
   // Get options from registry and pass as 2nd arg
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
-  sol::object opts{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result result{ fetch_func(ctx_table, opts) };
 
@@ -404,7 +400,6 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   }
 
   bool should_mark_complete{ true };
-  lua_State *lua{ fetch_func.lua_state() };
   sol::object return_value{ result };
 
   if (return_value.get_type() == sol::type::none ||
@@ -413,11 +408,11 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   } else if (return_value.is<std::string>() || return_value.is<sol::table>()) {
     tui::debug("phase fetch: function returned declarative spec, processing");
 
-    return_value.push(lua);
+    return_value.push(lua.lua_state());
     auto const fetch_specs{
-      parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
+      parse_fetch_field(lua.lua_state(), lock->fetch_dir(), lock->stage_dir(), identity)
     };
-    lua_pop(lua, 1);
+    lua_pop(lua.lua_state(), 1);
 
     if (!fetch_specs.empty()) {
       execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);

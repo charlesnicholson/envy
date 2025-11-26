@@ -115,7 +115,6 @@ std::unique_ptr<manifest> manifest::load(char const *script,
 
 default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
   if (!lua_) { return std::nullopt; }
-  lua_State *L{ lua_->lua_state() };
 
   sol::object default_shell_obj{ (*lua_)["default_shell"] };
   if (!default_shell_obj.valid()) { return std::nullopt; }
@@ -135,9 +134,8 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
                                std::string{ err.what() });
     }
 
-    result.get<sol::object>().push(L);
-    auto parsed{ parse_shell_config_from_lua(L, -1, "default_shell function") };
-    lua_pop(L, 1);
+    sol::object result_obj{ result.get<sol::object>() };
+    auto parsed{ parse_shell_config_from_lua(result_obj, "default_shell function") };
 
     default_shell_value result_val;
     if (std::holds_alternative<shell_choice>(parsed)) {
@@ -151,8 +149,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
   }
 
   try {  // Parse constant or table using unified parser
-    auto parsed{ parse_shell_config_from_lua(L, -1, "default_shell") };
-    lua_pop(L, 1);
+    auto parsed{ parse_shell_config_from_lua(default_shell_obj, "default_shell") };
 
     // Convert flat variant to nested variant structure
     default_shell_value result;
@@ -164,10 +161,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
       result = custom_shell{ std::get<custom_shell_inline>(parsed) };
     }
     return result;
-  } catch (std::exception const &e) {
-    lua_pop(L, 1);
-    throw;
-  }
+  } catch (std::exception const &e) { throw; }
 }
 
 }  // namespace envy

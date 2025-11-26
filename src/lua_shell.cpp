@@ -1,22 +1,16 @@
 #include "lua_shell.h"
 
-extern "C" {
-#include "lauxlib.h"
-}
-
 #include <stdexcept>
 #include <string>
 
 namespace envy {
 
 std::variant<shell_choice, custom_shell_file, custom_shell_inline>
-parse_shell_config_from_lua(lua_State *L, int index, char const *context) {
-  int const type{ lua_type(L, index) };
-
+parse_shell_config_from_lua(sol::object const &obj, char const *context) {
   // ENVY_SHELL constant (light userdata)
-  if (type == LUA_TLIGHTUSERDATA) {
-    void *ud{ lua_touserdata(L, index) };
-    auto const choice{ static_cast<shell_choice>(reinterpret_cast<uintptr_t>(ud)) };
+  if (obj.is<sol::lightuserdata>()) {
+    sol::lightuserdata ud{ obj.as<sol::lightuserdata>() };
+    auto const choice{ static_cast<shell_choice>(reinterpret_cast<uintptr_t>(ud.pointer())) };
 
     // Validate enum value
     if (choice != shell_choice::bash && choice != shell_choice::sh &&
@@ -28,14 +22,9 @@ parse_shell_config_from_lua(lua_State *L, int index, char const *context) {
   }
 
   // Custom shell table
-  if (type == LUA_TTABLE) {
+  if (obj.is<sol::table>()) {
     try {
-      // Push the table to top of stack if it's not already there
-      // shell_parse_custom_from_lua expects table at -1
-      lua_pushvalue(L, index);
-      custom_shell custom{ shell_parse_custom_from_lua(L) };
-      lua_pop(L, 1);  // Pop the copied table
-
+      custom_shell custom{ shell_parse_custom_from_lua(obj.as<sol::table>()) };
       shell_validate_custom(custom);
 
       // Unpack custom_shell variant (variant<file, inline>) into return variant

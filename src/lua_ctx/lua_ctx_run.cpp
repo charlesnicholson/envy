@@ -36,8 +36,7 @@ make_ctx_run(lua_ctx_common *ctx) {
     std::string_view script_view{ script };
 
     // Validate options argument if provided
-    if (opts_obj && opts_obj->valid() &&
-        opts_obj->get_type() != sol::type::lua_nil &&
+    if (opts_obj && opts_obj->valid() && opts_obj->get_type() != sol::type::lua_nil &&
         !opts_obj->is<sol::table>()) {
       throw std::runtime_error("ctx.run: second argument must be a table (options)");
     }
@@ -78,9 +77,7 @@ make_ctx_run(lua_ctx_common *ctx) {
 
       sol::optional<sol::object> shell_obj{ opts["shell"] };
       if (shell_obj && shell_obj->valid()) {
-        shell_obj->push(lua);
-        shell = parse_shell_config_from_lua(lua, -1, "ctx.run");
-        lua_pop(lua, 1);
+        shell = parse_shell_config_from_lua(*shell_obj, "ctx.run");
       }
     }
 
