@@ -25,11 +25,10 @@ struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
 };
 
-sol::table build_stage_phase_ctx_table(lua_State *lua,
+sol::table build_stage_phase_ctx_table(sol::state_view lua,
                                        std::string const &identity,
                                        stage_phase_ctx *ctx) {
-  sol::state_view lua_view{ lua };
-  sol::table ctx_table{ lua_view.create_table() };
+  sol::table ctx_table{ lua.create_table() };
 
   ctx_table["identity"] = identity;
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
@@ -41,12 +40,11 @@ sol::table build_stage_phase_ctx_table(lua_State *lua,
   return ctx_table;
 }
 
-std::filesystem::path determine_stage_destination(lua_State *lua,
+std::filesystem::path determine_stage_destination(sol::state_view lua,
                                                   cache::scoped_entry_lock const *lock) {
-  sol::state_view lua_view{ lua };
-  sol::object stage_obj{ lua_view["stage"] };
-  sol::object build_obj{ lua_view["build"] };
-  sol::object install_obj{ lua_view["install"] };
+  sol::object stage_obj{ lua["stage"] };
+  sol::object build_obj{ lua["build"] };
+  sol::object install_obj{ lua["install"] };
 
   bool const has_custom_phases{ stage_obj.is<sol::protected_function>() ||
                                 build_obj.is<sol::protected_function>() ||

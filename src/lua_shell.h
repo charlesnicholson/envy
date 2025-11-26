@@ -2,13 +2,9 @@
 
 #include "shell.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 namespace envy {
 
-// Parse a shell configuration from a Lua value at the given stack index
+// Parse a shell configuration from a Lua sol2 object
 // Accepts:
 //   - ENVY_SHELL constant (light userdata): shell_choice enum
 //   - Table: custom_shell (parsed via shell_parse_custom_from_lua)
@@ -16,8 +12,7 @@ namespace envy {
 // Throws std::runtime_error with context prefix on parse/validation failure
 //
 // The context parameter is used for error messages (e.g., "ctx.run", "default_shell")
-// Does NOT pop the value from the stack
 std::variant<shell_choice, custom_shell_file, custom_shell_inline>
-parse_shell_config_from_lua(lua_State *L, int index, char const *context);
+parse_shell_config_from_lua(sol::object const &obj, char const *context);
 
 }  // namespace envy

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sol/sol.hpp"
+
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -8,8 +10,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-
-struct lua_State;
 
 namespace envy {
 
@@ -24,22 +24,22 @@ enum class shell_choice { bash, sh, cmd, powershell };
 
 // Custom shell configuration for file mode (script written to temp file)
 struct custom_shell_file {
-  std::vector<std::string> argv;  // Must be non-empty, first element is shell executable path
+  std::vector<std::string> argv;  // first element is shell executable path
   std::string ext;                // Required, e.g. ".tcl", ".sh"
 };
 
 // Custom shell configuration for inline mode (script passed as command-line argument)
 struct custom_shell_inline {
-  std::vector<std::string> argv;  // Must be non-empty, first element is shell executable path
+  std::vector<std::string> argv;  // first element is shell executable path
 };
 
 using custom_shell = std::variant<custom_shell_file, custom_shell_inline>;
 
 // Manifest default_shell value (resolved to constant or custom shell)
-using default_shell_value = std::variant<
-  shell_choice,               // Built-in: ENVY_SHELL.BASH, etc.
-  custom_shell                // Custom: {file = ..., ext = ...} or {inline = ...}
->;
+using default_shell_value =
+    std::variant<shell_choice,  // Built-in: ENVY_SHELL.BASH, etc.
+                 custom_shell   // Custom: {file = ..., ext = ...} or {inline = ...}
+                 >;
 
 // Manifest default_shell configuration (optional, nullopt if not specified)
 using default_shell_cfg_t = std::optional<default_shell_value>;
@@ -62,8 +62,8 @@ shell_choice shell_parse_choice(std::optional<std::string_view> value);
 // Validate custom shell configuration (checks executable exists and is accessible)
 void shell_validate_custom(custom_shell const &cfg);
 
-// Parse custom shell from Lua table (expects table at top of stack, does not pop it)
-custom_shell shell_parse_custom_from_lua(::lua_State *L);
+// Parse custom shell from sol2 table
+custom_shell shell_parse_custom_from_lua(sol::table const &tbl);
 
 shell_env_t shell_getenv();
 shell_result shell_run(std::string_view script, shell_run_cfg const &cfg);

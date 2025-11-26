@@ -24,11 +24,10 @@ struct build_phase_ctx : lua_ctx_common {
   std::filesystem::path install_dir;
 };
 
-sol::table build_build_phase_ctx_table(lua_State *lua,
+sol::table build_build_phase_ctx_table(sol::state_view lua,
                                        std::string const &identity,
                                        build_phase_ctx *ctx) {
-  sol::state_view lua_view{ lua };
-  sol::table ctx_table{ lua_view.create_table() };
+  sol::table ctx_table{ lua.create_table() };
 
   ctx_table["identity"] = identity;
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
@@ -57,13 +56,11 @@ void run_programmatic_build(sol::protected_function build_func,
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
 
-  lua_State *L{ build_func.lua_state() };
-  sol::table ctx_table{ build_build_phase_ctx_table(L, identity, &ctx) };
+  sol::state_view lua{ build_func.lua_state() };
+  sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
 
   // Get options from registry and pass as 2nd arg
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
-  sol::object opts{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result result{ build_func(ctx_table, opts) };
 
