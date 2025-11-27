@@ -7,10 +7,6 @@
 #include "shell.h"
 #include "tui.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 #include <cstring>
 #include <stdexcept>
 
@@ -38,22 +34,20 @@ std::optional<std::filesystem::path> manifest::discover() {
 std::filesystem::path manifest::find_manifest_path(
     std::optional<std::filesystem::path> const &explicit_path) {
   if (explicit_path) {
-    auto path{ std::filesystem::absolute(*explicit_path) };
+    auto const path{ std::filesystem::absolute(*explicit_path) };
     if (!std::filesystem::exists(path)) {
       throw std::runtime_error("manifest not found: " + path.string());
     }
     return path;
   } else {
-    auto discovered{ discover() };
-    if (!discovered) { throw std::runtime_error("manifest not found (discovery failed)"); }
-    return *discovered;
+    if (auto const discovered{ discover() }) { return *discovered; }
+    throw std::runtime_error("manifest not found (discovery failed)");
   }
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
   tui::debug("Loading manifest from file: %s", manifest_path.string().c_str());
-  auto const content{ util_load_file(manifest_path) };
-  return load(content, manifest_path);
+  return load(util_load_file(manifest_path), manifest_path);
 }
 
 std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &content,
@@ -76,9 +70,9 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
                         sol::lib::io);
   lua_envy_install(*state);
 
-  sol::protected_function_result result =
-      state->safe_script(script, sol::script_pass_on_error);
-  if (!result.valid()) {
+  if (sol::protected_function_result const result{
+          state->safe_script(script, sol::script_pass_on_error) };
+      !result.valid()) {
     sol::error err = result;
     throw std::runtime_error(std::string("Failed to execute manifest script: ") +
                              err.what());
@@ -109,8 +103,8 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 std::unique_ptr<manifest> manifest::load(char const *script,
                                          std::filesystem::path const &manifest_path) {
   tui::debug("Loading manifest from C string");
-  std::vector<unsigned char> content(script, script + std::strlen(script));
-  return load(content, manifest_path);
+  return load(std::vector<unsigned char>(script, script + std::strlen(script)),
+              manifest_path);
 }
 
 default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
@@ -118,6 +112,20 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
 
   sol::object default_shell_obj{ (*lua_)["default_shell"] };
   if (!default_shell_obj.valid()) { return std::nullopt; }
+
+  // Helper to convert flat variant to nested variant structure
+  auto const convert_parsed{
+    [](std::variant<shell_choice, custom_shell_file, custom_shell_inline> const &parsed)
+        -> default_shell_value {
+      if (std::holds_alternative<shell_choice>(parsed)) {
+        return std::get<shell_choice>(parsed);
+      } else if (std::holds_alternative<custom_shell_file>(parsed)) {
+        return custom_shell{ std::get<custom_shell_file>(parsed) };
+      } else {
+        return custom_shell{ std::get<custom_shell_inline>(parsed) };
+      }
+    }
+  };
 
   if (default_shell_obj.is<sol::protected_function>()) {
     sol::protected_function default_shell_func{
@@ -134,34 +142,11 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
                                std::string{ err.what() });
     }
 
-    sol::object result_obj{ result.get<sol::object>() };
-    auto parsed{ parse_shell_config_from_lua(result_obj, "default_shell function") };
-
-    default_shell_value result_val;
-    if (std::holds_alternative<shell_choice>(parsed)) {
-      result_val = std::get<shell_choice>(parsed);
-    } else if (std::holds_alternative<custom_shell_file>(parsed)) {
-      result_val = custom_shell{ std::get<custom_shell_file>(parsed) };
-    } else {
-      result_val = custom_shell{ std::get<custom_shell_inline>(parsed) };
-    }
-    return result_val;
+    return convert_parsed(
+        parse_shell_config_from_lua(result.get<sol::object>(), "default_shell function"));
   }
 
-  try {  // Parse constant or table using unified parser
-    auto parsed{ parse_shell_config_from_lua(default_shell_obj, "default_shell") };
-
-    // Convert flat variant to nested variant structure
-    default_shell_value result;
-    if (std::holds_alternative<shell_choice>(parsed)) {
-      result = std::get<shell_choice>(parsed);
-    } else if (std::holds_alternative<custom_shell_file>(parsed)) {
-      result = custom_shell{ std::get<custom_shell_file>(parsed) };
-    } else {
-      result = custom_shell{ std::get<custom_shell_inline>(parsed) };
-    }
-    return result;
-  } catch (std::exception const &e) { throw; }
+  return convert_parsed(parse_shell_config_from_lua(default_shell_obj, "default_shell"));
 }
 
 }  // namespace envy

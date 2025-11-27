@@ -13,6 +13,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import RecipePhase, TraceParser
 
 
 class TestEnginePhases(unittest.TestCase):
@@ -22,8 +23,6 @@ class TestEnginePhases(unittest.TestCase):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
-        # Enable trace for all tests if ENVY_TEST_TRACE is set
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -39,11 +38,12 @@ class TestEnginePhases(unittest.TestCase):
         return result.stdout.strip()
 
     def test_phase_execution_check_false(self):
-        """Engine executes check() and install() phases with TRACE logging."""
+        """Engine executes check() and install() phases with structured trace."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                "--trace",
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
@@ -55,26 +55,19 @@ class TestEnginePhases(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify TRACE logs show phase execution
-        stderr_lower = result.stderr.lower()
-        self.assertIn(
-            "check", stderr_lower, f"Expected check phase log: {result.stderr}"
-        )
-        self.assertIn(
-            "install", stderr_lower, f"Expected install phase log: {result.stderr}"
-        )
-        self.assertIn(
-            "local.simple@v1",
-            stderr_lower,
-            f"Expected identity in logs: {result.stderr}",
-        )
+        # Verify phase execution via structured trace
+        parser = TraceParser(trace_file)
+        phase_sequence = parser.get_phase_sequence("local.simple@v1")
+        self.assertIn(RecipePhase.ASSET_CHECK, phase_sequence)
+        self.assertIn(RecipePhase.ASSET_INSTALL, phase_sequence)
 
     def test_fetch_function_basic(self):
         """Engine executes fetch() phase for recipes with fetch function."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                "--trace",
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher@v1",
                 "test_data/recipes/fetch_function_basic.lua",
@@ -86,16 +79,10 @@ class TestEnginePhases(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify TRACE logs show fetch phase execution
-        stderr_lower = result.stderr.lower()
-        self.assertIn(
-            "fetch", stderr_lower, f"Expected fetch phase log: {result.stderr}"
-        )
-        self.assertIn(
-            "local.fetcher@v1",
-            stderr_lower,
-            f"Expected identity in logs: {result.stderr}",
-        )
+        # Verify fetch phase execution via structured trace
+        parser = TraceParser(trace_file)
+        phase_sequence = parser.get_phase_sequence("local.fetcher@v1")
+        self.assertIn(RecipePhase.ASSET_FETCH, phase_sequence)
 
         # Verify output contains asset hash
         lines = [line for line in result.stdout.strip().split("\n") if line]
@@ -106,10 +93,11 @@ class TestEnginePhases(unittest.TestCase):
 
     def test_fetch_function_with_dependency(self):
         """Engine executes fetch() with dependencies available."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                "--trace",
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher_with_dep@v1",
                 "test_data/recipes/fetch_function_with_dep.lua",
@@ -132,6 +120,12 @@ class TestEnginePhases(unittest.TestCase):
         # Verify main recipe executed
         main_lines = [l for l in lines if "local.fetcher_with_dep@v1" in l]
         self.assertEqual(len(main_lines), 1)
+
+        # Verify dependency relationship via structured trace
+        parser = TraceParser(trace_file)
+        deps = parser.get_dependency_added_events("local.fetcher_with_dep@v1")
+        dep_names = [d.raw.get("dependency") for d in deps]
+        self.assertIn("local.tool@v1", dep_names)
 
 
 if __name__ == "__main__":
