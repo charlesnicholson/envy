@@ -13,12 +13,12 @@ Both integrate via iterative graph expansion/resolution with convergence.
 
 - ✅ **Phase 0**: Phase Enum Unification (complete)
 - ✅ **Phase 1**: Shared Fetch API (complete)
-- ⚠️ **Phase 2**: Nested Source Dependencies (parsing complete, execution pending)
+- ⚠️ **Phase 2**: Nested Source Dependencies (Tasks 2.1-2.5 complete, 2.6-2.7 pending)
 - ❌ **Phase 3**: Weak Dependency Resolution (not started)
 - ❌ **Phase 4**: Integration (not started)
 - ❌ **Phase 5**: Documentation & Polish (not started)
 
-**Current State**: recipe_spec can parse `source.dependencies` with validation. Dynamic function lookup via `lookup_and_push_source_fetch()`. Execution in phase_recipe_fetch and recipe_fetch_context not yet implemented.
+**Current State**: Custom fetch execution complete (Tasks 2.1-2.5)—parsing, validation, fetch dependency processing, context creation, and function execution all working. Remaining: cycle detection extraction (2.6) and functional tests (2.7).
 
 ---
 
@@ -131,7 +131,8 @@ Enable recipes to declare dependencies needed for fetching other recipes' Lua fi
 ### Status Summary
 
 - ✅ Parsing: recipe_spec parses `source.dependencies` and validates constraints
-- ❌ Execution: phase_recipe_fetch does not yet handle fetch_function sources
+- ✅ Fetch dependency processing: `process_fetch_dependencies()` adds fetch deps to dependency map
+- ⚠️ Custom fetch execution: phase_recipe_fetch does not yet handle fetch_function sources
 - ❌ Context API: No recipe_fetch_context implementation yet
 - ❌ Functional tests: Only parsing unit tests exist
 
@@ -143,7 +144,14 @@ Enable recipes to declare dependencies needed for fetching other recipes' Lua fi
 - parse_source_table() validates and recursively parses dependencies
 - lookup_and_push_source_fetch() dynamically retrieves functions (no caching)
 
-**Design principle**: recipe_spec remains POD-like. No lua_State pointers cached. Functions looked up on-demand from owning recipe's lua_State.
+**engine changes** (src/engine.h/cpp):
+- process_fetch_dependencies() helper (engine.cpp:205-244)
+- Called from run_recipe_thread() before phase loop (engine.cpp:256-258)
+- Adds fetch deps to r->dependencies with needed_by=recipe_fetch
+- Cycle detection via ancestor chain (same as regular deps)
+- Phase loop's existing wait logic handles blocking automatically
+
+**Design principle**: recipe_spec remains POD-like. No lua_State pointers cached. Functions looked up on-demand from owning recipe's lua_State. Fetch deps are regular dependencies—no special casing.
 
 ### Remaining Work
 
@@ -210,10 +218,13 @@ void engine::run_recipe_thread(recipe *r) {
 
 When `spec.source` is `fetch_function` variant:
 1. Fetch deps already complete (guaranteed by phase loop wait)
-2. Create `recipe_fetch_context` with fetch_dir/work_dir
-3. Call custom fetch function via `lookup_and_push_source_fetch()`
-4. Expect `work_dir/recipe.lua` as output, import to cache
-5. Load cached recipe.lua, continue normal processing
+2. Create `fetch_phase_ctx` with fetch_dir (internal), run_dir (tmp_dir exposed), stage_dir
+3. Register fetch bindings via `lua_ctx_bindings_register_fetch_phase()` (ctx.fetch + ctx.commit_fetch)
+4. Call custom fetch function via `lookup_and_push_source_fetch()`
+5. Custom fetch writes recipe.lua to tmp_dir, optionally uses ctx.fetch/commit_fetch for downloads
+6. Load `cache.recipes_dir / identity / recipe.lua` (committed by custom fetch), continue normal processing
+
+**Security boundary**: fetch_dir never exposed to Lua—only accessible via ctx.commit_fetch() which enforces SHA256 verification.
 
 ### Tasks
 
@@ -229,30 +240,39 @@ When `spec.source` is `fetch_function` variant:
   - ✅ Error if source table has neither dependencies nor fetch
   - ✅ Unit tests in recipe_spec_custom_source_tests.cpp validate all constraints
 
-- [ ] 2.3: Implement fetch dependency processing in `run_recipe_thread()`
-  - Location: engine.cpp, after getting execution context, BEFORE phase loop
-  - For each dep in `spec.source_dependencies`:
-    - Cycle detection against `ctx.ancestor_chain` (same as regular deps)
-    - `ensure_recipe(&fetch_dep_spec)` to get/create recipe node
-    - Add to `r->dependencies` map with `needed_by = recipe_phase::recipe_fetch`
-    - Build child ancestor chain: `ctx.ancestor_chain + r->spec->identity`
-    - `start_recipe_thread(fetch_dep, completion, child_chain)`
-  - Existing phase loop dependency wait logic handles blocking automatically
-  - Unit test: extract cycle detection to `validate_fetch_dependency_cycle()`, test cases in isolation
+- [x] 2.3: Implement fetch dependency processing in `run_recipe_thread()`
+  - ✅ Extracted `process_fetch_dependencies()` helper (engine.cpp:205-244)
+  - ✅ Called from `run_recipe_thread()` before phase loop (engine.cpp:256-258)
+  - ✅ Cycle detection: self-loops and ancestor chain checks
+  - ✅ Adds fetch deps to `r->dependencies` map with `needed_by = recipe_phase::recipe_fetch`
+  - ✅ Starts fetch dep threads to `completion` phase
+  - ✅ Emits `ENVY_TRACE_DEPENDENCY_ADDED` events
+  - ✅ Phase loop's existing wait logic (lines 280-290) blocks recipe_fetch until deps complete
+  - ⚠️ Unit tests: cycle detection not yet extracted to pure function (defer to Task 2.6)
 
-- [ ] 2.4: Create `recipe_fetch_context` using shared fetch API
-  - Compose from `fetch_context_common` (Phase 1)
-  - Expose `ctx:fetch(source, sha256)`, `ctx:import_file(path, sha256)` to Lua
-  - Provide `ctx:work_dir()`, `ctx:fetch_dir()` for path queries
+- [x] 2.4: Create context and register fetch bindings for custom fetch
+  - ✅ Use existing `fetch_phase_ctx` from Phase 1 (no new struct needed)
+  - ✅ Set paths: `fetch_dir` (internal only), `run_dir` (tmp_dir), `stage_dir`, `engine_`, `recipe_`
+  - ✅ Create Lua context table with `identity` and `tmp_dir` fields
+  - ✅ `identity`: recipe's canonical identity string (e.g., "local.python@r4")—exposed in all recipe phase contexts
+  - ✅ `tmp_dir`: ephemeral working directory—files deleted after phase unless explicitly committed
+  - ✅ **Note**: Manifest scripts don't get `identity` field since manifests aren't recipes
+  - ✅ Call `lua_ctx_bindings_register_fetch_phase()` to register `ctx.fetch()` and `ctx.commit_fetch()`
+  - ✅ **Security boundary**: fetch_dir NOT exposed to Lua—only accessible via commit_fetch()
+  - ✅ Two-step pattern: ctx.fetch() downloads to tmp_dir, ctx.commit_fetch() verifies SHA256 and moves to fetch_dir
+  - ✅ Implementation: phase_recipe_fetch.cpp:186-265
 
-- [ ] 2.5: Handle `fetch_function` variant in `phase_recipe_fetch`
-  - Location: phase_recipe_fetch.cpp:173, add `else if (fetch_function*)` branch
-  - Fetch deps guaranteed complete by this point (blocked in phase loop)
-  - Create `recipe_fetch_context` with cache paths
-  - Call custom fetch via `lookup_and_push_source_fetch()`, execute with `sol::protected_function`
-  - Expect `work_dir/recipe.lua` output, import to `cache.recipes_dir / identity / recipe.lua`
-  - Continue to line 177 equivalent (load cached recipe.lua, normal dependency processing)
-  - Add trace events: `custom_fetch_start`, `custom_fetch_complete`
+- [x] 2.5: Handle `fetch_function` variant in `phase_recipe_fetch`
+  - ✅ Location: phase_recipe_fetch.cpp:186, added `else if (spec.has_fetch_function())` branch
+  - ✅ Fetch deps guaranteed complete by this point (blocked in phase loop)
+  - ✅ Create `fetch_phase_ctx` with cache paths (Task 2.4)
+  - ✅ Look up custom fetch via `lookup_and_push_source_fetch()`, execute with `sol::protected_function`
+  - ✅ Pass context table as first argument (ctx), options as second argument
+  - ✅ Custom fetch writes to tmp_dir, uses ctx.fetch/commit_fetch for downloads
+  - ✅ After function returns: load `cache.recipes_dir / identity / recipe.lua` (committed by custom fetch)
+  - ✅ Continue to line 270 equivalent (parse dependencies from loaded recipe.lua)
+  - ✅ Trace events: reuse existing `lua_ctx_fetch_start/complete` (emitted by ctx.fetch)
+  - ✅ Helper function: `find_owning_recipe()` locates parent Lua state for fetch function lookup
 
 - [ ] 2.6: Cycle detection for fetch dependencies
   - Integrated into Task 2.3—same mechanism as regular deps (engine.cpp:250-268)
@@ -273,7 +293,9 @@ When `spec.source` is `fetch_function` variant:
 - Functional tests: Threading, blocking, phase coordination, graph traversal
 - Rationale: Engine threading/CV behavior not unit-testable without major refactoring; functional tests adequate (582 tests run in ~20s)
 
-**Note**: Old `needed_by="recipe_fetch"` manifest syntax is deprecated. Use `source.dependencies` instead. No validation task needed—old syntax can be removed in separate cleanup.
+**Notes**:
+- Old `needed_by="recipe_fetch"` manifest syntax is deprecated. Use `source.dependencies` instead. No validation task needed—old syntax can be removed in separate cleanup.
+- Alias feature removed (recipe_spec::alias field, engine::register_alias(), engine::aliases_ map, all tests). Was never implemented/used. Replacement feature planned after weak dependencies complete.
 
 ---
 

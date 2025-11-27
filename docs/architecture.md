@@ -25,9 +25,9 @@ local common = {
         recipe = "corporate.toolchain@v1",
         fetch = function(ctx)
             local jfrog = ctx:asset("jfrog.cli@v2")
-            local work = ctx:work_dir()
-            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-            ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "sha256_here...")
+            local tmp = ctx.tmp_dir
+            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
+            ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "sha256_here...")
         end,
         dependencies = {
             { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
@@ -335,11 +335,11 @@ fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity
+  identity = string,                                -- Recipe identity (recipes only, not manifests)
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories
-  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+  tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
   fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided

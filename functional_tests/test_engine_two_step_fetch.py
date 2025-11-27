@@ -54,7 +54,7 @@ function fetch(ctx, opts)
   -- Step 1: Download to tmp (ungated)
   local file = ctx.fetch("{self.lua_path(test_file)}")
 
-  -- At this point, file is in ctx.tmp (run_dir), not fetch_dir
+  -- At this point, file is in ctx.tmp_dir (run_dir), not fetch_dir
   -- User could inspect it, read manifest, fetch more files, etc.
 
   -- Step 2: Commit with SHA256 (gated)
@@ -106,7 +106,7 @@ function fetch(ctx, opts)
   local manifest_file = ctx.fetch("{self.lua_path(manifest_file)}")
 
   -- Step 2: Read manifest from tmp (this is the point of two-step pattern!)
-  local manifest_path = ctx.tmp .. "/" .. manifest_file
+  local manifest_path = ctx.tmp_dir .. "/" .. manifest_file
   local f = io.open(manifest_path, "r")
   if not f then error("Cannot read manifest from tmp") end
   local manifest_content = f:read("*all")

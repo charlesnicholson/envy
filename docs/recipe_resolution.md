@@ -62,9 +62,9 @@ dependencies = {
   recipe = "corporate.toolchain@v1",
   fetch = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Requires jfrog CLI installed
-    local work = ctx:work_dir()
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-    ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "abc123...")
+    local tmp = ctx.tmp_dir
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
+    ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "abc123...")
   end,
   dependencies = {
     {
@@ -229,11 +229,11 @@ end
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity ("vendor.lib@v1")
+  identity = string,                                -- Recipe identity ("vendor.lib@v1") - recipes only, not manifests
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories (read-only paths)
-  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+  tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
   fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
@@ -276,7 +276,7 @@ function fetch(ctx)
   -- files = {"gcc.tar.gz", "gcc.tar.gz.sig"}
 
   -- Optional: verify signature using downloaded files
-  -- (both files are now in ctx.tmp directory)
+  -- (both files are now in ctx.tmp_dir directory)
 end
 ```
 
@@ -350,9 +350,9 @@ packages = {
     recipe = "corporate.toolchain@v1",
     fetch = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")
-      local work = ctx:work_dir()
-      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-      ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "abc123...")
+      local tmp = ctx.tmp_dir
+      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
+      ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "abc123...")
     end,
     dependencies = {
       { recipe = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }

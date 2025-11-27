@@ -127,6 +127,8 @@ ctx = {
 - Layout guarantee: inheritance ensures proper memory layout for safe casting to base type
 - `lua_ctx_common` fields: `fetch_dir`, `run_dir` (default cwd for ctx.run()), `state`, `key`
 - `run_dir` clarifies it's the phase-specific working directory (not lock->work_dir())
+- **Lua-exposed fields:** `ctx.identity` (recipe's canonical identity, e.g. "local.python@r4"), `ctx.tmp_dir` (ephemeral working directory)
+- **Note:** Manifest scripts don't get `ctx.identity` since manifests aren't recipes
 - Registration API: `lua_ctx_bindings_register_*(lua_State*, context)`
 - All phases get: run(), asset(), copy(), move(), extract()
 - Phase-specific: fetch()/commit_fetch() (fetch), extract_all() (stage convenience)

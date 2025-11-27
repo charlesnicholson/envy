@@ -2,6 +2,7 @@
 
 #include "engine.h"
 #include "fetch.h"
+#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
 #include "recipe.h"
 #include "sha256.h"
@@ -16,6 +17,18 @@
 namespace envy {
 
 namespace {
+
+// Find the recipe that owns a given recipe_spec pointer
+// Returns nullptr if not found (should only happen for root recipes from manifest)
+recipe *find_owning_recipe(engine &eng, recipe_spec const *spec) {
+  // Iterate through all recipes to find which one owns this spec
+  for (auto const &match : eng.find_matches("")) {  // Empty query matches all
+    for (auto const &owned_spec : match->owned_dependency_specs) {
+      if (&owned_spec == spec) { return match; }
+    }
+  }
+  return nullptr;
+}
 
 void validate_phases(lua_State *lua, std::string const &identity) {
   sol::state_view lua_view{ lua };
@@ -169,6 +182,77 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       sol::error err = result;
       throw std::runtime_error("Failed to load recipe: " + spec.identity + ": " +
                                err.what());
+    }
+  } else if (spec.has_fetch_function()) {
+    // Custom fetch with source dependencies
+    // Find the owning recipe (parent) that defined this dependency
+    recipe *parent{ find_owning_recipe(eng, r->spec) };
+    if (!parent || !parent->lua) {
+      throw std::runtime_error(
+          "Custom fetch function recipe has no parent Lua state: " + spec.identity);
+    }
+
+    // Get cache entry for this recipe
+    auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
+
+    if (cache_result.lock) {
+      tui::debug("fetch recipe %s via custom fetch function", spec.identity.c_str());
+
+      // Create fetch_phase_ctx for custom fetch function
+      fetch_phase_ctx ctx;
+      ctx.fetch_dir = cache_result.lock->install_dir();
+      ctx.run_dir = cache_result.lock->work_dir() / "tmp";
+      ctx.stage_dir = cache_result.lock->stage_dir();
+      ctx.engine_ = &eng;
+      ctx.recipe_ = r;
+
+      // Create tmp directory for downloads
+      std::filesystem::create_directories(ctx.run_dir);
+
+      // Build Lua context table with all fetch bindings
+      lua_State *parent_lua{ parent->lua->lua_state() };
+      sol::state_view parent_lua_view{ parent_lua };
+      sol::table ctx_table{ build_fetch_phase_ctx_table(parent_lua_view, spec.identity, &ctx) };
+
+      // Look up the fetch function from parent's dependencies
+      if (!recipe_spec::lookup_and_push_source_fetch(parent_lua, spec.identity)) {
+        throw std::runtime_error("Failed to lookup fetch function for: " + spec.identity);
+      }
+
+      // Stack: [function]
+      // Get options from registry
+      lua_rawgeti(parent_lua, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
+      // Stack: [function, options]
+
+      // Call fetch(ctx, options)
+      sol::protected_function fetch_func{ parent_lua_view, sol::stack_reference(parent_lua, -2) };
+      sol::object options_obj{ parent_lua_view, sol::stack_reference(parent_lua, -1) };
+
+      sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
+      lua_pop(parent_lua, 2);  // Pop function and options
+
+      if (!fetch_result.valid()) {
+        sol::error err{ fetch_result };
+        throw std::runtime_error("Fetch function failed for " + spec.identity + ": " +
+                                 err.what());
+      }
+
+      cache_result.lock->mark_install_complete();
+      cache_result.lock.reset();
+    }
+
+    // Load the recipe.lua that was created by custom fetch
+    recipe_path = cache_result.asset_path / "recipe.lua";
+    if (!std::filesystem::exists(recipe_path)) {
+      throw std::runtime_error("Custom fetch did not create recipe.lua for: " + spec.identity);
+    }
+
+    sol::protected_function_result result =
+        lua->safe_script_file(recipe_path.string(), sol::script_pass_on_error);
+    if (!result.valid()) {
+      sol::error err = result;
+      throw std::runtime_error("Failed to load recipe after custom fetch: " + spec.identity +
+                               ": " + err.what());
     }
   } else {
     throw std::runtime_error("Unsupported source type: " + spec.identity);
