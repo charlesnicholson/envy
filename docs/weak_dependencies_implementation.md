@@ -24,9 +24,9 @@ Both integrate via iterative graph expansion/resolution with convergence.
 
 ## Terminology
 
-**Reference-only dependency**: Partial identity match (e.g., `{reference = "python"}`) without fallback. Recipe declares "I need something matching 'python' but won't tell you how to get it—someone else must provide it." Errors if no match found after resolution.
+**Reference-only dependency**: Partial identity match (e.g., `{recipe = "python"}`) without source or fallback. Recipe declares "I need something matching 'python' but won't tell you how to get it—someone else must provide it." Errors if no match found after resolution.
 
-**Weak dependency**: Partial identity match with fallback recipe (e.g., `{reference = "python", weak = {...}}`). Recipe declares "I prefer something matching 'python' from elsewhere, but here's a fallback if not found." Uses fallback only if no match exists after strong closure.
+**Weak dependency**: Partial identity match with fallback recipe (e.g., `{recipe = "python", weak = {...}}`). Recipe declares "I prefer something matching 'python' from elsewhere, but here's a fallback if not found." Uses fallback only if no match exists after strong closure.
 
 **Partial identity matching**: Query matches namespace/name/revision (ignoring options). Examples:
 - `"python"` matches `*.python@*` (any namespace, any revision, any options)
@@ -67,11 +67,11 @@ source = {
 **Planned Syntax**:
 ```lua
 dependencies = {
-  { reference = "python" },  -- Reference-only: error if not found
+  { recipe = "python" },  -- Reference-only: error if not found
 
   {
-    reference = "python",  -- Weak: use fallback if not found
-    weak = { recipe = "local.python@r4", source = "...", options = {...} }
+    recipe = "python",  -- Weak: use fallback if not found
+    weak = { source = "...", options = {...} }
   }
 }
 ```
@@ -86,7 +86,7 @@ Nested source dependencies will support weak references:
 ```lua
 source = {
   dependencies = {
-    { reference = "jfrog", weak = { recipe = "jfrog.cli@v2", ... } }
+    { recipe = "jfrog.cli", weak = { source = "...", ... } }
   },
   fetch = function(ctx) ... end
 }
@@ -147,52 +147,73 @@ Enable recipes to declare dependencies needed for fetching other recipes' Lua fi
 
 ### Remaining Work
 
-Execution in phase_recipe_fetch:
+Fetch dependency processing happens in `run_recipe_thread()` BEFORE the phase loop begins. No special casing—fetch deps added to `r->dependencies` map with `needed_by = recipe_phase::recipe_fetch`, then existing phase coordination logic handles blocking.
 
-During phase_recipe_fetch:
+**Execution flow:**
+
+```cpp
+void engine::run_recipe_thread(recipe *r) {
+  auto &ctx{get_execution_ctx(r)};
+
+  // Process fetch dependencies BEFORE phase loop
+  if (!r->spec->source_dependencies.empty()) {
+    for (auto &fetch_dep_spec : r->spec->source_dependencies) {
+      // Cycle detection: check against ancestor chain
+      if (r->spec->identity == fetch_dep_spec.identity) {
+        error("Self-loop: " + r->spec->identity + " → " + fetch_dep_spec.identity);
+      }
+
+      for (auto const &ancestor : ctx.ancestor_chain) {
+        if (ancestor == fetch_dep_spec.identity) {
+          error("Fetch dependency cycle: " + build_cycle_path(...));
+        }
+      }
+
+      recipe *fetch_dep{ensure_recipe(&fetch_dep_spec)};
+
+      // Add to dependencies map - phase loop will handle blocking
+      r->dependencies[fetch_dep_spec.identity] = {fetch_dep, recipe_phase::recipe_fetch};
+      ENVY_TRACE_FETCH_DEPENDENCY_ADDED(r->spec->identity, fetch_dep_spec.identity);
+
+      // Build child chain, start thread to completion
+      std::vector<std::string> child_chain{ctx.ancestor_chain};
+      child_chain.push_back(r->spec->identity);
+      start_recipe_thread(fetch_dep, recipe_phase::completion, std::move(child_chain));
+    }
+  }
+
+  try {
+    while (true) {  // Phase loop begins
+      recipe_phase const target{ctx.target_phase};
+      recipe_phase const current{ctx.current_phase};
+
+      if (current >= target) { /* wait for target extension */ }
+
+      recipe_phase const next{current + 1};
+
+      // Wait for dependencies needed by this phase (EXISTING LOGIC)
+      for (auto const &[dep_identity, dep_info] : r->dependencies) {
+        if (next >= dep_info.needed_by) {
+          // Fetch deps have needed_by=recipe_fetch, so they block here
+          ensure_recipe_at_phase(dep_info.recipe_ptr->key, recipe_phase::completion);
+        }
+      }
+
+      // Run phase - fetch deps guaranteed complete by this point
+      phase_dispatch_table[next](r, *this);
+      // ...
 ```
-phase_recipe_fetch(recipe):
-  # Get ancestor chain from execution context (per-thread traversal state)
-  ancestor_chain = engine.get_execution_ctx(recipe).ancestor_chain
 
-  # Process dependencies discovered in recipe Lua
-  for dep_spec in recipe.dependencies:
+**Key insight:** Fetch dependencies are just regular dependencies with `needed_by = recipe_phase::recipe_fetch`. The recipe thread starts, populates its dependency map, then enters the phase loop. When advancing to `recipe_fetch`, the existing dependency wait logic blocks until fetch deps reach `completion`. No special paths.
 
-    if dep_spec.source has custom_fetch:
-      # Nested source dependencies
-      for fetch_dep_spec in dep_spec.source.dependencies:
-        # Cycle detection: check if fetch_dep already in ancestor chain
-        if fetch_dep_spec.identity == recipe.identity:
-          error("Self-loop: " + recipe.identity + " → " + fetch_dep_spec.identity)
+**Custom fetch execution** (in `phase_recipe_fetch`):
 
-        for ancestor in ancestor_chain:
-          if ancestor == fetch_dep_spec.identity:
-            error("Fetch dependency cycle: " + build_cycle_path(ancestor_chain, fetch_dep_spec.identity))
-
-        # Create child recipe node
-        fetch_dep = ensure_recipe(fetch_dep_spec)
-
-        # Build child ancestor chain including nested context
-        fetch_dep_chain = ancestor_chain
-        fetch_dep_chain.append(recipe.identity)          # Current recipe
-        fetch_dep_chain.append(dep_spec.identity)        # Outer dep (whose fetch needs this)
-
-        # Implicit needed_by: fetch dep fully completes before outer recipe's recipe_fetch
-        # NOTE: completion phase intentional - bootstrap tools (e.g., jfrog) must be fully
-        # installed before they can be used to fetch recipes from authenticated sources
-        start_recipe_thread(fetch_dep, recipe_phase::completion, fetch_dep_chain)
-        ensure_recipe_at_phase(fetch_dep.key, recipe_phase::completion)
-
-      # Now run custom fetch function (prerequisites available)
-      run_custom_fetch(dep_spec.source.fetch, recipe_fetch_context{
-        fetch_dir: cache.recipes_dir / dep_spec.identity / "fetch",
-        work_dir: cache.recipes_dir / dep_spec.identity / "work"
-      })
-
-    # Continue with normal dep processing...
-```
-
-**Cycle detection**: Fetch dependencies added to ancestor chain before recursing. Current implementation (engine.cpp:195-223) checks identity against ancestor chain; same mechanism applies to nested fetch deps if added properly during processing.
+When `spec.source` is `fetch_function` variant:
+1. Fetch deps already complete (guaranteed by phase loop wait)
+2. Create `recipe_fetch_context` with fetch_dir/work_dir
+3. Call custom fetch function via `lookup_and_push_source_fetch()`
+4. Expect `work_dir/recipe.lua` as output, import to cache
+5. Load cached recipe.lua, continue normal processing
 
 ### Tasks
 
@@ -208,38 +229,49 @@ phase_recipe_fetch(recipe):
   - ✅ Error if source table has neither dependencies nor fetch
   - ✅ Unit tests in recipe_spec_custom_source_tests.cpp validate all constraints
 
-- [ ] 2.3: Implement fetch dependency processing in `phase_recipe_fetch`
-  - Check if `spec.source` is `fetch_function` variant
+- [ ] 2.3: Implement fetch dependency processing in `run_recipe_thread()`
+  - Location: engine.cpp, after getting execution context, BEFORE phase loop
   - For each dep in `spec.source_dependencies`:
-    - Check for cycles against ancestor_chain (same as regular deps)
-    - Build child ancestor chain: `ancestor_chain + current_identity + outer_dep_identity`
-    - `ensure_recipe()` + `start_recipe_thread(completion, child_chain)`
-  - Implicit `needed_by = completion` (fetch dep fully installs before outer recipe_fetch)
-  - Wait for all fetch deps via `ensure_recipe_at_phase(completion)`
+    - Cycle detection against `ctx.ancestor_chain` (same as regular deps)
+    - `ensure_recipe(&fetch_dep_spec)` to get/create recipe node
+    - Add to `r->dependencies` map with `needed_by = recipe_phase::recipe_fetch`
+    - Build child ancestor chain: `ctx.ancestor_chain + r->spec->identity`
+    - `start_recipe_thread(fetch_dep, completion, child_chain)`
+  - Existing phase loop dependency wait logic handles blocking automatically
+  - Unit test: extract cycle detection to `validate_fetch_dependency_cycle()`, test cases in isolation
 
 - [ ] 2.4: Create `recipe_fetch_context` using shared fetch API
-  - Inherit/compose `fetch_context_common`
-  - Expose `ctx.fetch()`, `ctx.import_file()` to Lua
-  - Use shared Lua API registration from Phase 1
+  - Compose from `fetch_context_common` (Phase 1)
+  - Expose `ctx:fetch(source, sha256)`, `ctx:import_file(path, sha256)` to Lua
+  - Provide `ctx:work_dir()`, `ctx:fetch_dir()` for path queries
 
-- [ ] 2.5: Run custom fetch function with recipe_fetch_context
-  - Use `recipe_spec::lookup_and_push_source_fetch()` to get function
-  - Create context with fetch_dir/work_dir
-  - Call function, handle errors
-  - Implicit commit on successful return
+- [ ] 2.5: Handle `fetch_function` variant in `phase_recipe_fetch`
+  - Location: phase_recipe_fetch.cpp:173, add `else if (fetch_function*)` branch
+  - Fetch deps guaranteed complete by this point (blocked in phase loop)
+  - Create `recipe_fetch_context` with cache paths
+  - Call custom fetch via `lookup_and_push_source_fetch()`, execute with `sol::protected_function`
+  - Expect `work_dir/recipe.lua` output, import to `cache.recipes_dir / identity / recipe.lua`
+  - Continue to line 177 equivalent (load cached recipe.lua, normal dependency processing)
+  - Add trace events: `custom_fetch_start`, `custom_fetch_complete`
 
 - [ ] 2.6: Cycle detection for fetch dependencies
-  - Integrated into Task 2.3 (same mechanism as regular deps)
-  - Build child chain including nested context before starting thread
-  - Error if cycle detected with full path
-  - Unit test: A→B (fetch needs C), C→D (fetch needs A) → cycle error
+  - Integrated into Task 2.3—same mechanism as regular deps (engine.cpp:250-268)
+  - Extract to testable function: `validate_fetch_dependency_cycle(candidate, ancestor_chain)`
+  - Unit tests: no cycle, direct cycle, self-loop, annotated error messages
+  - Functional test: A fetch needs B, B fetch needs A → cycle error with full path
 
 - [ ] 2.7: Functional tests for nested source dependencies
-  - Test: JFrog bootstrap (A→toolchain, toolchain fetch needs jfrog)
-  - Test: Multi-level nesting (A→B fetch needs C, C fetch needs D)
-  - Test: Fetch dep with options (verify correct version installed)
-  - Test: Multiple fetch deps (parallel install, then fetch)
-  - Test: Fetch dep cycle detection
+  - Test: Simple (A fetch needs B) - validates basic flow, blocking, completion
+  - Test: Context API (custom fetch uses ctx:fetch(), ctx:import_file(), SHA256 verification)
+  - Test: Multi-level nesting (A fetch needs B, B fetch needs C)
+  - Test: Multiple fetch deps (A fetch needs [B, C] - parallel installation)
+  - Test: Cycle detection (A fetch needs B, B fetch needs A → error with path)
+  - All tests use TraceParser to verify event sequences, not just success/failure
+
+**Testing strategy:**
+- Unit tests: Parsing (done), cycle detection (extract to pure function)
+- Functional tests: Threading, blocking, phase coordination, graph traversal
+- Rationale: Engine threading/CV behavior not unit-testable without major refactoring; functional tests adequate (582 tests run in ~20s)
 
 **Note**: Old `needed_by="recipe_fetch"` manifest syntax is deprecated. Use `source.dependencies` instead. No validation task needed—old syntax can be removed in separate cleanup.
 
@@ -368,12 +400,11 @@ resolve_weak_references():
 ### Tasks
 
 - [ ] 3.1: Extend `recipe_spec` for weak dependencies
-  - Add `reference` field (std::optional<std::string>) representing partial identity query
   - Add `weak` field (std::optional<recipe_spec>) as fallback recipe
-  - Parse: `{ reference = "...", weak = {...} }` or `{ reference = "..." }`
-  - Validate: `reference` and `recipe` mutually exclusive (can't be both strong and weak)
-  - Note: "reference" is predicate for matching, not a recipe member—tests "is this weak?"
-  - Unit test: parse reference-only, weak, error on exclusive violation
+  - Parse: `{ recipe = "...", weak = {...} }` (weak) or `{ recipe = "..." }` (reference-only)
+  - Validate: `weak` and `source` mutually exclusive (can't be both strong and weak)
+  - Distinction: reference-only has `recipe` only; weak has `recipe` + `weak`; strong has `recipe` + `source`
+  - Unit test: parse reference-only, weak, error on source+weak violation
 
 - [ ] 3.2: Add `weak_references` to recipe struct
   - Struct: `weak_reference { identity, weak_fallback_spec, resolved, needed_by }`
@@ -381,9 +412,9 @@ resolve_weak_references():
   - Initialized empty, populated during `phase_recipe_fetch`
 
 - [ ] 3.3: Collect weak refs in `phase_recipe_fetch`
-  - When parsing dependencies: check if `dep_spec.reference` present
-  - If yes: store in `recipe.weak_references` (don't instantiate node yet)
-  - If no: strong dep → `ensure_recipe()` + thread start (current behavior)
+  - When parsing dependencies: check if `dep_spec` has no `source` field (weak or reference-only)
+  - If no source: store in `recipe.weak_references` (don't instantiate node yet)
+  - If has source: strong dep → `ensure_recipe()` + thread start (current behavior)
   - Unit test: recipe with weak refs populates `weak_references` vector
 
 - [ ] 3.4: Implement `engine::resolve_weak_references()`
@@ -445,7 +476,7 @@ parse_recipe_spec(lua_value):
   if source is table with "dependencies":
     fetch_deps = []
     for dep_val in source.dependencies:
-      dep_spec = parse_recipe_spec(dep_val)  # May have "reference" field
+      dep_spec = parse_recipe_spec(dep_val)  # May lack source (weak/reference-only)
       fetch_deps.append(dep_spec)
 
     # Fetch deps can be weak
@@ -461,11 +492,11 @@ parse_recipe_spec(lua_value):
 ```
 # When processing nested source dependencies during phase_recipe_fetch:
 for fetch_dep_spec in outer_dep.source.dependencies:
-  if fetch_dep_spec.reference:
+  if !fetch_dep_spec.has_source():
     # Nested fetch dep is weak/reference-only
     # Store in unresolved set, resolve during weak resolution phase
     unresolved.add((outer_recipe, weak_reference{
-      identity: fetch_dep_spec.reference,
+      identity: fetch_dep_spec.identity,
       weak_fallback_spec: fetch_dep_spec.weak,
       context: "nested_fetch_dep"
     }))
@@ -479,14 +510,14 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 ### Tasks
 
 - [ ] 4.1: Update nested source dependency parsing to handle weak refs
-  - Nested `source.dependencies` entries can have `reference` field
+  - Nested `source.dependencies` entries can lack `source` field (weak/reference-only)
   - Parse weak nested fetch deps same as top-level weak deps
-  - Unit test: parse `source = { dependencies = { { reference = "...", weak = {...} } }, fetch = function }`
+  - Unit test: parse `source = { dependencies = { { recipe = "...", weak = {...} } }, fetch = function }`
 
 - [ ] 4.2: Collect weak nested fetch deps in `phase_recipe_fetch`
-  - When processing `dep_spec.source.dependencies`: check for `reference` field
-  - If weak/reference: add to `unresolved` set (resolve later)
-  - If strong: install immediately (Phase 2 behavior)
+  - When processing `dep_spec.source.dependencies`: check if `source` field absent
+  - If no source: add to `unresolved` set (resolve later)
+  - If has source: install immediately (Phase 2 behavior)
   - Annotate context: "nested fetch dep for {outer_identity}"
 
 - [ ] 4.3: Resolve nested weak fetch deps during weak resolution
@@ -509,7 +540,7 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 
 - [ ] 5.1: Update `docs/architecture.md`
   - Add "Nested Source Dependencies" section with JFrog example
-  - Add "Weak Dependencies" section with reference/weak syntax
+  - Add "Weak Dependencies" section with weak syntax (recipe + weak field)
   - Document iterative progression model (strong closure → weak resolution waves)
   - Document convergence algorithm, ambiguity resolution, stuck detection
   - Remove TBB references throughout (outdated - envy uses std::thread now)
@@ -558,8 +589,8 @@ for fetch_dep_spec in outer_dep.source.dependencies:
 - Validation: `needed_by="recipe_fetch"` in recipe file → error
 
 **Weak Resolution** (Phase 3):
-- Parse: `{ reference = "..." }`, `{ reference = "...", weak = {...} }`
-- Parse error: `{ reference = "...", recipe = "..." }` (exclusive)
+- Parse: `{ recipe = "..." }` (reference-only), `{ recipe = "...", weak = {...} }`
+- Parse error: `{ recipe = "...", source = "...", weak = {...} }` (source+weak exclusive)
 - Resolve: weak fallback used when no match
 - Resolve: weak ignored when match exists
 - Resolve: reference-only error when no match after convergence

@@ -40,8 +40,8 @@ class engine : unmovable {
     std::atomic_bool failed{ false };
     std::atomic_bool started{ false };  // True if worker thread has been created
 
-    std::vector<std::string> ancestor_chain;  // Per-thread  for cycle detection
-    std::string error_message;  // Detailed error message when failed=true (guarded by mutex)
+    std::vector<std::string> ancestor_chain;  // Per-thread for cycle detection
+    std::string error_message;                // when failed=true (guarded by mutex)
 
     void set_target_phase(recipe_phase target);
     void start(recipe *r, engine *eng, std::vector<std::string> chain);
@@ -51,7 +51,6 @@ class engine : unmovable {
   ~engine();
 
   recipe *ensure_recipe(recipe_spec const *spec);
-  void register_alias(std::string const &alias, recipe_key const &key);
 
   recipe *find_exact(recipe_key const &key) const;
   std::vector<recipe *> find_matches(std::string_view query) const;
@@ -78,10 +77,11 @@ class engine : unmovable {
 
   void notify_all_global_locked();
   void run_recipe_thread(recipe *r);  // Thread entry point
+  void process_fetch_dependencies(recipe *r,
+                                  std::vector<std::string> const &ancestor_chain);
 
   std::unordered_map<recipe_key, std::unique_ptr<recipe>> recipes_;
   std::unordered_map<recipe_key, std::unique_ptr<recipe_execution_ctx>> execution_ctxs_;
-  std::unordered_map<std::string, recipe_key> aliases_;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::atomic_int pending_recipe_fetches_{ 0 };
