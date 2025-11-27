@@ -135,13 +135,13 @@ set(ENVY_COMMON_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
-    src/commands/cmd_asset.cpp
-    src/commands/cmd_extract.cpp
-    src/commands/cmd_fetch.cpp
-    src/commands/cmd_hash.cpp
-    src/commands/cmd_lua.cpp
-    src/commands/cmd_sync.cpp
-    src/commands/cmd_version.cpp
+    src/cmds/cmd_asset.cpp
+    src/cmds/cmd_extract.cpp
+    src/cmds/cmd_fetch.cpp
+    src/cmds/cmd_hash.cpp
+    src/cmds/cmd_lua.cpp
+    src/cmds/cmd_sync.cpp
+    src/cmds/cmd_version.cpp
     src/engine.cpp
     src/recipe_phase.cpp
     src/recipe_key.cpp
@@ -155,14 +155,14 @@ set(ENVY_COMMON_SOURCES
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
-    src/engine_phases/phase_build.cpp
-    src/engine_phases/phase_check.cpp
-    src/engine_phases/phase_completion.cpp
-    src/engine_phases/phase_deploy.cpp
-    src/engine_phases/phase_fetch.cpp
-    src/engine_phases/phase_install.cpp
-    src/engine_phases/phase_recipe_fetch.cpp
-    src/engine_phases/phase_stage.cpp
+    src/phases/phase_build.cpp
+    src/phases/phase_check.cpp
+    src/phases/phase_completion.cpp
+    src/phases/phase_deploy.cpp
+    src/phases/phase_fetch.cpp
+    src/phases/phase_install.cpp
+    src/phases/phase_recipe_fetch.cpp
+    src/phases/phase_stage.cpp
     src/extract.cpp
     src/aws_util.cpp
     src/blake3_util.cpp
@@ -187,8 +187,8 @@ set(ENVY_COMMON_SOURCES
 
 # Functional test-specific sources
 set(ENVY_FUNCTIONAL_TEST_SOURCES
-    src/commands/cmd_cache_functional_test.cpp
-    src/commands/cmd_engine_functional_test.cpp
+    src/cmds/cmd_cache_functional_test.cpp
+    src/cmds/cmd_engine_functional_test.cpp
     src/recipe_phase.cpp
     src/test_support.cpp
 )
@@ -349,13 +349,13 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
-    src/commands/cmd_asset.cpp
-    src/commands/cmd_extract.cpp
-    src/commands/cmd_fetch.cpp
-    src/commands/cmd_hash.cpp
-    src/commands/cmd_lua.cpp
-    src/commands/cmd_sync.cpp
-    src/commands/cmd_version.cpp
+    src/cmds/cmd_asset.cpp
+    src/cmds/cmd_extract.cpp
+    src/cmds/cmd_fetch.cpp
+    src/cmds/cmd_hash.cpp
+    src/cmds/cmd_lua.cpp
+    src/cmds/cmd_sync.cpp
+    src/cmds/cmd_version.cpp
     src/engine.cpp
     src/recipe_key.cpp
     src/lua_ctx/lua_ctx_bindings.cpp
@@ -368,14 +368,14 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
-    src/engine_phases/phase_build.cpp
-    src/engine_phases/phase_check.cpp
-    src/engine_phases/phase_completion.cpp
-    src/engine_phases/phase_deploy.cpp
-    src/engine_phases/phase_fetch.cpp
-    src/engine_phases/phase_install.cpp
-    src/engine_phases/phase_recipe_fetch.cpp
-    src/engine_phases/phase_stage.cpp
+    src/phases/phase_build.cpp
+    src/phases/phase_check.cpp
+    src/phases/phase_completion.cpp
+    src/phases/phase_deploy.cpp
+    src/phases/phase_fetch.cpp
+    src/phases/phase_install.cpp
+    src/phases/phase_recipe_fetch.cpp
+    src/phases/phase_stage.cpp
     src/extract.cpp
     src/aws_util.cpp
     src/blake3_util.cpp
@@ -404,13 +404,13 @@ set(ENVY_UNIT_TEST_SOURCES
     src/blake3_util_tests.cpp
     src/cache_tests.cpp
     src/cli_tests.cpp
-    src/commands/cmd_tests.cpp
-    src/engine_phases/phase_check_tests.cpp
-    src/engine_phases/phase_fetch_tests.cpp
-    src/engine_phases/phase_install_tests.cpp
-    src/commands/cmd_extract_tests.cpp
-    src/commands/cmd_lua_tests.cpp
-    src/commands/cmd_version_tests.cpp
+    src/cmds/cmd_tests.cpp
+    src/phases/phase_check_tests.cpp
+    src/phases/phase_fetch_tests.cpp
+    src/phases/phase_install_tests.cpp
+    src/cmds/cmd_extract_tests.cpp
+    src/cmds/cmd_lua_tests.cpp
+    src/cmds/cmd_version_tests.cpp
     src/extract_tests.cpp
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp

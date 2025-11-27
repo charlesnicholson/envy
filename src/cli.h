@@ -1,15 +1,15 @@
 #pragma once
 
-#include "commands/cmd_asset.h"
-#include "commands/cmd_extract.h"
-#include "commands/cmd_fetch.h"
-#include "commands/cmd_hash.h"
-#include "commands/cmd_lua.h"
-#include "commands/cmd_sync.h"
-#include "commands/cmd_version.h"
+#include "cmds/cmd_asset.h"
+#include "cmds/cmd_extract.h"
+#include "cmds/cmd_fetch.h"
+#include "cmds/cmd_hash.h"
+#include "cmds/cmd_lua.h"
+#include "cmds/cmd_sync.h"
+#include "cmds/cmd_version.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
-#include "commands/cmd_cache_functional_test.h"
-#include "commands/cmd_engine_functional_test.h"
+#include "cmds/cmd_cache_functional_test.h"
+#include "cmds/cmd_engine_functional_test.h"
 #endif
 #include "tui.h"
 

@@ -191,7 +191,7 @@ class TestNeededBy(unittest.TestCase):
             RecipePhase.ASSET_CHECK
         )
 
-    def test_needed_by_default_to_check(self):
+    def test_needed_by_default_to_build(self):
         """Recipe A depends on B without needed_by - defaults to build phase."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
