@@ -93,19 +93,6 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
   return it->second.get();
 }
 
-void engine::register_alias(std::string const &alias, recipe_key const &key) {
-  std::lock_guard const lock(mutex_);
-
-  if (recipes_.find(key) == recipes_.end()) {
-    throw std::runtime_error("Cannot register alias '" + alias +
-                             "': recipe not found: " + key.canonical());
-  }
-
-  if (auto const [it, inserted]{ aliases_.try_emplace(alias, key) }; !inserted) {
-    throw std::runtime_error("Alias already registered: " + alias);
-  }
-}
-
 recipe *engine::find_exact(recipe_key const &key) const {
   std::lock_guard const lock(mutex_);
   auto const it{ recipes_.find(key) };
@@ -114,12 +101,6 @@ recipe *engine::find_exact(recipe_key const &key) const {
 
 std::vector<recipe *> engine::find_matches(std::string_view query) const {
   std::lock_guard const lock(mutex_);
-
-  if (auto const alias_it{ aliases_.find(std::string(query)) };
-      alias_it != aliases_.end()) {
-    recipe *const r{ find_exact(alias_it->second) };
-    return r ? std::vector<recipe *>{ r } : std::vector<recipe *>{};
-  }
 
   std::vector<recipe *> matches;
   for (auto const &[key, r] : recipes_) {
@@ -179,9 +160,8 @@ void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const ta
 
   if (ctx.failed) {
     std::lock_guard ctx_lock(ctx.mutex);
-    std::string const msg{ ctx.error_message.empty()
-                               ? "Recipe failed: " + key.canonical()
-                               : ctx.error_message };
+    std::string const msg{ ctx.error_message.empty() ? "Recipe failed: " + key.canonical()
+                                                     : ctx.error_message };
     throw std::runtime_error(msg);
   }
 }
@@ -203,6 +183,46 @@ void engine::on_recipe_fetch_complete() {
   if (pending_recipe_fetches_.fetch_sub(1) == 1) { notify_all_global_locked(); }
 }
 
+void engine::process_fetch_dependencies(recipe *r,
+                                        std::vector<std::string> const &ancestor_chain) {
+  // Process fetch dependencies - added to dependencies map with needed_by=recipe_fetch
+  // Existing phase loop wait logic handles blocking automatically
+  for (auto &fetch_dep_spec : r->spec->source_dependencies) {
+    // Cycle detection: check for self-loops and cycles in ancestor chain
+    if (r->spec->identity == fetch_dep_spec.identity) {
+      throw std::runtime_error("Fetch dependency cycle detected: " + r->spec->identity +
+                               " -> " + fetch_dep_spec.identity);
+    }
+
+    for (auto const &ancestor : ancestor_chain) {
+      if (ancestor == fetch_dep_spec.identity) {  // Build error message with cycle path
+        std::string cycle_path{ ancestor };
+        bool found_start{ false };
+        for (auto const &a : ancestor_chain) {
+          if (a == ancestor) { found_start = true; }
+          if (found_start) { cycle_path += " -> " + a; }
+        }
+        cycle_path += " -> " + fetch_dep_spec.identity;
+        throw std::runtime_error("Fetch dependency cycle detected: " + cycle_path);
+      }
+    }
+
+    recipe *fetch_dep{ ensure_recipe(&fetch_dep_spec) };
+
+    // Add to dependencies map - phase loop will handle blocking at recipe_fetch
+    r->dependencies[fetch_dep_spec.identity] = { fetch_dep, recipe_phase::recipe_fetch };
+    ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity,
+                                fetch_dep_spec.identity,
+                                recipe_phase::recipe_fetch);
+
+    // Build child ancestor chain (local to this thread path)
+    std::vector<std::string> child_chain{ ancestor_chain };
+    child_chain.push_back(r->spec->identity);
+
+    start_recipe_thread(fetch_dep, recipe_phase::completion, std::move(child_chain));
+  }
+}
+
 void engine::run_recipe_thread(recipe *r) {
   auto &ctx{ [this, r]() -> recipe_execution_ctx & {
     std::lock_guard const lock(mutex_);
@@ -212,6 +232,10 @@ void engine::run_recipe_thread(recipe *r) {
     }
     return *it->second;
   }() };
+
+  if (!r->spec->source_dependencies.empty()) {
+    process_fetch_dependencies(r, ctx.ancestor_chain);
+  }
 
   try {
     while (true) {
@@ -256,8 +280,7 @@ void engine::run_recipe_thread(recipe *r) {
       ctx.current_phase = next;
       notify_phase_complete(r->key, next);
     }
-    recipe_phase const final_phase{ ctx.current_phase };
-    ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, final_phase);
+    ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, ctx.current_phase);
   } catch (...) {  // Log the error (inspect exception type to get message if available)
     std::string error_msg;
     try {
@@ -313,7 +336,6 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
 void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
-    if (spec->alias) { register_alias(*spec->alias, r->key); }
     tui::debug("engine: resolve_graph start thread for %s", spec->identity.c_str());
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }

@@ -115,48 +115,4 @@ TEST_CASE("engine: find_matches with no matches") {
   CHECK(matches.empty());
 }
 
-TEST_CASE("engine: register_alias and find by alias") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec = make_test_spec("local.python@r4");
-  recipe *r = eng.ensure_recipe(spec);
-
-  recipe_key key(spec);
-  eng.register_alias("python", key);
-
-  auto matches = eng.find_matches("python");
-  CHECK(matches.size() == 1);
-  CHECK(matches[0] == r);
-}
-
-TEST_CASE("engine: duplicate alias throws") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec1 = make_test_spec("local.python@r4");
-  recipe_spec spec2 = make_test_spec("local.python@r5");
-
-  eng.ensure_recipe(spec1);
-  eng.ensure_recipe(spec2);
-
-  recipe_key key1(spec1);
-  recipe_key key2(spec2);
-
-  eng.register_alias("python", key1);
-  CHECK_THROWS_WITH(eng.register_alias("python", key2),
-                    "Alias already registered: python");
-}
-
-TEST_CASE("engine: alias for non-existent recipe throws") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_key key("local.python@r4");
-  CHECK_THROWS_AS(eng.register_alias("python", key), std::runtime_error);
-}
-
 }  // namespace envy
