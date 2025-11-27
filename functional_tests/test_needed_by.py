@@ -15,6 +15,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import RecipePhase, TraceParser
 
 
 class TestNeededBy(unittest.TestCase):
@@ -23,17 +24,17 @@ class TestNeededBy(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-needed-by-test-"))
         self.envy_test = test_config.get_envy_executable()
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
     def test_needed_by_fetch_allows_parallelism(self):
         """Recipe A depends on B with needed_by='fetch' - A's early phases run in parallel."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_fetch_parent@v1",
                 "test_data/recipes/needed_by_fetch_parent.lua",
@@ -43,17 +44,25 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
-        # Verify both recipes processed
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_fetch_parent@v1", result.stdout)
         self.assertIn("local.needed_by_fetch_dep@v1", result.stdout)
 
+        # Verify needed_by phase is set correctly
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_fetch_parent@v1",
+            "local.needed_by_fetch_dep@v1",
+            RecipePhase.ASSET_FETCH
+        )
+
     def test_needed_by_build(self):
         """Recipe A depends on B with needed_by='build' - fetch/stage parallel, build waits."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_build_parent@v1",
                 "test_data/recipes/needed_by_build_parent.lua",
@@ -63,16 +72,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_build_parent@v1", result.stdout)
         self.assertIn("local.needed_by_build_dep@v1", result.stdout)
 
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_build_parent@v1",
+            "local.needed_by_build_dep@v1",
+            RecipePhase.ASSET_BUILD
+        )
+
     def test_needed_by_stage(self):
         """Recipe A depends on B with needed_by='stage' - fetch parallel, stage waits."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_stage_parent@v1",
                 "test_data/recipes/needed_by_stage_parent.lua",
@@ -82,16 +99,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_stage_parent@v1", result.stdout)
         self.assertIn("local.needed_by_stage_dep@v1", result.stdout)
 
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_stage_parent@v1",
+            "local.needed_by_stage_dep@v1",
+            RecipePhase.ASSET_STAGE
+        )
+
     def test_needed_by_install(self):
         """Recipe A depends on B with needed_by='install' - fetch/stage/build parallel, install waits."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_install_parent@v1",
                 "test_data/recipes/needed_by_install_parent.lua",
@@ -101,16 +126,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_install_parent@v1", result.stdout)
         self.assertIn("local.needed_by_install_dep@v1", result.stdout)
 
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_install_parent@v1",
+            "local.needed_by_install_dep@v1",
+            RecipePhase.ASSET_INSTALL
+        )
+
     def test_needed_by_deploy(self):
         """Recipe A depends on B with needed_by='deploy' - all phases parallel except deploy."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_deploy_parent@v1",
                 "test_data/recipes/needed_by_deploy_parent.lua",
@@ -120,16 +153,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_deploy_parent@v1", result.stdout)
         self.assertIn("local.needed_by_deploy_dep@v1", result.stdout)
 
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_deploy_parent@v1",
+            "local.needed_by_deploy_dep@v1",
+            RecipePhase.ASSET_DEPLOY
+        )
+
     def test_needed_by_check(self):
         """Recipe A depends on B with needed_by='check' - check waits, rest runs parallel."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_check_parent@v1",
                 "test_data/recipes/needed_by_check_parent.lua",
@@ -139,16 +180,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_check_parent@v1", result.stdout)
         self.assertIn("local.needed_by_check_dep@v1", result.stdout)
 
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_check_parent@v1",
+            "local.needed_by_check_dep@v1",
+            RecipePhase.ASSET_CHECK
+        )
+
     def test_needed_by_default_to_check(self):
-        """Recipe A depends on B without needed_by - defaults to conservative check phase."""
+        """Recipe A depends on B without needed_by - defaults to build phase."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_default_parent@v1",
                 "test_data/recipes/needed_by_default_parent.lua",
@@ -158,16 +207,22 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_default_parent@v1", result.stdout)
         self.assertIn("local.simple@v1", result.stdout)
+
+        parser = TraceParser(trace_file)
+        parser.assert_dependency_needed_by(
+            "local.needed_by_default_parent@v1",
+            "local.simple@v1",
+            RecipePhase.ASSET_BUILD
+        )
 
     def test_needed_by_invalid_phase_name(self):
         """Recipe with needed_by='nonexistent' fails during parsing."""
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
                 "engine-test",
                 "local.needed_by_invalid@v1",
                 "test_data/recipes/needed_by_invalid.lua",
@@ -178,14 +233,16 @@ class TestNeededBy(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0, "Expected invalid phase name to fail")
+        # Error message check - keep stderr check for error messages
         self.assertIn("needed_by", result.stderr.lower())
 
     def test_needed_by_multi_level_chain(self):
         """Multi-level chain: A→B→C with different needed_by phases."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_chain_a@v1",
                 "test_data/recipes/needed_by_chain_a.lua",
@@ -195,17 +252,24 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_chain_a@v1", result.stdout)
         self.assertIn("local.needed_by_chain_b@v1", result.stdout)
         self.assertIn("local.needed_by_chain_c@v1", result.stdout)
 
+        # Verify all three recipes completed successfully
+        parser = TraceParser(trace_file)
+        for recipe in ["local.needed_by_chain_a@v1", "local.needed_by_chain_b@v1", "local.needed_by_chain_c@v1"]:
+            completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
+            self.assertGreater(len(completes), 0, f"Expected {recipe} to complete phases")
+
     def test_needed_by_diamond(self):
         """Diamond: A depends on B+C with different needed_by phases."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_diamond_a@v1",
                 "test_data/recipes/needed_by_diamond_a.lua",
@@ -215,10 +279,16 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_diamond_a@v1", result.stdout)
         self.assertIn("local.needed_by_diamond_b@v1", result.stdout)
         self.assertIn("local.needed_by_diamond_c@v1", result.stdout)
+
+        # Verify all three recipes completed
+        parser = TraceParser(trace_file)
+        for recipe in ["local.needed_by_diamond_a@v1", "local.needed_by_diamond_b@v1", "local.needed_by_diamond_c@v1"]:
+            completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
+            self.assertGreater(len(completes), 0, f"Expected {recipe} to complete phases")
 
     def test_needed_by_race_condition(self):
         """Dependency completes before parent discovers it - late edge addition handled."""
@@ -227,10 +297,11 @@ class TestNeededBy(unittest.TestCase):
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_race_parent@v1",
                 "test_data/recipes/needed_by_race_parent.lua",
@@ -241,16 +312,20 @@ class TestNeededBy(unittest.TestCase):
             env=env,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_race_parent@v1", result.stdout)
+
+        parser = TraceParser(trace_file)
+        completes = parser.filter_by_recipe_and_event("local.needed_by_race_parent@v1", "phase_complete")
+        self.assertGreater(len(completes), 0, "Expected parent to complete phases")
 
     def test_needed_by_with_cache_hit(self):
         """Recipe with needed_by where dependency is already cached."""
-        # First run: cache miss
+        trace_file1 = self.cache_root / "trace1.jsonl"
         result1 = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file1}",
                 "engine-test",
                 "local.needed_by_cached_parent@v1",
                 "test_data/recipes/needed_by_cached_parent.lua",
@@ -260,13 +335,19 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result1.returncode, 0, f"stdout: {result1.stdout}\nstderr: {result1.stderr}")
+        self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
+
+        # Verify first run had cache miss for dependency
+        parser1 = TraceParser(trace_file1)
+        cache_misses = parser1.filter_by_event("cache_miss")
+        self.assertGreater(len(cache_misses), 0, "Expected cache misses on first run")
 
         # Second run: cache hit (should still respect needed_by)
+        trace_file2 = self.cache_root / "trace2.jsonl"
         result2 = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file2}",
                 "engine-test",
                 "local.needed_by_cached_parent@v1",
                 "test_data/recipes/needed_by_cached_parent.lua",
@@ -276,15 +357,21 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result2.returncode, 0, f"stdout: {result2.stdout}\nstderr: {result2.stderr}")
+        self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
         self.assertIn("local.needed_by_cached_parent@v1", result2.stdout)
+
+        # Verify second run had cache hits
+        parser2 = TraceParser(trace_file2)
+        cache_hits = parser2.filter_by_event("cache_hit")
+        self.assertGreater(len(cache_hits), 0, "Expected cache hits on second run")
 
     def test_needed_by_all_phases(self):
         """Recipe with multiple dependencies using different needed_by phases."""
+        trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
                 str(self.envy_test),
-                *self.trace_flag,
+                f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.needed_by_all_phases@v1",
                 "test_data/recipes/needed_by_all_phases.lua",
@@ -294,9 +381,13 @@ class TestNeededBy(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
-        # Verify all recipes processed
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_all_phases@v1", result.stdout)
+
+        # Verify recipe completed and has multiple dependencies
+        parser = TraceParser(trace_file)
+        deps = parser.get_dependency_added_events("local.needed_by_all_phases@v1")
+        self.assertGreater(len(deps), 1, "Expected multiple dependencies")
 
 
 if __name__ == "__main__":
