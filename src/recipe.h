@@ -37,6 +37,7 @@ struct recipe {
     recipe_phase needed_by;  // Phase by which this dependency must be complete
   };
   std::unordered_map<std::string, dependency_info> dependencies;
+
   struct weak_reference {
     std::string query;                      // Partial identity query (e.g., "python")
     std::unique_ptr<recipe_spec> fallback;  // weak dep, null for ref-only

@@ -14,11 +14,11 @@ Both integrate via iterative graph expansion/resolution with convergence.
 - ✅ **Phase 0**: Phase Enum Unification (complete)
 - ✅ **Phase 1**: Shared Fetch API (complete)
 - ✅ **Phase 2**: Nested Source Dependencies (complete)
-- ⚠️ **Phase 3**: Weak Dependency Resolution (parsing + data model implemented; execution TBD)
+- ⚠️ **Phase 3**: Weak Dependency Resolution (core resolution implemented; edge-cases/tests pending)
 - ❌ **Phase 4**: Integration (not started)
 - ❌ **Phase 5**: Documentation & Polish (not started)
 
-**Current State**: Nested source dependencies fully implemented and tested (Phase 2 complete). All parsing, validation, fetch dependency processing, context creation, custom fetch execution, cycle detection, and functional test suite complete. Ready to begin Phase 3 (Weak Dependency Resolution).
+**Current State**: Nested source dependencies fully implemented and tested (Phase 2 complete). Weak dependency parsing, collection, and core resolution loop are implemented and wired into `resolve_graph`; ambiguity/missing reporting works but stuck detection + dedicated tests are still pending.
 
 ---
 
@@ -122,7 +122,7 @@ Move fetch helpers to `lua_ctx_bindings` for use across asset fetch and recipe f
 
 ---
 
-## Phase 2: Nested Source Dependencies (Recipe Fetch Prerequisites) - ⚠️ PARTIALLY COMPLETE
+## Phase 2: Nested Source Dependencies (Recipe Fetch Prerequisites) - ✅ COMPLETE
 
 ### Goal
 
@@ -153,7 +153,7 @@ Enable recipes to declare dependencies needed for fetching other recipes' Lua fi
 
 **Design principle**: recipe_spec remains POD-like. No lua_State pointers cached. Functions looked up on-demand from owning recipe's lua_State. Fetch deps are regular dependencies—no special casing.
 
-### Remaining Work
+### Execution Flow
 
 Fetch dependency processing happens in `run_recipe_thread()` BEFORE the phase loop begins. No special casing—fetch deps added to `r->dependencies` map with `needed_by = recipe_phase::recipe_fetch`, then existing phase coordination logic handles blocking.
 
@@ -300,129 +300,28 @@ When `spec.source` is `fetch_function` variant:
 
 ---
 
-## Phase 3: Weak Dependency Resolution - ❌ NOT STARTED
+## Phase 3: Weak Dependency Resolution - ⚠️ IN PROGRESS
 
 ### Goal
 
 Enable reference-only and weak dependencies with iterative graph resolution.
 
-### Algorithm
+### Current Implementation
 
-**Strong Closure** (unchanged):
-```
-resolve_graph(manifest_roots):
-  # Phase 1: Expand all strong dependencies recursively
-  for root_spec in manifest_roots:
-    root = ensure_recipe(root_spec)
-    start_recipe_thread(root, recipe_phase::recipe_fetch)  # All threads stop at recipe_fetch
-
-  wait_for_resolution_phase()  # All recipe_fetch threads complete
-```
-
-**Weak Resolution** (new, runs only when all recipes are parked at target):
-```
-resolve_weak_references():
-  # Collect all weak refs into tracking set
-  unresolved = set()  # (recipe*, weak_reference*) pairs
-  for recipe in graph.recipes:
-    for weak_ref in recipe.weak_references:
-      unresolved.add((recipe, weak_ref))
-
-  # Convergence loop with stuck detection
-  MAX_STUCK_ITERATIONS = 3  # Allow 3 iterations with no progress before error
-  stuck_count = 0
-  iteration = 0
-
-  while True:
-    iteration += 1
-
-    if unresolved.empty():
-      break  # Success: all resolved
-
-    tui::info("Weak resolution iteration {}: {} unresolved refs", iteration, unresolved.size())
-
-    # Queue weak fallbacks for unmatched refs
-    queue = []
-    for (recipe, ref) in unresolved:
-      candidates = find_matches(ref.identity)  # Partial match: name/ns/rev
-
-      if candidates.empty() and ref.has_weak_fallback:
-        # No match, has fallback → queue for instantiation
-        queue.append((recipe, ref, ref.weak_fallback_spec))
-
-      # If candidates.empty() and no fallback: reference-only, check after convergence
-
-    # Create + fetch weak fallback nodes
-    newly_fetched = set()
-    for (parent, ref, fallback_spec) in queue:
-      ensure_result = cache.ensure_recipe(fallback_spec.identity)
-
-      # Only fetch if newly created (lock present = needs installation)
-      if ensure_result.lock:
-        node = engine.ensure_recipe(fallback_spec)
-        start_recipe_thread(node, recipe_phase::recipe_fetch)
-        newly_fetched.add(node)
-
-        # Add new node's weak refs to unresolved set
-        for new_weak_ref in node.weak_references:
-          unresolved.add((node, new_weak_ref))
-
-    wait_for_resolution_phase()  # Barrier: all recipes reach current target (recipe_fetch)
-
-    # Resolve weak refs against updated graph
-    to_remove = []
-    for (recipe, ref) in unresolved:
-      candidates = find_matches(ref.identity)
-
-      if candidates.size() == 1:
-        # Unique match → resolve
-        ref.resolved = candidates[0]
-        recipe.dependencies[candidates[0].key.identity()] = candidates[0]
-        to_remove.append((recipe, ref))
-
-      elif candidates.size() > 1:
-        # Ambiguous → error with candidate list
-        error("Recipe '{}' reference '{}' is ambiguous. Candidates:\n  {}",
-              recipe.identity, ref.identity,
-              [c.key.canonical() for c in candidates])
-
-      # candidates.empty(): leave in unresolved, retry next iteration
-
-    # Remove resolved refs from tracking set
-    for pair in to_remove:
-      unresolved.remove(pair)
-
-    tui::info("  Fetched {} new, resolved {} refs", newly_fetched.size(), to_remove.size())
-
-    # Stuck detection: no progress means either done or error
-    if newly_fetched.empty() and to_remove.empty():
-      stuck_count += 1
-      if stuck_count >= MAX_STUCK_ITERATIONS:
-        # No progress for 3 iterations → likely missing reference-only deps
-        break  # Exit to final validation (will error if unresolved remain)
-    else:
-      stuck_count = 0  # Reset on progress
-
-  # Final validation: error on remaining reference-only refs
-  for (recipe, ref) in unresolved:
-    if not ref.has_weak_fallback:
-      error("Reference-only '{}' in recipe '{}' not found after resolution",
-            ref.identity, recipe.identity)
-    else:
-      # Weak ref still unresolved (shouldn't happen if convergence correct)
-      error("Weak reference '{}' in '{}' unresolved (internal error)",
-            ref.identity, recipe.identity)
-```
-**Phase waves / thread safety:** All recipes (including fetch-dependencies) advance only to
-`recipe_fetch` during strong closure. Weak resolution runs with every recipe parked at its
-target. After convergence, extend targets to `completion` in one batch and let normal phase
-execution proceed. No new threading primitives needed; resolution happens only at barriers.
-
-**Partial Matching** (existing `recipe_key::matches()`):
-- Query `"python"` matches `*.python@*` (any namespace, any revision)
-- Query `"local.python"` matches `local.python@*` (any revision)
-- Query `"python@r4"` matches `*.python@r4` (any namespace, specific revision)
-- Query `"local.python@r4"` matches exactly (full identity, options ignored)
+- Data model/parsing: dependencies with no `source` are treated as weak references. They capture the query, optional fallback `recipe_spec`, and `needed_by` (defaults to `asset_build`). Fallback blocks are validated as mutual exclusive with `source` and cannot carry `needed_by`.
+- Collection: `phase_recipe_fetch` appends weak references to `recipe::weak_references` and skips instantiation. Strong deps still create recipes + threads and populate `declared_dependencies`.
+- Resolution loop: `resolve_graph` starts all roots to `recipe_fetch` and then loops while weak resolution or fallback instantiation makes progress:
+  - `wait_for_resolution_phase()` blocks until all recipes targeting `recipe_fetch` finish (includes any newly started fallbacks).
+  - Call `resolve_weak_references()`; it returns counts of resolved refs and started fallbacks.
+  - Continue the loop while either count is non-zero (so progress is recognized even if new weak refs keep the unresolved total flat).
+- `resolve_weak_references()` behavior:
+  - Uses `find_matches()` (engine-level, sees all recipes) to resolve a single match: wires dependency (with `needed_by`), extends `declared_dependencies`, and marks resolved.
+  - Multiple matches: collect ambiguity messages; no wiring changes.
+  - No matches with fallback: set parent, `ensure_recipe()` the fallback, wire dependency + declared deps, start a `recipe_fetch` thread for it, mark resolved, clear fallback pointer.
+  - No matches and no fallback: left unresolved for final validation.
+  - After the pass, aggregate all ambiguity + missing-reference messages and throw if any exist (so errors are reported after the pass completes).
+- Thread safety: resolution only runs after all current `recipe_fetch` targets complete; fallbacks are started in a batch, and the next loop waits for them to finish before resolving again. No new threading primitives were added.
+- Gaps: no explicit stuck detection yet (loop stops when unresolved count stops decreasing), and no targeted unit/functional tests for weak resolution. Nested weak fetch-deps integration is still pending (Phase 4).
 
 ### Tasks
 
@@ -430,38 +329,24 @@ execution proceed. No new threading primitives needed; resolution happens only a
   - Added `weak` fallback (owned `unique_ptr<recipe_spec>`) and `weak_ref` source variant
   - Parse: `{ recipe = "...", weak = {...} }` (weak) or `{ recipe = "..." }` (reference-only)
   - Validate: `weak` and `source` mutually exclusive; `weak` cannot carry `needed_by`
-  - Unit tests added for reference-only and weak-with-fallback parsing
 
 - [x] 3.2: Add `weak_references` to recipe struct
   - Added `std::vector<weak_reference>` (query, fallback ptr, needed_by, resolved)
-  - Initialized/owned on recipes
 
-- [ ] 3.3: Collect weak refs in `phase_recipe_fetch`
-  - When parsing dependencies: check if `dep_spec` has no `source` field (weak or reference-only)
-  - If no source: store in `recipe.weak_references` (don't instantiate node yet)
-  - If has source: strong dep → `ensure_recipe()` + thread start (current behavior)
-  - Unit test: recipe with weak refs populates `weak_references` vector
+- [x] 3.3: Collect weak refs in `phase_recipe_fetch`
+  - Dependencies without `source` are recorded into `recipe::weak_references` with query, needed_by, and moved fallback (strong deps unchanged)
+  - Strong deps still `ensure_recipe()` + start threads
 
-- [ ] 3.4: Implement `engine::resolve_weak_references()`
-  - Collect all weak refs into `unresolved` set
-  - Convergence loop with stuck detection (3 no-progress iterations)
-  - Use existing `find_matches()` for candidate lookup
-  - Track `newly_fetched` and `to_remove` for progress monitoring
-  - Instantiate fallbacks via engine: `ensure_recipe()` + `start_recipe_thread(...recipe_fetch)`
-    regardless of cache lock state
-  - Log iteration count and progress at info level
+- [x] 3.4: Implement `engine::resolve_weak_references()`
+  - Resolves single matches, wires dependencies/declared deps, starts fallbacks, aggregates ambiguity/missing messages, and throws after a full pass
 
-- [ ] 3.5: Integrate into `engine::resolve_graph()`
-  - Strong closure runs all recipes only to `recipe_fetch`
-  - After strong closure: call `resolve_weak_references()` (all threads parked)
-  - After convergence: extend all targets to `completion`
-  - Update comments explaining two-phase resolution
+- [x] 3.5: Integrate into `engine::resolve_graph()`
+  - Core loop now lives in `resolve_graph`: `while (progress) { wait_for_resolution_phase(); resolve_weak_references(); }`
+  - Progress measured by unresolved weak-ref count; new fallbacks join the next iteration
 
-- [ ] 3.6: Error handling for weak resolution
-  - Ambiguity: format candidate list with canonical keys
-  - Reference-only not found: clear message, list unresolved identity
-  - Convergence failure: include iteration count, suggest cycle or bug
-  - Unit tests: verify error messages clear and actionable
+- [ ] 3.6: Error handling polish
+  - Improve stuck detection/reporting when unresolved count stops changing
+  - Ensure ambiguity and missing messages stay clear and deduped
 
 - [ ] 3.7: Unit tests for weak resolution logic
   - Test: single weak ref, no match → fallback instantiated
@@ -470,7 +355,7 @@ execution proceed. No new threading primitives needed; resolution happens only a
   - Test: reference-only, no match → error after convergence
   - Test: ambiguous match (two candidates) → error with list
   - Test: convergence after 2 iterations (cascading weak)
-  - Test: Stuck detection (3 iterations no progress) → error with iteration count
+  - Test: Stuck detection (when added)
   - Test: threads stay parked at recipe_fetch during resolution; targets extend only after convergence
 
 - [ ] 3.8: Functional tests for weak dependencies
@@ -482,6 +367,7 @@ execution proceed. No new threading primitives needed; resolution happens only a
   - Test: Cascading weak (A-weak→B, B-weak→C, C-weak→D → 3 iterations)
   - Test: Reference-only satisfied by weak (A-ref→"B", C-weak→B → C's weak satisfies A)
   - Test: Partial matching (A-ref→"python" matches "local.python@r4")
+  - Test: Progress despite flat unresolved count (two fallbacks each introduce weak refs; loop continues because fallbacks_started > 0)
 
 ---
 

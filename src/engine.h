@@ -71,6 +71,11 @@ class engine : unmovable {
   // High-level execution
   recipe_result_map_t run_full(std::vector<recipe_spec const *> const &roots);
   void resolve_graph(std::vector<recipe_spec const *> const &roots);
+  struct weak_resolution_result {
+    size_t resolved{ 0 };
+    size_t fallbacks_started{ 0 };
+  };
+  weak_resolution_result resolve_weak_references();
 
  private:
   cache &cache_;

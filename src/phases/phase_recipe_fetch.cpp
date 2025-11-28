@@ -337,6 +337,15 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
                                      : recipe_phase::asset_build
     };
 
+    if (dep_spec.is_weak_reference()) {
+      recipe::weak_reference wr;
+      wr.query = dep_spec.identity;
+      wr.needed_by = needed_by_phase;
+      if (dep_spec.weak) { wr.fallback = std::move(dep_spec.weak); }
+      r->weak_references.push_back(std::move(wr));
+      continue;
+    }
+
     recipe *dep{ eng.ensure_recipe(&dep_spec) };
 
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination

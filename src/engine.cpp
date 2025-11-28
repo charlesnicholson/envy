@@ -13,6 +13,7 @@
 #include "recipe_phase.h"
 #include "tui.h"
 
+#include <algorithm>
 #include <array>
 #include <vector>
 
@@ -68,6 +69,105 @@ engine::~engine() {
 void engine::notify_all_global_locked() {
   std::lock_guard const lock(mutex_);
   cv_.notify_all();
+}
+
+engine::weak_resolution_result engine::resolve_weak_references() {
+  weak_resolution_result result{};
+
+  auto collect_unresolved = [this]() {
+    std::vector<std::pair<recipe *, recipe::weak_reference *>> unresolved;
+    std::lock_guard const lock(mutex_);
+    for (auto &[key, r_ptr] : recipes_) {
+      recipe *r{ r_ptr.get() };
+      for (auto &wr : r->weak_references) {
+        if (!wr.resolved) { unresolved.emplace_back(r, &wr); }
+      }
+    }
+    return unresolved;
+  };
+
+  std::vector<std::string> ambiguity_messages;
+
+  for (auto [r, wr] : collect_unresolved()) {
+    auto const matches{ find_matches(wr->query) };
+
+    if (matches.size() == 1) {  // Resolved to existing recipe
+      recipe *dep{ matches[0] };
+      wr->resolved = dep;
+      ++result.resolved;
+
+      // Wire dependency if not already present
+      if (!r->dependencies.contains(dep->spec->identity)) {
+        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
+        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
+      }
+
+      // Ensure declared_dependencies includes resolved identity for ctx.asset validation
+      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
+          r->declared_dependencies.end()) {
+        r->declared_dependencies.push_back(dep->spec->identity);
+      }
+      continue;
+    }
+
+    if (matches.size() > 1) {
+      std::ostringstream oss;
+      oss << "Reference '" << wr->query << "' in recipe '" << r->spec->identity
+          << "' is ambiguous: ";
+      for (size_t i = 0; i < matches.size(); ++i) {
+        if (i) oss << ", ";
+        oss << matches[i]->key.canonical();
+      }
+      ambiguity_messages.push_back(oss.str());
+      continue;
+    }
+
+    if (wr->fallback) {  // No matches, instantiate weak fallbacks
+      wr->fallback->parent = r->spec;
+
+      recipe *dep{ ensure_recipe(wr->fallback.get()) };
+      if (!r->dependencies.contains(dep->spec->identity)) {
+        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
+        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
+      }
+
+      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
+          r->declared_dependencies.end()) {
+        r->declared_dependencies.push_back(dep->spec->identity);
+      }
+
+      std::vector<std::string> child_chain{ get_execution_ctx(r).ancestor_chain };
+      child_chain.push_back(r->spec->identity);
+      start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
+
+      wr->resolved = dep;
+      wr->fallback.reset();
+      ++result.fallbacks_started;
+    }
+  }
+
+  // Final validation: any unresolved without fallback is an error
+  std::vector<std::string> const missing_messages{ [&] {
+    std::vector<std::string> msgs{ ambiguity_messages.begin(), ambiguity_messages.end() };
+    for (auto [r, wr] : collect_unresolved()) {
+      if (!wr->resolved && !wr->fallback) {
+        msgs.push_back("Reference '" + wr->query + "' in recipe '" + r->spec->identity +
+                       "' was not found");
+      }
+    }
+    return msgs;
+  }() };
+
+  if (!missing_messages.empty()) {
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < missing_messages.size(); ++i) {
+      if (i) oss << "\n";
+      oss << missing_messages[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+
+  return result;
 }
 
 void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
@@ -229,13 +329,11 @@ void engine::run_recipe_thread(recipe *r) {
   }
 
   try {
-    while (true) {
+    while (ctx.current_phase < recipe_phase::completion) {
       recipe_phase const target{ ctx.target_phase };
       recipe_phase const current{ ctx.current_phase };
 
       if (current >= target) {  // Check if we've reached target
-        if (target == recipe_phase::completion) break;
-
         std::unique_lock lock(ctx.mutex);
         ctx.cv.wait(lock,  // Wait for target extension
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
@@ -244,9 +342,7 @@ void engine::run_recipe_thread(recipe *r) {
         ENVY_TRACE_TARGET_EXTENDED(r->spec->identity, current, ctx.target_phase.load());
       }
 
-      // Run next phase
       recipe_phase const next{ static_cast<recipe_phase>(static_cast<int>(current) + 1) };
-
       if (static_cast<int>(next) < 0 || static_cast<int>(next) >= recipe_phase_count) {
         throw std::runtime_error("Invalid phase: " +
                                  std::to_string(static_cast<int>(next)));
@@ -288,8 +384,8 @@ void engine::run_recipe_thread(recipe *r) {
       std::lock_guard lock(ctx.mutex);
       ctx.error_message = std::move(error_msg);
     }
+
     ctx.failed = true;
-    // Decrement recipe_fetch counter if we failed before completing recipe_fetch
     if (ctx.current_phase <= recipe_phase::recipe_fetch) { on_recipe_fetch_complete(); }
     notify_all_global_locked();
   }
@@ -332,7 +428,11 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 
-  wait_for_resolution_phase();
+  while (true) {
+    wait_for_resolution_phase();  // Wait for all current recipe_fetch targets to finish
+    weak_resolution_result const resolution{ resolve_weak_references() };
+    if (resolution.resolved == 0 && resolution.fallbacks_started == 0) { break; }
+  }
 }
 
 }  // namespace envy
