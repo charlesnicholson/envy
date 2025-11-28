@@ -57,16 +57,17 @@ struct install_test_fixture {
     // Initialize options to empty table
     spec.serialized_options = "{}";
 
-    r = std::make_unique<recipe>(recipe{
+    r = std::unique_ptr<recipe>(new recipe{
         .key = recipe_key(spec),
         .spec = &spec,
         .lua = std::move(lua_state),
+        // lua_mutex is default-initialized
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
-        .asset_path = {},
+        .asset_path = std::filesystem::path{},
         .result_hash = {},
         .cache_ptr = &test_cache,
         .default_shell_ptr = nullptr,

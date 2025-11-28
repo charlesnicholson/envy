@@ -63,8 +63,8 @@ dependencies = {
   fetch = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Requires jfrog CLI installed
     local tmp = ctx.tmp_dir
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
-    ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "abc123...")
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+    ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
   end,
   dependencies = {
     {
@@ -351,8 +351,8 @@ packages = {
     fetch = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")
       local tmp = ctx.tmp_dir
-      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
-      ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "abc123...")
+      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+      ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
     end,
     dependencies = {
       { recipe = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }

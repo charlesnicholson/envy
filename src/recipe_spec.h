@@ -39,8 +39,9 @@ struct recipe_spec : uncopyable {
 
   std::string identity;  // "namespace.name@version"
   source_t source;
-  std::string serialized_options;    // Serialized Lua table literal (empty "{}" if none)
-  std::optional<recipe_phase> needed_by;  // Phase dependency annotation
+  std::string serialized_options;  // Serialized Lua table literal (empty "{}" if none)
+  std::optional<recipe_phase> needed_by;         // Phase dependency annotation
+  mutable recipe_spec const *parent{ nullptr };  // Owning parent spec
 
   // Custom source fetch (nested source dependencies)
   std::vector<recipe_spec> source_dependencies{};  // Needed for fetching this recipe

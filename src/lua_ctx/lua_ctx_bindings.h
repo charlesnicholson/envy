@@ -74,7 +74,7 @@ make_ctx_run(lua_ctx_common *ctx);
 std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
     fetch_phase_ctx *ctx);
 
-// ctx.commit_fetch(filename_or_table) - move file(s) from tmp to fetch_dir with SHA256
+// ctx.commit_fetch(filename_or_table) - move from tmp to fetch_dir, optional SHA256
 std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx);
 
 // Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)

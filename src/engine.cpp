@@ -35,6 +35,27 @@ constexpr std::array<phase_func_t, recipe_phase_count> phase_dispatch_table{
 
 }  // namespace
 
+void validate_dependency_cycle(std::string const &candidate_identity,
+                               std::vector<std::string> const &ancestor_chain,
+                               std::string const &current_identity,
+                               std::string const &dependency_type) {
+  if (current_identity == candidate_identity) {  // Check for self-loop
+    throw std::runtime_error(dependency_type + " cycle detected: " + current_identity +
+                             " -> " + candidate_identity);
+  }
+
+  for (size_t i = 0; i < ancestor_chain.size(); ++i) {  // cycle in ancestor chain
+    if (ancestor_chain[i] == candidate_identity) {
+      std::string cycle_path{ ancestor_chain[i] };
+      for (size_t j{ i + 1 }; j < ancestor_chain.size(); ++j) {
+        cycle_path += " -> " + ancestor_chain[j];
+      }
+      cycle_path += " -> " + current_identity + " -> " + candidate_identity;
+      throw std::runtime_error(dependency_type + " cycle detected: " + cycle_path);
+    }
+  }
+}
+
 engine::engine(cache &cache, default_shell_cfg_t default_shell)
     : cache_(cache), default_shell_(default_shell) {}
 
@@ -72,20 +93,22 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
 
   recipe_key const key(*spec);
 
-  auto const [it, inserted]{ recipes_.try_emplace(
-      key,
-      std::make_unique<recipe>(recipe{ .key = key,
-                                       .spec = spec,
-                                       .lua = nullptr,
-                                       .lock = nullptr,
-                                       .declared_dependencies = {},
-                                       .owned_dependency_specs = {},
-                                       .dependencies = {},
-                                       .canonical_identity_hash = key.canonical(),
-                                       .asset_path = {},
-                                       .result_hash = {},
-                                       .cache_ptr = &cache_,
-                                       .default_shell_ptr = &default_shell_ })) };
+  auto r{ std::unique_ptr<recipe>(new recipe{
+      .key = key,
+      .spec = spec,
+      .lua = nullptr,
+      .lock = nullptr,
+      .declared_dependencies = {},
+      .owned_dependency_specs = {},
+      .dependencies = {},
+      .canonical_identity_hash = key.canonical(),
+      .asset_path = std::filesystem::path{},
+      .result_hash = {},
+      .cache_ptr = &cache_,
+      .default_shell_ptr = &default_shell_,
+  }) };
+
+  auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
   if (inserted) {
     execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>();
     ENVY_TRACE_RECIPE_REGISTERED(spec->identity, key.canonical(), false);
@@ -111,10 +134,14 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
 }
 
 engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
+  return get_execution_ctx(r->key);
+}
+
+engine::recipe_execution_ctx &engine::get_execution_ctx(recipe_key const &key) {
   std::lock_guard const lock(mutex_);
-  auto const it{ execution_ctxs_.find(r->key) };
+  auto const it{ execution_ctxs_.find(key) };
   if (it == execution_ctxs_.end()) {
-    throw std::runtime_error("Recipe execution context not found: " + r->key.canonical());
+    throw std::runtime_error("Recipe execution context not found: " + key.canonical());
   }
   return *it->second;
 }
@@ -122,14 +149,7 @@ engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
 void engine::start_recipe_thread(recipe *r,
                                  recipe_phase initial_target,
                                  std::vector<std::string> ancestor_chain) {
-  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(r->key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + r->key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(r) };
 
   bool expected{ false };
   if (ctx.started.compare_exchange_strong(expected, true)) {  // set phase then start
@@ -143,14 +163,7 @@ void engine::start_recipe_thread(recipe *r,
 }
 
 void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const target) {
-  auto &ctx{ [this, &key]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(key) };
 
   ctx.set_target_phase(target);  // Extend target if needed
 
@@ -171,11 +184,7 @@ void engine::wait_for_resolution_phase() {
   cv_.wait(lock, [this] { return pending_recipe_fetches_ == 0; });
 }
 
-void engine::notify_phase_complete(recipe_key const &key, recipe_phase phase) {
-  std::ignore = key;
-  std::ignore = phase;
-  notify_all_global_locked();
-}
+void engine::notify_phase_complete() { notify_all_global_locked(); }
 
 void engine::on_recipe_fetch_start() { pending_recipe_fetches_.fetch_add(1); }
 
@@ -188,24 +197,12 @@ void engine::process_fetch_dependencies(recipe *r,
   // Process fetch dependencies - added to dependencies map with needed_by=recipe_fetch
   // Existing phase loop wait logic handles blocking automatically
   for (auto &fetch_dep_spec : r->spec->source_dependencies) {
-    // Cycle detection: check for self-loops and cycles in ancestor chain
-    if (r->spec->identity == fetch_dep_spec.identity) {
-      throw std::runtime_error("Fetch dependency cycle detected: " + r->spec->identity +
-                               " -> " + fetch_dep_spec.identity);
-    }
+    fetch_dep_spec.parent = r->spec;  // Set parent pointer for custom fetch lookup
 
-    for (auto const &ancestor : ancestor_chain) {
-      if (ancestor == fetch_dep_spec.identity) {  // Build error message with cycle path
-        std::string cycle_path{ ancestor };
-        bool found_start{ false };
-        for (auto const &a : ancestor_chain) {
-          if (a == ancestor) { found_start = true; }
-          if (found_start) { cycle_path += " -> " + a; }
-        }
-        cycle_path += " -> " + fetch_dep_spec.identity;
-        throw std::runtime_error("Fetch dependency cycle detected: " + cycle_path);
-      }
-    }
+    validate_dependency_cycle(fetch_dep_spec.identity,
+                              ancestor_chain,
+                              r->spec->identity,
+                              "Fetch dependency");
 
     recipe *fetch_dep{ ensure_recipe(&fetch_dep_spec) };
 
@@ -224,14 +221,7 @@ void engine::process_fetch_dependencies(recipe *r,
 }
 
 void engine::run_recipe_thread(recipe *r) {
-  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(r->key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + r->key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(r) };
 
   if (!r->spec->source_dependencies.empty()) {
     process_fetch_dependencies(r, ctx.ancestor_chain);
@@ -278,7 +268,7 @@ void engine::run_recipe_thread(recipe *r) {
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
       ctx.current_phase = next;
-      notify_phase_complete(r->key, next);
+      notify_phase_complete();
     }
     ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, ctx.current_phase);
   } catch (...) {  // Log the error (inspect exception type to get message if available)
@@ -298,7 +288,8 @@ void engine::run_recipe_thread(recipe *r) {
       ctx.error_message = std::move(error_msg);
     }
     ctx.failed = true;
-    if (ctx.current_phase < recipe_phase::asset_check) { on_recipe_fetch_complete(); }
+    // Decrement recipe_fetch counter if we failed before completing recipe_fetch
+    if (ctx.current_phase <= recipe_phase::recipe_fetch) { on_recipe_fetch_complete(); }
     notify_all_global_locked();
   }
 }

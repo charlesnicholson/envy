@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -21,6 +22,7 @@ struct recipe {
   recipe_spec const *spec;  // Non-ownership
 
   std::unique_ptr<sol::state> lua;
+  mutable std::mutex lua_mutex;  // Protects lua and owned_dependency_specs
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;

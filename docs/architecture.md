@@ -26,8 +26,8 @@ local common = {
         fetch = function(ctx)
             local jfrog = ctx:asset("jfrog.cli@v2")
             local tmp = ctx.tmp_dir
-            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/toolchain.lua")
-            ctx:commit_fetch(tmp .. "/toolchain.lua", "recipe.lua", "sha256_here...")
+            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+            ctx:commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
         end,
         dependencies = {
             { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }

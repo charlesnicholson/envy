@@ -1,4 +1,5 @@
-identity = "local.fetch_dep_helper@v1"
+-- Base recipe that will be a fetch dependency for another recipe
+identity = "local.simple_fetch_dep_base@v1"
 
 fetch = {
   source = "test_data/archives/test.tar.gz",
