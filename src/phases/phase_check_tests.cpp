@@ -18,10 +18,12 @@ extern "C" {
 namespace envy {
 
 // Extern declarations for unit testing (not in public API)
-extern bool recipe_has_check_verb(recipe *r, lua_State *lua);
-extern bool run_check_verb(recipe *r, engine &eng, lua_State *lua);
+extern bool recipe_has_check_verb(recipe *r, sol::state_view lua);
+extern bool run_check_verb(recipe *r, engine &eng, sol::state_view lua);
 extern bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd);
-extern bool run_check_function(recipe *r, lua_State *lua, sol::protected_function check_func);
+extern bool run_check_function(recipe *r,
+                               sol::state_view lua,
+                               sol::protected_function check_func);
 
 namespace {
 
@@ -61,24 +63,21 @@ struct test_recipe_fixture {
     });
   }
 
-  void set_check_string(std::string_view cmd) {
-    lua_pushstring(r->lua->lua_state(), std::string(cmd).c_str());
-    lua_setglobal(r->lua->lua_state(), "check");
-  }
+  void set_check_string(std::string_view cmd) { (*r->lua)["check"] = std::string(cmd); }
 
   void set_check_function(std::string_view lua_code) {
-    std::string code = "check = " + std::string(lua_code);
-    if (luaL_dostring(r->lua->lua_state(), code.c_str()) != LUA_OK) {
-      char const *err = lua_tostring(r->lua->lua_state(), -1);
-      throw std::runtime_error(std::string("Failed to set check function: ") +
-                               (err ? err : "unknown"));
+    std::string code = "return " + std::string(lua_code);
+    sol::protected_function_result res{
+      r->lua->safe_script(code, sol::script_pass_on_error)
+    };
+    if (!res.valid()) {
+      sol::error err{ res };
+      throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
     }
+    (*r->lua)["check"] = res.get<sol::protected_function>();
   }
 
-  void clear_check() {
-    lua_pushnil(r->lua->lua_state());
-    lua_setglobal(r->lua->lua_state(), "check");
-  }
+  void clear_check() { (*r->lua)["check"] = sol::lua_nil; }
 };
 
 }  // namespace
@@ -91,7 +90,7 @@ TEST_CASE("recipe_has_check_verb detects string check") {
   test_recipe_fixture f;
   f.set_check_string("true");
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK(has_check);
 }
 
@@ -99,7 +98,7 @@ TEST_CASE("recipe_has_check_verb detects function check") {
   test_recipe_fixture f;
   f.set_check_function("function(ctx) return true end");
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK(has_check);
 }
 
@@ -107,25 +106,23 @@ TEST_CASE("recipe_has_check_verb returns false when no check verb") {
   test_recipe_fixture f;
   // No check verb set
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK_FALSE(has_check);
 }
 
 TEST_CASE("recipe_has_check_verb returns false for number") {
   test_recipe_fixture f;
-  lua_pushnumber(f.r->lua->lua_state(), 42);
-  lua_setglobal(f.r->lua->lua_state(), "check");
+  (*f.r->lua)["check"] = 42;
 
-  bool has_check{ recipe_has_check_verb(f.r.get(), f.r->lua->lua_state()) };
+  bool has_check{ recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua }) };
   CHECK_FALSE(has_check);
 }
 
 TEST_CASE("recipe_has_check_verb returns false for invalid check type (table)") {
   test_recipe_fixture f;
-  lua_newtable(f.r->lua->lua_state());
-  lua_setglobal(f.r->lua->lua_state(), "check");
+  (*f.r->lua)["check"] = f.r->lua->create_table();
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK_FALSE(has_check);
 }
 
@@ -199,42 +196,39 @@ TEST_CASE("run_check_string returns false for failing command") {
 TEST_CASE("run_check_function returns true when function returns true") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return true end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return true end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function returns false when function returns false") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return false end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return false end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK_FALSE(result);
 }
 
 TEST_CASE("run_check_function returns false when function returns nil") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return nil end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return nil end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK_FALSE(result);
 }
 

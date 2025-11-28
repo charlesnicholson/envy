@@ -20,7 +20,6 @@
 namespace envy {
 namespace {
 
-// Context data for Lua C functions (stored as userdata upvalue)
 struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
 };
@@ -29,14 +28,10 @@ sol::table build_stage_phase_ctx_table(sol::state_view lua,
                                        std::string const &identity,
                                        stage_phase_ctx *ctx) {
   sol::table ctx_table{ lua.create_table() };
-
   ctx_table["identity"] = identity;
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
-
-  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
   lua_ctx_add_common_bindings(ctx_table, ctx);
-
   return ctx_table;
 }
 
@@ -64,7 +59,7 @@ struct stage_options {
   int strip_components{ 0 };
 };
 
-stage_options parse_stage_options(lua_State *lua, std::string const &key) {
+stage_options parse_stage_options(sol::state_view lua, std::string const &key) {
   stage_options opts;
 
   lua_getfield(lua, -1, "strip");
@@ -89,12 +84,12 @@ void run_default_stage(std::filesystem::path const &fetch_dir,
   extract_all_archives(fetch_dir, dest_dir, 0);
 }
 
-void run_declarative_stage(lua_State *lua,
+void run_declarative_stage(sol::state_view lua,
                            std::filesystem::path const &fetch_dir,
                            std::filesystem::path const &dest_dir,
                            std::string const &identity) {
   stage_options const opts{ parse_stage_options(lua, identity) };
-  lua_pop(lua, 1);  // Pop stage table
+  lua_pop(lua.lua_state(), 1);  // Pop stage table
 
   tui::debug("phase stage: declarative extraction with strip=%d", opts.strip_components);
   extract_all_archives(fetch_dir, dest_dir, opts.strip_components);
@@ -114,13 +109,11 @@ void run_programmatic_stage(sol::protected_function stage_func,
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
 
-  lua_State *L{ stage_func.lua_state() };
-  sol::table ctx_table{ build_stage_phase_ctx_table(L, identity, &ctx) };
+  sol::state_view lua{ stage_func.lua_state() };
+  sol::table ctx_table{ build_stage_phase_ctx_table(lua, identity, &ctx) };
 
   // Get options from registry and pass as 2nd arg
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
-  sol::object opts{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result result{ stage_func(ctx_table, opts) };
 
@@ -140,7 +133,7 @@ void run_shell_stage(std::string_view script,
   std::vector<std::string> output_lines;
   shell_run_cfg inv{ .on_output_line =
                          [&](std::string_view line) {
-                           tui::info("%s", std::string{ line }.c_str());
+                           tui::info("%.*s", static_cast<int>(line.size()), line.data());
                            output_lines.emplace_back(line);
                          },
                      .cwd = dest_dir,
@@ -175,11 +168,10 @@ void run_stage_phase(recipe *r, engine &eng) {
   }
 
   std::string const &identity{ r->spec->identity };
-  lua_State *lua{ r->lua->lua_state() };
-  std::filesystem::path const dest_dir{ determine_stage_destination(lua, lock) };
+  sol::state_view lua_view{ *r->lua };
+  std::filesystem::path const dest_dir{ determine_stage_destination(lua_view, lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
 
-  sol::state_view lua_view{ lua };
   sol::object stage_obj{ lua_view["stage"] };
 
   if (!stage_obj.valid()) {
@@ -195,8 +187,8 @@ void run_stage_phase(recipe *r, engine &eng) {
                            eng,
                            r);
   } else if (stage_obj.is<sol::table>()) {
-    stage_obj.push(lua);
-    run_declarative_stage(lua, fetch_dir, dest_dir, identity);
+    stage_obj.push(lua_view.lua_state());
+    run_declarative_stage(lua_view, fetch_dir, dest_dir, identity);
   } else {
     throw std::runtime_error("stage field must be nil, string, table, or function for " +
                              identity);

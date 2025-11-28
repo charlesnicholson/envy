@@ -17,17 +17,16 @@ namespace envy {
 
 namespace {
 
-void validate_phases(lua_State *lua, std::string const &identity) {
-  sol::state_view lua_view{ lua };
-  sol::object fetch_obj{ lua_view["fetch"] };
+void validate_phases(sol::state_view lua, std::string const &identity) {
+  sol::object fetch_obj{ lua["fetch"] };
 
   if (bool const has_fetch{ fetch_obj.is<sol::protected_function>() ||
                             fetch_obj.is<std::string>() || fetch_obj.is<sol::table>() }) {
     return;
   }
 
-  bool const has_check{ lua_view["check"].is<sol::protected_function>() };
-  bool const has_install{ lua_view["install"].is<sol::protected_function>() };
+  bool const has_check{ lua["check"].is<sol::protected_function>() };
+  bool const has_install{ lua["install"].is<sol::protected_function>() };
 
   if (!has_check || !has_install) {
     throw std::runtime_error("Recipe must define 'fetch' or both 'check' and 'install': " +
@@ -191,28 +190,25 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
     std::filesystem::create_directories(ctx.run_dir);
 
     // Build Lua context table with all fetch bindings
-    lua_State *parent_lua{ parent->lua->lua_state() };
-    sol::state_view parent_lua_view{ parent_lua };
+    sol::state_view parent_lua_view{ *parent->lua };
     sol::table ctx_table{
       build_fetch_phase_ctx_table(parent_lua_view, spec.identity, &ctx)
     };
 
     // Look up the fetch function from parent's dependencies
-    if (!recipe_spec::lookup_and_push_source_fetch(parent_lua, spec.identity)) {
+    if (!recipe_spec::lookup_and_push_source_fetch(parent_lua_view, spec.identity)) {
       throw std::runtime_error("Failed to lookup fetch function for: " + spec.identity);
     }
 
     // Stack: [function]
-    lua_rawgeti(parent_lua, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
-    // Stack: [function, options]
-
     // Call fetch(ctx, options)
-    sol::protected_function fetch_func{ parent_lua_view,
-                                        sol::stack_reference(parent_lua, -2) };
-    sol::object options_obj{ parent_lua_view, sol::stack_reference(parent_lua, -1) };
+    sol::protected_function fetch_func{
+      parent_lua_view, sol::stack_reference(parent_lua_view.lua_state(), -1)
+    };
+    lua_pop(parent_lua_view.lua_state(), 1);  // pop function
+    sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
     sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
-    lua_pop(parent_lua, 2);
 
     if (!fetch_result.valid()) {
       sol::error err{ fetch_result };
@@ -277,19 +273,15 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
                              "' but recipe declares '" + declared_identity + "'");
   }
 
-  validate_phases(lua->lua_state(), spec.identity);
+  validate_phases(sol::state_view{ *lua }, spec.identity);
 
   r->owned_dependency_specs = [&] {  // Parse and store dependencies
     std::vector<recipe_spec> parsed_deps;
     sol::object deps_obj{ (*lua)["dependencies"] };
     if (deps_obj.valid() && deps_obj.get_type() == sol::type::table) {
       sol::table deps_table{ deps_obj.as<sol::table>() };
-      lua_State *L{ lua->lua_state() };
-
       for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
-        deps_table[i].push(L);
-        auto dep_cfg{ recipe_spec::parse_from_stack(L, -1, recipe_path) };
-        lua_pop(L, 1);
+        auto dep_cfg{ recipe_spec::parse(deps_table[i], recipe_path, true) };
 
         if (!spec.identity.starts_with("local.") &&
             dep_cfg.identity.starts_with("local.")) {

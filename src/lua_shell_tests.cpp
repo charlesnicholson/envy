@@ -40,7 +40,7 @@ sol::state make_test_lua_state() {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH") {
   sol::state lua{ make_test_lua_state() };
 
-  sol::object bash_obj{ lua["ENVY_SHELL"]["BASH"] };
+  sol::object bash_obj{ sol::make_object(lua, static_cast<int>(envy::shell_choice::bash)) };
   auto result{ envy::parse_shell_config_from_lua(bash_obj, "test") };
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
@@ -50,7 +50,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH") {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH") {
   sol::state lua{ make_test_lua_state() };
 
-  sol::object sh_obj{ lua["ENVY_SHELL"]["SH"] };
+  sol::object sh_obj{ sol::make_object(lua, static_cast<int>(envy::shell_choice::sh)) };
   auto result{ envy::parse_shell_config_from_lua(sh_obj, "test") };
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
@@ -60,7 +60,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH") {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD") {
   sol::state lua{ make_test_lua_state() };
 
-  sol::object cmd_obj{ lua["ENVY_SHELL"]["CMD"] };
+  sol::object cmd_obj{ sol::make_object(lua, static_cast<int>(envy::shell_choice::cmd)) };
   auto result{ envy::parse_shell_config_from_lua(cmd_obj, "test") };
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
@@ -70,7 +70,9 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD") {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL") {
   sol::state lua{ make_test_lua_state() };
 
-  sol::object powershell_obj{ lua["ENVY_SHELL"]["POWERSHELL"] };
+  sol::object powershell_obj{
+    sol::make_object(lua, static_cast<int>(envy::shell_choice::powershell))
+  };
   auto result{ envy::parse_shell_config_from_lua(powershell_obj, "test") };
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
@@ -80,11 +82,8 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL") {
 TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
   sol::state lua{ make_test_lua_state() };
 
-  // Create invalid light userdata (value 999, not a valid shell_choice)
-  lua_State *L{ lua.lua_state() };
-  lua_pushlightuserdata(L, reinterpret_cast<void *>(static_cast<uintptr_t>(999)));
-  sol::object invalid_obj{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
+  // Create invalid constant (value 999, not a valid shell_choice)
+  sol::object invalid_obj{ lua, sol::in_place, 999 };
 
   CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "test_ctx"),
                        "test_ctx: invalid ENVY_SHELL constant",
@@ -235,14 +234,13 @@ TEST_CASE("parse_shell_config_from_lua - string type not supported") {
                        std::runtime_error);
 }
 
-TEST_CASE("parse_shell_config_from_lua - number type not supported") {
+TEST_CASE("parse_shell_config_from_lua - invalid numeric constant") {
   sol::state lua{ make_test_lua_state() };
 
   sol::object num_obj{ sol::make_object(lua, 42) };
 
   CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(num_obj, "test_ctx"),
-                       "test_ctx: shell must be ENVY_SHELL constant or table {file=..., "
-                       "ext=...} or {inline=...}",
+                       "test_ctx: invalid ENVY_SHELL constant",
                        std::runtime_error);
 }
 

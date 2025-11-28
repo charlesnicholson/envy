@@ -101,6 +101,7 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
       .declared_dependencies = {},
       .owned_dependency_specs = {},
       .dependencies = {},
+      .weak_references = {},
       .canonical_identity_hash = key.canonical(),
       .asset_path = std::filesystem::path{},
       .result_hash = {},

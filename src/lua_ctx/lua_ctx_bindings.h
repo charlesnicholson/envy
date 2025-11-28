@@ -80,7 +80,7 @@ std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx);
 // Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)
 // Requires fetch_phase_ctx* as context (extends lua_ctx_common)
 // Used by both recipe_fetch and asset_fetch phases
-void lua_ctx_bindings_register_fetch_phase(lua_State *lua, fetch_phase_ctx *context);
+void lua_ctx_bindings_register_fetch_phase(sol::state_view lua, fetch_phase_ctx *context);
 
 // Build complete fetch phase context table with identity, tmp_dir, and all bindings
 // Returns a Sol2 table ready for use in fetch functions

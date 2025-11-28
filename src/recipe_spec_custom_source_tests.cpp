@@ -76,7 +76,7 @@ envy::recipe_spec create_recipe_with_custom_fetch(
   }
 
   sol::object recipe_val{ result };
-  return envy::recipe_spec::parse(recipe_val, fs::current_path(), lua.lua_state());
+  return envy::recipe_spec::parse(recipe_val, fs::current_path());
 }
 
 // Helper: Call a recipe_spec's custom fetch function and return result
@@ -170,13 +170,13 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
   sol::object val_baz{ deps_table[3] };
 
   envy::recipe_spec spec_foo{
-    envy::recipe_spec::parse(val_foo, fs::current_path(), lua.lua_state())
+    envy::recipe_spec::parse(val_foo, fs::current_path())
   };
   envy::recipe_spec spec_bar{
-    envy::recipe_spec::parse(val_bar, fs::current_path(), lua.lua_state())
+    envy::recipe_spec::parse(val_bar, fs::current_path())
   };
   envy::recipe_spec spec_baz{
-    envy::recipe_spec::parse(val_baz, fs::current_path(), lua.lua_state())
+    envy::recipe_spec::parse(val_baz, fs::current_path())
   };
 
   // Verify each has a function
@@ -239,7 +239,7 @@ TEST_CASE("recipe_spec - error on dependencies without fetch") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.dependencies requires source.fetch function");
 }
@@ -264,7 +264,7 @@ TEST_CASE("recipe_spec - error on fetch not a function") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.fetch must be a function");
 }
@@ -287,7 +287,7 @@ TEST_CASE("recipe_spec - error on dependencies not array") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.dependencies must be array (table)");
 }
@@ -307,7 +307,7 @@ TEST_CASE("recipe_spec - error on empty source table") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source table must have either URL string or dependencies+fetch function");
 }
@@ -329,7 +329,7 @@ TEST_CASE("recipe_spec - error on parse without lua_State") {
   sol::object val{ result };
 
   // Verify parsing with lua_State works for custom source.fetch
-  CHECK_NOTHROW(envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state()));
+  CHECK_NOTHROW(envy::recipe_spec::parse(val, fs::current_path()));
 }
 
 TEST_CASE("recipe_spec - no function without source table") {
@@ -345,7 +345,7 @@ TEST_CASE("recipe_spec - no function without source table") {
 
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
   sol::object val{ result };
-  envy::recipe_spec spec{ envy::recipe_spec::parse(val, fs::current_path(), nullptr) };
+  envy::recipe_spec spec{ envy::recipe_spec::parse(val, fs::current_path()) };
 
   CHECK(spec.identity == "local.normal@v1");
   CHECK_FALSE(spec.has_fetch_function());

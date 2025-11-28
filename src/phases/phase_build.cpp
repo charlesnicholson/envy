@@ -34,9 +34,7 @@ sol::table build_build_phase_ctx_table(sol::state_view lua,
   ctx_table["stage_dir"] = ctx->run_dir.string();
   ctx_table["install_dir"] = ctx->install_dir.string();
 
-  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
   lua_ctx_add_common_bindings(ctx_table, ctx);
-
   return ctx_table;
 }
 
@@ -58,13 +56,10 @@ void run_programmatic_build(sol::protected_function build_func,
 
   sol::state_view lua{ build_func.lua_state() };
   sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
-
-  // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  sol::protected_function_result result{ build_func(ctx_table, opts) };
-
-  if (!result.valid()) {
+  if (sol::protected_function_result result{ build_func(ctx_table, opts) };
+      !result.valid()) {
     sol::error err{ result };
     throw std::runtime_error("Build function failed for " + identity + ": " + err.what());
   }
@@ -78,18 +73,18 @@ void run_shell_build(std::string_view script,
   shell_env_t env{ shell_getenv() };
 
   std::vector<std::string> output_lines;
-  shell_run_cfg inv{ .on_output_line =
-                         [&](std::string_view line) {
-                           tui::info("%s", std::string{ line }.c_str());
-                           output_lines.emplace_back(line);
-                         },
-                     .cwd = stage_dir,
-                     .env = std::move(env),
-                     .shell = shell_parse_choice(std::nullopt) };
+  shell_run_cfg const inv{ .on_output_line =
+                               [&](std::string_view line) {
+                                 tui::info("%.*s",
+                                           static_cast<int>(line.size()),
+                                           line.data());
+                                 output_lines.emplace_back(line);
+                               },
+                           .cwd = stage_dir,
+                           .env = std::move(env),
+                           .shell = shell_parse_choice(std::nullopt) };
 
-  shell_result const result{ shell_run(script, inv) };
-
-  if (result.exit_code != 0) {
+  if (shell_result const result{ shell_run(script, inv) }; result.exit_code != 0) {
     if (result.signal) {
       throw std::runtime_error("Build shell script terminated by signal " +
                                std::to_string(*result.signal) + " for " + identity);
@@ -106,15 +101,12 @@ void run_build_phase(recipe *r, engine &eng) {
   phase_trace_scope const phase_scope{ r->spec->identity,
                                        recipe_phase::asset_build,
                                        std::chrono::steady_clock::now() };
-
-  lua_State *lua{ r->lua->lua_state() };
-
   if (!r->lock) {
     tui::debug("phase build: no lock (cache hit), skipping");
     return;
   }
 
-  sol::state_view lua_view{ lua };
+  sol::state_view lua_view{ *r->lua };
   sol::object build_obj{ lua_view["build"] };
 
   if (!build_obj.valid()) {

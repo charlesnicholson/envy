@@ -6,6 +6,8 @@
 #include "sol/sol.hpp"
 
 #include <filesystem>
+#include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -35,13 +37,17 @@ struct recipe_spec : uncopyable {
 
   struct fetch_function {};  // Recipe defines custom fetch()
 
-  using source_t = std::variant<remote_source, local_source, git_source, fetch_function>;
+  struct weak_ref {};  // Reference-only or weak dependency (no source)
+
+  using source_t =
+      std::variant<remote_source, local_source, git_source, fetch_function, weak_ref>;
 
   std::string identity;  // "namespace.name@version"
   source_t source;
   std::string serialized_options;  // Serialized Lua table literal (empty "{}" if none)
   std::optional<recipe_phase> needed_by;         // Phase dependency annotation
   mutable recipe_spec const *parent{ nullptr };  // Owning parent spec
+  std::unique_ptr<recipe_spec> weak;             // Weak fallback recipe (if any)
 
   // Custom source fetch (nested source dependencies)
   std::vector<recipe_spec> source_dependencies{};  // Needed for fetching this recipe
@@ -49,13 +55,14 @@ struct recipe_spec : uncopyable {
   // Parse recipe_spec from Sol2 object
   static recipe_spec parse(sol::object const &lua_val,
                            std::filesystem::path const &base_path,
-                           lua_State *L);
+                           bool allow_weak_without_source = false);
 
   // Parse recipe_spec directly from Lua stack (for tables containing functions)
   // Used primarily for testing; production code should use parse() with sol::object
-  static recipe_spec parse_from_stack(lua_State *L,
+  static recipe_spec parse_from_stack(sol::state_view lua,
                                       int index,
-                                      std::filesystem::path const &base_path);
+                                      std::filesystem::path const &base_path,
+                                      bool allow_weak_without_source = false);
 
   // Serialize sol::object to canonical string for stable recipe option hashing
   static std::string serialize_option_table(sol::object const &val);
@@ -70,11 +77,13 @@ struct recipe_spec : uncopyable {
   bool is_local() const;
   bool is_git() const;
   bool has_fetch_function() const;
+  bool is_weak_reference() const;
 
   // Look up source.fetch function for a dependency from Lua state's dependencies global
   // Pushes the function onto the stack if found, returns true
   // Returns false if not found (leaves stack unchanged)
-  static bool lookup_and_push_source_fetch(lua_State *L, std::string const &dep_identity);
+  static bool lookup_and_push_source_fetch(sol::state_view lua,
+                                           std::string const &dep_identity);
 };
 
 }  // namespace envy

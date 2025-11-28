@@ -26,8 +26,6 @@ make_ctx_run(lua_ctx_common *ctx) {
   return [ctx](sol::object script_obj,
                sol::optional<sol::object> opts_obj,
                sol::this_state L) -> sol::table {
-    lua_State *lua{ L };
-
     // Validate script argument
     if (!script_obj.is<std::string>()) {
       throw std::runtime_error("ctx.run: first argument must be a string (shell script)");
@@ -164,7 +162,7 @@ make_ctx_run(lua_ctx_common *ctx) {
       combined_output += '\n';
     }
 
-    sol::state_view lua_view{ lua };
+    sol::state_view lua_view{ L };
     sol::table return_table{ lua_view.create_table() };
     return_table["stdout"] = combined_output;
     return_table["stderr"] = "";

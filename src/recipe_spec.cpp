@@ -47,15 +47,8 @@ bool contains_function(sol::object const &val) {
 // Parse source table (custom source fetch with dependencies)
 recipe_spec::source_t parse_source_table(sol::table const &source_table,
                                          std::filesystem::path const &base_path,
-                                         lua_State *L,
-                                         std::vector<recipe_spec> &out_dependencies) {
-  // Custom source fetch requires lua_State to validate functions
-  if (!L) {
-    throw std::runtime_error(
-        "Custom source fetch requires lua_State (use parse() overload with lua_State "
-        "parameter)");
-  }
-
+                                         std::vector<recipe_spec> &out_dependencies,
+                                         bool allow_weak_without_source) {
   // Check for dependencies field (need to parse as array)
   bool has_dependencies{ false };
   sol::object deps_obj{ source_table["dependencies"] };
@@ -67,7 +60,8 @@ recipe_spec::source_t parse_source_table(sol::table const &source_table,
       for (size_t i{ 1 };; ++i) {
         sol::object dep_obj{ deps_table[i] };
         if (!dep_obj.valid()) { break; }
-        out_dependencies.push_back(recipe_spec::parse(dep_obj, base_path, L));
+        out_dependencies.push_back(
+            recipe_spec::parse(dep_obj, base_path, allow_weak_without_source));
       }
     } else {
       throw std::runtime_error("source.dependencies must be array (table)");
@@ -166,7 +160,7 @@ recipe_spec::source_t parse_source_string(std::string const &source_uri,
 
 recipe_spec recipe_spec::parse(sol::object const &lua_val,
                                std::filesystem::path const &base_path,
-                               lua_State *L) {
+                               bool const allow_weak_without_source) {
   recipe_spec result;
 
   //  "namespace.name@version" shorthand requires url or file
@@ -185,7 +179,7 @@ recipe_spec recipe_spec::parse(sol::object const &lua_val,
   // Initialize serialized options to empty table
   result.serialized_options = "{}";
 
-  result.identity = [&] {
+  result.identity = [&]() -> std::string {
     sol::object recipe_obj{ table["recipe"] };
     if (!recipe_obj.valid()) {
       throw std::runtime_error("Recipe table missing required 'recipe' field");
@@ -193,29 +187,51 @@ recipe_spec recipe_spec::parse(sol::object const &lua_val,
     if (!recipe_obj.is<std::string>()) {
       throw std::runtime_error("Recipe 'recipe' field must be string");
     }
-    return recipe_obj.as<std::string>();
+    std::string ident{ recipe_obj.as<std::string>() };
+    if (ident.empty()) {
+      throw std::runtime_error("Recipe 'recipe' field cannot be empty");
+    }
+    return ident;
   }();
 
-  std::string ns, name, ver;
-  if (!parse_identity(result.identity, ns, name, ver)) {
-    throw std::runtime_error("Invalid recipe identity format: " + result.identity);
-  }
+  sol::object weak_obj{ table["weak"] };
+  bool const has_weak{ weak_obj.valid() };
 
   sol::object source_obj{ table["source"] };
-  if (!source_obj.valid()) {
-    throw std::runtime_error("Recipe must specify 'source' field");
+  bool const has_source{ source_obj.valid() };
+
+  if (has_source && has_weak) {
+    throw std::runtime_error("Recipe cannot specify both 'source' and 'weak' fields");
+  }
+
+  bool const allow_missing_source{ allow_weak_without_source && !has_source };
+
+  std::string ns, name, ver;
+  if (!allow_missing_source) {
+    if (!parse_identity(result.identity, ns, name, ver)) {
+      throw std::runtime_error("Invalid recipe identity format: " + result.identity);
+    }
   }
 
   // Check if source is a table (custom source fetch with dependencies)
-  if (source_obj.is<sol::table>()) {
-    sol::table source_table{ source_obj.as<sol::table>() };
-    result.source =
-        parse_source_table(source_table, base_path, L, result.source_dependencies);
-  } else if (source_obj.is<std::string>()) {
-    std::string source_uri{ source_obj.as<std::string>() };
-    result.source = parse_source_string(source_uri, table, base_path);
+  if (has_source) {
+    if (source_obj.is<sol::table>()) {
+      sol::table source_table{ source_obj.as<sol::table>() };
+      result.source = parse_source_table(source_table,
+                                         base_path,
+                                         result.source_dependencies,
+                                         allow_weak_without_source);
+    } else if (source_obj.is<std::string>()) {
+      std::string source_uri{ source_obj.as<std::string>() };
+      result.source = parse_source_string(source_uri, table, base_path);
+    } else {
+      throw std::runtime_error("Recipe 'source' field must be string or table");
+    }
   } else {
-    throw std::runtime_error("Recipe 'source' field must be string or table");
+    if (!allow_weak_without_source) {
+      throw std::runtime_error("Recipe must specify 'source' field");
+    }
+    result.source = recipe_spec::weak_ref{};
   }
 
   // Check if options field exists and serialize it
@@ -257,6 +273,18 @@ recipe_spec recipe_spec::parse(sol::object const &lua_val,
     }
   }
 
+  if (has_weak) {
+    if (!weak_obj.is<sol::table>()) {
+      throw std::runtime_error("Recipe 'weak' field must be table");
+    }
+    // Weak fallback must be a strong spec; do not allow nested weak-without-source here
+    result.weak =
+        std::make_unique<recipe_spec>(recipe_spec::parse(weak_obj, base_path, false));
+    if (result.weak->needed_by.has_value()) {
+      throw std::runtime_error("weak fallback must not specify 'needed_by'");
+    }
+  }
+
   return result;
 }
 
@@ -267,20 +295,17 @@ bool recipe_spec::is_remote() const {
 }
 
 bool recipe_spec::has_fetch_function() const {
-  return std::holds_alternative<fetch_function>(source);
+  return holds_alternative<fetch_function>(source);
+}
+
+bool recipe_spec::is_weak_reference() const {
+  return std::holds_alternative<weak_ref>(source);
 }
 
 std::string recipe_spec::serialize_option_table(sol::object const &val) {
-  // Handle nil
   if (val.get_type() == sol::type::lua_nil) { return "nil"; }
-
-  // Handle boolean
   if (val.is<bool>()) { return val.as<bool>() ? "true" : "false"; }
-
-  // Handle integer
   if (val.is<lua_Integer>()) { return std::to_string(val.as<lua_Integer>()); }
-
-  // Handle number (double)
   if (val.is<lua_Number>()) {
     char buf[32];
     auto [ptr, ec] = std::to_chars(buf,
@@ -293,7 +318,6 @@ std::string recipe_spec::serialize_option_table(sol::object const &val) {
     return std::string{ buf, ptr };
   }
 
-  // Handle string
   if (val.is<std::string>()) {
     auto const &str{ val.as<std::string>() };
     std::string result;
@@ -307,7 +331,6 @@ std::string recipe_spec::serialize_option_table(sol::object const &val) {
     return result;
   }
 
-  // Handle table
   if (val.is<sol::table>()) {
     sol::table table{ val.as<sol::table>() };
     if (table.empty()) { return "{}"; }
@@ -348,21 +371,19 @@ std::string recipe_spec::format_key() const {
   return format_key(identity, serialized_options);
 }
 
-recipe_spec recipe_spec::parse_from_stack(lua_State *L,
+recipe_spec recipe_spec::parse_from_stack(sol::state_view lua,
                                           int index,
-                                          std::filesystem::path const &base_path) {
-  sol::state_view lua_view{ L };
-  sol::stack_object stack_obj{ lua_view, index };
+                                          std::filesystem::path const &base_path,
+                                          bool const allow_weak_without_source) {
+  sol::stack_object stack_obj{ lua, index };
   sol::object recipe_val{ stack_obj };
-  return parse(recipe_val, base_path, L);
+  return parse(recipe_val, base_path, allow_weak_without_source);
 }
 
-bool recipe_spec::lookup_and_push_source_fetch(lua_State *L,
+bool recipe_spec::lookup_and_push_source_fetch(sol::state_view lua,
                                                std::string const &dep_identity) {
-  sol::state_view lua_view{ L };
-
   // Look up the dependencies global array
-  sol::object deps_obj{ lua_view["dependencies"] };
+  sol::object deps_obj{ lua["dependencies"] };
   if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return false; }
 
   sol::table deps_table{ deps_obj.as<sol::table>() };
@@ -390,7 +411,7 @@ bool recipe_spec::lookup_and_push_source_fetch(lua_State *L,
       if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { return false; }
 
       // Push the fetch function onto the stack
-      fetch_obj.push(L);
+      fetch_obj.push(lua.lua_state());
       return true;
     }
   }

@@ -87,7 +87,7 @@ struct table_entry {
   std::optional<std::string> ref;
 };
 
-std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
+std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
                                           std::filesystem::path const &fetch_dir,
                                           std::filesystem::path const &stage_dir,
                                           std::string const &key);
@@ -147,7 +147,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
     return_value.push(lua.lua_state());
     auto const fetch_specs{
-      parse_fetch_field(lua.lua_state(), lock->fetch_dir(), lock->stage_dir(), identity)
+      parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
     };
     lua_pop(lua.lua_state(), 1);
 
@@ -174,29 +174,23 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   return should_mark_complete;
 }
 
-// Extract source, sha256, and ref from a Lua table at the top of the stack.
-table_entry parse_table_entry(lua_State *lua, std::string const &context) {
-  if (!lua_istable(lua, -1)) { throw std::runtime_error("Expected table in " + context); }
-
-  lua_getfield(lua, -1, "source");
-  if (!lua_isstring(lua, -1)) {
-    lua_pop(lua, 1);
+// Extract source, sha256, and ref from a Lua table.
+table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
+  sol::optional<std::string> url{ tbl["source"] };
+  if (!url || url->empty()) {
     throw std::runtime_error("Fetch table missing 'source' field in " + context);
   }
-  std::string url{ lua_tostring(lua, -1) };
-  lua_pop(lua, 1);
 
-  lua_getfield(lua, -1, "sha256");
-  std::string sha256;
-  if (lua_isstring(lua, -1)) { sha256 = lua_tostring(lua, -1); }
-  lua_pop(lua, 1);
+  table_entry entry;
+  entry.url = std::move(*url);
 
-  lua_getfield(lua, -1, "ref");
-  std::optional<std::string> ref;
-  if (lua_isstring(lua, -1)) { ref = lua_tostring(lua, -1); }
-  lua_pop(lua, 1);
+  sol::optional<std::string> sha{ tbl["sha256"] };
+  if (sha) { entry.sha256 = std::move(*sha); }
 
-  return { std::move(url), std::move(sha256), std::move(ref) };
+  sol::optional<std::string> ref{ tbl["ref"] };
+  if (ref) { entry.ref = std::move(*ref); }
+
+  return entry;
 }
 
 // Create fetch_spec from URL, SHA256, and optional ref, checking for filename collisions.
@@ -231,19 +225,19 @@ fetch_spec create_fetch_spec(std::string url,
 }
 
 // Parse the fetch field from Lua into a vector of fetch_specs.
-std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
+std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
                                           std::filesystem::path const &fetch_dir,
                                           std::filesystem::path const &stage_dir,
                                           std::string const &key) {
-  int const fetch_type{ lua_type(lua, -1) };
+  sol::stack_object top{ lua, -1 };
+  sol::type const fetch_type{ top.get_type() };
 
   switch (fetch_type) {
-    case LUA_TSTRING: {
-      char const *url{ lua_tostring(lua, -1) };
+    case sol::type::string: {
+      std::string const url{ top.as<std::string>() };
       std::string basename{ uri_extract_filename(url) };
       if (basename.empty()) {
-        throw std::runtime_error("Cannot extract filename from URL: " + std::string(url) +
-                                 " in " + key);
+        throw std::runtime_error("Cannot extract filename from URL: " + url + " in " + key);
       }
       std::filesystem::path dest{ fetch_dir / basename };
 
@@ -251,18 +245,17 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
                  .sha256 = "" } };
     }
 
-    case LUA_TTABLE: {
+    case sol::type::table: {
       std::vector<fetch_spec> specs;
       std::unordered_set<std::string> basenames;
 
-      sol::state_view lua_view{ lua };
-      sol::table tbl{ lua_view, -1 };
+      sol::table tbl{ lua, -1 };
 
       sol::object first_elem{ tbl[1] };
       sol::type first_elem_type{ first_elem.get_type() };
 
-      auto process_table_entry{ [&]() {
-        auto entry{ parse_table_entry(lua, key) };
+      auto process_table_entry{ [&](sol::table const &entry_tbl) {
+        auto entry{ parse_table_entry(entry_tbl, key) };
         specs.push_back(create_fetch_spec(std::move(entry.url),
                                           std::move(entry.sha256),
                                           std::move(entry.ref),
@@ -273,7 +266,7 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
       } };
 
       if (first_elem_type == sol::type::none || first_elem_type == sol::type::lua_nil) {
-        process_table_entry();
+        process_table_entry(tbl);
       } else if (first_elem_type == sol::type::string) {
         size_t const len{ tbl.size() };
         for (size_t i = 1; i <= len; ++i) {
@@ -296,9 +289,7 @@ std::vector<fetch_spec> parse_fetch_field(lua_State *lua,
         size_t const len{ tbl.size() };
         for (size_t i = 1; i <= len; ++i) {
           sol::table elem{ tbl[i] };
-          elem.push(lua);
-          process_table_entry();
-          lua_pop(lua, 1);
+          process_table_entry(elem);
         }
       } else {
         throw std::runtime_error("Invalid fetch array element type in " + key);
@@ -415,7 +406,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
 // fetch = "source" or fetch = {source="..."} or fetch = {{...}}
 // Returns true if fetch should be marked complete (cacheable), false otherwise
-bool run_declarative_fetch(lua_State *lua,
+bool run_declarative_fetch(sol::state_view lua,
                            cache::scoped_entry_lock *lock,
                            std::string const &identity) {
   tui::debug("phase fetch: executing declarative fetch");
@@ -430,7 +421,7 @@ bool run_declarative_fetch(lua_State *lua,
   auto const fetch_specs{
     parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
   };
-  lua_pop(lua, 1);
+  lua_pop(lua.lua_state(), 1);
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
   execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
 
@@ -470,8 +461,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
 
   std::string const &identity{ r->spec->identity };
 
-  lua_State *lua{ r->lua->lua_state() };
-  sol::state_view lua_view{ lua };
+  sol::state_view lua_view{ *r->lua };
   sol::object fetch_obj{ lua_view["fetch"] };
 
   bool should_mark_complete{ true };
@@ -486,8 +476,8 @@ void run_fetch_phase(recipe *r, engine &eng) {
                                                   eng,
                                                   r);
   } else if (fetch_obj.is<std::string>() || fetch_obj.is<sol::table>()) {
-    fetch_obj.push(lua);
-    should_mark_complete = run_declarative_fetch(lua, lock, identity);
+    fetch_obj.push(lua_view.lua_state());
+    should_mark_complete = run_declarative_fetch(lua_view, lock, identity);
   } else {
     throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
                              identity);

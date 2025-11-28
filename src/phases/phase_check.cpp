@@ -20,10 +20,10 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
   shell_run_cfg cfg;
-  cfg.on_output_line = [](std::string_view line) {
-    tui::debug("check output: %s", std::string(line).c_str());
-  };
   cfg.env = shell_getenv();
+  cfg.on_output_line = [](std::string_view line) {
+    tui::info("%.*s", static_cast<int>(line.size()), line.data());
+  };
 
   if (r->default_shell_ptr && *r->default_shell_ptr) {
     std::visit(match{ [&cfg](shell_choice const &choice) { cfg.shell = choice; },
@@ -49,11 +49,12 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   return check_passed;
 }
 
-bool run_check_function(recipe *r, lua_State *lua, sol::protected_function check_func) {
+bool run_check_function(recipe *r,
+                        sol::state_view lua,
+                        sol::protected_function check_func) {
   tui::debug("phase check: executing function check");
 
-  sol::state_view lua_view{ lua };
-  sol::table ctx_table{ lua_view.create_table() };
+  sol::table ctx_table{ lua.create_table() };
 
   sol::protected_function_result result{ check_func(ctx_table) };
   if (!result.valid()) {
@@ -67,9 +68,8 @@ bool run_check_function(recipe *r, lua_State *lua, sol::protected_function check
   return check_passed;
 }
 
-bool run_check_verb(recipe *r, engine &eng, lua_State *lua) {
-  sol::state_view lua_view{ lua };
-  sol::object check_obj{ lua_view["check"] };
+bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
+  sol::object check_obj{ lua["check"] };
 
   if (check_obj.is<sol::protected_function>()) {
     return run_check_function(r, lua, check_obj.as<sol::protected_function>());
@@ -81,14 +81,13 @@ bool run_check_verb(recipe *r, engine &eng, lua_State *lua) {
 }
 
 // Helper: Check if recipe has check verb
-bool recipe_has_check_verb(recipe *r, lua_State *lua) {
-  sol::state_view lua_view{ lua };
-  sol::object check_obj{ lua_view["check"] };
+bool recipe_has_check_verb(recipe *r, sol::state_view lua) {
+  sol::object check_obj{ lua["check"] };
   return check_obj.is<sol::protected_function>() || check_obj.is<std::string>();
 }
 
 // USER-MANAGED PACKAGE PATH: Double-check lock pattern
-void run_check_phase_user_managed(recipe *r, engine &eng, lua_State *lua) {
+void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
   // First check (pre-lock): See if work is needed
   tui::debug("phase check: running user check (pre-lock)");
   bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
@@ -112,9 +111,8 @@ void run_check_phase_user_managed(recipe *r, engine &eng, lua_State *lua) {
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
                                                    8) };  // For cache path: 16 hex chars
 
-  sol::state_view lua_view{ lua };
-  std::string const platform{ lua_view["ENVY_PLATFORM"].get<std::string>() };
-  std::string const arch{ lua_view["ENVY_ARCH"].get<std::string>() };
+  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
+  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
 
   auto cache_result{
     r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
@@ -159,7 +157,7 @@ void run_check_phase_user_managed(recipe *r, engine &eng, lua_State *lua) {
 // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
 void run_check_phase_cache_managed(recipe *r) {
   std::string const key{ r->spec->format_key() };
-  lua_State *lua{ r->lua->lua_state() };
+  sol::state_view lua{ *r->lua };
 
   std::string const key_for_hash{ r->spec->format_key() };
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
@@ -168,9 +166,8 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
                                                    8) };  // For cache path: 16 hex chars
 
-  sol::state_view lua_view{ lua };
-  std::string const platform{ lua_view["ENVY_PLATFORM"].get<std::string>() };
-  std::string const arch{ lua_view["ENVY_ARCH"].get<std::string>() };
+  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
+  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
 
   auto cache_result{
     r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
@@ -192,8 +189,7 @@ void run_check_phase(recipe *r, engine &eng) {
                                        recipe_phase::asset_check,
                                        std::chrono::steady_clock::now() };
 
-  lua_State *lua{ r->lua->lua_state() };
-  if (!lua) { throw std::runtime_error("No lua_state for recipe: " + r->spec->identity); }
+  sol::state_view lua{ *r->lua };
 
   // Check if recipe has check verb (user-managed package indicator)
   bool const has_check{ recipe_has_check_verb(r, lua) };

@@ -138,39 +138,14 @@ void lua_envy_install(sol::state &lua) {
   }
 
   lua["envy"] = envy_table;
-
-  auto shell_table{ lua.create_table() };
-  lua_State *L{ lua.lua_state() };
-
-#if defined(__APPLE__) || defined(__linux__)
-  lua_pushlightuserdata(
-      L,
-      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::bash)));
-  shell_table["BASH"] = sol::stack_object{ L, -1 };
-  lua_pop(L, 1);
-
-  lua_pushlightuserdata(
-      L,
-      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::sh)));
-  shell_table["SH"] = sol::stack_object{ L, -1 };
-  lua_pop(L, 1);
-#endif
-
-#if defined(_WIN32)
-  lua_pushlightuserdata(
-      L,
-      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::cmd)));
-  shell_table["CMD"] = sol::stack_object{ L, -1 };
-  lua_pop(L, 1);
-
-  lua_pushlightuserdata(
-      L,
-      reinterpret_cast<void *>(static_cast<uintptr_t>(shell_choice::powershell)));
-  shell_table["POWERSHELL"] = sol::stack_object{ L, -1 };
-  lua_pop(L, 1);
-#endif
-
-  lua["ENVY_SHELL"] = shell_table;
+  lua["ENVY_SHELL"] = lua.create_table_with("BASH",
+                                            static_cast<int>(shell_choice::bash),
+                                            "SH",
+                                            static_cast<int>(shell_choice::sh),
+                                            "CMD",
+                                            static_cast<int>(shell_choice::cmd),
+                                            "POWERSHELL",
+                                            static_cast<int>(shell_choice::powershell));
 }
 
 }  // namespace envy

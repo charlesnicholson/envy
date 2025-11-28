@@ -88,13 +88,9 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   }
 
   sol::table packages_table = packages_obj.as<sol::table>();
-  lua_State *L{ m->lua_->lua_state() };
 
   for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
-    sol::object pkg = packages_table[i];
-    pkg.push(L);
-    m->packages.push_back(recipe_spec::parse_from_stack(L, -1, manifest_path));
-    lua_pop(L, 1);
+    m->packages.push_back(recipe_spec::parse(packages_table[i], manifest_path));
   }
 
   return m;

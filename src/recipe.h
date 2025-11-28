@@ -37,6 +37,13 @@ struct recipe {
     recipe_phase needed_by;  // Phase by which this dependency must be complete
   };
   std::unordered_map<std::string, dependency_info> dependencies;
+  struct weak_reference {
+    std::string query;                      // Partial identity query (e.g., "python")
+    std::unique_ptr<recipe_spec> fallback;  // weak dep, null for ref-only
+    recipe_phase needed_by{ recipe_phase::asset_build };
+    recipe *resolved{ nullptr };  // Filled in during resolution
+  };
+  std::vector<weak_reference> weak_references;
 
   std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;
