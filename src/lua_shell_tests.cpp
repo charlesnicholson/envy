@@ -109,10 +109,10 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   CHECK(shell_file.argv[0] == "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
   CHECK(shell_file.ext == ".ps1");
 #else
-  // Unix: use zsh
+  // Unix: use sh
   sol::table shell_tbl{ lua.create_table() };
-  shell_tbl["file"] = "/bin/zsh";
-  shell_tbl["ext"] = ".zsh";
+  shell_tbl["file"] = "/bin/sh";
+  shell_tbl["ext"] = ".sh";
 
   sol::object shell_obj{ shell_tbl };
   auto result{ envy::parse_shell_config_from_lua(shell_obj, "test") };
@@ -120,8 +120,8 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   CHECK(std::holds_alternative<envy::custom_shell_file>(result));
   auto const &shell_file{ std::get<envy::custom_shell_file>(result) };
   REQUIRE(shell_file.argv.size() == 1);
-  CHECK(shell_file.argv[0] == "/bin/zsh");
-  CHECK(shell_file.ext == ".zsh");
+  CHECK(shell_file.argv[0] == "/bin/sh");
+  CHECK(shell_file.ext == ".sh");
 #endif
 }
 
