@@ -115,7 +115,32 @@ class TestEngineWeakDependencies(unittest.TestCase):
         self.assertIn("local.branch_two@v1", output)
         self.assertIn("local.shared@v1", output)
 
+    def test_nested_weak_fetch_dep_uses_fallback(self):
+        result = self.run_engine(
+            "local.weak_custom_fetch_root@v1",
+            "test_data/recipes/weak_custom_fetch_root.lua",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        output = self.parse_output(result.stdout)
+        self.assertIn("local.weak_custom_fetch_root@v1", output)
+        self.assertIn("local.custom_fetch_dep@v1", output)
+        self.assertIn("local.helper.fallback@v1", output)
+        self.assertNotIn("local.helper@v1", output)
+
+    def test_nested_weak_fetch_dep_prefers_existing_helper(self):
+        result = self.run_engine(
+            "local.weak_custom_fetch_root_with_helper@v1",
+            "test_data/recipes/weak_custom_fetch_root_with_helper.lua",
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        output = self.parse_output(result.stdout)
+        self.assertIn("local.weak_custom_fetch_root_with_helper@v1", output)
+        self.assertIn("local.custom_fetch_dep@v1", output)
+        self.assertIn("local.helper@v1", output)
+        self.assertNotIn("local.helper.fallback@v1", output)
+
 
 if __name__ == "__main__":
     unittest.main()
-

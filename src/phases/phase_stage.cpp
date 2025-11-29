@@ -29,6 +29,7 @@ sol::table build_stage_phase_ctx_table(sol::state_view lua,
                                        stage_phase_ctx *ctx) {
   sol::table ctx_table{ lua.create_table() };
   ctx_table["identity"] = identity;
+  // Expose fetch_dir/stage_dir in stage phase (read-only)
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
   lua_ctx_add_common_bindings(ctx_table, ctx);

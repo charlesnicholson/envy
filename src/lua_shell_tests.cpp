@@ -14,13 +14,9 @@ namespace {
 
 using envy::sol_state_ptr;
 
-// Helper to set light userdata in a table (sol2 requires lua_State* access)
+// Helper to set light userdata in a table using Sol helpers
 void set_light_userdata(sol::table &tbl, char const *key, void *ptr) {
-  lua_State *L{ tbl.lua_state() };
-  lua_pushlightuserdata(L, ptr);
-  sol::stack_object obj{ L, -1 };
-  tbl[key] = obj;
-  lua_pop(L, 1);
+  tbl[key] = sol::lightuserdata_value{ ptr };
 }
 
 // Helper: Create Lua state with ENVY_SHELL constants registered

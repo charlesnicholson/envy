@@ -168,7 +168,6 @@ void run_install_phase(recipe *r, engine &eng) {
 
   sol::state_view lua_view{ *r->lua };
   sol::object install_obj{ lua_view["install"] };
-
   bool marked_complete{ false };
 
   if (!install_obj.valid()) {

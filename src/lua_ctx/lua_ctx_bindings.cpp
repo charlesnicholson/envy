@@ -25,9 +25,8 @@ void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx) {
   ctx_table["run"] = make_ctx_run(ctx);
 }
 
-void lua_ctx_bindings_register_fetch_phase(sol::state_view lua, fetch_phase_ctx *context) {
-  sol::table ctx_table{ lua, sol::stack_reference(lua.lua_state(), -1) };
-
+void lua_ctx_bindings_register_fetch_phase(sol::table &ctx_table,
+                                           fetch_phase_ctx *context) {
   ctx_table["fetch"] = make_ctx_fetch(context);
   ctx_table["commit_fetch"] = make_ctx_commit_fetch(context);
 }
@@ -37,16 +36,9 @@ sol::table build_fetch_phase_ctx_table(sol::state_view lua,
                                        fetch_phase_ctx *ctx) {
   sol::table ctx_table{ lua.create_table() };
 
-  // Add identity and tmp_dir fields
   ctx_table["identity"] = identity;
   ctx_table["tmp_dir"] = ctx->run_dir.string();
-
-  // Register fetch-specific bindings (ctx.fetch + ctx.commit_fetch)
-  ctx_table.push(lua.lua_state());
-  lua_ctx_bindings_register_fetch_phase(lua, ctx);
-  lua_pop(lua.lua_state(), 1);
-
-  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
+  lua_ctx_bindings_register_fetch_phase(ctx_table, ctx);
   lua_ctx_add_common_bindings(ctx_table, ctx);
 
   return ctx_table;
