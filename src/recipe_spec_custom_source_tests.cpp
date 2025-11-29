@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 #include "sol/sol.hpp"
+#include "sol_util.h"
 
 #include <filesystem>
 #include <string>
@@ -44,7 +45,7 @@ void setup_recipe_environment(sol::state &lua,
 
 // Helper: Create and parse a recipe_spec with custom source fetch
 // The fetch function returns the recipe identity for verification
-envy::recipe_spec create_recipe_with_custom_fetch(
+envy::recipe_spec *create_recipe_with_custom_fetch(
     sol::state &lua,
     std::string const &identity,
     std::vector<std::string> const &dep_identities = {}) {
@@ -76,12 +77,12 @@ envy::recipe_spec create_recipe_with_custom_fetch(
   }
 
   sol::object recipe_val{ result };
-  return envy::recipe_spec::parse(recipe_val, fs::current_path(), lua.lua_state());
+  return envy::recipe_spec::parse(recipe_val, fs::current_path());
 }
 
 // Helper: Call a recipe_spec's custom fetch function and return result
-std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const &spec) {
-  if (!spec.has_fetch_function()) {
+std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const *spec) {
+  if (!spec->has_fetch_function()) {
     throw std::runtime_error("recipe_spec has no custom fetch function");
   }
 
@@ -98,7 +99,7 @@ std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const &spec) {
       sol::table dep_table{ dep_entry.as<sol::table>() };
       sol::object recipe_obj{ dep_table["recipe"] };
       if (recipe_obj.valid() && recipe_obj.is<std::string>() &&
-          recipe_obj.as<std::string>() == spec.identity) {
+          recipe_obj.as<std::string>() == spec->identity) {
         sol::table source_table{ dep_table["source"] };
         sol::function fetch_func{ source_table["fetch"] };
 
@@ -114,19 +115,19 @@ std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const &spec) {
     }
   }
 
-  throw std::runtime_error("Failed to lookup source.fetch for " + spec.identity);
+  throw std::runtime_error("Failed to lookup source.fetch for " + spec->identity);
 }
 
 }  // namespace
 
 TEST_CASE("recipe_spec - function returns correct identity") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
-  envy::recipe_spec spec{ create_recipe_with_custom_fetch(lua, "local.foo@v1") };
+  envy::recipe_spec *spec{ create_recipe_with_custom_fetch(lua, "local.foo@v1") };
 
-  CHECK(spec.identity == "local.foo@v1");
-  CHECK(spec.has_fetch_function());
+  CHECK(spec->identity == "local.foo@v1");
+  CHECK(spec->has_fetch_function());
 
   // Call the function and verify it returns the identity
   std::string result{ call_custom_fetch(lua, spec) };
@@ -134,8 +135,8 @@ TEST_CASE("recipe_spec - function returns correct identity") {
 }
 
 TEST_CASE("recipe_spec - multiple specs have correct functions") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   // Set up dependencies global with all three recipes
   std::string lua_code{ R"(
@@ -169,20 +170,14 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
   sol::object val_bar{ deps_table[2] };
   sol::object val_baz{ deps_table[3] };
 
-  envy::recipe_spec spec_foo{
-    envy::recipe_spec::parse(val_foo, fs::current_path(), lua.lua_state())
-  };
-  envy::recipe_spec spec_bar{
-    envy::recipe_spec::parse(val_bar, fs::current_path(), lua.lua_state())
-  };
-  envy::recipe_spec spec_baz{
-    envy::recipe_spec::parse(val_baz, fs::current_path(), lua.lua_state())
-  };
+  envy::recipe_spec *spec_foo{ envy::recipe_spec::parse(val_foo, fs::current_path()) };
+  envy::recipe_spec *spec_bar{ envy::recipe_spec::parse(val_bar, fs::current_path()) };
+  envy::recipe_spec *spec_baz{ envy::recipe_spec::parse(val_baz, fs::current_path()) };
 
   // Verify each has a function
-  CHECK(spec_foo.has_fetch_function());
-  CHECK(spec_bar.has_fetch_function());
-  CHECK(spec_baz.has_fetch_function());
+  CHECK(spec_foo->has_fetch_function());
+  CHECK(spec_bar->has_fetch_function());
+  CHECK(spec_baz->has_fetch_function());
 
   // Call each function and verify correct association
   CHECK(call_custom_fetch(lua, spec_foo) == "local.foo@v1");
@@ -191,28 +186,28 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
 }
 
 TEST_CASE("recipe_spec - with source dependencies") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
-  envy::recipe_spec spec{ create_recipe_with_custom_fetch(
+  envy::recipe_spec *spec{ create_recipe_with_custom_fetch(
       lua,
       "local.parent@v1",
       { "local.tool1@v1", "local.tool2@v1" }) };
 
-  CHECK(spec.identity == "local.parent@v1");
-  CHECK(spec.source_dependencies.size() == 2);
-  CHECK(spec.source_dependencies[0].identity == "local.tool1@v1");
-  CHECK(spec.source_dependencies[1].identity == "local.tool2@v1");
+  CHECK(spec->identity == "local.parent@v1");
+  CHECK(spec->source_dependencies.size() == 2);
+  CHECK(spec->source_dependencies[0]->identity == "local.tool1@v1");
+  CHECK(spec->source_dependencies[1]->identity == "local.tool2@v1");
 
   // Function still works
   CHECK(call_custom_fetch(lua, spec) == "local.parent@v1");
 }
 
 TEST_CASE("recipe_spec - function persists across multiple calls") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
-  envy::recipe_spec spec{ create_recipe_with_custom_fetch(lua, "local.persistent@v1") };
+  envy::recipe_spec *spec{ create_recipe_with_custom_fetch(lua, "local.persistent@v1") };
 
   // Call the function many times
   for (int i{ 0 }; i < 50; ++i) {
@@ -221,8 +216,8 @@ TEST_CASE("recipe_spec - function persists across multiple calls") {
 }
 
 TEST_CASE("recipe_spec - error on dependencies without fetch") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -239,14 +234,14 @@ TEST_CASE("recipe_spec - error on dependencies without fetch") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.dependencies requires source.fetch function");
 }
 
 TEST_CASE("recipe_spec - error on fetch not a function") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -264,14 +259,14 @@ TEST_CASE("recipe_spec - error on fetch not a function") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.fetch must be a function");
 }
 
 TEST_CASE("recipe_spec - error on dependencies not array") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -287,14 +282,14 @@ TEST_CASE("recipe_spec - error on dependencies not array") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source.dependencies must be array (table)");
 }
 
 TEST_CASE("recipe_spec - error on empty source table") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -307,14 +302,14 @@ TEST_CASE("recipe_spec - error on empty source table") {
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
         sol::object val{ result };
-        envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state());
+        envy::recipe_spec::parse(val, fs::current_path());
       }(),
       "source table must have either URL string or dependencies+fetch function");
 }
 
 TEST_CASE("recipe_spec - error on parse without lua_State") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -329,12 +324,12 @@ TEST_CASE("recipe_spec - error on parse without lua_State") {
   sol::object val{ result };
 
   // Verify parsing with lua_State works for custom source.fetch
-  CHECK_NOTHROW(envy::recipe_spec::parse(val, fs::current_path(), lua.lua_state()));
+  CHECK_NOTHROW(envy::recipe_spec::parse(val, fs::current_path()));
 }
 
 TEST_CASE("recipe_spec - no function without source table") {
-  sol::state lua;
-  lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table);
+  auto lua_state{ envy::sol_util_make_lua_state() };
+  sol::state &lua{ *lua_state };
 
   std::string lua_code{ R"(
     return {
@@ -345,9 +340,9 @@ TEST_CASE("recipe_spec - no function without source table") {
 
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
   sol::object val{ result };
-  envy::recipe_spec spec{ envy::recipe_spec::parse(val, fs::current_path(), nullptr) };
+  envy::recipe_spec *spec{ envy::recipe_spec::parse(val, fs::current_path()) };
 
-  CHECK(spec.identity == "local.normal@v1");
-  CHECK_FALSE(spec.has_fetch_function());
-  CHECK(spec.source_dependencies.empty());
+  CHECK(spec->identity == "local.normal@v1");
+  CHECK_FALSE(spec->has_fetch_function());
+  CHECK(spec->source_dependencies.empty());
 }

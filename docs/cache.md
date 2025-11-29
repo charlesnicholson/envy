@@ -106,7 +106,7 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 2. **Declarative git (first fetch):** miss → lock → clone repo to temp → checkout `ref` → extract tree to `recipes/{identity}/` → record git ref in `envy-git-ref` → touch `recipes/{identity}/envy-complete` → release.
 
-3. **Custom fetch (first fetch):** miss → lock → create `recipes/{identity}/fetch/` → create temp workspace → call fetch function (ctx:work_dir, ctx:fetch, ctx:import_file) → verify each import via SHA256 → copy verified files to `recipes/{identity}/` → touch `recipes/{identity}/fetch/envy-complete` → touch `recipes/{identity}/envy-complete` → release.
+3. **Custom fetch (first fetch):** miss → lock → create `recipes/{identity}/fetch/` → create temp workspace → call fetch function (ctx.tmp_dir, ctx.fetch, ctx.commit_fetch) → verify each import via SHA256 → copy verified files to `recipes/{identity}/` → touch `recipes/{identity}/fetch/envy-complete` → touch `recipes/{identity}/envy-complete` → release.
 
 4. **Concurrent recipe fetch:** waiter blocks on lock; when creator finishes, waiter rechecks `envy-complete` and returns path without refetching.
 

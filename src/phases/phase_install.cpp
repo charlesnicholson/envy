@@ -2,20 +2,13 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
-#include "lua_shell.h"
 #include "phase_check.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
-
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
 
 #include <filesystem>
 #include <optional>
@@ -47,18 +40,16 @@ bool directory_has_entries(std::filesystem::path const &dir) {
   return false;
 }
 
-sol::table build_install_phase_ctx_table(lua_State *lua,
+sol::table build_install_phase_ctx_table(sol::state_view lua,
                                          std::string const &identity,
                                          install_phase_ctx *ctx) {
-  sol::state_view lua_view{ lua };
-  sol::table ctx_table{ lua_view.create_table() };
+  sol::table ctx_table{ lua.create_table() };
 
   ctx_table["identity"] = identity;
 
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->stage_dir.string();
   ctx_table["install_dir"] = ctx->install_dir.string();
-
   ctx_table["mark_install_complete"] = [ctx]() {
     if (!ctx->lock) {
       throw std::runtime_error("ctx.mark_install_complete: missing install context");
@@ -66,7 +57,6 @@ sol::table build_install_phase_ctx_table(lua_State *lua,
     ctx->lock->mark_install_complete();
   };
 
-  // Add common context bindings (copy, move, extract, extract_all, asset, ls, run)
   lua_ctx_add_common_bindings(ctx_table, ctx);
   return ctx_table;
 }
@@ -90,14 +80,10 @@ bool run_programmatic_install(sol::protected_function install_func,
   ctx.stage_dir = stage_dir;
   ctx.lock = lock;
 
-  lua_State *L{ install_func.lua_state() };
-  sol::table ctx_table{ build_install_phase_ctx_table(L, identity, &ctx) };
+  sol::state_view lua{ install_func.lua_state() };
+  sol::table ctx_table{ build_install_phase_ctx_table(lua, identity, &ctx) };
 
-  // Get options from registry and pass as 2nd arg
-  lua_rawgeti(L, LUA_REGISTRYINDEX, ENVY_OPTIONS_RIDX);
-  sol::object opts{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);  // Pop options from stack (opts now owns a reference)
-
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
   sol::protected_function_result result{ install_func(ctx_table, opts) };
 
   if (!result.valid()) {
@@ -116,13 +102,15 @@ bool run_shell_install(std::string_view script,
   tui::debug("phase install: running shell script");
 
   shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{
-    .on_output_line =
-        [&](std::string_view line) { tui::info("%s", std::string{ line }.c_str()); },
-    .cwd = install_dir,
-    .env = std::move(env),
-    .shell = shell_parse_choice(std::nullopt),
-  };
+  shell_run_cfg const cfg{ .on_output_line =
+                               [&](std::string_view line) {
+                                 tui::info("%.*s",
+                                           static_cast<int>(line.size()),
+                                           line.data());
+                               },
+                           .cwd = install_dir,
+                           .env = std::move(env),
+                           .shell = shell_parse_choice(std::nullopt) };
 
   shell_result const result{ shell_run(script, cfg) };
 
@@ -178,10 +166,8 @@ void run_install_phase(recipe *r, engine &eng) {
   std::filesystem::path const final_asset_path{ lock->install_dir().parent_path() /
                                                 "asset" };
 
-  lua_State *lua{ r->lua->lua_state() };
-  sol::state_view lua_view{ lua };
+  sol::state_view lua_view{ *r->lua };
   sol::object install_obj{ lua_view["install"] };
-
   bool marked_complete{ false };
 
   if (!install_obj.valid()) {
@@ -209,7 +195,7 @@ void run_install_phase(recipe *r, engine &eng) {
   // one approach, not both. User-managed packages use check verb to determine state; cache
   // entries are ephemeral workspace. Cache-managed packages have no check verb; artifacts
   // persist in cache with envy-complete marker.
-  if (recipe_has_check_verb(r, lua) && marked_complete) {
+  if (recipe_has_check_verb(r, lua_view) && marked_complete) {
     throw std::runtime_error(
         "Recipe " + r->spec->identity +
         " has check verb (user-managed) "

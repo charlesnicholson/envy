@@ -2,6 +2,7 @@
 #include "recipe_spec.h"
 
 #include <stdexcept>
+#include <utility>
 
 namespace envy {
 
@@ -12,6 +13,31 @@ recipe_key::recipe_key(recipe_spec const &spec) : canonical_(spec.format_key()) 
 recipe_key::recipe_key(std::string_view canonical_or_identity)
     : canonical_(canonical_or_identity) {
   parse_components();
+}
+
+recipe_key::recipe_key(recipe_key const &other) : canonical_(other.canonical_) {
+  parse_components();
+}
+
+recipe_key::recipe_key(recipe_key &&other) noexcept
+    : canonical_(std::move(other.canonical_)) {
+  parse_components();
+}
+
+recipe_key &recipe_key::operator=(recipe_key const &other) {
+  if (this != &other) {
+    canonical_ = other.canonical_;
+    parse_components();
+  }
+  return *this;
+}
+
+recipe_key &recipe_key::operator=(recipe_key &&other) noexcept {
+  if (this != &other) {
+    canonical_ = std::move(other.canonical_);
+    parse_components();
+  }
+  return *this;
 }
 
 void recipe_key::parse_components() {

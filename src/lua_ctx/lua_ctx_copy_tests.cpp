@@ -1,4 +1,5 @@
 #include "lua_ctx_bindings.h"
+#include "sol_util.h"
 
 #include "doctest.h"
 
@@ -15,6 +16,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
+using envy::sol_state_ptr;
+
 // RAII helper for temporary test directories
 struct temp_dir {
   fs::path path;
@@ -29,7 +32,7 @@ struct temp_dir {
 
 // Helper to create a Lua state with ctx.copy registered
 struct lua_ctx_copy_fixture {
-  sol::state lua;
+  sol_state_ptr lua;
   temp_dir tmp;
   envy::lua_ctx_common ctx;
 
@@ -39,8 +42,8 @@ struct lua_ctx_copy_fixture {
     ctx.engine_ = nullptr;
     ctx.recipe_ = nullptr;
 
-    lua.open_libraries(sol::lib::base, sol::lib::string);
-    lua["copy_fn"] = envy::make_ctx_copy(&ctx);
+    lua = envy::sol_util_make_lua_state();
+    (*lua)["copy_fn"] = envy::make_ctx_copy(&ctx);
   }
 
   void create_file(fs::path const &rel_path, std::string const &content) {
@@ -70,7 +73,7 @@ TEST_CASE("ctx.copy - file to file") {
   lua_ctx_copy_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("copy_fn('src.txt', 'dst.txt')") };
+  auto result{ fixture.lua->safe_script("copy_fn('src.txt', 'dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
   CHECK(fixture.read_file("dst.txt") == "test content");
@@ -81,7 +84,7 @@ TEST_CASE("ctx.copy - file to existing directory") {
   fixture.create_file("src.txt", "test content");
   fs::create_directories(fixture.tmp.path / "dest_dir");
 
-  auto result{ fixture.lua.safe_script("copy_fn('src.txt', 'dest_dir')") };
+  auto result{ fixture.lua->safe_script("copy_fn('src.txt', 'dest_dir')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dest_dir/src.txt"));
   CHECK(fixture.read_file("dest_dir/src.txt") == "test content");
@@ -91,7 +94,7 @@ TEST_CASE("ctx.copy - file to new directory path") {
   lua_ctx_copy_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("copy_fn('src.txt', 'subdir/dst.txt')") };
+  auto result{ fixture.lua->safe_script("copy_fn('src.txt', 'subdir/dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("subdir/dst.txt"));
   CHECK(fixture.read_file("subdir/dst.txt") == "test content");
@@ -103,7 +106,7 @@ TEST_CASE("ctx.copy - directory to directory (recursive)") {
   fixture.create_file("srcdir/file2.txt", "content2");
   fixture.create_file("srcdir/sub/file3.txt", "content3");
 
-  auto result{ fixture.lua.safe_script("copy_fn('srcdir', 'dstdir')") };
+  auto result{ fixture.lua->safe_script("copy_fn('srcdir', 'dstdir')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dstdir/file1.txt"));
   CHECK(fixture.file_exists("dstdir/file2.txt"));
@@ -115,7 +118,7 @@ TEST_CASE("ctx.copy - overwrite existing file") {
   fixture.create_file("src.txt", "new content");
   fixture.create_file("dst.txt", "old content");
 
-  auto result{ fixture.lua.safe_script("copy_fn('src.txt', 'dst.txt')") };
+  auto result{ fixture.lua->safe_script("copy_fn('src.txt', 'dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.read_file("dst.txt") == "new content");
 }
@@ -123,7 +126,7 @@ TEST_CASE("ctx.copy - overwrite existing file") {
 TEST_CASE("ctx.copy - missing source file") {
   lua_ctx_copy_fixture fixture;
 
-  auto result{ fixture.lua.script("copy_fn('missing.txt', 'dst.txt')", sol::script_pass_on_error) };
+  auto result{ fixture.lua->script("copy_fn('missing.txt', 'dst.txt')", sol::script_pass_on_error) };
   CHECK(!result.valid());  // Should error
 }
 
@@ -131,7 +134,7 @@ TEST_CASE("ctx.copy - relative paths resolved against run_dir") {
   lua_ctx_copy_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("copy_fn('./src.txt', './dst.txt')") };
+  auto result{ fixture.lua->safe_script("copy_fn('./src.txt', './dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
 }
@@ -143,7 +146,7 @@ TEST_CASE("ctx.copy - absolute paths") {
   fixture.create_file("src.txt", "test content");
 
   std::string lua_code{ "copy_fn('" + abs_src.string() + "', '" + abs_dst.string() + "')" };
-  auto result{ fixture.lua.safe_script(lua_code) };
+  auto result{ fixture.lua->safe_script(lua_code) };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
 }

@@ -20,8 +20,8 @@ bool cmd_asset::execute() {
     if (!m) { throw std::runtime_error("could not load manifest"); }
 
     std::vector<recipe_spec const *> matches;
-    for (auto const &pkg : m->packages) {
-      if (pkg.identity == cfg_.identity) { matches.push_back(&pkg); }
+    for (auto const *pkg : m->packages) {
+      if (pkg->identity == cfg_.identity) { matches.push_back(pkg); }
     }
 
     if (matches.empty()) {

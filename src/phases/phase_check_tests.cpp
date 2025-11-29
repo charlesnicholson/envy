@@ -5,79 +5,74 @@
 #include "lua_envy.h"
 #include "recipe.h"
 #include "recipe_spec.h"
+#include "sol_util.h"
 
 #include "doctest.h"
-
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
 
 #include <memory>
 
 namespace envy {
 
 // Extern declarations for unit testing (not in public API)
-extern bool recipe_has_check_verb(recipe *r, lua_State *lua);
-extern bool run_check_verb(recipe *r, engine &eng, lua_State *lua);
+extern bool recipe_has_check_verb(recipe *r, sol::state_view lua);
+extern bool run_check_verb(recipe *r, engine &eng, sol::state_view lua);
 extern bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd);
-extern bool run_check_function(recipe *r, lua_State *lua, sol::protected_function check_func);
+extern bool run_check_function(recipe *r,
+                               sol::state_view lua,
+                               sol::protected_function check_func);
 
 namespace {
 
 // Helper fixture for creating test recipes with Lua states
 struct test_recipe_fixture {
-  recipe_spec spec;
+  recipe_spec *spec;
   std::unique_ptr<recipe> r;
 
   test_recipe_fixture() {
-    spec.identity = "test.package@v1";
+    spec = recipe_spec::pool()->emplace("test.package@v1",
+                                        recipe_spec::weak_ref{},
+                                        "{}",
+                                        std::nullopt,
+                                        nullptr,
+                                        nullptr,
+                                        std::vector<recipe_spec *>{});
 
     // Create Lua state first
-    auto lua_state = std::make_unique<sol::state>();
-    lua_state->open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine,
-                              sol::lib::string, sol::lib::os, sol::lib::math,
-                              sol::lib::table, sol::lib::debug, sol::lib::bit32,
-                              sol::lib::io);
+    auto lua_state = sol_util_make_lua_state();
     lua_envy_install(*lua_state);
 
-    // Initialize options to empty table
-    spec.serialized_options = "{}";
-
-    r = std::make_unique<recipe>(recipe{
-        .key = recipe_key(spec),
-        .spec = &spec,
+    r = std::unique_ptr<recipe>(new recipe{
+        .key = recipe_key(*spec),
+        .spec = spec,
         .lua = std::move(lua_state),
+        // lua_mutex is default-initialized
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
-        .asset_path = {},
+        .asset_path = std::filesystem::path{},
         .result_hash = {},
         .cache_ptr = nullptr,
         .default_shell_ptr = nullptr,
     });
   }
 
-  void set_check_string(std::string_view cmd) {
-    lua_pushstring(r->lua->lua_state(), std::string(cmd).c_str());
-    lua_setglobal(r->lua->lua_state(), "check");
-  }
+  void set_check_string(std::string_view cmd) { (*r->lua)["check"] = std::string(cmd); }
 
   void set_check_function(std::string_view lua_code) {
-    std::string code = "check = " + std::string(lua_code);
-    if (luaL_dostring(r->lua->lua_state(), code.c_str()) != LUA_OK) {
-      char const *err = lua_tostring(r->lua->lua_state(), -1);
-      throw std::runtime_error(std::string("Failed to set check function: ") +
-                               (err ? err : "unknown"));
+    std::string code = "return " + std::string(lua_code);
+    sol::protected_function_result res{
+      r->lua->safe_script(code, sol::script_pass_on_error)
+    };
+    if (!res.valid()) {
+      sol::error err{ res };
+      throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
     }
+    (*r->lua)["check"] = res.get<sol::protected_function>();
   }
 
-  void clear_check() {
-    lua_pushnil(r->lua->lua_state());
-    lua_setglobal(r->lua->lua_state(), "check");
-  }
+  void clear_check() { (*r->lua)["check"] = sol::lua_nil; }
 };
 
 }  // namespace
@@ -90,7 +85,7 @@ TEST_CASE("recipe_has_check_verb detects string check") {
   test_recipe_fixture f;
   f.set_check_string("true");
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK(has_check);
 }
 
@@ -98,7 +93,7 @@ TEST_CASE("recipe_has_check_verb detects function check") {
   test_recipe_fixture f;
   f.set_check_function("function(ctx) return true end");
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK(has_check);
 }
 
@@ -106,25 +101,23 @@ TEST_CASE("recipe_has_check_verb returns false when no check verb") {
   test_recipe_fixture f;
   // No check verb set
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK_FALSE(has_check);
 }
 
 TEST_CASE("recipe_has_check_verb returns false for number") {
   test_recipe_fixture f;
-  lua_pushnumber(f.r->lua->lua_state(), 42);
-  lua_setglobal(f.r->lua->lua_state(), "check");
+  (*f.r->lua)["check"] = 42;
 
-  bool has_check{ recipe_has_check_verb(f.r.get(), f.r->lua->lua_state()) };
+  bool has_check{ recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua }) };
   CHECK_FALSE(has_check);
 }
 
 TEST_CASE("recipe_has_check_verb returns false for invalid check type (table)") {
   test_recipe_fixture f;
-  lua_newtable(f.r->lua->lua_state());
-  lua_setglobal(f.r->lua->lua_state(), "check");
+  (*f.r->lua)["check"] = f.r->lua->create_table();
 
-  bool has_check = recipe_has_check_verb(f.r.get(), f.r->lua->lua_state());
+  bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK_FALSE(has_check);
 }
 
@@ -198,101 +191,98 @@ TEST_CASE("run_check_string returns false for failing command") {
 TEST_CASE("run_check_function returns true when function returns true") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return true end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return true end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function returns false when function returns false") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return false end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return false end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK_FALSE(result);
 }
 
 TEST_CASE("run_check_function returns false when function returns nil") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return nil end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return nil end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK_FALSE(result);
 }
 
 TEST_CASE("run_check_function returns true when function returns truthy value") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return 42 end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return 42 end", sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function returns true when function returns string") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) return 'yes' end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) return 'yes' end",
+                          sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function throws when function has Lua error") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) error('test error') end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{
+    f.r->lua->safe_script("return function(ctx) error('test error') end",
+                          sol::script_pass_on_error)
+  };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  CHECK_THROWS_AS(run_check_function(f.r.get(), L, check_func), std::runtime_error);
+  CHECK_THROWS_AS(
+      run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func),
+      std::runtime_error);
 }
 
 TEST_CASE("run_check_function receives empty ctx table") {
   test_recipe_fixture f;
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, R"(
-    return function(ctx)
-      return type(ctx) == 'table'
-    end
-  )");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      R"(
+        return function(ctx)
+          return type(ctx) == 'table'
+        end
+      )",
+      sol::script_pass_on_error) };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
-
-  bool result{ run_check_function(f.r.get(), L, check_func) };
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
   CHECK(result);
 }
 
@@ -307,7 +297,7 @@ TEST_CASE("run_check_verb dispatches to string handler") {
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+  bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
   CHECK(result);
 }
 
@@ -318,7 +308,7 @@ TEST_CASE("run_check_verb dispatches to function handler") {
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+  bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
   CHECK(result);
 }
 
@@ -329,20 +319,19 @@ TEST_CASE("run_check_verb returns false when no check verb") {
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
-  bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+  bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
   CHECK_FALSE(result);
 }
 
 TEST_CASE("run_check_verb returns false for table check type") {
   test_recipe_fixture f;
-  lua_newtable(f.r->lua->lua_state());
-  lua_setglobal(f.r->lua->lua_state(), "check");
+  (*f.r->lua)["check"] = f.r->lua->create_table();
 
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
   // Tables are not functions or strings, so check verb is not present
-  bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+  bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
   CHECK_FALSE(result);
 }
 
@@ -354,13 +343,13 @@ TEST_CASE("run_check_verb string check respects exit code") {
 
   SUBCASE("exit 0 returns true") {
     f.set_check_string("exit 0");
-    bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+    bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK(result);
   }
 
   SUBCASE("exit 1 returns false") {
     f.set_check_string("exit 1");
-    bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+    bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK_FALSE(result);
   }
 }
@@ -373,13 +362,13 @@ TEST_CASE("run_check_verb function check respects return value") {
 
   SUBCASE("function returns true") {
     f.set_check_function("function(ctx) return true end");
-    bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+    bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK(result);
   }
 
   SUBCASE("function returns false") {
     f.set_check_function("function(ctx) return false end");
-    bool result = run_check_verb(f.r.get(), eng, f.r->lua->lua_state());
+    bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK_FALSE(result);
   }
 }
@@ -390,17 +379,16 @@ TEST_CASE("run_check_verb function check respects return value") {
 
 TEST_CASE("run_check_function propagates Lua error with context") {
   test_recipe_fixture f;
-  f.spec.identity = "my.package@v1";
+  f.spec->identity = "my.package@v1";
 
-  lua_State *L{ f.r->lua->lua_state() };
-  luaL_dostring(L, "return function(ctx) error('something went wrong') end");
-  REQUIRE(lua_isfunction(L, -1));
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(ctx) error('something went wrong') end", sol::script_pass_on_error) };
+  REQUIRE(res.valid());
 
-  sol::protected_function check_func{ sol::stack_object{ L, -1 } };
-  lua_pop(L, 1);
+  sol::protected_function check_func{ res };
 
   try {
-    run_check_function(f.r.get(), L, check_func);
+    run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func);
     FAIL("Expected exception");
   } catch (std::runtime_error const &e) {
     std::string msg{ e.what() };

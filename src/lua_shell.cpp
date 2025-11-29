@@ -7,10 +7,10 @@ namespace envy {
 
 std::variant<shell_choice, custom_shell_file, custom_shell_inline>
 parse_shell_config_from_lua(sol::object const &obj, char const *context) {
-  // ENVY_SHELL constant (light userdata)
-  if (obj.is<sol::lightuserdata>()) {
-    sol::lightuserdata ud{ obj.as<sol::lightuserdata>() };
-    auto const choice{ static_cast<shell_choice>(reinterpret_cast<uintptr_t>(ud.pointer())) };
+  // ENVY_SHELL constant (stored as number)
+  if (obj.get_type() == sol::type::number) {
+    int const value{ obj.as<int>() };
+    auto const choice{ static_cast<shell_choice>(value) };
 
     // Validate enum value
     if (choice != shell_choice::bash && choice != shell_choice::sh &&

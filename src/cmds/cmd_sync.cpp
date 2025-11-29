@@ -22,13 +22,13 @@ bool cmd_sync::execute() {
     std::vector<recipe_spec const *> targets;
 
     if (cfg_.identities.empty()) {  // Sync entire manifest
-      for (auto const &pkg : m->packages) { targets.push_back(&pkg); }
+      for (auto const *pkg : m->packages) { targets.push_back(pkg); }
     } else {  // Sync specific identities - validate all exist first
       for (auto const &identity : cfg_.identities) {
         bool found{ false };
-        for (auto const &pkg : m->packages) {
-          if (pkg.identity == identity) {
-            targets.push_back(&pkg);
+        for (auto const *pkg : m->packages) {
+          if (pkg->identity == identity) {
+            targets.push_back(pkg);
             found = true;
             break;  // Take first match for this identity
           }

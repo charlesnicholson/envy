@@ -17,26 +17,43 @@
 
 **Phase dependencies:** Intra-node linear chain (`recipe_fetch` → `check` → `fetch` → ... → `deploy`). Inter-node via `needed_by` annotation in `dependencies` field. Only declared/inferred phases create nodes (node count optimization).
 
-**Dependencies field:** Recipe may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to plain Lua table before graph expansion continues. Each dependency entry may include `needed_by` field (default: `"fetch"`).
+**Dependencies field:** Recipe may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to plain Lua table before graph expansion continues. Entries can be:
+- **Strong**: full spec (manifest-sourced or explicit `source`) → instantiated immediately.
+- **Weak**: partial `recipe` plus `weak = { ... }` fallback spec → resolved iteratively; fallback spawned only if no match exists.
+- **Reference-only**: partial `recipe` with no `source`/`weak` → must resolve to some other provider; error after convergence if missing.
+- **Nested fetch prerequisites**: inside `source.dependencies` for custom fetch; may also be weak/reference-only and must complete before parent `recipe_fetch`.
+Each dependency entry may include `needed_by` (default: `"fetch"`); weak fallbacks must not carry `needed_by`.
 
 **Recipe object:** DAG node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs query this state at execution time.
 
 ## Graph Construction
 
-**Seed:** Manifest packages create initial `recipe_fetch` nodes in `flow::graph`. Broadcast kickoff node triggers parallel execution.
+**Seed:** Manifest packages create initial `recipe_fetch` nodes. Broadcast kickoff node triggers parallel execution.
 
 **Dynamic expansion:** `recipe_fetch` node body:
 1. Fetch recipe file(s) (declarative `source` or custom `fetch` function)
 2. Verify integrity (SHA256 for URLs if provided, git commit SHA, or API-enforced per-file verification)
 3. Load Lua chunk, create `lua_state` sandbox
-4. **Validate identity:** Non-`local.*` recipes must declare `identity = "..."` field matching referrer's identity (prevents wrong recipe substitution)
+4. **Validate identity:** Recipe must declare `identity = "..."` matching referrer
 5. Evaluate `dependencies` field → plain table (static copy or function return value)
-6. For each dependency: ensure memoized node exists (canonical key lookup), add edges based on `needed_by`
-7. Complete `recipe_fetch` node, unblock dependent phases
+6. For each dependency:
+   - Strong deps: ensure node exists (canonical key lookup), add edges based on `needed_by`, start toward target phase
+   - Weak/ref-only: record in `recipe::weak_references` for later resolution (no node yet unless fallback is spawned)
+7. Nested fetch prerequisites (`source.dependencies`): treated as dependencies with `needed_by = recipe_fetch`; they participate in weak resolution if partial and must complete before parent fetch executes.
+8. Complete `recipe_fetch` node, unblock dependent phases
 
-**Memoization:** `concurrent_hash_map<string, dag_node*>` tracks nodes by canonical key. First thread to request a node allocates and initializes it; later threads reuse existing node. Prevents duplicate work when multiple recipes depend on same `(identity, options)`.
+**Memoization:** Nodes keyed by canonical `(identity, options)` string; first creator wins, later users reuse. Prevents duplicate work when multiple recipes depend on the same config.
 
-**Concurrency:** TBB `flow::graph` scheduler handles topological execution—nodes execute when predecessors complete. Work-stealing maximizes CPU utilization. Graph grows dynamically as `recipe_fetch` nodes add children, but topology remains acyclic (enforced by cycle detection).
+**Concurrency:** Threads drive node phases with waits on `needed_by` edges; graph grows dynamically as `recipe_fetch` nodes add children, but topology remains acyclic (cycle detection enforced).
+
+## Weak and Reference-Only Resolution
+
+- After strong deps are started, the engine iteratively resolves weak/ref-only entries:
+  1. Wait for all recipes targeting `recipe_fetch` to finish (including any newly spawned fallbacks).
+  2. Run weak resolution: match queries via engine-wide `match()`. Single match → wire dependency and mark resolved; ambiguity → aggregate and throw; no match + fallback → spawn fallback and mark resolved; no match + no fallback → remain unresolved.
+  3. Loop while progress is made (resolved count > 0 or fallbacks started > 0). Progress check accounts for cases where unresolved totals stay flat but fallbacks were added.
+- Reference-only deps fail with a consolidated error if unresolved after convergence.
+- Nested fetch prereqs participate in the same resolution waves before their parent fetch runs.
 
 ## Phase Coupling via `needed_by`
 
@@ -62,9 +79,9 @@ dependencies = {
   recipe = "corporate.toolchain@v1",
   fetch = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Requires jfrog CLI installed
-    local work = ctx:work_dir()
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-    ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "abc123...")
+    local tmp = ctx.tmp_dir
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+    ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
   end,
   dependencies = {
     {
@@ -229,11 +246,11 @@ end
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity ("vendor.lib@v1")
+  identity = string,                                -- Recipe identity ("vendor.lib@v1") - recipes only, not manifests
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories (read-only paths)
-  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+  tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
   fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
@@ -276,7 +293,7 @@ function fetch(ctx)
   -- files = {"gcc.tar.gz", "gcc.tar.gz.sig"}
 
   -- Optional: verify signature using downloaded files
-  -- (both files are now in ctx.tmp directory)
+  -- (both files are now in ctx.tmp_dir directory)
 end
 ```
 
@@ -350,9 +367,9 @@ packages = {
     recipe = "corporate.toolchain@v1",
     fetch = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")
-      local work = ctx:work_dir()
-      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-      ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "abc123...")
+      local tmp = ctx.tmp_dir
+      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+      ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
     end,
     dependencies = {
       { recipe = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }

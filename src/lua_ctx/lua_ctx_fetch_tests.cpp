@@ -2,11 +2,7 @@
 
 #include "doctest.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-#include "lualib.h"
-}
+#include "sol_util.h"
 
 #include <filesystem>
 #include <fstream>
@@ -59,27 +55,25 @@ TEST_CASE("ctx.fetch - collision detection with same basename") {
   ctx.recipe_ = nullptr;
 
   // Setup Lua and register ctx.fetch
-  std::unique_ptr<lua_State, decltype(&lua_close)> L{ luaL_newstate(), lua_close };
-  luaL_openlibs(L.get());
-
-  lua_newtable(L.get());  // ctx table
-  envy::lua_ctx_bindings_register_fetch_phase(L.get(), &ctx);
-  lua_setglobal(L.get(), "ctx");
+  auto lua{ envy::sol_util_make_lua_state() };
+  sol::table ctx_table{ lua->create_table() };
+  envy::lua_ctx_bindings_register_fetch_phase(ctx_table, &ctx);
+  envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
+  (*lua)["ctx"] = ctx_table;
 
   // Fetch three files with same basename
-  std::string lua_code = "local files = ctx.fetch({\"" + file1.string() + "\", \"" +
-                         file2.string() + "\", \"" + file3.string() + "\"});" +
-                         "return files[1], files[2], files[3]";
+  std::string lua_code =
+      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\", \"" +
+      file3.string() + "\"})";
 
   // Execute
-  int result = luaL_dostring(L.get(), lua_code.c_str());
-  CHECK(result == 0);
+  auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
+  REQUIRE(result.valid());
 
-  // Get returned basenames
-  CHECK(lua_gettop(L.get()) == 3);
-  std::string basename1{ lua_tostring(L.get(), -3) };
-  std::string basename2{ lua_tostring(L.get(), -2) };
-  std::string basename3{ lua_tostring(L.get(), -1) };
+  sol::table files{ result };
+  std::string basename1{ files[1] };
+  std::string basename2{ files[2] };
+  std::string basename3{ files[3] };
 
   // Verify collision suffixes were added
   CHECK(basename1 == "file.txt");
@@ -121,23 +115,23 @@ TEST_CASE("ctx.fetch - collision detection preserves extension") {
   ctx.engine_ = nullptr;
   ctx.recipe_ = nullptr;
 
-  std::unique_ptr<lua_State, decltype(&lua_close)> L{ luaL_newstate(), lua_close };
-  luaL_openlibs(L.get());
+  auto lua{ envy::sol_util_make_lua_state() };
+  sol::table ctx_table{ lua->create_table() };
+  envy::lua_ctx_bindings_register_fetch_phase(ctx_table, &ctx);
+  envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
+  (*lua)["ctx"] = ctx_table;
 
-  lua_newtable(L.get());
-  envy::lua_ctx_bindings_register_fetch_phase(L.get(), &ctx);
-  lua_setglobal(L.get(), "ctx");
+  std::string lua_code =
+      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\", \"" +
+      file3.string() + "\"})";
 
-  std::string lua_code = "local files = ctx.fetch({\"" + file1.string() + "\", \"" +
-                         file2.string() + "\", \"" + file3.string() + "\"});" +
-                         "return files[1], files[2], files[3]";
+  auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
+  REQUIRE(result.valid());
 
-  int result = luaL_dostring(L.get(), lua_code.c_str());
-  CHECK(result == 0);
-
-  std::string basename1{ lua_tostring(L.get(), -3) };
-  std::string basename2{ lua_tostring(L.get(), -2) };
-  std::string basename3{ lua_tostring(L.get(), -1) };
+  sol::table files{ result };
+  std::string basename1{ files[1] };
+  std::string basename2{ files[2] };
+  std::string basename3{ files[3] };
 
   // Verify extension is preserved (splits at last dot)
   CHECK(basename1 == "tool.tar.gz");
@@ -166,21 +160,21 @@ TEST_CASE("ctx.fetch - collision detection with no extension") {
   ctx.engine_ = nullptr;
   ctx.recipe_ = nullptr;
 
-  std::unique_ptr<lua_State, decltype(&lua_close)> L{ luaL_newstate(), lua_close };
-  luaL_openlibs(L.get());
+  auto lua{ envy::sol_util_make_lua_state() };
+  sol::table ctx_table{ lua->create_table() };
+  envy::lua_ctx_bindings_register_fetch_phase(ctx_table, &ctx);
+  envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
+  (*lua)["ctx"] = ctx_table;
 
-  lua_newtable(L.get());
-  envy::lua_ctx_bindings_register_fetch_phase(L.get(), &ctx);
-  lua_setglobal(L.get(), "ctx");
+  std::string lua_code =
+      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\"})";
 
-  std::string lua_code = "local files = ctx.fetch({\"" + file1.string() + "\", \"" +
-                         file2.string() + "\"});" + "return files[1], files[2]";
+  auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
+  REQUIRE(result.valid());
 
-  int result = luaL_dostring(L.get(), lua_code.c_str());
-  CHECK(result == 0);
-
-  std::string basename1{ lua_tostring(L.get(), -2) };
-  std::string basename2{ lua_tostring(L.get(), -1) };
+  sol::table files{ result };
+  std::string basename1{ files[1] };
+  std::string basename2{ files[2] };
 
   // Verify suffix added without extension
   CHECK(basename1 == "README");
@@ -207,26 +201,24 @@ TEST_CASE("ctx.fetch - collision tracking across multiple calls") {
   ctx.engine_ = nullptr;
   ctx.recipe_ = nullptr;
 
-  std::unique_ptr<lua_State, decltype(&lua_close)> L{ luaL_newstate(), lua_close };
-  luaL_openlibs(L.get());
-
-  lua_newtable(L.get());
-  envy::lua_ctx_bindings_register_fetch_phase(L.get(), &ctx);
-  lua_setglobal(L.get(), "ctx");
+  auto lua{ envy::sol_util_make_lua_state() };
+  sol::table ctx_table{ lua->create_table() };
+  envy::lua_ctx_bindings_register_fetch_phase(ctx_table, &ctx);
+  envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
+  (*lua)["ctx"] = ctx_table;
 
   // First fetch call
   std::string lua_code1 = "local f1 = ctx.fetch(\"" + file1.string() + "\"); return f1";
-  int result1 = luaL_dostring(L.get(), lua_code1.c_str());
-  CHECK(result1 == 0);
-  std::string basename1{ lua_tostring(L.get(), -1) };
+  auto result1{ lua->safe_script(lua_code1, sol::script_pass_on_error) };
+  REQUIRE(result1.valid());
+  std::string basename1{ result1.get<std::string>() };
   CHECK(basename1 == "lib.so");
-  lua_pop(L.get(), 1);
 
   // Second fetch call - should detect collision from first call
   std::string lua_code2 = "local f2 = ctx.fetch(\"" + file2.string() + "\"); return f2";
-  int result2 = luaL_dostring(L.get(), lua_code2.c_str());
-  CHECK(result2 == 0);
-  std::string basename2{ lua_tostring(L.get(), -1) };
+  auto result2{ lua->safe_script(lua_code2, sol::script_pass_on_error) };
+  REQUIRE(result2.valid());
+  std::string basename2{ result2.get<std::string>() };
   CHECK(basename2 == "lib-2.so");
 
   // Verify both tracked

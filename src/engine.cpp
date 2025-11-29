@@ -13,6 +13,7 @@
 #include "recipe_phase.h"
 #include "tui.h"
 
+#include <algorithm>
 #include <array>
 #include <vector>
 
@@ -35,10 +36,33 @@ constexpr std::array<phase_func_t, recipe_phase_count> phase_dispatch_table{
 
 }  // namespace
 
+void validate_dependency_cycle(std::string const &candidate_identity,
+                               std::vector<std::string> const &ancestor_chain,
+                               std::string const &current_identity,
+                               std::string const &dependency_type) {
+  if (current_identity == candidate_identity) {  // Check for self-loop
+    throw std::runtime_error(dependency_type + " cycle detected: " + current_identity +
+                             " -> " + candidate_identity);
+  }
+
+  for (size_t i = 0; i < ancestor_chain.size(); ++i) {  // cycle in ancestor chain
+    if (ancestor_chain[i] == candidate_identity) {
+      std::string cycle_path{ ancestor_chain[i] };
+      for (size_t j{ i + 1 }; j < ancestor_chain.size(); ++j) {
+        cycle_path += " -> " + ancestor_chain[j];
+      }
+      cycle_path += " -> " + current_identity + " -> " + candidate_identity;
+      throw std::runtime_error(dependency_type + " cycle detected: " + cycle_path);
+    }
+  }
+}
+
 engine::engine(cache &cache, default_shell_cfg_t default_shell)
     : cache_(cache), default_shell_(default_shell) {}
 
 engine::~engine() {
+  fail_all_contexts();
+
   for (auto &[key, ctx] : execution_ctxs_) {
     if (ctx->worker.joinable()) { ctx->worker.join(); }
   }
@@ -47,6 +71,107 @@ engine::~engine() {
 void engine::notify_all_global_locked() {
   std::lock_guard const lock(mutex_);
   cv_.notify_all();
+}
+
+engine::weak_resolution_result engine::resolve_weak_references() {
+  weak_resolution_result result{};
+
+  auto collect_unresolved = [this]() {
+    std::vector<std::pair<recipe *, recipe::weak_reference *>> unresolved;
+    std::lock_guard const lock(mutex_);
+    for (auto &[key, r_ptr] : recipes_) {
+      recipe *r{ r_ptr.get() };
+      for (auto &wr : r->weak_references) {
+        if (!wr.resolved) { unresolved.emplace_back(r, &wr); }
+      }
+    }
+    return unresolved;
+  };
+
+  std::vector<std::string> ambiguity_messages;
+
+  for (auto [r, wr] : collect_unresolved()) {
+    auto const matches{ find_matches(wr->query) };
+
+    if (matches.size() == 1) {  // Resolved to existing recipe
+      recipe *dep{ matches[0] };
+      wr->resolved = dep;
+      ++result.resolved;
+
+      // Wire dependency if not already present
+      if (!r->dependencies.contains(dep->spec->identity)) {
+        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
+        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
+      }
+
+      // Ensure declared_dependencies includes resolved identity for ctx.asset validation
+      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
+          r->declared_dependencies.end()) {
+        r->declared_dependencies.push_back(dep->spec->identity);
+      }
+      continue;
+    }
+
+    if (matches.size() > 1) {
+      std::ostringstream oss;
+      oss << "Reference '" << wr->query << "' in recipe '" << r->spec->identity
+          << "' is ambiguous: ";
+      for (size_t i = 0; i < matches.size(); ++i) {
+        if (i) oss << ", ";
+        oss << matches[i]->key.canonical();
+      }
+      ambiguity_messages.push_back(oss.str());
+      continue;
+    }
+
+    if (wr->fallback) {  // No matches, instantiate weak fallbacks
+      wr->fallback->parent = r->spec;
+
+      recipe *dep{ ensure_recipe(wr->fallback) };
+      if (!r->dependencies.contains(dep->spec->identity)) {
+        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
+        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
+      }
+
+      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
+          r->declared_dependencies.end()) {
+        r->declared_dependencies.push_back(dep->spec->identity);
+      }
+
+      std::vector<std::string> child_chain{ get_execution_ctx(r).ancestor_chain };
+      child_chain.push_back(r->spec->identity);
+      start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
+
+      wr->resolved = dep;
+      ++result.fallbacks_started;
+    }
+  }
+
+  // Final validation: any unresolved without fallback is an error
+  std::vector<std::string> const missing_messages{ [&] {
+    std::vector<std::string> msgs;
+    for (auto [r, wr] : collect_unresolved()) {
+      if (!wr->resolved && !wr->fallback) {
+        msgs.push_back("Reference '" + wr->query + "' in recipe '" + r->spec->identity +
+                       "' was not found");
+      }
+    }
+    return msgs;
+  }() };
+
+  result.missing_without_fallback = missing_messages;
+
+  if (!ambiguity_messages.empty()) {
+    fail_all_contexts();
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < ambiguity_messages.size(); ++i) {
+      if (i) oss << "\n";
+      oss << ambiguity_messages[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+
+  return result;
 }
 
 void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
@@ -72,20 +197,23 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
 
   recipe_key const key(*spec);
 
-  auto const [it, inserted]{ recipes_.try_emplace(
-      key,
-      std::make_unique<recipe>(recipe{ .key = key,
-                                       .spec = spec,
-                                       .lua = nullptr,
-                                       .lock = nullptr,
-                                       .declared_dependencies = {},
-                                       .owned_dependency_specs = {},
-                                       .dependencies = {},
-                                       .canonical_identity_hash = key.canonical(),
-                                       .asset_path = {},
-                                       .result_hash = {},
-                                       .cache_ptr = &cache_,
-                                       .default_shell_ptr = &default_shell_ })) };
+  auto r{ std::unique_ptr<recipe>(new recipe{
+      .key = key,
+      .spec = spec,
+      .lua = nullptr,
+      .lock = nullptr,
+      .declared_dependencies = {},
+      .owned_dependency_specs = {},
+      .dependencies = {},
+      .weak_references = {},
+      .canonical_identity_hash = key.canonical(),
+      .asset_path = std::filesystem::path{},
+      .result_hash = {},
+      .cache_ptr = &cache_,
+      .default_shell_ptr = &default_shell_,
+  }) };
+
+  auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
   if (inserted) {
     execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>();
     ENVY_TRACE_RECIPE_REGISTERED(spec->identity, key.canonical(), false);
@@ -111,10 +239,14 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
 }
 
 engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
+  return get_execution_ctx(r->key);
+}
+
+engine::recipe_execution_ctx &engine::get_execution_ctx(recipe_key const &key) {
   std::lock_guard const lock(mutex_);
-  auto const it{ execution_ctxs_.find(r->key) };
+  auto const it{ execution_ctxs_.find(key) };
   if (it == execution_ctxs_.end()) {
-    throw std::runtime_error("Recipe execution context not found: " + r->key.canonical());
+    throw std::runtime_error("Recipe execution context not found: " + key.canonical());
   }
   return *it->second;
 }
@@ -122,14 +254,7 @@ engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
 void engine::start_recipe_thread(recipe *r,
                                  recipe_phase initial_target,
                                  std::vector<std::string> ancestor_chain) {
-  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(r->key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + r->key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(r) };
 
   bool expected{ false };
   if (ctx.started.compare_exchange_strong(expected, true)) {  // set phase then start
@@ -143,14 +268,7 @@ void engine::start_recipe_thread(recipe *r,
 }
 
 void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const target) {
-  auto &ctx{ [this, &key]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(key) };
 
   ctx.set_target_phase(target);  // Extend target if needed
 
@@ -171,11 +289,7 @@ void engine::wait_for_resolution_phase() {
   cv_.wait(lock, [this] { return pending_recipe_fetches_ == 0; });
 }
 
-void engine::notify_phase_complete(recipe_key const &key, recipe_phase phase) {
-  std::ignore = key;
-  std::ignore = phase;
-  notify_all_global_locked();
-}
+void engine::notify_phase_complete() { notify_all_global_locked(); }
 
 void engine::on_recipe_fetch_start() { pending_recipe_fetches_.fetch_add(1); }
 
@@ -187,32 +301,29 @@ void engine::process_fetch_dependencies(recipe *r,
                                         std::vector<std::string> const &ancestor_chain) {
   // Process fetch dependencies - added to dependencies map with needed_by=recipe_fetch
   // Existing phase loop wait logic handles blocking automatically
-  for (auto &fetch_dep_spec : r->spec->source_dependencies) {
-    // Cycle detection: check for self-loops and cycles in ancestor chain
-    if (r->spec->identity == fetch_dep_spec.identity) {
-      throw std::runtime_error("Fetch dependency cycle detected: " + r->spec->identity +
-                               " -> " + fetch_dep_spec.identity);
+  for (auto *fetch_dep_spec : r->spec->source_dependencies) {
+    fetch_dep_spec->parent = r->spec;  // Set parent pointer for custom fetch lookup
+
+    validate_dependency_cycle(fetch_dep_spec->identity,
+                              ancestor_chain,
+                              r->spec->identity,
+                              "Fetch dependency");
+
+    if (fetch_dep_spec->is_weak_reference()) {  // Defer resolution to weak pass
+      recipe::weak_reference wr;
+      wr.query = fetch_dep_spec->identity;
+      wr.needed_by = recipe_phase::recipe_fetch;
+      wr.fallback = fetch_dep_spec->weak;
+      r->weak_references.push_back(std::move(wr));
+      continue;
     }
 
-    for (auto const &ancestor : ancestor_chain) {
-      if (ancestor == fetch_dep_spec.identity) {  // Build error message with cycle path
-        std::string cycle_path{ ancestor };
-        bool found_start{ false };
-        for (auto const &a : ancestor_chain) {
-          if (a == ancestor) { found_start = true; }
-          if (found_start) { cycle_path += " -> " + a; }
-        }
-        cycle_path += " -> " + fetch_dep_spec.identity;
-        throw std::runtime_error("Fetch dependency cycle detected: " + cycle_path);
-      }
-    }
-
-    recipe *fetch_dep{ ensure_recipe(&fetch_dep_spec) };
+    recipe *fetch_dep{ ensure_recipe(fetch_dep_spec) };
 
     // Add to dependencies map - phase loop will handle blocking at recipe_fetch
-    r->dependencies[fetch_dep_spec.identity] = { fetch_dep, recipe_phase::recipe_fetch };
+    r->dependencies[fetch_dep_spec->identity] = { fetch_dep, recipe_phase::recipe_fetch };
     ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity,
-                                fetch_dep_spec.identity,
+                                fetch_dep_spec->identity,
                                 recipe_phase::recipe_fetch);
 
     // Build child ancestor chain (local to this thread path)
@@ -224,27 +335,19 @@ void engine::process_fetch_dependencies(recipe *r,
 }
 
 void engine::run_recipe_thread(recipe *r) {
-  auto &ctx{ [this, r]() -> recipe_execution_ctx & {
-    std::lock_guard const lock(mutex_);
-    auto const it{ execution_ctxs_.find(r->key) };
-    if (it == execution_ctxs_.end()) {
-      throw std::runtime_error("Recipe not found: " + r->key.canonical());
-    }
-    return *it->second;
-  }() };
+  auto &ctx{ get_execution_ctx(r) };
 
   if (!r->spec->source_dependencies.empty()) {
     process_fetch_dependencies(r, ctx.ancestor_chain);
   }
 
   try {
-    while (true) {
+    while (ctx.current_phase < recipe_phase::completion) {
+      if (ctx.failed) break;
       recipe_phase const target{ ctx.target_phase };
       recipe_phase const current{ ctx.current_phase };
 
       if (current >= target) {  // Check if we've reached target
-        if (target == recipe_phase::completion) break;
-
         std::unique_lock lock(ctx.mutex);
         ctx.cv.wait(lock,  // Wait for target extension
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
@@ -253,9 +356,7 @@ void engine::run_recipe_thread(recipe *r) {
         ENVY_TRACE_TARGET_EXTENDED(r->spec->identity, current, ctx.target_phase.load());
       }
 
-      // Run next phase
       recipe_phase const next{ static_cast<recipe_phase>(static_cast<int>(current) + 1) };
-
       if (static_cast<int>(next) < 0 || static_cast<int>(next) >= recipe_phase_count) {
         throw std::runtime_error("Invalid phase: " +
                                  std::to_string(static_cast<int>(next)));
@@ -278,7 +379,7 @@ void engine::run_recipe_thread(recipe *r) {
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
       ctx.current_phase = next;
-      notify_phase_complete(r->key, next);
+      notify_phase_complete();
     }
     ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, ctx.current_phase);
   } catch (...) {  // Log the error (inspect exception type to get message if available)
@@ -297,14 +398,25 @@ void engine::run_recipe_thread(recipe *r) {
       std::lock_guard lock(ctx.mutex);
       ctx.error_message = std::move(error_msg);
     }
+
     ctx.failed = true;
-    if (ctx.current_phase < recipe_phase::asset_check) { on_recipe_fetch_complete(); }
+    if (ctx.current_phase <= recipe_phase::recipe_fetch) { on_recipe_fetch_complete(); }
     notify_all_global_locked();
   }
 }
 
 recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roots) {
-  resolve_graph(roots);
+  try {
+    resolve_graph(roots);
+  } catch (...) {
+    fail_all_contexts();
+
+    for (auto &[key, ctx] : execution_ctxs_) {  // Best-effort join to avoid leaks
+      if (ctx->worker.joinable()) { ctx->worker.join(); }
+    }
+
+    throw;
+  }
 
   for (auto &[key, ctx] : execution_ctxs_) {  // Launch all recipes running to completion
     ctx->set_target_phase(recipe_phase::completion);
@@ -333,6 +445,18 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
   return results;
 }
 
+void engine::fail_all_contexts() {
+  std::lock_guard const lock(mutex_);
+  for (auto &[_, ctx] : execution_ctxs_) {
+    ctx->failed = true;
+    ctx->target_phase = recipe_phase::completion;
+    ctx->current_phase = recipe_phase::completion;
+    ctx->cv.notify_all();
+    if (ctx->worker.joinable()) { ctx->worker.detach(); }
+  }
+  cv_.notify_all();
+}
+
 void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
@@ -340,7 +464,46 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 
-  wait_for_resolution_phase();
+  auto const count_unresolved = [this]() {
+    std::lock_guard const lock(mutex_);
+    size_t count{ 0 };
+    for (auto &[_, r_ptr] : recipes_) {
+      for (auto &wr : r_ptr->weak_references) {
+        if (!wr.resolved) { ++count; }
+      }
+    }
+    return count;
+  };
+
+  size_t iteration{ 0 };
+  while (true) {
+    ++iteration;
+    wait_for_resolution_phase();  // Wait for all current recipe_fetch targets to finish
+    weak_resolution_result const resolution{ resolve_weak_references() };
+
+    if (resolution.resolved == 0 && resolution.fallbacks_started == 0) {
+      size_t const unresolved{ count_unresolved() };
+      if (!resolution.missing_without_fallback.empty()) {
+        fail_all_contexts();
+        std::ostringstream oss;
+        for (size_t i{ 0 }; i < resolution.missing_without_fallback.size(); ++i) {
+          if (i) oss << "\n";
+          oss << resolution.missing_without_fallback[i];
+        }
+        oss << "\nWeak dependency resolution made no progress at iteration " << iteration
+            << " with " << unresolved << " unresolved references";
+        throw std::runtime_error(oss.str());
+      }
+      if (unresolved > 0) {
+        fail_all_contexts();
+        throw std::runtime_error(
+            "Weak dependency resolution made no progress at iteration " +
+            std::to_string(iteration) + " with " + std::to_string(unresolved) +
+            " unresolved references");
+      }
+      break;
+    }
+  }
 }
 
 }  // namespace envy

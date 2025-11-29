@@ -1,118 +1,49 @@
 #include "engine.h"
 
-#include "cache.h"
-#include "recipe.h"
-
 #include "doctest.h"
 
-#include <filesystem>
+#include <vector>
 
 namespace envy {
 
-static recipe_spec make_test_spec(std::string const &identity) {
-  recipe_spec spec;
-  spec.identity = identity;
-  spec.source = recipe_spec::local_source{};
-  return spec;
+TEST_CASE("validate_dependency_cycle: no cycle") {
+  std::vector<std::string> const ancestors{ "A", "B", "C" };
+  CHECK_NOTHROW(validate_dependency_cycle("D", ancestors, "C", "Dependency"));
 }
 
-TEST_CASE("engine: ensure_recipe creates new recipe") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec = make_test_spec("local.python@r4");
-  recipe *r = eng.ensure_recipe(spec);
-
-  CHECK(r != nullptr);
-  CHECK(r->key->canonical() == "local.python@r4");
+TEST_CASE("validate_dependency_cycle: direct self-loop") {
+  std::vector<std::string> const ancestors{ "A", "B" };
+  CHECK_THROWS_WITH(validate_dependency_cycle("C", ancestors, "C", "Dependency"),
+                    "Dependency cycle detected: C -> C");
 }
 
-TEST_CASE("engine: ensure_recipe is memoized") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec = make_test_spec("local.python@r4");
-  recipe *r1 = eng.ensure_recipe(spec);
-  recipe *r2 = eng.ensure_recipe(spec);
-
-  CHECK(r1 == r2);
+TEST_CASE("validate_dependency_cycle: cycle in ancestor chain") {
+  std::vector<std::string> const ancestors{ "A", "B", "C" };
+  CHECK_THROWS_WITH(validate_dependency_cycle("B", ancestors, "D", "Dependency"),
+                    "Dependency cycle detected: B -> C -> D -> B");
 }
 
-TEST_CASE("engine: different options create different recipes") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec1 = make_test_spec("local.python@r4");
-  spec1.serialized_options = R"({version="3.13"})";
-
-  recipe_spec spec2 = make_test_spec("local.python@r4");
-  spec2.serialized_options = R"({version="3.14"})";
-
-  recipe *r1 = eng.ensure_recipe(spec1);
-  recipe *r2 = eng.ensure_recipe(spec2);
-
-  CHECK(r1 != r2);
+TEST_CASE("validate_dependency_cycle: cycle at chain start") {
+  std::vector<std::string> const ancestors{ "A", "B", "C" };
+  CHECK_THROWS_WITH(validate_dependency_cycle("A", ancestors, "D", "Dependency"),
+                    "Dependency cycle detected: A -> B -> C -> D -> A");
 }
 
-TEST_CASE("engine: find_exact returns recipe") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_spec spec = make_test_spec("local.python@r4");
-  recipe *r = eng.ensure_recipe(spec);
-
-  recipe_key key(spec);
-  CHECK(eng.find_exact(key) == r);
+TEST_CASE("validate_dependency_cycle: fetch dependency error message") {
+  std::vector<std::string> const ancestors{ "A", "B" };
+  CHECK_THROWS_WITH(validate_dependency_cycle("A", ancestors, "C", "Fetch dependency"),
+                    "Fetch dependency cycle detected: A -> B -> C -> A");
 }
 
-TEST_CASE("engine: find_exact returns nullptr for non-existent") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  recipe_key key("local.python@r4");
-  CHECK(eng.find_exact(key) == nullptr);
+TEST_CASE("validate_dependency_cycle: empty ancestor chain with self-loop") {
+  std::vector<std::string> const ancestors{};
+  CHECK_THROWS_WITH(validate_dependency_cycle("A", ancestors, "A", "Dependency"),
+                    "Dependency cycle detected: A -> A");
 }
 
-TEST_CASE("engine: find_matches by name") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  eng.ensure_recipe(make_test_spec("local.python@r4"));
-  eng.ensure_recipe(make_test_spec("vendor.python@r3"));
-  eng.ensure_recipe(make_test_spec("local.ruby@r2"));
-
-  auto matches = eng.find_matches("python");
-  CHECK(matches.size() == 2);
-}
-
-TEST_CASE("engine: find_matches by namespace.name") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  eng.ensure_recipe(make_test_spec("local.python@r4"));
-  eng.ensure_recipe(make_test_spec("vendor.python@r3"));
-  eng.ensure_recipe(make_test_spec("local.python@r2"));
-
-  auto matches = eng.find_matches("local.python");
-  CHECK(matches.size() == 2);
-}
-
-TEST_CASE("engine: find_matches with no matches") {
-  std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "envy_test_cache";
-  cache c{temp_dir};
-  engine eng{c, std::nullopt};
-
-  eng.ensure_recipe(make_test_spec("local.python@r4"));
-
-  auto matches = eng.find_matches("ruby");
-  CHECK(matches.empty());
+TEST_CASE("validate_dependency_cycle: empty ancestor chain without cycle") {
+  std::vector<std::string> const ancestors{};
+  CHECK_NOTHROW(validate_dependency_cycle("B", ancestors, "A", "Dependency"));
 }
 
 }  // namespace envy

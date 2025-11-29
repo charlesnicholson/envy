@@ -25,9 +25,9 @@ local common = {
         recipe = "corporate.toolchain@v1",
         fetch = function(ctx)
             local jfrog = ctx:asset("jfrog.cli@v2")
-            local work = ctx:work_dir()
-            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", work .. "/toolchain.lua")
-            ctx:import_file(work .. "/toolchain.lua", "recipe.lua", "sha256_here...")
+            local tmp = ctx.tmp_dir
+            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+            ctx:commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
         end,
         dependencies = {
             { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
@@ -63,6 +63,10 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 - `subdir` — Subdirectory within archive or git repo containing recipe entry point
 - `options` — Recipe-specific configuration (passed to recipe Lua as `ctx.options`)
 - `dependencies` — Transitive dependencies (recipes this recipe needs)
+  - **Strong:** full recipe spec with `source` (or manifest-provided source)
+  - **Weak:** partial `recipe` plus `weak = { ... }` fallback spec
+  - **Reference-only:** partial `recipe` with no `source`/`weak` (must be satisfied by some other provider)
+  - **Nested fetch prerequisites:** inside `source.dependencies`, may also be weak/reference-only
 - `needed_by` — Phase dependency annotation (default: `"fetch"`, custom: `"recipe_fetch"`, `"build"`, etc.)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
@@ -110,6 +114,7 @@ end
 - **Declarative:** `source` field with URL (http/https/s3/file) or git repo; verified via `sha256` (URL) or `ref` (git); cached
 - **Custom fetch:** `fetch` function with verification enforced at API boundary (`ctx:fetch`, `ctx:import_file`); cached
 - **Project-local:** `file` path in project tree; never cached; `local.*` namespace only
+- **Fetch prerequisites (nested):** `source.dependencies` declares recipes that must reach completion before this recipe’s fetch runs. These can be strong, weak, or reference-only.
 
 **Formats:**
 - **Single-file:** `.lua` file (declarative sources only)
@@ -123,13 +128,21 @@ end
    - No namespace exemptions
 
 2. **SHA256 verification** (optional, namespace-specific):
-   - Declarative sources accept SHA256 (URL) or commit SHA (git)
-   - Custom fetch accepts SHA256 per-file via `ctx.fetch()` API
-   - If SHA256 provided, verification happens at fetch time; mismatch causes hard failure
-   - Never re-verified from cache
-   - **Permissive by default**: SHA256 optional for all recipes
-   - **Namespace rule**: `local.*` recipes never require SHA256 (files are local/trusted)
-   - **Future strict mode**: Will require SHA256 for all non-`local.*` recipes
+  - Declarative sources accept SHA256 (URL) or commit SHA (git)
+  - Custom fetch accepts SHA256 per-file via `ctx.fetch()` API
+  - If SHA256 provided, verification happens at fetch time; mismatch causes hard failure
+  - Never re-verified from cache
+  - **Permissive by default**: SHA256 optional for all recipes
+  - **Namespace rule**: `local.*` recipes never require SHA256 (files are local/trusted)
+  - **Future strict mode**: Will require SHA256 for all non-`local.*` recipes
+
+### Dependency Semantics (strong, weak, reference-only)
+
+- **Strong dependencies** provide a complete spec (manifest or explicit `source`). They are instantiated immediately and run toward their target phase.
+- **Weak dependencies** specify a query (`recipe = "name"` or partial identity) plus a fallback spec in `weak = { ... }`. The engine tries to satisfy the query from existing/manifest/other strong nodes; if no match, it spawns the fallback. Ambiguities raise errors with all candidates listed.
+- **Reference-only dependencies** provide only a query (no `source`/`weak`). They must be satisfied by some other recipe in the graph; otherwise resolution fails after convergence.
+- **Nested fetch prerequisites** live in `source.dependencies` and follow the same rules. They must complete (typically to `completion`) before the parent’s `recipe_fetch` runs.
+- Resolution is iterative: the engine waits for all active recipes to reach their target phases, runs weak-resolution passes (matching or spawning fallbacks), and repeats while progress is made. Progress accounts for newly spawned fallbacks even when unresolved counts stay flat.
 
 ### Verbs
 
@@ -335,11 +348,11 @@ fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity
+  identity = string,                                -- Recipe identity (recipes only, not manifests)
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories
-  tmp = string,                                     -- Temp directory for ctx.fetch() downloads
+  tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
   fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided

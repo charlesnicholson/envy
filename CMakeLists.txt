@@ -167,6 +167,7 @@ set(ENVY_COMMON_SOURCES
     src/aws_util.cpp
     src/blake3_util.cpp
     src/libgit2_util.cpp
+    src/sol_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
@@ -380,6 +381,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/aws_util.cpp
     src/blake3_util.cpp
     src/libgit2_util.cpp
+    src/sol_util.cpp
     $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
@@ -412,6 +414,8 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
     src/extract_tests.cpp
+    src/engine_tests.cpp
+    src/engine_weak_resolution_tests.cpp
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp
     src/lua_shell_tests.cpp

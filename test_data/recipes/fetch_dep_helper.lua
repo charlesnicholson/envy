@@ -1,4 +1,3 @@
--- Helper recipe that must run to completion before parent recipe_fetch.
 identity = "local.fetch_dep_helper@v1"
 
 fetch = {

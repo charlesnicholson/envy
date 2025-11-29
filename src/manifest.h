@@ -2,9 +2,8 @@
 
 #include "recipe_spec.h"
 #include "shell.h"
+#include "sol_util.h"
 #include "util.h"
-
-#include "sol/sol.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -16,7 +15,7 @@ namespace envy {
 struct lua_ctx_common;
 
 struct manifest : unmovable {
-  std::vector<recipe_spec> packages;
+  std::vector<recipe_spec *> packages;
   std::filesystem::path manifest_path;
 
   manifest() = default;
@@ -39,7 +38,7 @@ struct manifest : unmovable {
   default_shell_cfg_t get_default_shell(lua_ctx_common const *ctx) const;
 
  private:
-  std::unique_ptr<sol::state> lua_;
+  sol_state_ptr lua_;
 };
 
 }  // namespace envy

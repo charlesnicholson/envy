@@ -6,6 +6,7 @@
 #include "phase_check.h"
 #include "recipe.h"
 #include "recipe_spec.h"
+#include "sol_util.h"
 
 #include "doctest.h"
 
@@ -25,7 +26,7 @@ namespace {
 
 // Fixture for testing install phase with temporary cache
 struct install_test_fixture {
-  recipe_spec spec;
+  recipe_spec *spec;
   std::unique_ptr<recipe> r;
   std::filesystem::path temp_root;
   cache test_cache;
@@ -43,30 +44,30 @@ struct install_test_fixture {
     // Create temp cache directory
     std::filesystem::create_directories(temp_root);
 
-    // Create recipe
-    spec.identity = "test.package@v1";
+    spec = recipe_spec::pool()->emplace("test.package@v1",
+                                        recipe_spec::weak_ref{},
+                                        "{}",
+                                        std::nullopt,
+                                        nullptr,
+                                        nullptr,
+                                        std::vector<recipe_spec *>{});
 
     // Create Lua state first
-    auto lua_state = std::make_unique<sol::state>();
-    lua_state->open_libraries(sol::lib::base, sol::lib::package, sol::lib::coroutine,
-                              sol::lib::string, sol::lib::os, sol::lib::math,
-                              sol::lib::table, sol::lib::debug, sol::lib::bit32,
-                              sol::lib::io);
+    auto lua_state = sol_util_make_lua_state();
     lua_envy_install(*lua_state);
 
     // Initialize options to empty table
-    spec.serialized_options = "{}";
-
-    r = std::make_unique<recipe>(recipe{
-        .key = recipe_key(spec),
-        .spec = &spec,
+    r = std::unique_ptr<recipe>(new recipe{
+        .key = recipe_key(*spec),
+        .spec = spec,
         .lua = std::move(lua_state),
+        // lua_mutex is default-initialized
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
         .canonical_identity_hash = {},
-        .asset_path = {},
+        .asset_path = std::filesystem::path{},
         .result_hash = {},
         .cache_ptr = &test_cache,
         .default_shell_ptr = nullptr,

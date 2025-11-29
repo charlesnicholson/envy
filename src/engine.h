@@ -56,6 +56,7 @@ class engine : unmovable {
   std::vector<recipe *> find_matches(std::string_view query) const;
 
   recipe_execution_ctx &get_execution_ctx(recipe *r);
+  recipe_execution_ctx &get_execution_ctx(recipe_key const &key);
 
   // Phase coordination (thread-safe)
   void ensure_recipe_at_phase(recipe_key const &key, recipe_phase target_phase);
@@ -63,15 +64,23 @@ class engine : unmovable {
                            recipe_phase initial_target,
                            std::vector<std::string> ancestor_chain = {});
   void wait_for_resolution_phase();
-  void notify_phase_complete(recipe_key const &key, recipe_phase completed_phase);
+  void notify_phase_complete();
   void on_recipe_fetch_start();
   void on_recipe_fetch_complete();
 
   // High-level execution
   recipe_result_map_t run_full(std::vector<recipe_spec const *> const &roots);
   void resolve_graph(std::vector<recipe_spec const *> const &roots);
+  struct weak_resolution_result {
+    size_t resolved{ 0 };
+    size_t fallbacks_started{ 0 };
+    std::vector<std::string> missing_without_fallback;
+  };
+  weak_resolution_result resolve_weak_references();
 
  private:
+  void fail_all_contexts();
+
   cache &cache_;
   default_shell_cfg_t default_shell_;
 
@@ -86,5 +95,13 @@ class engine : unmovable {
   std::condition_variable cv_;
   std::atomic_int pending_recipe_fetches_{ 0 };
 };
+
+// Validate that adding candidate_identity as a dependency doesn't create a cycle
+// Checks for self-loops and cycles in ancestor_chain, throws on detection
+// dependency_type used for error messages (e.g., "Dependency" or "Fetch dependency")
+void validate_dependency_cycle(std::string const &candidate_identity,
+                               std::vector<std::string> const &ancestor_chain,
+                               std::string const &current_identity,
+                               std::string const &dependency_type);
 
 }  // namespace envy

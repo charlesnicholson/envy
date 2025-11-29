@@ -1,4 +1,5 @@
 #include "lua_ctx_bindings.h"
+#include "sol_util.h"
 
 #include "doctest.h"
 
@@ -15,6 +16,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
+using envy::sol_state_ptr;
+
 // RAII helper for temporary test directories
 struct temp_dir {
   fs::path path;
@@ -29,7 +32,7 @@ struct temp_dir {
 
 // Helper to create a Lua state with ctx.move registered
 struct lua_ctx_move_fixture {
-  sol::state lua;
+  sol_state_ptr lua;
   temp_dir tmp;
   envy::lua_ctx_common ctx;
 
@@ -39,8 +42,8 @@ struct lua_ctx_move_fixture {
     ctx.engine_ = nullptr;
     ctx.recipe_ = nullptr;
 
-    lua.open_libraries(sol::lib::base, sol::lib::string);
-    lua["move_fn"] = envy::make_ctx_move(&ctx);
+    lua = envy::sol_util_make_lua_state();
+    (*lua)["move_fn"] = envy::make_ctx_move(&ctx);
   }
 
   void create_file(fs::path const &rel_path, std::string const &content) {
@@ -70,7 +73,7 @@ TEST_CASE("ctx.move - file to file") {
   lua_ctx_move_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("move_fn('src.txt', 'dst.txt')") };
+  auto result{ fixture.lua->safe_script("move_fn('src.txt', 'dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
   CHECK(!fixture.file_exists("src.txt"));  // Source should be gone
@@ -82,7 +85,7 @@ TEST_CASE("ctx.move - file to existing directory") {
   fixture.create_file("src.txt", "test content");
   fs::create_directories(fixture.tmp.path / "dest_dir");
 
-  auto result{ fixture.lua.safe_script("move_fn('src.txt', 'dest_dir')") };
+  auto result{ fixture.lua->safe_script("move_fn('src.txt', 'dest_dir')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dest_dir/src.txt"));
   CHECK(!fixture.file_exists("src.txt"));  // Source should be gone
@@ -93,7 +96,7 @@ TEST_CASE("ctx.move - file to new directory path") {
   lua_ctx_move_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("move_fn('src.txt', 'subdir/dst.txt')") };
+  auto result{ fixture.lua->safe_script("move_fn('src.txt', 'subdir/dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("subdir/dst.txt"));
   CHECK(!fixture.file_exists("src.txt"));  // Source should be gone
@@ -105,7 +108,7 @@ TEST_CASE("ctx.move - directory to directory") {
   fixture.create_file("srcdir/file1.txt", "content1");
   fixture.create_file("srcdir/file2.txt", "content2");
 
-  auto result{ fixture.lua.safe_script("move_fn('srcdir', 'dstdir')") };
+  auto result{ fixture.lua->safe_script("move_fn('srcdir', 'dstdir')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dstdir/file1.txt"));
   CHECK(fixture.file_exists("dstdir/file2.txt"));
@@ -117,7 +120,7 @@ TEST_CASE("ctx.move - destination exists (error)") {
   fixture.create_file("src.txt", "new content");
   fixture.create_file("dst.txt", "old content");
 
-  auto result{ fixture.lua.script("move_fn('src.txt', 'dst.txt')", sol::script_pass_on_error) };
+  auto result{ fixture.lua->script("move_fn('src.txt', 'dst.txt')", sol::script_pass_on_error) };
   CHECK(!result.valid());  // Should error (won't overwrite)
   CHECK(fixture.file_exists("src.txt"));  // Source still exists
   CHECK(fixture.read_file("dst.txt") == "old content");  // Dest unchanged
@@ -126,7 +129,7 @@ TEST_CASE("ctx.move - destination exists (error)") {
 TEST_CASE("ctx.move - missing source file") {
   lua_ctx_move_fixture fixture;
 
-  auto result{ fixture.lua.script("move_fn('missing.txt', 'dst.txt')", sol::script_pass_on_error) };
+  auto result{ fixture.lua->script("move_fn('missing.txt', 'dst.txt')", sol::script_pass_on_error) };
   CHECK(!result.valid());  // Should error
 }
 
@@ -134,7 +137,7 @@ TEST_CASE("ctx.move - relative paths resolved against run_dir") {
   lua_ctx_move_fixture fixture;
   fixture.create_file("src.txt", "test content");
 
-  auto result{ fixture.lua.safe_script("move_fn('./src.txt', './dst.txt')") };
+  auto result{ fixture.lua->safe_script("move_fn('./src.txt', './dst.txt')") };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
   CHECK(!fixture.file_exists("src.txt"));
@@ -147,7 +150,7 @@ TEST_CASE("ctx.move - absolute paths") {
   fixture.create_file("src.txt", "test content");
 
   std::string lua_code{ "move_fn('" + abs_src.string() + "', '" + abs_dst.string() + "')" };
-  auto result{ fixture.lua.safe_script(lua_code) };
+  auto result{ fixture.lua->safe_script(lua_code) };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));
   CHECK(!fixture.file_exists("src.txt"));

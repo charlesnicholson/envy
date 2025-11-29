@@ -13,6 +13,10 @@ class recipe_key {
  public:
   explicit recipe_key(recipe_spec const &spec);
   explicit recipe_key(std::string_view canonical_or_identity);
+  recipe_key(recipe_key const &other);
+  recipe_key(recipe_key &&other) noexcept;
+  recipe_key &operator=(recipe_key const &other);
+  recipe_key &operator=(recipe_key &&other) noexcept;
 
   std::string const &canonical() const { return canonical_; }
   std::string_view identity() const { return identity_; }

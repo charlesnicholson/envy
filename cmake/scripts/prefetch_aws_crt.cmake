@@ -17,6 +17,20 @@ file(SHA256 "${_prefetch_script}" _aws_prefetch_hash)
 file(SHA256 "${CMAKE_CURRENT_LIST_FILE}" _envy_prefetch_hash)
 set(_stamp_value "${_aws_prefetch_hash}|${_envy_prefetch_hash}")
 
+if(NOT DEFINED ENVY_PYTHON_LAUNCHER)
+  if(WIN32)
+    find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+  else()
+    find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+  endif()
+endif()
+get_filename_component(_envy_root "${CMAKE_CURRENT_LIST_DIR}/../.." REALPATH)
+set(_envy_unzip "${_envy_root}/tools/unzip")
+if(NOT EXISTS "${_envy_unzip}")
+  message(FATAL_ERROR "Missing unzip helper: ${_envy_unzip}")
+endif()
+set(_unzip_cmd ${ENVY_PYTHON_LAUNCHER} "${_envy_unzip}")
+
 file(STRINGS "${_prefetch_script}" _prefetch_lines)
 set(_crt_uri_prefix "")
 set(_entry_specs "")
@@ -170,7 +184,12 @@ set(_stage_tmp "${_stage_root}/tmp")
 file(REMOVE_RECURSE "${_stage_root}")
 file(MAKE_DIRECTORY "${_stage_tmp}")
 
-file(ARCHIVE_EXTRACT INPUT "${_main_archive}" DESTINATION "${_stage_root}")
+execute_process(COMMAND ${_unzip_cmd} -q "${_main_archive}" -d "${_stage_root}"
+  RESULT_VARIABLE _unzip_main_rv
+  COMMAND_ERROR_IS_FATAL ANY)
+if(NOT _unzip_main_rv EQUAL 0)
+  message(FATAL_ERROR "Failed to unzip CRT archive: ${_main_archive}")
+endif()
 file(GLOB _main_candidates LIST_DIRECTORIES TRUE "${_stage_root}/${_main_repo}*")
 if(_main_candidates STREQUAL "")
   message(FATAL_ERROR "Extraction of ${_main_repo} did not produce an ${_main_repo} directory")
@@ -189,7 +208,12 @@ file(REMOVE_RECURSE "${_crt_stage_crt_dir}")
 file(MAKE_DIRECTORY "${_crt_stage_crt_dir}")
 
 foreach(_archive IN LISTS _dependency_archives)
-  file(ARCHIVE_EXTRACT INPUT "${_archive}" DESTINATION "${_stage_tmp}")
+  execute_process(COMMAND ${_unzip_cmd} -q "${_archive}" -d "${_stage_tmp}"
+    RESULT_VARIABLE _unzip_dep_rv
+    COMMAND_ERROR_IS_FATAL ANY)
+  if(NOT _unzip_dep_rv EQUAL 0)
+    message(FATAL_ERROR "Failed to unzip CRT dependency archive: ${_archive}")
+  endif()
 endforeach()
 
 file(GLOB _tmp_dirs LIST_DIRECTORIES TRUE "${_stage_tmp}/*")

@@ -191,7 +191,7 @@ function fetch(ctx, opts)
   local file = ctx.fetch("test_data/lua/simple.lua")
 
   -- File should be in tmp before commit
-  local tmp_path = ctx.tmp .. "/" .. file
+  local tmp_path = ctx.tmp_dir .. "/" .. file
   local f = io.open(tmp_path, "r")
   if not f then
     error("File not in tmp: " .. tmp_path)
@@ -322,7 +322,7 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_commit_fetch_missing_file(self):
-        """Trying to commit file not in ctx.tmp fails with clear error."""
+        """Trying to commit file not in ctx.tmp_dir fails with clear error."""
         recipe_content = """identity = "local.prog_commit_missing@v1"
 
 function fetch(ctx, opts)
@@ -502,7 +502,7 @@ function fetch(ctx, opts)
   local file1 = ctx.fetch("test_data/lua/simple.lua")
 
   -- Verify file1 exists in tmp
-  local f = io.open(ctx.tmp .. "/" .. file1, "r")
+  local f = io.open(ctx.tmp_dir .. "/" .. file1, "r")
   if not f then error("file1 not in tmp after first fetch") end
   f:close()
 
@@ -510,11 +510,11 @@ function fetch(ctx, opts)
   local file2 = ctx.fetch("test_data/lua/print_single.lua")
 
   -- Verify both files exist
-  f = io.open(ctx.tmp .. "/" .. file1, "r")
+  f = io.open(ctx.tmp_dir .. "/" .. file1, "r")
   if not f then error("file1 disappeared after second fetch") end
   f:close()
 
-  f = io.open(ctx.tmp .. "/" .. file2, "r")
+  f = io.open(ctx.tmp_dir .. "/" .. file2, "r")
   if not f then error("file2 not in tmp after second fetch") end
   f:close()
 
