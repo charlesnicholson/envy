@@ -61,6 +61,8 @@ engine::engine(cache &cache, default_shell_cfg_t default_shell)
     : cache_(cache), default_shell_(default_shell) {}
 
 engine::~engine() {
+  fail_all_contexts();
+
   for (auto &[key, ctx] : execution_ctxs_) {
     if (ctx->worker.joinable()) { ctx->worker.join(); }
   }
@@ -141,14 +143,13 @@ engine::weak_resolution_result engine::resolve_weak_references() {
       start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
 
       wr->resolved = dep;
-      wr->fallback.reset();
       ++result.fallbacks_started;
     }
   }
 
   // Final validation: any unresolved without fallback is an error
   std::vector<std::string> const missing_messages{ [&] {
-    std::vector<std::string> msgs{ ambiguity_messages.begin(), ambiguity_messages.end() };
+    std::vector<std::string> msgs;
     for (auto [r, wr] : collect_unresolved()) {
       if (!wr->resolved && !wr->fallback) {
         msgs.push_back("Reference '" + wr->query + "' in recipe '" + r->spec->identity +
@@ -158,11 +159,14 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     return msgs;
   }() };
 
-  if (!missing_messages.empty()) {
+  result.missing_without_fallback = missing_messages;
+
+  if (!ambiguity_messages.empty()) {
+    fail_all_contexts();
     std::ostringstream oss;
-    for (size_t i{ 0 }; i < missing_messages.size(); ++i) {
+    for (size_t i{ 0 }; i < ambiguity_messages.size(); ++i) {
       if (i) oss << "\n";
-      oss << missing_messages[i];
+      oss << ambiguity_messages[i];
     }
     throw std::runtime_error(oss.str());
   }
@@ -330,6 +334,7 @@ void engine::run_recipe_thread(recipe *r) {
 
   try {
     while (ctx.current_phase < recipe_phase::completion) {
+      if (ctx.failed) break;
       recipe_phase const target{ ctx.target_phase };
       recipe_phase const current{ ctx.current_phase };
 
@@ -392,7 +397,17 @@ void engine::run_recipe_thread(recipe *r) {
 }
 
 recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roots) {
-  resolve_graph(roots);
+  try {
+    resolve_graph(roots);
+  } catch (...) {
+    fail_all_contexts();
+
+    for (auto &[key, ctx] : execution_ctxs_) {  // Best-effort join to avoid leaks
+      if (ctx->worker.joinable()) { ctx->worker.join(); }
+    }
+
+    throw;
+  }
 
   for (auto &[key, ctx] : execution_ctxs_) {  // Launch all recipes running to completion
     ctx->set_target_phase(recipe_phase::completion);
@@ -421,6 +436,18 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
   return results;
 }
 
+void engine::fail_all_contexts() {
+  std::lock_guard const lock(mutex_);
+  for (auto &[_, ctx] : execution_ctxs_) {
+    ctx->failed = true;
+    ctx->target_phase = recipe_phase::completion;
+    ctx->current_phase = recipe_phase::completion;
+    ctx->cv.notify_all();
+    if (ctx->worker.joinable()) { ctx->worker.detach(); }
+  }
+  cv_.notify_all();
+}
+
 void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
@@ -428,10 +455,45 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 
+  auto const count_unresolved = [this]() {
+    std::lock_guard const lock(mutex_);
+    size_t count{ 0 };
+    for (auto &[_, r_ptr] : recipes_) {
+      for (auto &wr : r_ptr->weak_references) {
+        if (!wr.resolved) { ++count; }
+      }
+    }
+    return count;
+  };
+
+  size_t iteration{ 0 };
   while (true) {
+    ++iteration;
     wait_for_resolution_phase();  // Wait for all current recipe_fetch targets to finish
     weak_resolution_result const resolution{ resolve_weak_references() };
-    if (resolution.resolved == 0 && resolution.fallbacks_started == 0) { break; }
+
+    if (resolution.resolved == 0 && resolution.fallbacks_started == 0) {
+      size_t const unresolved{ count_unresolved() };
+      if (!resolution.missing_without_fallback.empty()) {
+        fail_all_contexts();
+        std::ostringstream oss;
+        for (size_t i{ 0 }; i < resolution.missing_without_fallback.size(); ++i) {
+          if (i) oss << "\n";
+          oss << resolution.missing_without_fallback[i];
+        }
+        oss << "\nWeak dependency resolution made no progress at iteration " << iteration
+            << " with " << unresolved << " unresolved references";
+        throw std::runtime_error(oss.str());
+      }
+      if (unresolved > 0) {
+        fail_all_contexts();
+        throw std::runtime_error(
+            "Weak dependency resolution made no progress at iteration " +
+            std::to_string(iteration) + " with " + std::to_string(unresolved) +
+            " unresolved references");
+      }
+      break;
+    }
   }
 }
 

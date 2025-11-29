@@ -413,6 +413,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cmds/cmd_version_tests.cpp
     src/extract_tests.cpp
     src/engine_tests.cpp
+    src/engine_weak_resolution_tests.cpp
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp
     src/lua_shell_tests.cpp
