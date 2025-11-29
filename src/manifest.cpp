@@ -5,6 +5,7 @@
 #include "lua_envy.h"
 #include "lua_shell.h"
 #include "shell.h"
+#include "sol_util.h"
 #include "tui.h"
 
 #include <cstring>
@@ -57,17 +58,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   std::string const script{ reinterpret_cast<char const *>(content.data()),
                             content.size() };
 
-  auto state{ std::make_unique<sol::state>() };
-  state->open_libraries(sol::lib::base,
-                        sol::lib::package,
-                        sol::lib::coroutine,
-                        sol::lib::string,
-                        sol::lib::os,
-                        sol::lib::math,
-                        sol::lib::table,
-                        sol::lib::debug,
-                        sol::lib::bit32,
-                        sol::lib::io);
+  auto state{ sol_util_make_lua_state() };
   lua_envy_install(*state);
 
   if (sol::protected_function_result const result{

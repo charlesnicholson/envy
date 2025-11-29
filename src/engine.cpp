@@ -127,7 +127,7 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     if (wr->fallback) {  // No matches, instantiate weak fallbacks
       wr->fallback->parent = r->spec;
 
-      recipe *dep{ ensure_recipe(wr->fallback.get()) };
+      recipe *dep{ ensure_recipe(wr->fallback) };
       if (!r->dependencies.contains(dep->spec->identity)) {
         r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
         ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
@@ -301,20 +301,29 @@ void engine::process_fetch_dependencies(recipe *r,
                                         std::vector<std::string> const &ancestor_chain) {
   // Process fetch dependencies - added to dependencies map with needed_by=recipe_fetch
   // Existing phase loop wait logic handles blocking automatically
-  for (auto &fetch_dep_spec : r->spec->source_dependencies) {
-    fetch_dep_spec.parent = r->spec;  // Set parent pointer for custom fetch lookup
+  for (auto *fetch_dep_spec : r->spec->source_dependencies) {
+    fetch_dep_spec->parent = r->spec;  // Set parent pointer for custom fetch lookup
 
-    validate_dependency_cycle(fetch_dep_spec.identity,
+    validate_dependency_cycle(fetch_dep_spec->identity,
                               ancestor_chain,
                               r->spec->identity,
                               "Fetch dependency");
 
-    recipe *fetch_dep{ ensure_recipe(&fetch_dep_spec) };
+    if (fetch_dep_spec->is_weak_reference()) {  // Defer resolution to weak pass
+      recipe::weak_reference wr;
+      wr.query = fetch_dep_spec->identity;
+      wr.needed_by = recipe_phase::recipe_fetch;
+      wr.fallback = fetch_dep_spec->weak;
+      r->weak_references.push_back(std::move(wr));
+      continue;
+    }
+
+    recipe *fetch_dep{ ensure_recipe(fetch_dep_spec) };
 
     // Add to dependencies map - phase loop will handle blocking at recipe_fetch
-    r->dependencies[fetch_dep_spec.identity] = { fetch_dep, recipe_phase::recipe_fetch };
+    r->dependencies[fetch_dep_spec->identity] = { fetch_dep, recipe_phase::recipe_fetch };
     ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity,
-                                fetch_dep_spec.identity,
+                                fetch_dep_spec->identity,
                                 recipe_phase::recipe_fetch);
 
     // Build child ancestor chain (local to this thread path)

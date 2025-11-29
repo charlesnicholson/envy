@@ -40,10 +40,15 @@ TEST_CASE("recipe_key: canonical form with multiple options") {
 }
 
 TEST_CASE("recipe_key: from recipe_spec with no options") {
-  recipe_spec spec;
-  spec.identity = "local.ninja@r2";
+  recipe_spec *spec{ recipe_spec::pool()->emplace("local.ninja@r2",
+                                                  recipe_spec::weak_ref{},
+                                                  "{}",
+                                                  std::nullopt,
+                                                  nullptr,
+                                                  nullptr,
+                                                  std::vector<recipe_spec *>{}) };
 
-  recipe_key key(spec);
+  recipe_key key(*spec);
 
   CHECK(key.canonical() == "local.ninja@r2");
   CHECK(key.identity() == "local.ninja@r2");
@@ -53,11 +58,15 @@ TEST_CASE("recipe_key: from recipe_spec with no options") {
 }
 
 TEST_CASE("recipe_key: from recipe_spec with options") {
-  recipe_spec spec;
-  spec.identity = "local.python@r4";
-  spec.serialized_options = "{arch=\"arm64\",version=\"3.14\"}";
+  recipe_spec *spec{ recipe_spec::pool()->emplace("local.python@r4",
+                                                  recipe_spec::weak_ref{},
+                                                  "{arch=\"arm64\",version=\"3.14\"}",
+                                                  std::nullopt,
+                                                  nullptr,
+                                                  nullptr,
+                                                  std::vector<recipe_spec *>{}) };
 
-  recipe_key key(spec);
+  recipe_key key(*spec);
 
   // Options should be sorted in canonical form (strings are quoted)
   CHECK(key.canonical() == "local.python@r4{arch=\"arm64\",version=\"3.14\"}");

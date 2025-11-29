@@ -52,11 +52,11 @@ TEST_CASE("recipe::parse allows reference-only dependency when enabled") {
   sol::state lua;
   auto lua_val{ lua_eval("result = { recipe = 'python' }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
 
-  CHECK(cfg.identity == "python");
-  CHECK(cfg.is_weak_reference());
-  CHECK(cfg.weak == nullptr);
+  CHECK(cfg->identity == "python");
+  CHECK(cfg->is_weak_reference());
+  CHECK(cfg->weak == nullptr);
 }
 
 TEST_CASE("recipe::parse allows weak dependency with fallback when enabled") {
@@ -66,13 +66,13 @@ TEST_CASE("recipe::parse allows weak dependency with fallback when enabled") {
       "'/fake/python.lua' } }",
       lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
 
-  CHECK(cfg.identity == "python");
-  CHECK(cfg.is_weak_reference());
-  REQUIRE(cfg.weak);
-  CHECK(cfg.weak->identity == "vendor.python@r4");
-  CHECK(std::holds_alternative<envy::recipe_spec::local_source>(cfg.weak->source));
+  CHECK(cfg->identity == "python");
+  CHECK(cfg->is_weak_reference());
+  REQUIRE(cfg->weak);
+  CHECK(cfg->weak->identity == "vendor.python@r4");
+  CHECK(std::holds_alternative<envy::recipe_spec::local_source>(cfg->weak->source));
 }
 
 TEST_CASE("recipe::parse parses table with remote source") {
@@ -81,11 +81,11 @@ TEST_CASE("recipe::parse parses table with remote source") {
       "result = { recipe = 'arm.gcc@v2', source = 'https://example.com/gcc.lua', sha256 = "
       "'abc123' }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
-  CHECK(cfg.identity == "arm.gcc@v2");
+  CHECK(cfg->identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg.source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -96,11 +96,11 @@ TEST_CASE("recipe::parse parses table with local source") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'local.tool@v1', source = './recipes/tool.lua' }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/envy.lua")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/envy.lua")) };
 
-  CHECK(cfg.identity == "local.tool@v1");
+  CHECK(cfg->identity == "local.tool@v1");
 
-  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg.source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/tool.lua"));
 }
@@ -110,9 +110,9 @@ TEST_CASE("recipe::parse resolves relative file paths") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'local.tool@v1', source = '../sibling/tool.lua' }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/sub/envy.lua")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/project/sub/envy.lua")) };
 
-  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg.source) };
+  auto const *local{ std::get_if<envy::recipe_spec::local_source>(&cfg->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -124,12 +124,12 @@ TEST_CASE("recipe::parse parses table with options") {
       "'13.2.0', target = "
       "'arm-none-eabi' } }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
-  CHECK(cfg.identity == "arm.gcc@v2");
+  CHECK(cfg->identity == "arm.gcc@v2");
 
   // Deserialize and check
-  auto opts_result{ lua.safe_script("return " + cfg.serialized_options) };
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
   sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
@@ -141,10 +141,10 @@ TEST_CASE("recipe::parse parses table with empty options") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', source = '/fake/r.lua', options = {} }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
-  CHECK(cfg.identity == "arm.gcc@v2");
-  CHECK(cfg.serialized_options == "{}");
+  CHECK(cfg->identity == "arm.gcc@v2");
+  CHECK(cfg->serialized_options == "{}");
 }
 
 TEST_CASE("recipe::parse parses table with all fields") {
@@ -154,17 +154,17 @@ TEST_CASE("recipe::parse parses table with all fields") {
       "'abc123', "
       "options = { version = '13.2.0' } }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
-  CHECK(cfg.identity == "arm.gcc@v2");
+  CHECK(cfg->identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg.source) };
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&cfg->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
 
   // Deserialize and check
-  auto opts_result{ lua.safe_script("return " + cfg.serialized_options) };
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
   sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
@@ -261,10 +261,10 @@ TEST_CASE("recipe::parse allows url without sha256 (permissive mode)") {
   auto lua_val{ lua_eval(
       "result = { recipe = 'arm.gcc@v2', source = 'https://example.com/gcc.lua' }", lua) };
 
-  auto const spec{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
-  CHECK(spec.identity == "arm.gcc@v2");
-  CHECK(spec.is_remote());
-  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&spec.source) };
+  auto const *spec{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  CHECK(spec->identity == "arm.gcc@v2");
+  CHECK(spec->is_remote());
+  auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(&spec->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
@@ -318,10 +318,10 @@ TEST_CASE("recipe::parse accepts non-string option values") {
       "result = { recipe = 'arm.gcc@v2', source = '/fake/r.lua', options = { version = 123, "
       "debug = true, nested = { key = 'value' } } }", lua) };
 
-  auto const cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
 
   // Deserialize and check
-  auto opts_result{ lua.safe_script("return " + cfg.serialized_options) };
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
   sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).is<lua_Integer>());

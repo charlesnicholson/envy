@@ -355,84 +355,36 @@ Enable reference-only and weak dependencies with iterative graph resolution.
 
 - [x] 3.8: Functional tests for weak dependencies
   - Added `functional_tests/test_engine_weak_dependencies.py` exercising: simple weak fallback; strong overrides weak; reference-only resolved by existing recipe; ambiguity error with candidate list; missing reference + stuck detection; cascading weak fallback chain; progress despite flat unresolved count (two fallbacks introducing shared dependency).
-  - Test: Progress despite flat unresolved count (two fallbacks each introduce weak refs; loop continues because fallbacks_started > 0)
 
 ---
 
-## Phase 4: Integration (Nested Source + Weak) - ❌ NOT STARTED
+## Phase 4: Integration (Nested Source + Weak) - ⚠️ IN PROGRESS
 
 ### Goal
 
-Nested source dependencies can be weak, enabling recipes to express "if jfrog not in graph, use fallback before fetching my recipe."
-
-**Execution model**: Iterative progression algorithm with distinct phases:
-1. **Strong closure**: Resolve all strong references, accumulate weak/reference-only deps
-2. **Weak resolution waves**: Resolve unresolved refs → fetch fallbacks → resolve new refs → repeat until convergence
-3. **Ambiguity validation**: Error if any weak resolutions are ambiguous (same recipe, different revision/options)
-
-### Algorithm
-
-**Parsing** (extends Phase 2 + Phase 3):
-```
-parse_recipe_spec(lua_value):
-  if source is table with "dependencies":
-    fetch_deps = []
-    for dep_val in source.dependencies:
-      dep_spec = parse_recipe_spec(dep_val)  # May lack source (weak/reference-only)
-      fetch_deps.append(dep_spec)
-
-    # Fetch deps can be weak
-    return recipe_spec{
-      source = custom_fetch{
-        dependencies: fetch_deps,  # Contains weak refs
-        function: fetch_func
-      }
-    }
-```
-
-**Execution** (during weak resolution):
-```
-# When processing nested source dependencies during phase_recipe_fetch:
-for fetch_dep_spec in outer_dep.source.dependencies:
-  if !fetch_dep_spec.has_source():
-    # Nested fetch dep is weak/reference-only
-    # Store in unresolved set, resolve during weak resolution phase
-    unresolved.add((outer_recipe, weak_reference{
-      identity: fetch_dep_spec.identity,
-      weak_fallback_spec: fetch_dep_spec.weak,
-      context: "nested_fetch_dep"
-    }))
-  else:
-    # Strong nested fetch dep (Phase 2 behavior)
-    fetch_dep = ensure_recipe(fetch_dep_spec)
-    start_recipe_thread(fetch_dep, recipe_fetch)
-    wait_for_completion(fetch_dep)
-```
+Allow weak/reference-only dependencies inside `source.dependencies` (custom fetch prerequisites), resolved via the same weak-resolution waves before running the outer recipe’s fetch.
 
 ### Tasks
 
-- [ ] 4.1: Update nested source dependency parsing to handle weak refs
-  - Nested `source.dependencies` entries can lack `source` field (weak/reference-only)
-  - Parse weak nested fetch deps same as top-level weak deps
-  - Unit test: parse `source = { dependencies = { { recipe = "...", weak = {...} } }, fetch = function }`
+- [x] 4.1: Parse nested fetch deps as weak/ref-only when `source` is absent
+  - `source.dependencies` entries now call `recipe_spec::parse(..., allow_weak_without_source=true)` so weak/ref-only specs are accepted during parsing.
 
-- [ ] 4.2: Collect weak nested fetch deps in `phase_recipe_fetch`
-  - When processing `dep_spec.source.dependencies`: check if `source` field absent
-  - If no source: add to `unresolved` set (resolve later)
-  - If has source: install immediately (Phase 2 behavior)
-  - Annotate context: "nested fetch dep for {outer_identity}"
+- [x] 4.2: Collect weak nested fetch deps in `phase_recipe_fetch`
+  - Strong fetch deps keep current behavior (instantiate, `needed_by=recipe_fetch`).
+  - Weak/ref-only fetch deps are stored as `weak_references` (needed_by=recipe_fetch) instead of being instantiated immediately.
 
-- [ ] 4.3: Resolve nested weak fetch deps during weak resolution
-  - Nested weak refs participate in convergence loop
-  - Once resolved: install fetch dep, then fetch outer recipe
-  - Error if nested reference-only not found after convergence
+- [x] 4.3: Resolve nested weak fetch deps during weak resolution
+  - Weak-resolution waves handle nested fetch deps before any recipe advances past `recipe_fetch`.
+  - Reference-only fetch deps error if unresolved after resolution.
 
-- [ ] 4.4: Functional tests for integrated behavior
-  - Test: Nested weak used (toolchain fetch needs jfrog weak, jfrog not in graph → weak instantiated)
-  - Test: Nested weak ignored (jfrog in graph → nested weak ignored, graph's jfrog used)
-  - Test: Nested reference-only (toolchain fetch refs "jfrog", jfrog provided by manifest)
-  - Test: Nested ambiguity (two jfrogs in graph, nested ref ambiguous → error)
-  - Test: Complex nesting (A→B fetch needs C weak, C weak brings D strong, E refs D)
+- [ ] 4.4: Functional tests for nested weak fetch deps
+  - Nested weak used: outer fetch weakly depends on jfrog, no jfrog present → fallback instantiated, outer fetch succeeds.
+  - Nested weak ignored: jfrog already in graph → weak fetch dep resolves to existing jfrog; fallback unused.
+  - Nested reference-only satisfied: outer fetch depends on jfrog (no source/weak), another recipe provides jfrog → resolution succeeds.
+  - Nested missing reference: reference-only fetch dep with no provider → error after weak resolution (no progress).
+  - Nested ambiguity: two providers match fetch dep → error listing candidates.
+  - Nested cascading weak: weak fetch dep fallback introduces its own weak dep (multi-iteration convergence).
+  - Nested flat-progress: multiple weak fallbacks each introduce weak refs so unresolved count stays flat, but loop proceeds via fallbacks_started.
 
 ---
 

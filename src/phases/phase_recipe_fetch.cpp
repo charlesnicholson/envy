@@ -6,6 +6,7 @@
 #include "lua_envy.h"
 #include "recipe.h"
 #include "sha256.h"
+#include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
 
@@ -34,18 +35,8 @@ void validate_phases(sol::state_view lua, std::string const &identity) {
   }
 }
 
-std::unique_ptr<sol::state> create_lua_state() {
-  auto lua{ std::make_unique<sol::state>() };
-  lua->open_libraries(sol::lib::base,
-                      sol::lib::package,
-                      sol::lib::coroutine,
-                      sol::lib::string,
-                      sol::lib::os,
-                      sol::lib::math,
-                      sol::lib::table,
-                      sol::lib::debug,
-                      sol::lib::bit32,
-                      sol::lib::io);
+sol_state_ptr create_lua_state() {
+  auto lua{ sol_util_make_lua_state() };
   lua_envy_install(*lua);
   return lua;
 }
@@ -276,22 +267,22 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   validate_phases(sol::state_view{ *lua }, spec.identity);
 
   r->owned_dependency_specs = [&] {  // Parse and store dependencies
-    std::vector<recipe_spec> parsed_deps;
+    std::vector<recipe_spec *> parsed_deps;
     sol::object deps_obj{ (*lua)["dependencies"] };
     if (deps_obj.valid() && deps_obj.get_type() == sol::type::table) {
       sol::table deps_table{ deps_obj.as<sol::table>() };
       for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
-        auto dep_cfg{ recipe_spec::parse(deps_table[i], recipe_path, true) };
+        recipe_spec *dep_cfg{ recipe_spec::parse(deps_table[i], recipe_path, true) };
 
         if (!spec.identity.starts_with("local.") &&
-            dep_cfg.identity.starts_with("local.")) {
+            dep_cfg->identity.starts_with("local.")) {
           throw std::runtime_error("non-local recipe '" + spec.identity +
-                                   "' cannot depend on local recipe '" + dep_cfg.identity +
+                                   "' cannot depend on local recipe '" + dep_cfg->identity +
                                    "'");
         }
 
-        dep_cfg.parent = r->spec;
-        parsed_deps.push_back(std::move(dep_cfg));
+        dep_cfg->parent = r->spec;
+        parsed_deps.push_back(dep_cfg);
       }
     }
     return parsed_deps;
@@ -317,8 +308,8 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   r->declared_dependencies = [&]() {  // Extract dependency identities for validation
     std::vector<std::string> result;
     result.reserve(r->owned_dependency_specs.size());
-    for (auto const &dep_spec : r->owned_dependency_specs) {
-      result.push_back(dep_spec.identity);
+    for (auto const *dep_spec : r->owned_dependency_specs) {
+      result.push_back(dep_spec->identity);
     }
     return result;
   }();
@@ -326,31 +317,31 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   auto &ctx{ eng.get_execution_ctx(r) };
 
   // Build dependency graph: create child recipes, start their threads
-  for (auto &dep_spec : r->owned_dependency_specs) {
-    validate_dependency_cycle(dep_spec.identity,
+  for (auto *dep_spec : r->owned_dependency_specs) {
+    validate_dependency_cycle(dep_spec->identity,
                               ctx.ancestor_chain,
                               r->spec->identity,
                               "Dependency");
 
     recipe_phase const needed_by_phase{
-      dep_spec.needed_by.has_value() ? static_cast<recipe_phase>(*dep_spec.needed_by)
-                                     : recipe_phase::asset_build
+      dep_spec->needed_by.has_value() ? static_cast<recipe_phase>(*dep_spec->needed_by)
+                                      : recipe_phase::asset_build
     };
 
-    if (dep_spec.is_weak_reference()) {
+    if (dep_spec->is_weak_reference()) {
       recipe::weak_reference wr;
-      wr.query = dep_spec.identity;
+      wr.query = dep_spec->identity;
       wr.needed_by = needed_by_phase;
-      if (dep_spec.weak) { wr.fallback = std::move(dep_spec.weak); }
+      wr.fallback = dep_spec->weak;
       r->weak_references.push_back(std::move(wr));
       continue;
     }
 
-    recipe *dep{ eng.ensure_recipe(&dep_spec) };
+    recipe *dep{ eng.ensure_recipe(dep_spec) };
 
     // Store dependency info in parent's map for ctx.asset() lookup and phase coordination
-    r->dependencies[dep_spec.identity] = { dep, needed_by_phase };
-    ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep_spec.identity, needed_by_phase);
+    r->dependencies[dep_spec->identity] = { dep, needed_by_phase };
+    ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep_spec->identity, needed_by_phase);
 
     std::vector<std::string> child_chain{ ctx.ancestor_chain };
     child_chain.push_back(r->spec->identity);

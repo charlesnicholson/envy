@@ -150,9 +150,9 @@ TEST_CASE("manifest::load parses simple string package") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  CHECK(m->packages[0].identity == "arm.gcc@v2");
-  CHECK(m->packages[0].is_local());
-  CHECK(m->packages[0].serialized_options == "{}");
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->is_local());
+  CHECK(m->packages[0]->serialized_options == "{}");
 }
 
 TEST_CASE("manifest::load parses multiple string packages") {
@@ -167,9 +167,9 @@ TEST_CASE("manifest::load parses multiple string packages") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 3);
-  CHECK(m->packages[0].identity == "arm.gcc@v2");
-  CHECK(m->packages[1].identity == "gnu.binutils@v3");
-  CHECK(m->packages[2].identity == "vendor.openocd@v1");
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  CHECK(m->packages[1]->identity == "gnu.binutils@v3");
+  CHECK(m->packages[2]->identity == "vendor.openocd@v1");
 }
 
 TEST_CASE("manifest::load parses table package with remote source") {
@@ -186,10 +186,10 @@ TEST_CASE("manifest::load parses table package with remote source") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  CHECK(m->packages[0].identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
 
   auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(
-      &m->packages[0].source) };
+      &m->packages[0]->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -208,10 +208,10 @@ TEST_CASE("manifest::load parses table package with local source") {
   auto m{ envy::manifest::load(script, fs::path("/project/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  CHECK(m->packages[0].identity == "local.wrapper@v1");
+  CHECK(m->packages[0]->identity == "local.wrapper@v1");
 
   auto const *local{ std::get_if<envy::recipe_spec::local_source>(
-      &m->packages[0].source) };
+      &m->packages[0]->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
 }
@@ -232,11 +232,11 @@ TEST_CASE("manifest::load parses table package with options") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  CHECK(m->packages[0].identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
 
   // Deserialize and check
   sol::state lua;
-  auto opts_result{ lua.safe_script("return " + m->packages[0].serialized_options) };
+  auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
   sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
@@ -260,9 +260,9 @@ TEST_CASE("manifest::load parses mixed string and table packages") {
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
   REQUIRE(m->packages.size() == 3);
-  CHECK(m->packages[0].identity == "envy.homebrew@v4");
-  CHECK(m->packages[1].identity == "arm.gcc@v2");
-  CHECK(m->packages[2].identity == "gnu.make@v1");
+  CHECK(m->packages[0]->identity == "envy.homebrew@v4");
+  CHECK(m->packages[1]->identity == "arm.gcc@v2");
+  CHECK(m->packages[2]->identity == "gnu.make@v1");
 }
 
 TEST_CASE("manifest::load allows platform conditionals") {
@@ -282,11 +282,11 @@ TEST_CASE("manifest::load allows platform conditionals") {
   // Should have exactly one package based on current platform
   REQUIRE(m->packages.size() == 1);
 #if defined(__APPLE__) && defined(__MACH__)
-  CHECK(m->packages[0].identity == "envy.homebrew@v4");
+  CHECK(m->packages[0]->identity == "envy.homebrew@v4");
 #elif defined(__linux__)
-  CHECK(m->packages[0].identity == "system.apt@v1");
+  CHECK(m->packages[0]->identity == "system.apt@v1");
 #elif defined(_WIN32)
-  CHECK(m->packages[0].identity == "system.choco@v1");
+  CHECK(m->packages[0]->identity == "system.choco@v1");
 #endif
 }
 
@@ -312,7 +312,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
 
   REQUIRE(m->packages.size() == 1);
   auto const *local{ std::get_if<envy::recipe_spec::local_source>(
-      &m->packages[0].source) };
+      &m->packages[0]->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }
@@ -411,10 +411,10 @@ TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
 
   auto const result{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
   REQUIRE(result->packages.size() == 1);
-  CHECK(result->packages[0].identity == "arm.gcc@v2");
-  CHECK(result->packages[0].is_remote());
+  CHECK(result->packages[0]->identity == "arm.gcc@v2");
+  CHECK(result->packages[0]->is_remote());
   auto const *remote{ std::get_if<envy::recipe_spec::remote_source>(
-      &result->packages[0].source) };
+      &result->packages[0]->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->sha256.empty());  // No SHA256 provided (permissive)
 }
@@ -498,7 +498,7 @@ TEST_CASE("manifest::load accepts non-string option values") {
 
   // Deserialize and check
   sol::state lua;
-  auto opts_result{ lua.safe_script("return " + m->packages[0].serialized_options) };
+  auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
   sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).is<lua_Integer>());

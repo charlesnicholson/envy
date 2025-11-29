@@ -24,12 +24,17 @@ static recipe_result_map_t run_recipe_from_file(std::string const &identity,
   auto manifest_ptr{ manifest::load("packages = {}", recipe_path) };
   engine eng{ c, manifest_ptr->get_default_shell(nullptr) };
 
-  recipe_spec spec;
-  spec.identity = identity;
-  spec.source = recipe_spec::local_source{ .file_path = recipe_path };
-  spec.serialized_options = "{}";
+  recipe_spec *spec_ptr{ recipe_spec::pool()->emplace(identity,
+                                                      recipe_spec::local_source{
+                                                        .file_path = recipe_path
+                                                      },
+                                                      "{}",
+                                                      std::nullopt,
+                                                      nullptr,
+                                                      nullptr,
+                                                      std::vector<recipe_spec *>{}) };
 
-  recipe_result_map_t results{ eng.run_full({ &spec }) };
+  recipe_result_map_t results{ eng.run_full({ spec_ptr }) };
   fs::remove_all(cache_root);
   return results;
 }

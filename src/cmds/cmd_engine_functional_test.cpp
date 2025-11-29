@@ -25,18 +25,22 @@ bool cmd_engine_functional_test::execute() {
   cache c{ cache_root };
 
   // Build recipe
-  recipe_spec recipe_cfg;
-  recipe_cfg.identity = cfg_.identity;
-  recipe_cfg.source = recipe_spec::local_source{ .file_path = cfg_.recipe_path };
-  recipe_cfg.serialized_options = "{}";
-  recipe_cfg.needed_by = std::nullopt;
+  recipe_spec *recipe_cfg{ recipe_spec::pool()->emplace(cfg_.identity,
+                                                        recipe_spec::local_source{
+                                                          .file_path = cfg_.recipe_path
+                                                        },
+                                                        "{}",
+                                                        std::nullopt,
+                                                        nullptr,
+                                                        nullptr,
+                                                        std::vector<recipe_spec *>{}) };
 
   // Create minimal manifest for engine (no default_shell for tests)
   auto m{ manifest::load("packages = {}", cfg_.recipe_path) };
 
   // Run engine
   engine eng{ c, m->get_default_shell(nullptr) };
-  auto result{ eng.run_full({ &recipe_cfg }) };
+  auto result{ eng.run_full({ recipe_cfg }) };
 
   // Output results as key -> value lines (avoid = which appears in option keys)
   for (auto const &[id, res] : result) {
