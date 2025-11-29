@@ -25,13 +25,60 @@ endif()
 cmake_path(APPEND ENVY_CACHE_DIR "aws_sdk-src" OUTPUT_VARIABLE aws_sdk_SOURCE_DIR)
 cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "aws_sdk-build" OUTPUT_VARIABLE aws_sdk_BINARY_DIR)
 
+if(NOT DEFINED ENVY_PYTHON_LAUNCHER)
+    if(WIN32)
+        find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+    else()
+        find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+    endif()
+endif()
+
 if(NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
-    FetchContent_Populate(aws_sdk
-        SOURCE_DIR "${aws_sdk_SOURCE_DIR}"
-        BINARY_DIR "${aws_sdk_BINARY_DIR}"
-        URL ${_aws_sdk_url}
-        URL_HASH SHA256=${ENVY_AWS_SDK_SHA256}
-    )
+    # Download archive into cache if missing
+    if(NOT EXISTS "${_aws_sdk_archive}")
+        file(DOWNLOAD "${_aws_sdk_url}" "${_aws_sdk_archive}"
+            SHOW_PROGRESS
+            EXPECTED_HASH SHA256=${ENVY_AWS_SDK_SHA256}
+            TLS_VERIFY ON)
+    endif()
+
+    # Extract using our Python unzip shim (handles UTF-8 paths reliably)
+    get_filename_component(_envy_root "${CMAKE_CURRENT_LIST_DIR}/../.." REALPATH)
+    set(_envy_unzip "${_envy_root}/tools/unzip")
+    if(NOT EXISTS "${_envy_unzip}")
+        message(FATAL_ERROR "Missing unzip helper: ${_envy_unzip}")
+    endif()
+
+    set(_unzip_cmd ${ENVY_PYTHON_LAUNCHER} "${_envy_unzip}")
+
+    set(_stage_dir "${aws_sdk_SOURCE_DIR}.stage")
+    file(REMOVE_RECURSE "${_stage_dir}" "${aws_sdk_SOURCE_DIR}")
+    file(MAKE_DIRECTORY "${_stage_dir}")
+
+    execute_process(
+        COMMAND ${_unzip_cmd} -q "${_aws_sdk_archive}" -d "${_stage_dir}"
+        RESULT_VARIABLE _unzip_rv
+        COMMAND_ERROR_IS_FATAL ANY)
+    if(NOT _unzip_rv EQUAL 0)
+        message(FATAL_ERROR "Failed to unzip AWS SDK archive: ${_aws_sdk_archive}")
+    endif()
+
+    file(GLOB _aws_dirs LIST_DIRECTORIES TRUE "${_stage_dir}/aws-sdk-cpp-*")
+    if(_aws_dirs STREQUAL "")
+        message(FATAL_ERROR "AWS SDK archive did not contain an aws-sdk-cpp-* directory")
+    endif()
+    list(SORT _aws_dirs)
+    list(GET _aws_dirs 0 _extracted_dir)
+
+    file(RENAME "${_extracted_dir}" "${aws_sdk_SOURCE_DIR}")
+    file(REMOVE_RECURSE "${_stage_dir}")
+
+    unset(_aws_dirs)
+    unset(_extracted_dir)
+    unset(_stage_dir)
+    unset(_unzip_cmd)
+    unset(_envy_unzip)
+    unset(_envy_root)
 endif()
 
 unset(_aws_sdk_archive)
