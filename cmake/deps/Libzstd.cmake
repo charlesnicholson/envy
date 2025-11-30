@@ -92,6 +92,24 @@ if(MSVC)
     unset(_libzstd_root_cmakelists)
 endif()
 
+if(NOT _libzstd_was_populated)
+    # Patch libzstd to remove -Wa,--noexecstack flags that trigger lto-wrapper warnings
+    set(_libzstd_compile_flags "${envy_libzstd_SOURCE_DIR}/build/cmake/CMakeModules/AddZstdCompilationFlags.cmake")
+    if(EXISTS "${_libzstd_compile_flags}")
+        file(READ "${_libzstd_compile_flags}" _libzstd_flags_content)
+        string(FIND "${_libzstd_flags_content}" "# envy: removed -Wa,--noexecstack" _libzstd_already_patched)
+        if(_libzstd_already_patched EQUAL -1)
+            string(REPLACE "EnableCompilerFlag(\"-Wa,--noexecstack\" true true false)"
+                           "# envy: removed -Wa,--noexecstack"
+                           _libzstd_flags_content "${_libzstd_flags_content}")
+            file(WRITE "${_libzstd_compile_flags}" "${_libzstd_flags_content}")
+        endif()
+        unset(_libzstd_already_patched)
+        unset(_libzstd_flags_content)
+    endif()
+    unset(_libzstd_compile_flags)
+endif()
+
 if(NOT _libzstd_was_populated OR NOT TARGET libzstd_static)
     add_subdirectory("${envy_libzstd_SOURCE_DIR}/build/cmake" "${envy_libzstd_BINARY_DIR}")
 endif()

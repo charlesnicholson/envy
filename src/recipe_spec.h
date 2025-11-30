@@ -57,7 +57,8 @@ struct recipe_spec : unmovable {
               std::optional<recipe_phase> needed_by,
               recipe_spec const *parent,
               recipe_spec *weak,
-              std::vector<recipe_spec *> source_dependencies);
+              std::vector<recipe_spec *> source_dependencies,
+              std::optional<std::string> product);
 
   std::string identity;  // "namespace.name@version"
   source_t source;
@@ -68,6 +69,9 @@ struct recipe_spec : unmovable {
 
   // Custom source fetch (nested source dependencies)
   std::vector<recipe_spec *> source_dependencies{};  // Needed for fetching this recipe
+
+  // Product name if this is a product-based dependency
+  std::optional<std::string> product;
 
   // Parse recipe_spec from Sol2 object (allocates via pool)
   static recipe_spec *parse(sol::object const &lua_val,

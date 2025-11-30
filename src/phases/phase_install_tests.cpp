@@ -50,10 +50,11 @@ struct install_test_fixture {
                                         std::nullopt,
                                         nullptr,
                                         nullptr,
-                                        std::vector<recipe_spec *>{});
+                                        std::vector<recipe_spec *>{},
+                                        std::nullopt);
 
     // Create Lua state first
-    auto lua_state = sol_util_make_lua_state();
+    auto lua_state{ sol_util_make_lua_state() };
     lua_envy_install(*lua_state);
 
     // Initialize options to empty table

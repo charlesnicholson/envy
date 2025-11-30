@@ -106,8 +106,8 @@ if(ENABLE_LTO)
             endforeach()
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             foreach(_type RELEASE RELWITHDEBINFO MINSIZEREL)
-                set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto -Wl,-z,noexecstack" CACHE STRING "${_type} exe linker flags" FORCE)
-                set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto -Wl,-z,noexecstack" CACHE STRING "${_type} shared linker flags" FORCE)
+                set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} exe linker flags" FORCE)
+                set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} shared linker flags" FORCE)
             endforeach()
         elseif(MSVC)
             foreach(_type RELEASE RELWITHDEBINFO MINSIZEREL)
@@ -224,7 +224,20 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
             target_link_options(${TARGET_NAME} PRIVATE
                 $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
             )
+            # Suppress TSAN warnings about atomic_thread_fence in third-party code
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SANITIZERS MATCHES "thread")
+                target_link_options(${TARGET_NAME} PRIVATE
+                    -Wno-tsan
+                )
+            endif()
         endif()
+    endif()
+
+    # Add noexecstack for all GCC builds (security hardening)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:-Wl,-z,noexecstack>
+        )
     endif()
 endfunction()
 

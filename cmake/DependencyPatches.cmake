@@ -274,6 +274,43 @@ function(envy_patch_s2n_feature_probes source_dir binary_dir)
     unset(S2N_CMAKELISTS)
 endfunction()
 
+# Remove -Wa,--noexecstack from aws-lc and s2n assembly builds to silence
+# lto-wrapper warnings during TSAN+LTO linking.
+function(envy_patch_aws_noexecstack source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_aws_noexecstack_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_noexecstack.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_noexecstack_patch.py.in")
+
+    set(AWS_LC_CRYPTO_CMAKELISTS "${_source_dir_norm}/crt/aws-crt-cpp/crt/aws-lc/crypto/CMakeLists.txt")
+    set(S2N_CMAKELISTS "${_source_dir_norm}/crt/aws-crt-cpp/crt/s2n/CMakeLists.txt")
+
+    if(NOT EXISTS "${AWS_LC_CRYPTO_CMAKELISTS}" OR NOT EXISTS "${S2N_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWS_LC_CRYPTO_CMAKELISTS)
+    unset(S2N_CMAKELISTS)
+endfunction()
+
 # Make libcurl’s pkg-config metadata reference the actual zlib target we
 # build instead of the abstract ZLIB::ZLIB alias.
 function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)

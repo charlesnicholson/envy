@@ -35,7 +35,8 @@ struct test_recipe_fixture {
                                         std::nullopt,
                                         nullptr,
                                         nullptr,
-                                        std::vector<recipe_spec *>{});
+                                        std::vector<recipe_spec *>{},
+                                        std::nullopt);
 
     // Create Lua state first
     auto lua_state = sol_util_make_lua_state();
