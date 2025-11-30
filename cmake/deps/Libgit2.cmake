@@ -103,10 +103,8 @@ set(_envy_libgit2_warning_silencers
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-single-bit-bitfield-constant-conversion>
     $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-array-parameter>
     $<$<COMPILE_LANG_AND_ID:C,MSVC>:/wd5287>
-    # TSAN warning: atomic_thread_fence not supported with -fsanitize=thread
-    # Only active when TSAN is enabled; harmless otherwise
-    $<$<COMPILE_LANG_AND_ID:C,AppleClang>:-Wno-tsan>
-    $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-tsan>
+    # GCC+TSAN warning: atomic_thread_fence not supported with -fsanitize=thread
+    # Only GCC emits this warning; Clang/AppleClang don't recognize -Wno-tsan
     $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-tsan>
 )
 foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
