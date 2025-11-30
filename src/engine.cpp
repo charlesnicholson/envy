@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
@@ -34,12 +35,35 @@ constexpr std::array<phase_func_t, recipe_phase_count> phase_dispatch_table{
   run_completion_phase,    // recipe_phase::completion
 };
 
+bool has_dependency_path(recipe const *from, recipe const *to) {
+  if (from == to) { return true; }
+
+  // DFS to find if 'to' is reachable from 'from' via dependencies
+  std::unordered_set<recipe const *> visited;
+  std::vector<recipe const *> stack{ from };
+
+  while (!stack.empty()) {
+    recipe const *current{ stack.back() };
+    stack.pop_back();
+
+    if (visited.contains(current)) { continue; }
+    visited.insert(current);
+
+    for (auto const &[dep_identity, dep_info] : current->dependencies) {
+      if (dep_info.recipe_ptr == to) { return true; }
+      if (!visited.contains(dep_info.recipe_ptr)) { stack.push_back(dep_info.recipe_ptr); }
+    }
+  }
+
+  return false;
+}
+
 }  // namespace
 
-void validate_dependency_cycle(std::string const &candidate_identity,
-                               std::vector<std::string> const &ancestor_chain,
-                               std::string const &current_identity,
-                               std::string const &dependency_type) {
+void engine_validate_dependency_cycle(std::string const &candidate_identity,
+                                      std::vector<std::string> const &ancestor_chain,
+                                      std::string const &current_identity,
+                                      std::string const &dependency_type) {
   if (current_identity == candidate_identity) {  // Check for self-loop
     throw std::runtime_error(dependency_type + " cycle detected: " + current_identity +
                              " -> " + candidate_identity);
@@ -95,6 +119,15 @@ engine::weak_resolution_result engine::resolve_weak_references() {
 
     if (matches.size() == 1) {  // Resolved to existing recipe
       recipe *dep{ matches[0] };
+
+      // Validate no cycle introduced by this weak resolution
+      // Check if dep has a path back to r (which would create a cycle if we add r->dep)
+      if (has_dependency_path(dep, r)) {
+        throw std::runtime_error("Weak dependency cycle detected: " + r->spec->identity +
+                                 " -> " + dep->spec->identity +
+                                 " (which already depends on " + r->spec->identity + ")");
+      }
+
       wr->resolved = dep;
       ++result.resolved;
 
@@ -304,10 +337,10 @@ void engine::process_fetch_dependencies(recipe *r,
   for (auto *fetch_dep_spec : r->spec->source_dependencies) {
     fetch_dep_spec->parent = r->spec;  // Set parent pointer for custom fetch lookup
 
-    validate_dependency_cycle(fetch_dep_spec->identity,
-                              ancestor_chain,
-                              r->spec->identity,
-                              "Fetch dependency");
+    engine_validate_dependency_cycle(fetch_dep_spec->identity,
+                                     ancestor_chain,
+                                     r->spec->identity,
+                                     "Fetch dependency");
 
     if (fetch_dep_spec->is_weak_reference()) {  // Defer resolution to weak pass
       recipe::weak_reference wr;

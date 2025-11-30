@@ -141,6 +141,17 @@ class TestEngineWeakDependencies(unittest.TestCase):
         self.assertIn("local.helper@v1", output)
         self.assertNotIn("local.helper.fallback@v1", output)
 
+    def test_weak_resolution_detects_cycles(self):
+        """Weak reference resolution must detect cycles introduced after resolution."""
+        result = self.run_engine(
+            "local.weak_cycle_root@v1",
+            "test_data/recipes/weak_cycle_root.lua",
+        )
+        self.assertNotEqual(result.returncode, 0, "Expected cycle to cause failure")
+        self.assertIn("cycle", result.stderr.lower())
+        self.assertIn("local.weak_cycle_a@v1", result.stderr)
+        self.assertIn("local.foo@v1", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -318,10 +318,10 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   // Build dependency graph: create child recipes, start their threads
   for (auto *dep_spec : r->owned_dependency_specs) {
-    validate_dependency_cycle(dep_spec->identity,
-                              ctx.ancestor_chain,
-                              r->spec->identity,
-                              "Dependency");
+    engine_validate_dependency_cycle(dep_spec->identity,
+                                     ctx.ancestor_chain,
+                                     r->spec->identity,
+                                     "Dependency");
 
     recipe_phase const needed_by_phase{
       dep_spec->needed_by.has_value() ? static_cast<recipe_phase>(*dep_spec->needed_by)
