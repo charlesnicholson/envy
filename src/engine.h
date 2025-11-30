@@ -99,9 +99,9 @@ class engine : unmovable {
 // Validate that adding candidate_identity as a dependency doesn't create a cycle
 // Checks for self-loops and cycles in ancestor_chain, throws on detection
 // dependency_type used for error messages (e.g., "Dependency" or "Fetch dependency")
-void validate_dependency_cycle(std::string const &candidate_identity,
-                               std::vector<std::string> const &ancestor_chain,
-                               std::string const &current_identity,
-                               std::string const &dependency_type);
+void engine_validate_dependency_cycle(std::string const &candidate_identity,
+                                      std::vector<std::string> const &ancestor_chain,
+                                      std::string const &current_identity,
+                                      std::string const &dependency_type);
 
 }  // namespace envy
