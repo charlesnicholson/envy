@@ -37,12 +37,17 @@ struct recipe {
   std::unordered_map<std::string, dependency_info> dependencies;
 
   struct weak_reference {
-    std::string query;                       // Partial identity query (e.g., "python")
+    std::string query;                       // Partial identity query OR product name
     recipe_spec const *fallback{ nullptr };  // weak dep, null for ref-only
     recipe_phase needed_by{ recipe_phase::asset_build };
-    recipe *resolved{ nullptr };  // Filled in during resolution
+    recipe *resolved{ nullptr };             // Filled in during resolution
+    bool is_product{ false };                // True if query is a product name
+    std::string constraint_identity;         // Required recipe identity (empty if unconstrained)
   };
   std::vector<weak_reference> weak_references;
+
+  // Products map: product name -> relative path (or raw value for programmatic recipes)
+  std::unordered_map<std::string, std::string> products;
 
   std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;

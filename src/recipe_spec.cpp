@@ -159,14 +159,16 @@ recipe_spec::recipe_spec(ctor_tag,
                          std::optional<recipe_phase> needed_by,
                          recipe_spec const *parent,
                          recipe_spec *weak,
-                         std::vector<recipe_spec *> source_dependencies)
+                         std::vector<recipe_spec *> source_dependencies,
+                         std::optional<std::string> product)
     : identity(std::move(identity)),
       source(std::move(source)),
       serialized_options(std::move(serialized_options)),
       needed_by(needed_by),
       parent(parent),
       weak(weak),
-      source_dependencies(std::move(source_dependencies)) {}
+      source_dependencies(std::move(source_dependencies)),
+      product(std::move(product)) {}
 
 void recipe_spec::set_pool(recipe_spec_pool *pool) {
   pool_ = pool ? pool : &g_default_recipe_spec_pool;
@@ -208,6 +210,19 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
       throw std::runtime_error("Recipe 'recipe' field cannot be empty");
     }
     return ident;
+  }() };
+
+  std::optional<std::string> product{ [&]() -> std::optional<std::string> {
+    sol::object product_obj{ table["product"] };
+    if (!product_obj.valid()) { return std::nullopt; }
+    if (!product_obj.is<std::string>()) {
+      throw std::runtime_error("Recipe 'product' field must be string");
+    }
+    std::string prod{ product_obj.as<std::string>() };
+    if (prod.empty()) {
+      throw std::runtime_error("Recipe 'product' field cannot be empty");
+    }
+    return prod;
   }() };
 
   sol::object weak_obj{ table["weak"] };
@@ -308,7 +323,8 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
                                       needed_by,
                                       nullptr,
                                       weak,
-                                      std::move(source_dependencies));
+                                      std::move(source_dependencies),
+                                      std::move(product));
 }
 
 bool recipe_spec::is_git() const { return std::holds_alternative<git_source>(source); }

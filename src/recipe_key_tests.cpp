@@ -1,8 +1,6 @@
 #include "recipe_key.h"
 #include "recipe_spec.h"
 
-#include "sol/sol.hpp"
-
 #include "doctest.h"
 
 #include <unordered_set>
@@ -46,7 +44,8 @@ TEST_CASE("recipe_key: from recipe_spec with no options") {
                                                   std::nullopt,
                                                   nullptr,
                                                   nullptr,
-                                                  std::vector<recipe_spec *>{}) };
+                                                  std::vector<recipe_spec *>{},
+                                                  std::nullopt) };
 
   recipe_key key(*spec);
 
@@ -64,7 +63,8 @@ TEST_CASE("recipe_key: from recipe_spec with options") {
                                                   std::nullopt,
                                                   nullptr,
                                                   nullptr,
-                                                  std::vector<recipe_spec *>{}) };
+                                                  std::vector<recipe_spec *>{},
+                                                  std::nullopt) };
 
   recipe_key key(*spec);
 

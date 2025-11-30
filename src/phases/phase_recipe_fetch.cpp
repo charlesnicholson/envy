@@ -193,9 +193,9 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
 
     // Stack: [function]
     // Call fetch(ctx, options)
-    sol::protected_function fetch_func{
-      parent_lua_view, sol::stack_reference(parent_lua_view.lua_state(), -1)
-    };
+    sol::protected_function fetch_func{ parent_lua_view,
+                                        sol::stack_reference(parent_lua_view.lua_state(),
+                                                             -1) };
     lua_pop(parent_lua_view.lua_state(), 1);  // pop function
     sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
@@ -266,6 +266,42 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   validate_phases(sol::state_view{ *lua }, spec.identity);
 
+  r->products = [&] {  // Parse products table from Lua global
+    std::unordered_map<std::string, std::string> parsed_products;
+    sol::object products_obj{ (*lua)["products"] };
+    if (products_obj.valid()) {
+      if (products_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("products must be table in recipe '" + spec.identity +
+                                 "'");
+      }
+      sol::table products_table{ products_obj.as<sol::table>() };
+      for (auto const &[key, value] : products_table) {
+        sol::object key_obj(key);
+        sol::object val_obj(value);
+        if (!key_obj.is<std::string>()) {
+          throw std::runtime_error("products key must be string in recipe '" +
+                                   spec.identity + "'");
+        }
+        if (!val_obj.is<std::string>()) {
+          throw std::runtime_error("products value must be string in recipe '" +
+                                   spec.identity + "'");
+        }
+        std::string key_str{ key_obj.as<std::string>() };
+        std::string val_str{ val_obj.as<std::string>() };
+        if (key_str.empty()) {
+          throw std::runtime_error("products key cannot be empty in recipe '" +
+                                   spec.identity + "'");
+        }
+        if (val_str.empty()) {
+          throw std::runtime_error("products value cannot be empty in recipe '" +
+                                   spec.identity + "'");
+        }
+        parsed_products[std::move(key_str)] = std::move(val_str);
+      }
+    }
+    return parsed_products;
+  }();
+
   r->owned_dependency_specs = [&] {  // Parse and store dependencies
     std::vector<recipe_spec *> parsed_deps;
     sol::object deps_obj{ (*lua)["dependencies"] };
@@ -277,8 +313,8 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
         if (!spec.identity.starts_with("local.") &&
             dep_cfg->identity.starts_with("local.")) {
           throw std::runtime_error("non-local recipe '" + spec.identity +
-                                   "' cannot depend on local recipe '" + dep_cfg->identity +
-                                   "'");
+                                   "' cannot depend on local recipe '" +
+                                   dep_cfg->identity + "'");
         }
 
         dep_cfg->parent = r->spec;

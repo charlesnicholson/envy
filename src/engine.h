@@ -94,6 +94,10 @@ class engine : unmovable {
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::atomic_int pending_recipe_fetches_{ 0 };
+
+  // Product registry: maps product name → provider recipe (built during resolution)
+  std::unordered_map<std::string, recipe *> product_registry_;
+  mutable std::mutex product_registry_mutex_;
 };
 
 // Validate that adding candidate_identity as a dependency doesn't create a cycle
