@@ -165,6 +165,25 @@ void resolve_product_ref(recipe *r,
   }
 }
 
+bool recipe_provides_product_transitively_impl(
+    recipe *r,
+    std::string const &product_name,
+    std::unordered_set<recipe const *> &visited) {
+  if (!visited.insert(r).second) { return false; }
+
+  if (r->products.contains(product_name)) { return true; }
+
+  for (auto const &[_, dep_info] : r->dependencies) {
+    if (recipe_provides_product_transitively_impl(dep_info.recipe_ptr,
+                                                  product_name,
+                                                  visited)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace
 
 void engine_validate_dependency_cycle(std::string const &candidate_identity,
@@ -596,6 +615,48 @@ void engine::update_product_registry() {
   }
 }
 
+void engine::validate_product_fallbacks() {
+  std::vector<std::pair<recipe *, recipe::weak_reference *>> to_validate;
+
+  {
+    std::lock_guard const lock(mutex_);
+    for (auto &[_, r_ptr] : recipes_) {
+      for (auto &wr : r_ptr->weak_references) {
+        if (wr.is_product && wr.fallback && wr.resolved) {
+          to_validate.emplace_back(r_ptr.get(), &wr);
+        }
+      }
+    }
+  }
+
+  std::vector<std::string> errors;
+
+  for (auto const &[r, wr] : to_validate) {
+    std::unordered_set<recipe const *> visited;
+    if (!recipe_provides_product_transitively(wr->resolved, wr->query)) {
+      errors.push_back("Fallback for product '" + wr->query + "' in recipe '" +
+                       r->spec->identity + "' resolved to '" +
+                       wr->resolved->spec->identity +
+                       "', which does not provide product transitively");
+    }
+  }
+
+  if (!errors.empty()) {
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < errors.size(); ++i) {
+      if (i) oss << "\n";
+      oss << errors[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+}
+
+bool engine::recipe_provides_product_transitively(recipe *r,
+                                                  std::string const &product_name) const {
+  std::unordered_set<recipe const *> visited;
+  return recipe_provides_product_transitively_impl(r, product_name, visited);
+}
+
 void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
@@ -644,6 +705,8 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
       break;
     }
   }
+
+  validate_product_fallbacks();
 }
 
 }  // namespace envy

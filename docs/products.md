@@ -62,15 +62,15 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Transitive Product Validation
 
-- [ ] Add `void engine::validate_product_fallbacks()` method in `src/engine.cpp`
-- [ ] Iterate all recipes with product weak_references that have fallback and are resolved
-- [ ] Call `recipe_provides_product_transitively()` helper to validate
-- [ ] Collect validation errors for fallbacks that don't provide the required product
-- [ ] Throw aggregated error if any validation failures
-- [ ] Call `validate_product_fallbacks()` in `engine::resolve_graph()` after weak resolution converges
-- [ ] Add `bool engine::recipe_provides_product_transitively(recipe *r, std::string const &product_name)` helper method
-- [ ] Implement DFS with visited set checking `recipe::products` at each node
-- [ ] Recurse through `dependencies` map entries
+- [x] Add `void engine::validate_product_fallbacks()` method in `src/engine.cpp`
+- [x] Iterate all recipes with product weak_references that have fallback and are resolved
+- [x] Call `recipe_provides_product_transitively()` helper to validate
+- [x] Collect validation errors for fallbacks that don't provide the required product
+- [x] Throw aggregated error if any validation failures
+- [x] Call `validate_product_fallbacks()` in `engine::resolve_graph()` after weak resolution converges
+- [x] Add `bool engine::recipe_provides_product_transitively(recipe *r, std::string const &product_name)` helper method
+- [x] Implement DFS with visited set checking `recipe::products` at each node
+- [x] Recurse through `dependencies` map entries
 
 ### CLI Command Structure
 

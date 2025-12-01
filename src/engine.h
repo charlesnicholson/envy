@@ -89,6 +89,9 @@ class engine : unmovable {
   void process_fetch_dependencies(recipe *r,
                                   std::vector<std::string> const &ancestor_chain);
   void update_product_registry();
+  void validate_product_fallbacks();
+  bool recipe_provides_product_transitively(recipe *r,
+                                            std::string const &product_name) const;
 
   std::unordered_map<recipe_key, std::unique_ptr<recipe>> recipes_;
   std::unordered_map<recipe_key, std::unique_ptr<recipe_execution_ctx>> execution_ctxs_;
