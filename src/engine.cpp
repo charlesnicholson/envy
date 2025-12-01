@@ -59,6 +59,112 @@ bool has_dependency_path(recipe const *from, recipe const *to) {
   return false;
 }
 
+void wire_dependency(recipe *parent, recipe *dep, recipe_phase needed_by) {
+  if (!parent->dependencies.contains(dep->spec->identity)) {
+    parent->dependencies[dep->spec->identity] = { dep, needed_by };
+    ENVY_TRACE_DEPENDENCY_ADDED(parent->spec->identity, dep->spec->identity, needed_by);
+  }
+
+  if (std::ranges::find(parent->declared_dependencies, dep->spec->identity) ==
+      parent->declared_dependencies.end()) {
+    parent->declared_dependencies.push_back(dep->spec->identity);
+  }
+}
+
+void resolve_identity_ref(recipe *r,
+                          recipe::weak_reference *wr,
+                          engine::weak_resolution_result &result,
+                          std::vector<std::string> &ambiguity_messages,
+                          engine &eng) {
+  auto const matches{ eng.find_matches(wr->query) };
+
+  if (matches.size() == 1) {
+    recipe *dep{ matches[0] };
+
+    if (has_dependency_path(dep, r)) {
+      throw std::runtime_error("Weak dependency cycle detected: " + r->spec->identity +
+                               " -> " + dep->spec->identity +
+                               " (which already depends on " + r->spec->identity + ")");
+    }
+
+    wire_dependency(r, dep, wr->needed_by);
+    wr->resolved = dep;
+    ++result.resolved;
+    return;
+  }
+
+  if (matches.size() > 1) {
+    std::ostringstream oss;
+    oss << "Reference '" << wr->query << "' in recipe '" << r->spec->identity
+        << "' is ambiguous: ";
+    for (size_t i = 0; i < matches.size(); ++i) {
+      if (i) oss << ", ";
+      oss << matches[i]->key.canonical();
+    }
+    ambiguity_messages.push_back(oss.str());
+    return;
+  }
+
+  if (wr->fallback) {
+    wr->fallback->parent = r->spec;
+
+    recipe *dep{ eng.ensure_recipe(wr->fallback) };
+    wire_dependency(r, dep, wr->needed_by);
+
+    std::vector<std::string> child_chain{ eng.get_execution_ctx(r).ancestor_chain };
+    child_chain.push_back(r->spec->identity);
+    eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
+
+    wr->resolved = dep;
+    ++result.fallbacks_started;
+  }
+}
+
+void resolve_product_ref(recipe *r,
+                         recipe::weak_reference *wr,
+                         engine::weak_resolution_result &result,
+                         std::unordered_map<std::string, recipe *> const &registry,
+                         engine &eng) {
+  auto const it{ registry.find(wr->query) };
+
+  if (it != registry.end()) {
+    recipe *dep{ it->second };
+
+    if (!wr->constraint_identity.empty() &&
+        dep->spec->identity != wr->constraint_identity) {
+      throw std::runtime_error("Product '" + wr->query + "' in recipe '" +
+                               r->spec->identity + "' must come from '" +
+                               wr->constraint_identity + "', but provider is '" +
+                               dep->spec->identity + "'");
+    }
+
+    if (has_dependency_path(dep, r)) {
+      throw std::runtime_error("Weak dependency cycle detected: " + r->spec->identity +
+                               " -> " + dep->spec->identity +
+                               " (which already depends on " + r->spec->identity + ")");
+    }
+
+    wire_dependency(r, dep, wr->needed_by);
+    wr->resolved = dep;
+    ++result.resolved;
+    return;
+  }
+
+  if (wr->fallback) {
+    wr->fallback->parent = r->spec;
+
+    recipe *dep{ eng.ensure_recipe(wr->fallback) };
+    wire_dependency(r, dep, wr->needed_by);
+
+    std::vector<std::string> child_chain{ eng.get_execution_ctx(r).ancestor_chain };
+    child_chain.push_back(r->spec->identity);
+    eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
+
+    wr->resolved = dep;
+    ++result.fallbacks_started;
+  }
+}
+
 }  // namespace
 
 void engine_validate_dependency_cycle(std::string const &candidate_identity,
@@ -116,68 +222,10 @@ engine::weak_resolution_result engine::resolve_weak_references() {
   std::vector<std::string> ambiguity_messages;
 
   for (auto [r, wr] : collect_unresolved()) {
-    auto const matches{ find_matches(wr->query) };
-
-    if (matches.size() == 1) {  // Resolved to existing recipe
-      recipe *dep{ matches[0] };
-
-      // Validate no cycle introduced by this weak resolution
-      // Check if dep has a path back to r (which would create a cycle if we add r->dep)
-      if (has_dependency_path(dep, r)) {
-        throw std::runtime_error("Weak dependency cycle detected: " + r->spec->identity +
-                                 " -> " + dep->spec->identity +
-                                 " (which already depends on " + r->spec->identity + ")");
-      }
-
-      wr->resolved = dep;
-      ++result.resolved;
-
-      // Wire dependency if not already present
-      if (!r->dependencies.contains(dep->spec->identity)) {
-        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
-        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
-      }
-
-      // Ensure declared_dependencies includes resolved identity for ctx.asset validation
-      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
-          r->declared_dependencies.end()) {
-        r->declared_dependencies.push_back(dep->spec->identity);
-      }
-      continue;
-    }
-
-    if (matches.size() > 1) {
-      std::ostringstream oss;
-      oss << "Reference '" << wr->query << "' in recipe '" << r->spec->identity
-          << "' is ambiguous: ";
-      for (size_t i = 0; i < matches.size(); ++i) {
-        if (i) oss << ", ";
-        oss << matches[i]->key.canonical();
-      }
-      ambiguity_messages.push_back(oss.str());
-      continue;
-    }
-
-    if (wr->fallback) {  // No matches, instantiate weak fallbacks
-      wr->fallback->parent = r->spec;
-
-      recipe *dep{ ensure_recipe(wr->fallback) };
-      if (!r->dependencies.contains(dep->spec->identity)) {
-        r->dependencies[dep->spec->identity] = { dep, wr->needed_by };
-        ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep->spec->identity, wr->needed_by);
-      }
-
-      if (std::ranges::find(r->declared_dependencies, dep->spec->identity) ==
-          r->declared_dependencies.end()) {
-        r->declared_dependencies.push_back(dep->spec->identity);
-      }
-
-      std::vector<std::string> child_chain{ get_execution_ctx(r).ancestor_chain };
-      child_chain.push_back(r->spec->identity);
-      start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
-
-      wr->resolved = dep;
-      ++result.fallbacks_started;
+    if (wr->is_product) {
+      resolve_product_ref(r, wr, result, product_registry_, *this);
+    } else {
+      resolve_identity_ref(r, wr, result, ambiguity_messages, *this);
     }
   }
 
@@ -186,8 +234,13 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     std::vector<std::string> msgs;
     for (auto [r, wr] : collect_unresolved()) {
       if (!wr->resolved && !wr->fallback) {
-        msgs.push_back("Reference '" + wr->query + "' in recipe '" + r->spec->identity +
-                       "' was not found");
+        if (wr->is_product) {
+          msgs.push_back("Product '" + wr->query + "' in recipe '" + r->spec->identity +
+                         "' was not found");
+        } else {
+          msgs.push_back("Reference '" + wr->query + "' in recipe '" + r->spec->identity +
+                         "' was not found");
+        }
       }
     }
     return msgs;

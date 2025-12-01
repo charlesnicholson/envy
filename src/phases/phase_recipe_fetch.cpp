@@ -386,13 +386,13 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       child_chain.push_back(r->spec->identity);
       eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
 
-      r->weak_references.push_back(recipe::weak_reference{
-          .query = *dep_spec->product,
-          .fallback = nullptr,
-          .needed_by = needed_by_phase,
-          .resolved = nullptr,
-          .is_product = true,
-          .constraint_identity = dep_spec->identity });
+      r->weak_references.push_back(
+          recipe::weak_reference{ .query = *dep_spec->product,
+                                  .fallback = nullptr,
+                                  .needed_by = needed_by_phase,
+                                  .resolved = nullptr,
+                                  .is_product = true,
+                                  .constraint_identity = dep_spec->identity });
       continue;
     }
 

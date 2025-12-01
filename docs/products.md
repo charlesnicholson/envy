@@ -50,15 +50,15 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Product Dependency Resolution
 
-- [ ] Add product resolution branch to `engine::resolve_weak_references()` (~line 117)
-- [ ] Check `if (wr->is_product)` before existing identity resolution logic; all cycle checks mirror recipe deps
-- [ ] Lookup product in `product_registry_` (with mutex protection)
-- [ ] If found: validate `constraint_identity` matches provider if non-empty
-- [ ] If found: check for cycles using `has_dependency_path(provider, r)`
-- [ ] If found: wire dependency (add to `dependencies` map, `declared_dependencies` list)
-- [ ] If found: mark resolved, increment `result.resolved`
-- [ ] If not found and has fallback: instantiate fallback recipe (reuse weak fallback logic) and wire with `needed_by`
-- [ ] If not found and no fallback: collect in `result.missing_without_fallback`
+- [x] Add product resolution branch to `engine::resolve_weak_references()` (~line 117)
+- [x] Check `if (wr->is_product)` before existing identity resolution logic; all cycle checks mirror recipe deps
+- [x] Lookup product in `product_registry_` (with mutex protection)
+- [x] If found: validate `constraint_identity` matches provider if non-empty
+- [x] If found: check for cycles using `has_dependency_path(provider, r)`
+- [x] If found: wire dependency (add to `dependencies` map, `declared_dependencies` list)
+- [x] If found: mark resolved, increment `result.resolved`
+- [x] If not found and has fallback: instantiate fallback recipe (reuse weak fallback logic) and wire with `needed_by`
+- [x] If not found and no fallback: collect in `result.missing_without_fallback`
 
 ### Transitive Product Validation
 
