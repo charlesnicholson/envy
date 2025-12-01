@@ -29,6 +29,14 @@ struct recipe_result {
 
 using recipe_result_map_t = std::unordered_map<std::string, recipe_result>;
 
+struct product_info {
+  std::string product_name;
+  std::string value;
+  std::string provider_canonical;  // Full canonical identity with options
+  bool programmatic;
+  std::filesystem::path asset_path;
+};
+
 class engine : unmovable {
  public:
   struct recipe_execution_ctx {  // Execution context for recipe threads
@@ -55,6 +63,7 @@ class engine : unmovable {
   recipe *find_exact(recipe_key const &key) const;
   std::vector<recipe *> find_matches(std::string_view query) const;
   recipe *find_product_provider(std::string const &product_name) const;
+  std::vector<product_info> collect_all_products() const;
 
   recipe_execution_ctx &get_execution_ctx(recipe *r);
   recipe_execution_ctx &get_execution_ctx(recipe_key const &key);

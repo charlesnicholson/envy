@@ -98,7 +98,7 @@ void resolve_identity_ref(recipe *r,
     oss << "Reference '" << wr->query << "' in recipe '" << r->spec->identity
         << "' is ambiguous: ";
     for (size_t i = 0; i < matches.size(); ++i) {
-      if (i) oss << ", ";
+      if (i) { oss << ", "; }
       oss << matches[i]->key.canonical();
     }
     ambiguity_messages.push_back(oss.str());
@@ -270,7 +270,7 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     fail_all_contexts();
     std::ostringstream oss;
     for (size_t i{ 0 }; i < ambiguity_messages.size(); ++i) {
-      if (i) oss << "\n";
+      if (i) { oss << "\n"; }
       oss << ambiguity_messages[i];
     }
     throw std::runtime_error(oss.str());
@@ -336,6 +336,30 @@ recipe *engine::find_product_provider(std::string const &product_name) const {
   std::lock_guard const lock(mutex_);
   auto const it{ product_registry_.find(product_name) };
   return it == product_registry_.end() ? nullptr : it->second;
+}
+
+std::vector<product_info> engine::collect_all_products() const {
+  std::vector<product_info> infos;
+
+  {
+    std::lock_guard const lock(mutex_);
+
+    for (auto const &[key, recipe] : recipes_) {
+      for (auto const &[prod_name, prod_value] : recipe->products) {
+        infos.push_back({
+            .product_name = prod_name,
+            .value = prod_value,
+            .provider_canonical = recipe->key.canonical(),
+            .programmatic = (recipe->result_hash == "programmatic"),
+            .asset_path = recipe->asset_path,
+        });
+      }
+    }
+  }
+
+  std::ranges::sort(infos, {}, &product_info::product_name);
+
+  return infos;
 }
 
 std::vector<recipe *> engine::find_matches(std::string_view query) const {
@@ -454,7 +478,7 @@ void engine::run_recipe_thread(recipe *r) {
 
   try {
     while (ctx.current_phase < recipe_phase::completion) {
-      if (ctx.failed) break;
+      if (ctx.failed) { break; }
       recipe_phase const target{ ctx.target_phase };
       recipe_phase const current{ ctx.current_phase };
 
@@ -463,7 +487,7 @@ void engine::run_recipe_thread(recipe *r) {
         ctx.cv.wait(lock,  // Wait for target extension
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
 
-        if (ctx.target_phase == current || ctx.failed) break;
+        if (ctx.target_phase == current || ctx.failed) { break; }
         ENVY_TRACE_TARGET_EXTENDED(r->spec->identity, current, ctx.target_phase.load());
       }
 
@@ -603,7 +627,7 @@ void engine::update_product_registry() {
       std::ostringstream oss;
       oss << "Product '" << product_name << "' provided by multiple recipes: ";
       for (size_t i{ 0 }; i < providers.size(); ++i) {
-        if (i) oss << ", ";
+        if (i) { oss << ", "; }
         oss << providers[i]->spec->identity;
       }
       collisions.push_back(oss.str());
@@ -613,7 +637,7 @@ void engine::update_product_registry() {
   if (!collisions.empty()) {
     std::ostringstream oss;
     for (size_t i{ 0 }; i < collisions.size(); ++i) {
-      if (i) oss << "\n";
+      if (i) { oss << "\n"; }
       oss << collisions[i];
     }
     throw std::runtime_error(oss.str());
@@ -649,7 +673,7 @@ void engine::validate_product_fallbacks() {
   if (!errors.empty()) {
     std::ostringstream oss;
     for (size_t i{ 0 }; i < errors.size(); ++i) {
-      if (i) oss << "\n";
+      if (i) { oss << "\n"; }
       oss << errors[i];
     }
     throw std::runtime_error(oss.str());
@@ -693,7 +717,7 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
         fail_all_contexts();
         std::ostringstream oss;
         for (size_t i{ 0 }; i < resolution.missing_without_fallback.size(); ++i) {
-          if (i) oss << "\n";
+          if (i) { oss << "\n"; }
           oss << resolution.missing_without_fallback[i];
         }
         oss << "\nWeak dependency resolution made no progress at iteration " << iteration

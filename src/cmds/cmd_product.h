@@ -11,9 +11,10 @@ namespace envy {
 class cmd_product : public cmd {
  public:
   struct cfg : cmd_cfg<cmd_product> {
-    std::string product_name;  // Required product key
+    std::string product_name;  // Optional: if empty, list all products
     std::optional<std::filesystem::path> manifest_path;
     std::optional<std::filesystem::path> cache_root;
+    bool json{ false };  // JSON output mode
   };
 
   explicit cmd_product(cfg cfg);

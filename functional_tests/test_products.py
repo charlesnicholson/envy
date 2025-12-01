@@ -381,6 +381,132 @@ packages = {{
             f"Expected missing product error but got: {result.stderr}",
         )
 
+    def test_product_listing_shows_all_products(self):
+        """Product command with no args should list all products from all providers."""
+        # Create second provider with non-colliding product
+        lua_content = """
+identity = "local.list_provider@v1"
+products = { compiler = "bin/gcc" }
+fetch = {
+  source = "test_data/archives/test.tar.gz",
+  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+}
+install = function(ctx)
+  ctx.mark_install_complete()
+end
+"""
+        list_provider_path = self.test_dir / "list_provider.lua"
+        list_provider_path.write_text(lua_content, encoding="utf-8")
+
+        manifest = self.manifest(
+            f"""
+packages = {{
+  {{
+    recipe = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+  }},
+  {{
+    recipe = "local.list_provider@v1",
+    source = "{self.lua_path(list_provider_path)}",
+  }},
+}}
+"""
+        )
+
+        result = self.run_envy(["product", "--manifest", str(manifest)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Should see products from both providers in stderr (human-readable)
+        # product_provider has "tool", list_provider has "compiler"
+        self.assertIn("tool", result.stderr.lower())
+        self.assertIn("compiler", result.stderr.lower())
+
+    def test_product_listing_json_output(self):
+        """Product command with --json should output JSON array to stdout."""
+        import json
+
+        manifest = self.manifest(
+            f"""
+packages = {{
+  {{
+    recipe = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+  }},
+}}
+"""
+        )
+
+        result = self.run_envy(["product", "--json", "--manifest", str(manifest)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        # Parse JSON from stdout
+        products = json.loads(result.stdout)
+        self.assertIsInstance(products, list)
+        self.assertGreater(len(products), 0)
+
+        # Find the tool product
+        tool_product = next((p for p in products if p["product"] == "tool"), None)
+        assert tool_product
+        self.assertIsNotNone(tool_product, "tool product not found in JSON output")
+        self.assertEqual(tool_product["value"], "bin/tool")
+        self.assertEqual(tool_product["provider"], "local.product_provider@v1")
+        self.assertFalse(tool_product["programmatic"])
+
+    def test_product_listing_programmatic_marked(self):
+        """Product listing should mark programmatic products."""
+        import json
+
+        manifest = self.manifest(
+            f"""
+packages = {{
+  {{
+    recipe = "local.product_programmatic@v1",
+    source = "{self.lua_path(self.test_data)}/recipes/product_provider_programmatic.lua",
+  }},
+}}
+"""
+        )
+
+        result = self.run_envy(["product", "--json", "--manifest", str(manifest)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        products = json.loads(result.stdout)
+        tool_product = next((p for p in products if p["product"] == "tool"), None)
+        assert tool_product
+        self.assertIsNotNone(tool_product)
+        self.assertTrue(tool_product["programmatic"])
+        self.assertEqual(tool_product["asset_path"], "")
+
+    def test_product_listing_empty(self):
+        """Product listing with no products should indicate empty result."""
+        # Create manifest with recipe that has no products
+        lua_content = """
+identity = "local.no_products@v1"
+fetch = {
+  source = "test_data/archives/test.tar.gz",
+  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+}
+install = function(ctx)
+  ctx.mark_install_complete()
+end
+"""
+        no_products_path = self.test_dir / "no_products.lua"
+        no_products_path.write_text(lua_content, encoding="utf-8")
+
+        manifest = self.manifest(
+            f"""
+packages = {{
+  {{
+    recipe = "local.no_products@v1",
+    source = "{self.lua_path(no_products_path)}"
+  }},
+}}
+"""
+        )
+
+        result = self.run_envy(["product", "--manifest", str(manifest)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("no products", result.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

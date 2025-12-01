@@ -65,12 +65,17 @@ cli_args cli_parse(int argc, char **argv) {
 
   // Product subcommand
   cmd_product::cfg product_cfg{};
-  auto *product{ app.add_subcommand("product", "Query product value from manifest") };
-  product->add_option("product", product_cfg.product_name, "Product name")->required();
+  auto *product{ app.add_subcommand(
+      "product",
+      "Query product value or list all products from manifest") };
+  product->add_option("product",
+                      product_cfg.product_name,
+                      "Product name (omit to list all)");
   product->add_option("--manifest",
                       product_cfg.manifest_path,
                       "Path to envy.lua manifest");
   product->add_option("--cache-root", product_cfg.cache_root, "Cache root directory");
+  product->add_flag("--json", product_cfg.json, "Output as JSON (to stdout)");
   product->callback([&cmd_cfg, &product_cfg] { cmd_cfg = product_cfg; });
 
   // Sync subcommand

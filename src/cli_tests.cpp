@@ -283,15 +283,12 @@ TEST_CASE("cli_parse: cmd_product") {
     CHECK(cfg->product_name == "tool");
     CHECK_FALSE(cfg->manifest_path.has_value());
     CHECK_FALSE(cfg->cache_root.has_value());
+    CHECK_FALSE(cfg->json);
   }
 
   SUBCASE("with manifest and cache root") {
-    std::vector<std::string> args{ "envy",
-                                   "product",
-                                   "tool",
-                                   "--manifest",
-                                   "/tmp/envy.lua",
-                                   "--cache-root",
+    std::vector<std::string> args{ "envy",       "product",       "tool",
+                                   "--manifest", "/tmp/envy.lua", "--cache-root",
                                    "/tmp/cache" };
     auto argv{ make_argv(args) };
 
@@ -305,6 +302,46 @@ TEST_CASE("cli_parse: cmd_product") {
     CHECK(*cfg->manifest_path == std::filesystem::path("/tmp/envy.lua"));
     REQUIRE(cfg->cache_root.has_value());
     CHECK(*cfg->cache_root == std::filesystem::path("/tmp/cache"));
+    CHECK_FALSE(cfg->json);
+  }
+
+  SUBCASE("no product name lists all") {
+    std::vector<std::string> args{ "envy", "product" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name.empty());
+    CHECK_FALSE(cfg->json);
+  }
+
+  SUBCASE("json flag enabled") {
+    std::vector<std::string> args{ "envy", "product", "--json" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name.empty());
+    CHECK(cfg->json);
+  }
+
+  SUBCASE("json with product name") {
+    std::vector<std::string> args{ "envy", "product", "tool", "--json" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    CHECK(cfg->json);
   }
 }
 
