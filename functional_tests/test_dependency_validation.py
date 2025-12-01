@@ -42,7 +42,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         # Success means validation passed - the build completed without error
         self.assertIn("local.dep_val_direct@v1", result.stdout)
 
@@ -61,7 +63,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected failure for missing dependency")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected failure for missing dependency"
+        )
         self.assertIn("does not declare dependency", result.stderr)
         self.assertIn("local.dep_val_missing@v1", result.stderr)
         self.assertIn("local.dep_val_lib@v1", result.stderr)
@@ -81,7 +85,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         # Success means validation passed - the build completed without error
         self.assertIn("local.dep_val_transitive@v1", result.stdout)
 
@@ -100,7 +106,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_level3_top@v1", result.stdout)
 
     def test_diamond_dependency(self):
@@ -118,7 +126,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_diamond_top@v1", result.stdout)
 
     def test_deep_chain_5_levels(self):
@@ -136,7 +146,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_chain5_e@v1", result.stdout)
 
     def test_unrelated_recipe_error(self):
@@ -154,7 +166,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected failure for unrelated recipe")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected failure for unrelated recipe"
+        )
         self.assertIn("does not declare dependency", result.stderr)
         self.assertIn("local.dep_val_unrelated@v1", result.stderr)
         self.assertIn("local.dep_val_lib@v1", result.stderr)
@@ -174,7 +188,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_needed_by_direct@v1", result.stdout)
 
     def test_needed_by_transitive(self):
@@ -192,7 +208,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_needed_by_transitive@v1", result.stdout)
 
     def test_needed_by_undeclared(self):
@@ -210,7 +228,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected failure for undeclared dependency")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected failure for undeclared dependency"
+        )
         self.assertIn("does not declare dependency", result.stderr)
         self.assertIn("local.dep_val_needed_by_undeclared@v1", result.stderr)
         self.assertIn("local.dep_val_lib@v1", result.stderr)
@@ -235,7 +255,9 @@ class TestDependencyValidation(unittest.TestCase):
             env=env,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_parallel_manifest@v1", result.stdout)
 
     def test_default_shell_with_dependency(self):
@@ -253,7 +275,9 @@ class TestDependencyValidation(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_shell_with_dep@v1", result.stdout)
 
     def test_deep_chain_parallel(self):
@@ -276,7 +300,9 @@ class TestDependencyValidation(unittest.TestCase):
             env=env,
         )
 
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
         self.assertIn("local.dep_val_chain5_e@v1", result.stdout)
 
 

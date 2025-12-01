@@ -4,6 +4,7 @@
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_product.h"
 #include "cmds/cmd_version.h"
 
 #include "doctest.h"
@@ -266,6 +267,44 @@ TEST_CASE("cli_parse: cmd_asset") {
     CHECK(cfg->identity == "vendor.gcc@v2");
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(cfg->manifest_path->string() == "/path/to/envy.lua");
+  }
+}
+
+TEST_CASE("cli_parse: cmd_product") {
+  SUBCASE("product only") {
+    std::vector<std::string> args{ "envy", "product", "tool" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    CHECK_FALSE(cfg->manifest_path.has_value());
+    CHECK_FALSE(cfg->cache_root.has_value());
+  }
+
+  SUBCASE("with manifest and cache root") {
+    std::vector<std::string> args{ "envy",
+                                   "product",
+                                   "tool",
+                                   "--manifest",
+                                   "/tmp/envy.lua",
+                                   "--cache-root",
+                                   "/tmp/cache" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/tmp/envy.lua"));
+    REQUIRE(cfg->cache_root.has_value());
+    CHECK(*cfg->cache_root == std::filesystem::path("/tmp/cache"));
   }
 }
 

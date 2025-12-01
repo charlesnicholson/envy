@@ -577,7 +577,7 @@ void engine::update_product_registry() {
     for (auto &[key, recipe] : recipes_) {
       auto const ctx_it{ execution_ctxs_.find(key) };
       if (ctx_it == execution_ctxs_.end()) { continue; }
-      if (ctx_it->second->current_phase.load() < recipe_phase::asset_check) { continue; }
+      if (ctx_it->second->current_phase.load() < recipe_phase::recipe_fetch) { continue; }
 
       for (auto const &[product_name, _] : recipe->products) {
         // Skip already-registered providers (added in prior iterations)

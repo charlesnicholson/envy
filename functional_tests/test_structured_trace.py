@@ -48,14 +48,18 @@ class TestStructuredTrace(unittest.TestCase):
 
         # Verify human-readable trace output in stderr
         # Should NOT be JSON - should be human-readable text
-        stderr_lines = result.stderr.strip().split('\n')
+        stderr_lines = result.stderr.strip().split("\n")
         self.assertGreater(len(stderr_lines), 0, "Expected trace output in stderr")
 
         # Check that it's NOT JSON (human-readable format)
         # Human-readable lines typically start with timestamps or log levels
         # JSON lines would start with '{'
-        non_json_lines = [line for line in stderr_lines if not line.strip().startswith('{')]
-        self.assertGreater(len(non_json_lines), 0, "Expected human-readable (non-JSON) output")
+        non_json_lines = [
+            line for line in stderr_lines if not line.strip().startswith("{")
+        ]
+        self.assertGreater(
+            len(non_json_lines), 0, "Expected human-readable (non-JSON) output"
+        )
 
     def test_trace_file_jsonl_output(self):
         """Verify --trace=file:<path> produces valid JSONL."""
@@ -93,7 +97,9 @@ class TestStructuredTrace(unittest.TestCase):
                     event = json.loads(line)
                     # Verify required fields
                     self.assertIn("ts", event, f"Line {line_num}: Missing 'ts' field")
-                    self.assertIn("event", event, f"Line {line_num}: Missing 'event' field")
+                    self.assertIn(
+                        "event", event, f"Line {line_num}: Missing 'event' field"
+                    )
                 except json.JSONDecodeError as e:
                     self.fail(f"Line {line_num} is not valid JSON: {e}\nLine: {line}")
 
@@ -117,7 +123,7 @@ class TestStructuredTrace(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify stderr has human-readable output
-        stderr_lines = result.stderr.strip().split('\n')
+        stderr_lines = result.stderr.strip().split("\n")
         self.assertGreater(len(stderr_lines), 0, "Expected trace output in stderr")
 
         # Verify file has JSONL output
@@ -159,8 +165,9 @@ class TestStructuredTrace(unittest.TestCase):
         }
 
         for expected_type in expected_types:
-            self.assertIn(expected_type, event_types,
-                         f"Expected '{expected_type}' event in trace")
+            self.assertIn(
+                expected_type, event_types, f"Expected '{expected_type}' event in trace"
+            )
 
     def test_trace_disabled_by_default(self):
         """Verify trace is not output when --trace flag not provided."""
@@ -182,14 +189,22 @@ class TestStructuredTrace(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Trace file should NOT exist
-        self.assertFalse(trace_file.exists(), "Trace file should not be created without --trace flag")
+        self.assertFalse(
+            trace_file.exists(), "Trace file should not be created without --trace flag"
+        )
 
         # Stderr should not contain trace events (may have debug/info/warn/error, but not structured trace)
         # This is harder to verify precisely, but we can check there's no JSON-like output
         if result.stderr:
-            stderr_lines = [line.strip() for line in result.stderr.split('\n') if line.strip()]
-            json_lines = [line for line in stderr_lines if line.startswith('{')]
-            self.assertEqual(len(json_lines), 0, "Should not have JSON trace output without --trace flag")
+            stderr_lines = [
+                line.strip() for line in result.stderr.split("\n") if line.strip()
+            ]
+            json_lines = [line for line in stderr_lines if line.startswith("{")]
+            self.assertEqual(
+                len(json_lines),
+                0,
+                "Should not have JSON trace output without --trace flag",
+            )
 
 
 if __name__ == "__main__":

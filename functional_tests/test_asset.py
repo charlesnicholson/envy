@@ -40,10 +40,12 @@ class TestAssetCommand(unittest.TestCase):
         manifest_dir = self.test_dir / subdir if subdir else self.test_dir
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / "envy.lua"
-        manifest_path.write_text(content, encoding='utf-8')
+        manifest_path.write_text(content, encoding="utf-8")
         return manifest_path
 
-    def run_asset(self, identity: str, manifest: Optional[Path] = None, cwd: Optional[Path] = None):
+    def run_asset(
+        self, identity: str, manifest: Optional[Path] = None, cwd: Optional[Path] = None
+    ):
         """Run 'envy asset' command and return result."""
         cmd = [str(self.envy), "asset", identity]
         if manifest:
@@ -76,11 +78,15 @@ packages = {{
         self.assertTrue(result.stdout.strip(), "Expected path in stdout")
 
         asset_path = Path(result.stdout.strip())
-        self.assertTrue(asset_path.is_absolute(), f"Expected absolute path: {asset_path}")
+        self.assertTrue(
+            asset_path.is_absolute(), f"Expected absolute path: {asset_path}"
+        )
         self.assertTrue(asset_path.exists(), f"Asset path should exist: {asset_path}")
         # Check path ends with asset directory (accept both / and \ separators)
-        self.assertTrue(str(asset_path).endswith("/asset") or str(asset_path).endswith("\\asset"),
-                       f"Path should end with asset directory: {asset_path}")
+        self.assertTrue(
+            str(asset_path).endswith("/asset") or str(asset_path).endswith("\\asset"),
+            f"Path should end with asset directory: {asset_path}",
+        )
 
     def test_asset_with_dependencies(self):
         """Query asset for package with dependencies, verify both installed."""
@@ -142,7 +148,7 @@ packages = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """,
-                encoding='utf-8'
+                encoding="utf-8",
             )
 
             result = self.run_asset("local.build_dependency@v1", manifest=manifest)
@@ -183,11 +189,14 @@ packages = {{
 
         # Check which packages were installed
         assets_dir = self.cache_root / "assets"
-        installed = [d.name for d in assets_dir.glob("local.*")] if assets_dir.exists() else []
+        installed = (
+            [d.name for d in assets_dir.glob("local.*")] if assets_dir.exists() else []
+        )
 
         # Should have build_dependency but NOT build_function or build_nil
         self.assertTrue(
-            any("build_dependency" in name for name in installed), "build_dependency should be installed"
+            any("build_dependency" in name for name in installed),
+            "build_dependency should be installed",
         )
         # build_function and build_nil should NOT be installed
         self.assertFalse(
@@ -313,10 +322,13 @@ packages = {{
         path = lines[0]
         # Check if path is absolute (Unix: starts with /, Windows: starts with drive letter)
         import os
+
         self.assertTrue(os.path.isabs(path), f"Should be absolute path: {path}")
         # Path should end with asset directory (accept both / and \ separators)
-        self.assertTrue(path.endswith("/asset") or path.endswith("\\asset"),
-                       f"Should end with asset directory: {path}")
+        self.assertTrue(
+            path.endswith("/asset") or path.endswith("\\asset"),
+            f"Should end with asset directory: {path}",
+        )
 
     def test_asset_stderr_only_on_error(self):
         """Success should have no stderr output, failure should."""
@@ -337,7 +349,9 @@ packages = {{
         # Failure case
         result_fail = self.run_asset("local.nonexistent@v1", manifest)
         self.assertEqual(result_fail.returncode, 1)
-        self.assertTrue(result_fail.stderr.strip(), "Should have error message in stderr")
+        self.assertTrue(
+            result_fail.stderr.strip(), "Should have error message in stderr"
+        )
 
     def test_asset_with_recipe_options(self):
         """Install package with options in manifest."""
@@ -376,7 +390,7 @@ function install(ctx, opts)
 end
 """
         recipe_path = self.test_dir / "test_options_cache.lua"
-        recipe_path.write_text(recipe_content, encoding='utf-8')
+        recipe_path.write_text(recipe_content, encoding="utf-8")
 
         # Manifest with variant=foo
         manifest_foo = self.create_manifest(
@@ -462,4 +476,3 @@ packages = {{
 
 if __name__ == "__main__":
     unittest.main()
-

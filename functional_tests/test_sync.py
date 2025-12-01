@@ -38,10 +38,12 @@ class TestSyncCommand(unittest.TestCase):
     def create_manifest(self, content: str) -> Path:
         """Create manifest file with given content."""
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(content, encoding='utf-8')
+        manifest_path.write_text(content, encoding="utf-8")
         return manifest_path
 
-    def run_sync(self, identities: Optional[List[str]] = None, manifest: Optional[Path] = None):
+    def run_sync(
+        self, identities: Optional[List[str]] = None, manifest: Optional[Path] = None
+    ):
         """Run 'envy sync' command and return result."""
         cmd = [str(self.envy), "sync"]
         if identities:
@@ -100,7 +102,9 @@ packages = {{
         build_dep_path = self.cache_root / "assets" / "local.build_dependency@v1"
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
         # build_dependency should NOT exist (not a dependency of simple, not requested)
-        self.assertFalse(build_dep_path.exists(), f"Expected {build_dep_path} NOT to exist")
+        self.assertFalse(
+            build_dep_path.exists(), f"Expected {build_dep_path} NOT to exist"
+        )
 
     def test_sync_multiple_identities(self):
         """Sync multiple identities installs all specified packages."""
@@ -113,7 +117,10 @@ packages = {{
 """
         )
 
-        result = self.run_sync(identities=["local.simple@v1", "local.build_dependency@v1"], manifest=manifest)
+        result = self.run_sync(
+            identities=["local.simple@v1", "local.build_dependency@v1"],
+            manifest=manifest,
+        )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -149,7 +156,9 @@ packages = {{
 """
         )
 
-        result = self.run_sync(identities=["local.simple@v1", "local.missing@v1"], manifest=manifest)
+        result = self.run_sync(
+            identities=["local.simple@v1", "local.missing@v1"], manifest=manifest
+        )
 
         self.assertNotEqual(result.returncode, 0, "Expected non-zero exit code")
         self.assertIn("not found in manifest", result.stderr.lower())
@@ -170,10 +179,19 @@ packages = {{
 
         # First sync - cache miss
         trace_file1 = self.cache_root / "trace1.jsonl"
-        cmd1 = [str(self.envy), f"--trace=file:{trace_file1}", "sync",
-                "local.simple@v1", "--manifest", str(manifest),
-                "--cache-root", str(self.cache_root)]
-        result1 = subprocess.run(cmd1, cwd=self.project_root, capture_output=True, text=True)
+        cmd1 = [
+            str(self.envy),
+            f"--trace=file:{trace_file1}",
+            "sync",
+            "local.simple@v1",
+            "--manifest",
+            str(manifest),
+            "--cache-root",
+            str(self.cache_root),
+        ]
+        result1 = subprocess.run(
+            cmd1, cwd=self.project_root, capture_output=True, text=True
+        )
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
 
         parser1 = TraceParser(trace_file1)
@@ -182,10 +200,19 @@ packages = {{
 
         # Second sync - should be cache hits
         trace_file2 = self.cache_root / "trace2.jsonl"
-        cmd2 = [str(self.envy), f"--trace=file:{trace_file2}", "sync",
-                "local.simple@v1", "--manifest", str(manifest),
-                "--cache-root", str(self.cache_root)]
-        result2 = subprocess.run(cmd2, cwd=self.project_root, capture_output=True, text=True)
+        cmd2 = [
+            str(self.envy),
+            f"--trace=file:{trace_file2}",
+            "sync",
+            "local.simple@v1",
+            "--manifest",
+            str(manifest),
+            "--cache-root",
+            str(self.cache_root),
+        ]
+        result2 = subprocess.run(
+            cmd2, cwd=self.project_root, capture_output=True, text=True
+        )
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
         self.assertIn("sync complete", result2.stderr.lower())
 
@@ -195,7 +222,9 @@ packages = {{
         # Note: sync may still show cache_miss for recipe loading even if assets are cached
         # The key test is that the second run succeeds and completes
         completes2 = parser2.filter_by_event("phase_complete")
-        self.assertGreater(len(completes2), 0, "Expected phase completions on second run")
+        self.assertGreater(
+            len(completes2), 0, "Expected phase completions on second run"
+        )
 
     def test_sync_no_stdout_output(self):
         """Sync command produces no stdout output."""
@@ -225,14 +254,25 @@ packages = {{
             )
 
             # Use custom cache root
-            cmd = [str(self.envy), "sync", "--manifest", str(manifest), "--cache-root", str(custom_cache)]
-            result = subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True)
+            cmd = [
+                str(self.envy),
+                "sync",
+                "--manifest",
+                str(manifest),
+                "--cache-root",
+                str(custom_cache),
+            ]
+            result = subprocess.run(
+                cmd, cwd=self.project_root, capture_output=True, text=True
+            )
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
             # Verify package installed to custom cache
             simple_path = custom_cache / "assets" / "local.simple@v1"
-            self.assertTrue(simple_path.exists(), f"Expected package in custom cache: {simple_path}")
+            self.assertTrue(
+                simple_path.exists(), f"Expected package in custom cache: {simple_path}"
+            )
         finally:
             shutil.rmtree(custom_cache, ignore_errors=True)
 
@@ -264,5 +304,5 @@ packages = {{
         self.assertIn("sync complete", result.stderr.lower())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

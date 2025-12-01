@@ -170,6 +170,69 @@ TEST_CASE("recipe::parse parses table with all fields") {
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
 }
 
+TEST_CASE("recipe::parse parses product dependency fields") {
+  SUBCASE("strong product dependency") {
+    sol::state lua;
+    auto lua_val{ lua_eval(
+        "result = { recipe = 'local.provider@v1', product = 'tool', source = "
+        "'/fake/provider.lua' }",
+        lua) };
+
+    auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
+
+    CHECK(cfg->product.has_value());
+    CHECK(*cfg->product == "tool");
+    CHECK_FALSE(cfg->is_weak_reference());
+  }
+
+  SUBCASE("weak product dependency with fallback") {
+    sol::state lua;
+    auto lua_val{ lua_eval(
+        "result = { recipe = 'local.consumer@v1', product = 'tool', weak = { recipe = "
+        "'vendor.tool@v1', source = '/fake/tool.lua' } }",
+        lua) };
+
+    auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
+
+    CHECK(cfg->product.has_value());
+    CHECK(cfg->is_weak_reference());
+    REQUIRE(cfg->weak);
+    CHECK_FALSE(cfg->weak->product.has_value());
+  }
+
+  SUBCASE("ref-only product dependency") {
+    sol::state lua;
+    auto lua_val{ lua_eval("result = { recipe = 'local.consumer@v1', product = 'tool' }",
+                           lua) };
+
+    auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake"), true) };
+
+    CHECK(cfg->product.has_value());
+    CHECK(cfg->is_weak_reference());
+    CHECK(cfg->weak == nullptr);
+  }
+
+  SUBCASE("rejects non-string product") {
+    sol::state lua;
+    auto lua_val{ lua_eval(
+        "result = { recipe = 'foo@v1', product = 42, source = '/fake/foo.lua' }", lua) };
+
+    CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
+                         doctest::Contains("product"),
+                         std::runtime_error);
+  }
+
+  SUBCASE("rejects empty product") {
+    sol::state lua;
+    auto lua_val{ lua_eval(
+        "result = { recipe = 'foo@v1', product = '', source = '/fake/foo.lua' }", lua) };
+
+    CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
+                         doctest::Contains("cannot be empty"),
+                         std::runtime_error);
+  }
+}
+
 // Error cases ----------------------------------------------------------------
 
 TEST_CASE("recipe::parse errors on invalid identity format") {
