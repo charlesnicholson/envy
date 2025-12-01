@@ -247,6 +247,10 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     }
   }
 
+  // If we spawned any fallback threads, wait for their recipe_fetch to complete
+  // before checking for still-unresolved references
+  if (result.fallbacks_started > 0) { wait_for_resolution_phase(); }
+
   // Final validation: any unresolved without fallback is an error
   std::vector<std::string> const missing_messages{ [&] {
     std::vector<std::string> msgs;
@@ -426,10 +430,15 @@ void engine::wait_for_resolution_phase() {
 
 void engine::notify_phase_complete() { notify_all_global_locked(); }
 
-void engine::on_recipe_fetch_start() { pending_recipe_fetches_.fetch_add(1); }
+void engine::on_recipe_fetch_start() {
+  int const new_value{ pending_recipe_fetches_.fetch_add(1) + 1 };
+  ENVY_TRACE_RECIPE_FETCH_COUNTER_INC("engine", new_value);
+}
 
-void engine::on_recipe_fetch_complete() {
-  if (pending_recipe_fetches_.fetch_sub(1) == 1) { notify_all_global_locked(); }
+void engine::on_recipe_fetch_complete(std::string const &recipe_identity) {
+  int const new_value{ pending_recipe_fetches_.fetch_sub(1) - 1 };
+  ENVY_TRACE_RECIPE_FETCH_COUNTER_DEC(recipe_identity, new_value, true);
+  if (new_value == 0) { notify_all_global_locked(); }
 }
 
 void engine::process_fetch_dependencies(recipe *r,
@@ -472,11 +481,11 @@ void engine::process_fetch_dependencies(recipe *r,
 void engine::run_recipe_thread(recipe *r) {
   auto &ctx{ get_execution_ctx(r) };
 
-  if (!r->spec->source_dependencies.empty()) {
-    process_fetch_dependencies(r, ctx.ancestor_chain);
-  }
-
   try {
+    if (!r->spec->source_dependencies.empty()) {
+      process_fetch_dependencies(r, ctx.ancestor_chain);
+    }
+
     while (ctx.current_phase < recipe_phase::completion) {
       if (ctx.failed) { break; }
       recipe_phase const target{ ctx.target_phase };
@@ -513,7 +522,13 @@ void engine::run_recipe_thread(recipe *r) {
 
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
-      ctx.current_phase = next;
+      if (next == recipe_phase::recipe_fetch) {
+        ctx.recipe_fetch_completed = true;
+        ctx.current_phase = next;  // Update phase BEFORE decrementing counter
+        on_recipe_fetch_complete(r->spec->identity);
+      } else {
+        ctx.current_phase = next;
+      }
       notify_phase_complete();
     }
     ENVY_TRACE_THREAD_COMPLETE(r->spec->identity, ctx.current_phase);
@@ -535,7 +550,7 @@ void engine::run_recipe_thread(recipe *r) {
     }
 
     ctx.failed = true;
-    if (ctx.current_phase <= recipe_phase::recipe_fetch) { on_recipe_fetch_complete(); }
+    if (!ctx.recipe_fetch_completed) { on_recipe_fetch_complete(r->spec->identity); }
     notify_all_global_locked();
   }
 }
@@ -587,7 +602,6 @@ void engine::fail_all_contexts() {
     ctx->target_phase = recipe_phase::completion;
     ctx->current_phase = recipe_phase::completion;
     ctx->cv.notify_all();
-    if (ctx->worker.joinable()) { ctx->worker.detach(); }
   }
   cv_.notify_all();
 }

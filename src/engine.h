@@ -47,6 +47,7 @@ class engine : unmovable {
     std::atomic<recipe_phase> target_phase{ recipe_phase::none };
     std::atomic_bool failed{ false };
     std::atomic_bool started{ false };  // True if worker thread has been created
+    std::atomic_bool recipe_fetch_completed{ false };  // True after recipe_fetch completes
 
     std::vector<std::string> ancestor_chain;  // Per-thread for cycle detection
     std::string error_message;                // when failed=true (guarded by mutex)
@@ -76,7 +77,7 @@ class engine : unmovable {
   void wait_for_resolution_phase();
   void notify_phase_complete();
   void on_recipe_fetch_start();
-  void on_recipe_fetch_complete();
+  void on_recipe_fetch_complete(std::string const &recipe_identity);
 
   // High-level execution
   recipe_result_map_t run_full(std::vector<recipe_spec const *> const &roots);

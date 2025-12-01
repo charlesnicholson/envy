@@ -138,6 +138,22 @@ struct fetch_file_complete {
   bool from_cache;
 };
 
+struct recipe_fetch_counter_inc {
+  std::string recipe;
+  int new_value;
+};
+
+struct recipe_fetch_counter_dec {
+  std::string recipe;
+  int new_value;
+  bool was_completed;
+};
+
+struct debug_marker {
+  std::string recipe;
+  int marker_id;
+};
+
 }  // namespace trace_events
 
 using trace_event_t = std::variant<trace_events::phase_blocked,
@@ -160,7 +176,10 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::lock_acquired,
                                    trace_events::lock_released,
                                    trace_events::fetch_file_start,
-                                   trace_events::fetch_file_complete>;
+                                   trace_events::fetch_file_complete,
+                                   trace_events::recipe_fetch_counter_inc,
+                                   trace_events::recipe_fetch_counter_dec,
+                                   trace_events::debug_marker>;
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);
@@ -354,4 +373,23 @@ struct phase_trace_scope {
       .bytes_downloaded = (bytes_downloaded_value), \
       .duration_ms = (duration_value), \
       .from_cache = (from_cache_value), \
+  }))
+
+#define ENVY_TRACE_RECIPE_FETCH_COUNTER_INC(recipe_value, new_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::recipe_fetch_counter_inc{ \
+      .recipe = (recipe_value), \
+      .new_value = (new_value), \
+  }))
+
+#define ENVY_TRACE_RECIPE_FETCH_COUNTER_DEC(recipe_value, new_value, was_completed_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::recipe_fetch_counter_dec{ \
+      .recipe = (recipe_value), \
+      .new_value = (new_value), \
+      .was_completed = (was_completed_value), \
+  }))
+
+#define ENVY_TRACE_DEBUG_MARKER(recipe_value, marker_id_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::debug_marker{ \
+      .recipe = (recipe_value), \
+      .marker_id = (marker_id_value), \
   }))

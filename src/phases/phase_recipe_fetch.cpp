@@ -471,7 +471,6 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   }
 
   wire_dependency_graph(r, eng);
-  eng.on_recipe_fetch_complete();
 }
 
 }  // namespace envy

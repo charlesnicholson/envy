@@ -154,6 +154,9 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(lock_released),
           TRACE_NAME(fetch_file_start),
           TRACE_NAME(fetch_file_complete),
+          TRACE_NAME(recipe_fetch_counter_inc),
+          TRACE_NAME(recipe_fetch_counter_dec),
+          TRACE_NAME(debug_marker),
           [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
@@ -304,6 +307,25 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " from_cache=" << bool_string(value.from_cache);
             return oss.str();
           },
+          [](trace_events::recipe_fetch_counter_inc const &value) {
+            std::ostringstream oss;
+            oss << "recipe_fetch_counter_inc recipe=" << value.recipe
+                << " new_value=" << value.new_value;
+            return oss.str();
+          },
+          [](trace_events::recipe_fetch_counter_dec const &value) {
+            std::ostringstream oss;
+            oss << "recipe_fetch_counter_dec recipe=" << value.recipe
+                << " new_value=" << value.new_value
+                << " was_completed=" << bool_string(value.was_completed);
+            return oss.str();
+          },
+          [](trace_events::debug_marker const &value) {
+            std::ostringstream oss;
+            oss << "debug_marker recipe=" << value.recipe
+                << " marker_id=" << value.marker_id;
+            return oss.str();
+          },
           [](auto const &) {
             std::ostringstream oss;
             oss << "trace_event_unknown";
@@ -433,6 +455,19 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "bytes_downloaded", value.bytes_downloaded);
             append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
             append_kv(output, "from_cache", value.from_cache);
+          },
+          [&](trace_events::recipe_fetch_counter_inc const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
+          },
+          [&](trace_events::recipe_fetch_counter_dec const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
+            append_kv(output, "was_completed", value.was_completed);
+          },
+          [&](trace_events::debug_marker const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "marker_id", static_cast<std::int64_t>(value.marker_id));
           },
           [](auto const &) {},
       },
