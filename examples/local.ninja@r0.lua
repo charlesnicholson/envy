@@ -22,3 +22,5 @@ install = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/ninja.git/ninja", ctx.install_dir .. "/ninja")
   ctx.mark_install_complete()
 end
+
+products = { ninja = "ninja" }

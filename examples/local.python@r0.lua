@@ -7,8 +7,8 @@ fetch = function(ctx, opts) return {
 
 stage = { strip = 1 }
 
-products = function(ctx, opts) return {
+products = function(opts) return {
   python3 = "install/bin/python",
-  ["python" .. ctx.options.version] = "install/bin/python"
+  ["python" .. opts.version] = "install/bin/python"
 } end
 

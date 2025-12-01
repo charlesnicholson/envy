@@ -26,3 +26,4 @@ install = function(ctx, opts)
   ctx.mark_install_complete()
 end
 
+products = { gn = "gn" }
