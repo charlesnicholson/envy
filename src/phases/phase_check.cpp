@@ -104,7 +104,14 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
   tui::debug(
       "phase check: check failed (pre-lock), acquiring lock for user-managed package");
 
-  std::string const key_for_hash{ r->spec->format_key() };
+  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid races)
+  std::string key_for_hash{ r->spec->format_key() };
+  if (!r->resolved_weak_dependency_keys.empty()) {
+    for (auto const &wk : r->resolved_weak_dependency_keys) {
+      key_for_hash += "|" + wk;
+    }
+  }
+
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
   r->canonical_identity_hash =
       util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
@@ -159,7 +166,14 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const key{ r->spec->format_key() };
   sol::state_view lua{ *r->lua };
 
-  std::string const key_for_hash{ r->spec->format_key() };
+  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid races)
+  std::string key_for_hash{ r->spec->format_key() };
+  if (!r->resolved_weak_dependency_keys.empty()) {
+    for (auto const &wk : r->resolved_weak_dependency_keys) {
+      key_for_hash += "|" + wk;
+    }
+  }
+
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
   r->canonical_identity_hash =
       util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars

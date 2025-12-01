@@ -20,7 +20,7 @@ struct recipe {
   recipe_spec const *spec;  // Non-ownership
 
   sol_state_ptr lua;
-  mutable std::mutex lua_mutex;  // Protects lua and owned_dependency_specs
+  mutable std::mutex lua_mutex;  // Protects child access to parent's lua (custom fetch)
   cache::scoped_entry_lock::ptr_t lock;
 
   std::vector<std::string> declared_dependencies;
@@ -40,14 +40,17 @@ struct recipe {
     std::string query;                       // Partial identity query OR product name
     recipe_spec const *fallback{ nullptr };  // weak dep, null for ref-only
     recipe_phase needed_by{ recipe_phase::asset_build };
-    recipe *resolved{ nullptr };             // Filled in during resolution
-    bool is_product{ false };                // True if query is a product name
-    std::string constraint_identity;         // Required recipe identity (empty if unconstrained)
+    recipe *resolved{ nullptr };      // Filled in during resolution
+    bool is_product{ false };         // True if query is a product name
+    std::string constraint_identity;  // Required recipe identity (empty if unconstrained)
   };
   std::vector<weak_reference> weak_references;
 
   // Products map: product name -> relative path (or raw value for programmatic recipes)
   std::unordered_map<std::string, std::string> products;
+
+  // Cached resolved weak dependency keys for hash computation (populated after resolution)
+  std::vector<std::string> resolved_weak_dependency_keys;
 
   std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;

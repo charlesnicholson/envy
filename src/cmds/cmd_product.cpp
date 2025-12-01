@@ -30,13 +30,16 @@ bool cmd_product::execute() {
 
     recipe *provider{ eng.find_product_provider(cfg_.product_name) };
     if (!provider) {
-      tui::error("product '%s' not found", cfg_.product_name.c_str());
+      tui::error("Product '%s' has no provider in resolved dependency graph",
+                 cfg_.product_name.c_str());
       return false;
     }
 
     auto const product_it{ provider->products.find(cfg_.product_name) };
     if (product_it == provider->products.end()) {
-      tui::error("product '%s' not found", cfg_.product_name.c_str());
+      tui::error("Product '%s' provider '%s' missing product key (internal error)",
+                 cfg_.product_name.c_str(),
+                 provider->spec->identity.c_str());
       return false;
     }
 

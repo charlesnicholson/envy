@@ -229,10 +229,9 @@ engine::weak_resolution_result engine::resolve_weak_references() {
   auto collect_unresolved = [this]() {
     std::vector<std::pair<recipe *, recipe::weak_reference *>> unresolved;
     std::lock_guard const lock(mutex_);
-    for (auto &[key, r_ptr] : recipes_) {
-      recipe *r{ r_ptr.get() };
-      for (auto &wr : r->weak_references) {
-        if (!wr.resolved) { unresolved.emplace_back(r, &wr); }
+    for (auto &[key, recipe] : recipes_) {
+      for (auto &wr : recipe->weak_references) {
+        if (!wr.resolved) { unresolved.emplace_back(recipe.get(), &wr); }
       }
     }
     return unresolved;
@@ -626,10 +625,10 @@ void engine::validate_product_fallbacks() {
 
   {
     std::lock_guard const lock(mutex_);
-    for (auto &[_, r_ptr] : recipes_) {
-      for (auto &wr : r_ptr->weak_references) {
+    for (auto &[_, recipe] : recipes_) {
+      for (auto &wr : recipe->weak_references) {
         if (wr.is_product && wr.fallback && wr.resolved) {
-          to_validate.emplace_back(r_ptr.get(), &wr);
+          to_validate.emplace_back(recipe.get(), &wr);
         }
       }
     }
@@ -670,16 +669,16 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
     start_recipe_thread(r, recipe_phase::recipe_fetch);
   }
 
-  auto const count_unresolved = [this]() {
+  auto const count_unresolved{ [this]() {
     std::lock_guard const lock(mutex_);
     size_t count{ 0 };
-    for (auto &[_, r_ptr] : recipes_) {
-      for (auto &wr : r_ptr->weak_references) {
+    for (auto &[_, recipe] : recipes_) {
+      for (auto &wr : recipe->weak_references) {
         if (!wr.resolved) { ++count; }
       }
     }
     return count;
-  };
+  } };
 
   size_t iteration{ 0 };
   while (true) {
@@ -713,6 +712,20 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   }
 
   validate_product_fallbacks();
+
+  {  // Cache resolved weak dependency keys for thread-safe hash computation
+    std::lock_guard const lock(mutex_);
+    for (auto &[_, recipe] : recipes_) {
+      recipe->resolved_weak_dependency_keys.clear();
+      for (auto const &wr : recipe->weak_references) {
+        if (wr.resolved) {
+          recipe->resolved_weak_dependency_keys.push_back(wr.resolved->key.canonical());
+        }
+      }
+      std::sort(recipe->resolved_weak_dependency_keys.begin(),
+                recipe->resolved_weak_dependency_keys.end());
+    }
+  }
 }
 
 }  // namespace envy

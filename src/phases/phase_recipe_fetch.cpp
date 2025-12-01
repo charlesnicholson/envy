@@ -157,14 +157,6 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
                              spec.identity);
   }
 
-  {  // Check parent lua under lock
-    std::lock_guard const lock(parent->lua_mutex);
-    if (!parent->lua) {
-      throw std::runtime_error("Custom fetch function recipe has no parent Lua state: " +
-                               spec.identity);
-    }
-  }
-
   auto cache_result{ r->cache_ptr->ensure_recipe(spec.identity) };
 
   if (cache_result.lock) {
@@ -179,6 +171,13 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
     ctx.recipe_ = parent;
 
     std::filesystem::create_directories(ctx.run_dir);
+
+    std::lock_guard const lock(parent->lua_mutex);
+
+    if (!parent->lua) {
+      throw std::runtime_error("Custom fetch function recipe has no parent Lua state: " +
+                               spec.identity);
+    }
 
     // Build Lua context table with all fetch bindings
     sol::state_view parent_lua_view{ *parent->lua };
@@ -221,138 +220,140 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
   return recipe_path;
 }
 
-}  // namespace
+std::unordered_map<std::string, std::string> parse_products_table(recipe_spec const &spec,
+                                                                  sol::state &lua) {
+  std::unordered_map<std::string, std::string> parsed_products;
+  sol::object products_obj{ lua["products"] };
+  std::string const &id{ spec.identity };
 
-void run_recipe_fetch_phase(recipe *r, engine &eng) {
-  recipe_spec const &spec{ *r->spec };
-  phase_trace_scope const phase_scope{ spec.identity,
-                                       recipe_phase::recipe_fetch,
-                                       std::chrono::steady_clock::now() };
+  if (!products_obj.valid()) { return parsed_products; }
 
-  std::filesystem::path const recipe_path{ [&] {  // Fetch recipe based on source type
-    if (auto const *local_src{ std::get_if<recipe_spec::local_source>(&spec.source) }) {
-      return fetch_local_source(spec);
-    } else if (std::holds_alternative<recipe_spec::remote_source>(spec.source)) {
-      return fetch_remote_source(spec, r);
-    } else if (std::holds_alternative<recipe_spec::git_source>(spec.source)) {
-      return fetch_git_source(spec, r);
-    } else if (spec.has_fetch_function()) {
-      return fetch_custom_function(spec, r, eng);
-    } else {
-      throw std::runtime_error("Unsupported source type: " + spec.identity);
-    }
-  }() };
+  sol::table products_table;
 
-  auto lua{ create_lua_state() };
-  load_recipe_script(*lua, recipe_path, spec.identity);
+  // Handle programmatic products: function that takes options, returns table
+  if (products_obj.get_type() == sol::type::function) {
+    sol::function products_fn{ products_obj.as<sol::function>() };
 
-  std::string const declared_identity{ [&] {
-    try {
-      sol::object identity_obj{ (*lua)["identity"] };
-      if (!identity_obj.valid() || identity_obj.get_type() != sol::type::string) {
-        throw std::runtime_error("Recipe must define 'identity' global as a string");
-      }
-      return identity_obj.as<std::string>();
-    } catch (std::runtime_error const &e) {
-      throw std::runtime_error(std::string(e.what()) + " (in recipe: " + spec.identity +
-                               ")");
-    }
-  }() };
-
-  if (declared_identity != spec.identity) {
-    throw std::runtime_error("Identity mismatch: expected '" + spec.identity +
-                             "' but recipe declares '" + declared_identity + "'");
-  }
-
-  validate_phases(sol::state_view{ *lua }, spec.identity);
-
-  r->products = [&] {  // Parse products table from Lua global
-    std::unordered_map<std::string, std::string> parsed_products;
-    sol::object products_obj{ (*lua)["products"] };
-    if (products_obj.valid()) {
-      if (products_obj.get_type() != sol::type::table) {
-        throw std::runtime_error("products must be table in recipe '" + spec.identity +
-                                 "'");
-      }
-      sol::table products_table{ products_obj.as<sol::table>() };
-      for (auto const &[key, value] : products_table) {
-        sol::object key_obj(key);
-        sol::object val_obj(value);
-        if (!key_obj.is<std::string>()) {
-          throw std::runtime_error("products key must be string in recipe '" +
-                                   spec.identity + "'");
-        }
-        if (!val_obj.is<std::string>()) {
-          throw std::runtime_error("products value must be string in recipe '" +
-                                   spec.identity + "'");
-        }
-        std::string key_str{ key_obj.as<std::string>() };
-        std::string val_str{ val_obj.as<std::string>() };
-        if (key_str.empty()) {
-          throw std::runtime_error("products key cannot be empty in recipe '" +
-                                   spec.identity + "'");
-        }
-        if (val_str.empty()) {
-          throw std::runtime_error("products value cannot be empty in recipe '" +
-                                   spec.identity + "'");
-        }
-        parsed_products[std::move(key_str)] = std::move(val_str);
-      }
-    }
-    return parsed_products;
-  }();
-
-  r->owned_dependency_specs = [&] {  // Parse and store dependencies
-    std::vector<recipe_spec *> parsed_deps;
-    sol::object deps_obj{ (*lua)["dependencies"] };
-    if (deps_obj.valid() && deps_obj.get_type() == sol::type::table) {
-      sol::table deps_table{ deps_obj.as<sol::table>() };
-      for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
-        recipe_spec *dep_cfg{ recipe_spec::parse(deps_table[i], recipe_path, true) };
-
-        if (!spec.identity.starts_with("local.") &&
-            dep_cfg->identity.starts_with("local.")) {
-          throw std::runtime_error("non-local recipe '" + spec.identity +
-                                   "' cannot depend on local recipe '" +
-                                   dep_cfg->identity + "'");
-        }
-
-        dep_cfg->parent = r->spec;
-        parsed_deps.push_back(dep_cfg);
-      }
-    }
-    return parsed_deps;
-  }();
-
-  lua->registry()[ENVY_OPTIONS_RIDX] = [&] {  // store "options" into Lua registry
-    sol::protected_function_result opts_result{
-      lua->safe_script("return " + spec.serialized_options, sol::script_pass_on_error)
-    };
+    // Deserialize options from spec to pass to products function
+    std::string const opts_str{ "return " + spec.serialized_options };
+    auto opts_result{ lua.safe_script(opts_str, sol::script_pass_on_error) };
     if (!opts_result.valid()) {
       sol::error err{ opts_result };
-      throw std::runtime_error("Failed to deserialize options for " + spec.identity +
-                               ": " + err.what());
+      throw std::runtime_error("Failed to deserialize options for products function: " +
+                               std::string(err.what()));
     }
-    return opts_result.get<sol::object>();
-  }();
+    sol::object options{ opts_result.get<sol::object>() };
 
-  {
-    std::lock_guard const lock(r->lua_mutex);
-    r->lua = std::move(lua);
+    // Call products(options)
+    auto result{ products_fn(options) };
+    if (!result.valid()) {
+      sol::error err{ result };
+      throw std::runtime_error("products function failed in recipe '" + id +
+                               "': " + std::string(err.what()));
+    }
+
+    sol::object result_obj{ result };
+    if (result_obj.get_type() != sol::type::table) {
+      throw std::runtime_error("products function must return table in recipe '" + id +
+                               "'");
+    }
+    products_table = result_obj.as<sol::table>();
+  } else if (products_obj.get_type() == sol::type::table) {
+    products_table = products_obj.as<sol::table>();
+  } else {
+    throw std::runtime_error("products must be table or function in recipe '" + id + "'");
+  }
+  sol::object check_obj{ lua["check"] };
+  bool const has_check{ check_obj.valid() && check_obj.get_type() == sol::type::function };
+
+  for (auto const &[key, value] : products_table) {
+    sol::object key_obj(key);
+    sol::object val_obj(value);
+
+    if (!key_obj.is<std::string>()) {
+      throw std::runtime_error("products key must be string in recipe '" + id + "'");
+    }
+    if (!val_obj.is<std::string>()) {
+      throw std::runtime_error("products value must be string in recipe '" + id + "'");
+    }
+
+    std::string key_str{ key_obj.as<std::string>() };
+    std::string val_str{ val_obj.as<std::string>() };
+
+    if (key_str.empty()) {
+      throw std::runtime_error("products key cannot be empty in recipe '" + id + "'");
+    }
+    if (val_str.empty()) {
+      throw std::runtime_error("products value cannot be empty in recipe '" + id + "'");
+    }
+
+    // Validate path safety for cached recipes (user-managed recipes have arbitrary values)
+    if (!has_check) {
+      std::filesystem::path product_path{ val_str };
+
+      if (product_path.is_absolute()) {
+        throw std::runtime_error("products value '" + val_str +
+                                 "' cannot be absolute path in recipe '" + id + "'");
+      }
+
+      // Check for path traversal (..) components
+      for (auto const &component : product_path) {
+        if (component == "..") {
+          throw std::runtime_error("products value '" + val_str +
+                                   "' cannot contain path traversal (..) in recipe '" +
+                                   id + "'");
+        }
+      }
+    }
+
+    parsed_products[std::move(key_str)] = std::move(val_str);
   }
 
-  r->declared_dependencies = [&]() {  // Extract dependency identities for validation
-    std::vector<std::string> result;
-    result.reserve(r->owned_dependency_specs.size());
-    for (auto const *dep_spec : r->owned_dependency_specs) {
-      result.push_back(dep_spec->identity);
-    }
-    return result;
-  }();
+  return parsed_products;
+}
 
+std::vector<recipe_spec *> parse_dependencies_table(
+    sol::state &lua,
+    std::filesystem::path const &recipe_path,
+    recipe_spec const &spec) {
+  std::vector<recipe_spec *> parsed_deps;
+  sol::object deps_obj{ lua["dependencies"] };
+
+  if (!deps_obj.valid() || deps_obj.get_type() != sol::type::table) { return parsed_deps; }
+
+  sol::table deps_table{ deps_obj.as<sol::table>() };
+  for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
+    recipe_spec *dep_cfg{ recipe_spec::parse(deps_table[i], recipe_path, true) };
+
+    if (!spec.identity.starts_with("local.") && dep_cfg->identity.starts_with("local.")) {
+      throw std::runtime_error("non-local recipe '" + spec.identity +
+                               "' cannot depend on local recipe '" + dep_cfg->identity +
+                               "'");
+    }
+
+    parsed_deps.push_back(dep_cfg);
+  }
+
+  return parsed_deps;
+}
+
+sol::object store_options_in_registry(sol::state &lua,
+                                      std::string const &serialized_options) {
+  sol::protected_function_result opts_result{
+    lua.safe_script("return " + serialized_options, sol::script_pass_on_error)
+  };
+
+  if (!opts_result.valid()) {
+    sol::error err{ opts_result };
+    throw std::runtime_error("Failed to deserialize options: " + std::string(err.what()));
+  }
+
+  return opts_result.get<sol::object>();
+}
+
+void wire_dependency_graph(recipe *r, engine &eng) {
   auto &ctx{ eng.get_execution_ctx(r) };
 
-  // Build dependency graph: create child recipes, start their threads
   for (auto *dep_spec : r->owned_dependency_specs) {
     engine_validate_dependency_cycle(dep_spec->identity,
                                      ctx.ancestor_chain,
@@ -377,6 +378,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     }
 
     if (is_product_dep) {
+      // Strong product dependency (has source) - wire directly, no weak resolution needed
       recipe *dep{ eng.ensure_recipe(dep_spec) };
 
       r->dependencies[dep_spec->identity] = { dep, needed_by_phase };
@@ -386,13 +388,6 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       child_chain.push_back(r->spec->identity);
       eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
 
-      r->weak_references.push_back(
-          recipe::weak_reference{ .query = *dep_spec->product,
-                                  .fallback = nullptr,
-                                  .needed_by = needed_by_phase,
-                                  .resolved = nullptr,
-                                  .is_product = true,
-                                  .constraint_identity = dep_spec->identity });
       continue;
     }
 
@@ -406,7 +401,76 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     child_chain.push_back(r->spec->identity);
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
   }
+}
 
+}  // namespace
+
+void run_recipe_fetch_phase(recipe *r, engine &eng) {
+  recipe_spec const &spec{ *r->spec };
+  phase_trace_scope const phase_scope{ spec.identity,
+                                       recipe_phase::recipe_fetch,
+                                       std::chrono::steady_clock::now() };
+
+  // Fetch recipe based on source type
+  std::filesystem::path const recipe_path{ [&] {
+    if (auto const *local_src{ std::get_if<recipe_spec::local_source>(&spec.source) }) {
+      return fetch_local_source(spec);
+    } else if (std::holds_alternative<recipe_spec::remote_source>(spec.source)) {
+      return fetch_remote_source(spec, r);
+    } else if (std::holds_alternative<recipe_spec::git_source>(spec.source)) {
+      return fetch_git_source(spec, r);
+    } else if (spec.has_fetch_function()) {
+      return fetch_custom_function(spec, r, eng);
+    } else {
+      throw std::runtime_error("Unsupported source type: " + spec.identity);
+    }
+  }() };
+
+  // Load and validate recipe script
+  auto lua{ create_lua_state() };
+  load_recipe_script(*lua, recipe_path, spec.identity);
+
+  std::string const declared_identity{ [&] {
+    try {
+      sol::object identity_obj{ (*lua)["identity"] };
+      if (!identity_obj.valid() || identity_obj.get_type() != sol::type::string) {
+        throw std::runtime_error("Recipe must define 'identity' global as a string");
+      }
+      return identity_obj.as<std::string>();
+    } catch (std::runtime_error const &e) {
+      throw std::runtime_error(std::string(e.what()) + " (in recipe: " + spec.identity +
+                               ")");
+    }
+  }() };
+
+  if (declared_identity != spec.identity) {
+    throw std::runtime_error("Identity mismatch: expected '" + spec.identity +
+                             "' but recipe declares '" + declared_identity + "'");
+  }
+
+  validate_phases(sol::state_view{ *lua }, spec.identity);
+
+  r->products = parse_products_table(spec, *lua);
+  r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
+
+  for (auto *dep_spec : r->owned_dependency_specs) { dep_spec->parent = r->spec; }
+
+  try {  // Store options in Lua registry
+    lua->registry()[ENVY_OPTIONS_RIDX] =
+        store_options_in_registry(*lua, spec.serialized_options);
+  } catch (std::runtime_error const &e) {
+    throw std::runtime_error(e.what() + std::string(" for ") + spec.identity);
+  }
+
+  r->lua = std::move(lua);
+
+  // Extract dependency identities for ctx.asset() validation
+  r->declared_dependencies.reserve(r->owned_dependency_specs.size());
+  for (auto const *dep_spec : r->owned_dependency_specs) {
+    r->declared_dependencies.push_back(dep_spec->identity);
+  }
+
+  wire_dependency_graph(r, eng);
   eng.on_recipe_fetch_complete();
 }
 

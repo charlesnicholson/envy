@@ -30,7 +30,7 @@ Recipes can declare products (name→value map) and depend on products instead o
 - [x] Store in `recipe_spec::product`
 - [x] Update `recipe_spec::pool()->emplace()` call to include new `product` parameter (line 320)
 - [x] Update `recipe_spec` constructor signature to accept product parameter
-- [ ] Allow product-only dependency tables (product with no recipe/source) to parse as ref-only product deps
+- [x] Allow product-only dependency tables (product with no recipe/source) to parse as ref-only product deps
 
 ### Dependency Wiring Semantics
 
@@ -41,7 +41,7 @@ Recipes can declare products (name→value map) and depend on products instead o
 ### Product Registry and Collision Detection
 
 - [x] Add `void engine::update_product_registry()` method in `src/engine.cpp`
-- [x] Iterate all recipes that completed recipe_fetch (check `current_phase >= asset_check`) after each `wait_for_resolution_phase()` iteration
+- [x] Iterate all recipes beyond recipe_fetch phase (check `current_phase > recipe_fetch`) after each `wait_for_resolution_phase()` iteration
 - [x] Build collision map: `product_name → vector<recipe*>`
 - [x] For products with multiple providers, collect error messages with all provider identities
 - [x] For products with single provider, register in `product_registry_`
@@ -99,12 +99,12 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Unit Tests - Recipe Spec Parsing
 
-- [ ] Add test for parsing `product` field in dependency table (`src/recipe_spec_tests.cpp`)
-- [ ] Add test for strong product dep: `{ product = "python3", recipe = "...", source = "..." }`
-- [ ] Add test for weak product dep: `{ product = "python3", weak = {...} }`
-- [ ] Add test for ref-only product dep: `{ product = "python3" }`
-- [ ] Add test rejecting non-string product field
-- [ ] Add test rejecting empty product field
+- [x] Add test for parsing `product` field in dependency table (`src/recipe_spec_tests.cpp`)
+- [x] Add test for strong product dep: `{ product = "python3", recipe = "...", source = "..." }`
+- [x] Add test for weak product dep: `{ product = "python3", weak = {...} }`
+- [x] Add test for ref-only product dep: `{ product = "python3" }`
+- [x] Add test rejecting non-string product field
+- [x] Add test rejecting empty product field
 
 ### Unit Tests - CLI Parsing
 
@@ -116,16 +116,16 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Functional Test Fixtures
 
-- [ ] Create `test_data/recipes/product_provider.lua` with static products table
-- [ ] Create `test_data/recipes/product_dep_strong.lua` with strong product dependency
-- [ ] Create `test_data/recipes/product_dep_weak.lua` with weak product dependency
-- [ ] Create `test_data/recipes/product_dep_refonly.lua` with ref-only product dependency
-- [ ] Create `test_data/recipes/product_collision_a.lua` providing a product
-- [ ] Create `test_data/recipes/product_collision_b.lua` providing same product (for collision test)
+- [x] Create `test_data/recipes/product_provider.lua` with static products table
+- [x] Create `test_data/recipes/product_consumer_strong.lua` with strong product dependency
+- [x] Create `test_data/recipes/product_consumer_weak.lua` with weak product dependency
+- [x] Create `test_data/recipes/product_ref_only_consumer.lua` with ref-only product dependency
+- [x] Create `test_data/recipes/product_provider_b.lua` providing same product (for collision test)
 - [ ] Create `test_data/recipes/product_transitive_root.lua` for transitive provision test
 - [ ] Create `test_data/recipes/product_transitive_intermediate.lua` (middle of chain)
 - [ ] Create `test_data/recipes/product_transitive_provider.lua` (actual provider at end of chain)
-- [ ] Create `test_data/recipes/product_programmatic.lua` (user-managed, no asset_path)
+- [x] Create `test_data/recipes/product_provider_programmatic.lua` (user-managed, no asset_path)
+- [x] Create `test_data/recipes/product_cycle_a.lua` and `product_cycle_b.lua` for cycle testing
 
 ### Functional Tests - Parsing
 
@@ -139,21 +139,21 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Functional Tests - Dependencies
 
-- [ ] Create `functional_tests/test_product_dependencies.py`
-- [ ] Add test for strong product dependency resolution
-- [ ] Add test for weak product dependency with existing provider
-- [ ] Add test for weak product dependency using fallback
-- [ ] Add test for ref-only product dependency success
-- [ ] Add test for ref-only product dependency missing (error)
-- [ ] Add test for identity constraint validation (provider must match specified recipe)
+- [x] Create `functional_tests/test_products.py`
+- [x] Add test for strong product dependency resolution
+- [x] Add test for weak product dependency with existing provider
+- [x] Add test for weak product dependency using fallback
+- [x] Add test for ref-only product dependency success
+- [x] Add test for ref-only product dependency missing (error)
+- [x] Add test for identity constraint validation (provider must match specified recipe)
 - [ ] Add test for identity constraint mismatch error
 
 ### Functional Tests - Collisions
 
-- [ ] Create `functional_tests/test_product_collisions.py`
-- [ ] Add test for collision between two providers (error with both identities)
+- [x] Tests in `functional_tests/test_products.py`
+- [x] Add test for collision between two providers (error with both identities)
 - [ ] Add test for collision between three providers
-- [ ] Add test for no collision when different products provided
+- [x] Add test for no collision when different products provided
 
 ### Functional Tests - Transitive Provision
 
@@ -164,18 +164,18 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Functional Tests - CLI Command
 
-- [ ] Create `functional_tests/test_product_command.py`
-- [ ] Add test for querying cached recipe product (returns concatenated path)
-- [ ] Add test for querying programmatic recipe product (returns raw value)
+- [x] Tests in `functional_tests/test_products.py`
+- [x] Add test for querying cached recipe product (returns concatenated path)
+- [x] Add test for querying programmatic recipe product (returns raw value)
 - [ ] Add test for querying non-existent product (error)
 - [ ] Add test with `--manifest` flag
 - [ ] Add test with `--cache-root` flag
 
 ### Functional Tests - Cycles
 
-- [ ] Add product cycle detection test to existing or new test file
+- [x] Add product cycle detection test in `functional_tests/test_products.py`
 - [ ] Add test for direct cycle (A provides and depends on same product)
-- [ ] Add test for transitive cycle (A→B→A via product dependencies)
+- [x] Add test for transitive cycle (A→B→A via product dependencies)
 
 ### Build Integration
 
@@ -191,3 +191,18 @@ Recipes can declare products (name→value map) and depend on products instead o
 - [ ] Document collision detection and error reporting
 - [ ] Document transitive provision behavior
 - [ ] Add examples of cached vs programmatic product usage
+
+### Product Listing (envy product with no args)
+
+- [ ] Make `product_name` CLI argument optional in `src/cli.cpp`
+- [ ] Add `--json` flag to `cmd_product::cfg` for JSON output mode
+- [ ] Add `std::vector<product_info> engine::collect_all_products()` public method in `src/engine.h`
+- [ ] Implement `collect_all_products()` in `src/engine.cpp`: iterate recipes, extract products, include canonical identity, programmatic flag, asset_path
+- [ ] Sort results by product name alphabetically
+- [ ] Implement `list_all_products()` in `src/cmds/cmd_product.cpp` for human-readable aligned columns (stderr)
+- [ ] Format: `product_name  value  provider_canonical  (programmatic)` with column alignment, no dividers/headers
+- [ ] Implement JSON output mode: write array of objects to stdout with `product`, `value`, `provider`, `programmatic`, `asset_path` fields
+- [ ] Add functional test verifying all products appear in listing with correct provider identities
+- [ ] Add functional test verifying JSON output contains expected fields and values
+- [ ] Add functional test for empty product list (no products defined)
+- [ ] Update CLI tests in `src/cli_tests.cpp` to verify optional product_name argument and --json flag parsing

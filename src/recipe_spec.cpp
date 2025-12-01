@@ -197,21 +197,6 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
   std::vector<recipe_spec *> source_dependencies;
   recipe_spec *weak{ nullptr };
 
-  std::string identity{ [&]() -> std::string {
-    sol::object recipe_obj{ table["recipe"] };
-    if (!recipe_obj.valid()) {
-      throw std::runtime_error("Recipe table missing required 'recipe' field");
-    }
-    if (!recipe_obj.is<std::string>()) {
-      throw std::runtime_error("Recipe 'recipe' field must be string");
-    }
-    std::string ident{ recipe_obj.as<std::string>() };
-    if (ident.empty()) {
-      throw std::runtime_error("Recipe 'recipe' field cannot be empty");
-    }
-    return ident;
-  }() };
-
   std::optional<std::string> product{ [&]() -> std::optional<std::string> {
     sol::object product_obj{ table["product"] };
     if (!product_obj.valid()) { return std::nullopt; }
@@ -223,6 +208,25 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
       throw std::runtime_error("Recipe 'product' field cannot be empty");
     }
     return prod;
+  }() };
+
+  std::string identity{ [&]() -> std::string {
+    sol::object recipe_obj{ table["recipe"] };
+    if (!recipe_obj.valid()) {
+      // Allow missing recipe field for ref-only product dependencies
+      if (allow_weak_without_source && product.has_value()) {
+        return "";  // Empty identity means unconstrained ref-only product dep
+      }
+      throw std::runtime_error("Recipe table missing required 'recipe' field");
+    }
+    if (!recipe_obj.is<std::string>()) {
+      throw std::runtime_error("Recipe 'recipe' field must be string");
+    }
+    std::string ident{ recipe_obj.as<std::string>() };
+    if (ident.empty()) {
+      throw std::runtime_error("Recipe 'recipe' field cannot be empty");
+    }
+    return ident;
   }() };
 
   sol::object weak_obj{ table["weak"] };
@@ -239,7 +243,7 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
 
   std::string ns, name, ver;
   if (!allow_missing_source) {
-    if (!parse_identity(identity, ns, name, ver)) {
+    if (!identity.empty() && !parse_identity(identity, ns, name, ver)) {
       throw std::runtime_error("Invalid recipe identity format: " + identity);
     }
   }
