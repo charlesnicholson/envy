@@ -1,14 +1,11 @@
 #include "cmd_asset.h"
 
 #include "cache.h"
+#include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
-#include "platform.h"
 #include "recipe_spec.h"
 #include "tui.h"
-
-#include <sstream>
-#include <stdexcept>
 
 namespace envy {
 
@@ -16,8 +13,7 @@ cmd_asset::cmd_asset(cfg cfg) : cfg_{ std::move(cfg) } {}
 
 bool cmd_asset::execute() {
   try {
-    auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
-    if (!m) { throw std::runtime_error("could not load manifest"); }
+    auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
 
     std::vector<recipe_spec const *> matches;
     for (auto const *pkg : m->packages) {
@@ -43,17 +39,7 @@ bool cmd_asset::execute() {
       }
     }
 
-    auto const cache_root{ [&]() -> std::filesystem::path {
-      if (cfg_.cache_root) {
-        return *cfg_.cache_root;
-      } else {
-        auto default_cache_root{ platform::get_default_cache_root() };
-        if (!default_cache_root) {
-          throw std::runtime_error("could not determine cache root");
-        }
-        return *default_cache_root;
-      }
-    }() };
+    auto const cache_root{ resolve_cache_root(cfg_.cache_root) };
 
     cache c{ cache_root };
     engine eng{ c, m->get_default_shell(nullptr) };

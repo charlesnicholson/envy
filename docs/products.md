@@ -74,27 +74,28 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### CLI Command Structure
 
-- [ ] Create `src/cmds/cmd_product.h` with command class following `cmd_asset` pattern
-- [ ] Define `cfg` struct inheriting from `cmd_cfg<cmd_product>` with `product_name`, `manifest_path`, `cache_root` fields
-- [ ] Create `src/cmds/cmd_product.cpp` implementation file
-- [ ] Implement constructor and `execute()` method
-- [ ] In `execute()`: load manifest, resolve cache root (follow `cmd_asset` pattern)
-- [ ] In `execute()`: create engine, call `resolve_graph(m->packages)`
-- [ ] In `execute()`: call `engine::find_product_provider(product_name)`
-- [ ] In `execute()`: validate provider exists and products map contains key
-- [ ] In `execute()`: implement output logic—if programmatic or empty asset_path, return raw value; else concatenate asset_path with value
-- [ ] Add `recipe *engine::find_product_provider(std::string const &product_name)` public method to `src/engine.h`
-- [ ] Implement `find_product_provider()` in `src/engine.cpp` (simple registry lookup with mutex)
+- [x] Create `src/cmds/cmd_product.h` with command class following `cmd_asset` pattern
+- [x] Define `cfg` struct inheriting from `cmd_cfg<cmd_product>` with `product_name`, `manifest_path`, `cache_root` fields
+- [x] Create `src/cmds/cmd_product.cpp` implementation file
+- [x] Implement constructor and `execute()` method
+- [x] In `execute()`: load manifest, resolve cache root (follow `cmd_asset` pattern)
+- [x] In `execute()`: create engine, call `run_full(m->packages)`
+- [x] In `execute()`: call `engine::find_product_provider(product_name)`
+- [x] In `execute()`: validate provider exists and products map contains key
+- [x] In `execute()`: implement output logic—if programmatic or empty asset_path, return raw value; else concatenate asset_path with value
+- [x] Add `recipe *engine::find_product_provider(std::string const &product_name)` public method to `src/engine.h`
+- [x] Implement `find_product_provider()` in `src/engine.cpp` (simple registry lookup with mutex)
+- [x] Share manifest/cache-root resolution helpers (no duplication)
 
 ### CLI Integration
 
-- [ ] Add `#include "cmds/cmd_product.h"` to `src/cli.cpp`
-- [ ] Add `cmd_product::cfg` to `cmd_cfg_t` variant in `src/cli.h`
-- [ ] Register `product` subcommand in `cli_parse()` in `src/cli.cpp`
-- [ ] Add required `product_name` positional argument
-- [ ] Add optional `--manifest` flag
-- [ ] Add optional `--cache-root` flag
-- [ ] Set callback to assign `cmd_cfg = product_cfg`
+- [x] Add `#include "cmds/cmd_product.h"` to `src/cli.cpp`
+- [x] Add `cmd_product::cfg` to `cmd_cfg_t` variant in `src/cli.h`
+- [x] Register `product` subcommand in `cli_parse()` in `src/cli.cpp`
+- [x] Add required `product_name` positional argument
+- [x] Add optional `--manifest` flag
+- [x] Add optional `--cache-root` flag
+- [x] Set callback to assign `cmd_cfg = product_cfg`
 
 ### Unit Tests - Recipe Spec Parsing
 

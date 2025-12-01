@@ -136,10 +136,12 @@ set(ENVY_COMMON_SOURCES
     src/cli.cpp
     src/cmd.cpp
     src/cmds/cmd_asset.cpp
+    src/cmds/cmd_common.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
     src/cmds/cmd_hash.cpp
     src/cmds/cmd_lua.cpp
+    src/cmds/cmd_product.cpp
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_version.cpp
     src/engine.cpp
@@ -364,10 +366,12 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/cli.cpp
     src/cmd.cpp
     src/cmds/cmd_asset.cpp
+    src/cmds/cmd_common.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
     src/cmds/cmd_hash.cpp
     src/cmds/cmd_lua.cpp
+    src/cmds/cmd_product.cpp
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_version.cpp
     src/engine.cpp

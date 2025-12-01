@@ -54,6 +54,7 @@ class engine : unmovable {
 
   recipe *find_exact(recipe_key const &key) const;
   std::vector<recipe *> find_matches(std::string_view query) const;
+  recipe *find_product_provider(std::string const &product_name) const;
 
   recipe_execution_ctx &get_execution_ctx(recipe *r);
   recipe_execution_ctx &get_execution_ctx(recipe_key const &key);

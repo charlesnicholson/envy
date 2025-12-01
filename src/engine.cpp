@@ -333,6 +333,12 @@ recipe *engine::find_exact(recipe_key const &key) const {
   return (it != recipes_.end()) ? it->second.get() : nullptr;
 }
 
+recipe *engine::find_product_provider(std::string const &product_name) const {
+  std::lock_guard const lock(mutex_);
+  auto const it{ product_registry_.find(product_name) };
+  return it == product_registry_.end() ? nullptr : it->second;
+}
+
 std::vector<recipe *> engine::find_matches(std::string_view query) const {
   std::lock_guard const lock(mutex_);
 
