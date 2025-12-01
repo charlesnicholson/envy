@@ -363,13 +363,36 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
       dep_spec->needed_by.has_value() ? static_cast<recipe_phase>(*dep_spec->needed_by)
                                       : recipe_phase::asset_build
     };
+    bool const is_product_dep{ dep_spec->product.has_value() };
 
     if (dep_spec->is_weak_reference()) {
-      recipe::weak_reference wr;
-      wr.query = dep_spec->identity;
-      wr.needed_by = needed_by_phase;
-      wr.fallback = dep_spec->weak;
-      r->weak_references.push_back(std::move(wr));
+      r->weak_references.push_back(recipe::weak_reference{
+          .query = is_product_dep ? *dep_spec->product : dep_spec->identity,
+          .fallback = dep_spec->weak,
+          .needed_by = needed_by_phase,
+          .resolved = nullptr,
+          .is_product = is_product_dep,
+          .constraint_identity = is_product_dep ? dep_spec->identity : "" });
+      continue;
+    }
+
+    if (is_product_dep) {
+      recipe *dep{ eng.ensure_recipe(dep_spec) };
+
+      r->dependencies[dep_spec->identity] = { dep, needed_by_phase };
+      ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep_spec->identity, needed_by_phase);
+
+      std::vector<std::string> child_chain{ ctx.ancestor_chain };
+      child_chain.push_back(r->spec->identity);
+      eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
+
+      r->weak_references.push_back(recipe::weak_reference{
+          .query = *dep_spec->product,
+          .fallback = nullptr,
+          .needed_by = needed_by_phase,
+          .resolved = nullptr,
+          .is_product = true,
+          .constraint_identity = dep_spec->identity });
       continue;
     }
 

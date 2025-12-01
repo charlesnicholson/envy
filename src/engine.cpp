@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <sstream>
 #include <unordered_set>
 #include <vector>
 
@@ -490,6 +491,58 @@ void engine::fail_all_contexts() {
   cv_.notify_all();
 }
 
+void engine::update_product_registry() {
+  std::unordered_map<std::string, std::vector<recipe *>> providers_by_product;
+
+  {
+    std::lock_guard const lock(mutex_);
+    for (auto &[key, recipe] : recipes_) {
+      auto const ctx_it{ execution_ctxs_.find(key) };
+      if (ctx_it == execution_ctxs_.end()) { continue; }
+      if (ctx_it->second->current_phase.load() < recipe_phase::asset_check) { continue; }
+
+      for (auto const &[product_name, _] : recipe->products) {
+        // Skip already-registered providers (added in prior iterations)
+        if (product_registry_.contains(product_name)) { continue; }
+        providers_by_product[product_name].push_back(recipe.get());
+      }
+    }
+  }
+
+  std::vector<std::string> collisions;
+
+  for (auto const &[product_name, providers] : providers_by_product) {
+    if (providers.size() == 1) {
+      // Collision if an existing provider was already registered
+      if (product_registry_.contains(product_name)) {
+        collisions.push_back("Product '" + product_name +
+                             "' provided by multiple recipes: " +
+                             product_registry_.at(product_name)->spec->identity + ", " +
+                             providers.front()->spec->identity);
+      } else {
+        product_registry_[product_name] = providers.front();
+      }
+    } else if (!providers.empty()) {
+      std::ostringstream oss;
+      oss << "Product '" << product_name << "' provided by multiple recipes: ";
+      for (size_t i{ 0 }; i < providers.size(); ++i) {
+        if (i) oss << ", ";
+        oss << providers[i]->spec->identity;
+      }
+      collisions.push_back(oss.str());
+    }
+  }
+
+  if (!collisions.empty()) {
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < collisions.size(); ++i) {
+      if (i) oss << "\n";
+      oss << collisions[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+}
+
 void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   for (auto const *spec : roots) {
     recipe *const r{ ensure_recipe(spec) };
@@ -512,6 +565,7 @@ void engine::resolve_graph(std::vector<recipe_spec const *> const &roots) {
   while (true) {
     ++iteration;
     wait_for_resolution_phase();  // Wait for all current recipe_fetch targets to finish
+    update_product_registry();
     weak_resolution_result const resolution{ resolve_weak_references() };
 
     if (resolution.resolved == 0 && resolution.fallbacks_started == 0) {

@@ -12,7 +12,6 @@ Recipes can declare products (name→value map) and depend on products instead o
 - [x] Add `bool is_product` flag to `recipe::weak_reference` struct in `src/recipe.h`
 - [x] Add `std::string constraint_identity` to `recipe::weak_reference` struct in `src/recipe.h`
 - [x] Add `std::unordered_map<std::string, recipe *> product_registry_` to `engine` class in `src/engine.h` (private)
-- [x] Add `mutable std::mutex product_registry_mutex_` to `engine` class in `src/engine.h` (private)
 
 ### Parsing - Products Table
 
@@ -35,19 +34,19 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Dependency Wiring Semantics
 
-- [ ] Treat product deps like recipe deps for scheduling: strong product deps (have source) spawn immediately, run `recipe_fetch`, and wire `dependencies` with `needed_by`
-- [ ] Ref-only or weak product deps become `weak_reference` entries with `is_product=true`, `query=product`, `constraint_identity=dep_spec->identity` when present, `needed_by` propagated, and fallback pointer set
+- [x] Treat product deps like recipe deps for scheduling: strong product deps (have source) spawn immediately, run `recipe_fetch`, and wire `dependencies` with `needed_by`
+- [x] Ref-only or weak product deps become `weak_reference` entries with `is_product=true`, `query=product`, `constraint_identity=dep_spec->identity` when present, `needed_by` propagated, and fallback pointer set
 - [ ] Ensure declared_dependencies records the resolved provider identity for ctx.asset validation
 
 ### Product Registry and Collision Detection
 
-- [ ] Add `void engine::build_product_registry()` method in `src/engine.cpp`
-- [ ] Iterate all recipes that completed recipe_fetch (check `current_phase >= asset_check`) after each `wait_for_resolution_phase()` iteration
-- [ ] Build collision map: `product_name → vector<recipe*>`
-- [ ] For products with multiple providers, collect error messages with all provider identities
-- [ ] For products with single provider, register in `product_registry_`
-- [ ] Throw aggregated error if any collisions detected (collision is always error, no priority rules)
-- [ ] Call `build_product_registry()` in `engine::resolve_graph()` after `wait_for_resolution_phase()`, before weak resolution; rebuild each iteration so late providers participate
+- [x] Add `void engine::update_product_registry()` method in `src/engine.cpp`
+- [x] Iterate all recipes that completed recipe_fetch (check `current_phase >= asset_check`) after each `wait_for_resolution_phase()` iteration
+- [x] Build collision map: `product_name → vector<recipe*>`
+- [x] For products with multiple providers, collect error messages with all provider identities
+- [x] For products with single provider, register in `product_registry_`
+- [x] Throw aggregated error if any collisions detected (collision is always error, no priority rules)
+- [x] Call `build_product_registry()` in `engine::resolve_graph()` after `wait_for_resolution_phase()`, before weak resolution; rebuild each iteration so late providers participate
 
 ### Product Dependency Resolution
 

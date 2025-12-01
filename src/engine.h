@@ -88,6 +88,7 @@ class engine : unmovable {
   void run_recipe_thread(recipe *r);  // Thread entry point
   void process_fetch_dependencies(recipe *r,
                                   std::vector<std::string> const &ancestor_chain);
+  void update_product_registry();
 
   std::unordered_map<recipe_key, std::unique_ptr<recipe>> recipes_;
   std::unordered_map<recipe_key, std::unique_ptr<recipe_execution_ctx>> execution_ctxs_;
@@ -97,7 +98,6 @@ class engine : unmovable {
 
   // Product registry: maps product name → provider recipe (built during resolution)
   std::unordered_map<std::string, recipe *> product_registry_;
-  mutable std::mutex product_registry_mutex_;
 };
 
 // Validate that adding candidate_identity as a dependency doesn't create a cycle
