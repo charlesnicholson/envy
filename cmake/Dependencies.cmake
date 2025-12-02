@@ -114,7 +114,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/Zlib.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Liblzma.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libbz2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libzstd.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
+if(NOT WIN32)
+    include("${CMAKE_CURRENT_LIST_DIR}/deps/MbedTLS.cmake")
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libssh2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libgit2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Libcurl.cmake")
@@ -134,9 +136,9 @@ target_link_libraries(envy_thirdparty
     INTERFACE
         envy::libgit2
         libssh2::libssh2
-        MbedTLS::mbedtls
-        MbedTLS::mbedx509
-        MbedTLS::mbedcrypto
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA
         BZip2::BZip2

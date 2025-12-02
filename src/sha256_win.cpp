@@ -1,13 +1,9 @@
 #include "sha256.h"
 
-#ifdef _WIN32
 #include "platform_windows.h"
-#include <bcrypt.h>
-#else
-#include "mbedtls/sha256.h"
-#endif
-
 #include "util.h"
+
+#include <bcrypt.h>
 
 #include <cstdio>
 #include <cstring>
@@ -17,8 +13,6 @@
 #include <vector>
 
 namespace envy {
-
-#ifdef _WIN32
 
 sha256_t sha256(std::filesystem::path const &file_path) {
   if (!std::filesystem::exists(file_path)) {
@@ -32,8 +26,8 @@ sha256_t sha256(std::filesystem::path const &file_path) {
     throw std::runtime_error("sha256: BCryptOpenAlgorithmProvider failed");
   }
 
-  std::unique_ptr<void, decltype(&BCryptCloseAlgorithmProvider)> alg_scope(
-      alg_handle, &BCryptCloseAlgorithmProvider);
+  auto alg_deleter = [](BCRYPT_ALG_HANDLE h) { BCryptCloseAlgorithmProvider(h, 0); };
+  std::unique_ptr<void, decltype(alg_deleter)> alg_scope(alg_handle, alg_deleter);
 
   BCRYPT_HASH_HANDLE hash_handle{ nullptr };
   status = BCryptCreateHash(alg_handle, &hash_handle, nullptr, 0, nullptr, 0, 0);
@@ -41,8 +35,8 @@ sha256_t sha256(std::filesystem::path const &file_path) {
     throw std::runtime_error("sha256: BCryptCreateHash failed");
   }
 
-  std::unique_ptr<void, decltype(&BCryptDestroyHash)> hash_scope(
-      hash_handle, &BCryptDestroyHash);
+  auto hash_deleter = [](BCRYPT_HASH_HANDLE h) { BCryptDestroyHash(h); };
+  std::unique_ptr<void, decltype(hash_deleter)> hash_scope(hash_handle, hash_deleter);
 
   file_ptr_t file{ util_open_file(file_path, "rb") };
   if (!file) {
@@ -77,57 +71,6 @@ sha256_t sha256(std::filesystem::path const &file_path) {
 
   return digest;
 }
-
-#else
-
-sha256_t sha256(std::filesystem::path const &file_path) {
-  if (!std::filesystem::exists(file_path)) {
-    throw std::runtime_error("sha256: file does not exist: " + file_path.string());
-  }
-
-  mbedtls_sha256_context ctx;
-  mbedtls_sha256_init(&ctx);
-
-  std::unique_ptr<decltype(ctx), decltype(&mbedtls_sha256_free)> ctx_scope(
-      &ctx,
-      &mbedtls_sha256_free);
-
-  if (mbedtls_sha256_starts(&ctx, 0)) {
-    throw std::runtime_error("sha256: mbedtls_sha256_starts failed");
-  }
-
-  file_ptr_t file{ util_open_file(file_path, "rb") };
-  if (!file) {
-    throw std::runtime_error("sha256: failed to open file: " + file_path.string());
-  }
-
-  std::vector<unsigned char> buffer(1024 * 1024);
-  while (true) {
-    auto const read_bytes{
-      std::fread(buffer.data(), sizeof(unsigned char), buffer.size(), file.get())
-    };
-
-    if (read_bytes > 0) {
-      if (mbedtls_sha256_update(&ctx, buffer.data(), read_bytes)) {
-        throw std::runtime_error("sha256: mbedtls_sha256_update failed");
-      }
-    }
-
-    if (read_bytes < buffer.size()) {
-      if (std::ferror(file.get())) { throw std::runtime_error("sha256: fread failed"); }
-      break;
-    }
-  }
-
-  sha256_t digest{};
-  if (mbedtls_sha256_finish(&ctx, digest.data())) {
-    throw std::runtime_error("sha256: mbedtls_sha256_finish failed");
-  }
-
-  return digest;
-}
-
-#endif
 
 void sha256_verify(std::string const &expected_hex, sha256_t const &actual_hash) {
   if (expected_hex.size() != 64) {

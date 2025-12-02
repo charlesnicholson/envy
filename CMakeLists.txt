@@ -172,13 +172,13 @@ set(ENVY_COMMON_SOURCES
     src/blake3_util.cpp
     src/libgit2_util.cpp
     src/sol_util.cpp
-    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
     src/recipe_spec.cpp
-    src/sha256.cpp
+    $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
     src/libcurl_util.cpp
     src/platform.cpp
@@ -402,14 +402,14 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/blake3_util.cpp
     src/libgit2_util.cpp
     src/sol_util.cpp
-    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
     src/recipe_phase.cpp
     src/recipe_spec.cpp
-    src/sha256.cpp
+    $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
     src/libcurl_util.cpp
     src/platform.cpp
