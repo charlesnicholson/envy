@@ -4,6 +4,7 @@
 #include "fetch.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
+#include "lua_error_formatter.h"
 #include "recipe.h"
 #include "sha256.h"
 #include "sol_util.h"
@@ -221,7 +222,8 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
 }
 
 std::unordered_map<std::string, std::string> parse_products_table(recipe_spec const &spec,
-                                                                  sol::state &lua) {
+                                                                  sol::state &lua,
+                                                                  recipe *r) {
   std::unordered_map<std::string, std::string> parsed_products;
   sol::object products_obj{ lua["products"] };
   std::string const &id{ spec.identity };
@@ -244,13 +246,11 @@ std::unordered_map<std::string, std::string> parse_products_table(recipe_spec co
     }
     sol::object options{ opts_result.get<sol::object>() };
 
-    // Call products(options)
-    auto result{ products_fn(options) };
-    if (!result.valid()) {
-      sol::error err{ result };
-      throw std::runtime_error("products function failed in recipe '" + id +
-                               "': " + std::string(err.what()));
-    }
+    // Call products(options) with enriched error handling
+    sol::protected_function_result result{ call_lua_function_with_enriched_errors(
+        r,
+        "products",
+        [&]() { return sol::protected_function_result{ products_fn(options) }; }) };
 
     sol::object result_obj{ result };
     if (result_obj.get_type() != sol::type::table) {
@@ -430,6 +430,9 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   auto lua{ create_lua_state() };
   load_recipe_script(*lua, recipe_path, spec.identity);
 
+  // Store recipe file path for error reporting
+  r->recipe_file_path = recipe_path;
+
   std::string const declared_identity{ [&] {
     try {
       sol::object identity_obj{ (*lua)["identity"] };
@@ -450,7 +453,7 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   validate_phases(sol::state_view{ *lua }, spec.identity);
 
-  r->products = parse_products_table(spec, *lua);
+  r->products = parse_products_table(spec, *lua, r);
   r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
 
   for (auto *dep_spec : r->owned_dependency_specs) { dep_spec->parent = r->spec; }

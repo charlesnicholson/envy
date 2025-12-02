@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "lua_error_formatter.h"
 #include "phases/phase_build.h"
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
@@ -537,7 +538,20 @@ void engine::run_recipe_thread(recipe *r) {
     try {
       throw;  // rethrow to inspect
     } catch (std::exception const &e) {
-      error_msg = e.what();
+      std::string raw_msg{ e.what() };
+
+      // Check if this looks like a Lua error and enrich it
+      if (raw_msg.find("lua:") != std::string::npos || raw_msg.find(".lua:") != std::string::npos) {
+        lua_error_context lua_ctx{
+          .lua_error_message = raw_msg,
+          .r = r,
+          .phase = ""  // Phase not available at catch-all level
+        };
+        error_msg = format_lua_error(lua_ctx);
+      } else {
+        error_msg = raw_msg;
+      }
+
       tui::error("Recipe thread failed: %s", error_msg.c_str());
     } catch (...) {
       error_msg = "unknown exception";

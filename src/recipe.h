@@ -54,6 +54,7 @@ struct recipe {
 
   std::string canonical_identity_hash;  // BLAKE3(format_key())
   std::filesystem::path asset_path;
+  std::optional<std::filesystem::path> recipe_file_path;  // Actual recipe.lua file loaded
   std::string result_hash;
 
   // Phase functions need access to these (not owned by recipe)

@@ -5,6 +5,7 @@
 #include "extract.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
+#include "lua_error_formatter.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
@@ -116,12 +117,9 @@ void run_programmatic_stage(sol::protected_function stage_func,
   // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  sol::protected_function_result result{ stage_func(ctx_table, opts) };
-
-  if (!result.valid()) {
-    sol::error err{ result };
-    throw std::runtime_error("Stage function failed for " + identity + ": " + err.what());
-  }
+  call_lua_function_with_enriched_errors(r, "stage", [&]() {
+    return stage_func(ctx_table, opts);
+  });
 }
 
 void run_shell_stage(std::string_view script,

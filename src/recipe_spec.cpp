@@ -160,7 +160,8 @@ recipe_spec::recipe_spec(ctor_tag,
                          recipe_spec const *parent,
                          recipe_spec *weak,
                          std::vector<recipe_spec *> source_dependencies,
-                         std::optional<std::string> product)
+                         std::optional<std::string> product,
+                         std::filesystem::path declaring_file_path)
     : identity(std::move(identity)),
       source(std::move(source)),
       serialized_options(std::move(serialized_options)),
@@ -168,7 +169,8 @@ recipe_spec::recipe_spec(ctor_tag,
       parent(parent),
       weak(weak),
       source_dependencies(std::move(source_dependencies)),
-      product(std::move(product)) {}
+      product(std::move(product)),
+      declaring_file_path(std::move(declaring_file_path)) {}
 
 void recipe_spec::set_pool(recipe_spec_pool *pool) {
   pool_ = pool ? pool : &g_default_recipe_spec_pool;
@@ -328,7 +330,8 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
                                       nullptr,
                                       weak,
                                       std::move(source_dependencies),
-                                      std::move(product));
+                                      std::move(product),
+                                      base_path);
 }
 
 bool recipe_spec::is_git() const { return std::holds_alternative<git_source>(source); }

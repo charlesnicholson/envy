@@ -34,7 +34,8 @@ bool cmd_engine_functional_test::execute() {
                                                         nullptr,
                                                         nullptr,
                                                         std::vector<recipe_spec *>{},
-                                                        std::nullopt) };
+                                                        std::nullopt,
+                                                        std::filesystem::path{}) };
 
   // Create minimal manifest for engine (no default_shell for tests)
   auto m{ manifest::load("packages = {}", cfg_.recipe_path) };

@@ -4,6 +4,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_error_formatter.h"
 #include "recipe.h"
 #include "shell.h"
 #include "trace.h"
@@ -56,12 +57,10 @@ bool run_check_function(recipe *r,
 
   sol::table ctx_table{ lua.create_table() };
 
-  sol::protected_function_result result{ check_func(ctx_table) };
-  if (!result.valid()) {
-    sol::error err{ result };
-    throw std::runtime_error("check() failed for " + r->spec->identity + ": " +
-                             err.what());
-  }
+  sol::protected_function_result result{ call_lua_function_with_enriched_errors(
+      r,
+      "check",
+      [&]() { return check_func(ctx_table); }) };
 
   bool const check_passed{ result.get<bool>() };
   tui::debug("phase check: function check returned %s", check_passed ? "true" : "false");
@@ -104,12 +103,11 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
   tui::debug(
       "phase check: check failed (pre-lock), acquiring lock for user-managed package");
 
-  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid races)
+  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid
+  // races)
   std::string key_for_hash{ r->spec->format_key() };
   if (!r->resolved_weak_dependency_keys.empty()) {
-    for (auto const &wk : r->resolved_weak_dependency_keys) {
-      key_for_hash += "|" + wk;
-    }
+    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
   }
 
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
@@ -166,12 +164,11 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const key{ r->spec->format_key() };
   sol::state_view lua{ *r->lua };
 
-  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid races)
+  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid
+  // races)
   std::string key_for_hash{ r->spec->format_key() };
   if (!r->resolved_weak_dependency_keys.empty()) {
-    for (auto const &wk : r->resolved_weak_dependency_keys) {
-      key_for_hash += "|" + wk;
-    }
+    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
   }
 
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };

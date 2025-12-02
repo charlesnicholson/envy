@@ -33,7 +33,8 @@ static recipe_result_map_t run_recipe_from_file(std::string const &identity,
                                                       nullptr,
                                                       nullptr,
                                                       std::vector<recipe_spec *>{},
-                                                      std::nullopt) };
+                                                      std::nullopt,
+                                                      std::filesystem::path{}) };
 
   recipe_result_map_t results{ eng.run_full({ spec_ptr }) };
   fs::remove_all(cache_root);

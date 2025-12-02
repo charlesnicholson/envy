@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
+#include "lua_error_formatter.h"
 #include "phase_check.h"
 #include "recipe.h"
 #include "shell.h"
@@ -84,13 +85,9 @@ bool run_programmatic_install(sol::protected_function install_func,
   sol::table ctx_table{ build_install_phase_ctx_table(lua, identity, &ctx) };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-  sol::protected_function_result result{ install_func(ctx_table, opts) };
-
-  if (!result.valid()) {
-    sol::error err{ result };
-    throw std::runtime_error("Install function failed for " + identity + ": " +
-                             err.what());
-  }
+  call_lua_function_with_enriched_errors(r, "install", [&]() {
+    return install_func(ctx_table, opts);
+  });
 
   return lock->is_install_complete();
 }

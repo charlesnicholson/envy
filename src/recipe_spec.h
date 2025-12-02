@@ -58,7 +58,8 @@ struct recipe_spec : unmovable {
               recipe_spec const *parent,
               recipe_spec *weak,
               std::vector<recipe_spec *> source_dependencies,
-              std::optional<std::string> product);
+              std::optional<std::string> product,
+              std::filesystem::path declaring_file_path);
 
   std::string identity;  // "namespace.name@version"
   source_t source;
@@ -72,6 +73,9 @@ struct recipe_spec : unmovable {
 
   // Product name if this is a product-based dependency
   std::optional<std::string> product;
+
+  // Provenance: manifest or parent recipe file that declared this spec
+  std::filesystem::path declaring_file_path;
 
   // Parse recipe_spec from Sol2 object (allocates via pool)
   static recipe_spec *parse(sol::object const &lua_val,
