@@ -3,14 +3,14 @@
 #include "platform_windows.h"
 #include "util.h"
 
-#include <bcrypt.h>
-
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <bcrypt.h>
 
 namespace envy {
 
@@ -20,8 +20,9 @@ sha256_t sha256(std::filesystem::path const &file_path) {
   }
 
   BCRYPT_ALG_HANDLE alg_handle{ nullptr };
-  NTSTATUS status{ BCryptOpenAlgorithmProvider(
-      &alg_handle, BCRYPT_SHA256_ALGORITHM, nullptr, 0) };
+  NTSTATUS status{
+    BCryptOpenAlgorithmProvider(&alg_handle, BCRYPT_SHA256_ALGORITHM, nullptr, 0)
+  };
   if (!BCRYPT_SUCCESS(status)) {
     throw std::runtime_error("sha256: BCryptOpenAlgorithmProvider failed");
   }
@@ -50,8 +51,8 @@ sha256_t sha256(std::filesystem::path const &file_path) {
     };
 
     if (read_bytes > 0) {
-      status = BCryptHashData(
-          hash_handle, buffer.data(), static_cast<ULONG>(read_bytes), 0);
+      status =
+          BCryptHashData(hash_handle, buffer.data(), static_cast<ULONG>(read_bytes), 0);
       if (!BCRYPT_SUCCESS(status)) {
         throw std::runtime_error("sha256: BCryptHashData failed");
       }
@@ -64,7 +65,8 @@ sha256_t sha256(std::filesystem::path const &file_path) {
   }
 
   sha256_t digest{};
-  status = BCryptFinishHash(hash_handle, digest.data(), static_cast<ULONG>(digest.size()), 0);
+  status =
+      BCryptFinishHash(hash_handle, digest.data(), static_cast<ULONG>(digest.size()), 0);
   if (!BCRYPT_SUCCESS(status)) {
     throw std::runtime_error("sha256: BCryptFinishHash failed");
   }
