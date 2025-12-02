@@ -15,6 +15,8 @@
 
 namespace envy {
 
+enum class recipe_type;
+
 struct recipe {
   recipe_key key;
   recipe_spec const *spec;  // Non-ownership
@@ -46,7 +48,7 @@ struct recipe {
   };
   std::vector<weak_reference> weak_references;
 
-  // Products map: product name -> relative path (or raw value for programmatic recipes)
+  // Products map: product name -> relative path (or raw value for user-managed recipes)
   std::unordered_map<std::string, std::string> products;
 
   // Cached resolved weak dependency keys for hash computation (populated after resolution)
@@ -56,6 +58,7 @@ struct recipe {
   std::filesystem::path asset_path;
   std::optional<std::filesystem::path> recipe_file_path;  // Actual recipe.lua file loaded
   std::string result_hash;
+  recipe_type type;  // Determined during recipe_fetch phase
 
   // Phase functions need access to these (not owned by recipe)
   cache *cache_ptr;

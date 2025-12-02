@@ -449,7 +449,7 @@ packages = {{
         self.assertIsNotNone(tool_product, "tool product not found in JSON output")
         self.assertEqual(tool_product["value"], "bin/tool")
         self.assertEqual(tool_product["provider"], "local.product_provider@v1")
-        self.assertFalse(tool_product["programmatic"])
+        self.assertFalse(tool_product["user_managed"])
 
     def test_product_listing_programmatic_marked(self):
         """Product listing should mark programmatic products."""
@@ -473,7 +473,7 @@ packages = {{
         tool_product = next((p for p in products if p["product"] == "tool"), None)
         assert tool_product
         self.assertIsNotNone(tool_product)
-        self.assertTrue(tool_product["programmatic"])
+        self.assertTrue(tool_product["user_managed"])
         self.assertEqual(tool_product["asset_path"], "")
 
     def test_product_listing_empty(self):

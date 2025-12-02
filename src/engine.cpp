@@ -318,6 +318,7 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
       .canonical_identity_hash = key.canonical(),
       .asset_path = std::filesystem::path{},
       .result_hash = {},
+      .type = recipe_type::UNKNOWN,
       .cache_ptr = &cache_,
       .default_shell_ptr = &default_shell_,
   }) };
@@ -354,7 +355,7 @@ std::vector<product_info> engine::collect_all_products() const {
             .product_name = prod_name,
             .value = prod_value,
             .provider_canonical = recipe->key.canonical(),
-            .programmatic = (recipe->result_hash == "programmatic"),
+            .type = recipe->type,
             .asset_path = recipe->asset_path,
         });
       }
@@ -588,7 +589,9 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
 
   recipe_result_map_t results;
   for (auto const &[key, r] : recipes_) {
-    results[r->key.canonical()] = { r->result_hash, r->asset_path };
+    auto const &ctx{ execution_ctxs_.at(key) };
+    recipe_type const result_type{ ctx->failed ? recipe_type::UNKNOWN : r->type };
+    results[r->key.canonical()] = { result_type, r->result_hash, r->asset_path };
   }
   return results;
 }

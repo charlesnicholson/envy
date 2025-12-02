@@ -51,12 +51,7 @@ bool cmd_asset::execute() {
       return (it != result.end()) ? &it->second : nullptr;
     }() };
 
-    if (!recipe_result || recipe_result->result_hash.empty()) {
-      tui::error("not found");
-      return false;
-    }
-
-    if (recipe_result->result_hash == "programmatic") {
+    if (!recipe_result || recipe_result->type != recipe_type::CACHE_MANAGED) {
       tui::error("not found");
       return false;
     }

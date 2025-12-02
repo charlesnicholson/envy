@@ -453,6 +453,21 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   validate_phases(sol::state_view{ *lua }, spec.identity);
 
+  // Determine recipe type (user-managed or cache-managed)
+  sol::state_view lua_view{ *lua };
+  bool const has_check{ lua_view["check"].is<sol::protected_function>() };
+  bool const has_install{ lua_view["install"].is<sol::protected_function>() };
+
+  if (has_check) {
+    if (!has_install) {
+      throw std::runtime_error("User-managed recipe must define 'install' function: " +
+                               spec.identity);
+    }
+    r->type = recipe_type::USER_MANAGED;
+  } else {
+    r->type = recipe_type::CACHE_MANAGED;
+  }
+
   r->products = parse_products_table(spec, *lua, r);
   r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
 

@@ -22,9 +22,16 @@ namespace envy {
 struct manifest;
 struct recipe;
 
+enum class recipe_type {
+  UNKNOWN,        // Not yet determined or failed
+  CACHE_MANAGED,  // Recipe produces cached artifacts (has fetch)
+  USER_MANAGED    // Recipe managed by user (has check/install, no cache artifacts)
+};
+
 struct recipe_result {
-  std::string result_hash;  // BLAKE3(format_key()) or "programmatic" or empty (failed)
-  std::filesystem::path asset_path;  // Path to asset/ dir (empty if programmatic/failed)
+  recipe_type type;
+  std::string result_hash;  // BLAKE3(format_key()) if cache-managed, empty otherwise
+  std::filesystem::path asset_path;  // Path to asset/ dir (empty if user-managed/unknown)
 };
 
 using recipe_result_map_t = std::unordered_map<std::string, recipe_result>;
@@ -33,7 +40,7 @@ struct product_info {
   std::string product_name;
   std::string value;
   std::string provider_canonical;  // Full canonical identity with options
-  bool programmatic;
+  recipe_type type;
   std::filesystem::path asset_path;
 };
 

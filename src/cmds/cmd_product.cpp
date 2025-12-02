@@ -24,13 +24,29 @@ void print_products_json(std::vector<product_info> const &products) {
   for (size_t i{ 0 }; i < products.size(); ++i) {
     if (i > 0) { oss << ","; }
     oss << "\n  {";
+    auto const type_str{ [&]() {
+      switch (products[i].type) {
+        case recipe_type::CACHE_MANAGED:
+          return "cache-managed";
+        case recipe_type::USER_MANAGED:
+          return "user-managed";
+        case recipe_type::UNKNOWN:
+          return "unknown";
+      }
+      return "unknown";
+    }() };
+
     oss << "\n    \"product\": \"" << products[i].product_name << "\",";
     oss << "\n    \"value\": \"" << products[i].value << "\",";
     oss << "\n    \"provider\": \"" << products[i].provider_canonical << "\",";
-    oss << "\n    \"programmatic\": " << (products[i].programmatic ? "true" : "false")
-        << ",";
+    oss << "\n    \"type\": \"" << type_str << "\",";
+    oss << "\n    \"user_managed\": "
+        << (products[i].type == recipe_type::USER_MANAGED ? "true" : "false") << ",";
     oss << "\n    \"asset_path\": \""
-        << (products[i].programmatic ? "" : products[i].asset_path.generic_string()) << "\"";
+        << (products[i].type == recipe_type::USER_MANAGED
+                ? ""
+                : products[i].asset_path.generic_string())
+        << "\"";
     oss << "\n  }";
   }
   if (!products.empty()) { oss << "\n"; }
@@ -57,7 +73,9 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
   // Print aligned rows
   for (auto const &p : products) {
-    std::string programmatic_marker{ p.programmatic ? " (programmatic)" : "" };
+    std::string const user_managed_marker{
+      p.type == recipe_type::USER_MANAGED ? " (user-managed)" : ""
+    };
     char buf[4096];
     snprintf(buf,
              sizeof(buf),
@@ -67,7 +85,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
              static_cast<int>(max_value),
              p.value.c_str(),
              p.provider_canonical.c_str(),
-             programmatic_marker.c_str());
+             user_managed_marker.c_str());
     tui::info("%s", buf);
   }
 }
@@ -86,7 +104,8 @@ bool cmd_product::execute() {
     roots.reserve(m->packages.size());
     for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
-    eng.run_full(roots);
+    // Run recipe-fetch phase only (no downloads/builds)
+    eng.resolve_graph(roots);
 
     // List all products if no product name specified
     if (cfg_.product_name.empty()) {
@@ -99,13 +118,16 @@ bool cmd_product::execute() {
       return true;
     }
 
-    // Query single product
+    // Query single product - bring provider to completion
     recipe *provider{ eng.find_product_provider(cfg_.product_name) };
     if (!provider) {
       tui::error("Product '%s' has no provider in resolved dependency graph",
                  cfg_.product_name.c_str());
       return false;
     }
+
+    // Ensure provider recipe reaches completion phase
+    eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
 
     auto const product_it{ provider->products.find(cfg_.product_name) };
     if (product_it == provider->products.end()) {
@@ -122,14 +144,10 @@ bool cmd_product::execute() {
     }
 
     // Use provider asset_path to construct final output when available
-    std::filesystem::path const asset_path{ provider->asset_path };
-    bool const programmatic{ provider->result_hash == "programmatic" ||
-                             asset_path.empty() };
-
-    if (programmatic) {
+    if (provider->type == recipe_type::USER_MANAGED) {
       tui::print_stdout("%s\n", value.c_str());
     } else {
-      std::filesystem::path full_path{ asset_path / value };
+      std::filesystem::path full_path{ provider->asset_path / value };
       tui::print_stdout("%s\n", full_path.string().c_str());
     }
 

@@ -1,5 +1,6 @@
 #include "phase_completion.h"
 
+#include "engine.h"
 #include "recipe.h"
 #include "trace.h"
 #include "tui.h"
@@ -13,15 +14,15 @@ void run_completion_phase(recipe *r, engine &eng) {
                                        recipe_phase::completion,
                                        std::chrono::steady_clock::now() };
 
-  if (!r->asset_path.empty()) {
+  if (r->type == recipe_type::CACHE_MANAGED) {
     r->result_hash = r->canonical_identity_hash;
 
     tui::debug("phase completion: result_hash=%s for %s",
                r->result_hash.c_str(),
                r->spec->identity.c_str());
-  } else {  // Programmatic package - no cached artifacts
-    r->result_hash = "programmatic";
-    tui::debug("phase completion: no asset_path for %s (programmatic package)",
+  } else {  // User-managed package - no cached artifacts
+    r->result_hash = "user-managed";
+    tui::debug("phase completion: no asset_path for %s (user-managed package)",
                r->spec->identity.c_str());
   }
 }
