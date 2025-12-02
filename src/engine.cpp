@@ -537,9 +537,7 @@ void engine::run_recipe_thread(recipe *r) {
     std::string error_msg;
     try {
       throw;  // rethrow to inspect
-    } catch (std::exception const &e) {
-      error_msg = e.what();
-    } catch (...) {
+    } catch (std::exception const &e) { error_msg = e.what(); } catch (...) {
       error_msg = "unknown exception";
     }
 

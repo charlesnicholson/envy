@@ -26,12 +26,9 @@ void print_products_json(std::vector<product_info> const &products) {
     oss << "\n  {";
     auto const type_str{ [&]() {
       switch (products[i].type) {
-        case recipe_type::CACHE_MANAGED:
-          return "cache-managed";
-        case recipe_type::USER_MANAGED:
-          return "user-managed";
-        case recipe_type::UNKNOWN:
-          return "unknown";
+        case recipe_type::CACHE_MANAGED: return "cache-managed";
+        case recipe_type::USER_MANAGED: return "user-managed";
+        case recipe_type::UNKNOWN: return "unknown";
       }
       return "unknown";
     }() };
@@ -73,9 +70,9 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
   // Print aligned rows
   for (auto const &p : products) {
-    std::string const user_managed_marker{
-      p.type == recipe_type::USER_MANAGED ? " (user-managed)" : ""
-    };
+    std::string const user_managed_marker{ p.type == recipe_type::USER_MANAGED
+                                               ? " (user-managed)"
+                                               : "" };
     char buf[4096];
     snprintf(buf,
              sizeof(buf),
