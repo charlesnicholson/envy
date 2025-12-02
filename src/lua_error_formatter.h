@@ -32,7 +32,7 @@ auto call_lua_function_with_enriched_errors(recipe const *r,
   sol::protected_function_result result{ std::forward<Callable>(callable)() };
 
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     lua_error_context ctx{ .lua_error_message = err.what(), .r = r, .phase = phase };
     throw std::runtime_error(format_lua_error(ctx));
   }

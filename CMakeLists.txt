@@ -39,6 +39,7 @@ if(MSVC)
         message(FATAL_ERROR "MASM assembler was not detected")
     endif()
     set(CMAKE_ASM_COMPILER "${CMAKE_ASM_MASM_COMPILER}" CACHE FILEPATH "" FORCE)
+    set(CMAKE_ASM_MASM_FLAGS "/nologo" CACHE STRING "" FORCE)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "" FORCE)
     set(_envy_msvc_flag_vars
         CMAKE_C_FLAGS
@@ -122,9 +123,10 @@ endif()
 
 # Enable AddressSanitizer globally on MSVC when ENVY_ENABLE_ASAN is set
 if(MSVC AND ENVY_ENABLE_ASAN)
-    add_compile_options(/fsanitize=address)
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:/fsanitize=address>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fsanitize=address>)
     add_link_options(/INCREMENTAL:NO)
-    message(STATUS "MSVC: AddressSanitizer enabled globally for all targets")
+    message(STATUS "MSVC: AddressSanitizer enabled globally for C/C++ targets")
 endif()
 
 include(cmake/Dependencies.cmake)

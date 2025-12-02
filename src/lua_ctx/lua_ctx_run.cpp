@@ -58,13 +58,13 @@ make_ctx_run(lua_ctx_common *ctx) {
     if (opts_table) {
       sol::table opts{ *opts_table };
 
-      sol::optional<std::string> cwd_str{ opts["cwd"] };
+      sol::optional<std::string> cwd_str = opts["cwd"];
       if (cwd_str) {
         std::filesystem::path cwd_path{ *cwd_str };
         cwd = cwd_path.is_relative() ? ctx->run_dir / cwd_path : cwd_path;
       }
 
-      sol::optional<sol::table> env_table{ opts["env"] };
+      sol::optional<sol::table> env_table = opts["env"];
       if (env_table) {
         for (auto const &[key, value] : *env_table) {
           if (key.is<std::string>() && value.is<std::string>()) {
@@ -73,7 +73,7 @@ make_ctx_run(lua_ctx_common *ctx) {
         }
       }
 
-      sol::optional<sol::object> shell_obj{ opts["shell"] };
+      sol::optional<sol::object> shell_obj = opts["shell"];
       if (shell_obj && shell_obj->valid()) {
         shell = parse_shell_config_from_lua(*shell_obj, "ctx.run");
       }

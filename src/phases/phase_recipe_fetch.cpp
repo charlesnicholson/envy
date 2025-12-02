@@ -48,7 +48,7 @@ void load_recipe_script(sol::state &lua,
   sol::protected_function_result result{ lua.safe_script_file(recipe_path.string(),
                                                               sol::script_pass_on_error) };
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     throw std::runtime_error("Failed to load recipe: " + identity + ": " + err.what());
   }
 }
@@ -202,7 +202,7 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
     sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
 
     if (!fetch_result.valid()) {
-      sol::error err{ fetch_result };
+      sol::error err = fetch_result;
       throw std::runtime_error("Fetch function failed for " + spec.identity + ": " +
                                err.what());
     }
@@ -240,7 +240,7 @@ std::unordered_map<std::string, std::string> parse_products_table(recipe_spec co
     std::string const opts_str{ "return " + spec.serialized_options };
     auto opts_result{ lua.safe_script(opts_str, sol::script_pass_on_error) };
     if (!opts_result.valid()) {
-      sol::error err{ opts_result };
+      sol::error err = opts_result;
       throw std::runtime_error("Failed to deserialize options for products function: " +
                                std::string(err.what()));
     }
@@ -291,7 +291,7 @@ std::unordered_map<std::string, std::string> parse_products_table(recipe_spec co
     if (!has_check) {
       std::filesystem::path product_path{ val_str };
 
-      if (product_path.is_absolute()) {
+      if (product_path.is_absolute() || (!val_str.empty() && val_str[0] == '/')) {
         throw std::runtime_error("products value '" + val_str +
                                  "' cannot be absolute path in recipe '" + id + "'");
       }
@@ -344,7 +344,7 @@ sol::object store_options_in_registry(sol::state &lua,
   };
 
   if (!opts_result.valid()) {
-    sol::error err{ opts_result };
+    sol::error err = opts_result;
     throw std::runtime_error("Failed to deserialize options: " + std::string(err.what()));
   }
 

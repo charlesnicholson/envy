@@ -18,7 +18,7 @@ namespace envy::tui {
 
 enum class level { TUI_TRACE, TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
 
-enum class trace_output_type { stderr, file };
+enum class trace_output_type { std_err, file };
 
 struct trace_output_spec {
   trace_output_type type;

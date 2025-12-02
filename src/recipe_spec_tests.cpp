@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 sol::object lua_eval(char const *script, sol::state &lua) {
   auto result{ lua.safe_script(script) };
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     throw std::runtime_error("Lua script failed: " + std::string(err.what()));
   }
 
@@ -135,7 +135,7 @@ TEST_CASE("recipe::parse parses table with options") {
   // Deserialize and check
   auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts{ opts_result };
+  sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
   CHECK(sol::object(opts["target"]).as<std::string>() == "arm-none-eabi");
 }
@@ -172,7 +172,7 @@ TEST_CASE("recipe::parse parses table with all fields") {
   // Deserialize and check
   auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts{ opts_result };
+  sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
 }
 
@@ -419,7 +419,7 @@ TEST_CASE("recipe::parse accepts non-string option values") {
   // Deserialize and check
   auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts{ opts_result };
+  sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).is<lua_Integer>());
   CHECK(sol::object(opts["version"]).as<int64_t>() == 123);
   CHECK(sol::object(opts["debug"]).is<bool>());

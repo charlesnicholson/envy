@@ -124,7 +124,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
 
     sol::protected_function_result result{ default_shell_func(ctx_table) };
     if (!result.valid()) {
-      sol::error err{ result };
+      sol::error err = result;
       throw std::runtime_error("default_shell function failed: " +
                                std::string{ err.what() });
     }

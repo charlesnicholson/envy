@@ -27,9 +27,11 @@ cmake_path(APPEND CMAKE_BINARY_DIR "_deps" "aws_sdk-build" OUTPUT_VARIABLE aws_s
 
 if(NOT DEFINED ENVY_PYTHON_LAUNCHER)
     if(WIN32)
-        find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+        find_program(ENVY_PYTHON_LAUNCHER py REQUIRED)
+        set(ENVY_PYTHON_ARGS "-3" CACHE INTERNAL "Arguments passed to the Python launcher" FORCE)
     else()
         find_program(ENVY_PYTHON_LAUNCHER python3 REQUIRED)
+        set(ENVY_PYTHON_ARGS "" CACHE INTERNAL "Arguments passed to the Python interpreter" FORCE)
     endif()
 endif()
 
@@ -49,7 +51,11 @@ if(NOT EXISTS "${aws_sdk_SOURCE_DIR}/CMakeLists.txt")
         message(FATAL_ERROR "Missing unzip helper: ${_envy_unzip}")
     endif()
 
-    set(_unzip_cmd ${ENVY_PYTHON_LAUNCHER} "${_envy_unzip}")
+    set(_unzip_cmd "${ENVY_PYTHON_LAUNCHER}")
+    if(ENVY_PYTHON_ARGS)
+        list(APPEND _unzip_cmd ${ENVY_PYTHON_ARGS})
+    endif()
+    list(APPEND _unzip_cmd "${_envy_unzip}")
 
     set(_stage_dir "${aws_sdk_SOURCE_DIR}.stage")
     file(REMOVE_RECURSE "${_stage_dir}" "${aws_sdk_SOURCE_DIR}")

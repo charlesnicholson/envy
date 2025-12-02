@@ -369,7 +369,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
     CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
     CHECK(parsed.decorated_logging);
     REQUIRE(parsed.trace_outputs.size() == 1);
-    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
   }
 
@@ -404,7 +404,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
     REQUIRE(parsed.verbosity.has_value());
     CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
     REQUIRE(parsed.trace_outputs.size() == 2);
-    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
     CHECK(parsed.trace_outputs[1].type == envy::tui::trace_output_type::file);
     REQUIRE(parsed.trace_outputs[1].file_path.has_value());

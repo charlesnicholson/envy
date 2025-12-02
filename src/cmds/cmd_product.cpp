@@ -30,7 +30,7 @@ void print_products_json(std::vector<product_info> const &products) {
     oss << "\n    \"programmatic\": " << (products[i].programmatic ? "true" : "false")
         << ",";
     oss << "\n    \"asset_path\": \""
-        << (products[i].programmatic ? "" : products[i].asset_path.string()) << "\"";
+        << (products[i].programmatic ? "" : products[i].asset_path.generic_string()) << "\"";
     oss << "\n  }";
   }
   if (!products.empty()) { oss << "\n"; }

@@ -68,7 +68,7 @@ struct test_recipe_fixture {
       r->lua->safe_script(code, sol::script_pass_on_error)
     };
     if (!res.valid()) {
-      sol::error err{ res };
+      sol::error err = res;
       throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
     }
     (*r->lua)["check"] = res.get<sol::protected_function>();

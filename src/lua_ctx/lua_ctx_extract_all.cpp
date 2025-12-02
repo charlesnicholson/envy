@@ -11,7 +11,7 @@ std::function<void(sol::optional<sol::table>)> make_ctx_extract_all(lua_ctx_comm
     int strip_components{ 0 };
 
     if (opts_table) {
-      sol::optional<int> strip{ (*opts_table)["strip"] };
+      sol::optional<int> strip = (*opts_table)["strip"];
       if (strip) {
         strip_components = *strip;
         if (strip_components < 0) {

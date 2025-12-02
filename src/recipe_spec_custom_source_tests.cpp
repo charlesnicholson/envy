@@ -38,7 +38,7 @@ void setup_recipe_environment(sol::state &lua,
 
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     throw std::runtime_error("Lua error: " + std::string{ err.what() });
   }
 }
@@ -72,7 +72,7 @@ envy::recipe_spec *create_recipe_with_custom_fetch(
   // Execute Lua code to create table
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     throw std::runtime_error("Lua error: " + std::string{ err.what() });
   }
 
@@ -87,7 +87,7 @@ std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const *spec) {
   }
 
   // Look up function using dynamic lookup
-  sol::table deps{ lua["dependencies"] };
+  sol::table deps = lua["dependencies"];
   if (!deps.valid()) { throw std::runtime_error("dependencies global not found"); }
 
   // Find the matching dependency
@@ -100,8 +100,8 @@ std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const *spec) {
       sol::object recipe_obj{ dep_table["recipe"] };
       if (recipe_obj.valid() && recipe_obj.is<std::string>() &&
           recipe_obj.as<std::string>() == spec->identity) {
-        sol::table source_table{ dep_table["source"] };
-        sol::function fetch_func{ source_table["fetch"] };
+        sol::table source_table = dep_table["source"];
+        sol::function fetch_func = source_table["fetch"];
 
         // Create dummy ctx table
         sol::table ctx{ lua.create_table() };
@@ -165,7 +165,7 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
   lua.safe_script(lua_code);
 
   // Parse each spec (they'll all use the same dependencies global)
-  sol::table deps_table{ lua["dependencies"] };
+  sol::table deps_table = lua["dependencies"];
   sol::object val_foo{ deps_table[1] };
   sol::object val_bar{ deps_table[2] };
   sol::object val_baz{ deps_table[3] };

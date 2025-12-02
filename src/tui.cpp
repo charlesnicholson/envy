@@ -262,7 +262,7 @@ void configure_trace_outputs(std::vector<trace_output_spec> outputs) {
   s_tui.trace_stderr = false;
 
   for (auto const &spec : outputs) {
-    if (spec.type == trace_output_type::stderr) {
+    if (spec.type == trace_output_type::std_err) {
       s_tui.trace_stderr = true;
     } else if (spec.type == trace_output_type::file && spec.file_path) {
       if (s_tui.trace_file) {
