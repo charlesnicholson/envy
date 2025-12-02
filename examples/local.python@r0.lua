@@ -8,7 +8,7 @@ fetch = function(ctx, opts) return {
 stage = { strip = 1 }
 
 products = function(opts) return {
-  python3 = "install/bin/python",
-  ["python" .. opts.version] = "install/bin/python"
+  python3 = opts.provide_python3 and "install/bin/python" or nil,
+  ["python" .. opts.version:match("^(%d+%.%d+)")] = "install/bin/python"
 } end
 

@@ -1,7 +1,7 @@
 identity = "local.gn@r0"
 
 dependencies = {
-  { recipe = "local.python@r0", source = "local.python@r0.lua" },
+  { product = "python3" },
   { recipe = "local.ninja@r0", source = "local.ninja@r0.lua" },
 }
 
