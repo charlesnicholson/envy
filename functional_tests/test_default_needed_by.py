@@ -46,7 +46,7 @@ class TestDefaultNeededBy(unittest.TestCase):
         # Verify dependency was added with correct needed_by phase
         parser.assert_dependency_needed_by(
             "local.default_needed_by_parent@v1",
-            "local.simple@v1",
+            "local.dep_val_lib@v1",
             RecipePhase.ASSET_BUILD,
         )
 
@@ -82,7 +82,9 @@ class TestDefaultNeededBy(unittest.TestCase):
 
         # Verify dependency was added with explicit needed_by=check (phase 1)
         parser.assert_dependency_needed_by(
-            "local.explicit_check_parent@v1", "local.simple@v1", RecipePhase.ASSET_CHECK
+            "local.explicit_check_parent@v1",
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_CHECK,
         )
 
     def test_explicit_needed_by_fetch_works(self):
@@ -109,7 +111,9 @@ class TestDefaultNeededBy(unittest.TestCase):
 
         # Verify dependency was added with explicit needed_by=fetch (phase 2)
         parser.assert_dependency_needed_by(
-            "local.explicit_fetch_parent@v1", "local.simple@v1", RecipePhase.ASSET_FETCH
+            "local.explicit_fetch_parent@v1",
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_FETCH,
         )
 
 

@@ -28,6 +28,23 @@ enum class recipe_type {
   USER_MANAGED    // Recipe managed by user (has check/install, no cache artifacts)
 };
 
+struct recipe_execution_ctx {
+  std::thread worker;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // executing or pending
+  std::atomic<recipe_phase> target_phase{ recipe_phase::none };
+  std::atomic_bool failed{ false };
+  std::atomic_bool started{ false };  // True if worker thread has been created
+  std::atomic_bool recipe_fetch_completed{ false };  // True after recipe_fetch completes
+
+  std::vector<std::string> ancestor_chain;  // Per-thread for cycle detection
+  std::string error_message;                // when failed=true (guarded by mutex)
+
+  void set_target_phase(recipe_phase target);
+  void start(struct recipe *r, class engine *eng, std::vector<std::string> chain);
+};
+
 struct recipe_result {
   recipe_type type;
   std::string result_hash;  // BLAKE3(format_key()) if cache-managed, empty otherwise
@@ -46,23 +63,6 @@ struct product_info {
 
 class engine : unmovable {
  public:
-  struct recipe_execution_ctx {  // Execution context for recipe threads
-    std::thread worker;
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::atomic<recipe_phase> current_phase{ recipe_phase::none };  // Last completed phase
-    std::atomic<recipe_phase> target_phase{ recipe_phase::none };
-    std::atomic_bool failed{ false };
-    std::atomic_bool started{ false };  // True if worker thread has been created
-    std::atomic_bool recipe_fetch_completed{ false };  // True after recipe_fetch completes
-
-    std::vector<std::string> ancestor_chain;  // Per-thread for cycle detection
-    std::string error_message;                // when failed=true (guarded by mutex)
-
-    void set_target_phase(recipe_phase target);
-    void start(recipe *r, engine *eng, std::vector<std::string> chain);
-  };
-
   engine(cache &cache, default_shell_cfg_t default_shell);
   ~engine();
 
@@ -110,6 +110,8 @@ class engine : unmovable {
   void validate_product_fallbacks();
   bool recipe_provides_product_transitively(recipe *r,
                                             std::string const &product_name) const;
+
+  friend struct recipe_execution_ctx;  // Allows worker threads to call run_recipe_thread
 
   std::unordered_map<recipe_key, std::unique_ptr<recipe>> recipes_;
   std::unordered_map<recipe_key, std::unique_ptr<recipe_execution_ctx>> execution_ctxs_;

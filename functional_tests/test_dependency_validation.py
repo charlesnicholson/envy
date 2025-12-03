@@ -66,9 +66,8 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertNotEqual(
             result.returncode, 0, "Expected failure for missing dependency"
         )
-        self.assertIn("does not declare dependency", result.stderr)
+        self.assertIn("has no strong dependency on 'local.dep_val_lib@v1'", result.stderr)
         self.assertIn("local.dep_val_missing@v1", result.stderr)
-        self.assertIn("local.dep_val_lib@v1", result.stderr)
 
     def test_transitive_dependency(self):
         """Recipe calls ctx.asset() on transitive dependency - should succeed."""
@@ -169,7 +168,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertNotEqual(
             result.returncode, 0, "Expected failure for unrelated recipe"
         )
-        self.assertIn("does not declare dependency", result.stderr)
+        self.assertIn("has no strong dependency on 'local.dep_val_lib@v1'", result.stderr)
         self.assertIn("local.dep_val_unrelated@v1", result.stderr)
         self.assertIn("local.dep_val_lib@v1", result.stderr)
 
@@ -231,7 +230,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertNotEqual(
             result.returncode, 0, "Expected failure for undeclared dependency"
         )
-        self.assertIn("does not declare dependency", result.stderr)
+        self.assertIn("has no strong dependency on 'local.dep_val_lib@v1'", result.stderr)
         self.assertIn("local.dep_val_needed_by_undeclared@v1", result.stderr)
         self.assertIn("local.dep_val_lib@v1", result.stderr)
 

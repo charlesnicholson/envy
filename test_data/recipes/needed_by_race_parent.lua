@@ -3,7 +3,7 @@
 identity = "local.needed_by_race_parent@v1"
 
 dependencies = {
-  { recipe = "local.simple@v1", source = "simple.lua", needed_by = "stage" }
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "stage" }
 }
 
 fetch = {
@@ -14,5 +14,5 @@ fetch = {
 stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
   -- Access simple which may have already completed
-  ctx.asset("local.simple@v1")
+  ctx.asset("local.dep_val_lib@v1")
 end

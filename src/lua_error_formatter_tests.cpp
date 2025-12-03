@@ -1,6 +1,7 @@
 #include "lua_error_formatter.h"
 
 #include "lua_envy.h"
+#include "engine.h"
 #include "recipe.h"
 #include "recipe_spec.h"
 #include "sol_util.h"
@@ -42,15 +43,21 @@ struct formatter_test_fixture {
     r = std::unique_ptr<recipe>(new recipe{
         .key = recipe_key(*spec),
         .spec = spec,
+        .exec_ctx = nullptr,
         .lua = std::move(lua_state),
         .lock = nullptr,
         .declared_dependencies = {},
+        .product_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
+        .weak_references = {},
+        .products = {},
+        .resolved_weak_dependency_keys = {},
         .canonical_identity_hash = {},
         .asset_path = std::filesystem::path{},
         .recipe_file_path = std::nullopt,
         .result_hash = {},
+        .type = recipe_type::UNKNOWN,
         .cache_ptr = nullptr,
         .default_shell_ptr = nullptr,
     });

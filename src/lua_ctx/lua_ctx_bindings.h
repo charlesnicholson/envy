@@ -5,10 +5,6 @@
 #include <string>
 #include <unordered_set>
 
-extern "C" {
-#include "lua.h"
-}
-
 #include "sol/sol.hpp"
 
 struct lua_State;
@@ -62,6 +58,9 @@ std::function<void(sol::optional<sol::table>)> make_ctx_extract_all(lua_ctx_comm
 // ctx.asset(identity) -> path - look up dependency asset path
 std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *ctx);
 
+// ctx.product(name) -> path or value - look up product from declared product dependency
+std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common *ctx);
+
 // ctx.ls(path) - list directory contents for debugging (prints to TUI)
 std::function<void(std::string const &)> make_ctx_ls(lua_ctx_common *ctx);
 
@@ -80,7 +79,8 @@ std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx);
 // Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)
 // Requires fetch_phase_ctx* as context (extends lua_ctx_common)
 // Used by both recipe_fetch and asset_fetch phases
-void lua_ctx_bindings_register_fetch_phase(sol::table &ctx_table, fetch_phase_ctx *context);
+void lua_ctx_bindings_register_fetch_phase(sol::table &ctx_table,
+                                           fetch_phase_ctx *context);
 
 // Build complete fetch phase context table with identity, tmp_dir, and all bindings
 // Returns a Sol2 table ready for use in fetch functions

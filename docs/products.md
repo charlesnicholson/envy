@@ -38,7 +38,7 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 - [x] Treat product deps like recipe deps for scheduling: strong product deps (have source) spawn immediately, run `recipe_fetch`, and wire `dependencies` with `needed_by`
 - [x] Ref-only or weak product deps become `weak_reference` entries with `is_product=true`, `query=product`, `constraint_identity=dep_spec->identity` when present, `needed_by` propagated, and fallback pointer set
-- [ ] Ensure declared_dependencies records the resolved provider identity for ctx.asset validation
+- [x] Ensure declared_dependencies records the resolved provider identity for ctx.asset validation
 
 ### Product Registry and Collision Detection
 

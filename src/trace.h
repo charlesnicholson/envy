@@ -101,6 +101,25 @@ struct lua_ctx_extract_complete {
   std::int64_t duration_ms;
 };
 
+struct lua_ctx_asset_access {
+  std::string recipe;
+  std::string target;
+  recipe_phase current_phase;
+  recipe_phase needed_by;
+  bool allowed;
+  std::string reason;
+};
+
+struct lua_ctx_product_access {
+  std::string recipe;
+  std::string product;
+  std::string provider;
+  recipe_phase current_phase;
+  recipe_phase needed_by;
+  bool allowed;
+  std::string reason;
+};
+
 struct cache_hit {
   std::string recipe;
   std::string cache_key;
@@ -171,6 +190,8 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::lua_ctx_fetch_complete,
                                    trace_events::lua_ctx_extract_start,
                                    trace_events::lua_ctx_extract_complete,
+                                   trace_events::lua_ctx_asset_access,
+                                   trace_events::lua_ctx_product_access,
                                    trace_events::cache_hit,
                                    trace_events::cache_miss,
                                    trace_events::lock_acquired,
@@ -326,6 +347,38 @@ struct phase_trace_scope {
       .recipe = (recipe_value), \
       .files_extracted = (files_extracted_value), \
       .duration_ms = (duration_value), \
+  }))
+
+#define ENVY_TRACE_LUA_CTX_ASSET_ACCESS(recipe_value, \
+                                        target_value, \
+                                        current_phase_value, \
+                                        needed_by_value, \
+                                        allowed_value, \
+                                        reason_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_asset_access{ \
+      .recipe = (recipe_value), \
+      .target = (target_value), \
+      .current_phase = (current_phase_value), \
+      .needed_by = (needed_by_value), \
+      .allowed = (allowed_value), \
+      .reason = (reason_value), \
+  }))
+
+#define ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(recipe_value, \
+                                          product_value, \
+                                          provider_value, \
+                                          current_phase_value, \
+                                          needed_by_value, \
+                                          allowed_value, \
+                                          reason_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_product_access{ \
+      .recipe = (recipe_value), \
+      .product = (product_value), \
+      .provider = (provider_value), \
+      .current_phase = (current_phase_value), \
+      .needed_by = (needed_by_value), \
+      .allowed = (allowed_value), \
+      .reason = (reason_value), \
   }))
 
 #define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, asset_path_value) \

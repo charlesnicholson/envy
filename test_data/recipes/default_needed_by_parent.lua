@@ -2,7 +2,7 @@
 identity = "local.default_needed_by_parent@v1"
 
 dependencies = {
-  { recipe = "local.simple@v1", source = "simple.lua" }
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua" }
   -- No needed_by specified - should default to "build"
 }
 
@@ -16,5 +16,5 @@ end
 
 build = function(ctx, opts)
   -- Dependency should be available here by default
-  local dep_path = ctx.asset("local.simple@v1")
+  local dep_path = ctx.asset("local.dep_val_lib@v1")
 end

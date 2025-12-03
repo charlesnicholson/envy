@@ -366,6 +366,21 @@ void wire_dependency_graph(recipe *r, engine &eng) {
     };
     bool const is_product_dep{ dep_spec->product.has_value() };
 
+    if (is_product_dep) {
+      std::string const &product_name{ *dep_spec->product };
+
+      if (auto const [_, inserted]{ r->product_dependencies.emplace(
+              product_name,
+              recipe::product_dependency{ .name = product_name,
+                                          .needed_by = needed_by_phase,
+                                          .provider = nullptr,
+                                          .constraint_identity = dep_spec->identity }) };
+          !inserted) {
+        throw std::runtime_error("Duplicate product dependency '" + product_name +
+                                 "' in recipe '" + r->spec->identity + "'");
+      }
+    }
+
     if (dep_spec->is_weak_reference()) {
       r->weak_references.push_back(recipe::weak_reference{
           .query = is_product_dep ? *dep_spec->product : dep_spec->identity,
@@ -383,6 +398,9 @@ void wire_dependency_graph(recipe *r, engine &eng) {
 
       r->dependencies[dep_spec->identity] = { dep, needed_by_phase };
       ENVY_TRACE_DEPENDENCY_ADDED(r->spec->identity, dep_spec->identity, needed_by_phase);
+      auto &pd{ r->product_dependencies.at(*dep_spec->product) };
+      pd.provider = dep;
+      pd.constraint_identity = dep_spec->identity;
 
       std::vector<std::string> child_chain{ ctx.ancestor_chain };
       child_chain.push_back(r->spec->identity);

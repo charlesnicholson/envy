@@ -21,6 +21,7 @@ void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx) {
   ctx_table["extract"] = make_ctx_extract(ctx);
   ctx_table["extract_all"] = make_ctx_extract_all(ctx);
   ctx_table["asset"] = make_ctx_asset(ctx);
+  ctx_table["product"] = make_ctx_product(ctx);
   ctx_table["ls"] = make_ctx_ls(ctx);
   ctx_table["run"] = make_ctx_run(ctx);
 }

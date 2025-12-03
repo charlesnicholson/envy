@@ -2,7 +2,7 @@
 identity = "local.explicit_fetch_parent@v1"
 
 dependencies = {
-  { recipe = "local.simple@v1", source = "simple.lua", needed_by = "fetch" }
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "fetch" }
 }
 
 fetch = function(ctx, opts)

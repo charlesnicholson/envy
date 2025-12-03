@@ -171,6 +171,8 @@ set(ENVY_COMMON_SOURCES
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
+    src/lua_ctx/lua_ctx_product.cpp
+    src/product_util.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
@@ -401,6 +403,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
+    src/lua_ctx/lua_ctx_product.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
@@ -416,6 +419,7 @@ set(ENVY_UNIT_TEST_COMMON_SOURCES
     src/sol_util.cpp
     src/lua_shell.cpp
     src/lua_envy.cpp
+    src/product_util.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
     src/recipe_phase.cpp
@@ -460,7 +464,9 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx/lua_ctx_bindings_tests.cpp
     src/lua_ctx/lua_ctx_copy_tests.cpp
     src/lua_ctx/lua_ctx_fetch_tests.cpp
+    src/lua_ctx_asset_product_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
+    src/product_util_tests.cpp
     src/sha256_tests.cpp
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>

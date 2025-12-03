@@ -89,6 +89,15 @@ void resolve_identity_ref(recipe *r,
 
     wire_dependency(r, dep, wr->needed_by);
     wr->resolved = dep;
+    if (wr->is_product) {
+      auto const it{ r->product_dependencies.find(wr->query) };
+      if (it != r->product_dependencies.end()) {
+        it->second.provider = dep;
+        if (it->second.constraint_identity.empty()) {
+          it->second.constraint_identity = wr->constraint_identity;
+        }
+      }
+    }
     ++result.resolved;
     return;
   }
@@ -116,6 +125,15 @@ void resolve_identity_ref(recipe *r,
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
 
     wr->resolved = dep;
+    if (wr->is_product) {
+      auto const it{ r->product_dependencies.find(wr->query) };
+      if (it != r->product_dependencies.end()) {
+        it->second.provider = dep;
+        if (it->second.constraint_identity.empty()) {
+          it->second.constraint_identity = wr->constraint_identity;
+        }
+      }
+    }
     ++result.fallbacks_started;
   }
 }
@@ -125,6 +143,16 @@ void resolve_product_ref(recipe *r,
                          engine::weak_resolution_result &result,
                          std::unordered_map<std::string, recipe *> const &registry,
                          engine &eng) {
+  auto set_product_provider = [&](recipe *provider) {
+    auto const it{ r->product_dependencies.find(wr->query) };
+    if (it != r->product_dependencies.end()) {
+      it->second.provider = provider;
+      if (!wr->constraint_identity.empty()) {
+        it->second.constraint_identity = wr->constraint_identity;
+      }
+    }
+  };
+
   auto const it{ registry.find(wr->query) };
 
   if (it != registry.end()) {
@@ -146,6 +174,7 @@ void resolve_product_ref(recipe *r,
 
     wire_dependency(r, dep, wr->needed_by);
     wr->resolved = dep;
+    set_product_provider(dep);
     ++result.resolved;
     return;
   }
@@ -161,6 +190,7 @@ void resolve_product_ref(recipe *r,
     eng.start_recipe_thread(dep, recipe_phase::recipe_fetch, std::move(child_chain));
 
     wr->resolved = dep;
+    set_product_provider(dep);
     ++result.fallbacks_started;
   }
 }
@@ -283,7 +313,7 @@ engine::weak_resolution_result engine::resolve_weak_references() {
   return result;
 }
 
-void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
+void recipe_execution_ctx::set_target_phase(recipe_phase target) {
   recipe_phase current_target{ target_phase.load() };
   while (current_target < target) {
     if (target_phase.compare_exchange_weak(current_target, target)) {
@@ -294,9 +324,7 @@ void engine::recipe_execution_ctx::set_target_phase(recipe_phase target) {
   }
 }
 
-void engine::recipe_execution_ctx::start(recipe *r,
-                                         engine *eng,
-                                         std::vector<std::string> chain) {
+void recipe_execution_ctx::start(recipe *r, engine *eng, std::vector<std::string> chain) {
   ancestor_chain = std::move(chain);
   worker = std::thread([r, eng] { eng->run_recipe_thread(r); });
 }
@@ -309,11 +337,13 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
   auto r{ std::unique_ptr<recipe>(new recipe{
       .key = key,
       .spec = spec,
+      .exec_ctx = nullptr,
       .lua = nullptr,
       .lock = nullptr,
       .declared_dependencies = {},
       .owned_dependency_specs = {},
       .dependencies = {},
+      .product_dependencies = {},
       .weak_references = {},
       .canonical_identity_hash = key.canonical(),
       .asset_path = std::filesystem::path{},
@@ -326,7 +356,10 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
   auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
   if (inserted) {
     execution_ctxs_[key] = std::make_unique<recipe_execution_ctx>();
+    it->second->exec_ctx = execution_ctxs_[key].get();
     ENVY_TRACE_RECIPE_REGISTERED(spec->identity, key.canonical(), false);
+  } else if (auto ctx_it = execution_ctxs_.find(key); ctx_it != execution_ctxs_.end()) {
+    it->second->exec_ctx = ctx_it->second.get();
   }
   return it->second.get();
 }
@@ -378,11 +411,11 @@ std::vector<recipe *> engine::find_matches(std::string_view query) const {
   return matches;
 }
 
-engine::recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
+recipe_execution_ctx &engine::get_execution_ctx(recipe *r) {
   return get_execution_ctx(r->key);
 }
 
-engine::recipe_execution_ctx &engine::get_execution_ctx(recipe_key const &key) {
+recipe_execution_ctx &engine::get_execution_ctx(recipe_key const &key) {
   std::lock_guard const lock(mutex_);
   auto const it{ execution_ctxs_.find(key) };
   if (it == execution_ctxs_.end()) {
@@ -521,14 +554,12 @@ void engine::run_recipe_thread(recipe *r) {
         }
       }
 
+      ctx.current_phase = next;  // Phase is now active
       phase_dispatch_table[static_cast<int>(next)](r, *this);
 
       if (next == recipe_phase::recipe_fetch) {
         ctx.recipe_fetch_completed = true;
-        ctx.current_phase = next;  // Update phase BEFORE decrementing counter
         on_recipe_fetch_complete(r->spec->identity);
-      } else {
-        ctx.current_phase = next;
       }
       notify_phase_complete();
     }

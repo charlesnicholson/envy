@@ -16,10 +16,12 @@
 namespace envy {
 
 enum class recipe_type;
+struct recipe_execution_ctx;
 
 struct recipe {
   recipe_key key;
-  recipe_spec const *spec;  // Non-ownership
+  recipe_spec const *spec;                           // Non-ownership
+  struct recipe_execution_ctx *exec_ctx{ nullptr };  // Set by engine
 
   sol_state_ptr lua;
   mutable std::mutex lua_mutex;  // Protects child access to parent's lua (custom fetch)
@@ -37,6 +39,14 @@ struct recipe {
     recipe_phase needed_by;  // Phase by which this dependency must be complete
   };
   std::unordered_map<std::string, dependency_info> dependencies;
+
+  struct product_dependency {
+    std::string name;
+    recipe_phase needed_by{ recipe_phase::asset_build };
+    recipe *provider{ nullptr };  // strong deps immediately, weak deps after resolution
+    std::string constraint_identity;  // Optional required provider identity (empty if none)
+  };
+  std::unordered_map<std::string, product_dependency> product_dependencies;
 
   struct weak_reference {
     std::string query;                       // Partial identity query OR product name

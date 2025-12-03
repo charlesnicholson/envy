@@ -1,0 +1,34 @@
+-- Exercises ctx.asset and ctx.product access traces (allowed + denied)
+identity = "local.trace_ctx_access@v1"
+
+dependencies = {
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "stage" },
+  { product = "tool", recipe = "local.product_provider@v1", source = "product_provider.lua", needed_by = "stage" },
+}
+
+fetch = {
+  source = "test_data/archives/test.tar.gz",
+  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+}
+
+stage = function(ctx)
+  ctx.extract_all({ strip = 1 })
+
+  -- Allowed asset access
+  ctx.asset("local.dep_val_lib@v1")
+
+  -- Denied asset access (undeclared)
+  local ok, err = pcall(function() ctx.asset("local.missing@v1") end)
+  assert(not ok, "expected missing asset access to fail")
+
+  -- Allowed product access
+  ctx.product("tool")
+
+  -- Denied product access (undeclared)
+  local ok2, err2 = pcall(function() ctx.product("missing_prod") end)
+  assert(not ok2, "expected missing product access to fail")
+end
+
+install = function(ctx)
+  ctx.mark_install_complete()
+end

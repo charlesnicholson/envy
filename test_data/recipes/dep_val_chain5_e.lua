@@ -3,9 +3,9 @@
 identity = "local.dep_val_chain5_e@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_chain5_d@v1", source = "dep_val_chain5_d.lua" },
+  { recipe = "local.dep_val_chain5_d@v1", source = "dep_val_chain5_d.lua", needed_by = "stage" },
   -- Must explicitly declare all dependencies we access
-  { recipe = "local.dep_val_chain5_a@v1", source = "dep_val_chain5_a.lua" }
+  { recipe = "local.dep_val_chain5_a@v1", source = "dep_val_chain5_a.lua", needed_by = "stage" }
 }
 
 fetch = {

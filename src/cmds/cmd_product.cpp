@@ -4,12 +4,12 @@
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
+#include "product_util.h"
 #include "recipe.h"
 #include "recipe_spec.h"
 #include "tui.h"
 
 #include <algorithm>
-#include <filesystem>
 #include <sstream>
 
 namespace envy {
@@ -126,27 +126,8 @@ bool cmd_product::execute() {
     // Ensure provider recipe reaches completion phase
     eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
 
-    auto const product_it{ provider->products.find(cfg_.product_name) };
-    if (product_it == provider->products.end()) {
-      tui::error("Product '%s' provider '%s' missing product key (internal error)",
-                 cfg_.product_name.c_str(),
-                 provider->spec->identity.c_str());
-      return false;
-    }
-
-    std::string const &value{ product_it->second };
-    if (value.empty()) {
-      tui::error("product '%s' is empty", cfg_.product_name.c_str());
-      return false;
-    }
-
-    // Use provider asset_path to construct final output when available
-    if (provider->type == recipe_type::USER_MANAGED) {
-      tui::print_stdout("%s\n", value.c_str());
-    } else {
-      std::filesystem::path full_path{ provider->asset_path / value };
-      tui::print_stdout("%s\n", full_path.string().c_str());
-    }
+    std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
+    tui::print_stdout("%s\n", rendered_value.c_str());
 
     return true;
   } catch (std::exception const &ex) {

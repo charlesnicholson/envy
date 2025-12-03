@@ -2,7 +2,7 @@
 identity = "local.dep_val_level3_mid@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_level3_base@v1", source = "dep_val_level3_base.lua" }
+  { recipe = "local.dep_val_level3_base@v1", source = "dep_val_level3_base.lua", needed_by = "stage" }
 }
 
 fetch = {

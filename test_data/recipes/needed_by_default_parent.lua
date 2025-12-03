@@ -3,7 +3,7 @@ identity = "local.needed_by_default_parent@v1"
 
 dependencies = {
   -- No needed_by specified - should default to check
-  { recipe = "local.simple@v1", source = "simple.lua" }
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua" }
 }
 
 fetch = {
@@ -13,6 +13,9 @@ fetch = {
 
 stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
-  -- Dependency is available
-  ctx.asset("local.simple@v1")
+end
+
+build = function(ctx, opts)
+  -- Dependency should be available by build phase
+  ctx.asset("local.dep_val_lib@v1")
 end

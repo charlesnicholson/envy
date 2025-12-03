@@ -209,12 +209,12 @@ class TestNeededBy(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_default_parent@v1", result.stdout)
-        self.assertIn("local.simple@v1", result.stdout)
+        self.assertIn("local.dep_val_lib@v1", result.stdout)
 
         parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_default_parent@v1",
-            "local.simple@v1",
+            "local.dep_val_lib@v1",
             RecipePhase.ASSET_BUILD,
         )
 

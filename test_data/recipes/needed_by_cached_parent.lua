@@ -2,7 +2,7 @@
 identity = "local.needed_by_cached_parent@v1"
 
 dependencies = {
-  { recipe = "local.simple@v1", source = "simple.lua", needed_by = "build" }
+  { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "build" }
 }
 
 fetch = {
@@ -16,5 +16,5 @@ end
 
 build = function(ctx, opts)
   -- Access simple in build phase
-  ctx.asset("local.simple@v1")
+  ctx.asset("local.dep_val_lib@v1")
 end
