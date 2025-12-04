@@ -4,12 +4,33 @@ extern "C" {
 #include "lua.h"
 }
 
+#include "util.h"
+
 #include <filesystem>
 #include <stdexcept>
 #include <variant>
 #include <vector>
 
 namespace envy {
+
+resolved_shell shell_resolve_default(default_shell_cfg_t const *cfg) {
+  if (cfg && *cfg) {
+    return std::visit(
+        match{ [](shell_choice choice) { return resolved_shell{ choice }; },
+               [](custom_shell const &custom) {
+                 return std::visit(
+                     [](auto const &custom_cfg) { return resolved_shell{ custom_cfg }; },
+                     custom);
+               } },
+        **cfg);
+  }
+
+#if defined(_WIN32)
+  return shell_choice::powershell;
+#else
+  return shell_choice::bash;
+#endif
+}
 
 shell_choice shell_parse_choice(std::optional<std::string_view> value) {
 #if defined(_WIN32)

@@ -9,6 +9,7 @@
 
 #include "doctest.h"
 
+#include <filesystem>
 #include <memory>
 
 namespace envy {
@@ -254,6 +255,34 @@ TEST_CASE("run_check_function returns true when function returns string") {
   sol::protected_function_result res{ f.r->lua->safe_script(
       "return function(ctx) return 'yes' end",
       sol::script_pass_on_error) };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
+
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
+  namespace fs = std::filesystem;
+  test_recipe_fixture f;
+
+  fs::path project_dir{ fs::temp_directory_path() / "envy-check-cwd" };
+  fs::create_directories(project_dir);
+  f.spec->declaring_file_path = project_dir / "envy.lua";
+
+  std::error_code ec;
+  fs::path canonical_dir{ fs::weakly_canonical(project_dir, ec) };
+  if (ec) { canonical_dir = fs::absolute(project_dir); }
+
+  std::string lua_script =
+      "return function(ctx)\n"
+      "  local out = ctx.run(\"pwd\").stdout\n"
+      "  return string.find(out, \"envy%-check%-cwd\") ~= nil\n"
+      "end";
+
+  sol::protected_function_result res{
+    f.r->lua->safe_script(lua_script, sol::script_pass_on_error)
+  };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 

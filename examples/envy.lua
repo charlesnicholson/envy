@@ -14,3 +14,6 @@ packages = {
   { recipe = "local.uv@r0", source = "local.uv@r0.lua" },
 }
 
+if ENVY_PLATFORM == "darwin" then
+  table.insert(packages, { recipe = "local.brew@r0", source = "local.brew@r0.lua" })
+end

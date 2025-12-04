@@ -124,7 +124,8 @@ void run_programmatic_stage(sol::protected_function stage_func,
 
 void run_shell_stage(std::string_view script,
                      std::filesystem::path const &dest_dir,
-                     std::string const &identity) {
+                     std::string const &identity,
+                     resolved_shell shell) {
   tui::debug("phase stage: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -137,7 +138,7 @@ void run_shell_stage(std::string_view script,
                          },
                      .cwd = dest_dir,
                      .env = std::move(env),
-                     .shell = shell_parse_choice(std::nullopt) };
+                     .shell = std::move(shell) };
 
   shell_result const result{ shell_run(script, inv) };
 
@@ -177,7 +178,10 @@ void run_stage_phase(recipe *r, engine &eng) {
     run_default_stage(fetch_dir, dest_dir);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
-    run_shell_stage(script_str, dest_dir, identity);
+    run_shell_stage(script_str,
+                    dest_dir,
+                    identity,
+                    shell_resolve_default(r->default_shell_ptr));
   } else if (stage_obj.is<sol::protected_function>()) {
     run_programmatic_stage(stage_obj.as<sol::protected_function>(),
                            fetch_dir,

@@ -12,10 +12,30 @@
 #include "util.h"
 
 #include <chrono>
+#include <filesystem>
 #include <stdexcept>
 #include <utility>
 
 namespace envy {
+
+namespace {
+
+std::filesystem::path compute_project_root(recipe const *r) {
+  recipe_spec const *spec{ r ? r->spec : nullptr };
+  while (spec && spec->parent) { spec = spec->parent; }
+
+  if (spec && !spec->declaring_file_path.empty()) {
+    std::filesystem::path const abs{ std::filesystem::absolute(
+        spec->declaring_file_path) };
+    std::error_code ec;
+    std::filesystem::path const canonical{ std::filesystem::weakly_canonical(abs, ec) };
+    return (ec ? abs : canonical).parent_path();
+  }
+
+  return std::filesystem::current_path();
+}
+
+}  // namespace
 
 bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
@@ -25,15 +45,8 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   cfg.on_output_line = [](std::string_view line) {
     tui::info("%.*s", static_cast<int>(line.size()), line.data());
   };
-
-  if (r->default_shell_ptr && *r->default_shell_ptr) {
-    std::visit(match{ [&cfg](shell_choice const &choice) { cfg.shell = choice; },
-                      [&cfg](custom_shell const &custom) {
-                        std::visit([&cfg](auto &&custom_type) { cfg.shell = custom_type; },
-                                   custom);
-                      } },
-               **r->default_shell_ptr);
-  }
+  cfg.cwd = compute_project_root(r);
+  cfg.shell = shell_resolve_default(r ? r->default_shell_ptr : nullptr);
 
   shell_result result;
   try {
@@ -55,7 +68,17 @@ bool run_check_function(recipe *r,
                         sol::protected_function check_func) {
   tui::debug("phase check: executing function check");
 
+  struct check_phase_ctx : lua_ctx_common {};
+
+  check_phase_ctx ctx{};
+  ctx.fetch_dir = compute_project_root(r);
+  ctx.run_dir = ctx.fetch_dir;
+  ctx.engine_ = nullptr;
+  ctx.recipe_ = r;
+
   sol::table ctx_table{ lua.create_table() };
+  ctx_table["identity"] = r->spec->identity;
+  ctx_table["run"] = make_ctx_run(&ctx);
 
   sol::protected_function_result result{ call_lua_function_with_enriched_errors(
       r,
@@ -164,8 +187,7 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const key{ r->spec->format_key() };
   sol::state_view lua{ *r->lua };
 
-  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid
-  // races)
+  // Compute hash w/ resolved weak/ref-only deps (pre-computed to avoid races)
   std::string key_for_hash{ r->spec->format_key() };
   if (!r->resolved_weak_dependency_keys.empty()) {
     for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }

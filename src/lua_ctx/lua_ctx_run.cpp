@@ -6,10 +6,6 @@
 #include "trace.h"
 #include "tui.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 #include <chrono>
 #include <filesystem>
 #include <functional>
@@ -47,13 +43,9 @@ make_ctx_run(lua_ctx_common *ctx) {
     std::optional<std::filesystem::path> cwd;
     shell_env_t env{ shell_getenv() };
 
-    std::variant<shell_choice, custom_shell_file, custom_shell_inline> shell{
-#if defined(_WIN32)
-      shell_choice::powershell
-#else
-      shell_choice::bash
-#endif
-    };
+    resolved_shell shell{ shell_resolve_default(ctx && ctx->recipe_
+                                                ? ctx->recipe_->default_shell_ptr
+                                                : nullptr) };
 
     if (opts_table) {
       sol::table opts{ *opts_table };

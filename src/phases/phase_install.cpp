@@ -95,7 +95,8 @@ bool run_programmatic_install(sol::protected_function install_func,
 bool run_shell_install(std::string_view script,
                        std::filesystem::path const &install_dir,
                        cache::scoped_entry_lock *lock,
-                       std::string const &identity) {
+                       std::string const &identity,
+                       resolved_shell shell) {
   tui::debug("phase install: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -107,7 +108,7 @@ bool run_shell_install(std::string_view script,
                                },
                            .cwd = install_dir,
                            .env = std::move(env),
-                           .shell = shell_parse_choice(std::nullopt) };
+                           .shell = shell };
 
   shell_result const result{ shell_run(script, cfg) };
 
@@ -171,8 +172,11 @@ void run_install_phase(recipe *r, engine &eng) {
     marked_complete = promote_stage_to_install(lock.get());
   } else if (install_obj.is<std::string>()) {
     std::string script{ install_obj.as<std::string>() };
-    marked_complete =
-        run_shell_install(script, lock->install_dir(), lock.get(), r->spec->identity);
+    marked_complete = run_shell_install(script,
+                                        lock->install_dir(),
+                                        lock.get(),
+                                        r->spec->identity,
+                                        shell_resolve_default(r->default_shell_ptr));
   } else if (install_obj.is<sol::protected_function>()) {
     marked_complete = run_programmatic_install(install_obj.as<sol::protected_function>(),
                                                lock.get(),
