@@ -182,31 +182,33 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
                                spec.identity);
     }
 
-    // Build Lua context table with all fetch bindings
-    sol::state_view parent_lua_view{ *parent->lua };
-    sol::table ctx_table{
-      build_fetch_phase_ctx_table(parent_lua_view, spec.identity, &ctx)
-    };
+    {
+      // Build Lua context table with all fetch bindings
+      sol::state_view parent_lua_view{ *parent->lua };
+      sol::table ctx_table{
+        build_fetch_phase_ctx_table(parent_lua_view, spec.identity, &ctx)
+      };
 
-    // Look up the fetch function from parent's dependencies
-    if (!recipe_spec::lookup_and_push_source_fetch(parent_lua_view, spec.identity)) {
-      throw std::runtime_error("Failed to lookup fetch function for: " + spec.identity);
-    }
+      // Look up the fetch function from parent's dependencies
+      if (!recipe_spec::lookup_and_push_source_fetch(parent_lua_view, spec.identity)) {
+        throw std::runtime_error("Failed to lookup fetch function for: " + spec.identity);
+      }
 
-    // Stack: [function]
-    // Call fetch(ctx, options)
-    sol::protected_function fetch_func{ parent_lua_view,
-                                        sol::stack_reference(parent_lua_view.lua_state(),
-                                                             -1) };
-    lua_pop(parent_lua_view.lua_state(), 1);  // pop function
-    sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
+      // Stack: [function]
+      // Call fetch(ctx, options)
+      sol::protected_function fetch_func{ parent_lua_view,
+                                          sol::stack_reference(parent_lua_view.lua_state(),
+                                                               -1) };
+      lua_pop(parent_lua_view.lua_state(), 1);  // pop function
+      sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
-    sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
+      sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
 
-    if (!fetch_result.valid()) {
-      sol::error err = fetch_result;
-      throw std::runtime_error("Fetch function failed for " + spec.identity + ": " +
-                               err.what());
+      if (!fetch_result.valid()) {
+        sol::error err = fetch_result;
+        throw std::runtime_error("Fetch function failed for " + spec.identity + ": " +
+                                 err.what());
+      }
     }
 
     cache_result.lock->mark_install_complete();
@@ -474,20 +476,22 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   validate_phases(sol::state_view{ *lua }, spec.identity);
 
   // Determine recipe type (user-managed or cache-managed)
-  sol::state_view lua_view{ *lua };
-  bool const has_check{ lua_view["check"].is<sol::protected_function>() ||
-                        lua_view["check"].is<std::string>() };
-  bool const has_install{ lua_view["install"].is<sol::protected_function>() ||
-                          lua_view["install"].is<std::string>() };
+  {
+    sol::state_view lua_view{ *lua };
+    bool const has_check{ lua_view["check"].is<sol::protected_function>() ||
+                          lua_view["check"].is<std::string>() };
+    bool const has_install{ lua_view["install"].is<sol::protected_function>() ||
+                            lua_view["install"].is<std::string>() };
 
-  if (has_check) {
-    if (!has_install) {
-      throw std::runtime_error("User-managed recipe must define 'install' function: " +
-                               spec.identity);
+    if (has_check) {
+      if (!has_install) {
+        throw std::runtime_error("User-managed recipe must define 'install' function: " +
+                                 spec.identity);
+      }
+      r->type = recipe_type::USER_MANAGED;
+    } else {
+      r->type = recipe_type::CACHE_MANAGED;
     }
-    r->type = recipe_type::USER_MANAGED;
-  } else {
-    r->type = recipe_type::CACHE_MANAGED;
   }
 
   r->products = parse_products_table(spec, *lua, r);
@@ -502,13 +506,13 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
     throw std::runtime_error(e.what() + std::string(" for ") + spec.identity);
   }
 
-  r->lua = std::move(lua);
-
   // Extract dependency identities for ctx.asset() validation
   r->declared_dependencies.reserve(r->owned_dependency_specs.size());
   for (auto const *dep_spec : r->owned_dependency_specs) {
     r->declared_dependencies.push_back(dep_spec->identity);
   }
+
+  r->lua = std::move(lua);
 
   wire_dependency_graph(r, eng);
 }
