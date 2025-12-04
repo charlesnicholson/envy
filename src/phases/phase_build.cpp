@@ -66,7 +66,8 @@ void run_programmatic_build(sol::protected_function build_func,
 
 void run_shell_build(std::string_view script,
                      std::filesystem::path const &stage_dir,
-                     std::string const &identity) {
+                     std::string const &identity,
+                     resolved_shell shell) {
   tui::debug("phase build: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -81,7 +82,7 @@ void run_shell_build(std::string_view script,
                                },
                            .cwd = stage_dir,
                            .env = std::move(env),
-                           .shell = shell_parse_choice(std::nullopt) };
+                           .shell = std::move(shell) };
 
   if (shell_result const result{ shell_run(script, inv) }; result.exit_code != 0) {
     if (result.signal) {
@@ -111,7 +112,10 @@ void run_build_phase(recipe *r, engine &eng) {
   if (!build_obj.valid()) {
     tui::debug("phase build: no build field, skipping");
   } else if (build_obj.is<std::string>()) {
-    run_shell_build(build_obj.as<std::string>(), r->lock->stage_dir(), r->spec->identity);
+    run_shell_build(build_obj.as<std::string>(),
+                    r->lock->stage_dir(),
+                    r->spec->identity,
+                    shell_resolve_default(r->default_shell_ptr));
   } else if (build_obj.is<sol::protected_function>()) {
     run_programmatic_build(build_obj.as<sol::protected_function>(),
                            r->lock->fetch_dir(),

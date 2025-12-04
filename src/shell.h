@@ -34,6 +34,7 @@ struct custom_shell_inline {
 };
 
 using custom_shell = std::variant<custom_shell_file, custom_shell_inline>;
+using resolved_shell = std::variant<shell_choice, custom_shell_file, custom_shell_inline>;
 
 // Manifest default_shell value (resolved to constant or custom shell)
 using default_shell_value =
@@ -44,17 +45,14 @@ using default_shell_value =
 // Manifest default_shell configuration (optional, nullopt if not specified)
 using default_shell_cfg_t = std::optional<default_shell_value>;
 
+// Resolve manifest default shell (or platform default if unset)
+resolved_shell shell_resolve_default(default_shell_cfg_t const *cfg);
+
 struct shell_run_cfg {
   std::function<void(std::string_view)> on_output_line;
   std::optional<std::filesystem::path> cwd;
   shell_env_t env;
-  std::variant<shell_choice, custom_shell_file, custom_shell_inline> shell{
-#if defined(_WIN32)
-    shell_choice::powershell
-#else
-    shell_choice::bash
-#endif
-  };
+  resolved_shell shell{ shell_resolve_default(nullptr) };
 };
 
 shell_choice shell_parse_choice(std::optional<std::string_view> value);

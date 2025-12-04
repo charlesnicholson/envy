@@ -102,8 +102,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
 
   // Helper to convert flat variant to nested variant structure
   auto const convert_parsed{
-    [](std::variant<shell_choice, custom_shell_file, custom_shell_inline> const &parsed)
-        -> default_shell_value {
+    [](resolved_shell const &parsed) -> default_shell_value {
       if (std::holds_alternative<shell_choice>(parsed)) {
         return std::get<shell_choice>(parsed);
       } else if (std::holds_alternative<custom_shell_file>(parsed)) {

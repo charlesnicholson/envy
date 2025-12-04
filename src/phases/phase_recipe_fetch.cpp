@@ -27,8 +27,10 @@ void validate_phases(sol::state_view lua, std::string const &identity) {
     return;
   }
 
-  bool const has_check{ lua["check"].is<sol::protected_function>() };
-  bool const has_install{ lua["install"].is<sol::protected_function>() };
+  bool const has_check{ lua["check"].is<sol::protected_function>() ||
+                        lua["check"].is<std::string>() };
+  bool const has_install{ lua["install"].is<sol::protected_function>() ||
+                          lua["install"].is<std::string>() };
 
   if (!has_check || !has_install) {
     throw std::runtime_error("Recipe must define 'fetch' or both 'check' and 'install': " +
@@ -473,8 +475,10 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   // Determine recipe type (user-managed or cache-managed)
   sol::state_view lua_view{ *lua };
-  bool const has_check{ lua_view["check"].is<sol::protected_function>() };
-  bool const has_install{ lua_view["install"].is<sol::protected_function>() };
+  bool const has_check{ lua_view["check"].is<sol::protected_function>() ||
+                        lua_view["check"].is<std::string>() };
+  bool const has_install{ lua_view["install"].is<sol::protected_function>() ||
+                          lua_view["install"].is<std::string>() };
 
   if (has_check) {
     if (!has_install) {
