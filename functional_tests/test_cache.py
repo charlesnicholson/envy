@@ -30,8 +30,9 @@ class CacheTestBase(unittest.TestCase):
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
         )
         # Each test gets its own trace directory, each process gets unique file
-        self.trace_dir = Path(f"C:/tmp/envy-test-trace-{self.test_id}")
-        self.trace_dir.mkdir(parents=True, exist_ok=True)
+        self.trace_dir = Path(
+            tempfile.mkdtemp(prefix=f"envy-test-trace-{self.test_id}-")
+        ).resolve()
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
