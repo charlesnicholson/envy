@@ -158,6 +158,12 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(recipe_fetch_counter_inc),
           TRACE_NAME(recipe_fetch_counter_dec),
           TRACE_NAME(debug_marker),
+          TRACE_NAME(cache_check_entry),
+          TRACE_NAME(cache_check_result),
+          TRACE_NAME(directory_flushed),
+          TRACE_NAME(file_touched),
+          TRACE_NAME(file_exists_check),
+          TRACE_NAME(directory_flush_failed),
           [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
@@ -289,7 +295,8 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::cache_hit const &value) {
             std::ostringstream oss;
             oss << "cache_hit recipe=" << value.recipe << " cache_key=" << value.cache_key
-                << " asset_path=" << value.asset_path;
+                << " asset_path=" << value.asset_path
+                << " fast_path=" << (value.fast_path ? "true" : "false");
             return oss.str();
           },
           [](trace_events::cache_miss const &value) {
@@ -343,6 +350,47 @@ std::string trace_event_to_string(trace_event_t const &event) {
             std::ostringstream oss;
             oss << "debug_marker recipe=" << value.recipe
                 << " marker_id=" << value.marker_id;
+            return oss.str();
+          },
+          [](trace_events::cache_check_entry const &value) {
+            std::ostringstream oss;
+            oss << "cache_check_entry recipe=" << value.recipe
+                << " entry_dir=" << value.entry_dir
+                << " check_location=" << value.check_location;
+            return oss.str();
+          },
+          [](trace_events::cache_check_result const &value) {
+            std::ostringstream oss;
+            oss << "cache_check_result recipe=" << value.recipe
+                << " entry_dir=" << value.entry_dir
+                << " is_complete=" << bool_string(value.is_complete)
+                << " check_location=" << value.check_location;
+            return oss.str();
+          },
+          [](trace_events::directory_flushed const &value) {
+            std::ostringstream oss;
+            oss << "directory_flushed recipe=" << value.recipe
+                << " dir_path=" << value.dir_path;
+            return oss.str();
+          },
+          [](trace_events::file_touched const &value) {
+            std::ostringstream oss;
+            oss << "file_touched recipe=" << value.recipe
+                << " file_path=" << value.file_path;
+            return oss.str();
+          },
+          [](trace_events::file_exists_check const &value) {
+            std::ostringstream oss;
+            oss << "file_exists_check recipe=" << value.recipe
+                << " file_path=" << value.file_path
+                << " exists=" << bool_string(value.exists);
+            return oss.str();
+          },
+          [](trace_events::directory_flush_failed const &value) {
+            std::ostringstream oss;
+            oss << "directory_flush_failed recipe=" << value.recipe
+                << " dir_path=" << value.dir_path
+                << " reason=" << value.reason;
             return oss.str();
           },
           [](auto const &) {
@@ -465,6 +513,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "cache_key", value.cache_key);
             append_kv(output, "asset_path", value.asset_path);
+            append_kv(output, "fast_path", value.fast_path);
           },
           [&](trace_events::cache_miss const &value) {
             append_recipe(value.recipe);
@@ -504,6 +553,35 @@ std::string trace_event_to_json(trace_event_t const &event) {
           [&](trace_events::debug_marker const &value) {
             append_recipe(value.recipe);
             append_kv(output, "marker_id", static_cast<std::int64_t>(value.marker_id));
+          },
+          [&](trace_events::cache_check_entry const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "entry_dir", value.entry_dir);
+            append_kv(output, "check_location", value.check_location);
+          },
+          [&](trace_events::cache_check_result const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "entry_dir", value.entry_dir);
+            append_kv(output, "is_complete", value.is_complete);
+            append_kv(output, "check_location", value.check_location);
+          },
+          [&](trace_events::directory_flushed const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "dir_path", value.dir_path);
+          },
+          [&](trace_events::file_touched const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "file_path", value.file_path);
+          },
+          [&](trace_events::file_exists_check const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "file_path", value.file_path);
+            append_kv(output, "exists", value.exists);
+          },
+          [&](trace_events::directory_flush_failed const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "dir_path", value.dir_path);
+            append_kv(output, "reason", value.reason);
           },
           [](auto const &) {},
       },

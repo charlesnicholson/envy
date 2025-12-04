@@ -549,7 +549,7 @@ TEST_CASE("trace event macros work with g_trace_enabled") {
   // These should not crash even when trace disabled
   ENVY_TRACE_PHASE_BLOCKED("r1", envy::recipe_phase::asset_check, "dep", envy::recipe_phase::completion);
   ENVY_TRACE_DEPENDENCY_ADDED("parent", "child", envy::recipe_phase::asset_fetch);
-  ENVY_TRACE_CACHE_HIT("r1", "key", "/path");
+  ENVY_TRACE_CACHE_HIT("r1", "key", "/path", true);
 
   // Enable trace and verify events can be emitted
   envy::tui::configure_trace_outputs(

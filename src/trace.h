@@ -124,6 +124,7 @@ struct cache_hit {
   std::string recipe;
   std::string cache_key;
   std::string asset_path;
+  bool fast_path;
 };
 
 struct cache_miss {
@@ -173,6 +174,41 @@ struct debug_marker {
   int marker_id;
 };
 
+struct cache_check_entry {
+  std::string recipe;
+  std::string entry_dir;
+  std::string check_location;  // "before_lock" or "after_lock"
+};
+
+struct cache_check_result {
+  std::string recipe;
+  std::string entry_dir;
+  bool is_complete;
+  std::string check_location;  // "before_lock" or "after_lock"
+};
+
+struct directory_flushed {
+  std::string recipe;
+  std::string dir_path;
+};
+
+struct file_touched {
+  std::string recipe;
+  std::string file_path;
+};
+
+struct file_exists_check {
+  std::string recipe;
+  std::string file_path;
+  bool exists;
+};
+
+struct directory_flush_failed {
+  std::string recipe;
+  std::string dir_path;
+  std::string reason;
+};
+
 }  // namespace trace_events
 
 using trace_event_t = std::variant<trace_events::phase_blocked,
@@ -200,7 +236,13 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::fetch_file_complete,
                                    trace_events::recipe_fetch_counter_inc,
                                    trace_events::recipe_fetch_counter_dec,
-                                   trace_events::debug_marker>;
+                                   trace_events::debug_marker,
+                                   trace_events::cache_check_entry,
+                                   trace_events::cache_check_result,
+                                   trace_events::directory_flushed,
+                                   trace_events::file_touched,
+                                   trace_events::file_exists_check,
+                                   trace_events::directory_flush_failed>;
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);
@@ -381,11 +423,12 @@ struct phase_trace_scope {
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, asset_path_value) \
+#define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, asset_path_value, fast_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_hit{ \
       .recipe = (recipe_value), \
       .cache_key = (cache_key_value), \
       .asset_path = (asset_path_value), \
+      .fast_path = (fast_path_value), \
   }))
 
 #define ENVY_TRACE_CACHE_MISS(recipe_value, cache_key_value) \
@@ -445,4 +488,48 @@ struct phase_trace_scope {
   ENVY_TRACE_EMIT((::envy::trace_events::debug_marker{ \
       .recipe = (recipe_value), \
       .marker_id = (marker_id_value), \
+  }))
+
+#define ENVY_TRACE_CACHE_CHECK_ENTRY(recipe_value, entry_dir_value, check_location_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::cache_check_entry{ \
+      .recipe = (recipe_value), \
+      .entry_dir = (entry_dir_value), \
+      .check_location = (check_location_value), \
+  }))
+
+#define ENVY_TRACE_CACHE_CHECK_RESULT(recipe_value, \
+                                      entry_dir_value, \
+                                      is_complete_value, \
+                                      check_location_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::cache_check_result{ \
+      .recipe = (recipe_value), \
+      .entry_dir = (entry_dir_value), \
+      .is_complete = (is_complete_value), \
+      .check_location = (check_location_value), \
+  }))
+
+#define ENVY_TRACE_DIRECTORY_FLUSHED(recipe_value, dir_path_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::directory_flushed{ \
+      .recipe = (recipe_value), \
+      .dir_path = (dir_path_value), \
+  }))
+
+#define ENVY_TRACE_FILE_TOUCHED(recipe_value, file_path_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::file_touched{ \
+      .recipe = (recipe_value), \
+      .file_path = (file_path_value), \
+  }))
+
+#define ENVY_TRACE_FILE_EXISTS_CHECK(recipe_value, file_path_value, exists_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::file_exists_check{ \
+      .recipe = (recipe_value), \
+      .file_path = (file_path_value), \
+      .exists = (exists_value), \
+  }))
+
+#define ENVY_TRACE_DIRECTORY_FLUSH_FAILED(recipe_value, dir_path_value, reason_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::directory_flush_failed{ \
+      .recipe = (recipe_value), \
+      .dir_path = (dir_path_value), \
+      .reason = (reason_value), \
   }))

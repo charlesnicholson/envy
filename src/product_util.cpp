@@ -34,7 +34,7 @@ std::string product_util_resolve(recipe *provider, std::string const &product_na
   }
 
   std::filesystem::path const full_path{ provider->asset_path / value };
-  return full_path.string();
+  return full_path.generic_string();
 }
 
 }  // namespace envy

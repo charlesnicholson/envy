@@ -32,6 +32,8 @@ class file_lock {
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to);
 void touch_file(std::filesystem::path const &path);
+void flush_directory(std::filesystem::path const &dir);
+bool file_exists(std::filesystem::path const &path);
 
 std::optional<std::filesystem::path> get_default_cache_root();
 char const *get_default_cache_root_env_vars();

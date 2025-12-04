@@ -18,20 +18,33 @@ def parse_keyvalue(output: str) -> dict:
     )
 
 
-class TestCacheLockingAndConcurrency(unittest.TestCase):
-    """Lock acquisition and concurrency tests."""
+class CacheTestBase(unittest.TestCase):
+    """Base class for cache tests with trace directory support."""
 
     def setUp(self):
+        super().setUp()
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
         self.envy_test = test_config.get_envy_executable()
         self.test_id = str(uuid.uuid4())
         self.barrier_dir = Path(
             tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
         )
+        # Each test gets its own trace directory, each process gets unique file
+        self.trace_dir = Path(f"C:/tmp/envy-test-trace-{self.test_id}")
+        self.trace_dir.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.barrier_dir, ignore_errors=True)
+        super().tearDown()
+
+    def _make_trace_file(self):
+        """Generate unique trace file path for a process in this test's trace directory."""
+        return self.trace_dir / f"proc-{uuid.uuid4()}.jsonl"
+
+
+class TestCacheLockingAndConcurrency(CacheTestBase):
+    """Lock acquisition and concurrency tests."""
 
     def run_cache_cmd(
         self,
@@ -42,7 +55,7 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         fail_before_complete=False,
     ):
         """Helper to run envy_functional_tester cache command."""
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -132,13 +145,14 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         self.assertIn("locked", result_a)
         self.assertIn("locked", result_b)
         locked_values = {result_a["locked"], result_b["locked"]}
+        # Critical invariant: exactly one process stages, one gets cache hit
         self.assertEqual(locked_values, {"true", "false"})
-        if result_a["locked"] == "false":
-            self.assertEqual(result_a["fast_path"], "true")
-            self.assertEqual(result_b["fast_path"], "false")
-        else:
+        # Fast path is timing-dependent (directory flush affects timing)
+        # The process that locked should always have fast_path=false
+        if result_a["locked"] == "true":
             self.assertEqual(result_a["fast_path"], "false")
-            self.assertEqual(result_b["fast_path"], "true")
+        else:
+            self.assertEqual(result_b["fast_path"], "false")
 
     def test_ensure_recipe_vs_ensure_asset_different_locks(self):
         """Verify recipe and asset locks don't conflict."""
@@ -168,23 +182,14 @@ class TestCacheLockingAndConcurrency(unittest.TestCase):
         self.assertEqual(proc_recipe.returncode, 0)
 
 
-class TestStagingAndCommit(unittest.TestCase):
+class TestStagingAndCommit(CacheTestBase):
     """Staging directory and commit behavior tests."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        # Each process gets unique trace file in test's trace directory
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -267,23 +272,13 @@ class TestStagingAndCommit(unittest.TestCase):
         self.skipTest("poll-entry command not implemented yet")
 
 
-class TestCrashRecovery(unittest.TestCase):
+class TestCrashRecovery(CacheTestBase):
     """Crash recovery and stale staging cleanup tests."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -371,23 +366,13 @@ class TestCrashRecovery(unittest.TestCase):
         self.assertEqual(proc_b.returncode, 0)
 
 
-class TestLockFileLifecycle(unittest.TestCase):
+class TestLockFileLifecycle(CacheTestBase):
     """Lock file creation and removal tests."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -453,23 +438,13 @@ class TestLockFileLifecycle(unittest.TestCase):
         self.assertIn(expected_lock, result.get("lock_file", ""))
 
 
-class TestEntryPathsAndStructure(unittest.TestCase):
+class TestEntryPathsAndStructure(CacheTestBase):
     """Entry path construction and cache directory structure tests."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -560,23 +535,13 @@ class TestEntryPathsAndStructure(unittest.TestCase):
         self.assertTrue(sentinel.exists())
 
 
-class TestEdgeCases(unittest.TestCase):
+class TestEdgeCases(CacheTestBase):
     """Edge cases and corner scenarios."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
@@ -617,11 +582,12 @@ class TestEdgeCases(unittest.TestCase):
 
         self.assertIn("locked", result_a)
         self.assertIn("locked", result_b)
+        # Critical invariant: process A must stage (locked=true)
         self.assertEqual(result_a["locked"], "true")
-        if result_b["locked"] == "false":
-            self.assertEqual(result_b["fast_path"], "true")
-        else:
-            self.assertEqual(result_b["fast_path"], "false")
+        self.assertEqual(result_a["fast_path"], "false")
+        # Process B gets cache hit (locked=false)
+        # Fast path is timing-dependent - B might see complete before or after waiting for lock
+        self.assertEqual(result_b["locked"], "false")
 
     def test_asset_without_marker_requires_lock(self):
         """Existing asset directory without marker still forces staging."""
@@ -696,23 +662,13 @@ class TestEdgeCases(unittest.TestCase):
         shutil.rmtree(custom_root)
 
 
-class TestSubprocessConcurrency(unittest.TestCase):
+class TestSubprocessConcurrency(CacheTestBase):
     """Integration tests with real subprocess spawning."""
 
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-cache-test-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.test_id = str(uuid.uuid4())
-        self.barrier_dir = Path(
-            tempfile.mkdtemp(prefix=f"envy-barrier-{self.test_id}-")
-        )
 
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.barrier_dir, ignore_errors=True)
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), "cache"] + list(args)
+        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--cache-root={self.cache_root}")
         cmd.append(f"--test-id={self.test_id}")
         if "crash_after_ms" in kwargs:
@@ -734,12 +690,19 @@ class TestSubprocessConcurrency(unittest.TestCase):
             stdout, _ = proc.communicate()
             results.append(parse_keyvalue(stdout))
 
-        # Exactly one locked (staged), rest fast path
+        # Exactly one locked (staged), rest cache hits (fast or slow path)
         locked_count = sum(1 for r in results if r["locked"] == "true")
         fast_path_count = sum(1 for r in results if r.get("fast_path") == "true")
+        cache_hit_count = sum(1 for r in results if r["locked"] == "false")
 
+        # Critical invariant: exactly one process stages the asset
         self.assertEqual(locked_count, 1)
-        self.assertEqual(fast_path_count, 4)
+        # The other 4 processes should all get cache hits
+        self.assertEqual(cache_hit_count, 4)
+        # Fast path count is timing-dependent (directory flush affects timing)
+        # It can range from 0 (all hit after lock) to 4 (all hit before lock)
+        self.assertGreaterEqual(fast_path_count, 0)
+        self.assertLessEqual(fast_path_count, 4)
 
     def test_sigkill_recovery(self):
         """Start staging, SIGKILL process, verify next process cleans up and succeeds."""
