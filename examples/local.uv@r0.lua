@@ -6,3 +6,5 @@ fetch = {
 }
 
 stage = { strip = 1 }
+
+products = { uv = "uv" }

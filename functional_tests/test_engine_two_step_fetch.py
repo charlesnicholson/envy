@@ -119,8 +119,8 @@ function fetch(ctx, opts)
 
   -- Step 3: Fetch files listed in manifest
   local files = ctx.fetch({{
-    "{self.lua_path(manifest_dir / 'file1.txt')}",
-    "{self.lua_path(manifest_dir / 'file2.txt')}"
+    "{self.lua_path(manifest_dir / "file1.txt")}",
+    "{self.lua_path(manifest_dir / "file2.txt")}"
   }})
 
   -- Step 4: Commit all files (manifest + listed files)

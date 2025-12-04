@@ -9,7 +9,6 @@
 #include <ctime>
 #include <sstream>
 #include <string>
-#include <type_traits>
 
 namespace envy {
 
@@ -148,12 +147,23 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(lua_ctx_fetch_complete),
           TRACE_NAME(lua_ctx_extract_start),
           TRACE_NAME(lua_ctx_extract_complete),
+          TRACE_NAME(lua_ctx_asset_access),
+          TRACE_NAME(lua_ctx_product_access),
           TRACE_NAME(cache_hit),
           TRACE_NAME(cache_miss),
           TRACE_NAME(lock_acquired),
           TRACE_NAME(lock_released),
           TRACE_NAME(fetch_file_start),
           TRACE_NAME(fetch_file_complete),
+          TRACE_NAME(recipe_fetch_counter_inc),
+          TRACE_NAME(recipe_fetch_counter_dec),
+          TRACE_NAME(debug_marker),
+          TRACE_NAME(cache_check_entry),
+          TRACE_NAME(cache_check_result),
+          TRACE_NAME(directory_flushed),
+          TRACE_NAME(file_touched),
+          TRACE_NAME(file_exists_check),
+          TRACE_NAME(directory_flush_failed),
           [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
@@ -264,10 +274,29 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " duration_ms=" << value.duration_ms;
             return oss.str();
           },
+          [](trace_events::lua_ctx_asset_access const &value) {
+            std::ostringstream oss;
+            oss << "lua_ctx_asset_access recipe=" << value.recipe
+                << " target=" << value.target
+                << " current_phase=" << recipe_phase_name(value.current_phase)
+                << " needed_by=" << recipe_phase_name(value.needed_by)
+                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
+            return oss.str();
+          },
+          [](trace_events::lua_ctx_product_access const &value) {
+            std::ostringstream oss;
+            oss << "lua_ctx_product_access recipe=" << value.recipe
+                << " product=" << value.product << " provider=" << value.provider
+                << " current_phase=" << recipe_phase_name(value.current_phase)
+                << " needed_by=" << recipe_phase_name(value.needed_by)
+                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
+            return oss.str();
+          },
           [](trace_events::cache_hit const &value) {
             std::ostringstream oss;
             oss << "cache_hit recipe=" << value.recipe << " cache_key=" << value.cache_key
-                << " asset_path=" << value.asset_path;
+                << " asset_path=" << value.asset_path
+                << " fast_path=" << (value.fast_path ? "true" : "false");
             return oss.str();
           },
           [](trace_events::cache_miss const &value) {
@@ -302,6 +331,66 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " bytes_downloaded=" << value.bytes_downloaded
                 << " duration_ms=" << value.duration_ms
                 << " from_cache=" << bool_string(value.from_cache);
+            return oss.str();
+          },
+          [](trace_events::recipe_fetch_counter_inc const &value) {
+            std::ostringstream oss;
+            oss << "recipe_fetch_counter_inc recipe=" << value.recipe
+                << " new_value=" << value.new_value;
+            return oss.str();
+          },
+          [](trace_events::recipe_fetch_counter_dec const &value) {
+            std::ostringstream oss;
+            oss << "recipe_fetch_counter_dec recipe=" << value.recipe
+                << " new_value=" << value.new_value
+                << " was_completed=" << bool_string(value.was_completed);
+            return oss.str();
+          },
+          [](trace_events::debug_marker const &value) {
+            std::ostringstream oss;
+            oss << "debug_marker recipe=" << value.recipe
+                << " marker_id=" << value.marker_id;
+            return oss.str();
+          },
+          [](trace_events::cache_check_entry const &value) {
+            std::ostringstream oss;
+            oss << "cache_check_entry recipe=" << value.recipe
+                << " entry_dir=" << value.entry_dir
+                << " check_location=" << value.check_location;
+            return oss.str();
+          },
+          [](trace_events::cache_check_result const &value) {
+            std::ostringstream oss;
+            oss << "cache_check_result recipe=" << value.recipe
+                << " entry_dir=" << value.entry_dir
+                << " is_complete=" << bool_string(value.is_complete)
+                << " check_location=" << value.check_location;
+            return oss.str();
+          },
+          [](trace_events::directory_flushed const &value) {
+            std::ostringstream oss;
+            oss << "directory_flushed recipe=" << value.recipe
+                << " dir_path=" << value.dir_path;
+            return oss.str();
+          },
+          [](trace_events::file_touched const &value) {
+            std::ostringstream oss;
+            oss << "file_touched recipe=" << value.recipe
+                << " file_path=" << value.file_path;
+            return oss.str();
+          },
+          [](trace_events::file_exists_check const &value) {
+            std::ostringstream oss;
+            oss << "file_exists_check recipe=" << value.recipe
+                << " file_path=" << value.file_path
+                << " exists=" << bool_string(value.exists);
+            return oss.str();
+          },
+          [](trace_events::directory_flush_failed const &value) {
+            std::ostringstream oss;
+            oss << "directory_flush_failed recipe=" << value.recipe
+                << " dir_path=" << value.dir_path
+                << " reason=" << value.reason;
             return oss.str();
           },
           [](auto const &) {
@@ -403,10 +492,28 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "files_extracted", value.files_extracted);
             append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
+          [&](trace_events::lua_ctx_asset_access const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "target", value.target);
+            append_phase(output, "current_phase", value.current_phase);
+            append_phase(output, "needed_by", value.needed_by);
+            append_kv(output, "allowed", value.allowed);
+            append_kv(output, "reason", value.reason);
+          },
+          [&](trace_events::lua_ctx_product_access const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "product", value.product);
+            append_kv(output, "provider", value.provider);
+            append_phase(output, "current_phase", value.current_phase);
+            append_phase(output, "needed_by", value.needed_by);
+            append_kv(output, "allowed", value.allowed);
+            append_kv(output, "reason", value.reason);
+          },
           [&](trace_events::cache_hit const &value) {
             append_recipe(value.recipe);
             append_kv(output, "cache_key", value.cache_key);
             append_kv(output, "asset_path", value.asset_path);
+            append_kv(output, "fast_path", value.fast_path);
           },
           [&](trace_events::cache_miss const &value) {
             append_recipe(value.recipe);
@@ -433,6 +540,48 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "bytes_downloaded", value.bytes_downloaded);
             append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
             append_kv(output, "from_cache", value.from_cache);
+          },
+          [&](trace_events::recipe_fetch_counter_inc const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
+          },
+          [&](trace_events::recipe_fetch_counter_dec const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
+            append_kv(output, "was_completed", value.was_completed);
+          },
+          [&](trace_events::debug_marker const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "marker_id", static_cast<std::int64_t>(value.marker_id));
+          },
+          [&](trace_events::cache_check_entry const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "entry_dir", value.entry_dir);
+            append_kv(output, "check_location", value.check_location);
+          },
+          [&](trace_events::cache_check_result const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "entry_dir", value.entry_dir);
+            append_kv(output, "is_complete", value.is_complete);
+            append_kv(output, "check_location", value.check_location);
+          },
+          [&](trace_events::directory_flushed const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "dir_path", value.dir_path);
+          },
+          [&](trace_events::file_touched const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "file_path", value.file_path);
+          },
+          [&](trace_events::file_exists_check const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "file_path", value.file_path);
+            append_kv(output, "exists", value.exists);
+          },
+          [&](trace_events::directory_flush_failed const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "dir_path", value.dir_path);
+            append_kv(output, "reason", value.reason);
           },
           [](auto const &) {},
       },

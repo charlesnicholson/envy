@@ -5,6 +5,7 @@
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_product.h"
 #include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
@@ -26,6 +27,7 @@ struct cli_args {
                                  cmd_fetch::cfg,
                                  cmd_hash::cfg,
                                  cmd_lua::cfg,
+                                 cmd_product::cfg,
                                  cmd_sync::cfg,
                                  cmd_version::cfg
 #ifdef ENVY_FUNCTIONAL_TESTER

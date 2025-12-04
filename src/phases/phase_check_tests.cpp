@@ -9,6 +9,7 @@
 
 #include "doctest.h"
 
+#include <filesystem>
 #include <memory>
 
 namespace envy {
@@ -36,7 +37,8 @@ struct test_recipe_fixture {
                                         nullptr,
                                         nullptr,
                                         std::vector<recipe_spec *>{},
-                                        std::nullopt);
+                                        std::nullopt,
+                                        std::filesystem::path{});
 
     // Create Lua state first
     auto lua_state = sol_util_make_lua_state();
@@ -45,15 +47,22 @@ struct test_recipe_fixture {
     r = std::unique_ptr<recipe>(new recipe{
         .key = recipe_key(*spec),
         .spec = spec,
+        .exec_ctx = nullptr,
         .lua = std::move(lua_state),
         // lua_mutex is default-initialized
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
+        .product_dependencies = {},
+        .weak_references = {},
+        .products = {},
+        .resolved_weak_dependency_keys = {},
         .canonical_identity_hash = {},
         .asset_path = std::filesystem::path{},
+        .recipe_file_path = std::nullopt,
         .result_hash = {},
+        .type = recipe_type::UNKNOWN,
         .cache_ptr = nullptr,
         .default_shell_ptr = nullptr,
     });
@@ -63,11 +72,10 @@ struct test_recipe_fixture {
 
   void set_check_function(std::string_view lua_code) {
     std::string code = "return " + std::string(lua_code);
-    sol::protected_function_result res{
-      r->lua->safe_script(code, sol::script_pass_on_error)
-    };
+    sol::protected_function_result res{ r->lua->safe_script(code,
+                                                            sol::script_pass_on_error) };
     if (!res.valid()) {
-      sol::error err{ res };
+      sol::error err = res;
       throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
     }
     (*r->lua)["check"] = res.get<sol::protected_function>();
@@ -192,9 +200,9 @@ TEST_CASE("run_check_string returns false for failing command") {
 TEST_CASE("run_check_function returns true when function returns true") {
   test_recipe_fixture f;
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) return true end", sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(ctx) return true end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
@@ -205,9 +213,9 @@ TEST_CASE("run_check_function returns true when function returns true") {
 TEST_CASE("run_check_function returns false when function returns false") {
   test_recipe_fixture f;
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) return false end", sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(ctx) return false end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
@@ -244,9 +252,36 @@ TEST_CASE("run_check_function returns true when function returns truthy value") 
 TEST_CASE("run_check_function returns true when function returns string") {
   test_recipe_fixture f;
 
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(ctx) return 'yes' end",
+      sol::script_pass_on_error) };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
+
+  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
+  namespace fs = std::filesystem;
+  test_recipe_fixture f;
+
+  fs::path project_dir{ fs::temp_directory_path() / "envy-check-cwd" };
+  fs::create_directories(project_dir);
+  f.spec->declaring_file_path = project_dir / "envy.lua";
+
+  std::error_code ec;
+  fs::path canonical_dir{ fs::weakly_canonical(project_dir, ec) };
+  if (ec) { canonical_dir = fs::absolute(project_dir); }
+
+  std::string lua_script =
+      "return function(ctx)\n"
+      "  local out = ctx.run(\"pwd\").stdout\n"
+      "  return string.find(out, \"envy%-check%-cwd\") ~= nil\n"
+      "end";
+
   sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) return 'yes' end",
-                          sol::script_pass_on_error)
+    f.r->lua->safe_script(lua_script, sol::script_pass_on_error)
   };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
@@ -258,16 +293,14 @@ TEST_CASE("run_check_function returns true when function returns string") {
 TEST_CASE("run_check_function throws when function has Lua error") {
   test_recipe_fixture f;
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) error('test error') end",
-                          sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(ctx) error('test error') end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  CHECK_THROWS_AS(
-      run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func),
-      std::runtime_error);
+  CHECK_THROWS_AS(run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func),
+                  std::runtime_error);
 }
 
 TEST_CASE("run_check_function receives empty ctx table") {
@@ -383,7 +416,8 @@ TEST_CASE("run_check_function propagates Lua error with context") {
   f.spec->identity = "my.package@v1";
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) error('something went wrong') end", sol::script_pass_on_error) };
+      "return function(ctx) error('something went wrong') end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
 
   sol::protected_function check_func{ res };

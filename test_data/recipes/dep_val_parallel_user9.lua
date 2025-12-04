@@ -2,7 +2,7 @@
 identity = "local.dep_val_parallel_user9@v1"
 
 dependencies = {
-  { recipe = "local.dep_val_parallel_base@v1", source = "dep_val_parallel_base.lua" }
+  { recipe = "local.dep_val_parallel_base@v1", source = "dep_val_parallel_base.lua", needed_by = "stage" }
 }
 
 fetch = {

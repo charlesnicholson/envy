@@ -45,7 +45,8 @@ TEST_CASE("recipe_key: from recipe_spec with no options") {
                                                   nullptr,
                                                   nullptr,
                                                   std::vector<recipe_spec *>{},
-                                                  std::nullopt) };
+                                                  std::nullopt,
+                                                  std::filesystem::path{}) };
 
   recipe_key key(*spec);
 
@@ -64,7 +65,8 @@ TEST_CASE("recipe_key: from recipe_spec with options") {
                                                   nullptr,
                                                   nullptr,
                                                   std::vector<recipe_spec *>{},
-                                                  std::nullopt) };
+                                                  std::nullopt,
+                                                  std::filesystem::path{}) };
 
   recipe_key key(*spec);
 

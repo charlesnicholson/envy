@@ -34,7 +34,8 @@ bool cmd_engine_functional_test::execute() {
                                                         nullptr,
                                                         nullptr,
                                                         std::vector<recipe_spec *>{},
-                                                        std::nullopt) };
+                                                        std::nullopt,
+                                                        std::filesystem::path{}) };
 
   // Create minimal manifest for engine (no default_shell for tests)
   auto m{ manifest::load("packages = {}", cfg_.recipe_path) };
@@ -43,9 +44,20 @@ bool cmd_engine_functional_test::execute() {
   engine eng{ c, m->get_default_shell(nullptr) };
   auto result{ eng.run_full({ recipe_cfg }) };
 
-  // Output results as key -> value lines (avoid = which appears in option keys)
+  // Output results as key -> type (avoid = which appears in option keys)
   for (auto const &[id, res] : result) {
-    tui::print_stdout("%s -> %s\n", id.c_str(), res.result_hash.c_str());
+    auto const type_str{ [&]() {
+      switch (res.type) {
+        case recipe_type::CACHE_MANAGED:
+          return "cache-managed";
+        case recipe_type::USER_MANAGED:
+          return "user-managed";
+        case recipe_type::UNKNOWN:
+          return "unknown";
+      }
+      return "unknown";
+    }() };
+    tui::print_stdout("%s -> %s\n", id.c_str(), type_str);
   }
 
   return true;

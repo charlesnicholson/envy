@@ -18,7 +18,7 @@ std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extr
     int strip_components{ 0 };
 
     if (opts_table) {
-      sol::optional<int> strip{ (*opts_table)["strip"] };
+      sol::optional<int> strip = (*opts_table)["strip"];
       if (strip) {
         strip_components = *strip;
         if (strip_components < 0) {

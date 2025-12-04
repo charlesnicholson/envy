@@ -1,7 +1,8 @@
 #include "sha256.h"
 
-#include "mbedtls/sha256.h"
 #include "util.h"
+
+#include "mbedtls/sha256.h"
 
 #include <cstdio>
 #include <cstring>

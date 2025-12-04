@@ -63,17 +63,17 @@ TEST_CASE("ctx.fetch - collision detection with same basename") {
 
   // Fetch three files with same basename
   std::string lua_code =
-      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\", \"" +
-      file3.string() + "\"})";
+      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\", \"" +
+      file3.generic_string() + "\"})";
 
   // Execute
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
   REQUIRE(result.valid());
 
-  sol::table files{ result };
-  std::string basename1{ files[1] };
-  std::string basename2{ files[2] };
-  std::string basename3{ files[3] };
+  sol::table files = result;
+  std::string basename1 = files[1];
+  std::string basename2 = files[2];
+  std::string basename3 = files[3];
 
   // Verify collision suffixes were added
   CHECK(basename1 == "file.txt");
@@ -122,16 +122,16 @@ TEST_CASE("ctx.fetch - collision detection preserves extension") {
   (*lua)["ctx"] = ctx_table;
 
   std::string lua_code =
-      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\", \"" +
-      file3.string() + "\"})";
+      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\", \"" +
+      file3.generic_string() + "\"})";
 
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
   REQUIRE(result.valid());
 
-  sol::table files{ result };
-  std::string basename1{ files[1] };
-  std::string basename2{ files[2] };
-  std::string basename3{ files[3] };
+  sol::table files = result;
+  std::string basename1 = files[1];
+  std::string basename2 = files[2];
+  std::string basename3 = files[3];
 
   // Verify extension is preserved (splits at last dot)
   CHECK(basename1 == "tool.tar.gz");
@@ -167,14 +167,14 @@ TEST_CASE("ctx.fetch - collision detection with no extension") {
   (*lua)["ctx"] = ctx_table;
 
   std::string lua_code =
-      "return ctx.fetch({\"" + file1.string() + "\", \"" + file2.string() + "\"})";
+      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\"})";
 
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
   REQUIRE(result.valid());
 
-  sol::table files{ result };
-  std::string basename1{ files[1] };
-  std::string basename2{ files[2] };
+  sol::table files = result;
+  std::string basename1 = files[1];
+  std::string basename2 = files[2];
 
   // Verify suffix added without extension
   CHECK(basename1 == "README");
@@ -208,14 +208,14 @@ TEST_CASE("ctx.fetch - collision tracking across multiple calls") {
   (*lua)["ctx"] = ctx_table;
 
   // First fetch call
-  std::string lua_code1 = "local f1 = ctx.fetch(\"" + file1.string() + "\"); return f1";
+  std::string lua_code1 = "local f1 = ctx.fetch(\"" + file1.generic_string() + "\"); return f1";
   auto result1{ lua->safe_script(lua_code1, sol::script_pass_on_error) };
   REQUIRE(result1.valid());
   std::string basename1{ result1.get<std::string>() };
   CHECK(basename1 == "lib.so");
 
   // Second fetch call - should detect collision from first call
-  std::string lua_code2 = "local f2 = ctx.fetch(\"" + file2.string() + "\"); return f2";
+  std::string lua_code2 = "local f2 = ctx.fetch(\"" + file2.generic_string() + "\"); return f2";
   auto result2{ lua->safe_script(lua_code2, sol::script_pass_on_error) };
   REQUIRE(result2.valid());
   std::string basename2{ result2.get<std::string>() };

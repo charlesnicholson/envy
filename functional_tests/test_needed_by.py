@@ -53,7 +53,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_fetch_parent@v1",
             "local.needed_by_fetch_dep@v1",
-            RecipePhase.ASSET_FETCH
+            RecipePhase.ASSET_FETCH,
         )
 
     def test_needed_by_build(self):
@@ -80,7 +80,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_build_parent@v1",
             "local.needed_by_build_dep@v1",
-            RecipePhase.ASSET_BUILD
+            RecipePhase.ASSET_BUILD,
         )
 
     def test_needed_by_stage(self):
@@ -107,7 +107,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_stage_parent@v1",
             "local.needed_by_stage_dep@v1",
-            RecipePhase.ASSET_STAGE
+            RecipePhase.ASSET_STAGE,
         )
 
     def test_needed_by_install(self):
@@ -134,7 +134,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_install_parent@v1",
             "local.needed_by_install_dep@v1",
-            RecipePhase.ASSET_INSTALL
+            RecipePhase.ASSET_INSTALL,
         )
 
     def test_needed_by_deploy(self):
@@ -161,7 +161,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_deploy_parent@v1",
             "local.needed_by_deploy_dep@v1",
-            RecipePhase.ASSET_DEPLOY
+            RecipePhase.ASSET_DEPLOY,
         )
 
     def test_needed_by_check(self):
@@ -188,7 +188,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_check_parent@v1",
             "local.needed_by_check_dep@v1",
-            RecipePhase.ASSET_CHECK
+            RecipePhase.ASSET_CHECK,
         )
 
     def test_needed_by_default_to_build(self):
@@ -209,13 +209,13 @@ class TestNeededBy(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_default_parent@v1", result.stdout)
-        self.assertIn("local.simple@v1", result.stdout)
+        self.assertIn("local.dep_val_lib@v1", result.stdout)
 
         parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_default_parent@v1",
-            "local.simple@v1",
-            RecipePhase.ASSET_BUILD
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_BUILD,
         )
 
     def test_needed_by_invalid_phase_name(self):
@@ -259,9 +259,15 @@ class TestNeededBy(unittest.TestCase):
 
         # Verify all three recipes completed successfully
         parser = TraceParser(trace_file)
-        for recipe in ["local.needed_by_chain_a@v1", "local.needed_by_chain_b@v1", "local.needed_by_chain_c@v1"]:
+        for recipe in [
+            "local.needed_by_chain_a@v1",
+            "local.needed_by_chain_b@v1",
+            "local.needed_by_chain_c@v1",
+        ]:
             completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
-            self.assertGreater(len(completes), 0, f"Expected {recipe} to complete phases")
+            self.assertGreater(
+                len(completes), 0, f"Expected {recipe} to complete phases"
+            )
 
     def test_needed_by_diamond(self):
         """Diamond: A depends on B+C with different needed_by phases."""
@@ -286,9 +292,15 @@ class TestNeededBy(unittest.TestCase):
 
         # Verify all three recipes completed
         parser = TraceParser(trace_file)
-        for recipe in ["local.needed_by_diamond_a@v1", "local.needed_by_diamond_b@v1", "local.needed_by_diamond_c@v1"]:
+        for recipe in [
+            "local.needed_by_diamond_a@v1",
+            "local.needed_by_diamond_b@v1",
+            "local.needed_by_diamond_c@v1",
+        ]:
             completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
-            self.assertGreater(len(completes), 0, f"Expected {recipe} to complete phases")
+            self.assertGreater(
+                len(completes), 0, f"Expected {recipe} to complete phases"
+            )
 
     def test_needed_by_race_condition(self):
         """Dependency completes before parent discovers it - late edge addition handled."""
@@ -316,7 +328,9 @@ class TestNeededBy(unittest.TestCase):
         self.assertIn("local.needed_by_race_parent@v1", result.stdout)
 
         parser = TraceParser(trace_file)
-        completes = parser.filter_by_recipe_and_event("local.needed_by_race_parent@v1", "phase_complete")
+        completes = parser.filter_by_recipe_and_event(
+            "local.needed_by_race_parent@v1", "phase_complete"
+        )
         self.assertGreater(len(completes), 0, "Expected parent to complete phases")
 
     def test_needed_by_with_cache_hit(self):

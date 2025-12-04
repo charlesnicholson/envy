@@ -39,6 +39,7 @@ if(MSVC)
         message(FATAL_ERROR "MASM assembler was not detected")
     endif()
     set(CMAKE_ASM_COMPILER "${CMAKE_ASM_MASM_COMPILER}" CACHE FILEPATH "" FORCE)
+    set(CMAKE_ASM_MASM_FLAGS "/nologo" CACHE STRING "" FORCE)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "" FORCE)
     set(_envy_msvc_flag_vars
         CMAKE_C_FLAGS
@@ -101,18 +102,30 @@ if(ENABLE_LTO)
         # Explicitly add LTO flags to linker for all compilers
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
             foreach(_type RELEASE RELWITHDEBINFO MINSIZEREL)
-                set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto=thin" CACHE STRING "${_type} exe linker flags" FORCE)
-                set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto=thin" CACHE STRING "${_type} shared linker flags" FORCE)
+                if(NOT "${CMAKE_EXE_LINKER_FLAGS_${_type}}" MATCHES "-flto")
+                    set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto=thin" CACHE STRING "${_type} exe linker flags" FORCE)
+                endif()
+                if(NOT "${CMAKE_SHARED_LINKER_FLAGS_${_type}}" MATCHES "-flto")
+                    set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto=thin" CACHE STRING "${_type} shared linker flags" FORCE)
+                endif()
             endforeach()
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             foreach(_type RELEASE RELWITHDEBINFO MINSIZEREL)
-                set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} exe linker flags" FORCE)
-                set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} shared linker flags" FORCE)
+                if(NOT "${CMAKE_EXE_LINKER_FLAGS_${_type}}" MATCHES "-flto")
+                    set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} exe linker flags" FORCE)
+                endif()
+                if(NOT "${CMAKE_SHARED_LINKER_FLAGS_${_type}}" MATCHES "-flto")
+                    set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} -flto" CACHE STRING "${_type} shared linker flags" FORCE)
+                endif()
             endforeach()
         elseif(MSVC)
             foreach(_type RELEASE RELWITHDEBINFO MINSIZEREL)
-                set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} /LTCG" CACHE STRING "${_type} exe linker flags" FORCE)
-                set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} /LTCG" CACHE STRING "${_type} shared linker flags" FORCE)
+                if(NOT "${CMAKE_EXE_LINKER_FLAGS_${_type}}" MATCHES "/LTCG")
+                    set(CMAKE_EXE_LINKER_FLAGS_${_type} "${CMAKE_EXE_LINKER_FLAGS_${_type}} /LTCG" CACHE STRING "${_type} exe linker flags" FORCE)
+                endif()
+                if(NOT "${CMAKE_SHARED_LINKER_FLAGS_${_type}}" MATCHES "/LTCG")
+                    set(CMAKE_SHARED_LINKER_FLAGS_${_type} "${CMAKE_SHARED_LINKER_FLAGS_${_type}} /LTCG" CACHE STRING "${_type} shared linker flags" FORCE)
+                endif()
             endforeach()
         endif()
     else()
@@ -122,24 +135,26 @@ endif()
 
 # Enable AddressSanitizer globally on MSVC when ENVY_ENABLE_ASAN is set
 if(MSVC AND ENVY_ENABLE_ASAN)
-    add_compile_options(/fsanitize=address)
+    add_compile_options($<$<COMPILE_LANGUAGE:C>:/fsanitize=address>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fsanitize=address>)
     add_link_options(/INCREMENTAL:NO)
-    message(STATUS "MSVC: AddressSanitizer enabled globally for all targets")
+    message(STATUS "MSVC: AddressSanitizer enabled globally for C/C++ targets")
 endif()
 
 include(cmake/Dependencies.cmake)
 
-# Common source files shared by all envy executables
-set(ENVY_COMMON_SOURCES
-    src/main.cpp
+# Common source files shared by all envy executables (main added separately)
+set(ENVY_BASE_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
     src/cmds/cmd_asset.cpp
+    src/cmds/cmd_common.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
     src/cmds/cmd_hash.cpp
     src/cmds/cmd_lua.cpp
+    src/cmds/cmd_product.cpp
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_version.cpp
     src/engine.cpp
@@ -155,6 +170,8 @@ set(ENVY_COMMON_SOURCES
     src/lua_ctx/lua_ctx_ls.cpp
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
+    src/lua_ctx/lua_ctx_product.cpp
+    src/product_util.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
@@ -168,12 +185,13 @@ set(ENVY_COMMON_SOURCES
     src/blake3_util.cpp
     src/libgit2_util.cpp
     src/sol_util.cpp
-    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
     src/lua_shell.cpp
     src/lua_envy.cpp
+    src/lua_error_formatter.cpp
     src/manifest.cpp
     src/recipe_spec.cpp
-    src/sha256.cpp
+    $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
     src/libcurl_util.cpp
     src/platform.cpp
@@ -185,6 +203,9 @@ set(ENVY_COMMON_SOURCES
     src/uri.cpp
     src/util.cpp
 )
+
+# Add main for production/functional binaries
+set(ENVY_COMMON_SOURCES ${ENVY_BASE_SOURCES} src/main.cpp)
 
 # Functional test-specific sources
 set(ENVY_FUNCTIONAL_TEST_SOURCES
@@ -357,63 +378,6 @@ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     unset(_envy_rescan_expanded_targets)
 endif()
 
-# Unit tests ---------------------------------------------------------------
-# Common sources minus main.cpp for unit tests (which have unit_test_main.cpp)
-set(ENVY_UNIT_TEST_COMMON_SOURCES
-    src/cache.cpp
-    src/cli.cpp
-    src/cmd.cpp
-    src/cmds/cmd_asset.cpp
-    src/cmds/cmd_extract.cpp
-    src/cmds/cmd_fetch.cpp
-    src/cmds/cmd_hash.cpp
-    src/cmds/cmd_lua.cpp
-    src/cmds/cmd_sync.cpp
-    src/cmds/cmd_version.cpp
-    src/engine.cpp
-    src/recipe_key.cpp
-    src/lua_ctx/lua_ctx_bindings.cpp
-    src/lua_ctx/lua_ctx_asset.cpp
-    src/lua_ctx/lua_ctx_commit_fetch.cpp
-    src/lua_ctx/lua_ctx_copy.cpp
-    src/lua_ctx/lua_ctx_extract.cpp
-    src/lua_ctx/lua_ctx_extract_all.cpp
-    src/lua_ctx/lua_ctx_fetch.cpp
-    src/lua_ctx/lua_ctx_ls.cpp
-    src/lua_ctx/lua_ctx_move.cpp
-    src/lua_ctx/lua_ctx_run.cpp
-    src/phases/phase_build.cpp
-    src/phases/phase_check.cpp
-    src/phases/phase_completion.cpp
-    src/phases/phase_deploy.cpp
-    src/phases/phase_fetch.cpp
-    src/phases/phase_install.cpp
-    src/phases/phase_recipe_fetch.cpp
-    src/phases/phase_stage.cpp
-    src/extract.cpp
-    src/aws_util.cpp
-    src/blake3_util.cpp
-    src/libgit2_util.cpp
-    src/sol_util.cpp
-    $<$<PLATFORM_ID:Windows>:src/mbedtls_threading_windows.cpp>
-    src/lua_shell.cpp
-    src/lua_envy.cpp
-    src/manifest.cpp
-    src/recipe_phase.cpp
-    src/recipe_spec.cpp
-    src/sha256.cpp
-    src/fetch.cpp
-    src/libcurl_util.cpp
-    src/platform.cpp
-    src/shell.cpp
-    $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
-    $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
-    src/trace.cpp
-    src/tui.cpp
-    src/uri.cpp
-    src/util.cpp
-)
-
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
     src/blake3_util_tests.cpp
@@ -421,6 +385,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cli_tests.cpp
     src/cmds/cmd_tests.cpp
     src/phases/phase_check_tests.cpp
+    src/phases/phase_recipe_fetch_tests.cpp
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
@@ -431,6 +396,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/engine_weak_resolution_tests.cpp
     src/engine_target_phase_tests.cpp
     src/fetch_tests.cpp
+    src/lua_error_formatter_tests.cpp
     src/lua_shell_tests.cpp
     src/manifest_tests.cpp
     src/recipe_spec_tests.cpp
@@ -439,7 +405,9 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx/lua_ctx_bindings_tests.cpp
     src/lua_ctx/lua_ctx_copy_tests.cpp
     src/lua_ctx/lua_ctx_fetch_tests.cpp
+    src/lua_ctx_asset_product_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
+    src/product_util_tests.cpp
     src/sha256_tests.cpp
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
@@ -450,7 +418,7 @@ set(ENVY_UNIT_TEST_SOURCES
 )
 
 add_executable(envy_unit_tests)
-target_sources(envy_unit_tests PRIVATE ${ENVY_UNIT_TEST_COMMON_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
+target_sources(envy_unit_tests PRIVATE ${ENVY_BASE_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
 target_link_libraries(envy_unit_tests PRIVATE doctest::doctest)
 # GCC: Disable ASan to avoid AWS SDK hashlittle2 false positive (LTO inlines across libs)

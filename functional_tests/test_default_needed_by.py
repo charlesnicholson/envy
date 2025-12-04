@@ -18,6 +18,7 @@ class TestDefaultNeededBy(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
     def test_default_needed_by_is_build_not_check(self):
@@ -45,14 +46,17 @@ class TestDefaultNeededBy(unittest.TestCase):
         # Verify dependency was added with correct needed_by phase
         parser.assert_dependency_needed_by(
             "local.default_needed_by_parent@v1",
-            "local.simple@v1",
-            RecipePhase.ASSET_BUILD
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_BUILD,
         )
 
         # Verify phase sequence - parent should execute through build phase
         parent_sequence = parser.get_phase_sequence("local.default_needed_by_parent@v1")
-        self.assertIn(RecipePhase.ASSET_BUILD, parent_sequence,
-                     "Parent should reach build phase where dependency is needed")
+        self.assertIn(
+            RecipePhase.ASSET_BUILD,
+            parent_sequence,
+            "Parent should reach build phase where dependency is needed",
+        )
 
     def test_explicit_needed_by_check_still_works(self):
         """Verify explicit needed_by='check' still works correctly."""
@@ -79,8 +83,8 @@ class TestDefaultNeededBy(unittest.TestCase):
         # Verify dependency was added with explicit needed_by=check (phase 1)
         parser.assert_dependency_needed_by(
             "local.explicit_check_parent@v1",
-            "local.simple@v1",
-            RecipePhase.ASSET_CHECK
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_CHECK,
         )
 
     def test_explicit_needed_by_fetch_works(self):
@@ -108,8 +112,8 @@ class TestDefaultNeededBy(unittest.TestCase):
         # Verify dependency was added with explicit needed_by=fetch (phase 2)
         parser.assert_dependency_needed_by(
             "local.explicit_fetch_parent@v1",
-            "local.simple@v1",
-            RecipePhase.ASSET_FETCH
+            "local.dep_val_lib@v1",
+            RecipePhase.ASSET_FETCH,
         )
 
 

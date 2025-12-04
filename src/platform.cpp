@@ -102,7 +102,7 @@ void touch_file(std::filesystem::path const &path) {
                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                                 nullptr,
                                 CREATE_ALWAYS,
-                                FILE_ATTRIBUTE_NORMAL,
+                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
                                 nullptr) };
 
   if (h == INVALID_HANDLE_VALUE) {
@@ -111,7 +111,58 @@ void touch_file(std::filesystem::path const &path) {
                             "Failed to touch file: " + path.string());
   }
 
+  // Flush file buffers to ensure file metadata is committed to disk
+  // before other processes try to read it. Critical for multi-process
+  // cache synchronization on Windows.
+  if (!::FlushFileBuffers(h)) {
+    ::CloseHandle(h);
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "Failed to flush file buffers: " + path.string());
+  }
+
   ::CloseHandle(h);
+
+  // Flush parent directory to ensure file is immediately visible to other processes
+  std::filesystem::path const parent{ path.parent_path() };
+  if (!parent.empty()) {
+    flush_directory(parent);
+  }
+}
+
+void flush_directory(std::filesystem::path const &dir) {
+  HANDLE const dir_h{ ::CreateFileW(dir.c_str(),
+                                    GENERIC_READ,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr,
+                                    OPEN_EXISTING,
+                                    FILE_FLAG_BACKUP_SEMANTICS,
+                                    nullptr) };
+
+  if (dir_h != INVALID_HANDLE_VALUE) {
+    ::FlushFileBuffers(dir_h);
+    ::CloseHandle(dir_h);
+  }
+}
+
+bool file_exists(std::filesystem::path const &path) {
+  // On Windows, std::filesystem::exists() uses cached directory listings that aren't
+  // invalidated by FlushFileBuffers. To bypass the cache, we directly attempt to open
+  // the file - this forces Windows to check the actual filesystem.
+  HANDLE const h{ ::CreateFileW(path.c_str(),
+                                GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                nullptr,
+                                OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr) };
+
+  if (h != INVALID_HANDLE_VALUE) {
+    ::CloseHandle(h);
+    return true;
+  }
+
+  return false;
 }
 
 [[noreturn]] void terminate_process() { ::TerminateProcess(::GetCurrentProcess(), 1); }
@@ -256,6 +307,15 @@ void touch_file(std::filesystem::path const &path) {
                             "Failed to touch file: " + path.string());
   }
   ::close(fd);
+}
+
+void flush_directory(std::filesystem::path const &) {
+  // No-op on Unix - directory metadata is not cached in the same way as Windows
+}
+
+bool file_exists(std::filesystem::path const &path) {
+  // On Unix, directory caching isn't an issue - std::filesystem::exists is sufficient
+  return std::filesystem::exists(path);
 }
 
 [[noreturn]] void terminate_process() { std::abort(); }

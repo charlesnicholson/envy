@@ -257,9 +257,7 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_continue_after_failure@v1",
             "test_data/recipes/ctx_run_continue_after_failure.lua",
         )
-        asset_path = self.get_asset_path(
-            "local.ctx_run_continue_after_failure@v1"
-        )
+        asset_path = self.get_asset_path("local.ctx_run_continue_after_failure@v1")
         assert asset_path
         self.assertTrue((asset_path / "continued.txt").exists())
 

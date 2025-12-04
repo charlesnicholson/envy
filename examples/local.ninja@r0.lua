@@ -1,6 +1,6 @@
 identity = "local.ninja@r0"
 
-dependencies = { { recipe = "local.python@r0", source = "local.python@r0.lua" } }
+dependencies = { { product = "python3" } }
 
 fetch = {
   { source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.1" },
@@ -22,3 +22,5 @@ install = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/ninja.git/ninja", ctx.install_dir .. "/ninja")
   ctx.mark_install_complete()
 end
+
+products = { ninja = "ninja" }

@@ -26,6 +26,9 @@ if(NOT TARGET blake3::blake3)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)")
         if(MSVC)
             enable_language(ASM_MASM)
+            if(NOT CMAKE_ASM_MASM_FLAGS MATCHES "/nologo")
+                set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /nologo" CACHE STRING "" FORCE)
+            endif()
             list(APPEND BLAKE3_SOURCES
                 "${blake3_SOURCE_DIR}/c/blake3_sse2_x86-64_windows_msvc.asm"
                 "${blake3_SOURCE_DIR}/c/blake3_sse41_x86-64_windows_msvc.asm"

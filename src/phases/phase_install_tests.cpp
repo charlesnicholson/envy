@@ -51,7 +51,8 @@ struct install_test_fixture {
                                         nullptr,
                                         nullptr,
                                         std::vector<recipe_spec *>{},
-                                        std::nullopt);
+                                        std::nullopt,
+                                        std::filesystem::path{});
 
     // Create Lua state first
     auto lua_state{ sol_util_make_lua_state() };
@@ -61,15 +62,22 @@ struct install_test_fixture {
     r = std::unique_ptr<recipe>(new recipe{
         .key = recipe_key(*spec),
         .spec = spec,
+        .exec_ctx = nullptr,
         .lua = std::move(lua_state),
         // lua_mutex is default-initialized
         .lock = nullptr,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
+        .product_dependencies = {},
+        .weak_references = {},
+        .products = {},
+        .resolved_weak_dependency_keys = {},
         .canonical_identity_hash = {},
         .asset_path = std::filesystem::path{},
+        .recipe_file_path = std::nullopt,
         .result_hash = {},
+        .type = recipe_type::UNKNOWN,
         .cache_ptr = &test_cache,
         .default_shell_ptr = nullptr,
     });

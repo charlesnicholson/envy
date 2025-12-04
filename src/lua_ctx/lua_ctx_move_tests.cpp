@@ -149,7 +149,7 @@ TEST_CASE("ctx.move - absolute paths") {
   fs::path abs_dst{ fixture.tmp.path / "dst.txt" };
   fixture.create_file("src.txt", "test content");
 
-  std::string lua_code{ "move_fn('" + abs_src.string() + "', '" + abs_dst.string() + "')" };
+  std::string lua_code{ "move_fn('" + abs_src.generic_string() + "', '" + abs_dst.generic_string() + "')" };
   auto result{ fixture.lua->safe_script(lua_code) };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));

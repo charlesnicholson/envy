@@ -13,7 +13,9 @@
 #include "curl/curl.h"
 #include "git2.h"
 #include "lzma.h"
+#ifndef _WIN32
 #include "mbedtls/version.h"
+#endif
 #include "sol/sol.hpp"
 #include "tui.h"
 #include "zlib.h"
@@ -66,9 +68,11 @@ bool cmd_version::execute() {
 
   tui::info("  libssh2: %s", LIBSSH2_VERSION);
 
+#ifndef _WIN32
   std::array<char, 32> mbedtls_version{};
   mbedtls_version_get_string_full(mbedtls_version.data());
   tui::info("  mbedTLS: %s", mbedtls_version.data());
+#endif
 
   tui::info("  libarchive: %s", archive_version_details());
   tui::info("  Lua: %s", LUA_RELEASE);

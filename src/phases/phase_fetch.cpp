@@ -5,6 +5,7 @@
 #include "fetch.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
+#include "lua_error_formatter.h"
 #include "recipe.h"
 #include "sha256.h"
 #include "trace.h"
@@ -20,7 +21,6 @@ extern "C" {
 
 #include <algorithm>
 #include <chrono>
-#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -129,12 +129,10 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  sol::protected_function_result result{ fetch_func(ctx_table, opts) };
-
-  if (!result.valid()) {
-    sol::error err{ result };
-    throw std::runtime_error("Fetch function failed for " + identity + ": " + err.what());
-  }
+  sol::protected_function_result result{ call_lua_function_with_enriched_errors(
+      r,
+      "fetch",
+      [&]() { return fetch_func(ctx_table, opts); }) };
 
   bool should_mark_complete{ true };
   sol::object return_value{ result };
@@ -176,7 +174,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
 // Extract source, sha256, and ref from a Lua table.
 table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
-  sol::optional<std::string> url{ tbl["source"] };
+  sol::optional<std::string> url = tbl["source"];
   if (!url || url->empty()) {
     throw std::runtime_error("Fetch table missing 'source' field in " + context);
   }
@@ -184,10 +182,10 @@ table_entry parse_table_entry(sol::table const &tbl, std::string const &context)
   table_entry entry;
   entry.url = std::move(*url);
 
-  sol::optional<std::string> sha{ tbl["sha256"] };
+  sol::optional<std::string> sha = tbl["sha256"];
   if (sha) { entry.sha256 = std::move(*sha); }
 
-  sol::optional<std::string> ref{ tbl["ref"] };
+  sol::optional<std::string> ref = tbl["ref"];
   if (ref) { entry.ref = std::move(*ref); }
 
   return entry;
@@ -237,7 +235,8 @@ std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
       std::string const url{ top.as<std::string>() };
       std::string basename{ uri_extract_filename(url) };
       if (basename.empty()) {
-        throw std::runtime_error("Cannot extract filename from URL: " + url + " in " + key);
+        throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
+                                 key);
       }
       std::filesystem::path dest{ fetch_dir / basename };
 
@@ -288,7 +287,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
       } else if (first_elem_type == sol::type::table) {
         size_t const len{ tbl.size() };
         for (size_t i = 1; i <= len; ++i) {
-          sol::table elem{ tbl[i] };
+          sol::table elem = tbl[i];
           process_table_entry(elem);
         }
       } else {

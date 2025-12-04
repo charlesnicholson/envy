@@ -141,7 +141,7 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
 
 TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
   envy::tui::configure_trace_outputs(
-      { { envy::tui::trace_output_type::stderr, std::nullopt } });
+      { { envy::tui::trace_output_type::std_err, std::nullopt } });
   CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
 
   envy::tui::trace(envy::trace_events::phase_start{
@@ -466,7 +466,7 @@ TEST_CASE("g_trace_enabled controls trace event processing") {
 
   // Enable stderr trace
   envy::tui::configure_trace_outputs(
-      { { envy::tui::trace_output_type::stderr, std::nullopt } });
+      { { envy::tui::trace_output_type::std_err, std::nullopt } });
   CHECK(envy::tui::g_trace_enabled);
 
   // Disable trace
@@ -485,7 +485,7 @@ TEST_CASE("g_trace_enabled controls trace event processing") {
 
   // Enable both
   envy::tui::configure_trace_outputs(
-      { { envy::tui::trace_output_type::stderr, std::nullopt },
+      { { envy::tui::trace_output_type::std_err, std::nullopt },
         { envy::tui::trace_output_type::file,
           std::filesystem::temp_directory_path() / "test_trace2.jsonl" } });
   CHECK(envy::tui::g_trace_enabled);
@@ -549,11 +549,11 @@ TEST_CASE("trace event macros work with g_trace_enabled") {
   // These should not crash even when trace disabled
   ENVY_TRACE_PHASE_BLOCKED("r1", envy::recipe_phase::asset_check, "dep", envy::recipe_phase::completion);
   ENVY_TRACE_DEPENDENCY_ADDED("parent", "child", envy::recipe_phase::asset_fetch);
-  ENVY_TRACE_CACHE_HIT("r1", "key", "/path");
+  ENVY_TRACE_CACHE_HIT("r1", "key", "/path", true);
 
   // Enable trace and verify events can be emitted
   envy::tui::configure_trace_outputs(
-      { { envy::tui::trace_output_type::stderr, std::nullopt } });
+      { { envy::tui::trace_output_type::std_err, std::nullopt } });
   CHECK(envy::tui::g_trace_enabled);
 
   CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
@@ -659,7 +659,7 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
 
   // Configure both stderr and file output
   envy::tui::configure_trace_outputs(
-      { { envy::tui::trace_output_type::stderr, std::nullopt },
+      { { envy::tui::trace_output_type::std_err, std::nullopt },
         { envy::tui::trace_output_type::file, trace_path } });
   CHECK(envy::tui::g_trace_enabled);
 

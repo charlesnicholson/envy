@@ -5,8 +5,7 @@
 
 namespace envy {
 
-std::variant<shell_choice, custom_shell_file, custom_shell_inline>
-parse_shell_config_from_lua(sol::object const &obj, char const *context) {
+resolved_shell parse_shell_config_from_lua(sol::object const &obj, char const *context) {
   // ENVY_SHELL constant (stored as number)
   if (obj.get_type() == sol::type::number) {
     int const value{ obj.as<int>() };
@@ -28,7 +27,7 @@ parse_shell_config_from_lua(sol::object const &obj, char const *context) {
       shell_validate_custom(custom);
 
       // Unpack custom_shell variant (variant<file, inline>) into return variant
-      std::variant<shell_choice, custom_shell_file, custom_shell_inline> result;
+      resolved_shell result;
       std::visit([&result](auto &&custom_cfg) { result = custom_cfg; }, custom);
       return result;
     } catch (std::exception const &e) {

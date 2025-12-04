@@ -59,18 +59,24 @@ class TestUserManagedPackages(unittest.TestCase):
 
         # First run: check returns false, should install
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
-        result = self.run_envy("local.user_managed_simple@v1", recipe_path, env_vars=env)
+        result = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, env_vars=env
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify marker file was created (simulates system install)
-        self.assertTrue(self.marker_simple.exists(), "Install should have created marker file")
+        self.assertTrue(
+            self.marker_simple.exists(), "Install should have created marker file"
+        )
 
         # Verify cache entry was purged (user-managed = ephemeral)
         asset_dir = self.cache_root / "assets" / "local.user_managed_simple@v1"
         if asset_dir.exists():
             # Should be empty or minimal (no asset/ directory)
-            self.assertFalse(any(asset_dir.glob("*/asset")),
-                           "User-managed packages should not leave asset/ in cache")
+            self.assertFalse(
+                any(asset_dir.glob("*/asset")),
+                "User-managed packages should not leave asset/ in cache",
+            )
 
     def test_simple_second_run_check_true_skips(self):
         """Second run with check=true skips all phases, no lock acquired."""
@@ -82,17 +88,23 @@ class TestUserManagedPackages(unittest.TestCase):
         self.marker_simple.write_text("already installed")
 
         # Verify marker was created
-        self.assertTrue(self.marker_simple.exists(), f"Marker should exist at {self.marker_simple}")
+        self.assertTrue(
+            self.marker_simple.exists(), f"Marker should exist at {self.marker_simple}"
+        )
 
         # Run with check=true (marker exists)
-        result = self.run_envy("local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env)
+        result = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify phases were skipped (check returned true)
         self.assertIn("user check returned true", result.stderr.lower())
         self.assertIn("skipping all phases", result.stderr.lower())
         # Verify install was skipped due to no lock
-        self.assertIn("phase install: no lock (cache hit), skipping", result.stderr.lower())
+        self.assertIn(
+            "phase install: no lock (cache hit), skipping", result.stderr.lower()
+        )
 
     def test_multiple_runs_cache_lifecycle(self):
         """Verify cache entry created/purged/created on each install cycle."""
@@ -100,13 +112,17 @@ class TestUserManagedPackages(unittest.TestCase):
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         # Run 1: Install (check=false initially)
-        result1 = self.run_envy("local.user_managed_simple@v1", recipe_path, env_vars=env)
+        result1 = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, env_vars=env
+        )
         self.assertEqual(result1.returncode, 0)
         # Marker should be created by install phase
         self.assertTrue(self.marker_simple.exists(), "First run should create marker")
 
         # Run 2: Should skip (check=true now that marker exists)
-        result2 = self.run_envy("local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env)
+        result2 = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env
+        )
         self.assertEqual(result2.returncode, 0)
         # Verify check passed and phases skipped
         self.assertIn("check passed", result2.stderr.lower())
@@ -114,9 +130,13 @@ class TestUserManagedPackages(unittest.TestCase):
 
         # Run 3: Remove marker, should install again
         self.marker_simple.unlink()
-        result3 = self.run_envy("local.user_managed_simple@v1", recipe_path, env_vars=env)
+        result3 = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, env_vars=env
+        )
         self.assertEqual(result3.returncode, 0)
-        self.assertTrue(self.marker_simple.exists(), "Should reinstall after marker removed")
+        self.assertTrue(
+            self.marker_simple.exists(), "Should reinstall after marker removed"
+        )
 
     # ========================================================================
     # String check form tests
@@ -144,7 +164,9 @@ class TestUserManagedPackages(unittest.TestCase):
         env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
         # First run: install (downloads file, runs fetch/stage/build/install)
-        result = self.run_envy("local.user_managed_with_fetch@v1", recipe_path, trace=True, env_vars=env)
+        result = self.run_envy(
+            "local.user_managed_with_fetch@v1", recipe_path, trace=True, env_vars=env
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify marker created
@@ -155,10 +177,17 @@ class TestUserManagedPackages(unittest.TestCase):
         if asset_dir.exists():
             entries = list(asset_dir.rglob("*"))
             # Filter to just fetch/, work/, asset/ subdirectories
-            important_dirs = [e for e in entries if e.is_dir() and
-                            e.name in ("fetch", "work", "asset", "stage", "install")]
-            self.assertEqual(len(important_dirs), 0,
-                           f"User-managed should purge all workspace dirs, found: {important_dirs}")
+            important_dirs = [
+                e
+                for e in entries
+                if e.is_dir()
+                and e.name in ("fetch", "work", "asset", "stage", "install")
+            ]
+            self.assertEqual(
+                len(important_dirs),
+                0,
+                f"User-managed should purge all workspace dirs, found: {important_dirs}",
+            )
 
     def test_user_managed_fetch_cached_on_retry(self):
         """If install fails, fetch/ persists for per-file cache reuse."""
@@ -178,7 +207,9 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, "Should fail validation")
         self.assertIn("has check verb (user-managed)", result.stderr)
         self.assertIn("called mark_install_complete", result.stderr)
-        self.assertIn("Remove check verb or remove mark_install_complete", result.stderr)
+        self.assertIn(
+            "Remove check verb or remove mark_install_complete", result.stderr
+        )
 
     # ========================================================================
     # Double-check lock and race condition tests
@@ -192,9 +223,14 @@ class TestUserManagedPackages(unittest.TestCase):
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         # Run with check=false initially
-        result = self.run_envy("local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env)
-        self.assertIn("re-running user check (post-lock)", result.stderr,
-                     "Should show double-check pattern in trace")
+        result = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, trace=True, env_vars=env
+        )
+        self.assertIn(
+            "re-running user check (post-lock)",
+            result.stderr,
+            "Should show double-check pattern in trace",
+        )
         self.assertIn("re-check returned false", result.stderr)
 
     def test_concurrent_processes_coordinate_via_lock(self):
@@ -213,7 +249,9 @@ class TestUserManagedPackages(unittest.TestCase):
         recipe_path = self.recipe_dir / "user_managed_simple.lua"
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
-        result = self.run_envy("local.user_managed_simple@v1", recipe_path, env_vars=env)
+        result = self.run_envy(
+            "local.user_managed_simple@v1", recipe_path, env_vars=env
+        )
         self.assertEqual(result.returncode, 0)
 
         # Check for any remaining directories
@@ -221,9 +259,14 @@ class TestUserManagedPackages(unittest.TestCase):
         if asset_base.exists():
             remaining = list(asset_base.rglob("*"))
             # Only lock files and empty dirs should remain
-            non_lock_files = [r for r in remaining if r.is_file() and not r.name.endswith(".lock")]
-            self.assertEqual(len(non_lock_files), 0,
-                           f"User-managed should not leave files in cache, found: {non_lock_files}")
+            non_lock_files = [
+                r for r in remaining if r.is_file() and not r.name.endswith(".lock")
+            ]
+            self.assertEqual(
+                len(non_lock_files),
+                0,
+                f"User-managed should not leave files in cache, found: {non_lock_files}",
+            )
 
     # ========================================================================
     # Cross-platform behavior tests
@@ -237,5 +280,5 @@ class TestUserManagedPackages(unittest.TestCase):
         pass  # Recipe demonstrates pattern, manual testing required
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

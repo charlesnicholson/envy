@@ -25,7 +25,11 @@ def discover_functional_testers() -> list[tuple[str, Path]]:
         return _discovered_testers
 
     root = Path(__file__).parent.parent / "out" / "build"
-    pattern = "envy_functional_tester*.exe" if sys.platform == "win32" else "envy_functional_tester*"
+    pattern = (
+        "envy_functional_tester*.exe"
+        if sys.platform == "win32"
+        else "envy_functional_tester*"
+    )
 
     testers = []
     for exe in sorted(root.glob(pattern)):
@@ -42,7 +46,7 @@ def discover_functional_testers() -> list[tuple[str, Path]]:
             variant = ""
         elif stem.startswith("envy_functional_tester_"):
             # Extract suffix as variant name
-            variant = stem[len("envy_functional_tester_"):]
+            variant = stem[len("envy_functional_tester_") :]
         else:
             # Skip unrecognized patterns
             continue
@@ -85,7 +89,7 @@ def get_envy_executable() -> Path:
     testers = discover_functional_testers()
 
     # Get current variant or use first available as default
-    current_variant = getattr(_thread_local, 'sanitizer_variant', testers[0][0])
+    current_variant = getattr(_thread_local, "sanitizer_variant", testers[0][0])
 
     # Find matching tester
     for variant, exe_path in testers:
@@ -102,12 +106,12 @@ def get_test_env() -> dict[str, str]:
     Returns a copy of os.environ with sanitizer-specific options set.
     """
     env = os.environ.copy()
-    variant = getattr(_thread_local, 'sanitizer_variant', '')
+    variant = getattr(_thread_local, "sanitizer_variant", "")
     root = Path(__file__).parent.parent
 
-    if 'tsan' in variant:
+    if "tsan" in variant:
         # Set TSAN_OPTIONS with suppression file
         tsan_supp = root / "tsan.supp"
-        env['TSAN_OPTIONS'] = f'suppressions={tsan_supp}'
+        env["TSAN_OPTIONS"] = f"suppressions={tsan_supp}"
 
     return env

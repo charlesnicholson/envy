@@ -62,22 +62,22 @@ bool cmd_sync::execute() {
     auto result{ eng.run_full(targets) };
 
     size_t completed{ 0 };
-    size_t programmatic{ 0 };
+    size_t user_managed{ 0 };
     size_t failed{ 0 };
 
     for (auto const &[key, outcome] : result) {
-      if (outcome.result_hash.empty()) {
+      if (outcome.type == recipe_type::UNKNOWN) {
         failed++;
-      } else if (outcome.result_hash == "programmatic") {
-        programmatic++;
+      } else if (outcome.type == recipe_type::USER_MANAGED) {
+        user_managed++;
       } else {
         completed++;
       }
     }
 
-    tui::info("sync complete: %zu package(s), %zu programmatic, %zu failed",
+    tui::info("sync complete: %zu package(s), %zu user-managed, %zu failed",
               completed,
-              programmatic,
+              user_managed,
               failed);
     return failed == 0;
 

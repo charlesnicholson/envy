@@ -100,7 +100,9 @@ class TestEngineDependencyResolution(unittest.TestCase):
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected self-dependency to cause failure")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected self-dependency to cause failure"
+        )
         self.assertIn(
             "cycle",
             result.stderr.lower(),
@@ -449,7 +451,9 @@ class TestEngineDependencyResolution(unittest.TestCase):
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Expected fetch dependency cycle to cause failure")
+        self.assertNotEqual(
+            result.returncode, 0, "Expected fetch dependency cycle to cause failure"
+        )
         stderr_lower = result.stderr.lower()
         # Accept either "Fetch dependency cycle" or "Dependency cycle" as both indicate detection
         self.assertIn(
@@ -458,8 +462,16 @@ class TestEngineDependencyResolution(unittest.TestCase):
             f"Expected cycle error, got: {result.stderr}",
         )
         # Verify the cycle path includes both recipes
-        self.assertIn("fetch_cycle_a", stderr_lower, f"Expected fetch_cycle_a in error, got: {result.stderr}")
-        self.assertIn("fetch_cycle_b", stderr_lower, f"Expected fetch_cycle_b in error, got: {result.stderr}")
+        self.assertIn(
+            "fetch_cycle_a",
+            stderr_lower,
+            f"Expected fetch_cycle_a in error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "fetch_cycle_b",
+            stderr_lower,
+            f"Expected fetch_cycle_b in error, got: {result.stderr}",
+        )
 
     def test_simple_fetch_dependency(self):
         """Simple fetch dependency: A fetch needs B - validates basic flow and blocking."""
@@ -482,7 +494,9 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 3, f"Expected 3 recipes (parent + child + base), got: {result.stdout}"
+            len(lines),
+            3,
+            f"Expected 3 recipes (parent + child + base), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)
@@ -511,7 +525,9 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 4, f"Expected 4 recipes (A + B + C + base), got: {result.stdout}"
+            len(lines),
+            4,
+            f"Expected 4 recipes (A + B + C + base), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)
@@ -541,7 +557,9 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 4, f"Expected 4 recipes (parent + child + base + helper), got: {result.stdout}"
+            len(lines),
+            4,
+            f"Expected 4 recipes (parent + child + base + helper), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)

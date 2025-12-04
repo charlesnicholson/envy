@@ -63,6 +63,21 @@ cli_args cli_parse(int argc, char **argv) {
   asset->add_option("--cache-root", query_asset_cfg.cache_root, "Cache root directory");
   asset->callback([&cmd_cfg, &query_asset_cfg] { cmd_cfg = query_asset_cfg; });
 
+  // Product subcommand
+  cmd_product::cfg product_cfg{};
+  auto *product{ app.add_subcommand(
+      "product",
+      "Query product value or list all products from manifest") };
+  product->add_option("product",
+                      product_cfg.product_name,
+                      "Product name (omit to list all)");
+  product->add_option("--manifest",
+                      product_cfg.manifest_path,
+                      "Path to envy.lua manifest");
+  product->add_option("--cache-root", product_cfg.cache_root, "Cache root directory");
+  product->add_flag("--json", product_cfg.json, "Output as JSON (to stdout)");
+  product->callback([&cmd_cfg, &product_cfg] { cmd_cfg = product_cfg; });
+
   // Sync subcommand
   cmd_sync::cfg sync_cfg{};
   auto *sync{ app.add_subcommand("sync", "Install packages from manifest") };
@@ -232,7 +247,7 @@ cli_args cli_parse(int argc, char **argv) {
     args.decorated_logging = true;
     for (auto const &spec : trace_specs_tokens) {
       if (spec.empty() || spec == "stderr") {
-        args.trace_outputs.push_back({ tui::trace_output_type::stderr, std::nullopt });
+        args.trace_outputs.push_back({ tui::trace_output_type::std_err, std::nullopt });
       } else if (spec.rfind("file:", 0) == 0 && spec.size() > 5) {
         args.trace_outputs.push_back(
             { tui::trace_output_type::file, std::filesystem::path{ spec.substr(5) } });
@@ -245,7 +260,7 @@ cli_args cli_parse(int argc, char **argv) {
       }
     }
     if (args.trace_outputs.empty() && args.cli_output.empty()) {
-      args.trace_outputs.push_back({ tui::trace_output_type::stderr, std::nullopt });
+      args.trace_outputs.push_back({ tui::trace_output_type::std_err, std::nullopt });
     }
   } else if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;

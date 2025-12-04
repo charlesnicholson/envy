@@ -151,7 +151,9 @@ fetch = {{
             all_events2 = parser2.parse()
 
             # Verify trace events were generated
-            self.assertGreater(len(all_events2), 0, "Expected trace events on second run")
+            self.assertGreater(
+                len(all_events2), 0, "Expected trace events on second run"
+            )
 
             # The test verifies that 2 files were cached and reused
             # We confirm this by checking that only 1 file was downloaded (the missing one)

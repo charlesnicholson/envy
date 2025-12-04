@@ -4,6 +4,7 @@
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_product.h"
 #include "cmds/cmd_version.h"
 
 #include "doctest.h"
@@ -269,6 +270,81 @@ TEST_CASE("cli_parse: cmd_asset") {
   }
 }
 
+TEST_CASE("cli_parse: cmd_product") {
+  SUBCASE("product only") {
+    std::vector<std::string> args{ "envy", "product", "tool" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    CHECK_FALSE(cfg->manifest_path.has_value());
+    CHECK_FALSE(cfg->cache_root.has_value());
+    CHECK_FALSE(cfg->json);
+  }
+
+  SUBCASE("with manifest and cache root") {
+    std::vector<std::string> args{ "envy",       "product",       "tool",
+                                   "--manifest", "/tmp/envy.lua", "--cache-root",
+                                   "/tmp/cache" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/tmp/envy.lua"));
+    REQUIRE(cfg->cache_root.has_value());
+    CHECK(*cfg->cache_root == std::filesystem::path("/tmp/cache"));
+    CHECK_FALSE(cfg->json);
+  }
+
+  SUBCASE("no product name lists all") {
+    std::vector<std::string> args{ "envy", "product" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name.empty());
+    CHECK_FALSE(cfg->json);
+  }
+
+  SUBCASE("json flag enabled") {
+    std::vector<std::string> args{ "envy", "product", "--json" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name.empty());
+    CHECK(cfg->json);
+  }
+
+  SUBCASE("json with product name") {
+    std::vector<std::string> args{ "envy", "product", "tool", "--json" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_product::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->product_name == "tool");
+    CHECK(cfg->json);
+  }
+}
+
 TEST_CASE("cli_parse: verbose flag") {
   std::vector<std::string> args{ "envy", "--verbose", "version" };
   auto argv{ make_argv(args) };
@@ -293,7 +369,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
     CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
     CHECK(parsed.decorated_logging);
     REQUIRE(parsed.trace_outputs.size() == 1);
-    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
   }
 
@@ -328,7 +404,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
     REQUIRE(parsed.verbosity.has_value());
     CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
     REQUIRE(parsed.trace_outputs.size() == 2);
-    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::stderr);
+    CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
     CHECK(parsed.trace_outputs[1].type == envy::tui::trace_output_type::file);
     REQUIRE(parsed.trace_outputs[1].file_path.has_value());

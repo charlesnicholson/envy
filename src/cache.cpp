@@ -67,10 +67,20 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
                                         std::string_view cache_key) {
   envy::cache::ensure_result result{ entry_dir, entry_dir / "asset", nullptr };
 
-  if (envy::cache::is_entry_complete(entry_dir)) {
+  ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(recipe_identity),
+                                entry_dir.string(),
+                                "before_lock");
+  bool const complete_before_lock{ envy::cache::is_entry_complete(entry_dir) };
+  ENVY_TRACE_CACHE_CHECK_RESULT(std::string(recipe_identity),
+                                 entry_dir.string(),
+                                 complete_before_lock,
+                                 "before_lock");
+
+  if (complete_before_lock) {
     ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
                          std::string(cache_key),
-                         result.asset_path.string());
+                         result.asset_path.string(),
+                         true);
     return result;
   }
 
@@ -88,10 +98,20 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
                            lock_path.string(),
                            static_cast<std::int64_t>(wait_duration_ms));
 
-  if (envy::cache::is_entry_complete(entry_dir)) {
+  ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(recipe_identity),
+                                entry_dir.string(),
+                                "after_lock");
+  bool const complete_after_lock{ envy::cache::is_entry_complete(entry_dir) };
+  ENVY_TRACE_CACHE_CHECK_RESULT(std::string(recipe_identity),
+                                 entry_dir.string(),
+                                 complete_after_lock,
+                                 "after_lock");
+
+  if (complete_after_lock) {
     ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
                          std::string(cache_key),
-                         result.asset_path.string());
+                         result.asset_path.string(),
+                         false);
     return result;
   }
 
@@ -158,6 +178,7 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     remove_all_noexcept(fetch_dir());
     tui::debug("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
+    platform::flush_directory(m->entry_dir_);
     tui::debug("  DTOR: completed path success");
   } else if (m->user_managed_) {
     tui::debug("  DTOR: USER-MANAGED PATH - purging entire entry_dir");
@@ -260,7 +281,10 @@ cache::~cache() = default;
 path const &cache::root() const { return m->root_; }
 
 bool cache::is_entry_complete(path const &entry_dir) {
-  return std::filesystem::exists(entry_dir / "envy-complete");
+  path const complete_marker{ entry_dir / "envy-complete" };
+  bool const exists{ platform::file_exists(complete_marker) };
+  ENVY_TRACE_FILE_EXISTS_CHECK("", complete_marker.string(), exists);
+  return exists;
 }
 
 cache::ensure_result cache::ensure_asset(std::string_view identity,
