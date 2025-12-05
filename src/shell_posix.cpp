@@ -35,8 +35,6 @@ namespace envy {
 namespace {
 
 constexpr int kChildErrorExit{ 127 };
-constexpr size_t kPipeBufferSize{ 4096 };
-constexpr size_t kLinePendingReserve{ 256 };
 constexpr int kSignalExitBase{ 128 };
 
 class fd_cleanup {
@@ -53,9 +51,7 @@ class fd_cleanup {
 
   fd_cleanup &operator=(fd_cleanup &&other) noexcept {
     if (this == &other) { return *this; }
-    if (fd_ != -1) { close_with_retry(); }
-    fd_ = other.fd_;
-    other.fd_ = -1;
+    close_and_take(other);
     return *this;
   }
 
@@ -74,16 +70,35 @@ class fd_cleanup {
     }
   }
 
+  void close_and_take(fd_cleanup &other) {
+    if (fd_ != -1) { close_with_retry(); }
+    fd_ = other.fd_;
+    other.fd_ = -1;
+  }
+
   int fd_{ -1 };
 };
 
-std::string get_shell_path(shell_choice choice) {
+std::vector<std::string> get_shell_argv(shell_choice choice) {
   switch (choice) {
     case shell_choice::bash:
-      if (char const *bash_env{ ::getenv("BASH") }) { return bash_env; }
-      return "/usr/bin/env bash";
-    case shell_choice::sh: return "/bin/sh";
+      if (char const *bash_env{ ::getenv("BASH") }) { return { bash_env }; }
+      return { "/usr/bin/env", "bash" };
+    case shell_choice::sh: return { "/bin/sh" };
     default: throw std::invalid_argument("shell_run: unsupported shell choice on POSIX");
+  }
+}
+
+void write_all(int fd, char const *data, size_t size) {
+  ssize_t remaining{ static_cast<ssize_t>(size) };
+  while (remaining > 0) {
+    ssize_t const written{ ::write(fd, data, remaining) };
+    if (written == -1) {
+      if (errno == EINTR) { continue; }
+      throw std::system_error(errno, std::generic_category(), "write failed");
+    }
+    remaining -= written;
+    data += written;
   }
 }
 
@@ -100,21 +115,10 @@ std::string create_temp_script(std::string_view script) {
   }
   fd_cleanup fd_guard{ fd };
 
-  // Write script content as-is (no shebang needed - we invoke shell explicitly)
   std::string content{ script };
   if (!content.empty() && content.back() != '\n') { content.push_back('\n'); }
 
-  ssize_t remaining{ static_cast<ssize_t>(content.size()) };
-  char const *data{ content.data() };
-  while (remaining > 0) {
-    ssize_t const written{ ::write(fd_guard.get(), data, remaining) };
-    if (written == -1) {
-      if (errno == EINTR) { continue; }
-      throw std::system_error(errno, std::generic_category(), "write failed");
-    }
-    remaining -= written;
-    data += written;
-  }
+  write_all(fd_guard.get(), content.data(), content.size());
 
   if (::fchmod(fd_guard.get(), S_IRUSR | S_IWUSR | S_IXUSR) == -1) {
     throw std::system_error(errno, std::generic_category(), "fchmod failed");
@@ -127,29 +131,17 @@ std::string create_temp_script(std::string_view script) {
   return std::string{ path_buffer.data() };
 }
 
-void dispatch_line(shell_run_cfg const &cfg, shell_stream stream, std::string_view line) {
-  if (stream == shell_stream::std_out) {
-    if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
-  } else {
-    if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
-  }
-
-  if (cfg.on_output_line) { cfg.on_output_line(line); }
-}
-
 struct pipe_state {
   fd_cleanup read_fd;
   shell_stream stream;
   std::string pending;
-  bool closed{ false };
+  bool closed;
 };
 
 void stream_pipes(std::array<pipe_state, 2> &pipes, shell_run_cfg const &cfg) {
   std::array<pollfd, 2> poll_fds{};
-  std::string chunk(kPipeBufferSize, '\0');
+  std::string chunk(4096, '\0');
   size_t closed_count{ 0 };
-
-  for (auto &pipe : pipes) { pipe.pending.reserve(kLinePendingReserve); }
 
   for (size_t i{ 0 }; i < pipes.size(); ++i) {
     poll_fds[i].fd = pipes[i].closed ? -1 : pipes[i].read_fd.get();
@@ -184,7 +176,12 @@ void stream_pipes(std::array<pipe_state, 2> &pipes, shell_run_cfg const &cfg) {
 
       if (read_bytes == 0) {
         if (!pipes[i].pending.empty()) {
-          dispatch_line(cfg, pipes[i].stream, pipes[i].pending);
+          if (pipes[i].stream == shell_stream::std_out) {
+            if (cfg.on_stdout_line) { cfg.on_stdout_line(pipes[i].pending); }
+          } else {
+            if (cfg.on_stderr_line) { cfg.on_stderr_line(pipes[i].pending); }
+          }
+          if (cfg.on_output_line) { cfg.on_output_line(pipes[i].pending); }
           pipes[i].pending.clear();
         }
 
@@ -202,28 +199,16 @@ void stream_pipes(std::array<pipe_state, 2> &pipes, shell_run_cfg const &cfg) {
       size_t newline{ 0 };
       while ((newline = pipes[i].pending.find('\n')) != std::string::npos) {
         std::string line{ pipes[i].pending.substr(0, newline) };
-        dispatch_line(cfg, pipes[i].stream, line);
+        if (pipes[i].stream == shell_stream::std_out) {
+          if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+        } else {
+          if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+        }
+        if (cfg.on_output_line) { cfg.on_output_line(line); }
         pipes[i].pending.erase(0, newline + 1);
       }
     }
   }
-}
-
-struct envp_storage {
-  std::vector<std::string> strings;
-  std::vector<char *> pointers;
-};
-
-envp_storage build_envp(shell_env_t const &env) {
-  envp_storage result;
-  result.strings.reserve(env.size());
-  result.pointers.reserve(env.size() + 1);
-
-  for (auto const &[key, value] : env) { result.strings.push_back(key + "=" + value); }
-  for (auto &entry : result.strings) { result.pointers.push_back(entry.data()); }
-  result.pointers.push_back(nullptr);
-
-  return result;
 }
 
 shell_result wait_for_child(pid_t child) {
@@ -255,17 +240,29 @@ shell_result wait_for_child(pid_t child) {
                                      fd_cleanup &stderr_write,
                                      std::optional<std::filesystem::path> const &cwd,
                                      std::vector<std::string> const &argv_strings,
-                                     envp_storage const &envp) {
+                                     std::vector<char *> const &envp) {
   stdout_read.release();
   stderr_read.release();
 
   int const null_fd{ ::open("/dev/null", O_RDONLY) };
-  if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
-      ::dup2(stdout_write.get(), STDOUT_FILENO) == -1 ||
-      ::dup2(stderr_write.get(), STDERR_FILENO) == -1) {
-    std::perror("dup2");
+  std::array<std::pair<int, int>, 3> const fd_mappings{
+    std::pair{ null_fd, STDIN_FILENO },
+    std::pair{ stdout_write.get(), STDOUT_FILENO },
+    std::pair{ stderr_write.get(), STDERR_FILENO },
+  };
+
+  if (null_fd == -1) {
+    std::perror("open /dev/null");
     _exit(kChildErrorExit);
   }
+
+  for (auto const &[src, dst] : fd_mappings) {
+    if (::dup2(src, dst) == -1) {
+      std::perror("dup2");
+      _exit(kChildErrorExit);
+    }
+  }
+
   if (null_fd != STDIN_FILENO) { ::close(null_fd); }
   stdout_write.release();
   stderr_write.release();
@@ -282,13 +279,12 @@ shell_result wait_for_child(pid_t child) {
     _exit(kChildErrorExit);
   }
 
-  // Build argv array from strings
   std::vector<char *> argv;
   argv.reserve(argv_strings.size() + 1);
   for (auto const &arg : argv_strings) { argv.push_back(const_cast<char *>(arg.c_str())); }
   argv.push_back(nullptr);
 
-  ::execve(argv_strings[0].c_str(), argv.data(), envp.pointers.data());
+  ::execve(argv_strings[0].c_str(), argv.data(), const_cast<char **>(envp.data()));
   std::perror("execve");
   _exit(kChildErrorExit);
 }
@@ -331,46 +327,33 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
               throw std::invalid_argument(
                   "shell_run: POSIX only supports bash or sh built-in shells");
             }
-            // Split shell path to handle "/usr/bin/env bash"
-            std::vector<std::string> result;
-            std::string const shell_path{ get_shell_path(shell_cfg) };
-            std::string_view shell_view{ shell_path };
-            size_t start{ 0 };
-
-            while (start < shell_view.size()) {
-              while (start < shell_view.size() && shell_view[start] == ' ') { ++start; }
-
-              if (start >= shell_view.size()) { break; }
-              size_t const end{ shell_view.find(' ', start) };
-
-              if (end == std::string_view::npos) {
-                result.emplace_back(shell_view.substr(start));
-                break;
-              }
-
-              result.emplace_back(shell_view.substr(start, end - start));
-              start = end + 1;
-            }
-
-            result.push_back(script_path);
-            return result;
+            auto args{ get_shell_argv(shell_cfg) };
+            args.push_back(script_path);
+            return args;
           },
           [&script_path](custom_shell_file const &shell_cfg) -> std::vector<std::string> {
-            // Copy argv and append script path
-            std::vector<std::string> result{ shell_cfg.argv };
+            auto result{ shell_cfg.argv };
             result.push_back(script_path);
             return result;
           },
           [&script](custom_shell_inline const &shell_cfg) -> std::vector<std::string> {
-            // custom_shell_inline: copy argv and append script content
-            std::vector<std::string> result{ shell_cfg.argv };
+            auto result{ shell_cfg.argv };
             result.push_back(std::string{ script });
             return result;
           },
       },
       cfg.shell) };
 
-  auto envp{ build_envp(cfg.env) };
+  auto const [env_strings, envp]{ [&cfg] {
+    std::vector<std::string> strings;
+    std::vector<char *> pointers;
+    strings.reserve(cfg.env.size());
+    pointers.reserve(cfg.env.size() + 1);
+    for (auto const &[key, value] : cfg.env) { strings.push_back(key + "=" + value); }
+    for (auto &entry : strings) { pointers.push_back(entry.data()); }
+    pointers.push_back(nullptr);
+    return std::pair{ std::move(strings), std::move(pointers) };
+  }() };
 
   int stdout_pipefd[2];
   if (::pipe(stdout_pipefd) == -1) {
