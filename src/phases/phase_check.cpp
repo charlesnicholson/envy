@@ -40,10 +40,18 @@ std::filesystem::path compute_project_root(recipe const *r) {
 bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
+  std::string stdout_capture;
+  std::string stderr_capture;
+
   shell_run_cfg cfg;
   cfg.env = shell_getenv();
-  cfg.on_output_line = [](std::string_view line) {
-    tui::info("%.*s", static_cast<int>(line.size()), line.data());
+  cfg.on_stdout_line = [&](std::string_view line) {
+    stdout_capture += line;
+    stdout_capture += '\n';
+  };
+  cfg.on_stderr_line = [&](std::string_view line) {
+    stderr_capture += line;
+    stderr_capture += '\n';
   };
   cfg.cwd = compute_project_root(r);
   cfg.shell = shell_resolve_default(r ? r->default_shell_ptr : nullptr);
@@ -57,6 +65,16 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   }
 
   bool const check_passed{ result.exit_code == 0 };
+
+  if (!check_passed) {
+    tui::error("check failed for %s (exit code %d)",
+               r->spec->identity.c_str(),
+               result.exit_code);
+    tui::error("command: %s", std::string(check_cmd).c_str());
+    if (!stdout_capture.empty()) { tui::error("stdout:\n%s", stdout_capture.c_str()); }
+    if (!stderr_capture.empty()) { tui::error("stderr:\n%s", stderr_capture.c_str()); }
+  }
+
   tui::debug("phase check: string check exit_code=%d (check %s)",
              result.exit_code,
              check_passed ? "passed" : "failed");

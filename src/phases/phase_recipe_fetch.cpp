@@ -53,6 +53,42 @@ void load_recipe_script(sol::state &lua,
     sol::error err = result;
     throw std::runtime_error("Failed to load recipe: " + identity + ": " + err.what());
   }
+
+  // Validate user-managed packages (check verb) don't use cache phases
+  sol::object check_obj{ lua["check"] };
+  bool const has_check_verb{ check_obj.valid() &&
+                             (check_obj.is<std::string>() ||
+                              check_obj.is<sol::protected_function>()) };
+
+  if (has_check_verb) {
+    // User-managed packages cannot use fetch/stage/build phases
+    sol::object fetch_obj{ lua["fetch"] };
+    if (fetch_obj.valid() && fetch_obj.is<sol::protected_function>()) {
+      throw std::runtime_error(
+          "Recipe " + identity +
+          " has check verb (user-managed) but declares fetch phase. "
+          "User-managed packages cannot use cache-managed phases (fetch/stage/build). "
+          "Remove check verb or remove fetch phase.");
+    }
+
+    sol::object stage_obj{ lua["stage"] };
+    if (stage_obj.valid() && stage_obj.is<sol::protected_function>()) {
+      throw std::runtime_error(
+          "Recipe " + identity +
+          " has check verb (user-managed) but declares stage phase. "
+          "User-managed packages cannot use cache-managed phases (fetch/stage/build). "
+          "Remove check verb or remove stage phase.");
+    }
+
+    sol::object build_obj{ lua["build"] };
+    if (build_obj.valid() && build_obj.is<sol::protected_function>()) {
+      throw std::runtime_error(
+          "Recipe " + identity +
+          " has check verb (user-managed) but declares build phase. "
+          "User-managed packages cannot use cache-managed phases (fetch/stage/build). "
+          "Remove check verb or remove build phase.");
+    }
+  }
 }
 
 std::filesystem::path get_cached_recipe_path(recipe const *r) {

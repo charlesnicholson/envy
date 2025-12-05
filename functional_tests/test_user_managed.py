@@ -159,7 +159,7 @@ class TestUserManagedPackages(unittest.TestCase):
     # ========================================================================
 
     def test_user_managed_with_fetch_purges_all_dirs(self):
-        """User-managed with fetch verb: fetch_dir populated, fully purged after."""
+        """Cache-managed with fetch verb: fetch_dir populated, asset persists after."""
         recipe_path = self.recipe_dir / "user_managed_with_fetch.lua"
         env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
@@ -172,22 +172,17 @@ class TestUserManagedPackages(unittest.TestCase):
         # Verify marker created
         self.assertTrue(self.marker_with_fetch.exists())
 
-        # Verify cache entry purged (no fetch/, work/, or asset/ remain)
+        # Verify cache entry persists with asset/ directory (cache-managed behavior)
         asset_dir = self.cache_root / "assets" / "local.user_managed_with_fetch@v1"
-        if asset_dir.exists():
-            entries = list(asset_dir.rglob("*"))
-            # Filter to just fetch/, work/, asset/ subdirectories
-            important_dirs = [
-                e
-                for e in entries
-                if e.is_dir()
-                and e.name in ("fetch", "work", "asset", "stage", "install")
-            ]
-            self.assertEqual(
-                len(important_dirs),
-                0,
-                f"User-managed should purge all workspace dirs, found: {important_dirs}",
-            )
+        self.assertTrue(asset_dir.exists(), "Cache-managed packages should persist in cache")
+
+        # Verify asset directory exists
+        asset_subdirs = list(asset_dir.glob("*/asset"))
+        self.assertGreater(
+            len(asset_subdirs),
+            0,
+            "Cache-managed packages should have asset/ directory in cache",
+        )
 
     def test_user_managed_fetch_cached_on_retry(self):
         """If install fails, fetch/ persists for per-file cache reuse."""

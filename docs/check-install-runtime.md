@@ -13,7 +13,7 @@
 
 **Check (ctx.run):** Honors quiet/capture—defaults stream to TUI, throw on error. Returns table with `exit_code` field (capture=false) or `stdout, stderr, exit_code` fields (capture=true). Signature: `ctx.run("command [args...]", opts_table?)` — command string executed via shell.
 
-**Install (string or function→string):** Shell exec in install_dir (cache-managed) or tmp_dir (user-managed), streams to TUI, throws on error, marks complete on zero (cache-managed only; user-managed skip marking, rely on check verb). Functions may call ctx.run() *and* return string—natural execution order (run() immediate, mirrors fetch). Returned strings spawn fresh shell with same defaults (manifest shell, install_dir/tmp_dir cwd)—use ctx.run() for control. Nil/no return OK; non-string/non-nil errors.
+**Install (string or function→string):** Shell exec in install_dir (cache-managed) or manifest dir (user-managed), streams to TUI, throws on error, marks complete on zero (cache-managed only; user-managed skip marking, rely on check verb). Functions may call ctx.run() *and* return string—natural execution order (run() immediate, mirrors fetch). Returned strings spawn fresh shell with same defaults (manifest shell, install_dir/manifest dir cwd)—use ctx.run() for control. Nil/no return OK; non-string/non-nil errors.
 
 **ctx.run:** quiet (silent, still throws), capture (split stdout/stderr into return table fields, streams interleaved to TUI when !quiet), neither (streams interleaved, throws on error, returns table with exit_code field). Always returns table; capture controls which fields are populated.
 
@@ -23,6 +23,7 @@
 - **Forbidden ctx**: fetch_dir, stage_dir, build_dir, install_dir, asset_dir, fetch(), extract_all(), mark_install_complete()
 - **Validation**: Parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called
 - **Workspace lifecycle**: tmp_dir created during install, entire entry_dir deleted after completion (no cache persistence)
+- **Default CWD**: Manifest directory (project root) for all shell commands—same as check verb. User-managed packages are project-relative, cache-unaware.
 
 **Examples:**
 ```lua
@@ -41,7 +42,7 @@ install = "make install"
 -- Install with ctx.run + returned string (both execute)
 install = function(ctx)
   ctx.run("make -j8")     -- Build with 8 cores
-  return "make install"   -- Fresh shell, runs in install_dir
+  return "make install"   -- Fresh shell, runs in install_dir (cache-managed) or manifest dir (user-managed)
 end
 
 -- Capture stdout/stderr (table fields when capture=true)
@@ -92,42 +93,42 @@ end
 - [x] Add stdout/stderr split capture in shell_run for macOS/Linux (preserve interleaved streaming for TUI; best-effort ordering due to OS pipe buffering).
 - [ ] Add stdout/stderr split capture in shell_run for Windows (preserve interleaved streaming for TUI; best-effort ordering due to OS pipe buffering).
 - [x] Wire ctx.run options (quiet, capture); always return table—`exit_code` field only (capture=false) or `stdout, stderr, exit_code` fields (capture=true).
-- [ ] Make check string path quiet-on-success, verbose-on-failure via `tui::error()`; ensure manifest default shell/cwd.
-- [ ] Run install string/returned-string with streaming output; spawn fresh shell (manifest defaults) for returned strings; validate return type (string/nil only); mark complete only for cache-managed recipes (skip for user-managed).
-- [ ] User-managed package validation: parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called (existing).
+- [x] Make check string path quiet-on-success, verbose-on-failure via `tui::error()`; ensure manifest default shell/cwd.
+- [x] Run install string/returned-string with streaming output; spawn fresh shell (manifest defaults) for returned strings; validate return type (string/nil only); mark complete only for cache-managed recipes (skip for user-managed).
+- [x] String installs compatible with user-managed packages (run command, mark complete only if cache-managed).
+- [x] User-managed package validation: parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called (existing).
 - [ ] User-managed ctx isolation: expose tmp_dir (install phase only), run(), options, identity, asset(); hide fetch_dir, stage_dir, build_dir, install_dir, asset_dir, fetch(), extract_all(), mark_install_complete().
-- [ ] User-managed install cwd: use tmp_dir instead of install_dir for string/returned-string execution.
-- [ ] Update failure messages (command, exit code, full stdout/stderr—no truncation).
-- [ ] Refresh docs/tests as needed.
+- [ ] User-managed install cwd: use manifest directory (project root) instead of install_dir for string/returned-string execution—consistent with check verb behavior.
+- [x] Update failure messages (command, exit code, full stdout/stderr—no truncation).
 
 ## Tests (exhaustive functional/unit)
 - [ ] Check string success: no TUI output (silent even with `--verbose`).
-- [ ] Check string failure: stdout+stderr printed via `tui::error()`, error includes command+exit+outputs.
+- [x] Check string failure: stdout+stderr printed via `tui::error()`, error includes command+exit+outputs.
 - [ ] Check with ctx.run quiet=true success/failure (no TUI, returns table with exit_code, throws on non-zero).
 - [ ] Check with ctx.run capture=true: table with `stdout, stderr, exit_code` fields returned; streams when quiet=false.
 - [ ] Check with ctx.run capture=false: returns table with only exit_code field.
-- [ ] Install string success (cache-managed): streams to TUI, marks complete, cwd=install_dir.
-- [ ] Install string success (user-managed): streams to TUI, does not mark complete, cwd=tmp_dir.
-- [ ] Install string failure: streams, throws with full outputs (no truncation).
-- [ ] Install function calling ctx.run() and returning string: both execute in order, returned string spawns fresh shell.
-- [ ] Install function returning string success/failure paths.
-- [ ] Install function returning non-string/non-nil → error; nil/no return → no extra action.
+- [x] Install string success (cache-managed): streams to TUI, marks complete, cwd=install_dir.
+- [x] Install string success (user-managed): streams to TUI, does not mark complete, cwd=tmp_dir.
+- [x] Install string failure: streams, throws with full outputs (no truncation).
+- [x] Install function calling ctx.run() and returning string: both execute in order, returned string spawns fresh shell.
+- [x] Install function returning string success/failure paths.
+- [x] Install function returning non-string/non-nil → error; nil/no return → no extra action.
 - [ ] ctx.run default (no flags): streams interleaved, throws on non-zero, returns table with exit_code field.
 - [ ] ctx.run quiet + capture combos across success/failure (4 combinations: !q!c, q!c, !qc, qc).
 - [ ] Default shell (manifest `default_shell`) respected in check/install string paths.
 - [ ] Check cwd = manifest directory (test via relative path in check string).
-- [ ] Install cwd = install_dir (cache-managed) or tmp_dir (user-managed) via relative path in install string and returned string.
+- [ ] Install cwd = install_dir (cache-managed) or manifest directory (user-managed) via relative path in install string and returned string.
 - [ ] Table field access patterns: `res.exit_code`, `res.stdout`, chained access `ctx.run(...).stdout`.
 - [ ] Shell error types: command not found (exit 127), syntax error, timeout/signal (if exposed).
 - [ ] Concurrent large stdout+stderr with capture (no pipe deadlock, interleaving best-effort).
 - [ ] Empty outputs in failure messages (clarify in error, not blank lines).
-- [ ] Install function with ctx.run() + returned string: returned string cwd=install_dir/tmp_dir (fresh shell isolation).
-- [ ] User-managed parse error: check verb + fetch phase declared → error with message.
-- [ ] User-managed parse error: check verb + stage phase declared → error.
-- [ ] User-managed parse error: check verb + build phase declared → error.
-- [ ] User-managed runtime error: check verb + ctx.mark_install_complete() called → error (existing test).
+- [x] Install function with ctx.run() + returned string: returned string cwd=install_dir (cache-managed) or manifest dir (user-managed) (fresh shell isolation).
+- [x] User-managed parse error: check verb + fetch phase declared → error with message.
+- [x] User-managed parse error: check verb + stage phase declared → error.
+- [x] User-managed parse error: check verb + build phase declared → error.
+- [x] User-managed runtime error: check verb + ctx.mark_install_complete() called → error (existing test).
 - [ ] User-managed ctx isolation: tmp_dir accessible in install, fetch_dir/stage_dir/build_dir/install_dir/asset_dir return error or nil.
 - [ ] User-managed ctx isolation: ctx.fetch(), ctx.extract_all() not exposed (runtime error if called).
 - [ ] User-managed workspace lifecycle: tmp_dir created during install, entry_dir deleted after completion.
 - [ ] User-managed check phase: no tmp_dir exposed (check tests system state only).
-- [ ] User-managed install uses tmp_dir for downloads/temp files (test via ctx.tmp_dir path).
+- [ ] User-managed install uses tmp_dir for ephemeral workspace (test via ctx.tmp_dir path), but cwd is manifest directory.

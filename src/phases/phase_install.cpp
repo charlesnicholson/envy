@@ -62,36 +62,6 @@ sol::table build_install_phase_ctx_table(sol::state_view lua,
   return ctx_table;
 }
 
-bool run_programmatic_install(sol::protected_function install_func,
-                              cache::scoped_entry_lock *lock,
-                              std::filesystem::path const &fetch_dir,
-                              std::filesystem::path const &stage_dir,
-                              std::filesystem::path const &install_dir,
-                              std::string const &identity,
-                              engine &eng,
-                              recipe *r) {
-  tui::debug("phase install: running programmatic install function");
-
-  install_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = install_dir;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.install_dir = install_dir;
-  ctx.stage_dir = stage_dir;
-  ctx.lock = lock;
-
-  sol::state_view lua{ install_func.lua_state() };
-  sol::table ctx_table{ build_install_phase_ctx_table(lua, identity, &ctx) };
-
-  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-  call_lua_function_with_enriched_errors(r, "install", [&]() {
-    return install_func(ctx_table, opts);
-  });
-
-  return lock->is_install_complete();
-}
-
 bool run_shell_install(std::string_view script,
                        std::filesystem::path const &install_dir,
                        cache::scoped_entry_lock *lock,
@@ -121,8 +91,75 @@ bool run_shell_install(std::string_view script,
                              " (exit code " + std::to_string(result.exit_code) + ")");
   }
 
-  lock->mark_install_complete();
-  return true;
+  if (lock) {
+    lock->mark_install_complete();
+    return true;
+  }
+
+  return false;
+}
+
+bool run_programmatic_install(sol::protected_function install_func,
+                              cache::scoped_entry_lock *lock,
+                              std::filesystem::path const &fetch_dir,
+                              std::filesystem::path const &stage_dir,
+                              std::filesystem::path const &install_dir,
+                              std::string const &identity,
+                              engine &eng,
+                              recipe *r,
+                              bool is_user_managed) {
+  tui::debug("phase install: running programmatic install function");
+
+  install_phase_ctx ctx{};
+  ctx.fetch_dir = fetch_dir;
+  ctx.run_dir = install_dir;
+  ctx.engine_ = &eng;
+  ctx.recipe_ = r;
+  ctx.install_dir = install_dir;
+  ctx.stage_dir = stage_dir;
+  ctx.lock = lock;
+
+  sol::state_view lua{ install_func.lua_state() };
+  sol::table ctx_table{ build_install_phase_ctx_table(lua, identity, &ctx) };
+
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "install", [&]() {
+    return install_func(ctx_table, opts);
+  }) };
+
+  // Validate return type: must be nil or string
+  sol::type const result_type{ result_obj.get_type() };
+  if (result_type != sol::type::none && result_type != sol::type::lua_nil) {
+    if (!result_obj.is<std::string>()) {
+      throw std::runtime_error("install function for " + identity +
+                               " must return nil or string, got " +
+                               sol::type_name(lua.lua_state(), result_type));
+    }
+
+    // Returned string: spawn fresh shell with manifest defaults
+    std::string const returned_script{ result_obj.as<std::string>() };
+    tui::debug("phase install: running returned string from install function");
+
+    // Returned strings from user-managed packages should error (auto-mark complete)
+    if (is_user_managed) {
+      throw std::runtime_error(
+          "Recipe " + identity +
+          " has check verb (user-managed) but install function returned a string. "
+          "Returned strings automatically called mark_install_complete(). "
+          "Use ctx.run() directly instead, or remove check verb.");
+    }
+
+    bool const shell_marked_complete{ run_shell_install(
+        returned_script,
+        install_dir,
+        lock,
+        identity,
+        shell_resolve_default(r->default_shell_ptr)) };
+
+    return shell_marked_complete || lock->is_install_complete();
+  }
+
+  return lock->is_install_complete();
 }
 
 bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
@@ -168,13 +205,16 @@ void run_install_phase(recipe *r, engine &eng) {
   sol::object install_obj{ lua_view["install"] };
   bool marked_complete{ false };
 
+  bool const is_user_managed{ recipe_has_check_verb(r, lua_view) };
+
   if (!install_obj.valid()) {
     marked_complete = promote_stage_to_install(lock.get());
   } else if (install_obj.is<std::string>()) {
+    // String installs: run command, mark complete only if cache-managed
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
                                         lock->install_dir(),
-                                        lock.get(),
+                                        is_user_managed ? nullptr : lock.get(),
                                         r->spec->identity,
                                         shell_resolve_default(r->default_shell_ptr));
   } else if (install_obj.is<sol::protected_function>()) {
@@ -185,7 +225,8 @@ void run_install_phase(recipe *r, engine &eng) {
                                                lock->install_dir(),
                                                r->spec->identity,
                                                eng,
-                                               r);
+                                               r,
+                                               is_user_managed);
   } else {
     throw std::runtime_error("install field must be nil, string, or function for " +
                              r->spec->identity);

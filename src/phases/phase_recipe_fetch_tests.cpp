@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 #include <filesystem>
+#include <fstream>
 
 namespace envy {
 
@@ -64,6 +65,137 @@ TEST_CASE("string check without install errors") {
   recipe *r{ eng.ensure_recipe(spec) };
 
   CHECK_THROWS(run_recipe_fetch_phase(r, eng));
+}
+
+// ============================================================================
+// User-managed package validation tests (check verb + cache phases)
+// ============================================================================
+
+TEST_CASE("user-managed package with check verb and fetch phase throws parse error") {
+  cache c;
+  engine eng{ c, std::nullopt };
+
+  // Create temporary test recipe with check + fetch
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_check_fetch" };
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path recipe_file{ temp_dir / "recipe.lua" };
+
+  std::ofstream ofs{ recipe_file };
+  ofs << "identity = \"test.check_fetch@v1\"\n";
+  ofs << "check = \"echo test\"\n";
+  ofs << "fetch = function(ctx) end\n";
+  ofs.close();
+
+  auto *spec{ make_local_spec("test.check_fetch@v1", recipe_file) };
+  recipe *r{ eng.ensure_recipe(spec) };
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_recipe_fetch_phase(r, eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+
+  std::filesystem::remove_all(temp_dir);
+
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
+  CHECK(exception_msg.find("declares fetch phase") != std::string::npos);
+}
+
+TEST_CASE("user-managed package with check verb and stage phase throws parse error") {
+  cache c;
+  engine eng{ c, std::nullopt };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_check_stage" };
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path recipe_file{ temp_dir / "recipe.lua" };
+
+  std::ofstream ofs{ recipe_file };
+  ofs << "identity = \"test.check_stage@v1\"\n";
+  ofs << "check = \"echo test\"\n";
+  ofs << "stage = function(ctx) end\n";
+  ofs.close();
+
+  auto *spec{ make_local_spec("test.check_stage@v1", recipe_file) };
+  recipe *r{ eng.ensure_recipe(spec) };
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_recipe_fetch_phase(r, eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+
+  std::filesystem::remove_all(temp_dir);
+
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
+  CHECK(exception_msg.find("declares stage phase") != std::string::npos);
+}
+
+TEST_CASE("user-managed package with check verb and build phase throws parse error") {
+  cache c;
+  engine eng{ c, std::nullopt };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_check_build" };
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path recipe_file{ temp_dir / "recipe.lua" };
+
+  std::ofstream ofs{ recipe_file };
+  ofs << "identity = \"test.check_build@v1\"\n";
+  ofs << "check = \"echo test\"\n";
+  ofs << "build = function(ctx) end\n";
+  ofs.close();
+
+  auto *spec{ make_local_spec("test.check_build@v1", recipe_file) };
+  recipe *r{ eng.ensure_recipe(spec) };
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_recipe_fetch_phase(r, eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+
+  std::filesystem::remove_all(temp_dir);
+
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
+  CHECK(exception_msg.find("declares build phase") != std::string::npos);
+}
+
+TEST_CASE("user-managed package with check verb and install phase succeeds") {
+  cache c;
+  engine eng{ c, std::nullopt };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_check_install_ok" };
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path recipe_file{ temp_dir / "recipe.lua" };
+
+  std::ofstream ofs{ recipe_file };
+  ofs << "identity = \"test.check_install_ok@v1\"\n";
+  ofs << "check = \"echo test\"\n";
+  ofs << "install = \"echo install\"\n";
+  ofs.close();
+
+  auto *spec{ make_local_spec("test.check_install_ok@v1", recipe_file) };
+  recipe *r{ eng.ensure_recipe(spec) };
+
+  // Should not throw - install phase is allowed with check verb
+  CHECK_NOTHROW(run_recipe_fetch_phase(r, eng));
+
+  std::filesystem::remove_all(temp_dir);
 }
 
 }  // namespace envy
