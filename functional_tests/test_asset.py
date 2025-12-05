@@ -5,7 +5,6 @@ Tests asset path querying, manifest discovery, dependency installation,
 ambiguity detection, and error handling.
 """
 
-import os
 import shutil
 import subprocess
 import tempfile
