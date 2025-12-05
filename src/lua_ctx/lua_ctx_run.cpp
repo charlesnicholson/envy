@@ -12,8 +12,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <variant>
-#include <vector>
 
 namespace envy {
 
@@ -43,9 +41,8 @@ make_ctx_run(lua_ctx_common *ctx) {
     std::optional<std::filesystem::path> cwd;
     shell_env_t env{ shell_getenv() };
 
-    resolved_shell shell{ shell_resolve_default(ctx && ctx->recipe_
-                                                ? ctx->recipe_->default_shell_ptr
-                                                : nullptr) };
+    resolved_shell shell{ shell_resolve_default(
+        ctx && ctx->recipe_ ? ctx->recipe_->default_shell_ptr : nullptr) };
 
     if (opts_table) {
       sol::table opts{ *opts_table };
@@ -85,8 +82,30 @@ make_ctx_run(lua_ctx_common *ctx) {
                                    cwd->string());
     }
 
-    std::string combined_output;
-    std::vector<std::string> output_lines;
+    bool quiet{ false };
+    bool capture{ false };
+    if (opts_table) {
+      sol::table opts{ *opts_table };
+      sol::optional<sol::object> quiet_obj = opts["quiet"];
+      if (quiet_obj && quiet_obj->valid() && quiet_obj->get_type() != sol::type::lua_nil) {
+        if (!quiet_obj->is<bool>()) {
+          throw std::runtime_error("ctx.run: quiet must be a boolean");
+        }
+        quiet = quiet_obj->as<bool>();
+      }
+
+      sol::optional<sol::object> capture_obj = opts["capture"];
+      if (capture_obj && capture_obj->valid() &&
+          capture_obj->get_type() != sol::type::lua_nil) {
+        if (!capture_obj->is<bool>()) {
+          throw std::runtime_error("ctx.run: capture must be a boolean");
+        }
+        capture = capture_obj->as<bool>();
+      }
+    }
+
+    std::string stdout_buffer;
+    std::string stderr_buffer;
 
 #if defined(_WIN32)
     bool const use_powershell_parsing{ std::holds_alternative<shell_choice>(shell) &&
@@ -96,9 +115,24 @@ make_ctx_run(lua_ctx_common *ctx) {
     bool constexpr use_powershell_parsing{ false };
 #endif
 
-    std::function<void(std::string_view)> on_line;
+    auto append_line{ [](std::string &buffer, std::string_view line) {
+      buffer.append(line);
+      buffer.push_back('\n');
+    } };
 
-    if (use_powershell_parsing) {
+    std::function<void(std::string_view)> on_stdout_capture;
+    std::function<void(std::string_view)> on_stderr_capture;
+    if (capture) {
+      on_stdout_capture = [&](std::string_view line) { append_line(stdout_buffer, line); };
+      on_stderr_capture = [&](std::string_view line) { append_line(stderr_buffer, line); };
+    }
+
+    std::function<void(std::string_view)> on_line;
+    if (quiet) {
+      on_line = [](std::string_view) {};
+    }
+#if defined(_WIN32)
+    else if (use_powershell_parsing) {
       on_line = [&](std::string_view line) {
         std::string const msg{ !line.empty() && line[0] >= '\x1C' && line[0] <= '\x1F'
                                    ? line.substr(1)
@@ -112,17 +146,19 @@ make_ctx_run(lua_ctx_common *ctx) {
         } else {
           tui::info("%s", msg.c_str());
         }
-        output_lines.emplace_back(msg);
       };
-    } else {
+    }
+#endif
+    else {
       on_line = [&](std::string_view line) {
         std::string const msg{ line };
         tui::info("%s", msg.c_str());
-        output_lines.emplace_back(msg);
       };
     }
 
     shell_run_cfg const inv{ .on_output_line = std::move(on_line),
+                             .on_stdout_line = std::move(on_stdout_capture),
+                             .on_stderr_line = std::move(on_stderr_capture),
                              .cwd = cwd,
                              .env = std::move(env),
                              .shell = shell };
@@ -149,15 +185,16 @@ make_ctx_run(lua_ctx_common *ctx) {
       }
     }
 
-    for (auto const &line : output_lines) {
-      combined_output += line;
-      combined_output += '\n';
-    }
-
     sol::state_view lua_view{ L };
     sol::table return_table{ lua_view.create_table() };
-    return_table["stdout"] = combined_output;
-    return_table["stderr"] = "";
+    return_table["exit_code"] = result.exit_code;
+    if (capture) {
+      return_table["stdout"] = stdout_buffer;
+      return_table["stderr"] = stderr_buffer;
+    } else {
+      return_table["stdout"] = sol::lua_nil;
+      return_table["stderr"] = sol::lua_nil;
+    }
 
     return return_table;
   };

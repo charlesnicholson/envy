@@ -276,13 +276,12 @@ TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
 
   std::string lua_script =
       "return function(ctx)\n"
-      "  local out = ctx.run(\"pwd\").stdout\n"
+      "  local out = ctx.run(\"pwd\", {capture=true}).stdout\n"
       "  return string.find(out, \"envy%-check%-cwd\") ~= nil\n"
       "end";
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script(lua_script, sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(lua_script,
+                                                            sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 

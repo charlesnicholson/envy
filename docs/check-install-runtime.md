@@ -89,8 +89,9 @@ end
 ```
 
 ## Implementation Tasks
-- [ ] Add stdout/stderr split capture in shell_run (preserve interleaved streaming for TUI; best-effort ordering due to OS pipe buffering).
-- [ ] Wire ctx.run options (quiet, capture); always return table—`exit_code` field only (capture=false) or `stdout, stderr, exit_code` fields (capture=true).
+- [x] Add stdout/stderr split capture in shell_run for macOS/Linux (preserve interleaved streaming for TUI; best-effort ordering due to OS pipe buffering).
+- [ ] Add stdout/stderr split capture in shell_run for Windows (preserve interleaved streaming for TUI; best-effort ordering due to OS pipe buffering).
+- [x] Wire ctx.run options (quiet, capture); always return table—`exit_code` field only (capture=false) or `stdout, stderr, exit_code` fields (capture=true).
 - [ ] Make check string path quiet-on-success, verbose-on-failure via `tui::error()`; ensure manifest default shell/cwd.
 - [ ] Run install string/returned-string with streaming output; spawn fresh shell (manifest defaults) for returned strings; validate return type (string/nil only); mark complete only for cache-managed recipes (skip for user-managed).
 - [ ] User-managed package validation: parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called (existing).

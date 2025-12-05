@@ -24,7 +24,8 @@ build = function(ctx, opts)
         BUILD_MODE = "release",
         CUSTOM_VAR = "test_value"
       },
-      shell = ENVY_SHELL.POWERSHELL
+      shell = ENVY_SHELL.POWERSHELL,
+      capture = true
     })
   else
     result = ctx.run([[
@@ -36,7 +37,8 @@ build = function(ctx, opts)
       env = {
         BUILD_MODE = "release",
         CUSTOM_VAR = "test_value"
-      }
+      },
+      capture = true
     })
   end
 

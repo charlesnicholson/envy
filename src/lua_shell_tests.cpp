@@ -27,8 +27,10 @@ sol_state_ptr make_test_lua_state() {
   sol::table envy_shell{ lua->create_table() };
   set_light_userdata(envy_shell, "BASH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
   set_light_userdata(envy_shell, "SH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
+#if defined(_WIN32)
   set_light_userdata(envy_shell, "CMD", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
   set_light_userdata(envy_shell, "POWERSHELL", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
+#endif
   (*lua)["ENVY_SHELL"] = envy_shell;
 
   return lua;
@@ -56,6 +58,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH") {
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::sh);
 }
 
+#if defined(_WIN32)
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD") {
   auto lua{ make_test_lua_state() };
 
@@ -77,6 +80,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL") {
   CHECK(std::holds_alternative<envy::shell_choice>(result));
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::powershell);
 }
+#endif
 
 TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
   auto lua{ make_test_lua_state() };
@@ -88,6 +92,7 @@ TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
                        "test_ctx: invalid ENVY_SHELL constant",
                        std::runtime_error);
 }
+
 
 TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   auto lua{ make_test_lua_state() };

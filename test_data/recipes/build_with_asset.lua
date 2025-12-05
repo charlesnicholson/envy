@@ -29,12 +29,14 @@ build = function(ctx, opts)
       Write-Output "Used dependency data"
       if (-not (Test-Path from_dependency.txt)) { Write-Error "Output artifact missing"; exit 62 }
       exit 0
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]],
+                     { shell = ENVY_SHELL.POWERSHELL, capture = true })
   else
     result = ctx.run([[
       cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt
       echo "Used dependency data"
-    ]])
+    ]],
+                     { capture = true })
   end
 
   if not result.stdout:match("Used dependency data") then

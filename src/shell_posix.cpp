@@ -6,6 +6,7 @@
 
 #include "util.h"
 
+#include <array>
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -18,9 +19,11 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -46,8 +49,18 @@ class fd_cleanup {
 
   fd_cleanup(fd_cleanup const &) = delete;
   fd_cleanup &operator=(fd_cleanup const &) = delete;
+  fd_cleanup(fd_cleanup &&other) noexcept : fd_{ other.fd_ } { other.fd_ = -1; }
+
+  fd_cleanup &operator=(fd_cleanup &&other) noexcept {
+    if (this == &other) { return *this; }
+    if (fd_ != -1) { close_with_retry(); }
+    fd_ = other.fd_;
+    other.fd_ = -1;
+    return *this;
+  }
 
   int get() const { return fd_; }
+
   void release() {
     if (fd_ == -1) { return; }
     close_with_retry();
@@ -114,29 +127,86 @@ std::string create_temp_script(std::string_view script) {
   return std::string{ path_buffer.data() };
 }
 
-void stream_pipe_lines(int fd, std::function<void(std::string_view)> const &callback) {
-  std::string pending;
-  pending.reserve(kLinePendingReserve);
-  std::string chunk(kPipeBufferSize, '\0');
-
-  ssize_t read_bytes;
-  while ((read_bytes = ::read(fd, chunk.data(), chunk.size())) != 0) {
-    if (read_bytes == -1) {
-      if (errno == EINTR) { continue; }
-      throw std::system_error(errno, std::generic_category(), "read failed");
-    }
-
-    pending.append(chunk.data(), static_cast<size_t>(read_bytes));
-
-    size_t newline{ 0 };
-    while ((newline = pending.find('\n')) != std::string::npos) {
-      std::string line{ pending.substr(0, newline) };
-      callback(line);
-      pending.erase(0, newline + 1);
-    }
+void dispatch_line(shell_run_cfg const &cfg, shell_stream stream, std::string_view line) {
+  if (stream == shell_stream::std_out) {
+    if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+  } else {
+    if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
   }
 
-  if (!pending.empty()) { callback(pending); }
+  if (cfg.on_output_line) { cfg.on_output_line(line); }
+}
+
+struct pipe_state {
+  fd_cleanup read_fd;
+  shell_stream stream;
+  std::string pending;
+  bool closed{ false };
+};
+
+void stream_pipes(std::array<pipe_state, 2> &pipes, shell_run_cfg const &cfg) {
+  std::array<pollfd, 2> poll_fds{};
+  std::string chunk(kPipeBufferSize, '\0');
+  size_t closed_count{ 0 };
+
+  for (auto &pipe : pipes) { pipe.pending.reserve(kLinePendingReserve); }
+
+  for (size_t i{ 0 }; i < pipes.size(); ++i) {
+    poll_fds[i].fd = pipes[i].closed ? -1 : pipes[i].read_fd.get();
+    poll_fds[i].events = pipes[i].closed ? 0 : POLLIN;
+    poll_fds[i].revents = 0;
+  }
+
+  while (closed_count < pipes.size()) {
+    int const poll_result{ ::poll(poll_fds.data(), poll_fds.size(), -1) };
+    if (poll_result == -1) {
+      if (errno == EINTR) { continue; }
+      throw std::system_error(errno, std::generic_category(), "poll failed");
+    }
+
+    for (size_t i{ 0 }; i < pipes.size(); ++i) {
+      if (pipes[i].closed) { continue; }
+
+      short const revents{ poll_fds[i].revents };
+      if (revents == 0) { continue; }
+      if (revents & (POLLERR | POLLNVAL)) {
+        throw std::runtime_error("poll failed on child pipe");
+      }
+
+      ssize_t const read_bytes{
+        ::read(pipes[i].read_fd.get(), chunk.data(), chunk.size())
+      };
+
+      if (read_bytes == -1) {
+        if (errno == EINTR) { continue; }
+        throw std::system_error(errno, std::generic_category(), "read failed");
+      }
+
+      if (read_bytes == 0) {
+        if (!pipes[i].pending.empty()) {
+          dispatch_line(cfg, pipes[i].stream, pipes[i].pending);
+          pipes[i].pending.clear();
+        }
+
+        pipes[i].closed = true;
+        ++closed_count;
+
+        poll_fds[i].fd = -1;
+        poll_fds[i].events = 0;
+        poll_fds[i].revents = 0;
+        continue;
+      }
+
+      pipes[i].pending.append(chunk.data(), static_cast<size_t>(read_bytes));
+
+      size_t newline{ 0 };
+      while ((newline = pipes[i].pending.find('\n')) != std::string::npos) {
+        std::string line{ pipes[i].pending.substr(0, newline) };
+        dispatch_line(cfg, pipes[i].stream, line);
+        pipes[i].pending.erase(0, newline + 1);
+      }
+    }
+  }
 }
 
 struct envp_storage {
@@ -179,22 +249,26 @@ shell_result wait_for_child(pid_t child) {
   return { .exit_code = status, .signal = std::nullopt };
 }
 
-[[noreturn]] void exec_child_process(fd_cleanup &read_end,
-                                     fd_cleanup &write_end,
+[[noreturn]] void exec_child_process(fd_cleanup &stdout_read,
+                                     fd_cleanup &stdout_write,
+                                     fd_cleanup &stderr_read,
+                                     fd_cleanup &stderr_write,
                                      std::optional<std::filesystem::path> const &cwd,
                                      std::vector<std::string> const &argv_strings,
                                      envp_storage const &envp) {
-  read_end.release();
+  stdout_read.release();
+  stderr_read.release();
 
   int const null_fd{ ::open("/dev/null", O_RDONLY) };
   if (null_fd == -1 || ::dup2(null_fd, STDIN_FILENO) == -1 ||
-      ::dup2(write_end.get(), STDOUT_FILENO) == -1 ||
-      ::dup2(write_end.get(), STDERR_FILENO) == -1) {
+      ::dup2(stdout_write.get(), STDOUT_FILENO) == -1 ||
+      ::dup2(stderr_write.get(), STDERR_FILENO) == -1) {
     std::perror("dup2");
     _exit(kChildErrorExit);
   }
   if (null_fd != STDIN_FILENO) { ::close(null_fd); }
-  write_end.release();
+  stdout_write.release();
+  stderr_write.release();
 
   if (cwd) {
     if (::chdir(cwd->c_str()) == -1) {
@@ -298,26 +372,47 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
 
   auto envp{ build_envp(cfg.env) };
 
-  int pipefd[2];
-  if (::pipe(pipefd) == -1) {
+  int stdout_pipefd[2];
+  if (::pipe(stdout_pipefd) == -1) {
     throw std::system_error(errno, std::generic_category(), "pipe failed");
   }
 
-  fd_cleanup read_end{ pipefd[0] };
-  fd_cleanup write_end{ pipefd[1] };
+  int stderr_pipefd[2];
+  if (::pipe(stderr_pipefd) == -1) {
+    throw std::system_error(errno, std::generic_category(), "pipe failed");
+  }
+
+  fd_cleanup stdout_read_end{ stdout_pipefd[0] };
+  fd_cleanup stdout_write_end{ stdout_pipefd[1] };
+  fd_cleanup stderr_read_end{ stderr_pipefd[0] };
+  fd_cleanup stderr_write_end{ stderr_pipefd[1] };
 
   pid_t const child{ ::fork() };
   if (child == -1) {
     throw std::system_error(errno, std::generic_category(), "fork failed");
   }
 
-  if (child == 0) { exec_child_process(read_end, write_end, cfg.cwd, argv_strings, envp); }
+  if (child == 0) {  // child process exits in exec_child_process
+    exec_child_process(stdout_read_end,
+                       stdout_write_end,
+                       stderr_read_end,
+                       stderr_write_end,
+                       cfg.cwd,
+                       argv_strings,
+                       envp);
+  }
 
-  write_end.release();  // Parent: close write end and stream output
+  stdout_write_end.release();  // Parent: close write ends and stream output
+  stderr_write_end.release();
 
   shell_result result;
   try {
-    stream_pipe_lines(read_end.get(), cfg.on_output_line);
+    std::array<pipe_state, 2> pipes{
+      pipe_state{ std::move(stdout_read_end), shell_stream::std_out, {}, false },
+      pipe_state{ std::move(stderr_read_end), shell_stream::std_err, {}, false },
+    };
+
+    stream_pipes(pipes, cfg);
     result = wait_for_child(child);
   } catch (...) {
     ::kill(child, SIGKILL);
