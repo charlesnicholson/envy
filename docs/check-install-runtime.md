@@ -97,7 +97,7 @@ end
 - [x] Run install string/returned-string with streaming output; spawn fresh shell (manifest defaults) for returned strings; validate return type (string/nil only); mark complete only for cache-managed recipes (skip for user-managed).
 - [x] String installs compatible with user-managed packages (run command, mark complete only if cache-managed).
 - [x] User-managed package validation: parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called (existing).
-- [ ] User-managed ctx isolation: expose tmp_dir (install phase only), run(), options, identity, asset(); hide fetch_dir, stage_dir, build_dir, install_dir, asset_dir, fetch(), extract_all(), mark_install_complete().
+- [x] User-managed ctx isolation: expose tmp_dir (install phase only), run(), options, identity, asset(); hide fetch_dir, stage_dir, build_dir, install_dir, asset_dir, fetch(), extract_all(), mark_install_complete().
 - [ ] User-managed install cwd: use manifest directory (project root) instead of install_dir for string/returned-string execution—consistent with check verb behavior.
 - [x] Update failure messages (command, exit code, full stdout/stderr—no truncation).
 
@@ -127,8 +127,8 @@ end
 - [x] User-managed parse error: check verb + stage phase declared → error.
 - [x] User-managed parse error: check verb + build phase declared → error.
 - [x] User-managed runtime error: check verb + ctx.mark_install_complete() called → error (existing test).
-- [ ] User-managed ctx isolation: tmp_dir accessible in install, fetch_dir/stage_dir/build_dir/install_dir/asset_dir return error or nil.
-- [ ] User-managed ctx isolation: ctx.fetch(), ctx.extract_all() not exposed (runtime error if called).
+- [x] User-managed ctx isolation: tmp_dir accessible in install, fetch_dir/stage_dir/build_dir/install_dir/asset_dir throw error.
+- [x] User-managed ctx isolation: ctx.fetch(), ctx.extract_all() not exposed (runtime error if called).
 - [ ] User-managed workspace lifecycle: tmp_dir created during install, entry_dir deleted after completion.
 - [ ] User-managed check phase: no tmp_dir exposed (check tests system state only).
 - [ ] User-managed install uses tmp_dir for ephemeral workspace (test via ctx.tmp_dir path), but cwd is manifest directory.

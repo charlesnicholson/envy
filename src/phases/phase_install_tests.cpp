@@ -149,8 +149,11 @@ TEST_CASE_FIXTURE(
     exception_msg = e.what();
   }
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  INFO("Exception message: ", exception_msg);
+  // mark_install_complete is not exposed at all for user-managed packages,
+  // so Lua sees it as nil and throws "attempt to call a nil value"
+  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
+  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(
@@ -241,8 +244,11 @@ TEST_CASE_FIXTURE(install_test_fixture,
     exception_msg = e.what();
   }
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  INFO("Exception message: ", exception_msg);
+  // mark_install_complete is not exposed at all for user-managed packages,
+  // so Lua sees it as nil and throws "attempt to call a nil value"
+  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
+  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,

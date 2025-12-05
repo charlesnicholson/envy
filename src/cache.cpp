@@ -68,13 +68,13 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
   envy::cache::ensure_result result{ entry_dir, entry_dir / "asset", nullptr };
 
   ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(recipe_identity),
-                                entry_dir.string(),
-                                "before_lock");
+                               entry_dir.string(),
+                               "before_lock");
   bool const complete_before_lock{ envy::cache::is_entry_complete(entry_dir) };
   ENVY_TRACE_CACHE_CHECK_RESULT(std::string(recipe_identity),
-                                 entry_dir.string(),
-                                 complete_before_lock,
-                                 "before_lock");
+                                entry_dir.string(),
+                                complete_before_lock,
+                                "before_lock");
 
   if (complete_before_lock) {
     ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
@@ -89,23 +89,21 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
 
   auto const lock_wait_start{ std::chrono::steady_clock::now() };
   envy::platform::file_lock lock{ lock_path };
-  auto const wait_duration_ms{
-    std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - lock_wait_start)
-        .count()
-  };
+  auto const wait_duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - lock_wait_start)
+                                   .count() };
   ENVY_TRACE_LOCK_ACQUIRED(std::string(recipe_identity),
                            lock_path.string(),
                            static_cast<std::int64_t>(wait_duration_ms));
 
   ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(recipe_identity),
-                                entry_dir.string(),
-                                "after_lock");
+                               entry_dir.string(),
+                               "after_lock");
   bool const complete_after_lock{ envy::cache::is_entry_complete(entry_dir) };
   ENVY_TRACE_CACHE_CHECK_RESULT(std::string(recipe_identity),
-                                 entry_dir.string(),
-                                 complete_after_lock,
-                                 "after_lock");
+                                entry_dir.string(),
+                                complete_after_lock,
+                                "after_lock");
 
   if (complete_after_lock) {
     ENVY_TRACE_CACHE_HIT(std::string(recipe_identity),
@@ -153,15 +151,15 @@ cache::scoped_entry_lock::scoped_entry_lock(
   std::filesystem::create_directories(fetch_dir());
   std::filesystem::create_directories(install_dir());
   std::filesystem::create_directories(stage_dir());
+  std::filesystem::create_directories(tmp_dir());
   tui::debug("scoped_entry_lock CTOR: done");
 }
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
-  auto const hold_duration_ms{
-    std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - m->lock_acquired_time)
-        .count()
-  };
+  auto const hold_duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() -
+                                   m->lock_acquired_time)
+                                   .count() };
   tui::debug("scoped_entry_lock DTOR: entry_dir=%s completed=%s user_managed=%s",
              m->entry_dir_.string().c_str(),
              m->completed_ ? "true" : "false",
@@ -263,6 +261,7 @@ bool cache::scoped_entry_lock::is_fetch_complete() const {
 cache::path cache::scoped_entry_lock::stage_dir() const { return work_dir() / "stage"; }
 cache::path cache::scoped_entry_lock::fetch_dir() const { return m->entry_dir_ / "fetch"; }
 cache::path cache::scoped_entry_lock::work_dir() const { return m->entry_dir_ / "work"; }
+cache::path cache::scoped_entry_lock::tmp_dir() const { return work_dir() / "tmp"; }
 
 cache::cache(std::optional<std::filesystem::path> root) : m{ std::make_unique<impl>() } {
   if (std::optional<path> maybe_root{ root ? root : platform::get_default_cache_root() }) {
