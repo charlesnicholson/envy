@@ -360,7 +360,6 @@ packages = {{
 
         cache_dirs = self.get_cache_variant_dirs("local.hash_consumer_strong@v1")
         self.assertEqual(len(cache_dirs), 1)
-        hash_with_strong = self.extract_hash_from_variant_dir(cache_dirs[0])
 
         # Create consumer with NO deps (just base identity)
         consumer_nodeps_lua = """

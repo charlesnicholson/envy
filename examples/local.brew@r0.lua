@@ -1,8 +1,6 @@
 identity = "local.brew@r0"
 
-check = function(ctx)
-  return ctx.run("brew --version")
-end
+check = "brew --version"
 
 install = function(ctx)
   print("installing brew")

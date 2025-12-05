@@ -18,7 +18,7 @@
 **ctx.run:** quiet (silent, still throws), capture (split stdout/stderr into return table fields, streams interleaved to TUI when !quiet), neither (streams interleaved, throws on error, returns table with exit_code field). Always returns table; capture controls which fields are populated.
 
 **User-Managed Package Model:**
-- **Allowed phases**: recipe_fetch, check, install, deploy (no fetch/stage/build)
+- **Allowed phases**: recipe_fetch, check, install, deploy (note: recipe_fetch is distinct from fetch; fetch/stage/build phases forbidden)
 - **ctx API**: tmp_dir (ephemeral), run(), options, identity, asset()
 - **Forbidden ctx**: fetch_dir, stage_dir, build_dir, install_dir, asset_dir, fetch(), extract_all(), mark_install_complete()
 - **Validation**: Parse error if check verb + fetch/stage/build phases declared; runtime error if mark_install_complete() called
@@ -66,13 +66,22 @@ end
 
 install = function(ctx)
   -- tmp_dir available for ephemeral workspace
-  ctx.run("echo 'export PYTHONPATH=/usr/local/lib' > " .. ctx.tmp_dir .. "/.pythonrc")
+  local function shell_escape(str)
+    return "'" .. tostring(str):gsub("'", "'\\''") .. "'"
+  end
+
+  ctx.run("echo 'export PYTHONPATH=/usr/local/lib' > " ..
+          shell_escape(ctx.tmp_dir .. "/.pythonrc"))
 
   if ENVY_PLATFORM == "darwin" then
     ctx.run("brew install python3")
-    ctx.run("cp " .. ctx.tmp_dir .. "/.pythonrc ~/.pythonrc")
+    ctx.run("cp " .. shell_escape(ctx.tmp_dir .. "/.pythonrc") .. " ~/.pythonrc")
   elseif ENVY_PLATFORM == "linux" then
-    ctx.run("apt-get install -y python3")
+    -- Use appropriate package manager with sudo; Debian/Ubuntu shown here
+    ctx.run("sudo apt-get install -y python3")
+    -- Fedora: sudo dnf install python3
+    -- Arch: sudo pacman -S python
+    -- Alpine: sudo apk add python3
   end
   -- No ctx.mark_install_complete() call
   -- tmp_dir deleted after install completes

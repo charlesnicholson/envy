@@ -485,7 +485,7 @@ class TestCtxRun(unittest.TestCase):
 
     def test_output_stderr(self):
         """ctx.run() captures stderr output."""
-        result = self.run_recipe(
+        self.run_recipe(
             "local.ctx_run_output_stderr@v1",
             "test_data/recipes/ctx_run_output_stderr.lua",
         )
