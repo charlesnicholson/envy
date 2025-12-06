@@ -283,11 +283,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
-target_link_libraries(envy
-    PRIVATE
-        envy::thirdparty
-)
-
 if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     if(NOT CMAKE_STRIP)
@@ -344,40 +339,6 @@ else()
     add_executable(envy_functional_tester ALIAS envy_functional_tester_asan_ubsan)
 endif()
 
-if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
-    set(_envy_rescan_targets
-        envy::libgit2
-        libssh2::libssh2
-        CURL::libcurl
-        MbedTLS::mbedtls
-        MbedTLS::mbedx509
-        MbedTLS::mbedcrypto
-        ZLIB::ZLIB
-    )
-    list(APPEND _envy_rescan_targets ${PLATFORM_NETWORK_LIBS})
-    set(_envy_rescan_expanded_targets)
-    foreach(_envy_candidate IN LISTS _envy_rescan_targets)
-        if(TARGET ${_envy_candidate})
-            get_target_property(_envy_candidate_type ${_envy_candidate} TYPE)
-            if(_envy_candidate_type STREQUAL "INTERFACE_LIBRARY")
-                unset(_envy_candidate_type)
-                continue()
-            else()
-                list(APPEND _envy_rescan_expanded_targets ${_envy_candidate})
-            endif()
-            unset(_envy_candidate_type)
-        else()
-            list(APPEND _envy_rescan_expanded_targets ${_envy_candidate})
-        endif()
-    endforeach()
-    list(REMOVE_DUPLICATES _envy_rescan_expanded_targets)
-    list(JOIN _envy_rescan_expanded_targets "," _envy_link_group_entries)
-    set(_envy_rescan_link_group "$<LINK_GROUP:RESCAN,${_envy_link_group_entries}>")
-    unset(_envy_link_group_entries)
-    unset(_envy_rescan_targets)
-    unset(_envy_rescan_expanded_targets)
-endif()
-
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
     src/blake3_util_tests.cpp
@@ -430,24 +391,6 @@ else()
     configure_envy_executable(envy_unit_tests "address,undefined")
 endif()
 
-if(DEFINED _envy_rescan_link_group)
-    set(_envy_link_targets envy envy_unit_tests)
-    if(MSVC)
-        list(APPEND _envy_link_targets envy_functional_tester)
-    else()
-        list(APPEND _envy_link_targets envy_functional_tester_asan_ubsan envy_functional_tester_tsan_ubsan)
-    endif()
-    foreach(_envy_target IN LISTS _envy_link_targets)
-        if(TARGET ${_envy_target})
-            target_link_libraries(${_envy_target}
-                PRIVATE
-                    "${_envy_rescan_link_group}"
-            )
-        endif()
-    endforeach()
-    unset(_envy_link_targets)
-    unset(_envy_rescan_link_group)
-endif()
 
 # Run tests and create timestamp on success
 # MSVC ASan doesn't use the same suppression file format, so only pass ASAN_OPTIONS on Clang/GCC

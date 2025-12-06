@@ -138,12 +138,10 @@ target_link_libraries(envy_thirdparty
         libssh2::libssh2
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA
         BZip2::BZip2
         ${PLATFORM_NETWORK_LIBS}
-        CURL::libcurl
         libarchive::libarchive
         lua::lua
         sol2::sol2

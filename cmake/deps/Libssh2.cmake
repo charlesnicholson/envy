@@ -55,7 +55,14 @@ endif()
 
 if(NOT TARGET libssh2::libssh2)
     add_library(libssh2::libssh2 ALIAS ${_libssh2_primary_target})
-    set_target_properties(${_libssh2_primary_target} PROPERTIES INTERFACE_LINK_LIBRARIES "")
+endif()
+
+set(_envy_libssh2_actual "${_libssh2_primary_target}")
+if(_envy_libssh2_actual STREQUAL "libssh2::libssh2")
+    get_target_property(_envy_libssh2_actual libssh2::libssh2 ALIASED_TARGET)
+endif()
+if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
+    set_target_properties(${_envy_libssh2_actual} PROPERTIES INTERFACE_LINK_LIBRARIES "")
 endif()
 
 set(Libssh2_DIR "${libssh2_BINARY_DIR}" CACHE PATH "" FORCE)
