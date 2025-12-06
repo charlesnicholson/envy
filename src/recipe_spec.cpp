@@ -462,4 +462,18 @@ bool recipe_spec::lookup_and_push_source_fetch(sol::state_view lua,
   return false;
 }
 
+std::filesystem::path recipe_spec::compute_project_root(recipe_spec const *spec) {
+  while (spec && spec->parent) { spec = spec->parent; }
+
+  if (spec && !spec->declaring_file_path.empty()) {
+    std::filesystem::path const abs{ std::filesystem::absolute(
+        spec->declaring_file_path) };
+    std::error_code ec;
+    std::filesystem::path const canonical{ std::filesystem::weakly_canonical(abs, ec) };
+    return (ec ? abs : canonical).parent_path();
+  }
+
+  return std::filesystem::current_path();
+}
+
 }  // namespace envy

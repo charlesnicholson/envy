@@ -18,25 +18,6 @@
 
 namespace envy {
 
-namespace {
-
-std::filesystem::path compute_project_root(recipe const *r) {
-  recipe_spec const *spec{ r ? r->spec : nullptr };
-  while (spec && spec->parent) { spec = spec->parent; }
-
-  if (spec && !spec->declaring_file_path.empty()) {
-    std::filesystem::path const abs{ std::filesystem::absolute(
-        spec->declaring_file_path) };
-    std::error_code ec;
-    std::filesystem::path const canonical{ std::filesystem::weakly_canonical(abs, ec) };
-    return (ec ? abs : canonical).parent_path();
-  }
-
-  return std::filesystem::current_path();
-}
-
-}  // namespace
-
 bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
@@ -53,7 +34,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
     stderr_capture += line;
     stderr_capture += '\n';
   };
-  cfg.cwd = compute_project_root(r);
+  cfg.cwd = recipe_spec::compute_project_root(r->spec);
   cfg.shell = shell_resolve_default(r ? r->default_shell_ptr : nullptr);
 
   shell_result result;
@@ -89,8 +70,7 @@ bool run_check_function(recipe *r,
   struct check_phase_ctx : lua_ctx_common {};
 
   check_phase_ctx ctx{};
-  ctx.fetch_dir = compute_project_root(r);
-  ctx.run_dir = ctx.fetch_dir;
+  ctx.run_dir = recipe_spec::compute_project_root(r->spec);
   ctx.engine_ = nullptr;
   ctx.recipe_ = r;
 
@@ -115,15 +95,33 @@ bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
     return run_check_function(r, lua, check_obj.as<sol::protected_function>());
   } else if (check_obj.is<std::string>()) {
     return run_check_string(r, eng, check_obj.as<std::string_view>());
-  } else {
-    return false;  // No check verb, return false (work needed)
   }
+
+  return false;
 }
 
 // Helper: Check if recipe has check verb
 bool recipe_has_check_verb(recipe *r, sol::state_view lua) {
   sol::object check_obj{ lua["check"] };
   return check_obj.is<sol::protected_function>() || check_obj.is<std::string>();
+}
+
+// Helper: Compute hash and perform cache lookup (common to both user/cache-managed)
+cache::ensure_result compute_hash_and_lookup_cache(recipe *r, sol::state_view lua) {
+  // Compute hash including resolved weak/ref-only dependencies
+  std::string key_for_hash{ r->spec->format_key() };
+  if (!r->resolved_weak_dependency_keys.empty()) {
+    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
+  }
+
+  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
+  r->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);
+  std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
+
+  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
+  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
+
+  return r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix);
 }
 
 // USER-MANAGED PACKAGE PATH: Double-check lock pattern
@@ -144,25 +142,7 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
   tui::debug(
       "phase check: check failed (pre-lock), acquiring lock for user-managed package");
 
-  // Compute hash including resolved weak/ref-only dependencies (pre-computed to avoid
-  // races)
-  std::string key_for_hash{ r->spec->format_key() };
-  if (!r->resolved_weak_dependency_keys.empty()) {
-    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
-  }
-
-  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
-  r->canonical_identity_hash =
-      util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
-  std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
-                                                   8) };  // For cache path: 16 hex chars
-
-  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
-  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
-
-  auto cache_result{
-    r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
-  };
+  auto cache_result{ compute_hash_and_lookup_cache(r, lua) };
 
   if (cache_result.lock) {
     // Got lock - mark as user-managed for proper cleanup
@@ -205,24 +185,7 @@ void run_check_phase_cache_managed(recipe *r) {
   std::string const key{ r->spec->format_key() };
   sol::state_view lua{ *r->lua };
 
-  // Compute hash w/ resolved weak/ref-only deps (pre-computed to avoid races)
-  std::string key_for_hash{ r->spec->format_key() };
-  if (!r->resolved_weak_dependency_keys.empty()) {
-    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
-  }
-
-  auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
-  r->canonical_identity_hash =
-      util_bytes_to_hex(digest.data(), 32);  // Full hash: 64 hex chars
-  std::string const hash_prefix{ util_bytes_to_hex(digest.data(),
-                                                   8) };  // For cache path: 16 hex chars
-
-  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
-  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
-
-  auto cache_result{
-    r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix)
-  };
+  auto cache_result{ compute_hash_and_lookup_cache(r, lua) };
 
   if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
     r->lock = std::move(cache_result.lock);

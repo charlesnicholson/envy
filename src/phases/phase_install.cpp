@@ -149,9 +149,14 @@ bool run_programmatic_install(sol::protected_function install_func,
                               bool is_user_managed) {
   tui::debug("phase install: running programmatic install function");
 
+  // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+  std::filesystem::path const run_cwd{ is_user_managed
+                                           ? recipe_spec::compute_project_root(r->spec)
+                                           : install_dir };
+
   install_phase_ctx ctx{};
   ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = install_dir;
+  ctx.run_dir = run_cwd;
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
@@ -253,9 +258,13 @@ void run_install_phase(recipe *r, engine &eng) {
     marked_complete = promote_stage_to_install(lock.get());
   } else if (install_obj.is<std::string>()) {
     // String installs: run command, mark complete only if cache-managed
+    // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+    std::filesystem::path const string_cwd{
+      is_user_managed ? recipe_spec::compute_project_root(r->spec) : lock->install_dir()
+    };
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
-                                        lock->install_dir(),
+                                        string_cwd,
                                         is_user_managed ? nullptr : lock.get(),
                                         r->spec->identity,
                                         shell_resolve_default(r->default_shell_ptr));
