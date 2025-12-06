@@ -113,6 +113,11 @@ struct recipe_spec : unmovable {
   static void set_pool(recipe_spec_pool *pool);
   static recipe_spec_pool *pool();
 
+  // Compute project root directory from recipe spec's declaring file path.
+  // Walks up to root recipe spec and returns parent directory of manifest file.
+  // Falls back to current_path() if no declaring file path is available.
+  static std::filesystem::path compute_project_root(recipe_spec const *spec);
+
  private:
   friend class recipe_spec_pool;
   static recipe_spec_pool *pool_;

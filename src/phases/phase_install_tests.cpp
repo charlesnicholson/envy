@@ -10,11 +10,6 @@
 
 #include "doctest.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
-
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -149,8 +144,11 @@ TEST_CASE_FIXTURE(
     exception_msg = e.what();
   }
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  INFO("Exception message: ", exception_msg);
+  // mark_install_complete is not exposed at all for user-managed packages,
+  // so Lua sees it as nil and throws "attempt to call a nil value"
+  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
+  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(
@@ -241,8 +239,11 @@ TEST_CASE_FIXTURE(install_test_fixture,
     exception_msg = e.what();
   }
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  INFO("Exception message: ", exception_msg);
+  // mark_install_complete is not exposed at all for user-managed packages,
+  // so Lua sees it as nil and throws "attempt to call a nil value"
+  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
+  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
@@ -260,19 +261,58 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase allows string install with check verb (user-managed)") {
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install phase string install succeeds for user-managed without marking complete") {
   // Check verb (user-managed)
   set_check_verb("echo test");
 
-  // String install - shell script that doesn't call mark_install_complete
-  // Note: shell installs auto-call mark_install_complete, so this SHOULD error
+  // String install - runs command but doesn't mark complete for user-managed
   lua_pushstring(r->lua->lua_state(), "echo 'installing'");
   lua_setglobal(r->lua->lua_state(), "install");
 
   acquire_lock();
 
-  // String installs auto-mark complete, so this should throw
+  // String installs should succeed for user-managed, but not mark complete
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+
+  // Verify asset_path was NOT set (not marked complete for user-managed)
+  CHECK(r->asset_path.empty());
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install phase string install succeeds for cache-managed and marks complete") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  // String install
+  lua_pushstring(r->lua->lua_state(), "echo 'installing'");
+  lua_setglobal(r->lua->lua_state(), "install");
+
+  acquire_lock();
+
+  // String installs should succeed and mark complete for cache-managed
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+
+  // Verify asset_path was set (marked complete for cache-managed)
+  CHECK(!r->asset_path.empty());
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install phase string install with non-zero exit throws (user-managed)") {
+  // Check verb (user-managed)
+  set_check_verb("echo test");
+
+  // String install that fails
+  lua_pushstring(r->lua->lua_state(), "exit 1");
+  lua_setglobal(r->lua->lua_state(), "install");
+
+  acquire_lock();
+
+  // Should throw on non-zero exit regardless of user-managed status
   bool exception_thrown = false;
   std::string exception_msg;
   try {
@@ -282,8 +322,35 @@ TEST_CASE_FIXTURE(install_test_fixture,
     exception_msg = e.what();
   }
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  CHECK(exception_msg.find("Install shell script failed") != std::string::npos);
+  CHECK(exception_msg.find("exit code 1") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install phase string install with non-zero exit throws (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  // String install that fails
+  lua_pushstring(r->lua->lua_state(), "exit 1");
+  lua_setglobal(r->lua->lua_state(), "install");
+
+  acquire_lock();
+
+  // Should throw on non-zero exit
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_install_phase(r.get(), eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("Install shell script failed") != std::string::npos);
+  CHECK(exception_msg.find("exit code 1") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
@@ -300,6 +367,252 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
   // Should not throw or run install function
   CHECK_NOTHROW(run_install_phase(r.get(), eng));
+}
+
+// ============================================================================
+// Install function return type validation tests
+// ============================================================================
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning nil succeeds (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return nil
+    end
+  )");
+
+  acquire_lock();
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning nil succeeds (user-managed)") {
+  // Check verb (user-managed)
+  set_check_verb("echo test");
+
+  set_install_function(R"(
+    function(ctx)
+      return nil
+    end
+  )");
+
+  acquire_lock();
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function with no return succeeds (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      -- No return statement
+    end
+  )");
+
+  acquire_lock();
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning number throws with type error") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return 42
+    end
+  )");
+
+  acquire_lock();
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_install_phase(r.get(), eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("must return nil or string") != std::string::npos);
+  CHECK(exception_msg.find("number") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning table throws with type error") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return {foo = "bar"}
+    end
+  )");
+
+  acquire_lock();
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_install_phase(r.get(), eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("must return nil or string") != std::string::npos);
+  CHECK(exception_msg.find("table") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning boolean throws with type error") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return true
+    end
+  )");
+
+  acquire_lock();
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_install_phase(r.get(), eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("must return nil or string") != std::string::npos);
+  CHECK(exception_msg.find("boolean") != std::string::npos);
+}
+
+// ============================================================================
+// Install function returning string tests
+// ============================================================================
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning string executes shell and marks complete "
+                  "(cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return "echo 'returned string executed'"
+    end
+  )");
+
+  acquire_lock();
+
+  // Should execute returned string and mark complete
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+
+  // Verify asset_path was set (indicates marked complete)
+  CHECK(!r->asset_path.empty());
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install function returning string does not mark complete (user-managed)") {
+  // Check verb (user-managed)
+  set_check_verb("echo test");
+
+  set_install_function(R"(
+    function(ctx)
+      return "exit 0"
+    end
+  )");
+
+  acquire_lock();
+
+  // Should not throw - user-managed packages can return strings
+  run_install_phase(r.get(), eng);
+
+  // Verify asset_path was NOT set (user-managed packages don't mark complete)
+  CHECK(r->asset_path.empty());
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function can call ctx.run and return string (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      ctx.run("echo 'first command'")
+      return "echo 'second command'"
+    end
+  )");
+
+  acquire_lock();
+
+  // Both ctx.run() and returned string should execute
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+  CHECK(!r->asset_path.empty());
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install function returning string with non-zero exit throws (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return "exit 1"
+    end
+  )");
+
+  acquire_lock();
+
+  bool exception_thrown = false;
+  std::string exception_msg;
+  try {
+    run_install_phase(r.get(), eng);
+  } catch (std::runtime_error const &e) {
+    exception_thrown = true;
+    exception_msg = e.what();
+  }
+  REQUIRE(exception_thrown);
+  CHECK(exception_msg.find("Install shell script failed") != std::string::npos);
+  CHECK(exception_msg.find("exit code 1") != std::string::npos);
+}
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning empty string succeeds (cache-managed)") {
+  // No check verb (cache-managed)
+  lua_pushnil(r->lua->lua_state());
+  lua_setglobal(r->lua->lua_state(), "check");
+
+  set_install_function(R"(
+    function(ctx)
+      return ""
+    end
+  )");
+
+  acquire_lock();
+
+  // Empty string should succeed (no-op shell script)
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
+  CHECK(!r->asset_path.empty());
 }
 
 }  // namespace envy

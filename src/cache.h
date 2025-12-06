@@ -37,6 +37,7 @@ class cache : unmovable {
     path stage_dir() const;
     path fetch_dir() const;
     path work_dir() const;
+    path tmp_dir() const;  // Ephemeral workspace for user-managed packages
 
    private:
     scoped_entry_lock(path entry_dir,

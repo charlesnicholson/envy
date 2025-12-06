@@ -7,11 +7,6 @@ function check(ctx)
     return false  -- Always needs work
 end
 
--- Empty fetch to satisfy validation
-function fetch(ctx)
-    -- Nothing to fetch
-end
-
 -- But incorrectly calls mark_install_complete (cache-managed behavior)
 function install(ctx)
     -- This should trigger validation error:

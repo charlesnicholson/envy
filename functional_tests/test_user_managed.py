@@ -159,7 +159,7 @@ class TestUserManagedPackages(unittest.TestCase):
     # ========================================================================
 
     def test_user_managed_with_fetch_purges_all_dirs(self):
-        """User-managed with fetch verb: fetch_dir populated, fully purged after."""
+        """Cache-managed with fetch verb: fetch_dir populated, asset persists after."""
         recipe_path = self.recipe_dir / "user_managed_with_fetch.lua"
         env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
@@ -172,22 +172,17 @@ class TestUserManagedPackages(unittest.TestCase):
         # Verify marker created
         self.assertTrue(self.marker_with_fetch.exists())
 
-        # Verify cache entry purged (no fetch/, work/, or asset/ remain)
+        # Verify cache entry persists with asset/ directory (cache-managed behavior)
         asset_dir = self.cache_root / "assets" / "local.user_managed_with_fetch@v1"
-        if asset_dir.exists():
-            entries = list(asset_dir.rglob("*"))
-            # Filter to just fetch/, work/, asset/ subdirectories
-            important_dirs = [
-                e
-                for e in entries
-                if e.is_dir()
-                and e.name in ("fetch", "work", "asset", "stage", "install")
-            ]
-            self.assertEqual(
-                len(important_dirs),
-                0,
-                f"User-managed should purge all workspace dirs, found: {important_dirs}",
-            )
+        self.assertTrue(asset_dir.exists(), "Cache-managed packages should persist in cache")
+
+        # Verify asset directory exists
+        asset_subdirs = list(asset_dir.glob("*/asset"))
+        self.assertGreater(
+            len(asset_subdirs),
+            0,
+            "Cache-managed packages should have asset/ directory in cache",
+        )
 
     def test_user_managed_fetch_cached_on_retry(self):
         """If install fails, fetch/ persists for per-file cache reuse."""
@@ -205,11 +200,9 @@ class TestUserManagedPackages(unittest.TestCase):
 
         result = self.run_envy("local.user_managed_invalid@v1", recipe_path)
         self.assertNotEqual(result.returncode, 0, "Should fail validation")
-        self.assertIn("has check verb (user-managed)", result.stderr)
-        self.assertIn("called mark_install_complete", result.stderr)
-        self.assertIn(
-            "Remove check verb or remove mark_install_complete", result.stderr
-        )
+        # mark_install_complete is not exposed, so Lua sees nil and throws error
+        self.assertIn("attempt to call a nil value", result.stderr)
+        self.assertIn("mark_install_complete", result.stderr)
 
     # ========================================================================
     # Double-check lock and race condition tests
@@ -278,6 +271,72 @@ class TestUserManagedPackages(unittest.TestCase):
         # The recipe exists and demonstrates platform-conditional syntax
         # but automated testing is challenging due to shell variable expansion
         pass  # Recipe demonstrates pattern, manual testing required
+
+    # ========================================================================
+    # User-managed ctx isolation tests
+    # ========================================================================
+
+    def test_user_managed_ctx_tmp_dir_accessible(self):
+        """User-managed packages can access and use ctx.tmp_dir."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_tmp_dir.lua"
+        result = self.run_envy("local.user_managed_ctx_isolation_tmp_dir@v1", recipe_path)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_allowed_apis(self):
+        """User-managed packages can access allowed APIs (run, asset, product, identity)."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_allowed.lua"
+        result = self.run_envy("local.user_managed_ctx_isolation_allowed@v1", recipe_path)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_forbids_fetch_dir(self):
+        """User-managed packages cannot access ctx.fetch_dir."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            recipe_path,
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "fetch_dir"},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_forbids_stage_dir(self):
+        """User-managed packages cannot access ctx.stage_dir."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            recipe_path,
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "stage_dir"},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_forbids_install_dir(self):
+        """User-managed packages cannot access ctx.install_dir."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            recipe_path,
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "install_dir"},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_forbids_extract_all(self):
+        """User-managed packages cannot call ctx.extract_all()."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            recipe_path,
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "extract_all"},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_user_managed_ctx_forbids_mark_install_complete(self):
+        """User-managed packages cannot call ctx.mark_install_complete()."""
+        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            recipe_path,
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "mark_install_complete"},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
 
 if __name__ == "__main__":

@@ -424,8 +424,7 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-void stream_pipe_lines(HANDLE pipe,
-                       std::function<void(std::string_view)> const &callback) {
+void stream_pipe_lines(HANDLE pipe, shell_run_cfg const &cfg) {
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -450,7 +449,8 @@ void stream_pipe_lines(HANDLE pipe,
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
       std::string_view line{ pending.data() + offset, newline - offset };
       if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-      callback(line);
+      if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+      if (cfg.on_output_line) { cfg.on_output_line(line); }
       offset = newline + 1;
     }
 
@@ -464,7 +464,8 @@ void stream_pipe_lines(HANDLE pipe,
   if (offset < pending.size()) {
     std::string_view line{ pending.data() + offset, pending.size() - offset };
     if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-    callback(line);
+    if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+    if (cfg.on_output_line) { cfg.on_output_line(line); }
   }
 }
 
@@ -697,7 +698,7 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
 
   shell_result result{};
   try {
-    stream_pipe_lines(read_end.get(), cfg.on_output_line);
+    stream_pipe_lines(read_end.get(), cfg);
     result = wait_for_child(process.get());
   } catch (...) {
     ::TerminateProcess(process.get(), 1);

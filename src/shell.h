@@ -20,6 +20,8 @@ struct shell_result {
   std::optional<int> signal;
 };
 
+enum class shell_stream { std_out, std_err };
+
 enum class shell_choice { bash, sh, cmd, powershell };
 
 // Custom shell configuration for file mode (script written to temp file)
@@ -50,6 +52,8 @@ resolved_shell shell_resolve_default(default_shell_cfg_t const *cfg);
 
 struct shell_run_cfg {
   std::function<void(std::string_view)> on_output_line;
+  std::function<void(std::string_view)> on_stdout_line;
+  std::function<void(std::string_view)> on_stderr_line;
   std::optional<std::filesystem::path> cwd;
   shell_env_t env;
   resolved_shell shell{ shell_resolve_default(nullptr) };

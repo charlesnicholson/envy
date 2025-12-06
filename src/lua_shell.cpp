@@ -11,11 +11,22 @@ resolved_shell parse_shell_config_from_lua(sol::object const &obj, char const *c
     int const value{ obj.as<int>() };
     auto const choice{ static_cast<shell_choice>(value) };
 
-    // Validate enum value
-    if (choice != shell_choice::bash && choice != shell_choice::sh &&
-        choice != shell_choice::cmd && choice != shell_choice::powershell) {
+    bool valid_choice{ choice == shell_choice::bash || choice == shell_choice::sh };
+#if defined(_WIN32)
+    valid_choice = valid_choice || choice == shell_choice::cmd ||
+                   choice == shell_choice::powershell;
+#endif
+
+    if (!valid_choice) {
       throw std::runtime_error(std::string{ context } + ": invalid ENVY_SHELL constant");
     }
+
+#if !defined(_WIN32)
+    if (choice == shell_choice::cmd || choice == shell_choice::powershell) {
+      throw std::runtime_error(std::string{ context } +
+                               ": CMD/POWERSHELL shells are only available on Windows");
+    }
+#endif
 
     return choice;
   }

@@ -9,10 +9,6 @@ function fetch(ctx)
     })
 end
 
-function check(ctx)
-    return false
-end
-
 function install(ctx)
     -- Verify both repos were actually fetched by checking for .git/HEAD
     -- If fetch failed or didn't happen, these files won't exist and install will fail

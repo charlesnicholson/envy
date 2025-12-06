@@ -1,6 +1,11 @@
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#error POSIX-only
+#endif
+
 #include "shell.h"
+
 #include "doctest.h"
+
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
@@ -10,8 +15,8 @@
 namespace fs = std::filesystem;
 
 static std::vector<std::string> run_collect(std::string_view script,
-                                     std::optional<fs::path> cwd = std::nullopt,
-                                     envy::shell_env_t env = envy::shell_getenv()) {
+                                            std::optional<fs::path> cwd = std::nullopt,
+                                            envy::shell_env_t env = envy::shell_getenv()) {
   std::vector<std::string> lines;
   envy::shell_run_cfg inv{ .on_output_line =
                                [&](std::string_view line) { lines.emplace_back(line); },
@@ -108,6 +113,39 @@ TEST_CASE("shell_run handles invalid working directory") {
   CHECK(result.exit_code == 127);
 }
 
+TEST_CASE("shell_run delivers split stdout/stderr callbacks") {
+  std::vector<std::string> stdout_lines;
+  std::vector<std::string> stderr_lines;
+  std::vector<std::string> all_lines;
+  envy::shell_run_cfg inv{
+    .on_output_line = [&](std::string_view line) { all_lines.emplace_back(line); },
+    .on_stdout_line = [&](std::string_view line) { stdout_lines.emplace_back(line); },
+    .on_stderr_line = [&](std::string_view line) { stderr_lines.emplace_back(line); },
+    .env = envy::shell_getenv(),
+    .shell = envy::shell_choice::bash,
+  };
+  auto const result{ envy::shell_run(
+      "printf 'out1\\n'; >&2 printf 'err1\\n'; printf 'out2\\n'; >&2 printf 'err2\\n'",
+      inv) };
+  REQUIRE(result.exit_code == 0);
+  CHECK(stdout_lines == std::vector<std::string>{ "out1", "out2" });
+  CHECK(stderr_lines == std::vector<std::string>{ "err1", "err2" });
+  CHECK(all_lines.size() == 4);
+  auto count_line = [&](std::string const &needle) {
+    return std::count(all_lines.begin(), all_lines.end(), needle);
+  };
+  CHECK(count_line("out1") == 1);
+  CHECK(count_line("out2") == 1);
+  CHECK(count_line("err1") == 1);
+  CHECK(count_line("err2") == 1);
+  auto find_index = [&](std::string const &needle) {
+    auto it = std::find(all_lines.begin(), all_lines.end(), needle);
+    return static_cast<int>(std::distance(all_lines.begin(), it));
+  };
+  CHECK(find_index("out1") < find_index("out2"));
+  CHECK(find_index("err1") < find_index("err2"));
+}
+
 TEST_CASE("shell_run handles large output") {
   std::vector<std::string> lines;
   envy::shell_run_cfg inv{ .on_output_line =
@@ -132,5 +170,3 @@ TEST_CASE("shell_run callback is required") {
   auto const result{ envy::shell_run("echo test", inv) };
   CHECK(result.exit_code == 0);
 }
-
-#endif // !_WIN32

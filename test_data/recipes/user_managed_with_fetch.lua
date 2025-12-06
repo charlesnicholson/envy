@@ -1,5 +1,5 @@
--- User-managed package that uses fetch/stage/build verbs
--- Demonstrates that ephemeral workspace (fetch_dir, stage_dir) gets purged
+-- Cache-managed package that uses fetch/stage/build verbs
+-- Demonstrates that workspace (fetch_dir, stage_dir) gets populated and used
 identity = "local.user_managed_with_fetch@v1"
 
 -- Declarative fetch: download a small file for testing
@@ -8,21 +8,7 @@ fetch = {
     sha256 = "0db9d908de747f6097ee249764e2d5fab4a2be618b05743d6b962e3346867732"
 }
 
-function check(ctx)
-    -- Check if installation marker exists (simulates system check)
-    local marker = os.getenv("ENVY_TEST_MARKER_WITH_FETCH")
-    if not marker then
-        error("ENVY_TEST_MARKER_WITH_FETCH must be set")
-    end
-
-    local f = io.open(marker, "r")
-    if f then
-        f:close()
-        return true
-    end
-    return false
-end
-
+-- No check verb - this is cache-managed
 function stage(ctx)
     -- Verify fetch happened
     local readme = ctx.fetch_dir .. "/README.md"
@@ -63,5 +49,6 @@ function install(ctx)
         error("Missing directory context in install phase")
     end
 
-    -- No mark_install_complete() - entire entry_dir will be purged
+    -- Mark install complete for cache-managed package
+    ctx.mark_install_complete()
 end

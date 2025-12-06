@@ -103,21 +103,10 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
                             recipe *r) {
   tui::debug("phase fetch: executing fetch function");
 
-  // Create temp workspace for ctx.tmp_dir
-  std::filesystem::path const tmp_dir{ lock->work_dir() / "tmp" };
-  std::filesystem::create_directories(tmp_dir);
-
-  // Ensure stage_dir exists (needed for git repos)
-  std::error_code ec;
-  std::filesystem::create_directories(lock->stage_dir(), ec);
-  if (ec) {
-    throw std::runtime_error("Failed to create stage directory: " + ec.message());
-  }
-
   // Build context (inherits from lua_ctx_common)
   fetch_phase_ctx ctx{};
   ctx.fetch_dir = lock->fetch_dir();
-  ctx.run_dir = tmp_dir;
+  ctx.run_dir = lock->tmp_dir();
   ctx.stage_dir = lock->stage_dir();
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
@@ -168,7 +157,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
                              sol::type_name(lua, return_value.get_type()) + ")");
   }
 
-  std::filesystem::remove_all(tmp_dir);
+  // tmp_dir cleanup handled by lock destructor
   return should_mark_complete;
 }
 
@@ -424,8 +413,7 @@ bool run_declarative_fetch(sol::state_view lua,
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
   execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
 
-  // Check if we fetched any git repos - if so, don't mark fetch complete (git clones are
-  // not cacheable)
+  // Check if git repos - if so, don't mark fetch complete (git clones are not cacheable)
   bool const has_git_repos =
       std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
         return std::holds_alternative<fetch_request_git>(spec.request);
@@ -434,7 +422,7 @@ bool run_declarative_fetch(sol::state_view lua,
   if (has_git_repos) {
     tui::debug(
         "phase fetch: skipping fetch completion marker (git repos are not cacheable)");
-    return false;  // Don't mark complete
+    return false;
   }
 
   return true;  // Mark complete

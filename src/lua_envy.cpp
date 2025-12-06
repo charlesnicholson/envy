@@ -138,14 +138,15 @@ void lua_envy_install(sol::state &lua) {
   }
 
   lua["envy"] = envy_table;
-  lua["ENVY_SHELL"] = lua.create_table_with("BASH",
-                                            static_cast<int>(shell_choice::bash),
-                                            "SH",
-                                            static_cast<int>(shell_choice::sh),
-                                            "CMD",
-                                            static_cast<int>(shell_choice::cmd),
-                                            "POWERSHELL",
-                                            static_cast<int>(shell_choice::powershell));
+  sol::table shell_tbl{ lua.create_table_with("BASH",
+                                              static_cast<int>(shell_choice::bash),
+                                              "SH",
+                                              static_cast<int>(shell_choice::sh)) };
+#if defined(_WIN32)
+  shell_tbl["CMD"] = static_cast<int>(shell_choice::cmd);
+  shell_tbl["POWERSHELL"] = static_cast<int>(shell_choice::powershell);
+#endif
+  lua["ENVY_SHELL"] = shell_tbl;
 }
 
 }  // namespace envy
