@@ -19,6 +19,7 @@ extern bool recipe_has_check_verb(recipe *r, sol::state_view lua);
 extern bool run_check_verb(recipe *r, engine &eng, sol::state_view lua);
 extern bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd);
 extern bool run_check_function(recipe *r,
+                               engine &eng,
                                sol::state_view lua,
                                sol::protected_function check_func);
 
@@ -200,18 +201,26 @@ TEST_CASE("run_check_string returns false for failing command") {
 TEST_CASE("run_check_function returns true when function returns true") {
   test_recipe_fixture f;
 
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
+
   sol::protected_function_result res{ f.r->lua->safe_script(
       "return function(ctx) return true end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function returns false when function returns false") {
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
       "return function(ctx) return false end",
@@ -219,12 +228,17 @@ TEST_CASE("run_check_function returns false when function returns false") {
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
   CHECK_FALSE(result);
 }
 
-TEST_CASE("run_check_function returns false when function returns nil") {
+TEST_CASE("run_check_function throws when function returns nil") {
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{
     f.r->lua->safe_script("return function(ctx) return nil end", sol::script_pass_on_error)
@@ -232,12 +246,16 @@ TEST_CASE("run_check_function returns false when function returns nil") {
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
-  CHECK_FALSE(result);
+  CHECK_THROWS_AS(
+      run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func),
+      std::runtime_error);
 }
 
-TEST_CASE("run_check_function returns true when function returns truthy value") {
+TEST_CASE("run_check_function throws when function returns number") {
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{
     f.r->lua->safe_script("return function(ctx) return 42 end", sol::script_pass_on_error)
@@ -245,26 +263,35 @@ TEST_CASE("run_check_function returns true when function returns truthy value") 
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
-  CHECK(result);
+  CHECK_THROWS_AS(
+      run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func),
+      std::runtime_error);
 }
 
-TEST_CASE("run_check_function returns true when function returns string") {
+TEST_CASE("run_check_function executes string return as shell command") {
   test_recipe_fixture f;
 
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
+
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) return 'yes' end",
+      "return function(ctx) return 'exit 0' end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
   namespace fs = std::filesystem;
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   fs::path project_dir{ fs::temp_directory_path() / "envy-check-cwd" };
   fs::create_directories(project_dir);
@@ -285,12 +312,17 @@ TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
   CHECK(result);
 }
 
 TEST_CASE("run_check_function throws when function has Lua error") {
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
       "return function(ctx) error('test error') end",
@@ -298,12 +330,16 @@ TEST_CASE("run_check_function throws when function has Lua error") {
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  CHECK_THROWS_AS(run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func),
-                  std::runtime_error);
+  CHECK_THROWS_AS(
+      run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func),
+      std::runtime_error);
 }
 
-TEST_CASE("run_check_function receives empty ctx table") {
+TEST_CASE("run_check_function receives ctx table") {
   test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
       R"(
@@ -315,7 +351,9 @@ TEST_CASE("run_check_function receives empty ctx table") {
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
-  bool result{ run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func) };
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
   CHECK(result);
 }
 
@@ -414,6 +452,9 @@ TEST_CASE("run_check_function propagates Lua error with context") {
   test_recipe_fixture f;
   f.spec->identity = "my.package@v1";
 
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
+
   sol::protected_function_result res{ f.r->lua->safe_script(
       "return function(ctx) error('something went wrong') end",
       sol::script_pass_on_error) };
@@ -422,13 +463,72 @@ TEST_CASE("run_check_function propagates Lua error with context") {
   sol::protected_function check_func{ res };
 
   try {
-    run_check_function(f.r.get(), sol::state_view{ *f.r->lua }, check_func);
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func);
     FAIL("Expected exception");
   } catch (std::runtime_error const &e) {
     std::string msg{ e.what() };
     CHECK(msg.find("my.package@v1") != std::string::npos);
     CHECK(msg.find("something went wrong") != std::string::npos);
   }
+}
+
+// ============================================================================
+// Options parameter tests
+// ============================================================================
+
+TEST_CASE("run_check_function receives options parameter") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
+
+  // Set options in registry
+  sol::table opts{ f.r->lua->create_table() };
+  opts["package"] = "ghostty";
+  (*f.r->lua).registry()[ENVY_OPTIONS_RIDX] = opts;
+
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      R"(
+        return function(ctx, opts)
+          return opts ~= nil and opts.package == 'ghostty'
+        end
+      )",
+      sol::script_pass_on_error) };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
+
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
+  CHECK(result);
+}
+
+TEST_CASE("run_check_function returns string with options interpolation") {
+  test_recipe_fixture f;
+
+  cache test_cache;
+  engine eng{ test_cache, std::nullopt };
+
+  // Set options in registry
+  sol::table opts{ f.r->lua->create_table() };
+  opts["exit_code"] = "0";
+  (*f.r->lua).registry()[ENVY_OPTIONS_RIDX] = opts;
+
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      R"(
+        return function(ctx, opts)
+          return 'exit ' .. opts.exit_code
+        end
+      )",
+      sol::script_pass_on_error) };
+  REQUIRE(res.valid());
+  sol::protected_function check_func{ res };
+
+  // This should execute "exit 0" as a shell command (cross-platform)
+  bool result{
+    run_check_function(f.r.get(), eng, sol::state_view{ *f.r->lua }, check_func)
+  };
+  CHECK(result);
 }
 
 }  // namespace envy

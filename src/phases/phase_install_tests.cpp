@@ -10,11 +10,6 @@
 
 #include "doctest.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-}
-
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -532,31 +527,25 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK(!r->asset_path.empty());
 }
 
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function returning string throws error (user-managed)") {
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "install function returning string does not mark complete (user-managed)") {
   // Check verb (user-managed)
   set_check_verb("echo test");
 
   set_install_function(R"(
     function(ctx)
-      return "echo 'this should fail'"
+      return "exit 0"
     end
   )");
 
   acquire_lock();
 
-  bool exception_thrown = false;
-  std::string exception_msg;
-  try {
-    run_install_phase(r.get(), eng);
-  } catch (std::runtime_error const &e) {
-    exception_thrown = true;
-    exception_msg = e.what();
-  }
-  REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has check verb (user-managed)") != std::string::npos);
-  CHECK(exception_msg.find("returned a string") != std::string::npos);
-  CHECK(exception_msg.find("called mark_install_complete") != std::string::npos);
+  // Should not throw - user-managed packages can return strings
+  run_install_phase(r.get(), eng);
+
+  // Verify asset_path was NOT set (user-managed packages don't mark complete)
+  CHECK(r->asset_path.empty());
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,

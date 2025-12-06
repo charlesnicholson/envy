@@ -187,19 +187,16 @@ bool run_programmatic_install(sol::protected_function install_func,
     std::string const returned_script{ result_obj.as<std::string>() };
     tui::debug("phase install: running returned string from install function");
 
-    // Returned strings from user-managed packages should error (auto-mark complete)
-    if (is_user_managed) {
-      throw std::runtime_error(
-          "Recipe " + identity +
-          " has check verb (user-managed) but install function returned a string. "
-          "Returned strings automatically called mark_install_complete(). "
-          "Use ctx.run() directly instead, or remove check verb.");
-    }
+    // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+    std::filesystem::path const string_cwd{
+      is_user_managed ? recipe_spec::compute_project_root(r->spec) : install_dir
+    };
 
+    // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
     bool const shell_marked_complete{ run_shell_install(
         returned_script,
-        install_dir,
-        lock,
+        string_cwd,
+        is_user_managed ? nullptr : lock,
         identity,
         shell_resolve_default(r->default_shell_ptr)) };
 

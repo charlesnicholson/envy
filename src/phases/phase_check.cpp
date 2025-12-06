@@ -4,8 +4,10 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
+#include "recipe_spec.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
@@ -63,6 +65,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
 }
 
 bool run_check_function(recipe *r,
+                        engine &eng,
                         sol::state_view lua,
                         sol::protected_function check_func) {
   tui::debug("phase check: executing function check");
@@ -78,21 +81,38 @@ bool run_check_function(recipe *r,
   ctx_table["identity"] = r->spec->identity;
   ctx_table["run"] = make_ctx_run(&ctx);
 
-  sol::protected_function_result result{ call_lua_function_with_enriched_errors(
-      r,
-      "check",
-      [&]() { return check_func(ctx_table); }) };
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "check", [&]() {
+    return check_func(ctx_table, opts);
+  }) };
 
-  bool const check_passed{ result.get<bool>() };
-  tui::debug("phase check: function check returned %s", check_passed ? "true" : "false");
-  return check_passed;
+  // Check function can return:
+  // 1. Boolean - true/false for check passed/failed
+  // 2. String - execute as shell command and return result
+  sol::type const result_type{ result_obj.get_type() };
+
+  if (result_obj.is<bool>()) {
+    bool const check_passed{ result_obj.as<bool>() };
+    tui::debug("phase check: function check returned %s", check_passed ? "true" : "false");
+    return check_passed;
+  } else if (result_obj.is<std::string>()) {
+    // Function returned a string - execute it as a shell command
+    std::string const check_cmd{ result_obj.as<std::string>() };
+    tui::debug("phase check: function check returned string, executing: %s",
+               check_cmd.c_str());
+    return run_check_string(r, eng, check_cmd);
+  }
+
+  throw std::runtime_error("check function for " + r->spec->identity +
+                           " must return boolean or string, got " +
+                           sol::type_name(lua.lua_state(), result_type));
 }
 
 bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
   sol::object check_obj{ lua["check"] };
 
   if (check_obj.is<sol::protected_function>()) {
-    return run_check_function(r, lua, check_obj.as<sol::protected_function>());
+    return run_check_function(r, eng, lua, check_obj.as<sol::protected_function>());
   } else if (check_obj.is<std::string>()) {
     return run_check_string(r, eng, check_obj.as<std::string_view>());
   }
