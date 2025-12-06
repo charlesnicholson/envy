@@ -146,7 +146,6 @@ set(_envy_aws_crt_targets
 )
 foreach(_envy_target IN LISTS _envy_aws_crt_targets)
     if(TARGET ${_envy_target})
-        # Disable LTO and sanitizers to prevent inlining false positives into main executable
         set_property(TARGET ${_envy_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
             # Clang uses -fsanitize-blacklist (configured globally in envy targets)
