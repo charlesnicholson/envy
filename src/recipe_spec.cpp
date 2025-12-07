@@ -9,6 +9,10 @@
 #include <stdexcept>
 #include <vector>
 
+extern "C" {
+#include "lua.h"
+}
+
 namespace envy {
 
 namespace {
@@ -349,19 +353,31 @@ bool recipe_spec::is_weak_reference() const {
 }
 
 std::string recipe_spec::serialize_option_table(sol::object const &val) {
-  if (val.get_type() == sol::type::lua_nil) { return "nil"; }
-  if (val.is<bool>()) { return val.as<bool>() ? "true" : "false"; }
-  if (val.is<lua_Integer>()) { return std::to_string(val.as<lua_Integer>()); }
-  if (val.is<lua_Number>()) {
-    char buf[32];
-    auto [ptr, ec] = std::to_chars(buf,
-                                   buf + sizeof(buf),
-                                   val.as<lua_Number>(),
-                                   std::chars_format::general);
-    if (ec != std::errc{}) {
-      throw std::runtime_error("Failed to serialize double value");
+  sol::type const type{ val.get_type() };
+
+  if (type == sol::type::lua_nil) { return "nil"; }
+  if (type == sol::type::boolean) { return val.as<bool>() ? "true" : "false"; }
+
+  if (type == sol::type::number) {
+    lua_State *L{ val.lua_state() };
+    int const stack_before{ lua_gettop(L) };
+    val.push();
+    bool const is_int{ lua_isinteger(L, -1) != 0 };
+    lua_settop(L, stack_before);
+
+    if (is_int) {
+      return std::to_string(val.as<lua_Integer>());
+    } else {  // Float value - serialize with full precision
+      char buf[32];
+      auto [ptr, ec] = std::to_chars(buf,
+                                     buf + sizeof(buf),
+                                     val.as<lua_Number>(),
+                                     std::chars_format::general);
+      if (ec != std::errc{}) {
+        throw std::runtime_error("Failed to serialize double value");
+      }
+      return std::string{ buf, ptr };
     }
-    return std::string{ buf, ptr };
   }
 
   if (val.is<std::string>()) {
@@ -381,27 +397,70 @@ std::string recipe_spec::serialize_option_table(sol::object const &val) {
     sol::table table{ val.as<sol::table>() };
     if (table.empty()) { return "{}"; }
 
-    std::vector<std::pair<std::string, std::string>> sorted;
-    for (auto const &[key, value] : table) {
-      sol::object key_obj(key);
-      sol::object value_obj(value);
-      if (key_obj.is<std::string>()) {
-        sorted.emplace_back(key_obj.as<std::string>(),
-                            recipe_spec::serialize_option_table(value_obj));
+    // Collect all key-value pairs
+    std::vector<std::pair<sol::object, sol::object>> entries;
+    for (auto const &[key, value] : table) { entries.emplace_back(key, value); }
+
+    // Check if this is an array (all keys are consecutive integers 1..n)
+    bool is_array{ !entries.empty() };
+    if (is_array) {
+      // Verify all keys are integers
+      for (auto const &entry : entries) {
+        if (!entry.first.is<lua_Integer>()) {
+          is_array = false;
+          break;
+        }
+      }
+
+      if (is_array) {  // Sort by numeric key
+        std::ranges::sort(entries,
+                          [](std::pair<sol::object, sol::object> const &a,
+                             std::pair<sol::object, sol::object> const &b) {
+                            return a.first.template as<lua_Integer>() <
+                                   b.first.template as<lua_Integer>();
+                          });
+
+        for (size_t i = 0; i < entries.size(); ++i) {  // Verify keys are contiguous
+          if (entries[i].first.as<lua_Integer>() != static_cast<lua_Integer>(i + 1)) {
+            is_array = false;
+            break;
+          }
+        }
       }
     }
-    std::ranges::sort(sorted);
 
-    std::ostringstream oss;
-    oss << '{';
-    bool first{ true };
-    for (auto const &[key, serialized_val] : sorted) {
-      if (!first) { oss << ','; };
-      oss << key << '=' << serialized_val;
-      first = false;
+    if (is_array) {  // Serialize as array {val1,val2,val3} - maintain numeric order
+      std::ostringstream oss;
+      oss << '{';
+      bool first{ true };
+      for (auto const &entry : entries) {
+        if (!first) { oss << ','; }
+        oss << serialize_option_table(entry.second);
+        first = false;
+      }
+      oss << '}';
+      return oss.str();
+    } else {  // Serialize as table {key1=val1,key2=val2} - sort by string key
+      std::vector<std::pair<std::string, std::string>> sorted;
+      for (auto const &entry : entries) {
+        if (entry.first.is<std::string>()) {
+          sorted.emplace_back(entry.first.as<std::string>(),
+                              recipe_spec::serialize_option_table(entry.second));
+        }
+      }
+      std::ranges::sort(sorted);
+
+      std::ostringstream oss;
+      oss << '{';
+      bool first{ true };
+      for (auto const &[key, serialized_val] : sorted) {
+        if (!first) { oss << ','; }
+        oss << key << '=' << serialized_val;
+        first = false;
+      }
+      oss << '}';
+      return oss.str();
     }
-    oss << '}';
-    return oss.str();
   }
 
   throw std::runtime_error("Unsupported Lua type in serialize_option_table");

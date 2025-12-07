@@ -1,3 +1,14 @@
+function append_lists(target, ...)
+    local arrays = {...}
+    for _, list in ipairs(arrays) do
+        for _, item in ipairs(list) do
+            table.insert(target, item)
+        end
+    end
+
+    return target
+end
+
 packages = {
   { recipe = "local.armgcc@r0", source = "local.armgcc@r0.lua" },
 
@@ -15,8 +26,9 @@ packages = {
 }
 
 if ENVY_PLATFORM == "darwin" then
-  table.insert(packages,
-    { recipe = "local.brew_package@r0",
-      source = "local.brew_package@r0.lua",
-      options = { package = "ghostty" } })
+  mac_packages = {
+    { recipe = "local.brew_package@r0", source = "local.brew_package@r0.lua",
+      options = { packages = { "ghostty", "neovim", "pv", "bat" } } },
+  }
+  append_lists(packages, mac_packages)
 end
