@@ -14,6 +14,8 @@ set(USE_OPENSSL_ENCRYPTION OFF CACHE BOOL "" FORCE)
 set(ENABLE_OPENSSL_ENCRYPTION OFF CACHE BOOL "" FORCE)
 set(NO_ENCRYPTION OFF CACHE BOOL "" FORCE)
 set(AWS_USE_LIBCRYPTO_TO_SUPPORT_ED25519_EVERYWHERE OFF CACHE BOOL "" FORCE)
+set(BUILD_AWS_CRT_MQTT OFF CACHE BOOL "" FORCE)
+set(AWS_MQTT_WITH_WEBSOCKETS OFF CACHE BOOL "" FORCE)
 if(MSVC)
     set(AWS_STATIC_MSVC_RUNTIME_LIBRARY ON CACHE BOOL "" FORCE)
     set(STATIC_CRT ON CACHE BOOL "" FORCE)
@@ -142,7 +144,7 @@ unset(_envy_prev_build_testing)
 # lookup3.inl hash intentionally overreads strings; gets inlined via headers into many compilation units
 set(_envy_aws_crt_targets
     aws-c-common aws-c-io aws-c-http aws-c-auth aws-c-cal aws-c-compression
-    aws-c-event-stream aws-c-mqtt aws-c-s3 aws-c-sdkutils aws-checksums aws-crt-cpp
+    aws-c-event-stream aws-c-s3 aws-c-sdkutils aws-checksums aws-crt-cpp
 )
 foreach(_envy_target IN LISTS _envy_aws_crt_targets)
     if(TARGET ${_envy_target})
