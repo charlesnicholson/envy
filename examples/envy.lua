@@ -34,7 +34,7 @@ if ENVY_PLATFORM == "darwin" then
     {
       recipe = "local.brew_package@r0",
       source = "local.brew_package@r0.lua",
-      options = { packages = { "ghostty", "neovim", "pv", "bat" } }
+      options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } }
     },
   }
   append_lists(packages, mac_packages)
