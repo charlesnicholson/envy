@@ -12,8 +12,10 @@ build = function(ctx, opts)
 {{python}} ./configure.py --bootstrap --gtest-source-dir={{googletest}}
 ./ninja all
 ./ninja_test
-  ]], { python = ctx.asset("local.python@r0") .. "/install/bin/python",
-        googletest = ctx.stage_dir .. "/googletest.git" })
+  ]], {
+    python = ctx.asset("local.python@r0") .. "/install/bin/python",
+    googletest = ctx.stage_dir .. "/googletest.git"
+  })
 
   ctx.run(cmd, { cwd = ctx.stage_dir .. "/ninja.git" })
 end

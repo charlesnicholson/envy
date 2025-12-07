@@ -463,3 +463,230 @@ TEST_CASE("recipe::parse errors on function nested in options") {
                        "Unsupported Lua type: function",
                        std::runtime_error);
 }
+
+TEST_CASE("recipe::parse serializes simple string array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'brew.pkg@r0', source = '/fake/r.lua',
+                    options = { packages = { "neovim", "bat", "pv" } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  // Deserialize and check
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table packages = opts["packages"];
+  REQUIRE(packages.size() == 3);
+  CHECK(packages[1].get<std::string>() == "neovim");
+  CHECK(packages[2].get<std::string>() == "bat");
+  CHECK(packages[3].get<std::string>() == "pv");
+}
+
+TEST_CASE("recipe::parse serializes integer array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { ports = { 8080, 8081, 8082 } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table ports = opts["ports"];
+  REQUIRE(ports.size() == 3);
+  CHECK(ports[1].get<lua_Integer>() == 8080);
+  CHECK(ports[2].get<lua_Integer>() == 8081);
+  CHECK(ports[3].get<lua_Integer>() == 8082);
+}
+
+TEST_CASE("recipe::parse serializes mixed-type array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { mixed = { "str", 42, true, "end" } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table mixed = opts["mixed"];
+  REQUIRE(mixed.size() == 4);
+  CHECK(mixed[1].get<std::string>() == "str");
+  CHECK(mixed[2].get<lua_Integer>() == 42);
+  CHECK(mixed[3].get<bool>() == true);
+  CHECK(mixed[4].get<std::string>() == "end");
+}
+
+TEST_CASE("recipe::parse serializes float array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { values = { 1.5, 2.5, 3.5 } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table values = opts["values"];
+  REQUIRE(values.size() == 3);
+  CHECK(values[1].get<lua_Number>() == doctest::Approx(1.5));
+  CHECK(values[2].get<lua_Number>() == doctest::Approx(2.5));
+  CHECK(values[3].get<lua_Number>() == doctest::Approx(3.5));
+}
+
+TEST_CASE("recipe::parse preserves array order") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { items = { "z", "a", "m", "b" } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table items = opts["items"];
+  REQUIRE(items.size() == 4);
+  // Verify array maintains order, not sorted lexicographically
+  CHECK(items[1].get<std::string>() == "z");
+  CHECK(items[2].get<std::string>() == "a");
+  CHECK(items[3].get<std::string>() == "m");
+  CHECK(items[4].get<std::string>() == "b");
+}
+
+TEST_CASE("recipe::parse serializes nested arrays") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { matrix = { { 1, 2 }, { 3, 4 } } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table matrix = opts["matrix"];
+  REQUIRE(matrix.size() == 2);
+  sol::table row1 = matrix[1];
+  sol::table row2 = matrix[2];
+  CHECK(row1[1].get<lua_Integer>() == 1);
+  CHECK(row1[2].get<lua_Integer>() == 2);
+  CHECK(row2[1].get<lua_Integer>() == 3);
+  CHECK(row2[2].get<lua_Integer>() == 4);
+}
+
+TEST_CASE("recipe::parse serializes table containing arrays") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { config = { flags = { "-Wall", "-O2" }, level = 3 } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table config = opts["config"];
+  sol::table flags = config["flags"];
+  REQUIRE(flags.size() == 2);
+  CHECK(flags[1].get<std::string>() == "-Wall");
+  CHECK(flags[2].get<std::string>() == "-O2");
+  CHECK(config["level"].get<lua_Integer>() == 3);
+}
+
+TEST_CASE("recipe::parse serializes array containing tables") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { items = { { name = "foo" }, { name = "bar" } } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table items = opts["items"];
+  REQUIRE(items.size() == 2);
+  sol::table item1 = items[1];
+  sol::table item2 = items[2];
+  CHECK(item1["name"].get<std::string>() == "foo");
+  CHECK(item2["name"].get<std::string>() == "bar");
+}
+
+TEST_CASE("recipe::parse serializes sparse table as table not array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { sparse = { [1] = "a", [3] = "c" } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table sparse = opts["sparse"];
+  // Sparse table should not serialize as array - only string keys preserved
+  // Since numeric keys aren't strings, they'll be dropped by current table logic
+  CHECK(sparse.size() == 0);
+}
+
+TEST_CASE("recipe::parse serializes single-element array") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'local.test@r0', source = '/fake/r.lua',
+                    options = { singleton = { "only" } } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  sol::table singleton = opts["singleton"];
+  REQUIRE(singleton.size() == 1);
+  CHECK(singleton[1].get<std::string>() == "only");
+}
+
+TEST_CASE("recipe::parse serializes complex real-world options") {
+  sol::state lua;
+  auto lua_val{ lua_eval(
+      R"(result = { recipe = 'brew.pkg@r0', source = '/fake/r.lua',
+                    options = {
+                      packages = { "ghostty", "neovim", "pv", "bat" },
+                      version = "1.2.3",
+                      flags = { debug = true, optimize = false }
+                    } })",
+      lua) };
+
+  auto const *cfg{ envy::recipe_spec::parse(lua_val, fs::path("/fake")) };
+
+  auto opts_result{ lua.safe_script("return " + cfg->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+
+  sol::table packages = opts["packages"];
+  REQUIRE(packages.size() == 4);
+  CHECK(packages[1].get<std::string>() == "ghostty");
+  CHECK(packages[2].get<std::string>() == "neovim");
+  CHECK(packages[3].get<std::string>() == "pv");
+  CHECK(packages[4].get<std::string>() == "bat");
+
+  CHECK(opts["version"].get<std::string>() == "1.2.3");
+
+  sol::table flags = opts["flags"];
+  CHECK(flags["debug"].get<bool>() == true);
+  CHECK(flags["optimize"].get<bool>() == false);
+}
