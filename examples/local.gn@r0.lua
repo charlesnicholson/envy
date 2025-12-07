@@ -18,8 +18,8 @@ out/gn_unittests
 ]]
 
   ctx.run(envy.template(cmd,
-              { python = ctx.product("python3"), ninja = ctx.product("ninja") }),
-          { cwd = ctx.stage_dir .. "/gn.git" })
+      { python = ctx.product("python3"), ninja = ctx.product("ninja") }),
+    { cwd = ctx.stage_dir .. "/gn.git" })
 end
 
 install = function(ctx, opts)

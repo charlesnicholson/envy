@@ -5,7 +5,7 @@ dependencies = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
 local missing_packages = {}
 
 check = function(ctx, opts)
-  local res = ctx.run("brew list", {capture=true, quiet=true})
+  local res = ctx.run("brew list", { capture = true, quiet = true })
   if res.exit_code ~= 0 then
     return false
   end
@@ -27,12 +27,5 @@ check = function(ctx, opts)
 end
 
 install = function(ctx, opts)
-  local args = ""
-
-  for _, pkg in pairs(missing_packages) do
-    args = args .. " " .. pkg
-  end
-
-  return "brew install " .. args
+  return "brew install " .. table.concat(missing_packages, " ")
 end
-
