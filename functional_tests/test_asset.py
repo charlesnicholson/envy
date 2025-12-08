@@ -472,6 +472,67 @@ packages = {{
         self.assertEqual(result.returncode, 1)
         self.assertIn("not found", result.stderr)
 
+    def test_asset_with_product_dependency_clean_cache(self):
+        """Asset command must resolve graph to find product providers.
+
+        Regression test: asset command should call resolve_graph() to find
+        recipes that provide products needed by dependencies. Without this,
+        product dependencies fail on clean cache.
+        """
+        # Create product provider recipe
+        provider_recipe = """identity = "local.test_product_provider@v1"
+
+fetch = { source = "test_data/archives/test.tar.gz",
+          sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
+
+install = function(ctx)
+    ctx.mark_install_complete()
+end
+
+products = { test_tool = "bin/tool" }
+"""
+        provider_path = self.test_dir / "test_product_provider.lua"
+        provider_path.write_text(provider_recipe, encoding="utf-8")
+
+        # Create consumer recipe that depends on the product
+        consumer_recipe = f"""identity = "local.test_product_consumer@v1"
+
+dependencies = {{
+    {{ product = "test_tool" }}
+}}
+
+fetch = {{
+    source = "test_data/archives/test.tar.gz",
+    sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+}}
+
+install = function(ctx)
+    ctx.mark_install_complete()
+end
+"""
+        consumer_path = self.test_dir / "test_product_consumer.lua"
+        consumer_path.write_text(consumer_recipe, encoding="utf-8")
+
+        # Manifest with both recipes
+        manifest = self.create_manifest(
+            f"""
+packages = {{
+    {{ recipe = "local.test_product_provider@v1", source = "{self.lua_path(provider_path)}" }},
+    {{ recipe = "local.test_product_consumer@v1", source = "{self.lua_path(consumer_path)}" }}
+}}
+"""
+        )
+
+        # Run asset on consumer with clean cache
+        result = self.run_asset("local.test_product_consumer@v1", manifest)
+
+        # Should succeed - asset command must resolve graph to find product provider
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip(), "Expected asset path in stdout")
+
+        asset_path = Path(result.stdout.strip())
+        self.assertTrue(asset_path.exists(), f"Asset path should exist: {asset_path}")
+
 
 if __name__ == "__main__":
     unittest.main()

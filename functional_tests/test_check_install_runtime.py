@@ -35,7 +35,9 @@ class TestCheckInstallRuntime(unittest.TestCase):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def run_envy(self, identity, recipe_path, should_fail=False, env_vars=None, verbose=False):
+    def run_envy(
+        self, identity, recipe_path, should_fail=False, env_vars=None, verbose=False
+    ):
         """Run envy_functional_tester with recipe, return subprocess result."""
         cmd = [str(self.envy_test)]
         cmd.extend(self.trace_flag)
@@ -48,7 +50,9 @@ class TestCheckInstallRuntime(unittest.TestCase):
         if env_vars:
             env.update(env_vars)
 
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, env=env, cwd=self.test_dir
+        )
 
         if should_fail:
             self.assertNotEqual(
@@ -80,7 +84,9 @@ class TestCheckInstallRuntime(unittest.TestCase):
     def test_check_string_success_silent_with_verbose(self):
         """Check string success produces no TUI output even with --verbose."""
         recipe_path = self.recipe_dir / "check_string_success_silent.lua"
-        result = self.run_envy("local.check_string_success@v1", recipe_path, verbose=True)
+        result = self.run_envy(
+            "local.check_string_success@v1", recipe_path, verbose=True
+        )
 
         # Even with --verbose, check success should be silent
         # Only phase transitions should log
@@ -231,7 +237,9 @@ class TestCheckInstallRuntime(unittest.TestCase):
     def test_shell_error_syntax_error(self):
         """Shell error: syntax error."""
         recipe_path = self.recipe_dir / "check_error_syntax.lua"
-        result = self.run_envy("local.check_error_syntax@v1", recipe_path, should_fail=True)
+        result = self.run_envy(
+            "local.check_error_syntax@v1", recipe_path, should_fail=True
+        )
 
         # Should fail with syntax error
         self.assertIn("error", result.stderr.lower())

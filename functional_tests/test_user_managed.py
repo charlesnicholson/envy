@@ -42,12 +42,13 @@ class TestUserManagedPackages(unittest.TestCase):
         cmd.extend(["engine-test", identity, str(recipe_path)])
         cmd.append(f"--cache-root={self.cache_root}")
 
-        # Merge custom env vars with current environment
         env = os.environ.copy()
         if env_vars:
             env.update(env_vars)
 
-        return subprocess.run(cmd, capture_output=True, text=True, env=env)
+        return subprocess.run(
+            cmd, capture_output=True, text=True, env=env, cwd=self.test_dir
+        )
 
     # ========================================================================
     # Basic user-managed package tests
@@ -174,7 +175,9 @@ class TestUserManagedPackages(unittest.TestCase):
 
         # Verify cache entry persists with asset/ directory (cache-managed behavior)
         asset_dir = self.cache_root / "assets" / "local.user_managed_with_fetch@v1"
-        self.assertTrue(asset_dir.exists(), "Cache-managed packages should persist in cache")
+        self.assertTrue(
+            asset_dir.exists(), "Cache-managed packages should persist in cache"
+        )
 
         # Verify asset directory exists
         asset_subdirs = list(asset_dir.glob("*/asset"))
@@ -279,13 +282,17 @@ class TestUserManagedPackages(unittest.TestCase):
     def test_user_managed_ctx_tmp_dir_accessible(self):
         """User-managed packages can access and use ctx.tmp_dir."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_tmp_dir.lua"
-        result = self.run_envy("local.user_managed_ctx_isolation_tmp_dir@v1", recipe_path)
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_tmp_dir@v1", recipe_path
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_allowed_apis(self):
         """User-managed packages can access allowed APIs (run, asset, product, identity)."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_allowed.lua"
-        result = self.run_envy("local.user_managed_ctx_isolation_allowed@v1", recipe_path)
+        result = self.run_envy(
+            "local.user_managed_ctx_isolation_allowed@v1", recipe_path
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_fetch_dir(self):

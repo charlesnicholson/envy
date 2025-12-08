@@ -4,6 +4,8 @@
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
+#include "recipe.h"
+#include "recipe_key.h"
 #include "recipe_spec.h"
 #include "tui.h"
 
@@ -43,20 +45,28 @@ bool cmd_asset::execute() {
 
     cache c{ cache_root };
     engine eng{ c, m->get_default_shell(nullptr) };
-    auto result{ eng.run_full({ matches[0] }) };
 
-    auto const *recipe_result{ [&]() {
-      auto it{ result.find(
-          recipe_spec::format_key(matches[0]->identity, matches[0]->serialized_options)) };
-      return (it != result.end()) ? &it->second : nullptr;
-    }() };
+    std::vector<recipe_spec const *> roots;
+    roots.reserve(m->packages.size());
+    for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
-    if (!recipe_result || recipe_result->type != recipe_type::CACHE_MANAGED) {
+    eng.resolve_graph(roots);
+
+    recipe_key const target_key{ *matches[0] };
+    recipe *r{ eng.find_exact(target_key) };
+    if (!r) {
       tui::error("not found");
       return false;
     }
 
-    tui::print_stdout("%s\n", recipe_result->asset_path.string().c_str());
+    eng.ensure_recipe_at_phase(r->key, recipe_phase::completion);
+
+    if (r->type != recipe_type::CACHE_MANAGED) {
+      tui::error("not found");
+      return false;
+    }
+
+    tui::print_stdout("%s\n", r->asset_path.string().c_str());
     return true;
 
   } catch (std::exception const &ex) {
