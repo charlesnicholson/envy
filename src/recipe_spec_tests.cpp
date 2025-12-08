@@ -340,7 +340,7 @@ TEST_CASE("recipe::parse errors on non-string recipe field") {
   auto lua_val{ lua_eval("result = { recipe = 123 }", lua) };
 
   CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
-                       "Recipe 'recipe' field must be string",
+                       "Recipe: recipe must be a string",
                        std::runtime_error);
 }
 
@@ -381,7 +381,7 @@ TEST_CASE("recipe::parse errors on non-string sha256") {
       lua) };
 
   CHECK_THROWS_WITH_AS(envy::recipe_spec::parse(lua_val, fs::path("/fake")),
-                       "Recipe 'sha256' field must be string",
+                       "Recipe source: sha256 must be a string",
                        std::runtime_error);
 }
 

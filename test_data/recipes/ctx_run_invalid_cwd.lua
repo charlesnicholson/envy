@@ -16,11 +16,11 @@ stage = function(ctx, opts)
     script = [[
       Write-Output "Should not execute"
     ]]
-    ctx.run(script, {cwd = invalid_cwd, shell = ENVY_SHELL.POWERSHELL})
+    ctx.run(script, {cwd = invalid_cwd, shell = ENVY_SHELL.POWERSHELL, check = true})
   else
     invalid_cwd = "/nonexistent/directory/that/does/not/exist"
     ctx.run([[
       echo "Should not execute"
-    ]], {cwd = invalid_cwd})
+    ]], {cwd = invalid_cwd, check = true})
   end
 end

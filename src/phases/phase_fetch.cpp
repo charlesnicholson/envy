@@ -8,6 +8,7 @@
 #include "lua_error_formatter.h"
 #include "recipe.h"
 #include "sha256.h"
+#include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
 #include "uri.h"
@@ -163,19 +164,21 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
 // Extract source, sha256, and ref from a Lua table.
 table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
-  sol::optional<std::string> url = tbl["source"];
-  if (!url || url->empty()) {
-    throw std::runtime_error("Fetch table missing 'source' field in " + context);
+  std::string url{ sol_util_get_required<std::string>(tbl, "source", context) };
+  if (url.empty()) {
+    throw std::runtime_error("Fetch table 'source' field cannot be empty in " + context);
   }
 
   table_entry entry;
-  entry.url = std::move(*url);
+  entry.url = std::move(url);
 
-  sol::optional<std::string> sha = tbl["sha256"];
-  if (sha) { entry.sha256 = std::move(*sha); }
+  if (auto sha{ sol_util_get_optional<std::string>(tbl, "sha256", context) }) {
+    entry.sha256 = std::move(*sha);
+  }
 
-  sol::optional<std::string> ref = tbl["ref"];
-  if (ref) { entry.ref = std::move(*ref); }
+  if (auto ref{ sol_util_get_optional<std::string>(tbl, "ref", context) }) {
+    entry.ref = std::move(*ref);
+  }
 
   return entry;
 }

@@ -8,8 +8,13 @@ fetch = {
 
 stage = function(ctx, opts)
   if ENVY_PLATFORM == "windows" then
-    ctx.run([[Write-Output "About to fail"; exit 9; Write-Output "Should not reach"]], { shell = ENVY_SHELL.POWERSHELL })
+    ctx.run([[Write-Output "About to fail"; exit 9; Write-Output "Should not reach"]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
-    ctx.run([[echo "About to fail"; false; echo "Should not reach"]])
+    ctx.run([[
+      set -e
+      echo "About to fail"
+      false
+      echo "Should not reach"
+    ]], { check = true })
   end
 end

@@ -371,6 +371,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx/lua_ctx_move_tests.cpp
     src/product_util_tests.cpp
     src/sha256_tests.cpp
+    src/sol_util_tests.cpp
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>

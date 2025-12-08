@@ -1,5 +1,5 @@
--- Test ctx.run() strict mode catches failures
-identity = "local.ctx_run_strict_mode@v1"
+-- Test ctx.run() check mode catches failures
+identity = "local.ctx_run_check_mode@v1"
 
 fetch = {
   source = "test_data/archives/test.tar.gz",
@@ -10,17 +10,16 @@ stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then
-    -- Force failure and terminate immediately; ensure non-zero exit code surfaces.
     ctx.run([[
       cmd /c exit /b 7
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       Write-Output "This should not execute"
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
     ctx.run([[
       set -euo pipefail
       false
       echo "This should not execute"
-    ]])
+    ]], { check = true })
   end
 end

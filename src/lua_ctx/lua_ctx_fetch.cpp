@@ -2,6 +2,7 @@
 
 #include "fetch.h"
 #include "recipe.h"
+#include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
 #include "uri.h"
@@ -46,11 +47,9 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
 
     if (first_elem.get_type() == sol::type::lua_nil) {
       // Single table: {source="url", ref="branch"}
-      sol::optional<std::string> source = tbl["source"];
-      if (!source) { throw std::runtime_error("ctx.fetch: table missing 'source' field"); }
-      sol::optional<std::string> ref = tbl["ref"];
-      items.push_back(
-          { *source, ref ? std::optional<std::string>{ *ref } : std::nullopt });
+      std::string source{ sol_util_get_required<std::string>(tbl, "source", "ctx.fetch") };
+      auto ref{ sol_util_get_optional<std::string>(tbl, "ref", "ctx.fetch") };
+      items.push_back({ source, ref });
     } else if (first_elem.is<std::string>()) {
       // Array of strings: {"url1", "url2"}
       is_array = true;
@@ -68,13 +67,12 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
           throw std::runtime_error("ctx.fetch: array elements must be tables");
         }
         sol::table item_tbl{ value.as<sol::table>() };
-        sol::optional<std::string> source = item_tbl["source"];
-        if (!source) {
-          throw std::runtime_error("ctx.fetch: array element missing 'source' field");
-        }
-        sol::optional<std::string> ref = item_tbl["ref"];
-        items.push_back(
-            { *source, ref ? std::optional<std::string>{ *ref } : std::nullopt });
+        std::string source{ sol_util_get_required<std::string>(
+            item_tbl,
+            "source",
+            "ctx.fetch array element") };
+        auto ref{ sol_util_get_optional<std::string>(item_tbl, "ref", "ctx.fetch") };
+        items.push_back({ source, ref });
       }
     } else {
       throw std::runtime_error("ctx.fetch: invalid array element type");

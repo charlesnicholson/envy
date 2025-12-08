@@ -5,7 +5,7 @@ Tests comprehensive functionality of ctx.run() including:
 - Basic execution
 - Error handling
 - Working directory control
-- Strict mode behavior
+- Check mode behavior
 - Environment variable management
 - Integration with other ctx methods
 - Output/logging
@@ -141,11 +141,11 @@ class TestCtxRun(unittest.TestCase):
             should_fail=True,
         )
 
-    def test_strict_mode_catches_failures(self):
-        """ctx.run() strict mode catches command failures."""
+    def test_check_mode_catches_failures(self):
+        """ctx.run() check mode catches command failures."""
         self.run_recipe(
-            "local.ctx_run_strict_mode@v1",
-            "test_data/recipes/ctx_run_strict_mode.lua",
+            "local.ctx_run_check_mode@v1",
+            "test_data/recipes/ctx_run_check_mode.lua",
             should_fail=True,
         )
 
@@ -249,7 +249,7 @@ class TestCtxRun(unittest.TestCase):
             ).exists()
         )
 
-    # ===== Strict Mode Tests =====
+    # ===== Check Mode Tests =====
 
     def test_continue_after_failure(self):
         """ctx.run() continues execution after a failing command."""
@@ -261,21 +261,41 @@ class TestCtxRun(unittest.TestCase):
         assert asset_path
         self.assertTrue((asset_path / "continued.txt").exists())
 
-    def test_strict_undefined_variable(self):
-        """ctx.run() strict mode catches undefined variables."""
+    def test_check_undefined_variable(self):
+        """ctx.run() check mode catches undefined variables."""
         self.run_recipe(
-            "local.ctx_run_strict_undefined@v1",
-            "test_data/recipes/ctx_run_strict_undefined.lua",
+            "local.ctx_run_check_undefined@v1",
+            "test_data/recipes/ctx_run_check_undefined.lua",
             should_fail=True,
         )
 
-    def test_strict_pipefail(self):
-        """ctx.run() strict mode catches pipe failures."""
+    def test_check_pipefail(self):
+        """ctx.run() check mode catches pipe failures."""
         self.run_recipe(
-            "local.ctx_run_strict_pipefail@v1",
-            "test_data/recipes/ctx_run_strict_pipefail.lua",
+            "local.ctx_run_check_pipefail@v1",
+            "test_data/recipes/ctx_run_check_pipefail.lua",
             should_fail=True,
         )
+
+    def test_check_false_nonzero(self):
+        """ctx.run() with check=false allows non-zero exit codes."""
+        self.run_recipe(
+            "local.ctx_run_check_false_nonzero@v1",
+            "test_data/recipes/ctx_run_check_false_nonzero.lua",
+        )
+        asset_path = self.get_asset_path("local.ctx_run_check_false_nonzero@v1")
+        assert asset_path
+        self.assertTrue((asset_path / "continued_after_failure.txt").exists())
+
+    def test_check_false_capture(self):
+        """ctx.run() with check=false and capture returns exit_code and output."""
+        self.run_recipe(
+            "local.ctx_run_check_false_capture@v1",
+            "test_data/recipes/ctx_run_check_false_capture.lua",
+        )
+        asset_path = self.get_asset_path("local.ctx_run_check_false_capture@v1")
+        assert asset_path
+        self.assertTrue((asset_path / "capture_success.txt").exists())
 
     # ===== Environment Tests =====
 
