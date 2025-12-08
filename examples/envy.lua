@@ -48,7 +48,7 @@ if ENVY_PLATFORM == "linux" then
       recipe = "local.apt@r0",
       source = "local.apt@r0.lua",
       options = { packages = {
-        "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0.dev" } }
+        "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev", "libcurl" } }
     },
   }
   append_lists(packages, apt_packages)

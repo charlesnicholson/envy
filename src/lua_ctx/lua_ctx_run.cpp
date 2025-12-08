@@ -3,6 +3,7 @@
 #include "lua_shell.h"
 #include "recipe.h"
 #include "shell.h"
+#include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
 
@@ -14,6 +15,45 @@
 #include <string_view>
 
 namespace envy {
+
+namespace {
+
+std::string format_run_error(std::string_view script,
+                             int exit_code,
+                             std::optional<int> signal,
+                             std::string const &stdout_str,
+                             std::string const &stderr_str,
+                             std::string const &identity) {
+  std::string error_msg;
+
+  if (signal) {
+    error_msg = "ctx.run: shell script terminated by signal " + std::to_string(*signal) +
+                " for " + identity;
+  } else {
+    error_msg = "ctx.run: command failed with exit code " + std::to_string(exit_code) +
+                " for " + identity;
+  }
+
+  error_msg += "\nCommand: ";
+  error_msg += script;
+  error_msg += "\n";
+
+  if (!stdout_str.empty()) {
+    error_msg += "\n--- stdout ---\n";
+    error_msg += stdout_str;
+    if (!stdout_str.ends_with('\n')) { error_msg += "\n"; }
+  }
+
+  if (!stderr_str.empty()) {
+    error_msg += "\n--- stderr ---\n";
+    error_msg += stderr_str;
+    if (!stderr_str.ends_with('\n')) { error_msg += "\n"; }
+  }
+
+  return error_msg;
+}
+
+}  // namespace
 
 std::function<sol::table(sol::object, sol::optional<sol::object>, sol::this_state)>
 make_ctx_run(lua_ctx_common *ctx) {
@@ -84,24 +124,12 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     bool quiet{ false };
     bool capture{ false };
+    bool check{ false };
     if (opts_table) {
       sol::table opts{ *opts_table };
-      sol::optional<sol::object> quiet_obj = opts["quiet"];
-      if (quiet_obj && quiet_obj->valid() && quiet_obj->get_type() != sol::type::lua_nil) {
-        if (!quiet_obj->is<bool>()) {
-          throw std::runtime_error("ctx.run: quiet must be a boolean");
-        }
-        quiet = quiet_obj->as<bool>();
-      }
-
-      sol::optional<sol::object> capture_obj = opts["capture"];
-      if (capture_obj && capture_obj->valid() &&
-          capture_obj->get_type() != sol::type::lua_nil) {
-        if (!capture_obj->is<bool>()) {
-          throw std::runtime_error("ctx.run: capture must be a boolean");
-        }
-        capture = capture_obj->as<bool>();
-      }
+      quiet = sol_util_get_or_default<bool>(opts, "quiet", false, "ctx.run");
+      capture = sol_util_get_or_default<bool>(opts, "capture", false, "ctx.run");
+      check = sol_util_get_or_default<bool>(opts, "check", false, "ctx.run");
     }
 
     std::string stdout_buffer;
@@ -122,10 +150,8 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     std::function<void(std::string_view)> on_stdout_capture;
     std::function<void(std::string_view)> on_stderr_capture;
-    if (capture) {
-      on_stdout_capture = [&](std::string_view line) { append_line(stdout_buffer, line); };
-      on_stderr_capture = [&](std::string_view line) { append_line(stderr_buffer, line); };
-    }
+    on_stdout_capture = [&](std::string_view line) { append_line(stdout_buffer, line); };
+    on_stderr_capture = [&](std::string_view line) { append_line(stderr_buffer, line); };
 
     std::function<void(std::string_view)> on_line;
     if (quiet) {
@@ -173,16 +199,22 @@ make_ctx_run(lua_ctx_common *ctx) {
                                     result.exit_code,
                                     static_cast<std::int64_t>(duration_ms));
 
-    if (result.exit_code != 0) {
-      if (result.signal) {
-        throw std::runtime_error("ctx.run: shell script terminated by signal " +
-                                 std::to_string(*result.signal) + " for " +
-                                 ctx->recipe_->spec->identity);
-      } else {
-        throw std::runtime_error("ctx.run: shell script failed with exit code " +
-                                 std::to_string(result.exit_code) + " for " +
-                                 ctx->recipe_->spec->identity);
-      }
+    if (result.signal) {
+      throw std::runtime_error(format_run_error(script_view,
+                                                result.exit_code,
+                                                result.signal,
+                                                stdout_buffer,
+                                                stderr_buffer,
+                                                ctx->recipe_->spec->identity));
+    }
+
+    if (check && result.exit_code != 0) {
+      throw std::runtime_error(format_run_error(script_view,
+                                                result.exit_code,
+                                                std::nullopt,
+                                                stdout_buffer,
+                                                stderr_buffer,
+                                                ctx->recipe_->spec->identity));
     }
 
     sol::state_view lua_view{ L };

@@ -9,17 +9,16 @@ fetch = {
 stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  -- This should fail
   if ENVY_PLATFORM == "windows" then
     ctx.run([[
       Write-Output "About to fail"
       Set-Content -Path will_fail.txt -Value "Intentional failure sentinel"
       exit 42
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
     ctx.run([[
       echo "About to fail"
       exit 42
-    ]])
+    ]], { check = true })
   end
 end

@@ -9,16 +9,14 @@ fetch = {
 stage = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  -- This should fail because nonexistent_command doesn't exist
   if ENVY_PLATFORM == "windows" then
-    -- Force a terminating failure with a guaranteed missing command.
-    ctx.run([[ 
+    ctx.run([[
       cmd /c nonexistent_command_xyz123
       exit $LASTEXITCODE
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
-    ctx.run([[ 
+    ctx.run([[
       nonexistent_command_xyz123
-    ]])
+    ]], { check = true })
   end
 end

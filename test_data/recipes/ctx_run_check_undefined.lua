@@ -1,5 +1,5 @@
--- Test ctx.run() strict mode catches undefined variables
-identity = "local.ctx_run_strict_undefined@v1"
+-- Test ctx.run() check mode catches undefined variables
+identity = "local.ctx_run_check_undefined@v1"
 
 fetch = {
   source = "test_data/archives/test.tar.gz",
@@ -16,13 +16,13 @@ stage = function(ctx, opts)
       if (-not $env:UNDEFINED_VARIABLE_XYZ) { throw "Undefined variable" }
       Write-Output "Value: $env:UNDEFINED_VARIABLE_XYZ"
       Set-Content -Path should_not_exist.txt -Value "Should not reach here"
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
     ctx.run([[
       set -euo pipefail
       echo "About to use undefined variable"
       echo "Value: $UNDEFINED_VARIABLE_XYZ"
       echo "Should not reach here" > should_not_exist.txt
-    ]])
+    ]], { check = true })
   end
 end

@@ -363,7 +363,7 @@ TEST_CASE("manifest::load errors on non-string recipe field") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'recipe' field must be string",
+                       "Recipe: recipe must be a string",
                        std::runtime_error);
 }
 
@@ -447,7 +447,7 @@ TEST_CASE("manifest::load errors on non-string sha256") {
   )" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
-                       "Recipe 'sha256' field must be string",
+                       "Recipe source: sha256 must be a string",
                        std::runtime_error);
 }
 

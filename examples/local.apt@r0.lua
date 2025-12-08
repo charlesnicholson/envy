@@ -3,14 +3,8 @@ identity = "local.apt@r0"
 local missing_packages = {}
 
 check = function(ctx, opts)
-  local res = ctx.run("dpkg-query -W -f='${Package}\n'", {
-    capture = true,
-    quiet = true,
-  })
-
-  if res.exit_code ~= 0 then
-    return false
-  end
+  local cmd = "dpkg-query -W -f='${Package}\n' " .. table.concat(opts.packages, " ")
+  local res = ctx.run(cmd, { capture = true, quiet = true })
 
   local installed = {}
 
@@ -28,8 +22,6 @@ check = function(ctx, opts)
       table.insert(missing_packages, pkg)
     end
   end
-
-  for _, pkg in ipairs(missing_packages) do print(pkg) end
 
   return #missing_packages == 0
 end

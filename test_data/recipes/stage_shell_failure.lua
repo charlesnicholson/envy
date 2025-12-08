@@ -12,12 +12,12 @@ stage = function(ctx, opts)
     ctx.run([[
       Write-Output "About to fail"
       exit 9
-    ]], { shell = ENVY_SHELL.POWERSHELL })
+    ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
     ctx.run([[
       set -euo pipefail
       echo "About to fail"
       false
-    ]])
+    ]], { check = true })
   end
 end

@@ -1,6 +1,7 @@
 #include "lua_ctx_bindings.h"
 
 #include "sha256.h"
+#include "sol_util.h"
 #include "tui.h"
 
 #include <filesystem>
@@ -34,12 +35,11 @@ std::vector<commit_entry> parse_commit_fetch_args(sol::object const &arg) {
 
     if (first_elem.get_type() == sol::type::lua_nil) {
       // Single table: {filename="...", sha256="..."}
-      sol::optional<std::string> filename = tbl["filename"];
-      if (!filename) {
-        throw std::runtime_error("ctx.commit_fetch: table missing 'filename' field");
-      }
-      sol::optional<std::string> sha256 = tbl["sha256"];
-      entries.push_back({ *filename, sha256.value_or("") });
+      std::string filename{
+        sol_util_get_required<std::string>(tbl, "filename", "ctx.commit_fetch")
+      };
+      auto sha256{ sol_util_get_optional<std::string>(tbl, "sha256", "ctx.commit_fetch") };
+      entries.push_back({ filename, sha256.value_or("") });
     } else if (first_elem.is<std::string>()) {
       // Array of strings: {"file1", "file2"}
       for (auto const &[key, value] : tbl) {
@@ -55,13 +55,14 @@ std::vector<commit_entry> parse_commit_fetch_args(sol::object const &arg) {
           throw std::runtime_error("ctx.commit_fetch: array elements must be tables");
         }
         sol::table item_tbl{ value.as<sol::table>() };
-        sol::optional<std::string> filename = item_tbl["filename"];
-        if (!filename) {
-          throw std::runtime_error(
-              "ctx.commit_fetch: array element missing 'filename' field");
-        }
-        sol::optional<std::string> sha256 = item_tbl["sha256"];
-        entries.push_back({ *filename, sha256.value_or("") });
+        std::string filename{ sol_util_get_required<std::string>(
+            item_tbl,
+            "filename",
+            "ctx.commit_fetch array element") };
+        auto sha256{
+          sol_util_get_optional<std::string>(item_tbl, "sha256", "ctx.commit_fetch")
+        };
+        entries.push_back({ filename, sha256.value_or("") });
       }
     } else {
       throw std::runtime_error("ctx.commit_fetch: invalid array element type");

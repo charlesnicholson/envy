@@ -1,5 +1,6 @@
 #include "recipe_spec.h"
 
+#include "sol_util.h"
 #include "uri.h"
 
 #include <algorithm>
@@ -99,30 +100,19 @@ recipe_spec::source_t parse_source_string(std::string const &source_uri,
   auto const info{ uri_classify(source_uri) };
 
   if (info.scheme == uri_scheme::GIT) {
-    std::string const ref_str{ [&]() -> std::string {
-      sol::object ref_obj{ table["ref"] };
-      if (!ref_obj.valid()) {
-        throw std::runtime_error("Recipe with git source must specify 'ref' field");
-      }
-      if (!ref_obj.is<std::string>()) {
-        throw std::runtime_error("Recipe 'ref' field must be string");
-      }
-      std::string ref{ ref_obj.as<std::string>() };
-      if (ref.empty()) { throw std::runtime_error("Recipe 'ref' field cannot be empty"); }
-      return ref;
-    }() };
+    std::string const ref_str{
+      sol_util_get_required<std::string>(table, "ref", "Recipe with git source")
+    };
+    if (ref_str.empty()) {
+      throw std::runtime_error("Recipe 'ref' field cannot be empty");
+    }
 
     return recipe_spec::git_source{ .url = info.canonical, .ref = ref_str };
   }
 
-  auto const sha256{ [&]() -> std::optional<std::string> {
-    sol::object sha256_obj{ table["sha256"] };
-    if (!sha256_obj.valid()) { return std::nullopt; }
-    if (!sha256_obj.is<std::string>()) {
-      throw std::runtime_error("Recipe 'sha256' field must be string");
-    }
-    return sha256_obj.as<std::string>();
-  }() };
+  auto const sha256{
+    sol_util_get_optional<std::string>(table, "sha256", "Recipe source")
+  };
 
   // If SHA256 is provided, always treat as remote_source (needs verification)
   // Otherwise, local files use local_source, remote URIs use remote_source
@@ -203,37 +193,29 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
   std::vector<recipe_spec *> source_dependencies;
   recipe_spec *weak{ nullptr };
 
-  std::optional<std::string> product{ [&]() -> std::optional<std::string> {
-    sol::object product_obj{ table["product"] };
-    if (!product_obj.valid()) { return std::nullopt; }
-    if (!product_obj.is<std::string>()) {
-      throw std::runtime_error("Recipe 'product' field must be string");
-    }
-    std::string prod{ product_obj.as<std::string>() };
-    if (prod.empty()) {
-      throw std::runtime_error("Recipe 'product' field cannot be empty");
-    }
-    return prod;
-  }() };
+  std::optional<std::string> product{
+    sol_util_get_optional<std::string>(table, "product", "Recipe")
+  };
+  if (product.has_value() && product->empty()) {
+    throw std::runtime_error("Recipe 'product' field cannot be empty");
+  }
 
-  std::string identity{ [&]() -> std::string {
-    sol::object recipe_obj{ table["recipe"] };
-    if (!recipe_obj.valid()) {
-      // Allow missing recipe field for ref-only product dependencies
-      if (allow_weak_without_source && product.has_value()) {
-        return "";  // Empty identity means unconstrained ref-only product dep
-      }
+  std::optional<std::string> identity_opt{
+    sol_util_get_optional<std::string>(table, "recipe", "Recipe")
+  };
+  std::string identity;
+  if (!identity_opt.has_value()) {
+    if (allow_weak_without_source && product.has_value()) {
+      identity = "";
+    } else {
       throw std::runtime_error("Recipe table missing required 'recipe' field");
     }
-    if (!recipe_obj.is<std::string>()) {
-      throw std::runtime_error("Recipe 'recipe' field must be string");
-    }
-    std::string ident{ recipe_obj.as<std::string>() };
-    if (ident.empty()) {
+  } else {
+    identity = *identity_opt;
+    if (identity.empty()) {
       throw std::runtime_error("Recipe 'recipe' field cannot be empty");
     }
-    return ident;
-  }() };
+  }
 
   sol::object weak_obj{ table["weak"] };
   bool const has_weak{ weak_obj.valid() };
@@ -289,29 +271,26 @@ recipe_spec *recipe_spec::parse(sol::object const &lua_val,
     throw std::runtime_error("Recipe 'options' field must be table");
   }
 
-  sol::object needed_by_obj{ table["needed_by"] };
-  if (needed_by_obj.valid()) {
-    if (!needed_by_obj.is<std::string>()) {
-      throw std::runtime_error("Recipe 'needed_by' field must be string");
-    }
-    std::string needed_by_str{ needed_by_obj.as<std::string>() };
-    if (needed_by_str == "check") {
+  auto needed_by_str{ sol_util_get_optional<std::string>(table, "needed_by", "Recipe") };
+  if (needed_by_str.has_value()) {
+    std::string const &nb{ *needed_by_str };
+    if (nb == "check") {
       needed_by = recipe_phase::asset_check;
-    } else if (needed_by_str == "fetch") {
+    } else if (nb == "fetch") {
       needed_by = recipe_phase::asset_fetch;
-    } else if (needed_by_str == "stage") {
+    } else if (nb == "stage") {
       needed_by = recipe_phase::asset_stage;
-    } else if (needed_by_str == "build") {
+    } else if (nb == "build") {
       needed_by = recipe_phase::asset_build;
-    } else if (needed_by_str == "install") {
+    } else if (nb == "install") {
       needed_by = recipe_phase::asset_install;
-    } else if (needed_by_str == "deploy") {
+    } else if (nb == "deploy") {
       needed_by = recipe_phase::asset_deploy;
     } else {
       throw std::runtime_error(
           "Recipe 'needed_by' must be one of: check, fetch, stage, "
           "build, install, deploy (got: " +
-          needed_by_str + ")");
+          nb + ")");
     }
   }
 
