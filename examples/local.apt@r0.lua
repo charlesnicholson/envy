@@ -1,6 +1,4 @@
-identity = "local.brew_package@r0"
-
-dependencies = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
+identity = "local.apt@r0"
 
 local missing_packages = {}
 
@@ -31,12 +29,14 @@ check = function(ctx, opts)
     end
   end
 
+  for _, pkg in ipairs(missing_packages) do print(pkg) end
+
   return #missing_packages == 0
 end
 
 install = function(ctx, opts)
   if #missing_packages == 0 then
-    return nil  -- nothing to do
+    return nil
   end
 
   return "sudo apt-get install -y " .. table.concat(missing_packages, " ")

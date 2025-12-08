@@ -4,12 +4,17 @@ local validate = function(opts)
   assert(opts.version, "options must contain version key, e.g. '3.13.9'")
 end
 
+local uri_prefix =
+  "https://github.com/astral-sh/python-build-standalone/releases/download/20251205/"
+
 fetch = function(ctx, opts)
   validate(opts)
-  return {
-    "https://github.com/astral-sh/python-build-standalone/releases/download/20251031/cpython-"
-    .. opts.version .. "+20251031-aarch64-apple-darwin-pgo+lto-full.tar.zst"
-  }
+
+  local arch = ({ darwin = "aarch64-apple-darwin",
+                  linux = "x86_64_v3-unknown-linux-gnu" })[ENVY_PLATFORM]
+
+  local suffix = "-pgo+lto-full.tar.zst"
+  return uri_prefix .. "cpython-" .. opts.version .. "+20251205-" .. arch .. suffix
 end
 
 stage = { strip = 1 }
