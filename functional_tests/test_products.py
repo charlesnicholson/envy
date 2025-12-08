@@ -507,6 +507,58 @@ packages = {{
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("no products", result.stderr.lower())
 
+    def test_product_command_resolves_providers_clean_cache(self):
+        """Product command must resolve graph to find providers on clean cache.
+
+        Regression test: product command should call resolve_graph() with all
+        manifest packages to find product providers, not just recipes directly
+        requested. This ensures products can be queried even when the provider
+        isn't explicitly the target.
+        """
+        # Create product provider recipe
+        provider_recipe = """identity = "local.test_product_query_provider@v1"
+
+fetch = { source = "test_data/archives/test.tar.gz",
+          sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
+
+install = function(ctx)
+    ctx.mark_install_complete()
+end
+
+products = { test_query_tool = "bin/query_tool" }
+"""
+        provider_path = self.test_dir / "test_product_query_provider.lua"
+        provider_path.write_text(provider_recipe, encoding="utf-8")
+
+        # Manifest with the provider
+        manifest = self.manifest(
+            f"""
+packages = {{
+    {{ recipe = "local.test_product_query_provider@v1", source = "{self.lua_path(provider_path)}" }}
+}}
+"""
+        )
+
+        # Query the product with clean cache - should resolve graph and find provider
+        result = self.run_envy(
+            ["product", "test_query_tool", "--manifest", str(manifest)]
+        )
+
+        # Should succeed - product command must resolve graph to find provider
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip(), "Expected product value in stdout")
+
+        # Verify the output contains the expected path
+        output = result.stdout.strip()
+        self.assertIn(
+            "bin/query_tool", output, f"Expected product path in output: {output}"
+        )
+        self.assertIn(
+            "local.test_product_query_provider@v1",
+            output,
+            f"Expected provider identity in output: {output}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

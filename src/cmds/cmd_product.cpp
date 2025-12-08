@@ -101,10 +101,8 @@ bool cmd_product::execute() {
     roots.reserve(m->packages.size());
     for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
-    // Run recipe-fetch phase only (no downloads/builds)
     eng.resolve_graph(roots);
 
-    // List all products if no product name specified
     if (cfg_.product_name.empty()) {
       auto const products{ eng.collect_all_products() };
       if (cfg_.json) {
@@ -115,7 +113,6 @@ bool cmd_product::execute() {
       return true;
     }
 
-    // Query single product - bring provider to completion
     recipe *provider{ eng.find_product_provider(cfg_.product_name) };
     if (!provider) {
       tui::error("Product '%s' has no provider in resolved dependency graph",
@@ -123,7 +120,6 @@ bool cmd_product::execute() {
       return false;
     }
 
-    // Ensure provider recipe reaches completion phase
     eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
 
     std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
