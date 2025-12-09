@@ -67,6 +67,9 @@ void shell_validate_custom(custom_shell const &cfg);
 // Parse custom shell from sol2 table
 custom_shell shell_parse_custom_from_lua(sol::table const &tbl);
 
+// Initialize shell subsystem (must be called early in main before any shell_run calls)
+void shell_init();
+
 shell_env_t shell_getenv();
 shell_result shell_run(std::string_view script, shell_run_cfg const &cfg);
 

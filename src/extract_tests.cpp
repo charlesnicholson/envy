@@ -109,17 +109,57 @@ TEST_CASE("extract with strip_components=3 extracts deeply nested only") {
   std::filesystem::remove_all(dest);
 }
 
-TEST_CASE("extract with strip_components too large extracts nothing") {
+TEST_CASE("extract with strip_components too large throws error") {
   auto const dest{ make_temp_dir() };
   auto const archive{ std::filesystem::path("test_data/archives/test.tar.gz") };
 
   envy::extract_options opts{ .strip_components = 10 };
+
+  try {
+    envy::extract(archive, dest, opts);
+    FAIL("Expected exception to be thrown");
+  } catch (std::runtime_error const& e) {
+    std::string const msg{e.what()};
+    CHECK(msg.find("test.tar.gz") != std::string::npos);
+    CHECK(msg.find("strip=10") != std::string::npos);
+  }
+
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("extract flat archive with strip=0 succeeds") {
+  auto const dest{ make_temp_dir() };
+  auto const archive{ std::filesystem::path("test_data/archives/flat.tar.gz") };
+
+  envy::extract_options opts{ .strip_components = 0 };
   auto const count{ envy::extract(archive, dest, opts) };
 
-  CHECK(count == 0);  // No files deep enough
+  CHECK(count == 3);
 
   auto const files{ collect_files_recursive(dest) };
-  CHECK(files.empty());
+  CHECK(files.size() == 3);
+  CHECK(files[0] == "file1.txt");
+  CHECK(files[1] == "file2.txt");
+  CHECK(files[2] == "file3.txt");
+
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("extract flat archive with strip=1 throws error") {
+  auto const dest{ make_temp_dir() };
+  auto const archive{ std::filesystem::path("test_data/archives/flat.tar.gz") };
+
+  envy::extract_options opts{ .strip_components = 1 };
+
+  try {
+    envy::extract(archive, dest, opts);
+    FAIL("Expected exception - flat archive cannot be stripped");
+  } catch (std::runtime_error const& e) {
+    std::string const msg{e.what()};
+    CHECK(msg.find("flat.tar.gz") != std::string::npos);
+    CHECK(msg.find("strip=1") != std::string::npos);
+    CHECK(msg.find("0 files extracted") != std::string::npos);
+  }
 
   std::filesystem::remove_all(dest);
 }

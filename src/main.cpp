@@ -1,6 +1,7 @@
 #include "aws_util.h"
 #include "cli.h"
 #include "libgit2_util.h"
+#include "shell.h"
 #include "tui.h"
 
 #include <cstdlib>
@@ -8,6 +9,7 @@
 
 int main(int argc, char **argv) {
   envy::tui::init();
+  envy::shell_init();
 
   auto args{ envy::cli_parse(argc, argv) };
   envy::tui::configure_trace_outputs(args.trace_outputs);

@@ -172,7 +172,7 @@ TEST_CASE("run_check_string returns true for successful command") {
   engine eng{ test_cache, std::nullopt };
 
 #ifdef _WIN32
-  bool result = run_check_string(f.r.get(), eng, "echo hello > nul");
+  bool result = run_check_string(f.r.get(), eng, "Write-Output 'hello' | Out-Null");
 #else
   bool result = run_check_string(f.r.get(), eng, "echo hello > /dev/null");
 #endif
@@ -303,7 +303,11 @@ TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
 
   std::string lua_script =
       "return function(ctx)\n"
+#if defined(_WIN32)
+      "  local out = ctx.run(\"Get-Location | Select-Object -ExpandProperty Path\", {capture=true}).stdout\n"
+#else
       "  local out = ctx.run(\"pwd\", {capture=true}).stdout\n"
+#endif
       "  return string.find(out, \"envy%-check%-cwd\") ~= nil\n"
       "end";
 

@@ -144,6 +144,8 @@ make_ctx_run(lua_ctx_common *ctx) {
 #endif
 
     auto append_line{ [](std::string &buffer, std::string_view line) {
+      // Skip trailing empty lines added by PowerShell on Windows
+      if (line.empty()) { return; }
       buffer.append(line);
       buffer.push_back('\n');
     } };

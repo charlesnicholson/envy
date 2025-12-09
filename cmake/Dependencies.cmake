@@ -135,7 +135,7 @@ add_library(envy::thirdparty ALIAS envy_thirdparty)
 target_link_libraries(envy_thirdparty
     INTERFACE
         envy::libgit2
-        $<$<PLATFORM_ID:Linux>:CURL::libcurl>
+        $<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:Windows>>:CURL::libcurl>
         libssh2::libssh2
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>

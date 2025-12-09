@@ -3,12 +3,22 @@ identity = "local.check_concurrent@v1"
 
 function check(ctx)
     -- Generate large output on both stdout and stderr
-    local cmd = [[
+    local cmd
+    if ENVY_PLATFORM == "windows" then
+        cmd = [[
+for ($i=1; $i -le 1000; $i++) {
+    Write-Output "stdout line $i"
+    [Console]::Error.WriteLine("stderr line $i")
+}
+]]
+    else
+        cmd = [[
 for i in $(seq 1 1000); do
     echo "stdout line $i"
     echo "stderr line $i" >&2
 done
 ]]
+    end
 
     local res = ctx.run(cmd, {capture = true})
 
