@@ -60,8 +60,7 @@ make_ctx_run(lua_ctx_common *ctx) {
   return [ctx](sol::object script_obj,
                sol::optional<sol::object> opts_obj,
                sol::this_state L) -> sol::table {
-    // Validate script argument
-    if (!script_obj.is<std::string>()) {
+    if (!script_obj.is<std::string>()) {  // Validate script argument
       throw std::runtime_error("ctx.run: first argument must be a string (shell script)");
     }
     std::string const script{ script_obj.as<std::string>() };
@@ -135,59 +134,18 @@ make_ctx_run(lua_ctx_common *ctx) {
     std::string stdout_buffer;
     std::string stderr_buffer;
 
-#if defined(_WIN32)
-    bool const use_powershell_parsing{ std::holds_alternative<shell_choice>(shell) &&
-                                       std::get<shell_choice>(shell) ==
-                                           shell_choice::powershell };
-#else
-    bool constexpr use_powershell_parsing{ false };
-#endif
-
-    auto append_line{ [](std::string &buffer, std::string_view line) {
-      buffer.append(line);
-      buffer.push_back('\n');
-    } };
-
-    std::function<void(std::string_view)> on_stdout_capture;
-    std::function<void(std::string_view)> on_stderr_capture;
-    on_stdout_capture = [&](std::string_view line) { append_line(stdout_buffer, line); };
-    on_stderr_capture = [&](std::string_view line) { append_line(stderr_buffer, line); };
-
-    std::function<void(std::string_view)> on_line;
-    if (quiet) {
-      on_line = [](std::string_view) {};
-    }
-#if defined(_WIN32)
-    else if (use_powershell_parsing) {
-      on_line = [&](std::string_view line) {
-        std::string const msg{ !line.empty() && line[0] >= '\x1C' && line[0] <= '\x1F'
-                                   ? line.substr(1)
-                                   : line };
-        if (line.starts_with('\x1C')) {
-          tui::error("%s", msg.c_str());
-        } else if (line.starts_with('\x1D')) {
-          tui::warn("%s", msg.c_str());
-        } else if (line.starts_with('\x1F')) {
-          tui::debug("%s", msg.c_str());
-        } else {
-          tui::info("%s", msg.c_str());
-        }
-      };
-    }
-#endif
-    else {
-      on_line = [&](std::string_view line) {
-        std::string const msg{ line };
-        tui::info("%s", msg.c_str());
-      };
-    }
-
-    shell_run_cfg const inv{ .on_output_line = std::move(on_line),
-                             .on_stdout_line = std::move(on_stdout_capture),
-                             .on_stderr_line = std::move(on_stderr_capture),
-                             .cwd = cwd,
-                             .env = std::move(env),
-                             .shell = shell };
+    shell_run_cfg const inv{
+      .on_output_line =
+          quiet ? std::function<void(std::string_view)>{ [](std::string_view) {} }
+                : std::function<void(std::string_view)>{ [&](std::string_view line) {
+                    tui::info("%s", std::string{ line }.c_str());
+                  } },
+      .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
+      .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
+      .cwd = cwd,
+      .env = std::move(env),
+      .shell = shell
+    };
 
     shell_result const result{ shell_run(script_view, inv) };
 

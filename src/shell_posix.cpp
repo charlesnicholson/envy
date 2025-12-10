@@ -291,6 +291,10 @@ shell_result wait_for_child(pid_t child) {
 
 }  // namespace
 
+void shell_init() {
+  // No-op on POSIX - no job object initialization needed
+}
+
 shell_env_t shell_getenv() {
   shell_env_t env;
   if (!environ) { return env; }

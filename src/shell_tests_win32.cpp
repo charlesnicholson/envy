@@ -16,16 +16,7 @@ static std::vector<std::string> run_collect(
     std::optional<fs::path> cwd = std::nullopt,
     envy::shell_env_t env = envy::shell_getenv()) {
   std::vector<std::string> lines;
-  envy::shell_run_cfg inv{ .on_output_line =
-                               [&](std::string_view line) {
-                                 // Strip C0 control character stream tags for test assertions
-                                 if (!line.empty() && (line[0] == '\x1C' || line[0] == '\x1D' ||
-                                                       line[0] == '\x1E' || line[0] == '\x1F')) {
-                                   lines.emplace_back(line.substr(1));
-                                 } else {
-                                   lines.emplace_back(line);
-                                 }
-                               },
+  envy::shell_run_cfg inv{ .on_output_line = [&](std::string_view line) { lines.emplace_back(line); },
                            .cwd = std::move(cwd),
                            .env = std::move(env),
                            .shell = shell };
@@ -113,84 +104,6 @@ TEST_CASE("shell_run handles callback exceptions (powershell)") {
                            .env = envy::shell_getenv(),
                            .shell = envy::shell_choice::powershell };
   CHECK_THROWS_AS(envy::shell_run("Write-Output 'hi'", inv), std::runtime_error);
-}
-
-TEST_CASE("shell_run captures all PowerShell streams without hanging (powershell)") {
-  std::vector<std::string> lines;
-  envy::shell_run_cfg inv{ .on_output_line = [&](std::string_view line) { lines.emplace_back(line); },
-                           .cwd = std::nullopt,
-                           .env = envy::shell_getenv(),
-                           .shell = envy::shell_choice::powershell };
-
-  // Test Write-Host (information stream) → 0x1E (RS)
-  lines.clear();
-  auto result{ envy::shell_run("Write-Host 'test host output'", inv) };
-  CHECK(result.exit_code == 0);
-  CHECK(lines.size() > 0);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1E') && l.find("test host output") != std::string::npos;
-  }));
-
-  // Test Write-Warning → 0x1D (GS)
-  lines.clear();
-  result = envy::shell_run("Write-Warning 'test warning'", inv);
-  CHECK(result.exit_code == 0);
-  CHECK(lines.size() > 0);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1D') && l.find("test warning") != std::string::npos;
-  }));
-
-  // Test Write-Error (non-terminating) → 0x1C (FS)
-  lines.clear();
-  result = envy::shell_run("Write-Error 'test error' -ErrorAction Continue; Write-Output 'continued'", inv);
-  CHECK(result.exit_code == 0);
-  CHECK(lines.size() >= 2);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1C') && l.find("test error") != std::string::npos;
-  }));
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.find("continued") != std::string::npos;
-  }));
-
-  // Test Write-Verbose → 0x1F (US)
-  lines.clear();
-  result = envy::shell_run("Write-Verbose 'test verbose' -Verbose", inv);
-  CHECK(result.exit_code == 0);
-  CHECK(lines.size() > 0);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1F') && l.find("test verbose") != std::string::npos;
-  }));
-
-  // Test Write-Debug → 0x1F (US)
-  lines.clear();
-  result = envy::shell_run("Write-Debug 'test debug' -Debug", inv);
-  CHECK(result.exit_code == 0);
-  CHECK(lines.size() > 0);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1F') && l.find("test debug") != std::string::npos;
-  }));
-
-  // Test Get-ChildItem (produces lots of output, potential hang)
-  lines.clear();
-  result = envy::shell_run("Get-ChildItem | Select-Object -First 5", inv);
-  CHECK(result.exit_code == 0);
-  // Should complete without hanging
-}
-
-TEST_CASE("shell_run PowerShell streams with explicit exit codes (powershell)") {
-  std::vector<std::string> lines;
-  envy::shell_run_cfg inv{ .on_output_line = [&](std::string_view line) { lines.emplace_back(line); },
-                           .cwd = std::nullopt,
-                           .env = envy::shell_getenv(),
-                           .shell = envy::shell_choice::powershell };
-
-  // Warning + explicit exit should propagate exit code
-  lines.clear();
-  auto result{ envy::shell_run("Write-Warning 'warn'; exit 42", inv) };
-  CHECK(result.exit_code == 42);
-  CHECK(std::any_of(lines.begin(), lines.end(), [](auto const &l) {
-    return l.starts_with('\x1D');  // 0x1D = GS (Warning)
-  }));
 }
 
 #endif // _WIN32

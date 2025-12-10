@@ -13,16 +13,18 @@ build = function(ctx, opts)
 ./ninja all
 ./ninja_test
   ]], {
-    python = ctx.asset("local.python@r0") .. "/install/bin/python",
+    python = ctx.product("python3"),
     googletest = ctx.stage_dir .. "/googletest.git"
   })
 
   ctx.run(cmd, { cwd = ctx.stage_dir .. "/ninja.git" })
 end
 
+local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
+
 install = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/ninja.git/ninja", ctx.install_dir .. "/ninja")
+  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ext, ctx.install_dir)
   ctx.mark_install_complete()
 end
 
-products = { ninja = "ninja" }
+products = { ninja = "ninja" .. ext }

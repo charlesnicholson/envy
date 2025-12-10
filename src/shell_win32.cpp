@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -25,6 +26,8 @@ namespace {
 
 constexpr DWORD kPipeBufferSize{ 4096 };
 constexpr size_t kLinePendingReserve{ 256 };
+
+HANDLE g_job_object{ NULL };
 
 class handle_closer {
  public:
@@ -172,44 +175,22 @@ std::wstring normalize_newlines(std::wstring_view input) {
 }
 
 // Build script contents for PowerShell only (wide). For cmd we emit narrow text later.
-// Wraps user script to tag output streams for proper tui routing.
 std::wstring build_powershell_script_contents(std::string_view script) {
   std::wstring user_script{ normalize_newlines(utf8_to_wstring(script)) };
-  if (!user_script.empty() && !ends_with_crlf(user_script)) {
-    user_script.append(L"\r\n");
-  }
 
-  // Wrapper that captures and tags each PowerShell stream with C0 control characters:
-  // Errors (2) → 0x1C (FS), Warnings (3) → 0x1D (GS),
-  // Verbose (4) + Debug (5) → 0x1F (US), Info/Host (6) + stdout (1) → 0x1E (RS)
+  // Execute user script, check for errors, preserve stdout/stderr and exit code
   std::wstring wrapper;
-  wrapper.reserve(user_script.size() + 512);
+  wrapper.reserve(user_script.size() + 128);
   wrapper.append(L"$ErrorActionPreference = 'Continue'\r\n");
-  wrapper.append(L"$WarningPreference = 'Continue'\r\n");
-  wrapper.append(L"$VerbosePreference = 'Continue'\r\n");
-  wrapper.append(L"$DebugPreference = 'Continue'\r\n");
-  wrapper.append(L"$InformationPreference = 'Continue'\r\n");
-  wrapper.append(L"$__user_script = {\r\n");
+  wrapper.append(L"$Error.Clear()\r\n");  // Clear previous errors
   wrapper.append(user_script);
-  wrapper.append(L"}\r\n");
-  wrapper.append(L"& $__user_script 2>&1 3>&1 4>&1 5>&1 6>&1 | ForEach-Object {\r\n");
-  wrapper.append(L"  if ($_ -is [System.Management.Automation.ErrorRecord]) {\r\n");
-  wrapper.append(L"    [char]0x1C + $_.Exception.Message\r\n");
-  wrapper.append(
-      L"  } elseif ($_ -is [System.Management.Automation.WarningRecord]) {\r\n");
-  wrapper.append(L"    [char]0x1D + $_.Message\r\n");
-  wrapper.append(
-      L"  } elseif ($_ -is [System.Management.Automation.VerboseRecord]) {\r\n");
-  wrapper.append(L"    [char]0x1F + $_.Message\r\n");
-  wrapper.append(L"  } elseif ($_ -is [System.Management.Automation.DebugRecord]) {\r\n");
-  wrapper.append(L"    [char]0x1F + $_.Message\r\n");
-  wrapper.append(
-      L"  } elseif ($_ -is [System.Management.Automation.InformationRecord]) {\r\n");
-  wrapper.append(L"    [char]0x1E + $_.MessageData\r\n");
-  wrapper.append(L"  } else {\r\n");
-  wrapper.append(L"    [char]0x1E + $_\r\n");
-  wrapper.append(L"  }\r\n");
-  wrapper.append(L"}\r\n");
+  // Only add newline if script doesn't already end with one
+  if (!user_script.empty() && user_script.back() != L'\n') {
+    wrapper.append(L"\r\n");
+  }
+  // Exit with external command exit code if set, else 1 if error occurred, else 0
+  wrapper.append(L"if ($LASTEXITCODE) { exit $LASTEXITCODE }\r\n");
+  wrapper.append(L"if ($Error.Count -gt 0) { exit 1 }\r\n");
   wrapper.append(L"exit 0\r\n");
   return wrapper;
 }
@@ -424,7 +405,9 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-void stream_pipe_lines(HANDLE pipe, shell_run_cfg const &cfg) {
+void stream_pipe_lines(HANDLE pipe,
+                       shell_stream stream,
+                       shell_run_cfg const &cfg) {
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -449,7 +432,11 @@ void stream_pipe_lines(HANDLE pipe, shell_run_cfg const &cfg) {
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
       std::string_view line{ pending.data() + offset, newline - offset };
       if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-      if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+      if (stream == shell_stream::std_out) {
+        if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+      } else {
+        if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+      }
       if (cfg.on_output_line) { cfg.on_output_line(line); }
       offset = newline + 1;
     }
@@ -464,7 +451,11 @@ void stream_pipe_lines(HANDLE pipe, shell_run_cfg const &cfg) {
   if (offset < pending.size()) {
     std::string_view line{ pending.data() + offset, pending.size() - offset };
     if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-    if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+    if (stream == shell_stream::std_out) {
+      if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+    } else {
+      if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+    }
     if (cfg.on_output_line) { cfg.on_output_line(line); }
   }
 }
@@ -528,7 +519,6 @@ std::wstring build_command_line_builtin(shell_choice shell,
   if (shell == shell_choice::powershell) {
     // -NoProfile: Skip user profile for consistent, fast startup (intentionally breaks
     // profile-dependent scripts)
-    // Script file contains wrapper that tags streams for proper tui routing.
     return L"powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass "
            L"-File " +
            quoted;
@@ -569,6 +559,30 @@ std::wstring build_command_line_custom(custom_shell_inline const &shell,
 
 }  // namespace
 
+void shell_init() {
+  g_job_object = ::CreateJobObjectW(nullptr, nullptr);
+  if (!g_job_object) {
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "Failed to create job object for child process management");
+  }
+
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+  info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+  if (!::SetInformationJobObject(g_job_object,
+                                 JobObjectExtendedLimitInformation,
+                                 &info,
+                                 sizeof(info))) {
+    DWORD const err{ ::GetLastError() };
+    ::CloseHandle(g_job_object);
+    g_job_object = NULL;
+    throw std::system_error(err,
+                            std::system_category(),
+                            "Failed to configure job object");
+  }
+}
+
 shell_env_t shell_getenv() {
   shell_env_t env{};
   LPWCH block{ ::GetEnvironmentStringsW() };
@@ -590,10 +604,6 @@ shell_env_t shell_getenv() {
 }
 
 shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
-  if (!cfg.on_output_line) {
-    throw std::invalid_argument("shell_run: on_output_line callback must be set");
-  }
-
   std::filesystem::path const script_path{ create_temp_script(script, cfg) };
   scoped_path_cleanup cleanup{ script_path };
 
@@ -612,9 +622,23 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
     throw std::system_error(::GetLastError(), std::system_category(), "CreatePipe failed");
   }
 
-  handle_closer read_end{ stdout_read };
-  handle_closer write_end{ stdout_write };
-  if (!::SetHandleInformation(read_end.get(), HANDLE_FLAG_INHERIT, 0)) {
+  handle_closer stdout_read_end{ stdout_read };
+  handle_closer stdout_write_end{ stdout_write };
+  if (!::SetHandleInformation(stdout_read_end.get(), HANDLE_FLAG_INHERIT, 0)) {
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "SetHandleInformation failed");
+  }
+
+  HANDLE stderr_read{ nullptr };
+  HANDLE stderr_write{ nullptr };
+  if (!::CreatePipe(&stderr_read, &stderr_write, &sa, 0)) {
+    throw std::system_error(::GetLastError(), std::system_category(), "CreatePipe failed");
+  }
+
+  handle_closer stderr_read_end{ stderr_read };
+  handle_closer stderr_write_end{ stderr_write };
+  if (!::SetHandleInformation(stderr_read_end.get(), HANDLE_FLAG_INHERIT, 0)) {
     throw std::system_error(::GetLastError(),
                             std::system_category(),
                             "SetHandleInformation failed");
@@ -645,8 +669,8 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   si.cb = sizeof(si);
   si.dwFlags |= STARTF_USESTDHANDLES;
   si.hStdInput = stdin_handle.get();
-  si.hStdOutput = write_end.get();
-  si.hStdError = write_end.get();
+  si.hStdOutput = stdout_write_end.get();
+  si.hStdError = stderr_write_end.get();
 
   PROCESS_INFORMATION pi{};
 
@@ -689,16 +713,47 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
                             "CreateProcessW failed");
   }
 
+  // Add process to job object to ensure child dies when envy terminates
+  if (g_job_object && !::AssignProcessToJobObject(g_job_object, pi.hProcess)) {
+    // Log warning but continue - non-fatal, worst case is orphaned child on Ctrl+C
+    // (This should never fail in practice unless job was closed or process already exited)
+  }
+
   handle_closer process{ pi.hProcess };
   handle_closer thread{ pi.hThread };
 
   // Parent no longer needs these handles
   stdin_handle.reset();
-  write_end.reset();
+  stdout_write_end.reset();
+  stderr_write_end.reset();
 
   shell_result result{};
+  std::exception_ptr stdout_exception;
+  std::exception_ptr stderr_exception;
+
   try {
-    stream_pipe_lines(read_end.get(), cfg);
+    std::thread stdout_reader{ [&]() {
+      try {
+        stream_pipe_lines(stdout_read_end.get(), shell_stream::std_out, cfg);
+      } catch (...) {
+        stdout_exception = std::current_exception();
+      }
+    } };
+
+    std::thread stderr_reader{ [&]() {
+      try {
+        stream_pipe_lines(stderr_read_end.get(), shell_stream::std_err, cfg);
+      } catch (...) {
+        stderr_exception = std::current_exception();
+      }
+    } };
+
+    stdout_reader.join();
+    stderr_reader.join();
+
+    if (stdout_exception) { std::rethrow_exception(stdout_exception); }
+    if (stderr_exception) { std::rethrow_exception(stderr_exception); }
+
     result = wait_for_child(process.get());
   } catch (...) {
     ::TerminateProcess(process.get(), 1);

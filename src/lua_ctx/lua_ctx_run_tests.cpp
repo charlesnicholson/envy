@@ -14,6 +14,12 @@
 
 namespace {
 
+#if defined(_WIN32)
+constexpr char const *kPythonCmd = "py -3";
+#else
+constexpr char const *kPythonCmd = "python3";
+#endif
+
 struct ctx_run_fixture {
   envy::recipe_spec *spec{ nullptr };
   std::unique_ptr<envy::recipe> recipe_ptr;
@@ -74,8 +80,9 @@ struct ctx_run_fixture {
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run returns only exit_code when capture is false") {
-  std::string const cmd{ "python3 -c \"import sys; sys.stdout.write('ok')\"" };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; sys.stdout.write('ok')\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table tbl = run_fn(cmd);
   CHECK(tbl.get<int>("exit_code") == 0);
   CHECK_FALSE(tbl["stdout"].valid());
@@ -83,16 +90,31 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
 }
 
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run capture option returns stdout and stderr") {
+#if defined(_WIN32)
+  // Use PowerShell commands that write to stdout and stderr
+  std::string const cmd{ "[Console]::Out.Write('out'); [Console]::Error.Write('err')" };
+  sol::function run_fn = (*lua)["run"];
+  sol::table opts{ lua->create_table() };
+  opts["capture"] = true;
+  sol::table tbl = run_fn(cmd, opts);
+  CHECK(tbl.get<int>("exit_code") == 0);
+  std::string stdout_str = tbl.get<std::string>("stdout");
+  std::string stderr_str = tbl.get<std::string>("stderr");
+  CHECK(stdout_str.find("out") != std::string::npos);
+  CHECK(stderr_str.find("err") != std::string::npos);
+#else
   std::string const cmd{
-    "python3 -c \"import sys; sys.stdout.write('out\\\\n'); sys.stderr.write('err\\\\n')\""
+    std::string{ kPythonCmd } +
+    " -c \"import sys; sys.stdout.write('out\\\\n'); sys.stderr.write('err\\\\n')\""
   };
-  sol::function run_fn{ (*lua)["run"] };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["capture"] = true;
   sol::table tbl = run_fn(cmd, opts);
   CHECK(tbl.get<int>("exit_code") == 0);
   CHECK(tbl.get<std::string>("stdout") == "out\n");
   CHECK(tbl.get<std::string>("stderr") == "err\n");
+#endif
 }
 
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run captures large stdout/stderr without loss") {
@@ -103,9 +125,10 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run captures large stdout/stderr without
 
   std::filesystem::path const script_rel{ "test_data/ctx_run_stress.py" };
   std::filesystem::path const script_abs{ std::filesystem::absolute(script_rel) };
-  std::string script{ "python3 \"" + script_abs.generic_string() + "\"" };
+  std::string script{ std::string{ kPythonCmd } + " \"" + script_abs.generic_string() +
+                      "\"" };
 
-  sol::function run_fn{ (*lua)["run"] };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["capture"] = true;
   sol::table tbl = run_fn(script, opts);
@@ -133,8 +156,8 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run captures large stdout/stderr without
 }
 
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with check=false allows non-zero exit") {
-  std::string const cmd{ "python3 -c \"import sys; sys.exit(7)\"" };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.exit(7)\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = false;
   sol::table tbl = run_fn(cmd, opts);
@@ -142,8 +165,8 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with check=false allows non-zero exi
 }
 
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with check=true throws on non-zero exit") {
-  std::string const cmd{ "python3 -c \"import sys; sys.exit(42)\"" };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.exit(42)\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = true;
   CHECK_THROWS_WITH_AS(run_fn(cmd, opts),
@@ -153,11 +176,10 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with check=true throws on non-zero e
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run with check=true includes command and output in error") {
-  std::string const cmd{
-    "python3 -c \"import sys; print('out'); "
-    "sys.stderr.write('err\\\\n'); sys.exit(13)\""
-  };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; print('out'); "
+                         "sys.stderr.write('err\\\\n'); sys.exit(13)\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = true;
   try {
@@ -167,7 +189,7 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
     std::string msg{ e.what() };
     CHECK(msg.find("exit code 13") != std::string::npos);
     CHECK(msg.find("Command:") != std::string::npos);
-    CHECK(msg.find("python3") != std::string::npos);
+    CHECK(msg.find(kPythonCmd) != std::string::npos);
     CHECK(msg.find("--- stdout ---") != std::string::npos);
     CHECK(msg.find("out") != std::string::npos);
     CHECK(msg.find("--- stderr ---") != std::string::npos);
@@ -177,11 +199,10 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run with check=false and capture returns exit_code and output") {
-  std::string const cmd{
-    "python3 -c \"import sys; print('stdout_data'); "
-    "sys.stderr.write('stderr_data\\\\n'); sys.exit(5)\""
-  };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; print('stdout_data'); "
+                         "sys.stderr.write('stderr_data\\\\n'); sys.exit(5)\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = false;
   opts["capture"] = true;
@@ -192,8 +213,21 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
 }
 
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run check defaults to false") {
-  std::string const cmd{ "python3 -c \"import sys; sys.exit(99)\"" };
-  sol::function run_fn{ (*lua)["run"] };
+  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.exit(99)\"" };
+  sol::function run_fn = (*lua)["run"];
   sol::table tbl = run_fn(cmd);
   CHECK(tbl.get<int>("exit_code") == 99);
+}
+
+TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run preserves empty lines in captured output") {
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"print('line1'); print(''); print('line2')\"" };
+  sol::function run_fn = (*lua)["run"];
+  sol::table opts{ lua->create_table() };
+  opts["capture"] = true;
+  sol::table tbl = run_fn(cmd, opts);
+  CHECK(tbl.get<int>("exit_code") == 0);
+  std::string stdout_str = tbl.get<std::string>("stdout");
+  // Should have: "line1\n" + "\n" (empty line) + "line2\n"
+  CHECK(stdout_str == "line1\n\nline2\n");
 }

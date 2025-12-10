@@ -14,6 +14,7 @@ Tests comprehensive functionality of check and install verbs including:
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 import unittest
@@ -224,15 +225,20 @@ class TestCheckInstallRuntime(unittest.TestCase):
     # ===== Shell Error Type Tests =====
 
     def test_shell_error_command_not_found(self):
-        """Shell error: command not found (exit 127)."""
+        """Shell error: command not found (exit 127 on Unix, 1 on Windows)."""
         recipe_path = self.recipe_dir / "check_error_command_not_found.lua"
         result = self.run_envy(
             "local.check_error_not_found@v1", recipe_path, should_fail=True
         )
 
-        # Should fail with shell error (exit code 127 for command not found)
+        # Should fail with shell error (exit code 127 for command not found on Unix, 1 on Windows)
         # Error message varies by shell/platform
-        self.assertIn("exit code 127", result.stderr.lower())
+        stderr_lower = result.stderr.lower()
+        if sys.platform == "win32":
+            # PowerShell returns exit code 1 for command not found
+            self.assertIn("exit code 1", stderr_lower)
+        else:
+            self.assertIn("exit code 127", stderr_lower)
 
     def test_shell_error_syntax_error(self):
         """Shell error: syntax error."""

@@ -18,6 +18,7 @@ Tests comprehensive functionality of ctx.run() including:
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 import unittest
@@ -149,6 +150,7 @@ class TestCtxRun(unittest.TestCase):
             should_fail=True,
         )
 
+    @unittest.skipIf(sys.platform == "win32", "Signals not supported on Windows")
     def test_signal_termination(self):
         """ctx.run() reports signal termination."""
         self.run_recipe(

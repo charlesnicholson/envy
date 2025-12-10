@@ -3,7 +3,13 @@ identity = "local.check_ctx_run_capture@v1"
 
 function check(ctx)
     -- Capture=true: should get stdout, stderr, exit_code fields
-    local res = ctx.run("echo 'stdout text' && echo 'stderr text' >&2", {capture = true})
+    local cmd
+    if ENVY_PLATFORM == "windows" then
+        cmd = "Write-Output 'stdout text'; [Console]::Error.WriteLine('stderr text')"
+    else
+        cmd = "echo 'stdout text' && echo 'stderr text' >&2"
+    end
+    local res = ctx.run(cmd, {capture = true})
 
     -- Verify all three fields exist
     assert(res.stdout ~= nil, "stdout field should exist")

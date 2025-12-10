@@ -211,6 +211,17 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     if (archive_entry_filetype(entry) == AE_IFREG) { ++files_extracted; }
   }
 
+  if (files_extracted == 0) {
+    std::string msg{ "Archive extraction failed: 0 files extracted from " +
+                     archive_path.filename().string() };
+    if (options.strip_components > 0) {
+      msg += " with strip=" + std::to_string(options.strip_components) +
+             ". Check if strip value matches archive structure";
+    }
+    msg += " (archive may be empty, corrupt, or unsupported format)";
+    throw std::runtime_error(msg);
+  }
+
   return files_extracted;
 }
 

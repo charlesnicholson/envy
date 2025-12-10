@@ -5,27 +5,19 @@ dependencies = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
 local missing_packages = {}
 
 check = function(ctx, opts)
-  local res = ctx.run("dpkg-query -W -f='${Package}\n'", {
-    capture = true,
-    quiet = true,
-  })
-
+  local res = ctx.run("brew list", { capture = true, quiet = true })
   if res.exit_code ~= 0 then
     return false
   end
 
   local installed = {}
-
-  for line in res.stdout:gmatch("[^\r\n]+") do
-    local pkg = line:match("^%S+")
-    if pkg then
-      installed[pkg] = true
-    end
+  for pkg in res.stdout:gmatch("%S+") do
+    installed[pkg] = true
   end
 
   missing_packages = {}
 
-  for _, pkg in ipairs(opts.packages) do
+  for _, pkg in pairs(opts.packages) do
     if not installed[pkg] then
       table.insert(missing_packages, pkg)
     end
@@ -35,9 +27,6 @@ check = function(ctx, opts)
 end
 
 install = function(ctx, opts)
-  if #missing_packages == 0 then
-    return nil  -- nothing to do
-  end
-
-  return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
+  return "brew install " .. table.concat(missing_packages, " ")
 end
+
