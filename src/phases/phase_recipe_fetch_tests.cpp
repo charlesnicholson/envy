@@ -32,6 +32,12 @@ std::filesystem::path repo_path(std::string const &rel) {
   return std::filesystem::current_path() / rel;
 }
 
+struct temp_dir_guard {
+  std::filesystem::path path;
+  explicit temp_dir_guard(std::filesystem::path p) : path(std::move(p)) {}
+  ~temp_dir_guard() { std::filesystem::remove_all(path); }
+};
+
 void expect_user_managed_cache_phase_error(std::string const &phase_name) {
   cache c;
   engine eng{ c, std::nullopt };
@@ -39,6 +45,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name) {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   ("envy_test_check_" + phase_name) };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "recipe.lua" };
 
   {
@@ -150,10 +157,9 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_ok" };
   std::filesystem::create_directories(temp_dir);
-  std::filesystem::path recipe_file_ok{ temp_dir / "ok.lua" };
-  std::filesystem::path recipe_file_true{ temp_dir / "true.lua" };
-
-  recipe_file_ok.replace_filename("validate_ok.lua");
+  temp_dir_guard guard{ temp_dir };
+  std::filesystem::path recipe_file_ok{ temp_dir / "validate_ok.lua" };
+  std::filesystem::path recipe_file_true{ temp_dir / "validate_true.lua" };
   {
     std::ofstream ofs{ recipe_file_ok };
     ofs << "IDENTITY = \"test.validate_ok@v1\"\n";
@@ -182,8 +188,6 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
   auto *spec_true{ make_local_spec("test.validate_true@v1", recipe_file_true) };
   recipe *r_true{ eng.ensure_recipe(spec_true) };
   CHECK_NOTHROW(run_recipe_fetch_phase(r_true, eng));
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("VALIDATE returns false fails") {
@@ -193,6 +197,7 @@ TEST_CASE("VALIDATE returns false fails") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_false" };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "validate_false.lua" };
 
   std::ofstream ofs{ recipe_file };
@@ -216,7 +221,6 @@ TEST_CASE("VALIDATE returns false fails") {
   }
 
   CHECK(threw);
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("VALIDATE returns string fails with message") {
@@ -226,6 +230,7 @@ TEST_CASE("VALIDATE returns string fails with message") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_string" };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "validate_string.lua" };
 
   std::ofstream ofs{ recipe_file };
@@ -248,7 +253,6 @@ TEST_CASE("VALIDATE returns string fails with message") {
     CHECK(msg.find("nope") != std::string::npos);
   }
   CHECK(threw);
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("VALIDATE invalid return type errors") {
@@ -258,6 +262,7 @@ TEST_CASE("VALIDATE invalid return type errors") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_type" };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "validate_type.lua" };
 
   std::ofstream ofs{ recipe_file };
@@ -271,7 +276,6 @@ TEST_CASE("VALIDATE invalid return type errors") {
   recipe *r{ eng.ensure_recipe(spec) };
 
   CHECK_THROWS(run_recipe_fetch_phase(r, eng));
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("VALIDATE set to non-function errors") {
@@ -281,6 +285,7 @@ TEST_CASE("VALIDATE set to non-function errors") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_nonfn" };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "validate_nonfn.lua" };
 
   std::ofstream ofs{ recipe_file };
@@ -294,7 +299,6 @@ TEST_CASE("VALIDATE set to non-function errors") {
   recipe *r{ eng.ensure_recipe(spec) };
 
   CHECK_THROWS(run_recipe_fetch_phase(r, eng));
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("VALIDATE runtime error bubbles with context") {
@@ -304,6 +308,7 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_error" };
   std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
   std::filesystem::path recipe_file{ temp_dir / "validate_error.lua" };
 
   std::ofstream ofs{ recipe_file };
@@ -327,7 +332,6 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
     CHECK(msg.find("boom") != std::string::npos);
   }
   CHECK(threw);
-  std::filesystem::remove_all(temp_dir);
 }
 
 }  // namespace envy

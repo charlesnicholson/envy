@@ -7,8 +7,8 @@ VALIDATE = function(opts)
 end
 
 FETCH = function(ctx, opts)
-  local uri_prefix =
-  "https://github.com/astral-sh/python-build-standalone/releases/download/20251205/"
+local uri_prefix =
+    "https://github.com/astral-sh/python-build-standalone/releases/download/20251205/"
 
   local arch = ({ darwin = "aarch64-apple-darwin-pgo+lto",
     linux = "x86_64_v3-unknown-linux-gnu-pgo+lto",
