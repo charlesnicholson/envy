@@ -1,4 +1,4 @@
-identity = "local.armgcc@r0"
+IDENTITY = "local.armgcc@r0"
 
 local sha256_fingerprints = {
   ["14.3.rel1-darwin-arm64"] =
@@ -10,7 +10,7 @@ local url_prefix = "https://developer.arm.com/-/media/Files/downloads/gnu/"
 local arch = "-" .. ({darwin="darwin-arm64", linux=ENVY_ARCH})[ENVY_PLATFORM]
 local tail = "-arm-none-eabi." .. ((ENVY_PLATFORM == "windows") and "zip" or "tar.xz")
 
-fetch = function(ctx, opts)
+FETCH = function(ctx, opts)
   local filename = "arm-gnu-toolchain-" .. opts.version .. arch .. tail
 
   local fingerprint = sha256_fingerprints[opts.version .. arch]
@@ -22,4 +22,4 @@ fetch = function(ctx, opts)
   }
 end
 
-stage = { strip = 1 }
+STAGE = { strip = 1 }

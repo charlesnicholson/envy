@@ -1,7 +1,7 @@
 -- Test ctx.run with neither quiet nor capture
-identity = "local.check_combo_neither@v1"
+IDENTITY = "local.check_combo_neither@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Neither quiet nor capture: streams, returns exit_code only
     local res = ctx.run("echo 'combo test'")
 
@@ -12,6 +12,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

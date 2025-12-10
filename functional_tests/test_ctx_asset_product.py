@@ -41,7 +41,7 @@ class TestCtxAssetProduct(unittest.TestCase):
     def test_ctx_asset_success(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ctx_asset_provider@v1",
     source = "{self.lua_path("ctx_asset_provider.lua")}",
@@ -60,7 +60,7 @@ packages = {{
     def test_ctx_asset_needed_by_violation(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ctx_asset_provider@v1",
     source = "{self.lua_path("ctx_asset_provider.lua")}",
@@ -80,7 +80,7 @@ packages = {{
     def test_ctx_asset_user_managed_fails(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ctx_asset_user_provider@v1",
     source = "{self.lua_path("ctx_asset_user_provider.lua")}",
@@ -100,7 +100,7 @@ packages = {{
     def test_ctx_asset_missing_dependency(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ctx_asset_missing_dep@v1",
     source = "{self.lua_path("ctx_asset_missing_dep.lua")}",
@@ -118,7 +118,7 @@ packages = {{
     def test_ctx_product_success(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path("product_provider.lua")}",
@@ -137,7 +137,7 @@ packages = {{
     def test_ctx_product_needed_by_violation(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path("product_provider.lua")}",
@@ -157,7 +157,7 @@ packages = {{
     def test_ctx_product_missing_dependency(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ctx_product_missing_dep@v1",
     source = "{self.lua_path("ctx_product_missing_dep.lua")}",

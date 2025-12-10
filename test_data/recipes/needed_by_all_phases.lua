@@ -1,7 +1,7 @@
 -- Tests recipe with multiple dependencies using different needed_by phases
-identity = "local.needed_by_all_phases@v1"
+IDENTITY = "local.needed_by_all_phases@v1"
 
-dependencies = {
+DEPENDENCIES = {
   { recipe = "local.needed_by_fetch_dep@v1", source = "needed_by_fetch_dep.lua", needed_by = "fetch" },
   { recipe = "local.needed_by_check_dep@v1", source = "needed_by_check_dep.lua", needed_by = "check" },
   { recipe = "local.needed_by_stage_dep@v1", source = "needed_by_stage_dep.lua", needed_by = "stage" },
@@ -9,16 +9,16 @@ dependencies = {
   { recipe = "local.needed_by_install_dep@v1", source = "needed_by_install_dep.lua", needed_by = "install" }
 }
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 end
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   -- Access all dependencies
   ctx.asset("local.needed_by_fetch_dep@v1")
   ctx.asset("local.needed_by_check_dep@v1")
@@ -26,7 +26,7 @@ build = function(ctx, opts)
   ctx.asset("local.needed_by_build_dep@v1")
 end
 
-install = function(ctx, opts)
+INSTALL = function(ctx, opts)
   ctx.asset("local.needed_by_install_dep@v1")
   ctx.mark_install_complete()
 end

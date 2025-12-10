@@ -1,9 +1,9 @@
 -- Simple user-managed package: check verb + install, no mark_install_complete
 -- This recipe simulates a system package wrapper (like brew install python)
-identity = "local.user_managed_simple@v1"
+IDENTITY = "local.user_managed_simple@v1"
 
 -- Check if "package" is already installed (simulated by marker file)
-function check(ctx)
+function CHECK(ctx)
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
         error("ENVY_TEST_MARKER_SIMPLE must be set")
@@ -18,7 +18,7 @@ function check(ctx)
 end
 
 -- Install the "package" (create marker file)
-function install(ctx)
+function INSTALL(ctx)
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
         error("ENVY_TEST_MARKER_SIMPLE must be set")

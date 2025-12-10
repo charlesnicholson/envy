@@ -1,17 +1,17 @@
-identity = "local.gn@r0"
+IDENTITY = "local.gn@r0"
 
-dependencies = {
+DEPENDENCIES = {
   { product = "python3" },
   { product = "ninja" },
 }
 
-fetch = function(ctx, opts) return {
+FETCH = function(ctx, opts) return {
     source = "https://gn.googlesource.com/gn.git",
     ref = opts.ref 
   }
 end
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   local cmd = [[
 {{python}} build/gen.py
 {{ninja}} -C out
@@ -30,9 +30,9 @@ end
 
 local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
 
-install = function(ctx, opts)
+INSTALL = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. ext, ctx.install_dir)
   ctx.mark_install_complete()
 end
 
-products = { gn = "gn" .. ext }
+PRODUCTS = { gn = "gn" .. ext }

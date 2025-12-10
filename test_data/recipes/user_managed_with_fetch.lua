@@ -1,15 +1,15 @@
 -- Cache-managed package that uses fetch/stage/build verbs
 -- Demonstrates that workspace (fetch_dir, stage_dir) gets populated and used
-identity = "local.user_managed_with_fetch@v1"
+IDENTITY = "local.user_managed_with_fetch@v1"
 
 -- Declarative fetch: download a small file for testing
-fetch = {
+FETCH = {
     source = "https://raw.githubusercontent.com/ninja-build/ninja/v1.11.1/README.md",
     sha256 = "0db9d908de747f6097ee249764e2d5fab4a2be618b05743d6b962e3346867732"
 }
 
 -- No check verb - this is cache-managed
-function stage(ctx)
+function STAGE(ctx)
     -- Verify fetch happened
     local readme = ctx.fetch_dir .. "/README.md"
     local f = io.open(readme, "r")
@@ -22,7 +22,7 @@ function stage(ctx)
     -- Stage will be purged after install completes
 end
 
-function build(ctx)
+function BUILD(ctx)
     -- Verify stage_dir exists and is accessible
     if not ctx.stage_dir then
         error("stage_dir not available in build phase")
@@ -30,7 +30,7 @@ function build(ctx)
     -- Build dir will be purged after install completes
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Simulate system installation (create marker)
     local marker = os.getenv("ENVY_TEST_MARKER_WITH_FETCH")
     if not marker then

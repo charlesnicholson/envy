@@ -1,9 +1,9 @@
 -- Consumer with weak product dependency for hash testing
-identity = "local.hash_consumer_weak@v1"
+IDENTITY = "local.hash_consumer_weak@v1"
 
 -- Note: weak fallback source must be absolute or relative to THIS recipe's location
 -- Since tests run from project root, we use relative path from test_data/recipes/
-dependencies = {
+DEPENDENCIES = {
   {
     product = "tool",
     weak = {
@@ -13,11 +13,11 @@ dependencies = {
   },
 }
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end

@@ -1,14 +1,14 @@
 -- Test shell script with environment variable access
-identity = "local.stage_shell_env@v1"
+IDENTITY = "local.stage_shell_env@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
 -- Shell script that uses environment variables
 if ENVY_PLATFORM == "windows" then
-  stage = [[
+  STAGE = [[
     tar -xzf ../fetch/test.tar.gz --strip-components=1
     $pathStatus = if ($env:Path) { 'yes' } else { '' }
     $homeStatus = if ($env:UserProfile) { 'yes' } else { '' }
@@ -25,7 +25,7 @@ if ENVY_PLATFORM == "windows" then
     exit 0
   ]]
 else
-  stage = [[
+  STAGE = [[
     # Extract archive
     tar -xzf ../fetch/test.tar.gz --strip-components=1
 

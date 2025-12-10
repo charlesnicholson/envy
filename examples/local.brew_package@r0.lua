@@ -1,10 +1,10 @@
-identity = "local.brew_package@r0"
+IDENTITY = "local.brew_package@r0"
 
-dependencies = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
+DEPENDENCIES = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
 
 local missing_packages = {}
 
-check = function(ctx, opts)
+CHECK = function(ctx, opts)
   local res = ctx.run("brew list", { capture = true, quiet = true })
   if res.exit_code ~= 0 then
     return false
@@ -26,7 +26,7 @@ check = function(ctx, opts)
   return #missing_packages == 0
 end
 
-install = function(ctx, opts)
+INSTALL = function(ctx, opts)
   return "brew install " .. table.concat(missing_packages, " ")
 end
 

@@ -1,6 +1,6 @@
-identity = "local.fetch_ctx_api_parent@v1"
+IDENTITY = "local.fetch_ctx_api_parent@v1"
 
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "local.fetch_ctx_api_child@v1",
     source = {
@@ -20,12 +20,12 @@ dependencies = {
 
         -- Create recipe.lua
         local recipe_content = [[
-identity = "local.fetch_ctx_api_child@v1"
-dependencies = {}
-function check(ctx)
+IDENTITY = "local.fetch_ctx_api_child@v1"
+DEPENDENCIES = {}
+function CHECK(ctx)
   return false
 end
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end
 ]]
@@ -41,10 +41,10 @@ end
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

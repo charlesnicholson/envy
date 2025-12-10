@@ -1,7 +1,7 @@
 -- Test recipe with multiple parallel git fetches (programmatic)
-identity = "local.fetch_git_parallel@v1"
+IDENTITY = "local.fetch_git_parallel@v1"
 
-function fetch(ctx)
+function FETCH(ctx)
     -- Programmatic fetch with multiple git repos (should parallelize)
     ctx.fetch({
         {source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1"},
@@ -9,7 +9,7 @@ function fetch(ctx)
     })
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Verify both repos were actually fetched by checking for .git/HEAD
     -- If fetch failed or didn't happen, these files won't exist and install will fail
     local repos = {"ninja.git", "re2.git"}

@@ -1,7 +1,7 @@
 -- Test check with ctx.run capture=false returns only exit_code
-identity = "local.check_ctx_run_no_capture@v1"
+IDENTITY = "local.check_ctx_run_no_capture@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Capture=false (or no capture): should only get exit_code field
     local res = ctx.run("echo 'test'", {capture = false})
 
@@ -14,6 +14,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

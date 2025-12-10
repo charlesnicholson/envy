@@ -1,13 +1,13 @@
 -- Test install cwd = install_dir for cache-managed packages
-identity = "local.install_cwd_cache@v1"
+IDENTITY = "local.install_cwd_cache@v1"
 
 -- No check verb, so this is cache-managed
 -- Need a fetch source for cache-managed packages
-function fetch(ctx)
+function FETCH(ctx)
     -- Empty fetch - we're just testing install cwd
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Write a file using relative path
     ctx.run("echo 'test' > cwd_marker.txt")
 

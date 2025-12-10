@@ -1,18 +1,18 @@
 -- remote.b@v1
 -- Remote recipe that depends on local.* (transitively violates security)
 
-identity = "remote.b@v1"
-dependencies = {
+IDENTITY = "remote.b@v1"
+DEPENDENCIES = {
   {
     recipe = "local.c@v1",
     source = "local_c.lua"
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing remote transitive b recipe")
 end

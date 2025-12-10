@@ -37,8 +37,8 @@ bool cmd_engine_functional_test::execute() {
                                                         std::nullopt,
                                                         std::filesystem::path{}) };
 
-  // Create minimal manifest for engine (no default_shell for tests)
-  auto m{ manifest::load("packages = {}", cfg_.recipe_path) };
+  // Create minimal manifest for engine (no DEFAULT_SHELL for tests)
+  auto m{ manifest::load("PACKAGES = {}", cfg_.recipe_path) };
 
   // Run engine
   engine eng{ c, m->get_default_shell(nullptr) };

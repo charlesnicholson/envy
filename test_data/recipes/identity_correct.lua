@@ -1,11 +1,11 @@
 -- Recipe with correct identity declaration (valid)
-identity = "local.identity_correct@v1"
-dependencies = {}
+IDENTITY = "local.identity_correct@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Identity validation passed")
 end

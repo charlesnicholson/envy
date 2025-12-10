@@ -1,10 +1,10 @@
 -- Strong provider for helper identity
-identity = "local.helper@v1"
+IDENTITY = "local.helper@v1"
 
-function check(ctx)
+function CHECK(ctx)
   return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- No-op; check returns true so install is skipped.
 end

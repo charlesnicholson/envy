@@ -104,8 +104,8 @@ class TestEngineRecipeLoading(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write(f"""
 -- test.sha256_ok@v1
-identity = "test.sha256_ok@v1"
-dependencies = {{
+IDENTITY = "test.sha256_ok@v1"
+DEPENDENCIES = {{
   {{
     recipe = "remote.child@v1",
     source = "{child_recipe_path.as_posix()}",
@@ -113,11 +113,11 @@ dependencies = {{
   }}
 }}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
   envy.info("SHA256 verification succeeded")
 end
 """)
@@ -156,8 +156,8 @@ end
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write(f"""
 -- test.sha256_fail@v1
-identity = "test.sha256_fail@v1"
-dependencies = {{
+IDENTITY = "test.sha256_fail@v1"
+DEPENDENCIES = {{
   {{
     recipe = "remote.child@v1",
     source = "{child_recipe_path.as_posix()}",
@@ -165,11 +165,11 @@ dependencies = {{
   }}
 }}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
   envy.info("This should not execute")
 end
 """)
@@ -323,9 +323,9 @@ end
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write("""
 -- Missing identity in local recipe
-dependencies = {}
-function check(ctx) return false end
-function install(ctx, opts) end
+DEPENDENCIES = {}
+function CHECK(ctx) return false end
+function INSTALL(ctx, opts) end
 """)
             tmp_path = tmp.name
 

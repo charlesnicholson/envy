@@ -1,7 +1,7 @@
 -- Test ctx.run with quiet=true only
-identity = "local.check_combo_quiet@v1"
+IDENTITY = "local.check_combo_quiet@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Quiet only: no TUI, returns exit_code only
     local res = ctx.run("echo 'quiet test'", {quiet = true})
 
@@ -12,6 +12,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

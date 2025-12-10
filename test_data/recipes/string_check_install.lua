@@ -1,5 +1,5 @@
-identity = "local.string_check_install@v1"
+IDENTITY = "local.string_check_install@v1"
 
-check = "exit 0"
-install = "echo install"
+CHECK = "exit 0"
+INSTALL = "echo install"
 

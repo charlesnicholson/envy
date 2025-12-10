@@ -467,7 +467,7 @@ recipe_spec *recipe_spec::parse_from_stack(sol::state_view lua,
 bool recipe_spec::lookup_and_push_source_fetch(sol::state_view lua,
                                                std::string const &dep_identity) {
   // Look up the dependencies global array
-  sol::object deps_obj{ lua["dependencies"] };
+  sol::object deps_obj{ lua["DEPENDENCIES"] };
   if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return false; }
 
   sol::table deps_table{ deps_obj.as<sol::table>() };

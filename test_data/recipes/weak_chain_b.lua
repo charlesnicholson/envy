@@ -1,14 +1,14 @@
 -- Fallback that itself carries a weak reference
-identity = "local.chain_b@v1"
-dependencies = {
+IDENTITY = "local.chain_b@v1"
+DEPENDENCIES = {
   { recipe = "local.chain_c", weak = { recipe = "local.chain_c@v1", source = "weak_chain_c.lua" } },
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

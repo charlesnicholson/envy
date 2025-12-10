@@ -1,13 +1,13 @@
-identity = "local.ninja@r0"
+IDENTITY = "local.ninja@r0"
 
-dependencies = { { product = "python3" } }
+DEPENDENCIES = { { product = "python3" } }
 
-fetch = {
+FETCH = {
   { source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.1" },
   { source = "https://github.com/google/googletest.git", ref = "v1.16.0" }
 }
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   local cmd = envy.template([[
 {{python}} ./configure.py --bootstrap --gtest-source-dir={{googletest}}
 ./ninja all
@@ -22,9 +22,9 @@ end
 
 local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
 
-install = function(ctx, opts)
+INSTALL = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ext, ctx.install_dir)
   ctx.mark_install_complete()
 end
 
-products = { ninja = "ninja" .. ext }
+PRODUCTS = { ninja = "ninja" .. ext }

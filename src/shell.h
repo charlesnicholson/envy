@@ -38,13 +38,13 @@ struct custom_shell_inline {
 using custom_shell = std::variant<custom_shell_file, custom_shell_inline>;
 using resolved_shell = std::variant<shell_choice, custom_shell_file, custom_shell_inline>;
 
-// Manifest default_shell value (resolved to constant or custom shell)
+// Manifest DEFAULT_SHELL value (resolved to constant or custom shell)
 using default_shell_value =
     std::variant<shell_choice,  // Built-in: ENVY_SHELL.BASH, etc.
                  custom_shell   // Custom: {file = ..., ext = ...} or {inline = ...}
                  >;
 
-// Manifest default_shell configuration (optional, nullopt if not specified)
+// Manifest DEFAULT_SHELL configuration (optional, nullopt if not specified)
 using default_shell_cfg_t = std::optional<default_shell_value>;
 
 // Resolve manifest default shell (or platform default if unset)

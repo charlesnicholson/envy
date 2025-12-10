@@ -1,8 +1,8 @@
 -- Test install cwd = manifest directory for user-managed packages
-identity = "local.install_cwd_user@v1"
+IDENTITY = "local.install_cwd_user@v1"
 
 -- Has check verb, so this is user-managed
-function check(ctx)
+function CHECK(ctx)
     local marker = os.getenv("ENVY_TEST_INSTALL_MARKER")
     if not marker then error("ENVY_TEST_INSTALL_MARKER not set") end
 
@@ -15,7 +15,7 @@ function check(ctx)
     return success and res.exit_code == 0
 end
 
-function install(ctx)
+function INSTALL(ctx)
     local marker = os.getenv("ENVY_TEST_INSTALL_MARKER")
     if not marker then error("ENVY_TEST_INSTALL_MARKER not set") end
 

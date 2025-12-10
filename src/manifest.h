@@ -33,8 +33,8 @@ struct manifest : unmovable {
   static std::unique_ptr<manifest> load(char const *script,
                                         std::filesystem::path const &manifest_path);
 
-  // Get default_shell global type and value
-  // Returns nullopt if no default_shell specified
+  // Get DEFAULT_SHELL global type and value
+  // Returns nullopt if no DEFAULT_SHELL specified
   default_shell_cfg_t get_default_shell(lua_ctx_common const *ctx) const;
 
  private:

@@ -1,20 +1,20 @@
 -- User-managed package with string check form
 -- Demonstrates check = "command" syntax that runs shell command
-identity = "local.user_managed_string_check@v1"
+IDENTITY = "local.user_managed_string_check@v1"
 
 -- String check: command exits 0 if "installed", non-zero otherwise
 -- Platform-specific: use commands that exist on all platforms
 if ENVY_PLATFORM == "windows" then
-    check = "powershell -Command \"Test-Path $env:TEMP\\envy-test-marker-string\""
+    CHECK = "powershell -Command \"Test-Path $env:TEMP\\envy-test-marker-string\""
 else
-    check = "test -f $HOME/.envy-test-marker-string"
+    CHECK = "test -f $HOME/.envy-test-marker-string"
 end
 
 -- Empty fetch (required for validation)
-function fetch(ctx)
+function FETCH(ctx)
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Create marker file for next check
     local marker
     if ENVY_PLATFORM == "windows" then

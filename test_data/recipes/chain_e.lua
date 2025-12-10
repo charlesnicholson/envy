@@ -1,11 +1,11 @@
 -- End of deep chain
-identity = "local.chain_e@v1"
-dependencies = {}
+IDENTITY = "local.chain_e@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

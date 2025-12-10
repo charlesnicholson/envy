@@ -1,7 +1,7 @@
-identity = "local.brew@r0"
+IDENTITY = "local.brew@r0"
 
-check = "brew --version"
+CHECK = "brew --version"
 
-install = function(ctx)
+INSTALL = function(ctx)
   print("installing brew")
 end

@@ -1,11 +1,11 @@
 -- Recipe that supports options
-identity = "local.with_options@v1"
-dependencies = {}
+IDENTITY = "local.with_options@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

@@ -1,12 +1,12 @@
 -- Test ctx.run() inherits environment variables like PATH
-identity = "local.ctx_run_env_inherit@v1"
+IDENTITY = "local.ctx_run_env_inherit@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   if ENVY_PLATFORM == "windows" then

@@ -1,8 +1,8 @@
-identity = "local.apt@r0"
+IDENTITY = "local.apt@r0"
 
 local missing_packages = {}
 
-check = function(ctx, opts)
+CHECK = function(ctx, opts)
   local cmd = "dpkg-query -W -f='${Package}\n' " .. table.concat(opts.packages, " ")
   local res = ctx.run(cmd, { capture = true, quiet = true })
 
@@ -26,6 +26,6 @@ check = function(ctx, opts)
   return #missing_packages == 0
 end
 
-install = function(ctx, opts)
+INSTALL = function(ctx, opts)
   return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
 end

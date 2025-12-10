@@ -1,11 +1,11 @@
 -- Minimal tool recipe used as dependency
-identity = "local.tool@v1"
-dependencies = {}
+IDENTITY = "local.tool@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Install tool
 end

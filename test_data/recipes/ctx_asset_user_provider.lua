@@ -1,9 +1,9 @@
-identity = "local.ctx_asset_user_provider@v1"
+IDENTITY = "local.ctx_asset_user_provider@v1"
 
-function check(ctx)
+function CHECK(ctx)
   return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- User-managed: no cache artifacts, no mark_install_complete
 end

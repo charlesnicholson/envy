@@ -71,11 +71,11 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
   auto m{ std::make_unique<manifest>() };
   m->manifest_path = manifest_path;
-  m->lua_ = std::move(state);  // Keep lua state alive for default_shell access
+  m->lua_ = std::move(state);  // Keep lua state alive for DEFAULT_SHELL access
 
-  sol::object packages_obj = (*m->lua_)["packages"];
+  sol::object packages_obj = (*m->lua_)["PACKAGES"];
   if (!packages_obj.valid() || packages_obj.get_type() != sol::type::table) {
-    throw std::runtime_error("Manifest must define 'packages' global as a table");
+    throw std::runtime_error("Manifest must define 'PACKAGES' global as a table");
   }
 
   sol::table packages_table = packages_obj.as<sol::table>();
@@ -97,7 +97,7 @@ std::unique_ptr<manifest> manifest::load(char const *script,
 default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
   if (!lua_) { return std::nullopt; }
 
-  sol::object default_shell_obj{ (*lua_)["default_shell"] };
+  sol::object default_shell_obj{ (*lua_)["DEFAULT_SHELL"] };
   if (!default_shell_obj.valid()) { return std::nullopt; }
 
   // Helper to convert flat variant to nested variant structure
@@ -124,15 +124,15 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
     sol::protected_function_result result{ default_shell_func(ctx_table) };
     if (!result.valid()) {
       sol::error err = result;
-      throw std::runtime_error("default_shell function failed: " +
+      throw std::runtime_error("DEFAULT_SHELL function failed: " +
                                std::string{ err.what() });
     }
 
     return convert_parsed(
-        parse_shell_config_from_lua(result.get<sol::object>(), "default_shell function"));
+        parse_shell_config_from_lua(result.get<sol::object>(), "DEFAULT_SHELL function"));
   }
 
-  return convert_parsed(parse_shell_config_from_lua(default_shell_obj, "default_shell"));
+  return convert_parsed(parse_shell_config_from_lua(default_shell_obj, "DEFAULT_SHELL"));
 }
 
 }  // namespace envy

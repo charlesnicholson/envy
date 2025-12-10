@@ -1,12 +1,12 @@
 -- Test: default_shell as function (no ctx.asset) works
-identity = "local.default_shell_function_simple@v1"
+IDENTITY = "local.default_shell_function_simple@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   if ENVY_PLATFORM == "windows" then
     error("default_shell_function_simple test only runs on POSIX")
   end

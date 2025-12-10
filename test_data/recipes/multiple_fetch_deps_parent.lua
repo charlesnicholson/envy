@@ -1,6 +1,6 @@
-identity = "local.multiple_fetch_deps_parent@v1"
+IDENTITY = "local.multiple_fetch_deps_parent@v1"
 
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "local.multiple_fetch_deps_child@v1",
     source = {
@@ -10,12 +10,12 @@ dependencies = {
       },
       fetch = function(ctx, opts)
         local recipe_content = [[
-identity = "local.multiple_fetch_deps_child@v1"
-dependencies = {}
-function check(ctx)
+IDENTITY = "local.multiple_fetch_deps_child@v1"
+DEPENDENCIES = {}
+function CHECK(ctx)
   return false
 end
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end
 ]]
@@ -29,10 +29,10 @@ end
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

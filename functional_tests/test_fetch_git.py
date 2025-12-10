@@ -224,16 +224,15 @@ class TestFetchGit(unittest.TestCase):
     def test_recipe_with_git_source(self):
         """Recipe manifest with git source + ref loads correctly."""
         recipe_content = """-- Test recipe with git source
-identity = "test.ninja@v1"
+IDENTITY = "test.ninja@v1"
 
-source = "https://github.com/ninja-build/ninja.git"
-ref = "v1.11.1"
+FETCH = { source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1" }
 
-function check(ctx)
+function CHECK(ctx)
     return false
 end
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
     -- Nothing needed - source is already fetched by git
 end
 """

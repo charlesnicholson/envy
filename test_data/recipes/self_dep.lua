@@ -1,13 +1,13 @@
 -- Recipe that depends on itself (self-loop)
-identity = "local.self_dep@v1"
-dependencies = {
+IDENTITY = "local.self_dep@v1"
+DEPENDENCIES = {
   { recipe = "local.self_dep@v1", source = "self_dep.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

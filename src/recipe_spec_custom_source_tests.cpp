@@ -17,7 +17,7 @@ void setup_recipe_environment(sol::state &lua,
                               std::string const &identity,
                               std::vector<std::string> const &dep_identities = {}) {
   // Build Lua code that creates a dependencies global
-  std::string lua_code{ "dependencies = {\n  {\n    recipe = \"" + identity +
+  std::string lua_code{ "DEPENDENCIES = {\n  {\n    recipe = \"" + identity +
                         "\",\n    source = {\n" };
 
   if (!dep_identities.empty()) {
@@ -87,8 +87,8 @@ std::string call_custom_fetch(sol::state &lua, envy::recipe_spec const *spec) {
   }
 
   // Look up function using dynamic lookup
-  sol::table deps = lua["dependencies"];
-  if (!deps.valid()) { throw std::runtime_error("dependencies global not found"); }
+  sol::table deps = lua["DEPENDENCIES"];
+  if (!deps.valid()) { throw std::runtime_error("DEPENDENCIES global not found"); }
 
   // Find the matching dependency
   for (size_t i{ 1 };; ++i) {
@@ -140,7 +140,7 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
 
   // Set up dependencies global with all three recipes
   std::string lua_code{ R"(
-    dependencies = {
+    DEPENDENCIES = {
       {
         recipe = "local.foo@v1",
         source = {
@@ -165,7 +165,7 @@ TEST_CASE("recipe_spec - multiple specs have correct functions") {
   lua.safe_script(lua_code);
 
   // Parse each spec (they'll all use the same dependencies global)
-  sol::table deps_table = lua["dependencies"];
+  sol::table deps_table = lua["DEPENDENCIES"];
   sol::object val_foo{ deps_table[1] };
   sol::object val_bar{ deps_table[2] };
   sol::object val_baz{ deps_table[3] };

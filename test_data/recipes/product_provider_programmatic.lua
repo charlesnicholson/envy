@@ -1,11 +1,11 @@
 -- Programmatic provider (user-managed) returning raw product value
-identity = "local.product_programmatic@v1"
-products = { tool = "programmatic-tool" }
+IDENTITY = "local.product_programmatic@v1"
+PRODUCTS = { tool = "programmatic-tool" }
 
-check = function(ctx)
+CHECK = function(ctx)
   return true  -- Already satisfied; no cache artifact
 end
 
-install = function(ctx)
+INSTALL = function(ctx)
   -- User-managed; no cache artifact
 end

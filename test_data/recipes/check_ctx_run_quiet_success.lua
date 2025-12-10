@@ -1,7 +1,7 @@
 -- Test check with ctx.run quiet=true on success
-identity = "local.check_ctx_run_quiet@v1"
+IDENTITY = "local.check_ctx_run_quiet@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Quiet success: no TUI output, returns table with exit_code
     local res = ctx.run("echo 'test output'", {quiet = true})
 
@@ -12,6 +12,6 @@ function check(ctx)
     return true  -- Check passes, skip install
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

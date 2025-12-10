@@ -1,7 +1,7 @@
-identity = "local.cycle_b@v1"
-products = { tool_b = "bin/b" }
+IDENTITY = "local.cycle_b@v1"
+PRODUCTS = { tool_b = "bin/b" }
 
-dependencies = {
+DEPENDENCIES = {
   {
     product = "tool_a",
     recipe = "local.cycle_a@v1",
@@ -12,11 +12,11 @@ dependencies = {
   },
 }
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end

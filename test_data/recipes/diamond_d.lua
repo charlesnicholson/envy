@@ -1,11 +1,11 @@
 -- Base of diamond dependency
-identity = "local.diamond_d@v1"
-dependencies = {}
+IDENTITY = "local.diamond_d@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

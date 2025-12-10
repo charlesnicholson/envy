@@ -121,7 +121,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
   sol::protected_function_result result{ call_lua_function_with_enriched_errors(
       r,
-      "fetch",
+      "FETCH",
       [&]() { return fetch_func(ctx_table, opts); }) };
 
   bool should_mark_complete{ true };
@@ -452,7 +452,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
   std::string const &identity{ r->spec->identity };
 
   sol::state_view lua_view{ *r->lua };
-  sol::object fetch_obj{ lua_view["fetch"] };
+  sol::object fetch_obj{ lua_view["FETCH"] };
 
   bool should_mark_complete{ true };
 

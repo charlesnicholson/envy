@@ -1,16 +1,16 @@
 -- Reference-only dependency that matches multiple strong candidates
-identity = "local.weak_consumer_ambiguous@v1"
-dependencies = {
+IDENTITY = "local.weak_consumer_ambiguous@v1"
+DEPENDENCIES = {
   { recipe = "local.dupe@v1", source = "weak_dupe_v1.lua" },
   { recipe = "local.dupe@v2", source = "weak_dupe_v2.lua" },
   { recipe = "local.dupe" },
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

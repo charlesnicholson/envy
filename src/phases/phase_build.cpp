@@ -59,7 +59,7 @@ void run_programmatic_build(sol::protected_function build_func,
   sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  call_lua_function_with_enriched_errors(r, "build", [&]() {
+  call_lua_function_with_enriched_errors(r, "BUILD", [&]() {
     return build_func(ctx_table, opts);
   });
 }
@@ -107,7 +107,7 @@ void run_build_phase(recipe *r, engine &eng) {
   }
 
   sol::state_view lua_view{ *r->lua };
-  sol::object build_obj{ lua_view["build"] };
+  sol::object build_obj{ lua_view["BUILD"] };
 
   if (!build_obj.valid()) {
     tui::debug("phase build: no build field, skipping");
@@ -125,7 +125,7 @@ void run_build_phase(recipe *r, engine &eng) {
                            eng,
                            r);
   } else {
-    throw std::runtime_error("build field must be nil, string, or function for " +
+    throw std::runtime_error("BUILD field must be nil, string, or function for " +
                              r->spec->identity);
   }
 }

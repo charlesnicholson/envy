@@ -1,6 +1,6 @@
-identity = "local.uv@r0"
+IDENTITY = "local.uv@r0"
 
-fetch = function(ctx, opts)
+FETCH = function(ctx, opts)
   local uri_prefix = "https://github.com/astral-sh/uv/releases/download/"
   local filename = ({
     windows = "x86_64-pc-windows-msvc.zip",
@@ -11,7 +11,7 @@ fetch = function(ctx, opts)
   return uri_prefix .. opts.version .. "/uv-" .. filename
 end
 
-stage = { strip = (ENVY_PLATFORM == "windows") and 0 or 1 }
+STAGE = { strip = (ENVY_PLATFORM == "windows") and 0 or 1 }
 
 local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
-products = { uv = "uv" .. ext }
+PRODUCTS = { uv = "uv" .. ext }

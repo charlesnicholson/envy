@@ -1,12 +1,12 @@
 -- Provides a concrete recipe for weak/reference consumers
-identity = "local.weak_provider@v1"
-dependencies = {}
+IDENTITY = "local.weak_provider@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

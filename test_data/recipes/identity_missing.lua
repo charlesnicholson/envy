@@ -1,10 +1,10 @@
 -- Recipe missing identity declaration (invalid)
-dependencies = {}
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- This should never execute
 end

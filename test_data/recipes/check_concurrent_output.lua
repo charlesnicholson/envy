@@ -1,7 +1,7 @@
 -- Test concurrent large stdout+stderr with capture (no deadlock)
-identity = "local.check_concurrent@v1"
+IDENTITY = "local.check_concurrent@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Generate large output on both stdout and stderr
     local cmd
     if ENVY_PLATFORM == "windows" then
@@ -30,6 +30,6 @@ done
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

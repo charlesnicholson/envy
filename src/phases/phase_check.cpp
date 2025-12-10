@@ -82,7 +82,7 @@ bool run_check_function(recipe *r,
   ctx_table["run"] = make_ctx_run(&ctx);
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "check", [&]() {
+  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "CHECK", [&]() {
     return check_func(ctx_table, opts);
   }) };
 
@@ -109,7 +109,7 @@ bool run_check_function(recipe *r,
 }
 
 bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
-  sol::object check_obj{ lua["check"] };
+  sol::object check_obj{ lua["CHECK"] };
 
   if (check_obj.is<sol::protected_function>()) {
     return run_check_function(r, eng, lua, check_obj.as<sol::protected_function>());
@@ -122,7 +122,7 @@ bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
 
 // Helper: Check if recipe has check verb
 bool recipe_has_check_verb(recipe *r, sol::state_view lua) {
-  sol::object check_obj{ lua["check"] };
+  sol::object check_obj{ lua["CHECK"] };
   return check_obj.is<sol::protected_function>() || check_obj.is<std::string>();
 }
 

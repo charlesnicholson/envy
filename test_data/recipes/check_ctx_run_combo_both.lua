@@ -1,7 +1,7 @@
 -- Test ctx.run with both quiet=true and capture=true
-identity = "local.check_combo_both@v1"
+IDENTITY = "local.check_combo_both@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Both quiet and capture: no TUI, returns stdout/stderr/exit_code
     local res = ctx.run("echo 'both test'", {quiet = true, capture = true})
 
@@ -13,6 +13,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

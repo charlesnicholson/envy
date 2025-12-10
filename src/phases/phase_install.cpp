@@ -170,7 +170,7 @@ bool run_programmatic_install(sol::protected_function install_func,
                             : build_install_phase_ctx_table(lua, identity, &ctx) };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "install", [&]() {
+  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "INSTALL", [&]() {
     return install_func(ctx_table, opts);
   }) };
 
@@ -246,7 +246,7 @@ void run_install_phase(recipe *r, engine &eng) {
                                                 "asset" };
 
   sol::state_view lua_view{ *r->lua };
-  sol::object install_obj{ lua_view["install"] };
+  sol::object install_obj{ lua_view["INSTALL"] };
   bool marked_complete{ false };
 
   bool const is_user_managed{ recipe_has_check_verb(r, lua_view) };
@@ -276,7 +276,7 @@ void run_install_phase(recipe *r, engine &eng) {
                                                r,
                                                is_user_managed);
   } else {
-    throw std::runtime_error("install field must be nil, string, or function for " +
+    throw std::runtime_error("INSTALL field must be nil, string, or function for " +
                              r->spec->identity);
   }
 

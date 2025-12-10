@@ -1,18 +1,18 @@
 -- remote.badrecipe@v1
 -- Security test: non-local recipe trying to depend on local.* recipe
 
-identity = "remote.badrecipe@v1"
-dependencies = {
+IDENTITY = "remote.badrecipe@v1"
+DEPENDENCIES = {
   {
     recipe = "local.simple@v1",
     source = "simple.lua"
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing bad recipe")
 end

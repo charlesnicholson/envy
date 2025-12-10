@@ -1,7 +1,7 @@
 -- Test basic shell script stage phase
-identity = "local.stage_shell_basic@v1"
+IDENTITY = "local.stage_shell_basic@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
@@ -9,7 +9,7 @@ fetch = {
 -- Shell script that extracts and creates a marker file
 if ENVY_PLATFORM == "windows" then
   -- PowerShell variant
-  stage = [[
+  STAGE = [[
     # PowerShell still invoked; use tar (Windows 10+ includes bsdtar) and Out-File
     tar -xzf ../fetch/test.tar.gz --strip-components=1
     "stage script executed" | Out-File -Encoding UTF8 STAGE_MARKER.txt
@@ -18,7 +18,7 @@ if ENVY_PLATFORM == "windows" then
     exit 0
   ]]
 else
-  stage = [[
+  STAGE = [[
     # Extract the archive manually (should be in fetch_dir)
     tar -xzf ../fetch/test.tar.gz --strip-components=1
 

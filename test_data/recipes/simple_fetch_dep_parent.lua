@@ -1,7 +1,7 @@
 -- Recipe with a dependency that has fetch prerequisites
-identity = "local.simple_fetch_dep_parent@v1"
+IDENTITY = "local.simple_fetch_dep_parent@v1"
 
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "local.simple_fetch_dep_child@v1",
     source = {
@@ -12,14 +12,14 @@ dependencies = {
         -- Base recipe is guaranteed to be installed before this runs
         -- Write the recipe.lua for the child recipe
         local recipe_content = [[
-identity = "local.simple_fetch_dep_child@v1"
-dependencies = {}
+IDENTITY = "local.simple_fetch_dep_child@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end
 ]]
@@ -35,10 +35,10 @@ end
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

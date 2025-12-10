@@ -1,11 +1,11 @@
 -- Independent tree, no shared deps
-identity = "local.independent_right@v1"
-dependencies = {}
+IDENTITY = "local.independent_right@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

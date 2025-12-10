@@ -1,13 +1,13 @@
 -- Recipe with a dependency
-identity = "local.withdep@v1"
-dependencies = {
+IDENTITY = "local.withdep@v1"
+DEPENDENCIES = {
   { recipe = "local.simple@v1", source = "simple.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package - no cache interaction
 end

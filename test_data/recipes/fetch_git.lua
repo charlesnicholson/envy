@@ -1,16 +1,16 @@
 -- Test recipe with declarative git fetch
-identity = "local.fetch_git@v1"
+IDENTITY = "local.fetch_git@v1"
 
-fetch = {
+FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
 
-function check(ctx)
+function CHECK(ctx)
     return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Verify the fetched git repo is available in stage_dir/ninja.git/
     ctx.ls(ctx.stage_dir)
     local readme = ctx.stage_dir .. "/ninja.git/README.md"

@@ -2,7 +2,7 @@
 
 ## What is Envy?
 
-Envy is a freeform package manager driven by Lua scripts. "Freeform" means Envy remains unopinionated about what a package represents; authors describe packages entirely in terms of verbs exposed to Lua. Core verbs include `check` (testing whether a package is already satisfied), `fetch` (acquiring sources), `stage`/`build`/`install` (building and deploying artifacts), and helpers for working with the user-wide cache. The cache defaults to `~/.cache/envy/` so any number of projects can share large payloads without duplication.
+Envy is a freeform package manager driven by Lua scripts. "Freeform" means Envy remains unopinionated about what a package represents; authors describe packages entirely in terms of verbs exposed to Lua. Core verbs are `CHECK`, `FETCH`, `STAGE`, `BUILD`, and `INSTALL` (all globals are uppercase), plus helpers for working with the user-wide cache. The cache defaults to `~/.cache/envy/` so any number of projects can share large payloads without duplication.
 
 Envy manages pre-existing tools, built shared or static libraries, and system-wide software like Python or Homebrew. It handles everything from small utilities to sizeable toolchains like arm-gcc, llvm-clang, or SEGGER J-Link. Envy is deeply parallelized and tuned for efficient transfers and staging, letting high-throughput workflows share a single cache without blocking each other.
 

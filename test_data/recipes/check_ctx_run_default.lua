@@ -1,7 +1,7 @@
 -- Test ctx.run default (no flags): streams, throws on non-zero, returns exit_code
-identity = "local.check_ctx_run_default@v1"
+IDENTITY = "local.check_ctx_run_default@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Default behavior: streams to TUI, throws on error, returns table with exit_code
     local res = ctx.run("echo 'default test'")
 
@@ -16,6 +16,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

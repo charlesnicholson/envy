@@ -1,10 +1,10 @@
-identity = "local.python@r0"
+IDENTITY = "local.python@r0"
 
 local validate = function(opts)
   assert(opts.version, "options must contain version key, e.g. '3.13.9'")
 end
 
-fetch = function(ctx, opts)
+FETCH = function(ctx, opts)
   validate(opts)
 
   local uri_prefix =
@@ -19,9 +19,9 @@ fetch = function(ctx, opts)
   return uri_prefix .. "cpython-" .. opts.version .. "+20251205-" .. arch .. suffix
 end
 
-stage = { strip = 1 }
+STAGE = { strip = 1 }
 
-products = function(opts)
+PRODUCTS = function(opts)
   validate(opts)
 
   local python = (ENVY_PLATFORM == "windows") and 
