@@ -19,5 +19,4 @@ end
 
 STAGE = { strip = (ENVY_PLATFORM == "windows") and 0 or 1 }
 
-local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
-PRODUCTS = { uv = "uv" .. ext }
+PRODUCTS = { uv = "uv" .. ENVY_EXE_EXT }

@@ -75,6 +75,7 @@ void lua_envy_install(sol::state &lua) {
   // Platform detection
   char const *platform{ nullptr };
   char const *arch{ nullptr };
+  char const *exe_ext{ "" };
 
 #if defined(__APPLE__) && defined(__MACH__)
   platform = "darwin";
@@ -97,6 +98,7 @@ void lua_envy_install(sol::state &lua) {
 #elif defined(_M_X64)
   arch = "x86_64";
 #endif
+  exe_ext = ".exe";
 #endif
 
   std::string const platform_arch{ std::string{ platform } + "-" + arch };
@@ -105,6 +107,7 @@ void lua_envy_install(sol::state &lua) {
   lua["ENVY_PLATFORM"] = platform;
   lua["ENVY_ARCH"] = arch;
   lua["ENVY_PLATFORM_ARCH"] = platform_arch;
+  lua["ENVY_EXE_EXT"] = exe_ext;
 
   // Override print to route through TUI
   lua["print"] = [](sol::variadic_args va) {
