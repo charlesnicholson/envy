@@ -5,7 +5,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -58,10 +57,10 @@ void append_json_string(std::string &out, std::string_view value) {
       case '\t': out.append("\\t"); break;
       default:
         if (static_cast<unsigned char>(ch) < 0x20) {
-          std::ostringstream oss;
-          oss << "\\u" << std::hex << std::setfill('0') << std::setw(4)
-              << static_cast<unsigned int>(static_cast<unsigned char>(ch));
-          out.append(oss.str());
+          static constexpr char hex[] = "0123456789abcdef";
+          out.append("\\u00");
+          out.push_back(hex[(ch >> 4) & 0xF]);
+          out.push_back(hex[ch & 0xF]);
         } else {
           out.push_back(ch);
         }
@@ -380,8 +379,7 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::directory_flush_failed const &value) {
             std::ostringstream oss;
             oss << "directory_flush_failed recipe=" << value.recipe
-                << " dir_path=" << value.dir_path
-                << " reason=" << value.reason;
+                << " dir_path=" << value.dir_path << " reason=" << value.reason;
             return oss.str();
           },
           [](auto const &) {
