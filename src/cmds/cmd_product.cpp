@@ -10,6 +10,7 @@
 #include "tui.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <sstream>
 
 namespace envy {
@@ -73,17 +74,11 @@ void print_products_aligned(std::vector<product_info> const &products) {
     std::string const user_managed_marker{ p.type == recipe_type::USER_MANAGED
                                                ? " (user-managed)"
                                                : "" };
-    char buf[4096];
-    snprintf(buf,
-             sizeof(buf),
-             "%-*s  %-*s  %s%s",
-             static_cast<int>(max_product),
-             p.product_name.c_str(),
-             static_cast<int>(max_value),
-             p.value.c_str(),
-             p.provider_canonical.c_str(),
-             user_managed_marker.c_str());
-    tui::info("%s", buf);
+    std::ostringstream oss;
+    oss << std::left << std::setw(max_product) << p.product_name << "  "
+        << std::setw(max_value) << p.value << "  " << p.provider_canonical
+        << user_managed_marker;
+    tui::info("%s", oss.str().c_str());
   }
 }
 

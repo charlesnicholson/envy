@@ -10,8 +10,10 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <mutex>
 #include <queue>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -91,18 +93,11 @@ std::string format_prefix(level severity) {
     return {};
   }
 
-  char prefix_buf[96]{};
-  int const written_prefix{ std::snprintf(prefix_buf,
-                                          sizeof prefix_buf,
-                                          "[%s.%03lld] [%-*s] ",
-                                          timestamp_buf,
-                                          static_cast<long long>(millis),
-                                          static_cast<int>(kSeverityLabelWidth),
-                                          level_to_string(severity).data()) };
-
-  if (written_prefix <= 0) { return {}; }
-
-  return std::string{ prefix_buf, static_cast<std::size_t>(written_prefix) };
+  std::ostringstream oss;
+  oss << '[' << timestamp_buf << '.' << std::setfill('0') << std::setw(3) << millis << "] ["
+      << std::left << std::setfill(' ') << std::setw(kSeverityLabelWidth)
+      << level_to_string(severity) << "] ";
+  return oss.str();
 }
 
 void flush_messages(std::queue<log_entry> &pending,

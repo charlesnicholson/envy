@@ -5,8 +5,8 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <ctime>
+#include <iomanip>
 #include <sstream>
 #include <string>
 
@@ -40,15 +40,9 @@ std::string format_timestamp(std::chrono::system_clock::time_point tp) {
   char base[32]{};
   if (std::strftime(base, sizeof base, "%Y-%m-%dT%H:%M:%S", &utc_tm) == 0) { return {}; }
 
-  char buffer[64]{};
-  int const written{ std::snprintf(buffer,
-                                   sizeof buffer,
-                                   "%s.%03lldZ",
-                                   base,
-                                   static_cast<long long>(millis)) };
-  if (written <= 0) { return {}; }
-
-  return std::string{ buffer, static_cast<std::size_t>(written) };
+  std::ostringstream oss;
+  oss << base << '.' << std::setfill('0') << std::setw(3) << millis << 'Z';
+  return oss.str();
 }
 
 void append_json_string(std::string &out, std::string_view value) {
@@ -63,12 +57,10 @@ void append_json_string(std::string &out, std::string_view value) {
       case '\t': out.append("\\t"); break;
       default:
         if (static_cast<unsigned char>(ch) < 0x20) {
-          char escape[7]{};
-          std::snprintf(escape,
-                        sizeof escape,
-                        "\\u%04x",
-                        static_cast<unsigned int>(static_cast<unsigned char>(ch)));
-          out.append(escape);
+          static constexpr char hex[] = "0123456789abcdef";
+          out.append("\\u00");
+          out.push_back(hex[(ch >> 4) & 0xF]);
+          out.push_back(hex[ch & 0xF]);
         } else {
           out.push_back(ch);
         }
@@ -104,10 +96,8 @@ void append_kv(std::string &out, char const *key, bool value) {
 
 void append_phase(std::string &out, char const *key, recipe_phase phase) {
   append_kv(out, key, recipe_phase_name(phase));
-
-  char number_key[64]{};
-  std::snprintf(number_key, sizeof number_key, "%s_num", key);
-  append_kv(out, number_key, static_cast<std::int64_t>(static_cast<int>(phase)));
+  std::string number_key = std::string(key) + "_num";
+  append_kv(out, number_key.c_str(), static_cast<std::int64_t>(static_cast<int>(phase)));
 }
 
 }  // namespace
@@ -389,8 +379,7 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::directory_flush_failed const &value) {
             std::ostringstream oss;
             oss << "directory_flush_failed recipe=" << value.recipe
-                << " dir_path=" << value.dir_path
-                << " reason=" << value.reason;
+                << " dir_path=" << value.dir_path << " reason=" << value.reason;
             return oss.str();
           },
           [](auto const &) {
