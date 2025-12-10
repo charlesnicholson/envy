@@ -1,5 +1,11 @@
 IDENTITY = "local.uv@r0"
 
+VALIDATE = function(opts)
+  if opts.version == nil then
+    return "'version' is a required option"
+  end
+end
+
 FETCH = function(ctx, opts)
   local uri_prefix = "https://github.com/astral-sh/uv/releases/download/"
   local filename = ({
@@ -13,5 +19,4 @@ end
 
 STAGE = { strip = (ENVY_PLATFORM == "windows") and 0 or 1 }
 
-local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
-PRODUCTS = { uv = "uv" .. ext }
+PRODUCTS = { uv = "uv" .. ENVY_EXE_EXT }

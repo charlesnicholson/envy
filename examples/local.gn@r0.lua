@@ -5,9 +5,16 @@ DEPENDENCIES = {
   { product = "ninja" },
 }
 
-FETCH = function(ctx, opts) return {
+VALIDATE = function(opts)
+  if opts.ref == nil then
+    return "'ref' is a required option (GN doesn't tag, so use a git committish)"
+  end
+end
+
+FETCH = function(ctx, opts)
+  return {
     source = "https://gn.googlesource.com/gn.git",
-    ref = opts.ref 
+    ref = opts.ref
   }
 end
 
@@ -28,11 +35,10 @@ out/gn_unittests
     { cwd = ctx.stage_dir .. "/gn.git", check = true, shell = ENVY_SHELL.cmd })
 end
 
-local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
-
 INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. ext, ctx.install_dir)
+  ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. ENVY_EXE_EXT, ctx.install_dir)
   ctx.mark_install_complete()
 end
 
-PRODUCTS = { gn = "gn" .. ext }
+PRODUCTS = { gn = "gn" .. ENVY_EXE_EXT }
+

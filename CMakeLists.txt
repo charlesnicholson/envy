@@ -369,6 +369,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx/lua_ctx_run_tests.cpp
     src/lua_ctx_asset_product_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
+    src/lua_envy_tests.cpp
     src/product_util_tests.cpp
     src/sha256_tests.cpp
     src/sol_util_tests.cpp

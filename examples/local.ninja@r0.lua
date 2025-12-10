@@ -20,11 +20,9 @@ BUILD = function(ctx, opts)
   ctx.run(cmd, { cwd = ctx.stage_dir .. "/ninja.git" })
 end
 
-local ext = (ENVY_PLATFORM == "windows") and ".exe" or ""
-
 INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ext, ctx.install_dir)
+  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ENVY_EXE_EXT, ctx.install_dir)
   ctx.mark_install_complete()
 end
 
-PRODUCTS = { ninja = "ninja" .. ext }
+PRODUCTS = { ninja = "ninja" .. ENVY_EXE_EXT }
