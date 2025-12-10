@@ -405,13 +405,6 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-struct pipe_reader_state {
-  HANDLE pipe;
-  shell_stream stream;
-  shell_run_cfg const *cfg;
-  std::exception_ptr exception;
-};
-
 void stream_pipe_lines(HANDLE pipe,
                        shell_stream stream,
                        shell_run_cfg const &cfg) {
