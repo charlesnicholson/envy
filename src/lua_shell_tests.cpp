@@ -281,13 +281,13 @@ TEST_CASE("parse_shell_config_from_lua - error context in message") {
                        "ext=...} or {inline=...}",
                        std::runtime_error);
 
-  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "default_shell"),
-                       "default_shell: shell must be ENVY_SHELL constant or table "
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "DEFAULT_SHELL"),
+                       "DEFAULT_SHELL: shell must be ENVY_SHELL constant or table "
                        "{file=..., ext=...} or {inline=...}",
                        std::runtime_error);
 
-  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "default_shell function"),
-                       "default_shell function: shell must be ENVY_SHELL constant or "
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "DEFAULT_SHELL function"),
+                       "DEFAULT_SHELL function: shell must be ENVY_SHELL constant or "
                        "table {file=..., ext=...} or {inline=...}",
                        std::runtime_error);
 }

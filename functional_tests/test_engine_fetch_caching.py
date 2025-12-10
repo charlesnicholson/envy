@@ -64,9 +64,9 @@ class TestEngineFetchCaching(unittest.TestCase):
             temp_dir_posix = temp_dir.as_posix()
             recipe_content = f"""-- Test per-file caching across partial failures
 -- Two files succeed, one fails, then completion reuses cached files
-identity = "local.fetch_partial@v1"
+IDENTITY = "local.fetch_partial@v1"
 
-fetch = {{
+FETCH = {{
   {{
     source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
@@ -178,10 +178,10 @@ fetch = {{
 
             # Create recipe with computed hashes
             recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-identity = "local.fetch_array@v1"
+IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
-fetch = {{
+FETCH = {{
   {{
     source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
@@ -285,10 +285,10 @@ fetch = {{
 
             # Create recipe with computed hashes
             recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-identity = "local.fetch_array@v1"
+IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
-fetch = {{
+FETCH = {{
   {{
     source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
@@ -390,10 +390,10 @@ fetch = {{
 
             # Create recipe with computed hashes
             recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-identity = "local.fetch_array@v1"
+IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
-fetch = {{
+FETCH = {{
   {{
     source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"

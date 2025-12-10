@@ -1,23 +1,23 @@
 -- Dependency validation test: POSITIVE - transitive dependency access
-identity = "local.dep_val_transitive@v1"
+IDENTITY = "local.dep_val_transitive@v1"
 
-dependencies = {
+DEPENDENCIES = {
   -- We depend on tool, which depends on lib
   { recipe = "local.dep_val_tool@v1", source = "dep_val_tool.lua" },
   -- In the new design, we must explicitly declare all dependencies we use
   { recipe = "local.dep_val_lib@v1", source = "dep_val_lib.lua" }
 }
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 end
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   -- Access tool (direct dependency) - should work
   local tool_path = ctx.asset("local.dep_val_tool@v1")
 

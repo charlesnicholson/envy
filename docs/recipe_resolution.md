@@ -61,7 +61,7 @@ Each dependency entry may include `needed_by` (default: `"fetch"`); weak fallbac
 
 **Custom coupling:** Annotate dependency with `needed_by` field:
 ```lua
-dependencies = {
+DEPENDENCIES = {
   { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
 }
 ```
@@ -77,13 +77,13 @@ dependencies = {
 -- Manifest
 {
   recipe = "corporate.toolchain@v1",
-  fetch = function(ctx)
+  FETCH = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Requires jfrog CLI installed
     local tmp = ctx.tmp_dir
     ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
     ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
   end,
-  dependencies = {
+  DEPENDENCIES = {
     {
       recipe = "jfrog.cli@v2",
       source = "https://public.com/jfrog-cli-recipe.lua",
@@ -113,7 +113,7 @@ jfrog.cli fully installs before corporate.toolchain recipe can be fetched. Recip
 ```lua
 -- Recipe A
 { recipe = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
-  dependencies = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
+  DEPENDENCIES = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
 
 -- Recipe B (inside A's dependency tree somewhere)
 { recipe = "B@v1", dependencies = { { recipe = "A@v1", needed_by = "recipe_fetch" } } }
@@ -132,10 +132,10 @@ Both need each other for `recipe_fetch` → deadlock. Envy detects when B's `rec
 **Requirement:** ALL recipes must declare their identity at the top of the recipe file:
 ```lua
 -- vendor.lib@v1 recipe file
-identity = "vendor.lib@v1"
+IDENTITY = "vendor.lib@v1"
 
 -- local.wrapper@v1 recipe file
-identity = "local.wrapper@v1"
+IDENTITY = "local.wrapper@v1"
 
 -- Rest of recipe...
 ```
@@ -152,17 +152,17 @@ identity = "local.wrapper@v1"
 
 **Single file** (string shorthand, no verification):
 ```lua
-fetch = "https://example.com/gcc.tar.gz"
+FETCH = "https://example.com/gcc.tar.gz"
 ```
 
 **Single file with verification** (table):
 ```lua
-fetch = {url = "https://example.com/gcc.tar.gz", sha256 = "abc123..."}
+FETCH = {url = "https://example.com/gcc.tar.gz", sha256 = "abc123..."}
 ```
 
 **Multiple files** (concurrent download):
 ```lua
-fetch = {
+FETCH = {
   {url = "https://example.com/gcc.tar.gz", sha256 = "abc123..."},
   {url = "https://example.com/gcc.tar.gz.sig", sha256 = "def456..."}
 }
@@ -172,7 +172,7 @@ fetch = {
 
 **Git sources:**
 ```lua
-fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
+FETCH = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 ```
 `ref` can be commit SHA (self-verifying) or tag/branch (future strict mode requires SHA).
 
@@ -184,7 +184,7 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 ```lua
 {
   recipe = "corporate.toolchain@v1",
-  fetch = function(ctx)
+  FETCH = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
 
     -- Download files concurrently with verification
@@ -194,7 +194,7 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
     })
     ctx.commit_fetch({"toolchain.tar.gz", "helpers.lua"})
   end,
-  dependencies = {
+  DEPENDENCIES = {
     { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
@@ -204,7 +204,7 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 ```lua
 {
   recipe = "vendor.gcc@v2",
-  fetch = function(ctx)
+  FETCH = function(ctx)
     -- Template URL with options
     local version = ctx.options.version or "13.2.0"
     local arch = ctx.options.arch or ENVY_ARCH
@@ -218,7 +218,7 @@ fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 
 **Mixed mode** (imperative + declarative):
 ```lua
-fetch = function(ctx)
+FETCH = function(ctx)
   -- Fetch authenticated file imperatively
   local secret = os.getenv("API_TOKEN")
   ctx.fetch("https://internal.com/file?token=" .. secret)
@@ -246,14 +246,14 @@ end
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity ("vendor.lib@v1") - recipes only, not manifests
+  IDENTITY = string,                                -- Recipe identity ("vendor.lib@v1") - recipes only, not manifests
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories (read-only paths)
   tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
-  fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
+  FETCH = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
                                                     -- spec: {url="...", sha256="..."} or {{...}, {...}}
                                                     -- Returns: basename(s) of downloaded file(s)
 
@@ -318,7 +318,7 @@ end
 
 **Dynamic dependencies** (recipe file):
 ```lua
-dependencies = function(ctx)
+DEPENDENCIES = function(ctx)
   if ctx.options.enable_ssl then
     return { { recipe = "openssl.lib@v3", source = "...", sha256 = "..." } }
   end
@@ -332,7 +332,7 @@ end
 
 **Option rewriting:** Parent recipes may transform child options:
 ```lua
-dependencies = function(ctx)
+DEPENDENCIES = function(ctx)
   return {
     { recipe = "vendor.lib@v1", options = { version = ctx.options.lib_version or "2.0" } }
   }
@@ -362,16 +362,16 @@ Enables batteries-included bundles without manifest involvement.
 ### Manifest
 ```lua
 -- project/envy.lua
-packages = {
+PACKAGES = {
   {
     recipe = "corporate.toolchain@v1",
-    fetch = function(ctx)
+    FETCH = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")
       local tmp = ctx.tmp_dir
       ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
       ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
     end,
-    dependencies = {
+    DEPENDENCIES = {
       { recipe = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }
     }
   },
@@ -384,8 +384,8 @@ packages = {
 **jfrog.cli@v2 (simple declarative recipe):**
 ```lua
 -- Fetched from https://public.com/jfrog.lua
-fetch = { url = "https://jfrog.com/cli/jfrog-cli.tar.gz", sha256 = "789abc..." }
-install = function(ctx)
+FETCH = { url = "https://jfrog.com/cli/jfrog-cli.tar.gz", sha256 = "789abc..." }
+INSTALL = function(ctx)
   ctx:extract_all()
   ctx:add_to_path("bin")
 end
@@ -394,14 +394,14 @@ end
 **corporate.toolchain@v1 (dynamically loaded after jfrog.cli installs):**
 ```lua
 -- Fetched via custom function using jfrog CLI
-dependencies = function(ctx)
+DEPENDENCIES = function(ctx)
   return {
     { recipe = "vendor.compiler@v3", source = "...", sha256 = "..." },
     { recipe = "vendor.linker@v2", source = "...", sha256 = "..." }
   }
 end
 
-build = function(ctx)
+BUILD = function(ctx)
   local compiler = ctx:asset("vendor.compiler@v3")
   ctx:run(compiler .. "/bin/gcc", "-o", ctx.install_dir() .. "/toolchain", "main.c")
 end
@@ -410,9 +410,9 @@ end
 **vendor.library@v1 (simple archive):**
 ```lua
 -- Fetched from default source in manifest
-fetch = { url = "https://vendor.com/lib.tar.gz", sha256 = "ghi789..." }
-stage = function(ctx) ctx:extract_all() end
-install = function(ctx)
+FETCH = { url = "https://vendor.com/lib.tar.gz", sha256 = "ghi789..." }
+STAGE = function(ctx) ctx:extract_all() end
+INSTALL = function(ctx)
   ctx:run("cp", "-r", ctx.stage_dir() .. "/include", ctx.install_dir() .. "/include")
 end
 ```

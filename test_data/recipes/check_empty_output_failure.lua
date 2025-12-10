@@ -1,7 +1,7 @@
 -- Test empty outputs in failure messages
-identity = "local.check_empty_output@v1"
+IDENTITY = "local.check_empty_output@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Run command that fails with no output
     local res = ctx.run("exit 42", {quiet = true})
 
@@ -9,6 +9,6 @@ function check(ctx)
     error("Should have thrown on non-zero exit")
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached due to check error
 end

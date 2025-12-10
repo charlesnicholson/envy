@@ -1,8 +1,8 @@
 -- remote.parent@v1
 -- Remote recipe depending on another remote recipe
 
-identity = "remote.parent@v1"
-dependencies = {
+IDENTITY = "remote.parent@v1"
+DEPENDENCIES = {
   {
     recipe = "remote.child@v1",
     source = "remote_child.lua"
@@ -10,10 +10,10 @@ dependencies = {
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing remote parent recipe")
 end

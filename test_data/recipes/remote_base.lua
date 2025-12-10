@@ -1,12 +1,12 @@
 -- remote.base@v1
 -- Remote recipe with no dependencies
 
-identity = "remote.base@v1"
+IDENTITY = "remote.base@v1"
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing remote base recipe")
 end

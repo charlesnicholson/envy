@@ -1,6 +1,6 @@
 -- Recipe A in a fetch dependency cycle: A fetch needs B
-identity = "local.fetch_cycle_a@v1"
-dependencies = {
+IDENTITY = "local.fetch_cycle_a@v1"
+DEPENDENCIES = {
   {
     recipe = "local.fetch_cycle_b@v1",
     source = "fetch_cycle_b.lua",  -- Will be fetched by custom fetch function
@@ -12,10 +12,10 @@ dependencies = {
   }
 }
 
-function fetch(ctx)
+function FETCH(ctx)
   -- Simple fetch function for this recipe
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

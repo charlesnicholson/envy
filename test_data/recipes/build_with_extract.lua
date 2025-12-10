@@ -1,13 +1,13 @@
 -- Test build phase: ctx.extract() to extract archive during build
-identity = "local.build_with_extract@v1"
+IDENTITY = "local.build_with_extract@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
 -- Skip stage phase, extract manually in build
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   -- Don't extract yet, just prepare
   if ENVY_PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
@@ -16,7 +16,7 @@ stage = function(ctx, opts)
   end
 end
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   print("Testing ctx.extract()")
 
   -- Extract the archive from fetch_dir into current directory

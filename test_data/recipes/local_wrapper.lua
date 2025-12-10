@@ -1,8 +1,8 @@
 -- local.wrapper@v1
 -- Local recipe depending on remote recipe
 
-identity = "local.wrapper@v1"
-dependencies = {
+IDENTITY = "local.wrapper@v1"
+DEPENDENCIES = {
   {
     recipe = "remote.base@v1",
     source = "remote_base.lua"
@@ -10,10 +10,10 @@ dependencies = {
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing local wrapper recipe")
 end

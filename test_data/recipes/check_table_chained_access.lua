@@ -1,7 +1,7 @@
 -- Test chained table field access patterns
-identity = "local.check_table_chained@v1"
+IDENTITY = "local.check_table_chained@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Test chained access: ctx.run(...).field
     local out = ctx.run("echo 'chained'", {capture = true}).stdout
     assert(out:match("chained"), "chained stdout access should work")
@@ -12,6 +12,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

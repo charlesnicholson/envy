@@ -41,7 +41,7 @@ class TestProducts(unittest.TestCase):
     def test_strong_product_dependency_resolves_provider(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_consumer_strong@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_consumer_strong.lua",
@@ -61,7 +61,7 @@ packages = {{
     def test_weak_product_dependency_uses_fallback(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_consumer_weak@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_consumer_weak.lua",
@@ -79,7 +79,7 @@ packages = {{
     def test_missing_product_dependency_errors(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_consumer_missing@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_consumer_missing.lua",
@@ -97,7 +97,7 @@ packages = {{
     def test_product_collision_errors(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
@@ -117,7 +117,7 @@ packages = {{
     def test_product_command_cached_provider(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
@@ -135,7 +135,7 @@ packages = {{
     def test_product_command_programmatic_provider_returns_raw_value(self):
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_programmatic@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider_programmatic.lua",
@@ -153,7 +153,7 @@ packages = {{
         """Products can be a function taking options and returning a table."""
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_function@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider_function.lua",
@@ -178,13 +178,13 @@ packages = {{
     def test_absolute_path_in_product_value_rejected(self):
         """Product values with absolute paths should be rejected during parsing."""
         lua_content = """
-identity = "local.bad_provider@v1"
-products = { tool = "/etc/passwd" }
-fetch = {
+IDENTITY = "local.bad_provider@v1"
+PRODUCTS = { tool = "/etc/passwd" }
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -193,7 +193,7 @@ end
 
         manifest = self.manifest(
             f"""
-packages = {{{{
+PACKAGES = {{{{
   recipe = "local.bad_provider@v1",
   source = "{self.lua_path(provider_path)}"
 }}}}
@@ -207,13 +207,13 @@ packages = {{{{
     def test_path_traversal_in_product_value_rejected(self):
         """Product values with path traversal should be rejected during parsing."""
         lua_content = """
-identity = "local.bad_provider@v1"
-products = { tool = "../../etc/passwd" }
-fetch = {
+IDENTITY = "local.bad_provider@v1"
+PRODUCTS = { tool = "../../etc/passwd" }
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -222,7 +222,7 @@ end
 
         manifest = self.manifest(
             f"""
-packages = {{{{
+PACKAGES = {{{{
   recipe = "local.bad_provider@v1",
   source = "{self.lua_path(provider_path)}"
 }}}}
@@ -237,13 +237,13 @@ packages = {{{{
         """Strong product dependencies should wire directly, not via weak resolution."""
         # Create two providers for same product
         lua_content_a = """
-identity = "local.provider_a@v1"
-products = { tool = "bin/tool_a" }
-fetch = {
+IDENTITY = "local.provider_a@v1"
+PRODUCTS = { tool = "bin/tool_a" }
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -251,13 +251,13 @@ end
         provider_a_path.write_text(lua_content_a, encoding="utf-8")
 
         lua_content_b = """
-identity = "local.provider_b@v1"
-products = { other_tool = "bin/other" }
-fetch = {
+IDENTITY = "local.provider_b@v1"
+PRODUCTS = { other_tool = "bin/other" }
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -267,19 +267,19 @@ end
         # Consumer with STRONG dep on provider_a (has source)
         # If this goes through weak resolution, it might pick up provider_b instead
         lua_content_consumer = f"""
-identity = "local.consumer_strong_only@v1"
-dependencies = {{
+IDENTITY = "local.consumer_strong_only@v1"
+DEPENDENCIES = {{
   {{
     product = "tool",
     recipe = "local.provider_a@v1",
     source = "{self.lua_path(provider_a_path)}",
   }},
 }}
-fetch = {{
+FETCH = {{
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }}
-install = function(ctx)
+INSTALL = function(ctx)
   local tool_path = ctx.asset("local.provider_a@v1")
   if not tool_path:match("provider_a") then
     error("Expected provider_a but got: " .. tool_path)
@@ -293,7 +293,7 @@ end
         # Include both providers in manifest - provider_b appears first (registry order)
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.provider_b@v1",
     source = "{self.lua_path(provider_b_path)}"
@@ -317,7 +317,7 @@ packages = {{
         """Product dependencies forming a semantic cycle should be detected and rejected."""
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.cycle_a@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_cycle_a.lua",
@@ -338,7 +338,7 @@ packages = {{
         """Ref-only product dependencies (no recipe/source) should resolve to any provider."""
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
@@ -364,7 +364,7 @@ packages = {{
         """Ref-only product dependency with no provider should error."""
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.ref_only_consumer@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_ref_only_consumer.lua",
@@ -385,13 +385,13 @@ packages = {{
         """Product command with no args should list all products from all providers."""
         # Create second provider with non-colliding product
         lua_content = """
-identity = "local.list_provider@v1"
-products = { compiler = "bin/gcc" }
-fetch = {
+IDENTITY = "local.list_provider@v1"
+PRODUCTS = { compiler = "bin/gcc" }
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -400,7 +400,7 @@ end
 
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
@@ -426,7 +426,7 @@ packages = {{
 
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_provider@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
@@ -457,7 +457,7 @@ packages = {{
 
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.product_programmatic@v1",
     source = "{self.lua_path(self.test_data)}/recipes/product_provider_programmatic.lua",
@@ -480,12 +480,12 @@ packages = {{
         """Product listing with no products should indicate empty result."""
         # Create manifest with recipe that has no products
         lua_content = """
-identity = "local.no_products@v1"
-fetch = {
+IDENTITY = "local.no_products@v1"
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -494,7 +494,7 @@ end
 
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.no_products@v1",
     source = "{self.lua_path(no_products_path)}"
@@ -516,16 +516,16 @@ packages = {{
         isn't explicitly the target.
         """
         # Create product provider recipe
-        provider_recipe = """identity = "local.test_product_query_provider@v1"
+        provider_recipe = """IDENTITY = "local.test_product_query_provider@v1"
 
-fetch = { source = "test_data/archives/test.tar.gz",
+FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
 
-install = function(ctx)
+INSTALL = function(ctx)
     ctx.mark_install_complete()
 end
 
-products = { test_query_tool = "bin/query_tool" }
+PRODUCTS = { test_query_tool = "bin/query_tool" }
 """
         provider_path = self.test_dir / "test_product_query_provider.lua"
         provider_path.write_text(provider_recipe, encoding="utf-8")
@@ -533,7 +533,7 @@ products = { test_query_tool = "bin/query_tool" }
         # Manifest with the provider
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.test_product_query_provider@v1", source = "{self.lua_path(provider_path)}" }}
 }}
 """

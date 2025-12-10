@@ -1,13 +1,13 @@
 -- Recipe B in a cycle: B -> A
-identity = "local.cycle_b@v1"
-dependencies = {
+IDENTITY = "local.cycle_b@v1"
+DEPENDENCIES = {
   { recipe = "local.cycle_a@v1", source = "cycle_a.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

@@ -1,3 +1,3 @@
 -- Invalid recipe - no phases defined
-identity = "local.nophases@v1"
-dependencies = {}
+IDENTITY = "local.nophases@v1"
+DEPENDENCIES = {}

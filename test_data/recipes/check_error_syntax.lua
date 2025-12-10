@@ -1,7 +1,7 @@
 -- Test shell error: syntax error
-identity = "local.check_error_syntax@v1"
+IDENTITY = "local.check_error_syntax@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Run a command with shell syntax error
     local res = ctx.run("echo 'unclosed quote", {quiet = true})
 
@@ -9,6 +9,6 @@ function check(ctx)
     error("Should have thrown on syntax error")
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached due to check error
 end

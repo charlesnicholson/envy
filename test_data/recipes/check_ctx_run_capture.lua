@@ -1,7 +1,7 @@
 -- Test check with ctx.run capture=true returns stdout, stderr, exit_code
-identity = "local.check_ctx_run_capture@v1"
+IDENTITY = "local.check_ctx_run_capture@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Capture=true: should get stdout, stderr, exit_code fields
     local cmd
     if ENVY_PLATFORM == "windows" then
@@ -23,6 +23,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

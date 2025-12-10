@@ -1,12 +1,12 @@
 -- Strong dependency that should satisfy weak queries
-identity = "local.existing_dep@v1"
-dependencies = {}
+IDENTITY = "local.existing_dep@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

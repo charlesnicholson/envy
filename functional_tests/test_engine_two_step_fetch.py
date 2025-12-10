@@ -48,9 +48,9 @@ class TestEngineTwoStepFetch(unittest.TestCase):
         test_file = Path("test_data/lua/simple.lua").resolve()
         expected_hash = self.get_file_hash(test_file)
 
-        recipe_content = f"""identity = "local.two_step_sha256@v1"
+        recipe_content = f"""IDENTITY = "local.two_step_sha256@v1"
 
-function fetch(ctx, opts)
+function FETCH(ctx, opts)
   -- Step 1: Download to tmp (ungated)
   local file = ctx.fetch("{self.lua_path(test_file)}")
 
@@ -99,9 +99,9 @@ end
         (manifest_dir / "file1.txt").write_text("content1", encoding="utf-8")
         (manifest_dir / "file2.txt").write_text("content2", encoding="utf-8")
 
-        recipe_content = f"""identity = "local.manifest_workflow@v1"
+        recipe_content = f"""IDENTITY = "local.manifest_workflow@v1"
 
-function fetch(ctx, opts)
+function FETCH(ctx, opts)
   -- Step 1: Fetch manifest
   local manifest_file = ctx.fetch("{self.lua_path(manifest_file)}")
 

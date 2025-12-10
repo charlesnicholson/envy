@@ -12,7 +12,7 @@ Allow manifests to override recipe sources globally. Useful for pointing to mirr
 
 ```lua
 -- project/envy.lua
-packages = { "vendor.gcc@v2" }
+PACKAGES = { "vendor.gcc@v2" }
 
 overrides = {
   ["vendor.gcc@v2"] = {
@@ -58,7 +58,7 @@ function transform_recipe(spec)
   return spec
 end
 
-packages = { "openssl.lib@v3", "curl.tool@v2" }
+PACKAGES = { "openssl.lib@v3", "curl.tool@v2" }
 ```
 
 **Considerations:** Hook executes during manifest validation. Applied to all recipe specs (packages + transitive dependencies) before override resolution. Must be pure function (no side effects). Ordering: transform → override → validation.
@@ -101,7 +101,7 @@ Support declarative table form for common build systems (cmake, make, meson, nin
 
 **Current approach (imperative):**
 ```lua
-build = function(ctx)
+BUILD = function(ctx)
   ctx.run([[
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=]] .. ctx.install_dir .. [[
     cmake --build build --parallel
@@ -112,13 +112,13 @@ end
 
 **Proposed declarative form:**
 ```lua
-build = {
+BUILD = {
   cmake = {
     source_dir = ".",
     build_dir = "build",
     args = { "-DCMAKE_BUILD_TYPE=Release" },
     build_args = { "--parallel" },
-    install = true,
+    INSTALL = true,
   }
 }
 ```
@@ -127,7 +127,7 @@ build = {
 
 ```lua
 -- Make-based build
-build = {
+BUILD = {
   make = {
     makefile = "Makefile",
     jobs = 4,
@@ -137,7 +137,7 @@ build = {
 }
 
 -- Meson + Ninja
-build = {
+BUILD = {
   meson = {
     args = { "--buildtype=release" },
     ninja = { jobs = 8 },
@@ -145,7 +145,7 @@ build = {
 }
 
 -- Cargo (Rust)
-build = {
+BUILD = {
   cargo = {
     profile = "release",
     features = { "ssl", "compression" },
@@ -154,7 +154,7 @@ build = {
 }
 
 -- Autotools
-build = {
+BUILD = {
   autotools = {
     configure_args = { "--prefix=" .. ctx.install_dir, "--enable-shared" },
     make_jobs = 4,
@@ -303,7 +303,7 @@ Allow recipe files to compute aliases from options passed by manifest. String fo
 
 ```lua
 -- local.python@r4.lua (recipe file)
-identity = "local.python@r4"
+IDENTITY = "local.python@r4"
 
 -- Static alias (current)
 alias = "python"

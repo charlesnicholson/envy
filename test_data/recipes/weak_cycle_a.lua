@@ -1,13 +1,13 @@
 -- Recipe A with weak reference that creates cycle after resolution
-identity = "local.weak_cycle_a@v1"
-dependencies = {
+IDENTITY = "local.weak_cycle_a@v1"
+DEPENDENCIES = {
   { recipe = "foo" },  -- Weak ref-only, will match weak_cycle_b
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install
 end

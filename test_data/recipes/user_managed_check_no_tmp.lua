@@ -1,7 +1,7 @@
 -- Test that check phase does not expose tmp_dir
-identity = "local.user_check_no_tmp@v1"
+IDENTITY = "local.user_check_no_tmp@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- tmp_dir should not be exposed in check phase
     -- It's only for install phase (ephemeral workspace)
     -- Check phase tests system state, not cache state
@@ -12,7 +12,7 @@ function check(ctx)
     return true  -- Check always passes for this test
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- tmp_dir IS exposed in install phase
     assert(ctx.tmp_dir ~= nil, "tmp_dir should be exposed in install phase")
 end

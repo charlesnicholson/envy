@@ -1,11 +1,11 @@
 -- Minimal test recipe - no dependencies
-identity = "local.simple@v1"
-dependencies = {}
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package - no cache interaction
 end

@@ -64,7 +64,7 @@ class TestSyncCommand(unittest.TestCase):
         """Sync with no args installs entire manifest."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
@@ -86,7 +86,7 @@ packages = {{
         """Sync single identity installs only that package and its dependencies."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
@@ -110,7 +110,7 @@ packages = {{
         """Sync multiple identities installs all specified packages."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
@@ -134,7 +134,7 @@ packages = {{
         """Sync with identity not in manifest returns error."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
 """
@@ -150,7 +150,7 @@ packages = {{
         """Sync with some valid and some invalid identities returns error."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
 """
@@ -171,7 +171,7 @@ packages = {{
         """Second sync run is a no-op (cache hits)."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
 """
@@ -230,7 +230,7 @@ packages = {{
         """Sync command produces no stdout output."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
 """
@@ -247,7 +247,7 @@ packages = {{
         try:
             manifest = self.create_manifest(
                 f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
 }}
 """
@@ -278,7 +278,7 @@ packages = {{
 
     def test_sync_empty_manifest(self):
         """Sync with empty manifest succeeds (nothing to do)."""
-        manifest = self.create_manifest("packages = {}")
+        manifest = self.create_manifest("PACKAGES = {}")
 
         result = self.run_sync(manifest=manifest)
 
@@ -290,7 +290,7 @@ packages = {{
         # diamond_c depends on diamond_b, which depends on diamond_a
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.diamond_c@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_c.lua" }},
 }}
 """

@@ -1,8 +1,8 @@
 -- Test per-file caching across partial failures
 -- Two files succeed, one fails, then completion reuses cached files
-identity = "local.fetch_partial@v1"
+IDENTITY = "local.fetch_partial@v1"
 
-fetch = {
+FETCH = {
   {
     source = "test_data/lua/simple.lua",
     sha256 = "5d414f661043721a92d3f39539baae9decb27fddf706d592d4a9431182eb87a9"

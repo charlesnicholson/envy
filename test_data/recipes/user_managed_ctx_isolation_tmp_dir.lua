@@ -1,11 +1,11 @@
 -- Test that user-managed packages can access ctx.tmp_dir
-identity = "local.user_managed_ctx_isolation_tmp_dir@v1"
+IDENTITY = "local.user_managed_ctx_isolation_tmp_dir@v1"
 
-function check(ctx)
+function CHECK(ctx)
     return false  -- Always needs install
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Verify tmp_dir is accessible
     if not ctx.tmp_dir then
         error("ctx.tmp_dir should be accessible for user-managed packages")

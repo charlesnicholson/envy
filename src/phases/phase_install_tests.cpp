@@ -10,6 +10,8 @@
 
 #include "doctest.h"
 
+#include <sol/sol.hpp>
+
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -84,17 +86,29 @@ struct install_test_fixture {
     std::filesystem::remove_all(temp_root, ec);
   }
 
+  sol::state_view lua_state() { return sol::state_view{ *r->lua }; }
+
+  void clear_check_verb() { lua_state()["CHECK"] = sol::lua_nil; }
+
   void set_check_verb(std::string_view check_code) {
-    lua_pushstring(r->lua->lua_state(), std::string(check_code).c_str());
-    lua_setglobal(r->lua->lua_state(), "check");
+    lua_state()["CHECK"] = std::string(check_code);
+  }
+
+  void clear_install_verb() { lua_state()["INSTALL"] = sol::lua_nil; }
+
+  void set_install_string(std::string_view install_code) {
+    lua_state()["INSTALL"] = std::string(install_code);
   }
 
   void set_install_function(std::string_view install_code) {
-    std::string code = "install = " + std::string(install_code);
-    if (luaL_dostring(r->lua->lua_state(), code.c_str()) != LUA_OK) {
-      char const *err = lua_tostring(r->lua->lua_state(), -1);
+    auto state{ lua_state() };
+    std::string code = "INSTALL = " + std::string(install_code);
+    sol::protected_function_result result =
+        state.safe_script(code, sol::script_pass_on_error);
+    if (!result.valid()) {
+      sol::error err = result;
       throw std::runtime_error(std::string("Failed to set install function: ") +
-                               (err ? err : "unknown"));
+                               err.what());
     }
   }
 
@@ -174,8 +188,7 @@ TEST_CASE_FIXTURE(
     install_test_fixture,
     "install phase allows cache-managed package with mark_install_complete") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   // Install function that calls mark_install_complete (correct for cache-managed)
   set_install_function(R"(
@@ -196,8 +209,7 @@ TEST_CASE_FIXTURE(
     "install phase allows cache-managed package without mark_install_complete "
     "(programmatic)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   // Install function that does NOT call mark_install_complete (programmatic package)
   set_install_function(R"(
@@ -216,8 +228,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
                   "install phase rejects user-managed with string check that calls "
                   "mark_install_complete") {
   // String check verb (user-managed)
-  lua_pushstring(r->lua->lua_state(), "echo test");
-  lua_setglobal(r->lua->lua_state(), "check");
+  set_check_verb("echo test");
 
   // Install that incorrectly calls mark_install_complete
   set_install_function(R"(
@@ -252,8 +263,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   set_check_verb("echo test");
 
   // Nil install - default behavior (promote stage to install)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "install");
+  clear_install_verb();
 
   acquire_lock();
 
@@ -268,8 +278,7 @@ TEST_CASE_FIXTURE(
   set_check_verb("echo test");
 
   // String install - runs command but doesn't mark complete for user-managed
-  lua_pushstring(r->lua->lua_state(), "echo 'installing'");
-  lua_setglobal(r->lua->lua_state(), "install");
+  set_install_string("echo 'installing'");
 
   acquire_lock();
 
@@ -284,12 +293,10 @@ TEST_CASE_FIXTURE(
     install_test_fixture,
     "install phase string install succeeds for cache-managed and marks complete") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   // String install
-  lua_pushstring(r->lua->lua_state(), "echo 'installing'");
-  lua_setglobal(r->lua->lua_state(), "install");
+  set_install_string("echo 'installing'");
 
   acquire_lock();
 
@@ -307,8 +314,7 @@ TEST_CASE_FIXTURE(
   set_check_verb("echo test");
 
   // String install that fails
-  lua_pushstring(r->lua->lua_state(), "exit 1");
-  lua_setglobal(r->lua->lua_state(), "install");
+  set_install_string("exit 1");
 
   acquire_lock();
 
@@ -330,12 +336,10 @@ TEST_CASE_FIXTURE(
     install_test_fixture,
     "install phase string install with non-zero exit throws (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   // String install that fails
-  lua_pushstring(r->lua->lua_state(), "exit 1");
-  lua_setglobal(r->lua->lua_state(), "install");
+  set_install_string("exit 1");
 
   acquire_lock();
 
@@ -376,8 +380,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning nil succeeds (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -407,8 +410,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function with no return succeeds (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -423,8 +425,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning number throws with type error") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -450,8 +451,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning table throws with type error") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -477,8 +477,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning boolean throws with type error") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -509,8 +508,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning string executes shell and marks complete "
                   "(cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -551,8 +549,7 @@ TEST_CASE_FIXTURE(
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function can call ctx.run and return string (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -572,8 +569,7 @@ TEST_CASE_FIXTURE(
     install_test_fixture,
     "install function returning string with non-zero exit throws (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)
@@ -599,8 +595,7 @@ TEST_CASE_FIXTURE(
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning empty string succeeds (cache-managed)") {
   // No check verb (cache-managed)
-  lua_pushnil(r->lua->lua_state());
-  lua_setglobal(r->lua->lua_state(), "check");
+  clear_check_verb();
 
   set_install_function(R"(
     function(ctx)

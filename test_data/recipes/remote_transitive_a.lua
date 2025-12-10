@@ -1,8 +1,8 @@
 -- remote.a@v1
 -- Remote recipe that transitively depends on local.* through remote.b
 
-identity = "remote.a@v1"
-dependencies = {
+IDENTITY = "remote.a@v1"
+DEPENDENCIES = {
   {
     recipe = "remote.b@v1",
     source = "remote_transitive_b.lua"
@@ -10,10 +10,10 @@ dependencies = {
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing remote transitive a recipe")
 end

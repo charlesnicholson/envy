@@ -1,14 +1,14 @@
 -- Test build phase: create complex nested directory structure
-identity = "local.build_nested_dirs@v1"
+IDENTITY = "local.build_nested_dirs@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = {strip = 1}
+STAGE = {strip = 1}
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   print("Creating nested directory structure")
 
   -- Create complex directory hierarchy

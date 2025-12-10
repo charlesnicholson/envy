@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Functional tests for engine declarative fetch.
 
-Tests declarative fetch syntax: fetch = "url", fetch = {url, sha256},
-fetch = [{...}, ...], and basic error handling (collision, bad SHA256).
+Tests declarative fetch syntax: FETCH = "url", FETCH = {url, sha256},
+FETCH = [{...}, ...], and basic error handling (collision, bad SHA256).
 """
 
 import os
@@ -76,10 +76,10 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
 
         # Create recipe with computed hash
         recipe_content = f"""-- Test declarative fetch with single table format and SHA256 verification
-identity = "local.fetch_single@v1"
+IDENTITY = "local.fetch_single@v1"
 
 -- Single table format with optional sha256
-fetch = {{
+FETCH = {{
   source = "test_data/lua/simple.lua",
   sha256 = "{simple_hash}"
 }}
@@ -119,10 +119,10 @@ fetch = {{
 
         # Create recipe with computed hashes
         recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-identity = "local.fetch_array@v1"
+IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
-fetch = {{
+FETCH = {{
   {{
     source = "test_data/lua/simple.lua",
     sha256 = "{simple_hash}"
@@ -223,13 +223,13 @@ fetch = {{
         )
 
     def test_declarative_fetch_string_array(self):
-        """Recipe with fetch = {\"url1\", \"url2\", \"url3\"} downloads all files."""
+        """Recipe with FETCH = {\"url1\", \"url2\", \"url3\"} downloads all files."""
         # Create recipe with array of strings (no SHA256)
         recipe_content = """-- Test declarative fetch with string array
-identity = "local.fetch_string_array@v1"
+IDENTITY = "local.fetch_string_array@v1"
 
 -- Array of strings (no SHA256 verification)
-fetch = {
+FETCH = {
   "test_data/lua/simple.lua",
   "test_data/lua/print_single.lua",
   "test_data/lua/print_multiple.lua"
@@ -268,14 +268,14 @@ fetch = {
     def test_declarative_fetch_git(self):
         """Recipe with git fetch downloads repository."""
         recipe_content = """-- Test declarative fetch with git repository
-identity = "local.fetch_git_test@v1"
+IDENTITY = "local.fetch_git_test@v1"
 
-fetch = {
+FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
     -- Verify the fetched git repo is available in stage_dir/ninja.git/
     local readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(readme, "r")
@@ -317,14 +317,14 @@ end
         """Git repos must be cloned to stage_dir, NOT fetch_dir."""
         # This is a cache-managed package (no check verb) that verifies git placement
         recipe_content = """-- Test that git repos go to stage_dir
-identity = "local.git_location_test@v1"
+IDENTITY = "local.git_location_test@v1"
 
-fetch = {
+FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
     -- Verify git repo is in stage_dir
     local stage_readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(stage_readme, "r")
@@ -366,14 +366,14 @@ end
         """Git fetches should NOT create fetch completion marker (not cacheable)."""
         # This is a cache-managed package (no check verb) that verifies fetch marker behavior
         recipe_content = """-- Test git fetch completion marker
-identity = "local.git_no_cache@v1"
+IDENTITY = "local.git_no_cache@v1"
 
-fetch = {
+FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
 }
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
     local readme = ctx.stage_dir .. "/ninja.git/README.md"
     local f = io.open(readme, "r")
     if not f then

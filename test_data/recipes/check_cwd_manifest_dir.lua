@@ -1,7 +1,7 @@
 -- Test that check cwd = manifest directory
-identity = "local.check_cwd_manifest@v1"
+IDENTITY = "local.check_cwd_manifest@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Write a marker file using relative path to verify cwd
     -- If cwd is manifest dir, this will create it there
     ctx.run("pwd > /tmp/check_cwd_test_pwd.txt")
@@ -20,6 +20,6 @@ function check(ctx)
     return true  -- Check passes
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

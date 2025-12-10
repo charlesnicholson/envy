@@ -1,7 +1,7 @@
 -- Test direct table field access patterns
-identity = "local.check_table_fields@v1"
+IDENTITY = "local.check_table_fields@v1"
 
-function check(ctx)
+function CHECK(ctx)
     -- Test direct field access
     local res = ctx.run("echo 'test output'", {capture = true})
 
@@ -18,6 +18,6 @@ function check(ctx)
     return true
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check returns true
 end

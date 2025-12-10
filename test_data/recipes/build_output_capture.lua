@@ -1,14 +1,14 @@
 -- Test build phase: verify ctx.run() captures stdout/stderr
-identity = "local.build_output_capture@v1"
+IDENTITY = "local.build_output_capture@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = {strip = 1}
+STAGE = {strip = 1}
 
-build = function(ctx, opts)
+BUILD = function(ctx, opts)
   print("Testing output capture")
 
   -- Capture output from command

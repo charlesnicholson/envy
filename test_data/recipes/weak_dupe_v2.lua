@@ -1,12 +1,12 @@
 -- Second candidate for ambiguity tests
-identity = "local.dupe@v2"
-dependencies = {}
+IDENTITY = "local.dupe@v2"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

@@ -1,7 +1,7 @@
 -- Root recipe with a dependency that uses custom fetch and a weak fetch prerequisite
-identity = "local.weak_custom_fetch_root@v1"
+IDENTITY = "local.weak_custom_fetch_root@v1"
 
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "local.custom_fetch_dep@v1",
     source = {
@@ -15,13 +15,13 @@ dependencies = {
           error("failed to write custom fetch recipe: " .. tostring(err))
         end
         f:write([[
-identity = "local.custom_fetch_dep@v1"
+IDENTITY = "local.custom_fetch_dep@v1"
 
-function install(ctx)
+function INSTALL(ctx)
   -- No-op; custom fetch dependency performs work, root install not needed.
 end
 
-function check(ctx) return true end
+function CHECK(ctx) return true end
 ]])
         f:close()
         ctx.commit_fetch("recipe.lua")
@@ -30,10 +30,10 @@ function check(ctx) return true end
   },
 }
 
-function install(ctx)
+function INSTALL(ctx)
   -- No-op; check returns true so install is skipped.
 end
 
-function check(ctx)
+function CHECK(ctx)
   return true
 end

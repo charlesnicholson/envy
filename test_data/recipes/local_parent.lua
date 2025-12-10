@@ -1,18 +1,18 @@
 -- local.parent@v1
 -- Local recipe depending on another local recipe
 
-identity = "local.parent@v1"
-dependencies = {
+IDENTITY = "local.parent@v1"
+DEPENDENCIES = {
   {
     recipe = "local.child@v1",
     source = "local_child.lua"
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing local parent recipe")
 end

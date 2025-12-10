@@ -65,7 +65,7 @@ class TestAssetCommand(unittest.TestCase):
         # Note: build_dependency.lua has relative fetch source, so we run from project root
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """
@@ -93,7 +93,7 @@ packages = {{
         # TODO: Create test recipes with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
 }}
 """
@@ -109,7 +109,7 @@ packages = {{
         """Query asset that's already installed, should return immediately."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """
@@ -143,7 +143,7 @@ packages = {{
             manifest = other_dir / "custom.lua"
             manifest.write_text(
                 f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """,
@@ -173,7 +173,7 @@ packages = {{
         """Only requested package and dependencies installed, not entire manifest."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }},
     {{ recipe = "local.build_nil@v1", source = "{self.lua_path(self.test_data)}/recipes/build_nil.lua" }},
@@ -212,7 +212,7 @@ packages = {{
         """Error when same identity appears with different options."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "debug" }} }},
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "release" }} }}
 }}
@@ -229,7 +229,7 @@ packages = {{
         """Duplicate identity with same options should succeed."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
@@ -245,7 +245,7 @@ packages = {{
         """Error when requested identity not in manifest."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.other@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """
@@ -260,7 +260,7 @@ packages = {{
         """Error for programmatic packages (no cached artifacts)."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.programmatic@v1", source = "{self.lua_path(self.test_data)}/recipes/install_programmatic.lua" }}
 }}
 """
@@ -275,7 +275,7 @@ packages = {{
         """Error when build phase fails."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.failing@v1", source = "{self.lua_path(self.test_data)}/recipes/build_error_nonzero_exit.lua" }}
 }}
 """
@@ -290,7 +290,7 @@ packages = {{
         """Error when manifest has Lua syntax error."""
         manifest = self.create_manifest(
             """
-packages = {
+PACKAGES = {
     this is invalid lua syntax
 }
 """
@@ -305,7 +305,7 @@ packages = {
         """Verify stdout contains exactly one line with absolute path."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
 }}
 """
@@ -333,7 +333,7 @@ packages = {{
         """Success should have no stderr output, failure should."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
     {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }}
 }}
@@ -356,7 +356,7 @@ packages = {{
         """Install package with options in manifest."""
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "debug" }} }}
 }}
 """
@@ -374,14 +374,14 @@ packages = {{
         """Different options produce separate cache entries with distinct content."""
         # Create recipe that writes option value to a file
         # This is a cache-managed package (no check verb) that writes artifacts to cache
-        recipe_content = """identity = "local.test_options_cache@v1"
+        recipe_content = """IDENTITY = "local.test_options_cache@v1"
 
 -- Empty fetch - recipe generates content directly in install phase
-function fetch(ctx, opts)
+function FETCH(ctx, opts)
     -- Nothing to fetch
 end
 
-function install(ctx, opts)
+function INSTALL(ctx, opts)
     local f = io.open(ctx.install_dir .. "/variant.txt", "w")
     f:write(opts.variant or "none")
     f:close()
@@ -394,7 +394,7 @@ end
         # Manifest with variant=foo
         manifest_foo = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "foo" }} }}
 }}
 """,
@@ -404,7 +404,7 @@ packages = {{
         # Manifest with variant=bar
         manifest_bar = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "bar" }} }}
 }}
 """,
@@ -442,7 +442,7 @@ packages = {{
         # TODO: Create test recipes with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
 }}
 """
@@ -460,7 +460,7 @@ packages = {{
         # TODO: Create test recipes with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
 }}
 """
@@ -480,33 +480,33 @@ packages = {{
         product dependencies fail on clean cache.
         """
         # Create product provider recipe
-        provider_recipe = """identity = "local.test_product_provider@v1"
+        provider_recipe = """IDENTITY = "local.test_product_provider@v1"
 
-fetch = { source = "test_data/archives/test.tar.gz",
+FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
 
-install = function(ctx)
+INSTALL = function(ctx)
     ctx.mark_install_complete()
 end
 
-products = { test_tool = "bin/tool" }
+PRODUCTS = { test_tool = "bin/tool" }
 """
         provider_path = self.test_dir / "test_product_provider.lua"
         provider_path.write_text(provider_recipe, encoding="utf-8")
 
         # Create consumer recipe that depends on the product
-        consumer_recipe = f"""identity = "local.test_product_consumer@v1"
+        consumer_recipe = f"""IDENTITY = "local.test_product_consumer@v1"
 
-dependencies = {{
+DEPENDENCIES = {{
     {{ product = "test_tool" }}
 }}
 
-fetch = {{
+FETCH = {{
     source = "test_data/archives/test.tar.gz",
     sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }}
 
-install = function(ctx)
+INSTALL = function(ctx)
     ctx.mark_install_complete()
 end
 """
@@ -516,7 +516,7 @@ end
         # Manifest with both recipes
         manifest = self.create_manifest(
             f"""
-packages = {{
+PACKAGES = {{
     {{ recipe = "local.test_product_provider@v1", source = "{self.lua_path(provider_path)}" }},
     {{ recipe = "local.test_product_consumer@v1", source = "{self.lua_path(consumer_path)}" }}
 }}

@@ -1,11 +1,11 @@
 -- Test shell error: command not found
-identity = "local.check_error_not_found@v1"
+IDENTITY = "local.check_error_not_found@v1"
 
-function check(ctx)
+function CHECK(ctx)
     local res = ctx.run("nonexistent_command_12345", {quiet = true, check = true})
     error("Should have thrown on command not found")
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached due to check error
 end

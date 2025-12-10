@@ -1,11 +1,11 @@
 -- Fan-out child 2
-identity = "local.fanout_child2@v1"
-dependencies = {}
+IDENTITY = "local.fanout_child2@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

@@ -1,5 +1,5 @@
 -- Recipe that uses relative path for dependency
-identity = "local.with_relative_dep@v1"
-dependencies = {
+IDENTITY = "local.with_relative_dep@v1"
+DEPENDENCIES = {
   { recipe = "local.simple@v1", source = "./simple.lua" }
 }

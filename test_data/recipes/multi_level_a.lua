@@ -1,6 +1,6 @@
-identity = "local.multi_level_a@v1"
+IDENTITY = "local.multi_level_a@v1"
 
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "local.multi_level_b@v1",
     source = {
@@ -9,8 +9,8 @@ dependencies = {
       },
       fetch = function(ctx, opts)
         local recipe_content = [=[
-identity = "local.multi_level_b@v1"
-dependencies = {
+IDENTITY = "local.multi_level_b@v1"
+DEPENDENCIES = {
   {
     recipe = "local.multi_level_c@v1",
     source = {
@@ -19,12 +19,12 @@ dependencies = {
       },
       fetch = function(ctx, opts)
         local recipe_content_c = [[
-identity = "local.multi_level_c@v1"
-dependencies = {}
-function check(ctx)
+IDENTITY = "local.multi_level_c@v1"
+DEPENDENCIES = {}
+function CHECK(ctx)
   return false
 end
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end
 ]]
@@ -37,10 +37,10 @@ end
     }
   }
 }
-function check(ctx)
+function CHECK(ctx)
   return false
 end
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end
 ]=]
@@ -54,10 +54,10 @@ end
   }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

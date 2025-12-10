@@ -1,14 +1,14 @@
 -- Test: default_shell function calls ctx.asset(), recipe missing dep → fails with error
-identity = "local.default_shell_function_missing_dep@v1"
+IDENTITY = "local.default_shell_function_missing_dep@v1"
 
 -- Intentionally NOT declaring dependency on default_shell_dep_tool
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-stage = function(ctx, opts)
+STAGE = function(ctx, opts)
   if ENVY_PLATFORM == "windows" then
     error("default_shell_function_missing_dep test only runs on POSIX")
   end

@@ -21,7 +21,7 @@ static recipe_result_map_t run_recipe_from_file(std::string const &identity,
                              ("envy-weak-unit-" + std::to_string(++counter)) };
 
   cache c{ cache_root };
-  auto manifest_ptr{ manifest::load("packages = {}", recipe_path) };
+  auto manifest_ptr{ manifest::load("PACKAGES = {}", recipe_path) };
   engine eng{ c, manifest_ptr->get_default_shell(nullptr) };
 
   recipe_spec *spec_ptr{ recipe_spec::pool()->emplace(identity,

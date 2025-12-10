@@ -2,6 +2,8 @@
 
 ## Project Manifests
 
+All script-global variables are uppercase: manifests export `PACKAGES`; recipes declare `IDENTITY`, `FETCH`, `CHECK`, `STAGE`, `BUILD`, `INSTALL`, `DEPENDENCIES`, and `PRODUCTS`.
+
 **Syntax:** Shorthand `"namespace.name@version"` expands to `{ recipe = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`.
 
 **Platform-specific packages:** Manifests are Lua scripts—use conditionals and `envy.join()` to combine common and OS-specific package lists.
@@ -23,13 +25,13 @@ local common = {
     },
     {  -- Custom fetch (JFrog example)
         recipe = "corporate.toolchain@v1",
-        fetch = function(ctx)
+        FETCH = function(ctx)
             local jfrog = ctx:asset("jfrog.cli@v2")
             local tmp = ctx.tmp_dir
             ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
             ctx:commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
         end,
-        dependencies = {
+        DEPENDENCIES = {
             { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
         }
     },
@@ -48,7 +50,7 @@ local linux_packages = {
     "system.apt@v1",
 }
 
-packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
+PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
         or ENVY_PLATFORM == "linux" and envy.join(common, linux_packages)
         or common
 ```
@@ -73,7 +75,7 @@ packages = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 ## Shell Configuration
 
-Manifests can specify a `default_shell` global to control how `ctx:run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
+Manifests can specify a `DEFAULT_SHELL` global to control how `ctx:run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
 
 **Built-in shells (constants):**
 - `ENVY_SHELL.BASH` — POSIX bash (default on macOS/Linux)
@@ -90,7 +92,7 @@ Manifests can specify a `default_shell` global to control how `ctx:run()` execut
 
 **Dynamic shell selection (function):**
 ```lua
-default_shell = function(ctx)
+DEFAULT_SHELL = function(ctx)
   -- Query deployed assets to use as interpreter
   local python = ctx:asset("python@v3.11")
   return {inline = {python .. "/bin/python3", "-c"}}
@@ -199,10 +201,10 @@ User-managed packages can use fetch/stage/build phases—workspace directories c
 **Example: System Package Wrapper**
 ```lua
 -- python.interpreter@v3 (user-managed)
-identity = "python.interpreter@v3"
+IDENTITY = "python.interpreter@v3"
 
 -- Check if Python already installed via system package manager
-check = function(ctx)
+CHECK = function(ctx)
   -- Try running python3 --version (returns true/false on success/failure)
   local success = pcall(function()
     ctx:run("python3", "--version")
@@ -211,7 +213,7 @@ check = function(ctx)
 end
 
 -- Install via platform package manager
-install = function(ctx)
+INSTALL = function(ctx)
   if ENVY_PLATFORM == "darwin" then
     ctx:run("brew", "install", "python3")
   elseif ENVY_PLATFORM == "linux" then
@@ -224,14 +226,14 @@ end
 **Example: Cache-Managed Toolchain**
 ```lua
 -- arm.gcc@v2 (cache-managed)
-identity = "arm.gcc@v2"
+IDENTITY = "arm.gcc@v2"
 -- No check verb—use cache marker
 
-fetch = {url = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
+FETCH = {url = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
 
-stage = function(ctx) ctx:extract_all() end
+STAGE = function(ctx) ctx:extract_all() end
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx:copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
   ctx.mark_install_complete()  -- Required—signals cache persistence
 end
@@ -243,7 +245,7 @@ Recipes declare dependencies; transitive resolution is automatic. Manifest autho
 
 ```lua
 -- vendor.openocd@v3
-dependencies = {
+DEPENDENCIES = {
   {
     recipe = "arm.gcc@v2",
     url = "https://github.com/arm/recipes/gcc-v2.lua",
@@ -252,13 +254,13 @@ dependencies = {
   },
 }
 
-build = function(ctx)
+BUILD = function(ctx)
   local gcc_root = ctx:asset("arm.gcc@v2")
   ctx:run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
   ctx:run("make", "-j" .. ctx.cores)
 end
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx:run("make", "install")
 end
 ```
@@ -294,10 +296,10 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 **Identity requirement:** ALL recipes must declare their identity:
 ```lua
 -- vendor.lib@v1 recipe file
-identity = "vendor.lib@v1"
+IDENTITY = "vendor.lib@v1"
 
 -- local.wrapper@v1 recipe file
-identity = "local.wrapper@v1"
+IDENTITY = "local.wrapper@v1"
 
 -- Rest of recipe...
 ```
@@ -306,29 +308,29 @@ Envy validates declared identity matches requested identity. This prevents typos
 **Declarative sources** (common case):
 ```lua
 -- String shorthand (no verification)
-fetch = "https://example.com/gcc.tar.gz"
+FETCH = "https://example.com/gcc.tar.gz"
 
 -- Single file with verification
-fetch = {url = "https://example.com/lib.lua", sha256 = "abc..."}
+FETCH = {url = "https://example.com/lib.lua", sha256 = "abc..."}
 
 -- Multiple files (concurrent download)
-fetch = {
+FETCH = {
   {url = "https://example.com/gcc.tar.gz", sha256 = "abc..."},
   {url = "https://example.com/gcc.tar.gz.sig", sha256 = "def..."}
 }
 
 -- Git repository
-fetch = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
+FETCH = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 
 -- S3 (first-class support)
-fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
+FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```
 
 **Custom fetch functions** (exotic cases—JFrog, authenticated APIs, custom tools):
 ```lua
 {
   recipe = "corporate.toolchain@v1",
-  fetch = function(ctx)
+  FETCH = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
 
     -- Download files concurrently with verification
@@ -338,7 +340,7 @@ fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
     })
     -- files = {"recipe.lua", "helpers.lua"}
   end,
-  dependencies = {
+  DEPENDENCIES = {
     { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
@@ -348,14 +350,14 @@ fetch = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```lua
 ctx = {
   -- Identity & configuration
-  identity = string,                                -- Recipe identity (recipes only, not manifests)
+  IDENTITY = string,                                -- Recipe identity (recipes only, not manifests)
   options = table,                                  -- Recipe options (always present, may be empty)
 
   -- Directories
   tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
 
   -- Download functions (concurrent, atomic commit)
-  fetch = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
+  FETCH = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
                                                     -- spec: {url="...", sha256="..."} or {{...}, {...}}
                                                     -- Returns: basename(s) of downloaded file(s)
 
@@ -398,7 +400,7 @@ ENVY_PLATFORM, ENVY_ARCH, ENVY_PLATFORM_ARCH
 
 **Custom phase dependencies:** Use `needed_by` annotation to couple specific phases:
 ```lua
-dependencies = {
+DEPENDENCIES = {
   { recipe = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
 }
 ```
@@ -411,11 +413,11 @@ dependencies = {
 {
   {
     recipe = "corporate.toolchain@v1",
-    fetch = function(ctx)
+    FETCH = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")  -- Tool must be installed first
       -- ... fetch using jfrog CLI ...
     end,
-    dependencies = {
+    DEPENDENCIES = {
       {
         recipe = "jfrog.cli@v2",
         source = "https://public.com/jfrog-cli-recipe.lua",
@@ -452,7 +454,7 @@ dependencies = {
 ```lua
 -- Recipe A
 { recipe = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
-  dependencies = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
+  DEPENDENCIES = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
 
 -- Recipe B
 { recipe = "B@v1", dependencies = { { recipe = "A@v1", needed_by = "recipe_fetch" } } }
@@ -497,7 +499,7 @@ Recipes run only on host platform—no cross-deployment. Single recipe file adap
 
 **Single-file with conditionals:**
 ```lua
-fetch = function(ctx)
+FETCH = function(ctx)
   local version = ctx.options.version or "13.2.0"
   local hashes = {
     ["13.2.0"] = {
@@ -512,11 +514,11 @@ fetch = function(ctx)
   }
 end
 
-stage = function(ctx)
+STAGE = function(ctx)
   ctx:extract_all()
 end
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx:add_to_path("bin")
   if ENVY_PLATFORM == "darwin" then
     ctx:fixup_macos_rpaths()
@@ -536,9 +538,9 @@ arm.gcc@v2/
 ```lua
 -- recipe.lua
 local impl = require(ENVY_PLATFORM)  -- Loads darwin.lua or linux.lua
-fetch = function(ctx) return impl.fetch(ctx, require("checksums")) end
-stage = impl.stage
-install = impl.install
+FETCH = function(ctx) return impl.fetch(ctx, require("checksums")) end
+STAGE = impl.stage
+INSTALL = impl.install
 ```
 
 **Platform validation:**

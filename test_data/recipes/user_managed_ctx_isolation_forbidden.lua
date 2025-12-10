@@ -1,11 +1,11 @@
 -- Test that user-managed packages cannot access forbidden ctx APIs
-identity = "local.user_managed_ctx_isolation_forbidden@v1"
+IDENTITY = "local.user_managed_ctx_isolation_forbidden@v1"
 
-function check(ctx)
+function CHECK(ctx)
     return false  -- Always needs install
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Attempt to access a forbidden API (will be set by test harness via env var)
     local forbidden_api = os.getenv("ENVY_TEST_FORBIDDEN_API")
     if not forbidden_api then

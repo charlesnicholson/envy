@@ -1,11 +1,11 @@
 -- Recipe with wrong identity declaration (mismatch)
-identity = "local.wrong_identity@v1"
-dependencies = {}
+IDENTITY = "local.wrong_identity@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- This should never execute
 end

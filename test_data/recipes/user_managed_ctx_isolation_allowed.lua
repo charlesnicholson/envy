@@ -1,11 +1,11 @@
 -- Test that user-managed packages CAN access allowed ctx APIs
-identity = "local.user_managed_ctx_isolation_allowed@v1"
+IDENTITY = "local.user_managed_ctx_isolation_allowed@v1"
 
-function check(ctx)
+function CHECK(ctx)
     return false  -- Always needs install
 end
 
-function install(ctx)
+function INSTALL(ctx)
     -- Verify identity is accessible
     if not ctx.identity then
         error("ctx.identity should be accessible")

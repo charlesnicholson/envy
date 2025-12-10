@@ -1,12 +1,12 @@
 -- Terminal dependency for the weak chain
-identity = "local.chain_c@v1"
-dependencies = {}
+IDENTITY = "local.chain_c@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

@@ -1,13 +1,13 @@
 -- Deep chain: D -> E
-identity = "local.chain_d@v1"
-dependencies = {
+IDENTITY = "local.chain_d@v1"
+DEPENDENCIES = {
   { recipe = "local.chain_e@v1", source = "chain_e.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

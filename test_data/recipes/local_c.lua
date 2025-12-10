@@ -1,12 +1,12 @@
 -- local.c@v1
 -- Local recipe with no dependencies
 
-identity = "local.c@v1"
+IDENTITY = "local.c@v1"
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   envy.info("Installing local c recipe")
 end

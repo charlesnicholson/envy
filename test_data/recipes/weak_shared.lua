@@ -1,12 +1,12 @@
 -- Shared dependency produced by fallbacks
-identity = "local.shared@v1"
-dependencies = {}
+IDENTITY = "local.shared@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

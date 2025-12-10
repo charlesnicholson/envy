@@ -69,7 +69,7 @@ struct test_recipe_fixture {
     });
   }
 
-  void set_check_string(std::string_view cmd) { (*r->lua)["check"] = std::string(cmd); }
+  void set_check_string(std::string_view cmd) { (*r->lua)["CHECK"] = std::string(cmd); }
 
   void set_check_function(std::string_view lua_code) {
     std::string code = "return " + std::string(lua_code);
@@ -79,10 +79,10 @@ struct test_recipe_fixture {
       sol::error err = res;
       throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
     }
-    (*r->lua)["check"] = res.get<sol::protected_function>();
+    (*r->lua)["CHECK"] = res.get<sol::protected_function>();
   }
 
-  void clear_check() { (*r->lua)["check"] = sol::lua_nil; }
+  void clear_check() { (*r->lua)["CHECK"] = sol::lua_nil; }
 };
 
 }  // namespace
@@ -117,7 +117,7 @@ TEST_CASE("recipe_has_check_verb returns false when no check verb") {
 
 TEST_CASE("recipe_has_check_verb returns false for number") {
   test_recipe_fixture f;
-  (*f.r->lua)["check"] = 42;
+  (*f.r->lua)["CHECK"] = 42;
 
   bool has_check{ recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua }) };
   CHECK_FALSE(has_check);
@@ -125,7 +125,7 @@ TEST_CASE("recipe_has_check_verb returns false for number") {
 
 TEST_CASE("recipe_has_check_verb returns false for invalid check type (table)") {
   test_recipe_fixture f;
-  (*f.r->lua)["check"] = f.r->lua->create_table();
+  (*f.r->lua)["CHECK"] = f.r->lua->create_table();
 
   bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK_FALSE(has_check);
@@ -400,7 +400,7 @@ TEST_CASE("run_check_verb returns false when no check verb") {
 
 TEST_CASE("run_check_verb returns false for table check type") {
   test_recipe_fixture f;
-  (*f.r->lua)["check"] = f.r->lua->create_table();
+  (*f.r->lua)["CHECK"] = f.r->lua->create_table();
 
   cache test_cache;
   engine eng{ test_cache, std::nullopt };

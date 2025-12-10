@@ -1,12 +1,12 @@
 -- Fallback that should be ignored when a strong match exists
-identity = "local.unused_fallback@v1"
-dependencies = {}
+IDENTITY = "local.unused_fallback@v1"
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install: no cache artifacts
 end
 

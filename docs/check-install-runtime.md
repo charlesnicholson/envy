@@ -9,7 +9,7 @@
 - User-managed packages (with check verb) cannot use cache phases (fetch/stage/build) or cache directory paths—only check + install phases with ephemeral tmp_dir.
 
 ## Behavior Matrix
-**Check (string):** Quiet success; verbose failure prints stdout+stderr via `tui::error()`, then throws with command+exit+outputs. Manifest `default_shell`, cwd=manifest dir—user-managed packages run project-relative, cache-unaware. Silent success even with `--verbose` (only phase transitions log).
+**Check (string):** Quiet success; verbose failure prints stdout+stderr via `tui::error()`, then throws with command+exit+outputs. Manifest `DEFAULT_SHELL`, cwd=manifest dir—user-managed packages run project-relative, cache-unaware. Silent success even with `--verbose` (only phase transitions log).
 
 **Check (ctx.run):** Honors quiet/capture—defaults stream to TUI, throw on error. Returns table with `exit_code` field (capture=false) or `stdout, stderr, exit_code` fields (capture=true). Signature: `ctx.run("command [args...]", opts_table?)` — command string executed via shell.
 
@@ -28,25 +28,25 @@
 **Examples:**
 ```lua
 -- Check with string (quiet success, loud failure)
-check = "python3 --version"
+CHECK = "python3 --version"
 
 -- Check with ctx.run (explicit control)
-check = function(ctx)
+CHECK = function(ctx)
   local res = ctx.run("brew list")  -- Streams, throws on error, returns table with exit_code
   if res.exit_code ~= 0 then error("brew not installed") end
 end
 
 -- Install with string
-install = "make install"
+INSTALL = "make install"
 
 -- Install with ctx.run + returned string (both execute)
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.run("make -j8")     -- Build with 8 cores
   return "make install"   -- Fresh shell, runs in install_dir (cache-managed) or manifest dir (user-managed)
 end
 
 -- Capture stdout/stderr (table fields when capture=true)
-check = function(ctx)
+CHECK = function(ctx)
   local res = ctx.run("python3 --version", {capture=true})
   if res.exit_code ~= 0 then error("python failed") end
   if not res.stdout:match("3%.11") then
@@ -61,11 +61,11 @@ local err = res.stderr
 local code = res.exit_code
 
 -- User-managed package (system wrapper)
-check = function(ctx)
+CHECK = function(ctx)
   return ctx.run("python3 --version", {quiet=true}).exit_code == 0
 end
 
-install = function(ctx)
+INSTALL = function(ctx)
   -- tmp_dir available for ephemeral workspace
   local function shell_escape(str)
     return "'" .. tostring(str):gsub("'", "'\\''") .. "'"
@@ -115,7 +115,7 @@ end
 - [x] Install function returning non-string/non-nil → error; nil/no return → no extra action.
 - [x] ctx.run default (no flags): streams interleaved, throws on non-zero, returns table with exit_code field.
 - [x] ctx.run quiet + capture combos across success/failure (4 combinations: !q!c, q!c, !qc, qc).
-- [x] Default shell (manifest `default_shell`) respected in check/install string paths.
+- [x] Default shell (manifest `DEFAULT_SHELL`) respected in check/install string paths.
 - [x] Check cwd = manifest directory (test via relative path in check string).
 - [x] Install cwd = install_dir (cache-managed) or manifest directory (user-managed) via relative path in install string and returned string.
 - [x] Table field access patterns: `res.exit_code`, `res.stdout`, chained access `ctx.run(...).stdout`.

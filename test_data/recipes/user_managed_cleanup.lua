@@ -1,7 +1,7 @@
 -- Test user-managed entry_dir cleanup
-identity = "local.user_cleanup@v1"
+IDENTITY = "local.user_cleanup@v1"
 
-function check(ctx)
+function CHECK(ctx)
     local marker = os.getenv("ENVY_TEST_CLEANUP_MARKER")
     if not marker then error("ENVY_TEST_CLEANUP_MARKER not set") end
 
@@ -14,7 +14,7 @@ function check(ctx)
     return success and res.exit_code == 0
 end
 
-function install(ctx)
+function INSTALL(ctx)
     local marker = os.getenv("ENVY_TEST_CLEANUP_MARKER")
     if not marker then error("ENVY_TEST_CLEANUP_MARKER not set") end
 

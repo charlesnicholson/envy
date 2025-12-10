@@ -11,7 +11,7 @@ namespace envy {
 // Returns variant containing shell_choice or custom_shell_file or custom_shell_inline
 // Throws std::runtime_error with context prefix on parse/validation failure
 //
-// The context parameter is used for error messages (e.g., "ctx.run", "default_shell")
+// The context parameter is used for error messages (e.g., "ctx.run", "DEFAULT_SHELL")
 resolved_shell parse_shell_config_from_lua(sol::object const &obj, char const *context);
 
 }  // namespace envy

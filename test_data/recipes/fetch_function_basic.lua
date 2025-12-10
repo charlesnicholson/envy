@@ -1,12 +1,12 @@
 -- Test recipe with basic fetch function
-identity = "local.fetcher@v1"
-dependencies = {}
+IDENTITY = "local.fetcher@v1"
+DEPENDENCIES = {}
 
-function fetch(ctx)
+function FETCH(ctx)
   -- Simulates fetching by writing a test file
   -- In real usage, would download archives, clone repos, etc.
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Install from fetched materials
 end

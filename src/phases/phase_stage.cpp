@@ -39,9 +39,9 @@ sol::table build_stage_phase_ctx_table(sol::state_view lua,
 
 std::filesystem::path determine_stage_destination(sol::state_view lua,
                                                   cache::scoped_entry_lock const *lock) {
-  sol::object stage_obj{ lua["stage"] };
-  sol::object build_obj{ lua["build"] };
-  sol::object install_obj{ lua["install"] };
+  sol::object stage_obj{ lua["STAGE"] };
+  sol::object build_obj{ lua["BUILD"] };
+  sol::object install_obj{ lua["INSTALL"] };
 
   bool const has_custom_phases{ stage_obj.is<sol::protected_function>() ||
                                 build_obj.is<sol::protected_function>() ||
@@ -117,7 +117,7 @@ void run_programmatic_stage(sol::protected_function stage_func,
   // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  call_lua_function_with_enriched_errors(r, "stage", [&]() {
+  call_lua_function_with_enriched_errors(r, "STAGE", [&]() {
     return stage_func(ctx_table, opts);
   });
 }
@@ -172,7 +172,7 @@ void run_stage_phase(recipe *r, engine &eng) {
   std::filesystem::path const dest_dir{ determine_stage_destination(lua_view, lock) };
   std::filesystem::path const fetch_dir{ lock->fetch_dir() };
 
-  sol::object stage_obj{ lua_view["stage"] };
+  sol::object stage_obj{ lua_view["STAGE"] };
 
   if (!stage_obj.valid()) {
     run_default_stage(fetch_dir, dest_dir);
@@ -193,7 +193,7 @@ void run_stage_phase(recipe *r, engine &eng) {
     stage_obj.push(lua_view.lua_state());
     run_declarative_stage(lua_view, fetch_dir, dest_dir, identity);
   } else {
-    throw std::runtime_error("stage field must be nil, string, table, or function for " +
+    throw std::runtime_error("STAGE field must be nil, string, table, or function for " +
                              identity);
   }
 }

@@ -1,13 +1,13 @@
 -- Left side of diamond: B depends on D
-identity = "local.diamond_b@v1"
-dependencies = {
+IDENTITY = "local.diamond_b@v1"
+DEPENDENCIES = {
   { recipe = "local.diamond_d@v1", source = "diamond_d.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic package
 end

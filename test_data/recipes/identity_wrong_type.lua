@@ -1,11 +1,11 @@
 -- Recipe with identity as wrong type (table instead of string)
-identity = { name = "wrong" }
-dependencies = {}
+IDENTITY = { name = "wrong" }
+DEPENDENCIES = {}
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- This should never execute
 end

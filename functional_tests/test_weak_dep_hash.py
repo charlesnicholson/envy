@@ -59,7 +59,7 @@ class TestWeakDepHash(unittest.TestCase):
         # Scenario 1: provider_a satisfies weak dep
         manifest1 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_a@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_a.lua",
@@ -87,7 +87,7 @@ packages = {{
         # Scenario 2: provider_b satisfies weak dep (different provider)
         manifest2 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_b@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
@@ -120,7 +120,7 @@ packages = {{
         # Scenario 1: fallback is used (no provider in manifest)
         manifest1 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_consumer_weak@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_weak.lua",
@@ -143,7 +143,7 @@ packages = {{
         # Scenario 2: provider_b from registry (not fallback)
         manifest2 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_b@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
@@ -174,7 +174,7 @@ packages = {{
         """Multiple weak deps should be sorted deterministically in hash."""
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_zzz@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_zzz.lua",
@@ -205,7 +205,7 @@ packages = {{
 
         manifest2 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_aaa@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_aaa.lua",
@@ -240,21 +240,21 @@ packages = {{
         """Ref-only product dependency should contribute resolved identity to hash."""
         # Create consumer with ref-only dep
         consumer_lua = f"""
-identity = "local.hash_consumer_refonly@v1"
+IDENTITY = "local.hash_consumer_refonly@v1"
 
-dependencies = {{
+DEPENDENCIES = {{
   {{
     product = "tool",
     -- No recipe, no source - ref-only
   }},
 }}
 
-fetch = {{
+FETCH = {{
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }}
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -264,7 +264,7 @@ end
         # Scenario 1: provider_a satisfies ref-only dep
         manifest1 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_a@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_a.lua",
@@ -291,7 +291,7 @@ packages = {{
         # Scenario 2: provider_b satisfies ref-only dep
         manifest2 = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_provider_b@v1",
     source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
@@ -322,9 +322,9 @@ packages = {{
         """Strong product deps (with source) should NOT contribute additional hash input."""
         # Create consumer with strong product dep
         consumer_lua = f"""
-identity = "local.hash_consumer_strong@v1"
+IDENTITY = "local.hash_consumer_strong@v1"
 
-dependencies = {{
+DEPENDENCIES = {{
   {{
     product = "tool",
     recipe = "local.hash_provider_a@v1",
@@ -332,12 +332,12 @@ dependencies = {{
   }},
 }}
 
-fetch = {{
+FETCH = {{
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }}
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """
@@ -346,7 +346,7 @@ end
 
         manifest = self.manifest(
             f"""
-packages = {{
+PACKAGES = {{
   {{
     recipe = "local.hash_consumer_strong@v1",
     source = "{self.lua_path(consumer_path)}",
@@ -363,14 +363,14 @@ packages = {{
 
         # Create consumer with NO deps (just base identity)
         consumer_nodeps_lua = """
-identity = "local.hash_consumer_nodeps@v1"
+IDENTITY = "local.hash_consumer_nodeps@v1"
 
-fetch = {
+FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-install = function(ctx)
+INSTALL = function(ctx)
   ctx.mark_install_complete()
 end
 """

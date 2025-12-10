@@ -1,13 +1,13 @@
 -- Recipe B (matches "foo" query) that depends on A, creating cycle
-identity = "local.foo@v1"
-dependencies = {
+IDENTITY = "local.foo@v1"
+DEPENDENCIES = {
   { recipe = "local.weak_cycle_a@v1", source = "weak_cycle_a.lua" }
 }
 
-function check(ctx)
+function CHECK(ctx)
   return false
 end
 
-function install(ctx)
+function INSTALL(ctx)
   -- Programmatic install
 end

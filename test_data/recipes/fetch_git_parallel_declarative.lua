@@ -1,8 +1,8 @@
 -- Test recipe with multiple parallel git fetches (declarative)
-identity = "local.fetch_git_parallel_declarative@v1"
+IDENTITY = "local.fetch_git_parallel_declarative@v1"
 
 -- Declarative fetch with multiple repos triggers parallel fetch
-fetch = {
+FETCH = {
   {
     source = "https://github.com/ninja-build/ninja.git",
     ref = "v1.11.1"
@@ -13,7 +13,7 @@ fetch = {
   }
 }
 
-function install(ctx)
+function INSTALL(ctx)
     -- Verify both repos were actually fetched by checking for .git/HEAD
     -- If fetch failed or didn't happen, these files won't exist and install will fail
     local repos = {"ninja.git", "re2.git"}

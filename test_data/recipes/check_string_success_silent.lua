@@ -1,10 +1,10 @@
 -- Test that check string success is silent (no TUI output)
-identity = "local.check_string_success@v1"
+IDENTITY = "local.check_string_success@v1"
 
 -- String check that succeeds (exits 0)
-check = "echo 'test'"
+CHECK = "echo 'test'"
 
 -- Need install verb since we have check
-function install(ctx)
+function INSTALL(ctx)
     -- Not reached since check always passes
 end
