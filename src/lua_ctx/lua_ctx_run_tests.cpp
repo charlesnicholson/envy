@@ -80,7 +80,8 @@ struct ctx_run_fixture {
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run returns only exit_code when capture is false") {
-  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.stdout.write('ok')\"" };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; sys.stdout.write('ok')\"" };
   sol::function run_fn = (*lua)["run"];
   sol::table tbl = run_fn(cmd);
   CHECK(tbl.get<int>("exit_code") == 0);
@@ -91,9 +92,7 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
 TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run capture option returns stdout and stderr") {
 #if defined(_WIN32)
   // Use PowerShell commands that write to stdout and stderr
-  std::string const cmd{
-    "[Console]::Out.Write('out'); [Console]::Error.Write('err')"
-  };
+  std::string const cmd{ "[Console]::Out.Write('out'); [Console]::Error.Write('err')" };
   sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["capture"] = true;
@@ -105,7 +104,8 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run capture option returns stdout and st
   CHECK(stderr_str.find("err") != std::string::npos);
 #else
   std::string const cmd{
-    std::string{ kPythonCmd } + " -c \"import sys; sys.stdout.write('out\\\\n'); sys.stderr.write('err\\\\n')\""
+    std::string{ kPythonCmd } +
+    " -c \"import sys; sys.stdout.write('out\\\\n'); sys.stderr.write('err\\\\n')\""
   };
   sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
@@ -125,7 +125,8 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run captures large stdout/stderr without
 
   std::filesystem::path const script_rel{ "test_data/ctx_run_stress.py" };
   std::filesystem::path const script_abs{ std::filesystem::absolute(script_rel) };
-  std::string script{ std::string{ kPythonCmd } + " \"" + script_abs.generic_string() + "\"" };
+  std::string script{ std::string{ kPythonCmd } + " \"" + script_abs.generic_string() +
+                      "\"" };
 
   sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
@@ -175,10 +176,9 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with check=true throws on non-zero e
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run with check=true includes command and output in error") {
-  std::string const cmd{
-    std::string{ kPythonCmd } + " -c \"import sys; print('out'); "
-    "sys.stderr.write('err\\\\n'); sys.exit(13)\""
-  };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; print('out'); "
+                         "sys.stderr.write('err\\\\n'); sys.exit(13)\"" };
   sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = true;
@@ -199,10 +199,9 @@ TEST_CASE_FIXTURE(ctx_run_fixture,
 
 TEST_CASE_FIXTURE(ctx_run_fixture,
                   "ctx.run with check=false and capture returns exit_code and output") {
-  std::string const cmd{
-    std::string{ kPythonCmd } + " -c \"import sys; print('stdout_data'); "
-    "sys.stderr.write('stderr_data\\\\n'); sys.exit(5)\""
-  };
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"import sys; print('stdout_data'); "
+                         "sys.stderr.write('stderr_data\\\\n'); sys.exit(5)\"" };
   sol::function run_fn = (*lua)["run"];
   sol::table opts{ lua->create_table() };
   opts["check"] = false;
@@ -218,4 +217,17 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run check defaults to false") {
   sol::function run_fn = (*lua)["run"];
   sol::table tbl = run_fn(cmd);
   CHECK(tbl.get<int>("exit_code") == 99);
+}
+
+TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run preserves empty lines in captured output") {
+  std::string const cmd{ std::string{ kPythonCmd } +
+                         " -c \"print('line1'); print(''); print('line2')\"" };
+  sol::function run_fn = (*lua)["run"];
+  sol::table opts{ lua->create_table() };
+  opts["capture"] = true;
+  sol::table tbl = run_fn(cmd, opts);
+  CHECK(tbl.get<int>("exit_code") == 0);
+  std::string stdout_str = tbl.get<std::string>("stdout");
+  // Should have: "line1\n" + "\n" (empty line) + "line2\n"
+  CHECK(stdout_str == "line1\n\nline2\n");
 }
