@@ -32,8 +32,55 @@ std::vector<recipe_spec const *> build_provenance_chain(recipe_spec const *spec)
   return chain;
 }
 
+struct parsed_lua_error {
+  std::string headline;                  // First line of error
+  std::vector<std::string> stack_frames; // Cleaned stack frames
+};
+
+parsed_lua_error parse_lua_error(std::string const &msg) {
+  parsed_lua_error parsed;
+  std::istringstream iss{ msg };
+  std::string line;
+  bool in_stack{ false };
+  bool stack_seen{ false };
+
+  while (std::getline(iss, line)) {
+    if (!in_stack) {
+      if (line.rfind("stack traceback:", 0) == 0) {
+        in_stack = true;
+        stack_seen = true;
+        continue;
+      }
+      if (parsed.headline.empty() && !line.empty()) { parsed.headline = line; }
+      continue;
+    }
+
+    // Skip duplicate stack traceback headers
+    if (line.rfind("stack traceback:", 0) == 0) {
+      if (stack_seen) { break; }
+      stack_seen = true;
+      continue;
+    }
+
+    // Trim leading whitespace
+    auto start{ line.find_first_not_of(" \t") };
+    if (start == std::string::npos) { continue; }
+    line = line.substr(start);
+
+    // Drop noisy frames that don't help users
+    if (line.rfind("[C]:", 0) == 0) { continue; }
+    if (line.find("[string \"...\"]") != std::string::npos) { continue; }
+
+    parsed.stack_frames.push_back(line);
+  }
+
+  return parsed;
+}
+
 std::string format_lua_error(lua_error_context const &ctx) {
   std::ostringstream oss;
+
+  parsed_lua_error parsed{ parse_lua_error(ctx.lua_error_message) };
 
   // Header: identity with options
   oss << "Lua error in " << ctx.r->spec->identity;
@@ -41,7 +88,15 @@ std::string format_lua_error(lua_error_context const &ctx) {
       ctx.r->spec->serialized_options != "{}") {
     oss << ctx.r->spec->serialized_options;
   }
-  oss << ":\n  " << ctx.lua_error_message << "\n\n";
+  oss << ":\n  " << (parsed.headline.empty() ? ctx.lua_error_message : parsed.headline)
+      << "\n";
+
+  if (!parsed.stack_frames.empty()) {
+    oss << "Stack traceback:\n";
+    for (auto const &frame : parsed.stack_frames) { oss << "  " << frame << "\n"; }
+  }
+
+  oss << "\n";
 
   // Recipe file path with line number
   if (ctx.r->recipe_file_path) {

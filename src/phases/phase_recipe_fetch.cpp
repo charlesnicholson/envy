@@ -391,6 +391,46 @@ sol::object store_options_in_registry(sol::state &lua,
   return opts_result.get<sol::object>();
 }
 
+void run_validate(recipe *r, sol::state &lua) {
+  sol::table globals{ lua.globals() };
+  std::optional<sol::protected_function> validate_fn;
+  try {
+    validate_fn =
+        sol_util_get_optional<sol::protected_function>(globals, "VALIDATE", "Recipe");
+  } catch (std::runtime_error const &e) {
+    throw std::runtime_error(std::string(e.what()) + " in recipe '" + r->spec->identity +
+                             "'");
+  }
+  if (!validate_fn.has_value()) { return; }
+
+  sol::object options_obj{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+  sol::protected_function_result result{ call_lua_function_with_enriched_errors(
+      r,
+      "validate",
+      [&]() { return (*validate_fn)(options_obj); }) };
+
+  sol::object ret_obj{ result };
+  sol::type const ret_type{ ret_obj.get_type() };
+
+  auto const failure_prefix{ [&]() {
+    return "VALIDATE failed for " + r->spec->format_key();
+  } };
+
+  switch (ret_type) {
+    case sol::type::lua_nil: return;
+    case sol::type::boolean:
+      if (ret_obj.as<bool>()) { return; }
+      throw std::runtime_error(failure_prefix() + " (returned false)");
+    case sol::type::string:
+      throw std::runtime_error(failure_prefix() + ": " + ret_obj.as<std::string>());
+    default:
+      throw std::runtime_error("VALIDATE must return nil/true/false/string (got " +
+                               std::string(sol::type_name(lua, ret_type)) + ") for " +
+                               r->spec->format_key());
+  }
+}
+
 void wire_dependency_graph(recipe *r, engine &eng) {
   auto &ctx{ eng.get_execution_ctx(r) };
 
@@ -541,6 +581,8 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   } catch (std::runtime_error const &e) {
     throw std::runtime_error(e.what() + std::string(" for ") + spec.identity);
   }
+
+  run_validate(r, *lua);
 
   // Extract dependency identities for ctx.asset() validation
   r->declared_dependencies.reserve(r->owned_dependency_specs.size());

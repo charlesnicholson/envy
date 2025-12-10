@@ -5,9 +5,16 @@ DEPENDENCIES = {
   { product = "ninja" },
 }
 
-FETCH = function(ctx, opts) return {
+VALIDATE = function(opts)
+  if opts.ref == nil then
+    return "'ref' is a required option (GN doesn't tag, so use a git committish)"
+  end
+end
+
+FETCH = function(ctx, opts)
+  return {
     source = "https://gn.googlesource.com/gn.git",
-    ref = opts.ref 
+    ref = opts.ref
   }
 end
 
@@ -36,3 +43,4 @@ INSTALL = function(ctx, opts)
 end
 
 PRODUCTS = { gn = "gn" .. ext }
+

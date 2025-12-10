@@ -1,5 +1,11 @@
 IDENTITY = "local.uv@r0"
 
+VALIDATE = function(opts)
+  if opts.version == nil then
+    return "'version' is a required option"
+  end
+end
+
 FETCH = function(ctx, opts)
   local uri_prefix = "https://github.com/astral-sh/uv/releases/download/"
   local filename = ({

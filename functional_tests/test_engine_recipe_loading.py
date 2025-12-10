@@ -354,6 +354,107 @@ function INSTALL(ctx, opts) end
         finally:
             Path(tmp_path).unlink()
 
+    def test_validate_hook_success(self):
+        """VALIDATE nil/true succeeds."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_ok@v1",
+                "test_data/recipes/validate_ok.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_validate_hook_false(self):
+        """VALIDATE returning false fails."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_false@v1",
+                "test_data/recipes/validate_false.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("returned false", result.stderr)
+
+    def test_validate_hook_string(self):
+        """VALIDATE returning string surfaces message."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_string@v1",
+                "test_data/recipes/validate_string.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("nope", result.stderr)
+
+    def test_validate_hook_invalid_return(self):
+        """VALIDATE returning invalid type errors."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_type@v1",
+                "test_data/recipes/validate_type.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("VALIDATE must return", result.stderr)
+
+    def test_validate_hook_non_function(self):
+        """VALIDATE non-function errors."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_nonfn@v1",
+                "test_data/recipes/validate_nonfn.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("VALIDATE must be a function", result.stderr)
+
+    def test_validate_hook_runtime_error(self):
+        """VALIDATE error bubbles with context."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                *self.trace_flag,
+                "engine-test",
+                "test.validate_error@v1",
+                "test_data/recipes/validate_error.lua",
+                f"--cache-root={self.cache_root}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("boom", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
