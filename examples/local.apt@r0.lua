@@ -17,7 +17,7 @@ check = function(ctx, opts)
 
   missing_packages = {}
 
-  for _, pkg in ipairs(opts.packages) do
+  for _, pkg in pairs(opts.packages) do
     if not installed[pkg] then
       table.insert(missing_packages, pkg)
     end
@@ -27,9 +27,5 @@ check = function(ctx, opts)
 end
 
 install = function(ctx, opts)
-  if #missing_packages == 0 then
-    return nil
-  end
-
   return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
 end
