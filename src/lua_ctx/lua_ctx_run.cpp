@@ -124,11 +124,13 @@ make_ctx_run(lua_ctx_common *ctx) {
     bool quiet{ false };
     bool capture{ false };
     bool check{ false };
+    bool interactive{ false };
     if (opts_table) {
       sol::table opts{ *opts_table };
       quiet = sol_util_get_or_default<bool>(opts, "quiet", false, "ctx.run");
       capture = sol_util_get_or_default<bool>(opts, "capture", false, "ctx.run");
       check = sol_util_get_or_default<bool>(opts, "check", false, "ctx.run");
+      interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "ctx.run");
     }
 
     std::string stdout_buffer;
@@ -146,6 +148,9 @@ make_ctx_run(lua_ctx_common *ctx) {
       .env = std::move(env),
       .shell = shell
     };
+
+    std::optional<tui::interactive_mode_guard> guard;
+    if (interactive) { guard.emplace(); }
 
     shell_result const result{ shell_run(script_view, inv) };
 

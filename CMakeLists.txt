@@ -383,7 +383,7 @@ set(ENVY_UNIT_TEST_SOURCES
 
 add_executable(envy_unit_tests)
 target_sources(envy_unit_tests PRIVATE ${ENVY_BASE_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
-target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
+target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\" ENVY_UNIT_TEST)
 target_link_libraries(envy_unit_tests PRIVATE doctest::doctest)
 # GCC: Disable ASan to avoid AWS SDK hashlittle2 false positive (LTO inlines across libs)
 # Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)

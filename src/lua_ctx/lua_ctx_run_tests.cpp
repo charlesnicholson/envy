@@ -231,3 +231,19 @@ TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run preserves empty lines in captured ou
   // Should have: "line1\n" + "\n" (empty line) + "line2\n"
   CHECK(stdout_str == "line1\n\nline2\n");
 }
+
+TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run with interactive=true runs command") {
+  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.exit(0)\"" };
+  sol::function run_fn = (*lua)["run"];
+  sol::table opts{ lua->create_table() };
+  opts["interactive"] = true;
+  sol::table tbl = run_fn(cmd, opts);
+  CHECK(tbl.get<int>("exit_code") == 0);
+}
+
+TEST_CASE_FIXTURE(ctx_run_fixture, "ctx.run interactive defaults to false") {
+  std::string const cmd{ std::string{ kPythonCmd } + " -c \"import sys; sys.exit(0)\"" };
+  sol::function run_fn = (*lua)["run"];
+  sol::table tbl = run_fn(cmd);
+  CHECK(tbl.get<int>("exit_code") == 0);
+}

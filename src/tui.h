@@ -2,10 +2,14 @@
 
 #include "trace.h"
 
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -53,6 +57,59 @@ struct scope {  // raii helper
  private:
   bool active{ false };
 };
+
+// Section progress API
+using section_handle = unsigned;
+
+struct progress_data {
+  double percent;
+  std::string status;
+};
+
+struct text_stream_data {
+  std::vector<std::string> lines;
+  std::size_t line_limit{ 0 };  // 0 = show all lines, N = show last N lines
+  std::chrono::steady_clock::time_point start_time;  // For spinner animation
+};
+
+struct spinner_data {
+  std::string text;
+  std::chrono::steady_clock::time_point start_time;
+  std::chrono::milliseconds frame_duration{ 100 };
+};
+
+struct static_text_data {
+  std::string text;
+};
+
+struct section_frame {
+  std::string label;
+  std::variant<progress_data, text_stream_data, spinner_data, static_text_data> content;
+};
+
+section_handle section_create();
+void section_set_content(section_handle h, section_frame const &frame);
+void section_release(section_handle h);
+
+// Interactive mode API
+void acquire_interactive_mode();
+void release_interactive_mode();
+
+class interactive_mode_guard {
+ public:
+  interactive_mode_guard();
+  ~interactive_mode_guard();
+};
+
+#ifdef ENVY_UNIT_TEST
+namespace test {
+extern int g_terminal_width;
+extern bool g_isatty;
+extern std::chrono::steady_clock::time_point g_now;
+
+std::string render_section_frame(section_frame const &frame);
+}  // namespace test
+#endif
 
 }  // namespace envy::tui
 
