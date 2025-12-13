@@ -28,6 +28,8 @@ bool extract_is_archive_extension(std::filesystem::path const &path);
 // Extract all archives in a directory
 void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
-                          int strip_components);
+                          int strip_components,
+                          extract_progress_cb_t progress = nullptr,
+                          std::string const &recipe_identity = "");
 
 }  // namespace envy

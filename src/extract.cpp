@@ -1,10 +1,12 @@
 #include "extract.h"
+#include "trace.h"
 #include "tui.h"
 #include "util.h"
 
 #include "archive.h"
 #include "archive_entry.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -240,7 +242,9 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
 
 void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
-                          int strip_components) {
+                          int strip_components,
+                          extract_progress_cb_t progress,
+                          std::string const &recipe_identity) {
   if (!std::filesystem::exists(fetch_dir)) {
     tui::debug("extract_all_archives: fetch_dir does not exist, nothing to extract");
     return;
@@ -248,6 +252,15 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
 
   std::uint64_t total_files_extracted{ 0 };
   std::uint64_t total_files_copied{ 0 };
+  std::uint64_t archive_files_processed{ 0 };
+
+  // Count total files for progress tracking
+  std::uint64_t total_file_count{ 0 };
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    std::string const filename{ entry.path().filename().string() };
+    if (filename != "envy-complete") { ++total_file_count; }
+  }
 
   for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
     if (!entry.is_regular_file()) { continue; }
@@ -259,25 +272,47 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     if (filename == "envy-complete") { continue; }
 
     if (extract_is_archive_extension(path)) {
-      tui::debug("extract_all_archives: extracting archive %s (strip=%d)",
-                 filename.c_str(),
-                 strip_components);
+      auto const start{ std::chrono::steady_clock::now() };
 
+      ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_identity,
+                                       path.string(),
+                                       dest_dir.string(),
+                                       strip_components);
+
+      // Don't pass progress to extract() - we'll update after completion
       extract_options opts{ .strip_components = strip_components };
       std::uint64_t const files{ extract(path, dest_dir, opts) };
       total_files_extracted += files;
 
-      tui::debug("extract_all_archives: extracted %llu files from %s",
-                 static_cast<unsigned long long>(files),
-                 filename.c_str());
-    } else {
-      tui::debug("extract_all_archives: copying non-archive %s", filename.c_str());
+      auto const duration{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - start)
+                               .count() };
 
+      ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_identity,
+                                          path.string(),
+                                          static_cast<std::int64_t>(files),
+                                          duration);
+
+      // Update progress after extraction completes
+      if (progress) {
+        progress(extract_progress{ .bytes_processed = total_files_extracted,
+                                   .total_bytes = std::nullopt,
+                                   .current_entry = {} });
+      }
+    } else {
       std::filesystem::path const dest_path{ dest_dir / filename };
       std::filesystem::copy_file(path,
                                  dest_path,
                                  std::filesystem::copy_options::overwrite_existing);
       ++total_files_copied;
+    }
+
+    ++archive_files_processed;
+    // For non-archives, report archive-level progress
+    if (progress && !extract_is_archive_extension(path)) {
+      progress(extract_progress{ .bytes_processed = archive_files_processed,
+                                 .total_bytes = total_file_count,
+                                 .current_entry = path.filename() });
     }
   }
 

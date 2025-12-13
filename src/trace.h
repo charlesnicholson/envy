@@ -222,6 +222,20 @@ struct directory_flush_failed {
   std::string reason;
 };
 
+struct extract_archive_start {
+  std::string recipe;
+  std::string archive_path;
+  std::string destination;
+  int strip_components;
+};
+
+struct extract_archive_complete {
+  std::string recipe;
+  std::string archive_path;
+  std::int64_t files_extracted;
+  std::int64_t duration_ms;
+};
+
 }  // namespace trace_events
 
 using trace_event_t = std::variant<trace_events::phase_blocked,
@@ -257,7 +271,9 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::directory_flushed,
                                    trace_events::file_touched,
                                    trace_events::file_exists_check,
-                                   trace_events::directory_flush_failed>;
+                                   trace_events::directory_flush_failed,
+                                   trace_events::extract_archive_start,
+                                   trace_events::extract_archive_complete>;
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);
@@ -562,4 +578,26 @@ struct phase_trace_scope {
       .recipe = (recipe_value), \
       .dir_path = (dir_path_value), \
       .reason = (reason_value), \
+  }))
+
+#define ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_value, \
+                                         archive_path_value, \
+                                         destination_value, \
+                                         strip_components_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_start{ \
+      .recipe = (recipe_value), \
+      .archive_path = (archive_path_value), \
+      .destination = (destination_value), \
+      .strip_components = (strip_components_value), \
+  }))
+
+#define ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_value, \
+                                            archive_path_value, \
+                                            files_extracted_value, \
+                                            duration_ms_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_complete{ \
+      .recipe = (recipe_value), \
+      .archive_path = (archive_path_value), \
+      .files_extracted = (files_extracted_value), \
+      .duration_ms = (duration_ms_value), \
   }))

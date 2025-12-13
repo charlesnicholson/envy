@@ -308,7 +308,7 @@ Flat list, tests immediately after feature bringup:
 - ✓ Run unit tests `./out/build/envy_unit_tests` (verify no regressions)
 - ✓ Integrate progress bar in `phase_fetch.cpp`: create section in recipe, update on progress callbacks
 - ✓ Build with `./build.sh` (verify no compile errors after fetch integration)
-- Manual test: run `envy sync` with package requiring fetch, verify progress bar visible and animates
+- ✓ Manual test: run `envy sync` with package requiring fetch, verify progress bar visible and animates
 - Integrate progress bar in `phase_stage.cpp`: create section, update via `archive_extract_observer`, release after
 - Build with `./build.sh` (verify no compile errors after stage integration)
 - Manual test: run `envy sync` with package requiring extraction, verify progress bar visible

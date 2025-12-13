@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -137,8 +138,6 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
     };
 
     if (!fetch_specs.empty()) {
-      if (r->tui_section == 0) { r->tui_section = tui::section_create(); }
-
       auto const to_download{ determine_downloads_needed(fetch_specs) };
       auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
       auto const start{ std::chrono::steady_clock::now() };
@@ -342,27 +341,23 @@ void update_progress_for_transfer(tui::section_handle handle,
                                   std::string const &label,
                                   fetch_transfer_progress const &prog) {
   if (!prog.total.has_value() || *prog.total == 0) {  // Unknown total size
-
-    char status[64]{};
-    std::snprintf(status, sizeof(status), "%.1f MB", prog.transferred / 1e6);
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << (prog.transferred / 1e6) << " MB";
     tui::section_set_content(
         handle,
         tui::section_frame{ .label = label,
                             .content =
-                                tui::progress_data{ .percent = 0.0, .status = status } });
+                                tui::progress_data{ .percent = 0.0, .status = oss.str() } });
   } else {  // Known total - show percentage
     double const percent{ (prog.transferred / static_cast<double>(*prog.total)) * 100.0 };
-    char status[64]{};
-    std::snprintf(status,
-                  sizeof(status),
-                  "%.1f/%.1fMB",
-                  prog.transferred / 1e6,
-                  *prog.total / 1e6);
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << (prog.transferred / 1e6) << "/"
+        << (*prog.total / 1e6) << "MB";
     tui::section_set_content(
         handle,
         tui::section_frame{
             .label = label,
-            .content = tui::progress_data{ .percent = percent, .status = status } });
+            .content = tui::progress_data{ .percent = percent, .status = oss.str() } });
   }
 }
 
@@ -370,33 +365,21 @@ void update_progress_for_git(tui::section_handle handle,
                              std::string const &label,
                              fetch_git_progress const &prog) {
   if (prog.total_objects > 0 && prog.received_objects >= prog.total_objects) {
-    // Clone complete
-    char text[128]{};
-    std::snprintf(text, sizeof(text), "%u objects", prog.total_objects);
+    // Clone complete - show final static count
+    std::ostringstream oss;
+    oss << prog.total_objects << " objects";
     tui::section_set_content(
         handle,
         tui::section_frame{ .label = label,
-                            .content = tui::static_text_data{ .text = text } });
+                            .content = tui::static_text_data{ .text = oss.str() } });
   } else {
-    // Still cloning - show spinner
-    char text[128]{};
-    if (prog.total_objects == 0) {
-      std::snprintf(text, sizeof(text), "objects");
-    } else {
-      std::snprintf(text,
-                    sizeof(text),
-                    "%u/%u objects",
-                    prog.received_objects,
-                    prog.total_objects);
-    }
-
-    // Use epoch for start_time so animation is based on absolute time
+    // Still cloning - show spinner with static "objects" text (don't show counts)
     static auto const epoch{ std::chrono::steady_clock::time_point{} };
     tui::section_set_content(
         handle,
-        tui::section_frame{ .label = label,
-                            .content =
-                                tui::spinner_data{ .text = text, .start_time = epoch } });
+        tui::section_frame{
+            .label = label,
+            .content = tui::spinner_data{ .text = "objects", .start_time = epoch } });
   }
 }
 
@@ -508,8 +491,6 @@ bool run_declarative_fetch(sol::object const &fetch_obj,
     parse_fetch_field(fetch_obj, lock->fetch_dir(), lock->stage_dir(), identity)
   };
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
-
-  if (r->tui_section == 0) { r->tui_section = tui::section_create(); }
 
   auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
   tui::debug("[%s] starting execute_downloads (thread %zu)", identity.c_str(), tid);

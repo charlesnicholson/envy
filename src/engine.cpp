@@ -357,6 +357,7 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
       .type = recipe_type::UNKNOWN,
       .cache_ptr = &cache_,
       .default_shell_ptr = &default_shell_,
+      .tui_section = tui::section_create(),
   }) };
 
   auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
