@@ -60,6 +60,7 @@ struct section_state {
   unsigned handle;
   envy::tui::section_frame cached_frame;
   bool active;
+  bool has_content{ false };  // True after first set_content call
 
   std::string last_fallback_output;
   std::chrono::steady_clock::time_point last_fallback_print_time;
@@ -69,7 +70,9 @@ struct tui_progress_state {
   std::vector<section_state> sections;
   unsigned next_handle{ 1 };
   int last_line_count{ 0 };
+  std::size_t max_label_width{ 0 };
   std::mutex interactive_mutex;
+  bool enabled{ true };
 } s_progress{};
 
 bool envy::tui::g_trace_enabled{ false };
@@ -136,17 +139,25 @@ constexpr char const *kSpinnerFrames[]{ "|", "/", "-", "\\" };
 
 std::string render_progress_bar(envy::tui::progress_data const &data,
                                 std::string_view label,
+                                std::size_t max_label_width,
                                 int width) {
   constexpr int kBarChars{ 20 };
   int const filled{ static_cast<int>((data.percent / 100.0) * kBarChars) };
 
   std::string output;
-  output += "[";
   output += label;
-  output += "] ";
-  output += data.status;
-  output += " [";
+  if (label.size() < max_label_width) {
+    output.append(max_label_width - label.size(), ' ');
+  }
 
+  // Right-justified percentage (3 chars: "  5%", " 42%", "100%")
+  char percent_buf[8]{};
+  std::snprintf(percent_buf, sizeof(percent_buf), "%3.0f%%", data.percent);
+  output += " ";
+  output += percent_buf;
+
+  // Progress bar
+  output += " [";
   for (int i{ 0 }; i < kBarChars; ++i) {
     if (i < filled) {
       output += "=";
@@ -156,12 +167,14 @@ std::string render_progress_bar(envy::tui::progress_data const &data,
       output += " ";
     }
   }
+  output += "]";
 
-  output += "] ";
+  // Status text (downloaded amount) on the right
+  if (!data.status.empty()) {
+    output += " ";
+    output += data.status;
+  }
 
-  char percent_buf[16]{};
-  std::snprintf(percent_buf, sizeof(percent_buf), "%.1f%%", data.percent);
-  output += percent_buf;
   output += "\n";
 
   return output;
@@ -169,6 +182,7 @@ std::string render_progress_bar(envy::tui::progress_data const &data,
 
 std::string render_text_stream(envy::tui::text_stream_data const &data,
                                std::string_view label,
+                               std::size_t max_label_width,
                                int width,
                                std::chrono::steady_clock::time_point now) {
   // Determine which lines to render
@@ -187,9 +201,11 @@ std::string render_text_stream(envy::tui::text_stream_data const &data,
   std::size_t const frame_index{ static_cast<std::size_t>((elapsed_ms / 100) % 4) };
 
   std::string output;
-  output += "[";
   output += label;
-  output += "] ";
+  if (label.size() < max_label_width) {
+    output.append(max_label_width - label.size(), ' ');
+  }
+  output += " ";
   output += kSpinnerFrames[frame_index];
   output += " build output:\n";
 
@@ -204,6 +220,7 @@ std::string render_text_stream(envy::tui::text_stream_data const &data,
 
 std::string render_spinner(envy::tui::spinner_data const &data,
                            std::string_view label,
+                           std::size_t max_label_width,
                            int width,
                            std::chrono::steady_clock::time_point now) {
   auto const elapsed{ now - data.start_time };
@@ -214,9 +231,11 @@ std::string render_spinner(envy::tui::spinner_data const &data,
       (elapsed_ms / data.frame_duration.count()) % 4) };
 
   std::string output;
-  output += "[";
   output += label;
-  output += "] ";
+  if (label.size() < max_label_width) {
+    output.append(max_label_width - label.size(), ' ');
+  }
+  output += " ";
   output += kSpinnerFrames[frame_index];
   output += " ";
   output += data.text;
@@ -227,11 +246,14 @@ std::string render_spinner(envy::tui::spinner_data const &data,
 
 std::string render_static_text(envy::tui::static_text_data const &data,
                                std::string_view label,
+                               std::size_t max_label_width,
                                int width) {
   std::string output;
-  output += "[";
   output += label;
-  output += "] ";
+  if (label.size() < max_label_width) {
+    output.append(max_label_width - label.size(), ' ');
+  }
+  output += " ";
   output += data.text;
   output += "\n";
 
@@ -307,6 +329,7 @@ std::string render_section_frame_fallback(envy::tui::section_frame const &frame,
 }
 
 std::string render_section_frame(envy::tui::section_frame const &frame,
+                                 std::size_t max_label_width,
                                  int width,
                                  bool ansi_mode,
                                  std::chrono::steady_clock::time_point now) {
@@ -316,31 +339,69 @@ std::string render_section_frame(envy::tui::section_frame const &frame,
       [&](auto const &data) -> std::string {
         using T = std::decay_t<decltype(data)>;
         if constexpr (std::is_same_v<T, envy::tui::progress_data>) {
-          return render_progress_bar(data, frame.label, width);
+          return render_progress_bar(data, frame.label, max_label_width, width);
         } else if constexpr (std::is_same_v<T, envy::tui::text_stream_data>) {
-          return render_text_stream(data, frame.label, width, now);
+          return render_text_stream(data, frame.label, max_label_width, width, now);
         } else if constexpr (std::is_same_v<T, envy::tui::spinner_data>) {
-          return render_spinner(data, frame.label, width, now);
+          return render_spinner(data, frame.label, max_label_width, width, now);
         } else if constexpr (std::is_same_v<T, envy::tui::static_text_data>) {
-          return render_static_text(data, frame.label, width);
+          return render_static_text(data, frame.label, max_label_width, width);
         }
         return "";
       },
       frame.content);
 }
 
+void render_ansi_frame_unlocked(std::vector<section_state> const &sections,
+                                std::size_t max_label_width,
+                                int last_line_count,
+                                int width,
+                                std::chrono::steady_clock::time_point now) {
+  // Hide cursor
+  std::fprintf(stderr, "\x1b[?25l");
+
+  // Render all active sections that have content
+  int total_lines{ 0 };
+  for (auto const &sec : sections) {
+    if (!sec.active || !sec.has_content) { continue; }
+
+    std::string const output{
+      render_section_frame(sec.cached_frame, max_label_width, width, true, now)
+    };
+    std::fprintf(stderr, "%s", output.c_str());
+
+    // Count lines (assumes all outputs end with \n)
+    total_lines += static_cast<int>(std::count(output.begin(), output.end(), '\n'));
+  }
+
+  // Show cursor
+  std::fprintf(stderr, "\x1b[?25h");
+  std::fflush(stderr);
+
+  // Update shared state (requires lock)
+  {
+    std::lock_guard lock{ s_tui.mutex };
+    s_progress.last_line_count = total_lines;
+  }
+}
+
 void render_ansi_frame(int width, std::chrono::steady_clock::time_point now) {
+  // Hide cursor
+  std::fprintf(stderr, "\x1b[?25l");
+
   // Clear previous progress region
   if (s_progress.last_line_count > 0) {
     std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
   }
 
-  // Render all active sections
+  // Render all active sections that have content
   int total_lines{ 0 };
   for (auto const &sec : s_progress.sections) {
-    if (!sec.active) { continue; }
+    if (!sec.active || !sec.has_content) { continue; }
 
-    std::string const output{ render_section_frame(sec.cached_frame, width, true, now) };
+    std::string const output{
+      render_section_frame(sec.cached_frame, s_progress.max_label_width, width, true, now)
+    };
     std::fprintf(stderr, "%s", output.c_str());
 
     // Count lines (assumes all outputs end with \n)
@@ -348,7 +409,50 @@ void render_ansi_frame(int width, std::chrono::steady_clock::time_point now) {
   }
 
   s_progress.last_line_count = total_lines;
+
+  // Show cursor
+  std::fprintf(stderr, "\x1b[?25h");
   std::fflush(stderr);
+}
+
+void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
+                                    std::chrono::steady_clock::time_point now) {
+  // Throttle: print only if changed and >= 2s elapsed
+  constexpr auto kFallbackThrottle{ std::chrono::seconds{ 2 } };
+
+  struct update_info {
+    unsigned handle;
+    std::string output;
+  };
+  std::vector<update_info> updates;
+
+  for (auto const &sec : sections) {
+    if (!sec.active || !sec.has_content) { continue; }
+
+    std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
+
+    auto const elapsed{ now - sec.last_fallback_print_time };
+    if (output != sec.last_fallback_output && elapsed >= kFallbackThrottle) {
+      std::fprintf(stderr, "%s", output.c_str());
+      updates.push_back(update_info{ .handle = sec.handle, .output = output });
+    }
+  }
+
+  std::fflush(stderr);
+
+  // Update shared state (requires lock)
+  if (!updates.empty()) {
+    std::lock_guard lock{ s_tui.mutex };
+    for (auto const &upd : updates) {
+      for (auto &sec : s_progress.sections) {
+        if (sec.handle == upd.handle) {
+          sec.last_fallback_output = upd.output;
+          sec.last_fallback_print_time = now;
+          break;
+        }
+      }
+    }
+  }
 }
 
 void render_fallback_frame(std::chrono::steady_clock::time_point now) {
@@ -491,32 +595,55 @@ void worker_thread() {
   std::unique_lock<std::mutex> lock{ s_tui.mutex };
 
   while (!s_tui.stop_requested) {
-    // 1. Clear previous progress region (ANSI mode only)
-    bool const ansi{ is_ansi_supported() };
-    if (ansi && s_progress.last_line_count > 0) {
-      std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
-      s_progress.last_line_count = 0;
-      std::fflush(stderr);
-    }
-
-    // 2. Flush log queue (logs print in cleared space)
+    // 1. Flush log queue first
     std::queue<log_entry> pending;
     pending.swap(s_tui.messages);
 
-    lock.unlock();
-    flush_messages(pending, s_tui.output_handler);
-    lock.lock();
+    // 2. Snapshot progress state (if enabled)
+    std::vector<section_state> sections_snapshot;
+    std::size_t max_label_width{ 0 };
+    int last_line_count{ 0 };
 
-    // 3. Render new progress sections
-    int const width{ get_terminal_width() };
-    auto const now{ get_now() };
-
-    if (ansi) {
-      render_ansi_frame(width, now);
-    } else {
-      render_fallback_frame(now);
+    if (s_progress.enabled) {
+      sections_snapshot = s_progress.sections;
+      max_label_width = s_progress.max_label_width;
+      last_line_count = s_progress.last_line_count;
     }
 
+    // Release lock before any I/O
+    lock.unlock();
+
+    // 3. Clear previous progress region (ANSI mode only)
+    if (s_progress.enabled) {
+      bool const ansi{ is_ansi_supported() };
+      if (ansi && last_line_count > 0) {
+        std::fprintf(stderr, "\x1b[%dF\x1b[0J", last_line_count);
+        std::fflush(stderr);
+      }
+    }
+
+    // 4. Flush logs (without lock)
+    flush_messages(pending, s_tui.output_handler);
+
+    // 5. Render new progress sections (without lock)
+    if (s_progress.enabled) {
+      int const width{ get_terminal_width() };
+      auto const now{ get_now() };
+      bool const ansi{ is_ansi_supported() };
+
+      if (ansi) {
+        render_ansi_frame_unlocked(sections_snapshot,
+                                   max_label_width,
+                                   last_line_count,
+                                   width,
+                                   now);
+      } else {
+        render_fallback_frame_unlocked(sections_snapshot, now);
+      }
+    }
+
+    // Reacquire for wait
+    lock.lock();
     s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
       return s_tui.stop_requested.load();
     });
@@ -704,6 +831,7 @@ void pause_rendering() {
   std::lock_guard lock{ s_tui.mutex };
   if (is_ansi_supported() && s_progress.last_line_count > 0) {
     std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
+    std::fprintf(stderr, "\x1b[?25h");  // Show cursor
     s_progress.last_line_count = 0;
     std::fflush(stderr);
   }
@@ -714,6 +842,8 @@ void resume_rendering() {
 }
 
 section_handle section_create() {
+  if (!s_progress.enabled) { return 0; }  // Skip if disabled
+
   std::lock_guard lock{ s_tui.mutex };
 
   unsigned const handle{ s_progress.next_handle++ };
@@ -726,17 +856,24 @@ section_handle section_create() {
 }
 
 void section_set_content(section_handle h, section_frame const &frame) {
+  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+
   std::lock_guard lock{ s_tui.mutex };
 
   for (auto &sec : s_progress.sections) {
     if (sec.handle == h && sec.active) {
       sec.cached_frame = frame;
+      sec.has_content = true;
+      s_progress.max_label_width =
+          std::max(s_progress.max_label_width, frame.label.size());
       break;
     }
   }
 }
 
 void section_release(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+
   std::lock_guard lock{ s_tui.mutex };
 
   for (auto &sec : s_progress.sections) {
@@ -791,7 +928,7 @@ std::string render_section_frame(section_frame const &frame) {
   auto const now{ g_now.time_since_epoch().count() > 0
                       ? g_now
                       : std::chrono::steady_clock::now() };
-  return ::render_section_frame(frame, width, g_isatty, now);
+  return ::render_section_frame(frame, frame.label.size(), width, g_isatty, now);
 }
 }  // namespace test
 #endif

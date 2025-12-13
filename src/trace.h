@@ -169,6 +169,19 @@ struct recipe_fetch_counter_dec {
   bool was_completed;
 };
 
+struct execute_downloads_start {
+  std::string recipe;
+  std::size_t thread_id;
+  std::size_t num_files;
+};
+
+struct execute_downloads_complete {
+  std::string recipe;
+  std::size_t thread_id;
+  std::size_t num_files;
+  std::int64_t duration_ms;
+};
+
 struct debug_marker {
   std::string recipe;
   int marker_id;
@@ -236,6 +249,8 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::fetch_file_complete,
                                    trace_events::recipe_fetch_counter_inc,
                                    trace_events::recipe_fetch_counter_dec,
+                                   trace_events::execute_downloads_start,
+                                   trace_events::execute_downloads_complete,
                                    trace_events::debug_marker,
                                    trace_events::cache_check_entry,
                                    trace_events::cache_check_result,
@@ -482,6 +497,21 @@ struct phase_trace_scope {
       .recipe = (recipe_value), \
       .new_value = (new_value), \
       .was_completed = (was_completed_value), \
+  }))
+
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(recipe_value, thread_id_value, num_files_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_start{ \
+      .recipe = (recipe_value), \
+      .thread_id = (thread_id_value), \
+      .num_files = (num_files_value), \
+  }))
+
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(recipe_value, thread_id_value, num_files_value, duration_ms_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_complete{ \
+      .recipe = (recipe_value), \
+      .thread_id = (thread_id_value), \
+      .num_files = (num_files_value), \
+      .duration_ms = (duration_ms_value), \
   }))
 
 #define ENVY_TRACE_DEBUG_MARKER(recipe_value, marker_id_value) \

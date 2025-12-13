@@ -15,6 +15,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
@@ -75,6 +76,7 @@ class engine : unmovable {
 
   recipe_execution_ctx &get_execution_ctx(recipe *r);
   recipe_execution_ctx &get_execution_ctx(recipe_key const &key);
+  recipe_execution_ctx const &get_execution_ctx(recipe_key const &key) const;
 
   // Phase coordination (thread-safe)
   void ensure_recipe_at_phase(recipe_key const &key, recipe_phase target_phase);
@@ -96,6 +98,13 @@ class engine : unmovable {
   };
   weak_resolution_result resolve_weak_references();
 
+  // Extend recipe and all transitive dependencies to completion target
+  void extend_dependencies_to_completion(recipe *r);
+
+#ifdef ENVY_UNIT_TEST
+  recipe_phase get_recipe_target_phase(recipe_key const &key) const;
+#endif
+
  private:
   void fail_all_contexts();
 
@@ -110,6 +119,7 @@ class engine : unmovable {
   void validate_product_fallbacks();
   bool recipe_provides_product_transitively(recipe *r,
                                             std::string const &product_name) const;
+  void extend_dependencies_recursive(recipe *r, std::unordered_set<recipe_key> &visited);
 
   friend struct recipe_execution_ctx;  // Allows worker threads to call run_recipe_thread
 

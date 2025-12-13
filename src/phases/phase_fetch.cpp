@@ -12,13 +12,10 @@
 #include "trace.h"
 #include "tui.h"
 #include "uri.h"
+#include "util.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "test_support.h"
 #endif
-
-extern "C" {
-#include "lua.h"
-}
 
 #include <algorithm>
 #include <chrono>
@@ -27,6 +24,7 @@ extern "C" {
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -88,14 +86,15 @@ struct table_entry {
   std::optional<std::string> ref;
 };
 
-std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
+std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
                                           std::filesystem::path const &fetch_dir,
                                           std::filesystem::path const &stage_dir,
                                           std::string const &key);
 std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs);
 void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
-                       std::string const &key);
+                       std::string const &key,
+                       tui::section_handle section);
 
 bool run_programmatic_fetch(sol::protected_function fetch_func,
                             cache::scoped_entry_lock *lock,
@@ -133,14 +132,24 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   } else if (return_value.is<std::string>() || return_value.is<sol::table>()) {
     tui::debug("phase fetch: function returned declarative spec, processing");
 
-    return_value.push(lua.lua_state());
     auto const fetch_specs{
-      parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
+      parse_fetch_field(return_value, lock->fetch_dir(), lock->stage_dir(), identity)
     };
-    lua_pop(lua.lua_state(), 1);
 
     if (!fetch_specs.empty()) {
-      execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
+      if (r->tui_section == 0) { r->tui_section = tui::section_create(); }
+
+      auto const to_download{ determine_downloads_needed(fetch_specs) };
+      auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
+      auto const start{ std::chrono::steady_clock::now() };
+
+      ENVY_TRACE_EXECUTE_DOWNLOADS_START(identity, tid, to_download.size());
+      execute_downloads(fetch_specs, to_download, identity, r->tui_section);
+
+      auto const duration{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - start)
+                               .count() };
+      ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(identity, tid, to_download.size(), duration);
 
       bool const has_git_repos =
           std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
@@ -215,16 +224,15 @@ fetch_spec create_fetch_spec(std::string url,
 }
 
 // Parse the fetch field from Lua into a vector of fetch_specs.
-std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
+std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
                                           std::filesystem::path const &fetch_dir,
                                           std::filesystem::path const &stage_dir,
                                           std::string const &key) {
-  sol::stack_object top{ lua, -1 };
-  sol::type const fetch_type{ top.get_type() };
+  sol::type const fetch_type{ fetch_obj.get_type() };
 
   switch (fetch_type) {
     case sol::type::string: {
-      std::string const url{ top.as<std::string>() };
+      std::string const url{ fetch_obj.as<std::string>() };
       std::string basename{ uri_extract_filename(url) };
       if (basename.empty()) {
         throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
@@ -240,7 +248,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::state_view lua,
       std::vector<fetch_spec> specs;
       std::unordered_set<std::string> basenames;
 
-      sol::table tbl{ lua, -1 };
+      sol::table tbl{ fetch_obj.as<sol::table>() };
 
       sol::object first_elem{ tbl[1] };
       sol::type first_elem_type{ first_elem.get_type() };
@@ -330,10 +338,73 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
   return to_download;
 }
 
+void update_progress_for_transfer(tui::section_handle handle,
+                                  std::string const &label,
+                                  fetch_transfer_progress const &prog) {
+  if (!prog.total.has_value() || *prog.total == 0) {  // Unknown total size
+
+    char status[64]{};
+    std::snprintf(status, sizeof(status), "%.1f MB", prog.transferred / 1e6);
+    tui::section_set_content(
+        handle,
+        tui::section_frame{ .label = label,
+                            .content =
+                                tui::progress_data{ .percent = 0.0, .status = status } });
+  } else {  // Known total - show percentage
+    double const percent{ (prog.transferred / static_cast<double>(*prog.total)) * 100.0 };
+    char status[64]{};
+    std::snprintf(status,
+                  sizeof(status),
+                  "%.1f/%.1fMB",
+                  prog.transferred / 1e6,
+                  *prog.total / 1e6);
+    tui::section_set_content(
+        handle,
+        tui::section_frame{
+            .label = label,
+            .content = tui::progress_data{ .percent = percent, .status = status } });
+  }
+}
+
+void update_progress_for_git(tui::section_handle handle,
+                             std::string const &label,
+                             fetch_git_progress const &prog) {
+  if (prog.total_objects > 0 && prog.received_objects >= prog.total_objects) {
+    // Clone complete
+    char text[128]{};
+    std::snprintf(text, sizeof(text), "%u objects", prog.total_objects);
+    tui::section_set_content(
+        handle,
+        tui::section_frame{ .label = label,
+                            .content = tui::static_text_data{ .text = text } });
+  } else {
+    // Still cloning - show spinner
+    char text[128]{};
+    if (prog.total_objects == 0) {
+      std::snprintf(text, sizeof(text), "objects");
+    } else {
+      std::snprintf(text,
+                    sizeof(text),
+                    "%u/%u objects",
+                    prog.received_objects,
+                    prog.total_objects);
+    }
+
+    // Use epoch for start_time so animation is based on absolute time
+    static auto const epoch{ std::chrono::steady_clock::time_point{} };
+    tui::section_set_content(
+        handle,
+        tui::section_frame{ .label = label,
+                            .content =
+                                tui::spinner_data{ .text = text, .start_time = epoch } });
+  }
+}
+
 // Execute downloads and verification for specs that need downloading.
 void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
-                       std::string const &key) {
+                       std::string const &key,
+                       tui::section_handle section) {
   if (to_download_indices.empty()) {
     tui::debug("phase fetch: all files cached, no downloads needed");
     return;
@@ -341,9 +412,32 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
   tui::debug("phase fetch: downloading %zu file(s)", to_download_indices.size());
 
+  std::string const label{ "[" + key + "]" };
+
   std::vector<fetch_request> requests;
   requests.reserve(to_download_indices.size());
-  for (auto idx : to_download_indices) { requests.push_back(specs[idx].request); }
+  for (auto idx : to_download_indices) {
+    fetch_request req{ specs[idx].request };
+
+    std::visit(  // Set up progress callback
+        [&](auto &r) {
+          r.progress = [section, label](fetch_progress_t const &progress) -> bool {
+            std::visit(match{
+                           [&](fetch_transfer_progress const &prog) {
+                             update_progress_for_transfer(section, label, prog);
+                           },
+                           [&](fetch_git_progress const &prog) {
+                             update_progress_for_git(section, label, prog);
+                           },
+                       },
+                       progress);
+            return true;  // Continue transfer
+          };
+        },
+        req);
+
+    requests.push_back(std::move(req));
+  }
 
   // TODO: Add FETCH_FILE_START/COMPLETE trace events (requires passing recipe identity)
 
@@ -397,9 +491,10 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
 // fetch = "source" or fetch = {source="..."} or fetch = {{...}}
 // Returns true if fetch should be marked complete (cacheable), false otherwise
-bool run_declarative_fetch(sol::state_view lua,
+bool run_declarative_fetch(sol::object const &fetch_obj,
                            cache::scoped_entry_lock *lock,
-                           std::string const &identity) {
+                           std::string const &identity,
+                           recipe *r) {
   tui::debug("phase fetch: executing declarative fetch");
 
   // Ensure stage_dir exists (needed for git repos that clone directly there)
@@ -410,17 +505,27 @@ bool run_declarative_fetch(sol::state_view lua,
   }
 
   auto const fetch_specs{
-    parse_fetch_field(lua, lock->fetch_dir(), lock->stage_dir(), identity)
+    parse_fetch_field(fetch_obj, lock->fetch_dir(), lock->stage_dir(), identity)
   };
-  lua_pop(lua.lua_state(), 1);
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
-  execute_downloads(fetch_specs, determine_downloads_needed(fetch_specs), identity);
+
+  if (r->tui_section == 0) { r->tui_section = tui::section_create(); }
+
+  auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
+  tui::debug("[%s] starting execute_downloads (thread %zu)", identity.c_str(), tid);
+  execute_downloads(fetch_specs,
+                    determine_downloads_needed(fetch_specs),
+                    identity,
+                    r->tui_section);
+  tui::debug("[%s] finished execute_downloads (thread %zu)", identity.c_str(), tid);
 
   // Check if git repos - if so, don't mark fetch complete (git clones are not cacheable)
-  bool const has_git_repos =
-      std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
-        return std::holds_alternative<fetch_request_git>(spec.request);
-      });
+  bool const has_git_repos{ std::any_of(fetch_specs.begin(),
+                                        fetch_specs.end(),
+                                        [](auto const &spec) {
+                                          return std::holds_alternative<fetch_request_git>(
+                                              spec.request);
+                                        }) };
 
   if (has_git_repos) {
     tui::debug(
@@ -466,8 +571,7 @@ void run_fetch_phase(recipe *r, engine &eng) {
                                                   eng,
                                                   r);
   } else if (fetch_obj.is<std::string>() || fetch_obj.is<sol::table>()) {
-    fetch_obj.push(lua_view.lua_state());
-    should_mark_complete = run_declarative_fetch(lua_view, lock, identity);
+    should_mark_complete = run_declarative_fetch(fetch_obj, lock, identity, r);
   } else {
     throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
                              identity);

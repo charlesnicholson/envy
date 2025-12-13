@@ -306,8 +306,8 @@ Flat list, tests immediately after feature bringup:
 - ✓ Wrap `shell_run()` call with `std::optional<tui::interactive_mode_guard>` in `src/lua_ctx/lua_ctx_run.cpp`
 - ✓ Build with `./build.sh` (verify no compile errors after Lua changes)
 - ✓ Run unit tests `./out/build/envy_unit_tests` (verify no regressions)
-- Integrate progress bar in `phase_fetch.cpp`: create section, custom `fetch_observer`, update on progress, release after
-- Build with `./build.sh` (verify no compile errors after fetch integration)
+- ✓ Integrate progress bar in `phase_fetch.cpp`: create section in recipe, update on progress callbacks
+- ✓ Build with `./build.sh` (verify no compile errors after fetch integration)
 - Manual test: run `envy sync` with package requiring fetch, verify progress bar visible and animates
 - Integrate progress bar in `phase_stage.cpp`: create section, update via `archive_extract_observer`, release after
 - Build with `./build.sh` (verify no compile errors after stage integration)
