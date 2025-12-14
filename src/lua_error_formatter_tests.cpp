@@ -1,7 +1,7 @@
 #include "lua_error_formatter.h"
 
-#include "lua_envy.h"
 #include "engine.h"
+#include "lua_envy.h"
 #include "recipe.h"
 #include "recipe_spec.h"
 #include "sol_util.h"

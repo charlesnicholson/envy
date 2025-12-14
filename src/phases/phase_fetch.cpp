@@ -11,8 +11,9 @@
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "uri.h"
-#include "util.h"
+
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "test_support.h"
 #endif
@@ -21,7 +22,6 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -342,132 +342,6 @@ std::string fetch_item_label(fetch_request const &req) {
   return get_destination(req).filename().string();
 }
 
-tui::section_frame make_transfer_frame(std::string const &item_label,
-                                       fetch_transfer_progress const &prog,
-                                       bool include_item_label) {
-  if (!prog.total.has_value() || *prog.total == 0) {  // Unknown total size
-    std::ostringstream oss;
-    if (include_item_label) { oss << item_label << " "; }
-    oss << util_format_bytes(prog.transferred);
-    return { .label = item_label,
-             .content = tui::progress_data{ .percent = 0.0, .status = oss.str() } };
-  }
-
-  double const percent{ (prog.transferred / static_cast<double>(*prog.total)) * 100.0 };
-  std::ostringstream oss;
-  if (include_item_label) { oss << item_label << " "; }
-  oss << util_format_bytes(prog.transferred) << "/" << util_format_bytes(*prog.total);
-  return { .label = item_label,
-           .content = tui::progress_data{ .percent = percent, .status = oss.str() } };
-}
-
-struct git_progress_state {
-  double last_percent{ 0.0 };
-  std::uint32_t max_total_objects{ 0 };
-  std::uint32_t last_received_objects{ 0 };
-  std::uint64_t last_bytes{ 0 };
-};
-
-struct fetch_tui_state {
-  std::mutex mutex;
-  std::vector<tui::section_frame> children;
-  std::vector<git_progress_state> git_states;  // one per child
-  bool grouped{ false };
-  std::string phase_label;
-  std::string label;
-};
-
-void set_fetch_frame(fetch_tui_state &state,
-                     tui::section_handle section,
-                     std::size_t idx,
-                     tui::section_frame child_frame) {
-  std::lock_guard const lock{ state.mutex };
-
-  if (state.grouped) {
-    if (idx < state.children.size()) { state.children[idx] = std::move(child_frame); }
-    tui::section_frame parent{ .label = state.label,
-                               .content =
-                                   tui::static_text_data{ .text = state.phase_label },
-                               .children = state.children,
-                               .phase_label = {} };
-    tui::section_set_content(section, parent);
-  } else {
-    child_frame.label = state.label;
-    tui::section_set_content(section, child_frame);
-  }
-}
-
-void update_progress_for_transfer(tui::section_handle handle,
-                                  fetch_tui_state &state,
-                                  std::size_t slot,
-                                  fetch_transfer_progress const &prog) {
-  if (slot >= state.children.size()) { return; }
-  auto child_frame{
-    make_transfer_frame(state.children[slot].label, prog, !state.grouped)
-  };
-  set_fetch_frame(state, handle, slot, std::move(child_frame));
-}
-
-void update_progress_for_git(tui::section_handle handle,
-                             std::string const &label,
-                             fetch_git_progress const &prog,
-                             git_progress_state &state,
-                             std::size_t slot,
-                             fetch_tui_state &tui_state) {
-  std::uint32_t snapshot_total{ 0 };
-  std::uint32_t snapshot_received{ 0 };
-  std::uint64_t snapshot_bytes{ 0 };
-  double snapshot_percent{ 0.0 };
-  std::string child_label{ label };
-
-  {
-    std::lock_guard const lock{ tui_state.mutex };
-    state.max_total_objects = std::max(state.max_total_objects, prog.total_objects);
-    state.last_received_objects =
-        std::max(state.last_received_objects, prog.received_objects);
-    state.last_bytes = std::max(state.last_bytes, prog.received_bytes);
-
-    if (state.max_total_objects > 0) {
-      double const pct =
-          (state.last_received_objects / static_cast<double>(state.max_total_objects)) *
-          100.0;
-      state.last_percent = std::min(100.0, std::max(pct, state.last_percent));
-    }
-
-    snapshot_total = state.max_total_objects;
-    snapshot_received = state.last_received_objects;
-    snapshot_bytes = state.last_bytes;
-    snapshot_percent = state.last_percent;
-    if (slot < tui_state.children.size()) { child_label = tui_state.children[slot].label; }
-  }
-
-  if (snapshot_total == 0) {
-    static auto const epoch{ std::chrono::steady_clock::time_point{} };
-    std::string const prefix{ tui_state.grouped ? "" : child_label + " " };
-    tui::section_frame child_frame{
-      .label = child_label,
-      .content = tui::spinner_data{ .text = prefix + "starting...", .start_time = epoch }
-    };
-    set_fetch_frame(tui_state, handle, slot, std::move(child_frame));
-    return;
-  }
-
-  std::ostringstream oss;
-  if (!tui_state.grouped) { oss << child_label << " "; }
-  oss << snapshot_received << "/" << snapshot_total << " objects";
-  if (snapshot_bytes > 0) { oss << " " << util_format_bytes(snapshot_bytes); }
-
-  tui::section_frame child_frame{
-    .label = child_label,
-    .content = tui::progress_data{ .percent = snapshot_percent, .status = oss.str() }
-  };
-  if (snapshot_received >= snapshot_total) {
-    child_frame.content = tui::static_text_data{ .text = oss.str() };
-  }
-
-  set_fetch_frame(tui_state, handle, slot, std::move(child_frame));
-}
-
 // Execute downloads and verification for specs that need downloading.
 void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
@@ -480,56 +354,22 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 
   tui::debug("phase fetch: downloading %zu file(s)", to_download_indices.size());
 
-  std::string const label{ "[" + key + "]" };
+  std::vector<std::string> labels;
+  labels.reserve(to_download_indices.size());
+  for (auto idx : to_download_indices) {
+    labels.push_back(fetch_item_label(specs[idx].request));
+  }
 
-  fetch_tui_state tui_state{};
-  tui_state.grouped = to_download_indices.size() > 1;
-  tui_state.phase_label = "fetch";
-  tui_state.label = label;
-  tui_state.children.resize(to_download_indices.size());
-  tui_state.git_states.resize(to_download_indices.size());
+  tui_actions::fetch_all_progress_tracker tracker{ section, key, labels };
 
   std::vector<fetch_request> requests;
   requests.reserve(to_download_indices.size());
   for (size_t req_slot{ 0 }; req_slot < to_download_indices.size(); ++req_slot) {
     auto idx = to_download_indices[req_slot];
     fetch_request req{ specs[idx].request };
-
-    std::string const item_label{ fetch_item_label(req) };
-    tui_state.children[req_slot] =
-        tui::section_frame{ .label = item_label,
-                            .content = tui::progress_data{ .percent = 0.0,
-                                                           .status = item_label } };
-
-    std::visit(  // Set up progress callback
-        [&](auto &r) {
-          auto const child_index{ req_slot };
-          r.progress = [section, label, &tui_state, child_index](
-                           fetch_progress_t const &progress) -> bool {
-            std::visit(
-                match{
-                    [&](fetch_transfer_progress const &prog) {
-                      update_progress_for_transfer(section, tui_state, child_index, prog);
-                    },
-                    [&](fetch_git_progress const &prog) {
-                      update_progress_for_git(section,
-                                              label,
-                                              prog,
-                                              tui_state.git_states[child_index],
-                                              child_index,
-                                              tui_state);
-                    },
-                },
-                progress);
-            return true;  // Continue transfer
-          };
-        },
-        req);
-
+    std::visit([&](auto &r) { r.progress = tracker.make_callback(req_slot); }, req);
     requests.push_back(std::move(req));
   }
-
-  // TODO: Add FETCH_FILE_START/COMPLETE trace events (requires passing recipe identity)
 
   auto const results{ fetch(requests) };
 

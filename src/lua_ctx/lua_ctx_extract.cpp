@@ -3,6 +3,7 @@
 #include "extract.h"
 #include "recipe.h"
 #include "trace.h"
+#include "tui_actions.h"
 
 #include <chrono>
 #include <cstdint>
@@ -39,9 +40,14 @@ std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extr
 
     auto const start_time{ std::chrono::steady_clock::now() };
 
-    std::uint64_t const files{
-      extract(archive_path, ctx->run_dir, { .strip_components = strip_components })
-    };
+    tui_actions::extract_progress_tracker tracker{ ctx->recipe_->tui_section,
+                                                   ctx->recipe_->spec->identity,
+                                                   filename };
+
+    std::uint64_t const files{ extract(
+        archive_path,
+        ctx->run_dir,
+        { .strip_components = strip_components, .progress = std::ref(tracker) }) };
 
     auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - start_time)

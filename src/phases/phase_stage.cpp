@@ -11,15 +11,12 @@
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
-#include "util.h"
+#include "tui_actions.h"
 
-#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <functional>
-#include <mutex>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -93,12 +90,10 @@ void run_extract_stage(extract_totals const &totals,
                        std::filesystem::path const &fetch_dir,
                        std::filesystem::path const &dest_dir,
                        std::string const &identity,
-                       std::string const &label,
                        tui::section_handle section,
                        int strip_components) {
   tui::debug("phase stage: extracting (strip=%d)", strip_components);
 
-  // Build item list for per-file grouping
   std::vector<std::string> items;
   for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
     if (!entry.is_regular_file()) { continue; }
@@ -106,99 +101,8 @@ void run_extract_stage(extract_totals const &totals,
     items.push_back(entry.path().filename().string());
   }
 
-  struct stage_state {
-    std::mutex mutex;
-    std::vector<tui::section_frame> children;
-    bool grouped{ false };
-    std::string label;
-  } state;
-
-  state.grouped = items.size() > 1;
-  state.label = label;
-  state.children.reserve(items.size());
-  for (auto const &name : items) {
-    state.children.push_back(
-        tui::section_frame{ .label = name,
-                            .content = tui::static_text_data{ .text = "pending" } });
-  }
-
-  extract_progress last_prog{
-    .bytes_processed = 0,
-    .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
-    .files_processed = 0,
-    .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
-    .current_entry = {},
-    .is_regular_file = false
-  };
-
-  auto set_stage_frames{ [&](extract_progress const &prog) {
-    last_prog = prog;
-    double percent{ 0.0 };
-    if (prog.total_files && *prog.total_files > 0) {
-      percent = (prog.files_processed / static_cast<double>(*prog.total_files)) * 100.0;
-    } else if (prog.total_bytes && *prog.total_bytes > 0) {
-      percent = (prog.bytes_processed / static_cast<double>(*prog.total_bytes)) * 100.0;
-    }
-    if (percent > 100.0) { percent = 100.0; }
-
-    std::ostringstream status;
-    status << "stage " << prog.files_processed;
-    if (prog.total_files) { status << "/" << *prog.total_files; }
-    status << " files";
-    if (prog.total_bytes) {
-      status << " " << util_format_bytes(prog.bytes_processed) << "/"
-             << util_format_bytes(*prog.total_bytes);
-    } else if (prog.bytes_processed > 0) {
-      status << " " << util_format_bytes(prog.bytes_processed);
-    }
-
-    if (state.grouped) {
-      tui::section_frame parent{ .label = state.label,
-                                 .content = tui::progress_data{ .percent = percent,
-                                                                .status = status.str() },
-                                 .children = state.children,
-                                 .phase_label = {} };
-      tui::section_set_content(section, parent);
-    } else {
-      std::string item{ state.children.empty() ? "" : state.children.front().label };
-      tui::section_set_content(
-          section,
-          tui::section_frame{
-              .label = state.label,
-              .content = tui::progress_data{
-                  .percent = percent,
-                  .status = item.empty() ? status.str() : (item + " " + status.str()) } });
-    }
-  } };
-
-  set_stage_frames(last_prog);
-
-  auto progress_cb{ extract_progress_cb_t{ [&](extract_progress const &prog) -> bool {
-    std::lock_guard const lock{ state.mutex };
-    set_stage_frames(prog);
-    return true;
-  } } };
-
-  std::optional<std::size_t> last_idx;
-
-  auto on_file{ [&](std::string const &name) {
-    std::lock_guard const lock{ state.mutex };
-    if (last_idx && *last_idx < state.children.size()) {
-      state.children[*last_idx].content = tui::static_text_data{ .text = "done" };
-    }
-
-    if (auto it{ std::find_if(state.children.begin(),
-                              state.children.end(),
-                              [&](auto const &c) { return c.label == name; }) };
-        it != state.children.end()) {
-      auto idx{ static_cast<std::size_t>(std::distance(state.children.begin(), it)) };
-      last_idx = idx;
-      state.children[idx].content =
-          tui::spinner_data{ .text = "staging",
-                             .start_time = std::chrono::steady_clock::now() };
-    }
-    set_stage_frames(last_prog);
-  } };
+  tui_actions::extract_all_progress_tracker tracker{ section, identity, items, totals };
+  auto [progress_cb, on_file_cb] = tracker.make_callbacks();
 
   extract_all_archives(
       fetch_dir,
@@ -206,14 +110,8 @@ void run_extract_stage(extract_totals const &totals,
       strip_components,
       progress_cb,
       identity,
-      items.size() > 1 ? on_file : std::function<void(std::string const &)>{},
+      items.size() > 1 ? on_file_cb : std::function<void(std::string const &)>{},
       totals);
-
-  if (last_idx && *last_idx < state.children.size()) {
-    std::lock_guard const lock{ state.mutex };
-    state.children[*last_idx].content = tui::static_text_data{ .text = "done" };
-    set_stage_frames(last_prog);
-  }
 }
 
 void run_programmatic_stage(sol::protected_function stage_func,
@@ -298,11 +196,9 @@ void run_stage_phase(recipe *r, engine &eng) {
     return;
   }
 
-  std::string const label{ "[" + identity + "]" };
-
   if (!stage_obj.valid()) {
     extract_totals const totals{ compute_extract_totals(fetch_dir) };
-    run_extract_stage(totals, fetch_dir, dest_dir, identity, label, r->tui_section, 0);
+    run_extract_stage(totals, fetch_dir, dest_dir, identity, r->tui_section, 0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
@@ -323,7 +219,6 @@ void run_stage_phase(recipe *r, engine &eng) {
                       fetch_dir,
                       dest_dir,
                       identity,
-                      label,
                       r->tui_section,
                       opts.strip_components);
   } else {

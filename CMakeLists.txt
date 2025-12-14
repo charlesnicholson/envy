@@ -200,6 +200,7 @@ set(ENVY_BASE_SOURCES
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
     src/trace.cpp
     src/tui.cpp
+    src/tui_actions.cpp
     src/uri.cpp
     src/util.cpp
 )
