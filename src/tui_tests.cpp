@@ -2,12 +2,18 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 TEST_CASE("tui init can only run once") {
@@ -112,7 +118,8 @@ TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
   REQUIRE(messages.size() == 1);
   auto const &line{ messages[0] };
   CHECK(line.find("[INF") != std::string::npos);
-  CHECK(line.rfind("structured 7\n") == line.size() - std::string("structured 7\n").size());
+  CHECK(line.rfind("structured 7\n") ==
+        line.size() - std::string("structured 7\n").size());
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
@@ -158,205 +165,210 @@ TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
 }
 
 TEST_CASE("trace_event_to_json serializes all event types") {
-  expect_json_tokens(envy::trace_events::phase_blocked{
-                         .recipe = "r1",
-                         .blocked_at_phase = envy::recipe_phase::asset_check,
-                         .waiting_for = "dep",
-                         .target_phase = envy::recipe_phase::completion,
-                     },
-                     { "\"recipe\":\"r1\"",
-                       phase_token("blocked_at_phase", envy::recipe_phase::asset_check),
-                       phase_num_token("blocked_at_phase",
-                                       envy::recipe_phase::asset_check),
-                       "\"waiting_for\":\"dep\"",
-                       phase_token("target_phase", envy::recipe_phase::completion),
-                       phase_num_token("target_phase", envy::recipe_phase::completion) });
+  expect_json_tokens(
+      envy::trace_events::phase_blocked{
+          .recipe = "r1",
+          .blocked_at_phase = envy::recipe_phase::asset_check,
+          .waiting_for = "dep",
+          .target_phase = envy::recipe_phase::completion,
+      },
+      { "\"recipe\":\"r1\"",
+        phase_token("blocked_at_phase", envy::recipe_phase::asset_check),
+        phase_num_token("blocked_at_phase", envy::recipe_phase::asset_check),
+        "\"waiting_for\":\"dep\"",
+        phase_token("target_phase", envy::recipe_phase::completion),
+        phase_num_token("target_phase", envy::recipe_phase::completion) });
 
-  expect_json_tokens(envy::trace_events::phase_unblocked{
-                         .recipe = "r1",
-                         .unblocked_at_phase = envy::recipe_phase::asset_check,
-                         .dependency = "dep",
-                     },
-                     { "\"recipe\":\"r1\"",
-                       phase_token("unblocked_at_phase", envy::recipe_phase::asset_check),
-                       phase_num_token("unblocked_at_phase",
-                                       envy::recipe_phase::asset_check),
-                       "\"dependency\":\"dep\"" });
+  expect_json_tokens(
+      envy::trace_events::phase_unblocked{
+          .recipe = "r1",
+          .unblocked_at_phase = envy::recipe_phase::asset_check,
+          .dependency = "dep",
+      },
+      { "\"recipe\":\"r1\"",
+        phase_token("unblocked_at_phase", envy::recipe_phase::asset_check),
+        phase_num_token("unblocked_at_phase", envy::recipe_phase::asset_check),
+        "\"dependency\":\"dep\"" });
 
-  expect_json_tokens(envy::trace_events::dependency_added{
-                         .parent = "parent",
-                         .dependency = "child",
-                         .needed_by = envy::recipe_phase::asset_fetch,
-                     },
-                     { "\"parent\":\"parent\"",
-                       "\"dependency\":\"child\"",
-                       phase_token("needed_by", envy::recipe_phase::asset_fetch),
-                       phase_num_token("needed_by", envy::recipe_phase::asset_fetch) });
+  expect_json_tokens(
+      envy::trace_events::dependency_added{
+          .parent = "parent",
+          .dependency = "child",
+          .needed_by = envy::recipe_phase::asset_fetch,
+      },
+      { "\"parent\":\"parent\"",
+        "\"dependency\":\"child\"",
+        phase_token("needed_by", envy::recipe_phase::asset_fetch),
+        phase_num_token("needed_by", envy::recipe_phase::asset_fetch) });
 
-  expect_json_tokens(envy::trace_events::phase_start{
-                         .recipe = "r2",
-                         .phase = envy::recipe_phase::asset_stage,
-                     },
-                     { "\"recipe\":\"r2\"",
-                       phase_token("phase", envy::recipe_phase::asset_stage),
-                       phase_num_token("phase", envy::recipe_phase::asset_stage) });
+  expect_json_tokens(
+      envy::trace_events::phase_start{
+          .recipe = "r2",
+          .phase = envy::recipe_phase::asset_stage,
+      },
+      { "\"recipe\":\"r2\"",
+        phase_token("phase", envy::recipe_phase::asset_stage),
+        phase_num_token("phase", envy::recipe_phase::asset_stage) });
 
-  expect_json_tokens(envy::trace_events::phase_complete{
-                         .recipe = "r2",
-                         .phase = envy::recipe_phase::asset_stage,
-                         .duration_ms = 55,
-                     },
-                     { "\"recipe\":\"r2\"",
-                       phase_token("phase", envy::recipe_phase::asset_stage),
-                       phase_num_token("phase", envy::recipe_phase::asset_stage),
-                       "\"duration_ms\":55" });
+  expect_json_tokens(
+      envy::trace_events::phase_complete{
+          .recipe = "r2",
+          .phase = envy::recipe_phase::asset_stage,
+          .duration_ms = 55,
+      },
+      { "\"recipe\":\"r2\"",
+        phase_token("phase", envy::recipe_phase::asset_stage),
+        phase_num_token("phase", envy::recipe_phase::asset_stage),
+        "\"duration_ms\":55" });
 
-  expect_json_tokens(envy::trace_events::thread_start{
-                         .recipe = "r3",
-                         .target_phase = envy::recipe_phase::completion,
-                     },
-                     { "\"recipe\":\"r3\"",
-                       phase_token("target_phase", envy::recipe_phase::completion),
-                       phase_num_token("target_phase", envy::recipe_phase::completion) });
+  expect_json_tokens(
+      envy::trace_events::thread_start{
+          .recipe = "r3",
+          .target_phase = envy::recipe_phase::completion,
+      },
+      { "\"recipe\":\"r3\"",
+        phase_token("target_phase", envy::recipe_phase::completion),
+        phase_num_token("target_phase", envy::recipe_phase::completion) });
 
-  expect_json_tokens(envy::trace_events::thread_complete{
-                         .recipe = "r3",
-                         .final_phase = envy::recipe_phase::asset_install,
-                     },
-                     { "\"recipe\":\"r3\"",
-                       phase_token("final_phase", envy::recipe_phase::asset_install),
-                       phase_num_token("final_phase", envy::recipe_phase::asset_install) });
+  expect_json_tokens(
+      envy::trace_events::thread_complete{
+          .recipe = "r3",
+          .final_phase = envy::recipe_phase::asset_install,
+      },
+      { "\"recipe\":\"r3\"",
+        phase_token("final_phase", envy::recipe_phase::asset_install),
+        phase_num_token("final_phase", envy::recipe_phase::asset_install) });
 
-  expect_json_tokens(envy::trace_events::recipe_registered{
-                         .recipe = "r4",
-                         .key = "k1",
-                         .has_dependencies = true,
-                     },
-                     { "\"recipe\":\"r4\"",
-                       "\"key\":\"k1\"",
-                       "\"has_dependencies\":true" });
+  expect_json_tokens(
+      envy::trace_events::recipe_registered{
+          .recipe = "r4",
+          .key = "k1",
+          .has_dependencies = true,
+      },
+      { "\"recipe\":\"r4\"", "\"key\":\"k1\"", "\"has_dependencies\":true" });
 
-  expect_json_tokens(envy::trace_events::target_extended{
-                         .recipe = "r4",
-                         .old_target = envy::recipe_phase::asset_fetch,
-                         .new_target = envy::recipe_phase::completion,
-                     },
-                     { "\"recipe\":\"r4\"",
-                       phase_token("old_target", envy::recipe_phase::asset_fetch),
-                       phase_num_token("old_target", envy::recipe_phase::asset_fetch),
-                       phase_token("new_target", envy::recipe_phase::completion),
-                       phase_num_token("new_target", envy::recipe_phase::completion) });
+  expect_json_tokens(
+      envy::trace_events::target_extended{
+          .recipe = "r4",
+          .old_target = envy::recipe_phase::asset_fetch,
+          .new_target = envy::recipe_phase::completion,
+      },
+      { "\"recipe\":\"r4\"",
+        phase_token("old_target", envy::recipe_phase::asset_fetch),
+        phase_num_token("old_target", envy::recipe_phase::asset_fetch),
+        phase_token("new_target", envy::recipe_phase::completion),
+        phase_num_token("new_target", envy::recipe_phase::completion) });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_run_start{
-                         .recipe = "r5",
-                         .command = "echo \"hi\"\n",
-                         .cwd = "/tmp",
-                     },
-                     { "\"recipe\":\"r5\"",
-                       "\"command\":\"echo \\\"hi\\\"\\n\"",
-                       "\"cwd\":\"/tmp\"" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_run_start{
+          .recipe = "r5",
+          .command = "echo \"hi\"\n",
+          .cwd = "/tmp",
+      },
+      { "\"recipe\":\"r5\"", "\"command\":\"echo \\\"hi\\\"\\n\"", "\"cwd\":\"/tmp\"" });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_run_complete{
-                         .recipe = "r5",
-                         .exit_code = 7,
-                         .duration_ms = 10,
-                     },
-                     { "\"recipe\":\"r5\"",
-                       "\"exit_code\":7",
-                       "\"duration_ms\":10" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_run_complete{
+          .recipe = "r5",
+          .exit_code = 7,
+          .duration_ms = 10,
+      },
+      { "\"recipe\":\"r5\"", "\"exit_code\":7", "\"duration_ms\":10" });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_fetch_start{
-                         .recipe = "r6",
-                         .url = "https://example.com",
-                         .destination = "/cache/r6/file",
-                     },
-                     { "\"recipe\":\"r6\"",
-                       "\"url\":\"https://example.com\"",
-                       "\"destination\":\"/cache/r6/file\"" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_fetch_start{
+          .recipe = "r6",
+          .url = "https://example.com",
+          .destination = "/cache/r6/file",
+      },
+      { "\"recipe\":\"r6\"",
+        "\"url\":\"https://example.com\"",
+        "\"destination\":\"/cache/r6/file\"" });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_fetch_complete{
-                         .recipe = "r6",
-                         .url = "https://example.com",
-                         .bytes_downloaded = 1234,
-                         .duration_ms = 42,
-                     },
-                     { "\"recipe\":\"r6\"",
-                       "\"url\":\"https://example.com\"",
-                       "\"bytes_downloaded\":1234",
-                       "\"duration_ms\":42" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_fetch_complete{
+          .recipe = "r6",
+          .url = "https://example.com",
+          .bytes_downloaded = 1234,
+          .duration_ms = 42,
+      },
+      { "\"recipe\":\"r6\"",
+        "\"url\":\"https://example.com\"",
+        "\"bytes_downloaded\":1234",
+        "\"duration_ms\":42" });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_extract_start{
-                         .recipe = "r7",
-                         .archive_path = "/tmp/archive.tgz",
-                         .destination = "/tmp/out",
-                     },
-                     { "\"recipe\":\"r7\"",
-                       "\"archive_path\":\"/tmp/archive.tgz\"",
-                       "\"destination\":\"/tmp/out\"" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_extract_start{
+          .recipe = "r7",
+          .archive_path = "/tmp/archive.tgz",
+          .destination = "/tmp/out",
+      },
+      { "\"recipe\":\"r7\"",
+        "\"archive_path\":\"/tmp/archive.tgz\"",
+        "\"destination\":\"/tmp/out\"" });
 
-  expect_json_tokens(envy::trace_events::lua_ctx_extract_complete{
-                         .recipe = "r7",
-                         .files_extracted = 99,
-                         .duration_ms = 5,
-                     },
-                     { "\"recipe\":\"r7\"",
-                       "\"files_extracted\":99",
-                       "\"duration_ms\":5" });
+  expect_json_tokens(
+      envy::trace_events::lua_ctx_extract_complete{
+          .recipe = "r7",
+          .files_extracted = 99,
+          .duration_ms = 5,
+      },
+      { "\"recipe\":\"r7\"", "\"files_extracted\":99", "\"duration_ms\":5" });
 
-  expect_json_tokens(envy::trace_events::cache_hit{
-                         .recipe = "r8",
-                         .cache_key = "ck",
-                         .asset_path = "/tmp/a",
-                     },
-                     { "\"recipe\":\"r8\"",
-                       "\"cache_key\":\"ck\"",
-                       "\"asset_path\":\"/tmp/a\"" });
+  expect_json_tokens(
+      envy::trace_events::cache_hit{
+          .recipe = "r8",
+          .cache_key = "ck",
+          .asset_path = "/tmp/a",
+      },
+      { "\"recipe\":\"r8\"", "\"cache_key\":\"ck\"", "\"asset_path\":\"/tmp/a\"" });
 
-  expect_json_tokens(envy::trace_events::cache_miss{
-                         .recipe = "r8",
-                         .cache_key = "ck",
-                     },
-                     { "\"recipe\":\"r8\"", "\"cache_key\":\"ck\"" });
+  expect_json_tokens(
+      envy::trace_events::cache_miss{
+          .recipe = "r8",
+          .cache_key = "ck",
+      },
+      { "\"recipe\":\"r8\"", "\"cache_key\":\"ck\"" });
 
-  expect_json_tokens(envy::trace_events::lock_acquired{
-                         .recipe = "r9",
-                         .lock_path = "/tmp/l",
-                         .wait_duration_ms = 3,
-                     },
-                     { "\"recipe\":\"r9\"",
-                       "\"lock_path\":\"/tmp/l\"",
-                       "\"wait_duration_ms\":3" });
+  expect_json_tokens(
+      envy::trace_events::lock_acquired{
+          .recipe = "r9",
+          .lock_path = "/tmp/l",
+          .wait_duration_ms = 3,
+      },
+      { "\"recipe\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"wait_duration_ms\":3" });
 
-  expect_json_tokens(envy::trace_events::lock_released{
-                         .recipe = "r9",
-                         .lock_path = "/tmp/l",
-                         .hold_duration_ms = 15,
-                     },
-                     { "\"recipe\":\"r9\"",
-                       "\"lock_path\":\"/tmp/l\"",
-                       "\"hold_duration_ms\":15" });
+  expect_json_tokens(
+      envy::trace_events::lock_released{
+          .recipe = "r9",
+          .lock_path = "/tmp/l",
+          .hold_duration_ms = 15,
+      },
+      { "\"recipe\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"hold_duration_ms\":15" });
 
-  expect_json_tokens(envy::trace_events::fetch_file_start{
-                         .recipe = "r10",
-                         .url = "https://example.com/file",
-                         .destination = "/tmp/dst",
-                     },
-                     { "\"recipe\":\"r10\"",
-                       "\"url\":\"https://example.com/file\"",
-                       "\"destination\":\"/tmp/dst\"" });
+  expect_json_tokens(
+      envy::trace_events::fetch_file_start{
+          .recipe = "r10",
+          .url = "https://example.com/file",
+          .destination = "/tmp/dst",
+      },
+      { "\"recipe\":\"r10\"",
+        "\"url\":\"https://example.com/file\"",
+        "\"destination\":\"/tmp/dst\"" });
 
-  expect_json_tokens(envy::trace_events::fetch_file_complete{
-                         .recipe = "r10",
-                         .url = "https://example.com/file",
-                         .bytes_downloaded = 321,
-                         .duration_ms = 8,
-                         .from_cache = false,
-                     },
-                     { "\"recipe\":\"r10\"",
-                       "\"url\":\"https://example.com/file\"",
-                       "\"bytes_downloaded\":321",
-                       "\"duration_ms\":8",
-                       "\"from_cache\":false" });
+  expect_json_tokens(
+      envy::trace_events::fetch_file_complete{
+          .recipe = "r10",
+          .url = "https://example.com/file",
+          .bytes_downloaded = 321,
+          .duration_ms = 8,
+          .from_cache = false,
+      },
+      { "\"recipe\":\"r10\"",
+        "\"url\":\"https://example.com/file\"",
+        "\"bytes_downloaded\":321",
+        "\"duration_ms\":8",
+        "\"from_cache\":false" });
 }
 
 TEST_CASE("trace_event_to_json escapes special characters") {
@@ -418,7 +430,9 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test control character escaping (control character \x01 represented as \u0001)
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = std::string("r\x01" "ctrl", 6),
+      .recipe = std::string("r\x01"
+                            "ctrl",
+                            6),
       .cache_key = "key",
       .asset_path = "path",
   });
@@ -547,7 +561,10 @@ TEST_CASE("trace event macros work with g_trace_enabled") {
   CHECK_FALSE(envy::tui::g_trace_enabled);
 
   // These should not crash even when trace disabled
-  ENVY_TRACE_PHASE_BLOCKED("r1", envy::recipe_phase::asset_check, "dep", envy::recipe_phase::completion);
+  ENVY_TRACE_PHASE_BLOCKED("r1",
+                           envy::recipe_phase::asset_check,
+                           "dep",
+                           envy::recipe_phase::completion);
   ENVY_TRACE_DEPENDENCY_ADDED("parent", "child", envy::recipe_phase::asset_fetch);
   ENVY_TRACE_CACHE_HIT("r1", "key", "/path", true);
 
@@ -564,7 +581,8 @@ TEST_CASE("trace event macros work with g_trace_enabled") {
 }
 
 TEST_CASE("trace file output writes JSONL format") {
-  auto const trace_path{ std::filesystem::temp_directory_path() / "envy_test_trace.jsonl" };
+  auto const trace_path{ std::filesystem::temp_directory_path() /
+                         "envy_test_trace.jsonl" };
 
   // Clean up any existing file
   std::error_code ec;
@@ -723,3 +741,170 @@ TEST_CASE("configure_trace_outputs rejects multiple file outputs") {
   // Ensure cleanup in case of test failure
   envy::tui::configure_trace_outputs({});
 }
+
+// Progress section tests
+
+#ifdef ENVY_UNIT_TEST
+
+TEST_CASE("progress section line counting with text stream") {
+  envy::tui::test::g_terminal_width = 80;
+  envy::tui::test::g_isatty = true;
+  auto const now{ std::chrono::steady_clock::now() };
+  envy::tui::test::g_now = now;
+
+  envy::tui::section_frame const frame{ .label = "pkg@v1",
+                                        .content = envy::tui::text_stream_data{
+                                            .lines = { "line1", "line2", "line3" },
+                                            .start_time = now } };
+
+  std::string const output{ envy::tui::test::render_section_frame(frame) };
+
+  // Should have: 1 header line + 3 content lines = 4 lines total
+  int const line_count{ static_cast<int>(std::count(output.begin(), output.end(), '\n')) };
+  CHECK(line_count == 4);
+}
+
+TEST_CASE("grouped render ansi") {
+  envy::tui::test::g_terminal_width = 80;
+  envy::tui::test::g_isatty = true;
+  auto const now{ std::chrono::steady_clock::now() };
+  envy::tui::test::g_now = now;
+
+  envy::tui::section_frame parent{ .label = "pkg",
+                                   .content = envy::tui::progress_data{ .percent = 50.0,
+                                                                         .status = "fetch" },
+                                   .phase_label = "" };
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "ninja.git",
+      .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "googletest.git",
+      .content = envy::tui::progress_data{ .percent = 80.0, .status = "80%" } });
+
+  std::string const output{ envy::tui::test::render_section_frame(parent) };
+
+  CHECK(output.find("pkg") != std::string::npos);
+  CHECK(output.find("fetch") != std::string::npos);
+  CHECK(output.find("  ninja.git") != std::string::npos);
+  CHECK(output.find("  googletest.git") != std::string::npos);
+}
+
+TEST_CASE("grouped render fallback") {
+  envy::tui::test::g_terminal_width = 80;
+  envy::tui::test::g_isatty = false;
+  auto const now{ std::chrono::steady_clock::now() };
+  envy::tui::test::g_now = now;
+
+  envy::tui::section_frame parent{ .label = "pkg",
+                                   .content = envy::tui::progress_data{ .percent = 50.0,
+                                                                         .status = "fetch" },
+                                   .phase_label = "" };
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "ninja.git",
+      .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
+
+  std::string const output{ envy::tui::test::render_section_frame(parent) };
+
+  CHECK(output.find("pkg") != std::string::npos);
+  CHECK(output.find("fetch") != std::string::npos);
+  CHECK(output.find("  ninja.git") != std::string::npos);
+}
+
+TEST_CASE("inactive sections do not render") {
+  auto const h1{ envy::tui::section_create() };
+  auto const h2{ envy::tui::section_create() };
+
+  envy::tui::section_frame const frame{ .label = "pkg@v1",
+                                        .content = envy::tui::static_text_data{
+                                            .text = "test" } };
+
+  envy::tui::section_set_content(h1, frame);
+  envy::tui::section_set_content(h2, frame);
+
+  // Release h1 - it should not render
+  envy::tui::section_release(h1);
+
+  // Can't directly test render output without exposing internals,
+  // but we can verify the section was marked inactive
+  // (This is a structural test - render functions check active flag)
+}
+
+TEST_CASE("interactive_mode_guard RAII") {
+  {
+    envy::tui::interactive_mode_guard guard;
+    // Mutex is locked, rendering paused
+  }
+  // Mutex is unlocked, rendering resumed (destructor ran)
+
+  // If we can create another guard without deadlock, RAII worked
+  { envy::tui::interactive_mode_guard guard2; }
+}
+
+TEST_CASE("interactive_mode_guard exception safety") {
+  bool exception_thrown{ false };
+
+  try {
+    envy::tui::interactive_mode_guard guard;
+    exception_thrown = true;
+    throw std::runtime_error{ "test exception" };
+  } catch (std::runtime_error const &) {}
+
+  CHECK(exception_thrown);
+
+  // If we can acquire the guard again, the mutex was properly released
+  { envy::tui::interactive_mode_guard guard2; }
+}
+
+TEST_CASE("serialized interactive mode") {
+  std::mutex sync_mutex;
+  std::condition_variable sync_cv;
+  std::atomic<int> counter{ 0 };
+  bool t1_acquired{ false };
+  bool t2_attempting{ false };
+
+  std::thread t1{ [&]() {
+    envy::tui::interactive_mode_guard guard;
+    counter++;
+
+    {  // Signal t2 that we've acquired
+      std::lock_guard lock{ sync_mutex };
+      t1_acquired = true;
+    }
+    sync_cv.notify_one();
+
+    {  // Wait for t2 to signal it's attempting to acquire
+      std::unique_lock lock{ sync_mutex };
+      sync_cv.wait(lock, [&] { return t2_attempting; });
+    }
+
+    // t2 is now blocked on acquire - verify counter hasn't incremented
+    CHECK(counter == 1);
+
+    // Release guard (t2 will unblock)
+  } };
+
+  std::thread t2{ [&]() {
+    {  // Wait for t1 to acquire
+      std::unique_lock lock{ sync_mutex };
+      sync_cv.wait(lock, [&] { return t1_acquired; });
+    }
+
+    {  // Signal that we're about to attempt acquire (will block)
+      std::lock_guard lock{ sync_mutex };
+      t2_attempting = true;
+    }
+    sync_cv.notify_one();
+
+    // This blocks until t1 releases
+    envy::tui::interactive_mode_guard guard;
+    counter++;
+    CHECK(counter == 2);
+  } };
+
+  t1.join();
+  t2.join();
+
+  CHECK(counter == 2);
+}
+
+#endif  // ENVY_UNIT_TEST

@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -55,6 +56,23 @@ file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 // Load entire file into memory as bytes.
 // Throws std::runtime_error if file cannot be opened or read.
 std::vector<unsigned char> util_load_file(std::filesystem::path const &path);
+
+// Human-readable byte formatter (B, KB, MB, GB, TB). B uses integer form, higher
+// units use one decimal place with rounding (e.g., 1536 -> "1.5KB").
+std::string util_format_bytes(std::uint64_t bytes);
+
+// Flatten multi-line script to single line with semicolon delimiters.
+// Replaces newlines (\n, \r\n, \r) with "; ", collapses consecutive spaces/tabs to single space.
+// Trims trailing semicolons and whitespace.
+// Example: "cmd1\ncmd2\ncmd3" -> "cmd1; cmd2; cmd3"
+std::string util_flatten_script_with_semicolons(std::string_view script);
+
+// Simplify cache paths in command string by replacing absolute cache paths with basenames.
+// Parses command into whitespace-delimited tokens. For any token starting with cache_root,
+// replaces it with the final path component (basename).
+// Example: "/path/to/cache/assets/pkg/bin/python" -> "python" (if starts with cache_root)
+std::string util_simplify_cache_paths(std::string_view command,
+                                      std::filesystem::path const &cache_root);
 
 class scoped_path_cleanup : public unmovable {
  public:

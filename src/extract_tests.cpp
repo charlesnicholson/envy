@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -29,6 +30,14 @@ std::vector<std::string> collect_files_recursive(std::filesystem::path const &ro
   }
   std::ranges::sort(files);
   return files;
+}
+
+std::uint64_t sum_file_sizes(std::filesystem::path const &root) {
+  std::uint64_t total{ 0 };
+  for (auto const &entry : std::filesystem::recursive_directory_iterator(root)) {
+    if (entry.is_regular_file()) { total += std::filesystem::file_size(entry.path()); }
+  }
+  return total;
 }
 
 }  // namespace
@@ -118,8 +127,8 @@ TEST_CASE("extract with strip_components too large throws error") {
   try {
     envy::extract(archive, dest, opts);
     FAIL("Expected exception to be thrown");
-  } catch (std::runtime_error const& e) {
-    std::string const msg{e.what()};
+  } catch (std::runtime_error const &e) {
+    std::string const msg{ e.what() };
     CHECK(msg.find("test.tar.gz") != std::string::npos);
     CHECK(msg.find("strip=10") != std::string::npos);
   }
@@ -154,13 +163,42 @@ TEST_CASE("extract flat archive with strip=1 throws error") {
   try {
     envy::extract(archive, dest, opts);
     FAIL("Expected exception - flat archive cannot be stripped");
-  } catch (std::runtime_error const& e) {
-    std::string const msg{e.what()};
+  } catch (std::runtime_error const &e) {
+    std::string const msg{ e.what() };
     CHECK(msg.find("flat.tar.gz") != std::string::npos);
     CHECK(msg.find("strip=1") != std::string::npos);
     CHECK(msg.find("0 files extracted") != std::string::npos);
   }
 
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("compute_extract_totals counts uncompressed archive bytes and plain files") {
+  auto const fetch_dir{ make_temp_dir() };
+  auto const archive_src{ std::filesystem::path("test_data/archives/test.tar.gz") };
+  auto const archive_dest{ fetch_dir / "test.tar.gz" };
+  std::filesystem::copy_file(archive_src, archive_dest);
+
+  // Add a plain file (11 bytes)
+  auto const plain{ fetch_dir / "plain.txt" };
+  {
+    std::ofstream out{ plain, std::ios::binary };
+    out << "hello world";
+  }
+
+  // Ground truth: extract archive and sum uncompressed bytes
+  auto const dest{ make_temp_dir() };
+  envy::extract_options opts{ .strip_components = 0 };
+  auto const files_in_archive{ envy::extract(archive_dest, dest, opts) };
+  REQUIRE(files_in_archive == 5);
+  std::uint64_t const archive_bytes{ sum_file_sizes(dest) };
+
+  envy::extract_totals const totals{ envy::compute_extract_totals(fetch_dir) };
+
+  CHECK(totals.files == 6);  // 5 from archive + 1 plain
+  CHECK(totals.bytes == archive_bytes + 11);
+
+  std::filesystem::remove_all(fetch_dir);
   std::filesystem::remove_all(dest);
 }
 

@@ -8,11 +8,14 @@
 #include "lua_error_formatter.h"
 #include "recipe.h"
 #include "shell.h"
+#include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -20,6 +23,16 @@
 
 namespace envy {
 namespace {
+
+bool fetch_dir_has_files(std::filesystem::path const &fetch_dir) {
+  if (!std::filesystem::exists(fetch_dir)) { return false; }
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    if (entry.path().filename() == "envy-complete") { continue; }
+    return true;
+  }
+  return false;
+}
 
 struct stage_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is dest_dir (stage_dir)
@@ -30,7 +43,6 @@ sol::table build_stage_phase_ctx_table(sol::state_view lua,
                                        stage_phase_ctx *ctx) {
   sol::table ctx_table{ lua.create_table() };
   ctx_table["identity"] = identity;
-  // Expose fetch_dir/stage_dir in stage phase (read-only)
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
   lua_ctx_add_common_bindings(ctx_table, ctx);
@@ -61,40 +73,45 @@ struct stage_options {
   int strip_components{ 0 };
 };
 
-stage_options parse_stage_options(sol::state_view lua, std::string const &key) {
+stage_options parse_stage_options(sol::table const &stage_tbl, std::string const &key) {
   stage_options opts;
 
-  lua_getfield(lua, -1, "strip");
-  if (lua_isnumber(lua, -1)) {
-    opts.strip_components = static_cast<int>(lua_tointeger(lua, -1));
-    if (opts.strip_components < 0) {
-      lua_pop(lua, 2);
+  if (auto strip{ sol_util_get_optional<int>(stage_tbl, "strip", key) }) {
+    if (*strip < 0) {
       throw std::runtime_error("stage.strip must be non-negative for " + key);
     }
-  } else if (!lua_isnil(lua, -1)) {
-    lua_pop(lua, 2);
-    throw std::runtime_error("stage.strip must be a number for " + key);
+    opts.strip_components = *strip;
   }
-  lua_pop(lua, 1);  // Pop strip field
 
   return opts;
 }
 
-void run_default_stage(std::filesystem::path const &fetch_dir,
-                       std::filesystem::path const &dest_dir) {
-  tui::debug("phase stage: no stage field, running default extraction");
-  extract_all_archives(fetch_dir, dest_dir, 0);
-}
+void run_extract_stage(extract_totals const &totals,
+                       std::filesystem::path const &fetch_dir,
+                       std::filesystem::path const &dest_dir,
+                       std::string const &identity,
+                       tui::section_handle section,
+                       int strip_components) {
+  tui::debug("phase stage: extracting (strip=%d)", strip_components);
 
-void run_declarative_stage(sol::state_view lua,
-                           std::filesystem::path const &fetch_dir,
-                           std::filesystem::path const &dest_dir,
-                           std::string const &identity) {
-  stage_options const opts{ parse_stage_options(lua, identity) };
-  lua_pop(lua.lua_state(), 1);  // Pop stage table
+  std::vector<std::string> items;
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    if (entry.path().filename() == "envy-complete") { continue; }
+    items.push_back(entry.path().filename().string());
+  }
 
-  tui::debug("phase stage: declarative extraction with strip=%d", opts.strip_components);
-  extract_all_archives(fetch_dir, dest_dir, opts.strip_components);
+  tui_actions::extract_all_progress_tracker tracker{ section, identity, items, totals };
+  auto [progress_cb, on_file_cb] = tracker.make_callbacks();
+
+  extract_all_archives(
+      fetch_dir,
+      dest_dir,
+      strip_components,
+      progress_cb,
+      identity,
+      items.size() > 1 ? on_file_cb : std::function<void(std::string const &)>{},
+      totals);
 }
 
 void run_programmatic_stage(sol::protected_function stage_func,
@@ -130,11 +147,9 @@ void run_shell_stage(std::string_view script,
 
   shell_env_t env{ shell_getenv() };
 
-  std::vector<std::string> output_lines;
   shell_run_cfg inv{ .on_output_line =
                          [&](std::string_view line) {
                            tui::info("%.*s", static_cast<int>(line.size()), line.data());
-                           output_lines.emplace_back(line);
                          },
                      .cwd = dest_dir,
                      .env = std::move(env),
@@ -164,6 +179,8 @@ void run_stage_phase(recipe *r, engine &eng) {
   cache::scoped_entry_lock *lock{ r->lock.get() };
   if (!lock) {  // Cache hit - no work to do
     tui::debug("phase stage: no lock (cache hit), skipping");
+    // Release section on cache hit (fetch will have already set final content)
+    tui::section_release(r->tui_section);
     return;
   }
 
@@ -174,8 +191,14 @@ void run_stage_phase(recipe *r, engine &eng) {
 
   sol::object stage_obj{ lua_view["STAGE"] };
 
+  if (!fetch_dir_has_files(fetch_dir)) {
+    tui::debug("phase stage: no files in fetch_dir, skipping");
+    return;
+  }
+
   if (!stage_obj.valid()) {
-    run_default_stage(fetch_dir, dest_dir);
+    extract_totals const totals{ compute_extract_totals(fetch_dir) };
+    run_extract_stage(totals, fetch_dir, dest_dir, identity, r->tui_section, 0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
@@ -190,8 +213,14 @@ void run_stage_phase(recipe *r, engine &eng) {
                            eng,
                            r);
   } else if (stage_obj.is<sol::table>()) {
-    stage_obj.push(lua_view.lua_state());
-    run_declarative_stage(lua_view, fetch_dir, dest_dir, identity);
+    stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
+    extract_totals const totals{ compute_extract_totals(fetch_dir) };
+    run_extract_stage(totals,
+                      fetch_dir,
+                      dest_dir,
+                      identity,
+                      r->tui_section,
+                      opts.strip_components);
   } else {
     throw std::runtime_error("STAGE field must be nil, string, table, or function for " +
                              identity);

@@ -169,6 +169,19 @@ struct recipe_fetch_counter_dec {
   bool was_completed;
 };
 
+struct execute_downloads_start {
+  std::string recipe;
+  std::size_t thread_id;
+  std::size_t num_files;
+};
+
+struct execute_downloads_complete {
+  std::string recipe;
+  std::size_t thread_id;
+  std::size_t num_files;
+  std::int64_t duration_ms;
+};
+
 struct debug_marker {
   std::string recipe;
   int marker_id;
@@ -209,6 +222,20 @@ struct directory_flush_failed {
   std::string reason;
 };
 
+struct extract_archive_start {
+  std::string recipe;
+  std::string archive_path;
+  std::string destination;
+  int strip_components;
+};
+
+struct extract_archive_complete {
+  std::string recipe;
+  std::string archive_path;
+  std::int64_t files_extracted;
+  std::int64_t duration_ms;
+};
+
 }  // namespace trace_events
 
 using trace_event_t = std::variant<trace_events::phase_blocked,
@@ -236,13 +263,17 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::fetch_file_complete,
                                    trace_events::recipe_fetch_counter_inc,
                                    trace_events::recipe_fetch_counter_dec,
+                                   trace_events::execute_downloads_start,
+                                   trace_events::execute_downloads_complete,
                                    trace_events::debug_marker,
                                    trace_events::cache_check_entry,
                                    trace_events::cache_check_result,
                                    trace_events::directory_flushed,
                                    trace_events::file_touched,
                                    trace_events::file_exists_check,
-                                   trace_events::directory_flush_failed>;
+                                   trace_events::directory_flush_failed,
+                                   trace_events::extract_archive_start,
+                                   trace_events::extract_archive_complete>;
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);
@@ -484,6 +515,21 @@ struct phase_trace_scope {
       .was_completed = (was_completed_value), \
   }))
 
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(recipe_value, thread_id_value, num_files_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_start{ \
+      .recipe = (recipe_value), \
+      .thread_id = (thread_id_value), \
+      .num_files = (num_files_value), \
+  }))
+
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(recipe_value, thread_id_value, num_files_value, duration_ms_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_complete{ \
+      .recipe = (recipe_value), \
+      .thread_id = (thread_id_value), \
+      .num_files = (num_files_value), \
+      .duration_ms = (duration_ms_value), \
+  }))
+
 #define ENVY_TRACE_DEBUG_MARKER(recipe_value, marker_id_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::debug_marker{ \
       .recipe = (recipe_value), \
@@ -532,4 +578,26 @@ struct phase_trace_scope {
       .recipe = (recipe_value), \
       .dir_path = (dir_path_value), \
       .reason = (reason_value), \
+  }))
+
+#define ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_value, \
+                                         archive_path_value, \
+                                         destination_value, \
+                                         strip_components_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_start{ \
+      .recipe = (recipe_value), \
+      .archive_path = (archive_path_value), \
+      .destination = (destination_value), \
+      .strip_components = (strip_components_value), \
+  }))
+
+#define ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_value, \
+                                            archive_path_value, \
+                                            files_extracted_value, \
+                                            duration_ms_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_complete{ \
+      .recipe = (recipe_value), \
+      .archive_path = (archive_path_value), \
+      .files_extracted = (files_extracted_value), \
+      .duration_ms = (duration_ms_value), \
   }))

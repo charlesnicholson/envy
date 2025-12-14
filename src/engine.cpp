@@ -246,6 +246,12 @@ engine::~engine() {
   for (auto &[key, ctx] : execution_ctxs_) {
     if (ctx->worker.joinable()) { ctx->worker.join(); }
   }
+
+  for (auto &[key, recipe_ptr] : recipes_) {
+    if (recipe_ptr && recipe_ptr->tui_section != 0) {
+      tui::section_release(recipe_ptr->tui_section);
+    }
+  }
 }
 
 void engine::notify_all_global_locked() {
@@ -351,6 +357,7 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
       .type = recipe_type::UNKNOWN,
       .cache_ptr = &cache_,
       .default_shell_ptr = &default_shell_,
+      .tui_section = tui::section_create(),
   }) };
 
   auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
@@ -424,6 +431,15 @@ recipe_execution_ctx &engine::get_execution_ctx(recipe_key const &key) {
   return *it->second;
 }
 
+recipe_execution_ctx const &engine::get_execution_ctx(recipe_key const &key) const {
+  std::lock_guard const lock(mutex_);
+  auto const it{ execution_ctxs_.find(key) };
+  if (it == execution_ctxs_.end()) {
+    throw std::runtime_error("Recipe execution context not found: " + key.canonical());
+  }
+  return *it->second;
+}
+
 void engine::start_recipe_thread(recipe *r,
                                  recipe_phase initial_target,
                                  std::vector<std::string> ancestor_chain) {
@@ -456,6 +472,40 @@ void engine::ensure_recipe_at_phase(recipe_key const &key, recipe_phase const ta
     throw std::runtime_error(msg);
   }
 }
+
+void engine::extend_dependencies_to_completion(recipe *r) {
+  std::unordered_set<recipe_key> visited;
+  extend_dependencies_recursive(r, visited);
+}
+
+std::filesystem::path const &engine::cache_root() const { return cache_.root(); }
+
+void engine::extend_dependencies_recursive(recipe *r,
+                                           std::unordered_set<recipe_key> &visited) {
+  if (!visited.insert(r->key).second) { return; }  // Already visited (cycle detection)
+
+  // Extend this recipe's target to completion
+  auto &ctx{ get_execution_ctx(r) };
+  recipe_phase const old_target{ ctx.target_phase.load() };
+
+  if (old_target < recipe_phase::completion) {
+    ENVY_TRACE_TARGET_EXTENDED(r->spec->identity, old_target, recipe_phase::completion);
+  }
+
+  ctx.set_target_phase(recipe_phase::completion);
+
+  // Recursively extend all dependencies
+  for (auto const &[dep_identity, dep_info] : r->dependencies) {
+    extend_dependencies_recursive(dep_info.recipe_ptr, visited);
+  }
+}
+
+#ifdef ENVY_UNIT_TEST
+recipe_phase engine::get_recipe_target_phase(recipe_key const &key) const {
+  auto const &ctx{ get_execution_ctx(key) };
+  return ctx.target_phase.load();
+}
+#endif
 
 void engine::wait_for_resolution_phase() {
   std::unique_lock lock(mutex_);
@@ -596,8 +646,11 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
     throw;
   }
 
-  for (auto &[key, ctx] : execution_ctxs_) {  // Launch all recipes running to completion
-    ctx->set_target_phase(recipe_phase::completion);
+  {
+    std::lock_guard lock(mutex_);               // Protect iteration over execution_ctxs_
+    for (auto &[key, ctx] : execution_ctxs_) {  // Launch all recipes running to completion
+      ctx->set_target_phase(recipe_phase::completion);
+    }
   }
 
   tui::debug("engine: joining %zu recipe threads", execution_ctxs_.size());
@@ -606,21 +659,27 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
   }
   tui::debug("engine: all recipe threads joined");
 
-  for (auto const &[key, ctx] : execution_ctxs_) {  // Check for failures
-    if (ctx->failed) {
-      std::lock_guard ctx_lock(ctx->mutex);
-      std::string const msg{ ctx->error_message.empty()
-                                 ? "Recipe failed: " + key.canonical()
-                                 : ctx->error_message };
-      throw std::runtime_error(msg);
+  {
+    std::lock_guard lock(mutex_);
+    for (auto const &[key, ctx] : execution_ctxs_) {  // Check for failures
+      if (ctx->failed) {
+        std::lock_guard ctx_lock(ctx->mutex);
+        std::string const msg{ ctx->error_message.empty()
+                                   ? "Recipe failed: " + key.canonical()
+                                   : ctx->error_message };
+        throw std::runtime_error(msg);
+      }
     }
   }
 
   recipe_result_map_t results;
-  for (auto const &[key, r] : recipes_) {
-    auto const &ctx{ execution_ctxs_.at(key) };
-    recipe_type const result_type{ ctx->failed ? recipe_type::UNKNOWN : r->type };
-    results[r->key.canonical()] = { result_type, r->result_hash, r->asset_path };
+  {
+    std::lock_guard lock(mutex_);
+    for (auto const &[key, r] : recipes_) {
+      auto const &ctx{ execution_ctxs_.at(key) };
+      recipe_type const result_type{ ctx->failed ? recipe_type::UNKNOWN : r->type };
+      results[r->key.canonical()] = { result_type, r->result_hash, r->asset_path };
+    }
   }
   return results;
 }

@@ -1,4 +1,4 @@
-#include "fetch.h"
+#include "phase_fetch.h"
 
 #include "doctest.h"
 
@@ -9,12 +9,6 @@
 #include <variant>
 
 namespace envy {
-
-// Forward declare the function from phase_fetch.cpp (not in header, just for testing)
-fetch_request url_to_fetch_request(std::string const &url,
-                                   std::filesystem::path const &dest,
-                                   std::optional<std::string> const &ref,
-                                   std::string const &context);
 
 TEST_CASE("url_to_fetch_request HTTP") {
   auto req{ url_to_fetch_request("http://example.com/file.tar.gz",

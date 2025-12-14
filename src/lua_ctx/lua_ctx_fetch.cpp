@@ -1,10 +1,12 @@
 #include "lua_ctx_bindings.h"
 
 #include "fetch.h"
+#include "phases/phase_fetch.h"
 #include "recipe.h"
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "uri.h"
 
 #include <chrono>
@@ -17,12 +19,6 @@
 #include <vector>
 
 namespace envy {
-
-// Extern declaration (defined in phase_fetch.cpp)
-fetch_request url_to_fetch_request(std::string const &url,
-                                   std::filesystem::path const &dest,
-                                   std::optional<std::string> const &ref,
-                                   std::string const &context);
 
 namespace {
 
@@ -91,14 +87,14 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
   return [ctx](sol::object arg, sol::this_state L) -> sol::object {
     sol::state_view lua{ L };
 
-    // Parse arguments
     auto [items, is_array] = parse_fetch_args(arg);
 
-    std::vector<std::string> urls;
-    std::vector<std::string> basenames;
+    std::vector<std::string> urls, basenames;
 
-    // Build requests with collision handling
     std::vector<fetch_request> requests;
+    std::vector<std::unique_ptr<tui_actions::fetch_progress_tracker>> trackers;
+    trackers.reserve(items.size());
+
     for (auto const &item : items) {
       std::string basename{ uri_extract_filename(item.url) };
       if (basename.empty()) {
@@ -106,7 +102,6 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
                                  item.url);
       }
 
-      // Handle collisions: append -2, -3, etc.
       std::string final_basename{ basename };
       int suffix{ 2 };
       while (ctx->used_basenames.contains(final_basename)) {
@@ -123,13 +118,23 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
       basenames.push_back(final_basename);
       urls.push_back(item.url);
 
-      // Git repos go to stage_dir, everything else to run_dir (tmp)
       auto const info{ uri_classify(item.url) };
       std::filesystem::path dest{ info.scheme == uri_scheme::GIT
                                       ? ctx->stage_dir / final_basename
                                       : ctx->run_dir / final_basename };
 
-      requests.push_back(url_to_fetch_request(item.url, dest, item.ref, "ctx.fetch"));
+      fetch_request req{ url_to_fetch_request(item.url, dest, item.ref, "ctx.fetch") };
+
+      if (items.size() == 1 && ctx->recipe_ && ctx->recipe_->tui_section) {
+        trackers.push_back(std::make_unique<tui_actions::fetch_progress_tracker>(
+            ctx->recipe_->tui_section,
+            ctx->recipe_->spec->identity,
+            item.url));
+
+        std::visit([&](auto &r) { r.progress = std::ref(*trackers.back()); }, req);
+      }
+
+      requests.push_back(std::move(req));
     }
 
     // Execute downloads (blocking, synchronous)

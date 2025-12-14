@@ -115,6 +115,7 @@ bool cmd_product::execute() {
       return false;
     }
 
+    eng.extend_dependencies_to_completion(provider);
     eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
 
     std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };

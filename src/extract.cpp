@@ -1,12 +1,15 @@
 #include "extract.h"
+#include "trace.h"
 #include "tui.h"
 #include "util.h"
 
 #include "archive.h"
 #include "archive_entry.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -126,6 +129,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     char const *entry_path{ archive_entry_pathname(entry) };
     if (!entry_path) { throw std::runtime_error("Archive entry has null pathname"); }
 
+    bool const is_regular_file{ archive_entry_filetype(entry) == AE_IFREG };
+
     // Apply strip-components if configured
     std::string stripped_path;
     if (options.strip_components > 0) {
@@ -162,7 +167,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     if (options.progress &&
         !options.progress(extract_progress{ .bytes_processed = processed,
                                             .total_bytes = std::nullopt,
-                                            .current_entry = full_path })) {
+                                            .files_processed = 0,
+                                            .total_files = std::nullopt,
+                                            .current_entry = full_path,
+                                            .is_regular_file = is_regular_file })) {
       throw std::runtime_error("extract: aborted by progress callback");
     }
 
@@ -192,7 +200,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
         if (options.progress &&
             !options.progress(extract_progress{ .bytes_processed = processed,
                                                 .total_bytes = std::nullopt,
-                                                .current_entry = full_path })) {
+                                                .files_processed = 0,
+                                                .total_files = std::nullopt,
+                                                .current_entry = full_path,
+                                                .is_regular_file = is_regular_file })) {
           throw std::runtime_error("extract: aborted by progress callback");
         }
       }
@@ -208,7 +219,7 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
                                archive_error_string(writer.handle));
     }
 
-    if (archive_entry_filetype(entry) == AE_IFREG) { ++files_extracted; }
+    if (is_regular_file) { ++files_extracted; }
   }
 
   if (files_extracted == 0) {
@@ -238,13 +249,90 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
          archive_extensions.contains(path.stem().extension().string() + ext);
 }
 
+extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
+  extract_totals totals{};
+  if (!std::filesystem::exists(fetch_dir)) { return totals; }
+
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    if (entry.path().filename() == "envy-complete") { continue; }
+
+    if (!extract_is_archive_extension(entry.path())) {
+      std::error_code ec;
+      totals.bytes += std::filesystem::file_size(entry.path(), ec);
+      if (ec) {
+        throw std::runtime_error("compute_extract_totals: failed to stat " +
+                                 entry.path().string() + ": " + ec.message());
+      }
+      ++totals.files;
+      continue;
+    }
+
+    archive_reader reader;
+    if (archive_read_open_filename(reader.handle, entry.path().string().c_str(), 10240) !=
+        ARCHIVE_OK) {
+      throw std::runtime_error(std::string("compute_extract_totals: failed to open ") +
+                               entry.path().string() + ": " +
+                               archive_error_string(reader.handle));
+    }
+
+    archive_entry *ent{ nullptr };
+    while (true) {
+      int const r{ archive_read_next_header(reader.handle, &ent) };
+      if (r == ARCHIVE_EOF) { break; }
+      if (r != ARCHIVE_OK) {
+        throw std::runtime_error(std::string("compute_extract_totals: header error in ") +
+                                 entry.path().string() + ": " +
+                                 archive_error_string(reader.handle));
+      }
+
+      if (archive_entry_filetype(ent) != AE_IFREG) { continue; }
+
+      la_int64_t const size{ archive_entry_size(ent) };
+      if (size > 0) { totals.bytes += static_cast<std::uint64_t>(size); }
+      ++totals.files;
+    }
+  }
+
+  return totals;
+}
+
 void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
-                          int strip_components) {
+                          int strip_components,
+                          extract_progress_cb_t progress,
+                          std::string const &recipe_identity,
+                          std::function<void(std::string const &)> on_file,
+                          std::optional<extract_totals> totals_hint) {
   if (!std::filesystem::exists(fetch_dir)) {
     tui::debug("extract_all_archives: fetch_dir does not exist, nothing to extract");
     return;
   }
+
+  extract_totals const totals{ totals_hint.value_or(compute_extract_totals(fetch_dir)) };
+
+  std::uint64_t files_processed{ 0 };
+  std::uint64_t processed_bytes{ 0 };
+  std::filesystem::path last_file_seen;
+
+  auto emit_progress = [&](std::uint64_t bytes,
+                           std::filesystem::path const &entry,
+                           bool is_regular_file) -> bool {
+    if (!progress) { return true; }
+
+    if (is_regular_file && entry != last_file_seen) {
+      ++files_processed;
+      last_file_seen = entry;
+    }
+
+    return progress(extract_progress{
+        .bytes_processed = bytes,
+        .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
+        .files_processed = files_processed,
+        .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
+        .current_entry = entry,
+        .is_regular_file = is_regular_file });
+  };
 
   std::uint64_t total_files_extracted{ 0 };
   std::uint64_t total_files_copied{ 0 };
@@ -255,35 +343,74 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     auto const &path{ entry.path() };
     std::string const filename{ path.filename().string() };
 
-    // Skip envy-complete marker
     if (filename == "envy-complete") { continue; }
 
+    if (on_file) { on_file(filename); }
+
     if (extract_is_archive_extension(path)) {
-      tui::debug("extract_all_archives: extracting archive %s (strip=%d)",
-                 filename.c_str(),
-                 strip_components);
+      auto const start{ std::chrono::steady_clock::now() };
 
-      extract_options opts{ .strip_components = strip_components };
+      ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_identity,
+                                       path.string(),
+                                       dest_dir.string(),
+                                       strip_components);
+
+      auto const archive_base{ processed_bytes };
+      std::uint64_t last_archive_bytes{ 0 };
+
+      extract_options opts{ .strip_components = strip_components,
+                            .progress = [&](extract_progress const &p) -> bool {
+                              last_archive_bytes = p.bytes_processed;
+                              return emit_progress(archive_base + p.bytes_processed,
+                                                   p.current_entry,
+                                                   p.is_regular_file);
+                            } };
+
       std::uint64_t const files{ extract(path, dest_dir, opts) };
+      if (!progress) {
+        std::error_code ec;
+        last_archive_bytes = std::filesystem::file_size(path, ec);
+        if (ec) {
+          throw std::runtime_error("extract_all_archives: failed to stat " +
+                                   path.string() + ": " + ec.message());
+        }
+      }
       total_files_extracted += files;
+      processed_bytes = archive_base + last_archive_bytes;
 
-      tui::debug("extract_all_archives: extracted %llu files from %s",
-                 static_cast<unsigned long long>(files),
-                 filename.c_str());
+      auto const duration{ std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - start)
+                               .count() };
+
+      ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_identity,
+                                          path.string(),
+                                          static_cast<std::int64_t>(files),
+                                          duration);
+
+      // Refresh progress with updated totals (no new file counted here)
+      emit_progress(processed_bytes, {}, false);
     } else {
-      tui::debug("extract_all_archives: copying non-archive %s", filename.c_str());
-
       std::filesystem::path const dest_path{ dest_dir / filename };
       std::filesystem::copy_file(path,
                                  dest_path,
                                  std::filesystem::copy_options::overwrite_existing);
+
+      std::error_code ec;
+      processed_bytes += std::filesystem::file_size(path, ec);
+      if (ec) {
+        throw std::runtime_error("extract_all_archives: failed to stat " + path.string() +
+                                 ": " + ec.message());
+      }
+
       ++total_files_copied;
+      emit_progress(processed_bytes, dest_path, true);
     }
   }
 
-  tui::debug("extract_all_archives: complete (%llu files from archives, %llu files copied)",
-             static_cast<unsigned long long>(total_files_extracted),
-             static_cast<unsigned long long>(total_files_copied));
+  tui::debug(
+      "extract_all_archives: complete (%llu files from archives, %llu files copied)",
+      static_cast<unsigned long long>(total_files_extracted),
+      static_cast<unsigned long long>(total_files_copied));
 }
 
 }  // namespace envy

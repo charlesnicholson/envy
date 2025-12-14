@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 
 #include "sol/sol.hpp"
@@ -20,8 +21,10 @@ struct recipe;
 struct lua_ctx_common {
   std::filesystem::path fetch_dir;
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
-  engine *engine_;                // Engine for cache access
-  recipe *recipe_;                // Current recipe (for ctx.asset() lookups)
+  engine *engine_;
+  recipe *recipe_;
+  std::function<void(std::string_view)> on_output_line;
+  std::function<void(std::string_view)> on_command_start;
 };
 
 // Fetch-phase-specific context (extends lua_ctx_common).

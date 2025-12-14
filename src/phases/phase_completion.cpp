@@ -20,10 +20,17 @@ void run_completion_phase(recipe *r, engine &eng) {
     tui::debug("phase completion: result_hash=%s for %s",
                r->result_hash.c_str(),
                r->spec->identity.c_str());
-  } else {  // User-managed package - no cached artifacts
+  } else {
     r->result_hash = "user-managed";
     tui::debug("phase completion: no asset_path for %s (user-managed package)",
                r->spec->identity.c_str());
+  }
+
+  if (r->tui_section) {
+    tui::section_set_content(
+        r->tui_section,
+        tui::section_frame{ .label = "[" + r->spec->identity + "]",
+                            .content = tui::static_text_data{ .text = "done" } });
   }
 }
 

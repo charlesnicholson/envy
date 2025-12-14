@@ -154,6 +154,8 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(file_touched),
           TRACE_NAME(file_exists_check),
           TRACE_NAME(directory_flush_failed),
+          TRACE_NAME(extract_archive_start),
+          TRACE_NAME(extract_archive_complete),
           [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
@@ -382,6 +384,22 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " dir_path=" << value.dir_path << " reason=" << value.reason;
             return oss.str();
           },
+          [](trace_events::extract_archive_start const &value) {
+            std::ostringstream oss;
+            oss << "extract_archive_start recipe=" << value.recipe
+                << " archive_path=" << value.archive_path
+                << " destination=" << value.destination
+                << " strip_components=" << value.strip_components;
+            return oss.str();
+          },
+          [](trace_events::extract_archive_complete const &value) {
+            std::ostringstream oss;
+            oss << "extract_archive_complete recipe=" << value.recipe
+                << " archive_path=" << value.archive_path
+                << " files_extracted=" << value.files_extracted
+                << " duration_ms=" << value.duration_ms;
+            return oss.str();
+          },
           [](auto const &) {
             std::ostringstream oss;
             oss << "trace_event_unknown";
@@ -571,6 +589,18 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "dir_path", value.dir_path);
             append_kv(output, "reason", value.reason);
+          },
+          [&](trace_events::extract_archive_start const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "archive_path", value.archive_path);
+            append_kv(output, "destination", value.destination);
+            append_kv(output, "strip_components", static_cast<std::int64_t>(value.strip_components));
+          },
+          [&](trace_events::extract_archive_complete const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "archive_path", value.archive_path);
+            append_kv(output, "files_extracted", value.files_extracted);
+            append_kv(output, "duration_ms", value.duration_ms);
           },
           [](auto const &) {},
       },

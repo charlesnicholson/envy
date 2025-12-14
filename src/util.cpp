@@ -1,7 +1,10 @@
 #include "util.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -113,6 +116,130 @@ std::vector<unsigned char> util_load_file(std::filesystem::path const &path) {
   }
 
   return buffer;
+}
+
+std::string util_format_bytes(std::uint64_t bytes) {
+  static constexpr std::array<char const *, 5> kUnits{ "B", "KB", "MB", "GB", "TB" };
+
+  double value{ static_cast<double>(bytes) };
+  std::size_t unit{ 0 };
+
+  while (value >= 1024.0 && unit + 1 < kUnits.size()) {
+    value /= 1024.0;
+    ++unit;
+  }
+
+  if (unit == 0) { return std::to_string(static_cast<std::uint64_t>(value)) + "B"; }
+
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed, std::ios::floatfield);
+  oss << std::setprecision(2) << value << kUnits[unit];
+  return oss.str();
+}
+
+std::string util_flatten_script_with_semicolons(std::string_view script) {
+  if (script.empty()) { return {}; }
+
+  std::string result;
+  result.reserve(script.size());
+
+  bool need_semicolon{ false };  // True if we need to emit "; " before next content
+  bool in_whitespace{ false };   // True if we've seen whitespace since last content
+  bool have_content{ false };    // True if current line has any content
+
+  for (std::size_t i{ 0 }; i < script.size(); ++i) {
+    char const c{ script[i] };
+
+    if (c == '\n' || c == '\r') {
+      if (i + 1 < script.size()) {
+        char const next{ script[i + 1] };
+        if ((c == '\r' && next == '\n') || (c == '\n' && next == '\r')) { ++i; }
+      }
+
+      if (have_content) {
+        need_semicolon = true;
+        have_content = false;
+      }
+      in_whitespace = false;
+    } else if (c == ' ' || c == '\t') {
+      // Mark that we're in whitespace, but don't emit yet
+      if (have_content) { in_whitespace = true; }
+    } else {
+      if (need_semicolon) {
+        result += "; ";
+        need_semicolon = false;
+        in_whitespace = false;
+      } else if (in_whitespace) {
+        result += ' ';
+        in_whitespace = false;
+      }
+      result += c;
+      have_content = true;
+    }
+  }
+
+  // Trim trailing "; " and whitespace
+  while (!result.empty()) {
+    std::size_t const len{ result.size() };
+    if (len >= 2 && result[len - 2] == ';' && result[len - 1] == ' ') {
+      result.resize(len - 2);
+    } else if (result.back() == ' ' || result.back() == '\t') {
+      result.pop_back();
+    } else {
+      break;
+    }
+  }
+
+  return result;
+}
+
+std::string util_simplify_cache_paths(std::string_view command,
+                                      std::filesystem::path const &cache_root) {
+  if (command.empty() || cache_root.empty()) { return std::string{ command }; }
+
+  std::string const cache_root_str{ cache_root.string() };
+  std::string result;
+  result.reserve(command.size());
+
+  std::size_t pos{ 0 };
+  while (pos < command.size()) {
+    while (pos < command.size() && (command[pos] == ' ' || command[pos] == '\t' ||
+                                    command[pos] == '\n' || command[pos] == '\r')) {
+      result += command[pos];
+      ++pos;
+    }
+
+    if (pos >= command.size()) { break; }
+
+    // Extract token (non-whitespace sequence)
+    std::size_t const token_start{ pos };
+    while (pos < command.size() && command[pos] != ' ' && command[pos] != '\t' &&
+           command[pos] != '\n' && command[pos] != '\r') {
+      ++pos;
+    }
+
+    std::string_view const token{ command.data() + token_start, pos - token_start };
+
+    // Check if token starts with cache_root followed by path separator
+    // This ensures we match "/cache/foo" but not "/cacheother/foo" for cache_root="/cache"
+    bool is_cache_path{ false };
+    if (token.size() > cache_root_str.size() &&
+        token.substr(0, cache_root_str.size()) == cache_root_str) {
+      char const separator{ token[cache_root_str.size()] };
+      if (separator == '/' || separator == '\\') { is_cache_path = true; }
+    } else if (token == cache_root_str) {
+      is_cache_path = true;
+    }
+
+    if (is_cache_path) {
+      std::filesystem::path const token_path{ token };
+      result += token_path.filename().string();
+    } else {
+      result.append(token.data(), token.size());
+    }
+  }
+
+  return result;
 }
 
 scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path)

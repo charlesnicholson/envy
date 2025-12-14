@@ -6,6 +6,7 @@
 #include "recipe_spec.h"
 #include "shell.h"
 #include "sol_util.h"
+#include "tui.h"
 
 #include <filesystem>
 #include <mutex>
@@ -44,7 +45,7 @@ struct recipe {
     std::string name;
     recipe_phase needed_by{ recipe_phase::asset_build };
     recipe *provider{ nullptr };  // strong deps immediately, weak deps after resolution
-    std::string constraint_identity;  // Optional required provider identity (empty if none)
+    std::string constraint_identity;  // required provider identity (empty if none)
   };
   std::unordered_map<std::string, product_dependency> product_dependencies;
 
@@ -73,6 +74,8 @@ struct recipe {
   // Phase functions need access to these (not owned by recipe)
   cache *cache_ptr;
   default_shell_cfg_t const *default_shell_ptr;
+
+  tui::section_handle tui_section{ 0 };
 };
 
 }  // namespace envy

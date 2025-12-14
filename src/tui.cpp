@@ -1,7 +1,9 @@
 #include "tui.h"
 
 #include "platform.h"
+#include "util.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -11,6 +13,7 @@
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <queue>
 #include <sstream>
@@ -20,10 +23,17 @@
 #include <utility>
 #include <variant>
 
+#ifdef _WIN32
+#include "platform_windows.h"
+#else
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
+
 using envy::tui::level;
 
 constexpr std::size_t kSeverityLabelWidth{ 3 };
-constexpr std::chrono::milliseconds kRefreshIntervalMs{ 16 };
+constexpr std::chrono::milliseconds kRefreshIntervalMs{ 33 };  // 30fps
 
 struct log_event {
   std::chrono::system_clock::time_point timestamp;
@@ -48,7 +58,426 @@ struct tui {
   std::FILE *trace_file{ nullptr };
 } s_tui{};
 
+struct section_state {
+  unsigned handle;
+  envy::tui::section_frame cached_frame;
+  bool active;
+  bool has_content{ false };  // True after first set_content call
+
+  std::string last_fallback_output;
+  std::chrono::steady_clock::time_point last_fallback_print_time;
+};
+
+struct tui_progress_state {
+  std::vector<section_state> sections;
+  unsigned next_handle{ 1 };
+  int last_line_count{ 0 };
+  std::size_t max_label_width{ 0 };
+  std::mutex interactive_mutex;
+  bool enabled{ true };
+} s_progress{};
+
 bool envy::tui::g_trace_enabled{ false };
+
+#ifdef ENVY_UNIT_TEST
+namespace envy::tui::test {
+int g_terminal_width{ 0 };
+bool g_isatty{ true };
+std::chrono::steady_clock::time_point g_now{};
+}  // namespace envy::tui::test
+#endif
+
+namespace {
+
+int get_terminal_width() {
+#ifdef ENVY_UNIT_TEST
+  if (envy::tui::test::g_terminal_width > 0) { return envy::tui::test::g_terminal_width; }
+#endif
+
+#ifdef _WIN32
+  CONSOLE_SCREEN_BUFFER_INFO csbi;
+  if (GetConsoleScreenBufferInfo(GetStdHandle(STD_ERROR_HANDLE), &csbi)) {
+    return csbi.dwSize.X;
+  }
+  return 80;
+#else
+  struct winsize ws;
+  if (ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) { return ws.ws_col; }
+  return 80;
+#endif
+}
+
+bool is_ansi_supported() {
+#ifdef ENVY_UNIT_TEST
+  return envy::tui::test::g_isatty;
+#endif
+
+  if (!envy::platform::is_tty()) { return false; }
+
+#ifdef _WIN32
+  HANDLE const h{ GetStdHandle(STD_ERROR_HANDLE) };
+  DWORD mode{ 0 };
+  if (GetConsoleMode(h, &mode)) {
+    mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (SetConsoleMode(h, mode)) { return true; }
+  }
+  return false;
+#else
+  char const *const term{ std::getenv("TERM") };
+  return term && std::strcmp(term, "dumb") != 0;
+#endif
+}
+
+std::chrono::steady_clock::time_point get_now() {
+#ifdef ENVY_UNIT_TEST
+  if (envy::tui::test::g_now.time_since_epoch().count() > 0) {
+    return envy::tui::test::g_now;
+  }
+#endif
+  return std::chrono::steady_clock::now();
+}
+
+constexpr char const *kSpinnerFrames[]{ "|", "/", "-", "\\" };
+
+std::string render_progress_bar(envy::tui::progress_data const &data,
+                                std::string_view label,
+                                std::size_t max_label_width,
+                                int width) {
+  constexpr int kBarChars{ 20 };
+  int const filled{ static_cast<int>((data.percent / 100.0) * kBarChars) };
+
+  std::ostringstream oss;
+  oss << label;
+  if (label.size() < max_label_width) {
+    oss << std::string(max_label_width - label.size(), ' ');
+  }
+
+  // Right-justified percentage (3 chars: "  5%", " 42%", "100%")
+  oss << " " << std::setw(3) << static_cast<int>(data.percent) << "%";
+
+  // Progress bar
+  oss << " [";
+  for (int i{ 0 }; i < kBarChars; ++i) {
+    if (i < filled) {
+      oss << "=";
+    } else if (i == filled) {
+      oss << ">";
+    } else {
+      oss << " ";
+    }
+  }
+  oss << "]";
+
+  // Status text (downloaded amount) on the right
+  if (!data.status.empty()) {
+    // Truncate status if it would wrap the terminal width
+    std::string const prefix{ oss.str() };
+    int const base_len{ static_cast<int>(prefix.size()) +
+                        1 };  // pending space before status
+    int const available{ width > 0 ? width - base_len : std::numeric_limits<int>::max() };
+    std::string status{ data.status };
+    if (available > 0 && static_cast<int>(status.size()) > available) {
+      if (available > 3) {
+        status.resize(static_cast<std::size_t>(available - 3));
+        status += "...";
+      } else {
+        status.resize(static_cast<std::size_t>(available));
+      }
+    }
+
+    oss << " " << status;
+  }
+
+  oss << "\n";
+  return oss.str();
+}
+
+std::string render_text_stream(envy::tui::text_stream_data const &data,
+                               std::string_view label,
+                               std::size_t max_label_width,
+                               int width,
+                               std::chrono::steady_clock::time_point now) {
+  // Determine which lines to render
+  std::size_t start_idx{ 0 };
+  std::size_t const num_lines{ data.lines.size() };
+
+  if (data.line_limit > 0 && num_lines > data.line_limit) {
+    start_idx = num_lines - data.line_limit;
+  }
+
+  // Compute spinner frame
+  auto const elapsed{ now - data.start_time };
+  auto const elapsed_ms{
+    std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()
+  };
+  std::size_t const frame_index{ static_cast<std::size_t>((elapsed_ms / 100) % 4) };
+
+  std::ostringstream oss;
+  oss << label;
+  if (label.size() < max_label_width) {
+    oss << std::string(max_label_width - label.size(), ' ');
+  }
+  oss << " " << kSpinnerFrames[frame_index] << " "
+      << (data.header_text.empty() ? "build output:" : data.header_text) << "\n";
+
+  for (std::size_t i = start_idx; i < data.lines.size(); ++i) {
+    oss << "   " << data.lines[i] << "\n";
+  }
+
+  return oss.str();
+}
+
+std::string render_spinner(envy::tui::spinner_data const &data,
+                           std::string_view label,
+                           std::size_t max_label_width,
+                           int width,
+                           std::chrono::steady_clock::time_point now) {
+  auto const elapsed{ now - data.start_time };
+  auto const elapsed_ms{
+    std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()
+  };
+  std::size_t const frame_index{ static_cast<std::size_t>(
+      (elapsed_ms / data.frame_duration.count()) % 4) };
+
+  std::ostringstream oss;
+  oss << label;
+  if (label.size() < max_label_width) {
+    oss << std::string(max_label_width - label.size(), ' ');
+  }
+  oss << " " << kSpinnerFrames[frame_index] << " " << data.text << "\n";
+
+  return oss.str();
+}
+
+std::string render_static_text(envy::tui::static_text_data const &data,
+                               std::string_view label,
+                               std::size_t max_label_width,
+                               int width) {
+  std::ostringstream oss;
+  oss << label;
+  if (label.size() < max_label_width) {
+    oss << std::string(max_label_width - label.size(), ' ');
+  }
+  oss << " " << data.text << "\n";
+
+  return oss.str();
+}
+
+std::string render_section_frame_fallback(envy::tui::section_frame const &frame,
+                                          std::chrono::steady_clock::time_point now) {
+  if (!frame.children.empty()) {
+    std::string output;
+    auto parent_copy{ frame };
+    parent_copy.children.clear();
+    if (!parent_copy.phase_label.empty()) {
+      parent_copy.label += " (" + parent_copy.phase_label + ")";
+      parent_copy.phase_label.clear();
+    }
+    output += render_section_frame_fallback(parent_copy, now);
+
+    for (auto const &child : frame.children) {
+      auto child_copy{ child };
+      child_copy.label = "  " + child_copy.label;
+      output += render_section_frame_fallback(child_copy, now);
+    }
+    return output;
+  }
+
+  return std::visit(
+      [&](auto const &data) -> std::string {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, envy::tui::progress_data>) {
+          std::ostringstream oss;
+          oss << "[" << frame.label << "] " << data.status << ": " << std::fixed
+              << std::setprecision(1) << data.percent << "%\n";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, envy::tui::text_stream_data>) {
+          // Determine which lines to render
+          std::size_t start_idx{ 0 };
+          if (data.line_limit > 0 && data.lines.size() > data.line_limit) {
+            start_idx = data.lines.size() - data.line_limit;
+          }
+
+          // Compute dots for fallback spinner
+          auto const elapsed{ now - data.start_time };
+          auto const elapsed_sec{
+            std::chrono::duration_cast<std::chrono::seconds>(elapsed).count()
+          };
+          int const dot_count{ static_cast<int>((elapsed_sec % 4) + 1) };  // 1-4 dots
+
+          std::ostringstream oss;
+          oss << "[" << frame.label << "] " << std::string(dot_count, '.') << " "
+              << (data.header_text.empty() ? "build output:" : data.header_text) << "\n";
+
+          for (std::size_t i{ start_idx }; i < data.lines.size(); ++i) {
+            oss << "   " << data.lines[i] << "\n";
+          }
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, envy::tui::spinner_data>) {
+          auto const elapsed{ now - data.start_time };
+          auto const elapsed_sec{
+            std::chrono::duration_cast<std::chrono::seconds>(elapsed).count()
+          };
+          int const dot_count{ static_cast<int>((elapsed_sec % 4) + 1) };
+
+          std::ostringstream oss;
+          oss << "[" << frame.label << "] " << data.text << std::string(dot_count, '.')
+              << "\n";
+          return oss.str();
+        } else if constexpr (std::is_same_v<T, envy::tui::static_text_data>) {
+          std::ostringstream oss;
+          oss << "[" << frame.label << "] " << data.text << "\n";
+          return oss.str();
+        }
+        return "";
+      },
+      frame.content);
+}
+
+std::string render_section_frame(envy::tui::section_frame const &frame,
+                                 std::size_t max_label_width,
+                                 int width,
+                                 bool ansi_mode,
+                                 std::chrono::steady_clock::time_point now) {
+  if (!ansi_mode) { return render_section_frame_fallback(frame, now); }
+
+  if (!frame.children.empty()) {
+    // Parent line (with optional phase suffix), then children indented by two spaces
+    std::string output;
+    auto parent_copy{ frame };
+    parent_copy.children.clear();
+    if (!parent_copy.phase_label.empty()) {
+      parent_copy.label += " (" + parent_copy.phase_label + ")";
+      parent_copy.phase_label.clear();
+    }
+    output += render_section_frame(parent_copy, max_label_width, width, ansi_mode, now);
+
+    for (auto const &child : frame.children) {
+      envy::tui::section_frame const child_copy{ .label = "  " + child.label,
+                                                 .content = child.content,
+                                                 .children = child.children,
+                                                 .phase_label = child.phase_label };
+      output += render_section_frame(child_copy, max_label_width, width, ansi_mode, now);
+    }
+    return output;
+  }
+
+  return std::visit(
+      envy::match{
+          [&](envy::tui::progress_data const &data) {
+            return render_progress_bar(data, frame.label, max_label_width, width);
+          },
+          [&](envy::tui::text_stream_data const &data) {
+            return render_text_stream(data, frame.label, max_label_width, width, now);
+          },
+          [&](envy::tui::spinner_data const &data) {
+            return render_spinner(data, frame.label, max_label_width, width, now);
+          },
+          [&](envy::tui::static_text_data const &data) {
+            return render_static_text(data, frame.label, max_label_width, width);
+          } },
+      frame.content);
+}
+
+int count_wrapped_lines(std::string const &text, int width_hint) {
+  int const effective_width{ width_hint > 0 ? width_hint : 80 };
+  int lines{ 0 };
+  int col{ 0 };
+  for (char c : text) {
+    if (c == '\n') {
+      ++lines;
+      col = 0;
+      continue;
+    }
+    ++col;
+    if (col > effective_width) {
+      ++lines;
+      col = 1;  // Current char is first char of new line
+    }
+  }
+  if (col > 0) { ++lines; }
+  return lines;
+}
+
+std::string truncate_lines_to_width(std::string const &text, int width_hint) {
+  if (width_hint <= 0) { return text; }
+
+  std::string out;
+  out.reserve(text.size());
+
+  int col{ 0 };
+  for (char c : text) {
+    if (c == '\n') {
+      out.push_back(c);
+      col = 0;
+      continue;
+    }
+    if (col < width_hint) {
+      out.push_back(c);
+      ++col;
+    }
+  }
+
+  return out;
+}
+
+void render_ansi_frame_unlocked(std::vector<std::string> const &frames,
+                                int rendered_line_count) {
+  // Hide cursor
+  std::fprintf(stderr, "\x1b[?25l");
+
+  // Render all active sections that have content
+  for (auto const &output : frames) { std::fprintf(stderr, "%s", output.c_str()); }
+
+  // Show cursor
+  std::fprintf(stderr, "\x1b[?25h");
+  std::fflush(stderr);
+
+  // Caller updates s_progress.last_line_count after render to avoid counting inactive
+  // sections.
+}
+
+void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
+                                    std::chrono::steady_clock::time_point now) {
+  // Throttle: print only if changed and >= 2s elapsed
+  constexpr auto kFallbackThrottle{ std::chrono::seconds{ 2 } };
+
+  struct update_info {
+    unsigned handle;
+    std::string output;
+  };
+  std::vector<update_info> updates;
+
+  for (auto const &sec : sections) {
+    if (!sec.active || !sec.has_content) { continue; }
+
+    std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
+
+    auto const elapsed{ now - sec.last_fallback_print_time };
+    if (output != sec.last_fallback_output && elapsed >= kFallbackThrottle) {
+      std::fprintf(stderr, "%s", output.c_str());
+      updates.push_back(update_info{ .handle = sec.handle, .output = output });
+    }
+  }
+
+  std::fflush(stderr);
+
+  // Update shared state (requires lock)
+  if (!updates.empty()) {
+    std::lock_guard lock{ s_tui.mutex };
+    for (auto const &upd : updates) {
+      for (auto &sec : s_progress.sections) {
+        if (sec.handle == upd.handle) {
+          sec.last_fallback_output = upd.output;
+          sec.last_fallback_print_time = now;
+          break;
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
 
 namespace {
 
@@ -94,8 +523,8 @@ std::string format_prefix(level severity) {
   }
 
   std::ostringstream oss;
-  oss << '[' << timestamp_buf << '.' << std::setfill('0') << std::setw(3) << millis << "] ["
-      << std::left << std::setfill(' ') << std::setw(kSeverityLabelWidth)
+  oss << '[' << timestamp_buf << '.' << std::setfill('0') << std::setw(3) << millis
+      << "] [" << std::left << std::setfill(' ') << std::setw(kSeverityLabelWidth)
       << level_to_string(severity) << "] ";
   return oss.str();
 }
@@ -168,23 +597,98 @@ void worker_thread() {
   std::unique_lock<std::mutex> lock{ s_tui.mutex };
 
   while (!s_tui.stop_requested) {
+    try {
+      std::queue<log_entry> pending;
+      pending.swap(s_tui.messages);
+
+      std::vector<section_state> sections_snapshot;
+      std::size_t max_label_width{ 0 };
+      int last_line_count{ 0 };
+
+      if (s_progress.enabled) {
+        sections_snapshot = s_progress.sections;
+        max_label_width = s_progress.max_label_width;
+        last_line_count = s_progress.last_line_count;
+      }
+
+      lock.unlock();
+
+      std::vector<std::string> rendered_frames;
+      int rendered_line_count{ 0 };
+      int clear_lines{ 0 };
+      int width{ 0 };
+      auto now = get_now();
+      bool ansi{ false };
+
+      if (s_progress.enabled) {
+        width = get_terminal_width();
+        ansi = is_ansi_supported();
+
+        if (ansi) {
+          for (auto const &sec : sections_snapshot) {
+            if (!sec.active || !sec.has_content) { continue; }
+            std::string frame{
+              render_section_frame(sec.cached_frame, max_label_width, width, true, now)
+            };
+            frame = truncate_lines_to_width(frame, width);
+            int const frame_lines{ count_wrapped_lines(frame, width) };
+            rendered_line_count += frame_lines;
+            rendered_frames.push_back(std::move(frame));
+          }
+          clear_lines = last_line_count;  // Only clear what we rendered last time
+        }
+      }
+
+      if (s_progress.enabled) {
+        if (ansi && clear_lines > 0) {
+          std::fprintf(stderr, "\x1b[%dF\x1b[0J", clear_lines);
+          std::fflush(stderr);
+        }
+      }
+
+      flush_messages(pending, s_tui.output_handler);
+
+      if (s_progress.enabled) {
+        if (ansi) {
+          render_ansi_frame_unlocked(rendered_frames, rendered_line_count);
+        } else {
+          render_fallback_frame_unlocked(sections_snapshot, now);
+        }
+      }
+
+      lock.lock();
+
+      if (ansi && s_progress.enabled) { s_progress.last_line_count = rendered_line_count; }
+      s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
+        return s_tui.stop_requested.load();
+      });
+    } catch (std::exception const &e) {
+      // Ensure lock is reacquired if exception occurred while unlocked
+      if (!lock.owns_lock()) { lock.lock(); }
+      std::fprintf(stderr, "[TUI worker thread exception: %s]\n", e.what());
+      std::fflush(stderr);
+    } catch (...) {
+      // Ensure lock is reacquired if exception occurred while unlocked
+      if (!lock.owns_lock()) { lock.lock(); }
+      std::fprintf(stderr, "[TUI worker thread exception: unknown]\n");
+      std::fflush(stderr);
+    }
+  }
+
+  // Final flush on shutdown
+  try {
     std::queue<log_entry> pending;
     pending.swap(s_tui.messages);
 
     lock.unlock();
     flush_messages(pending, s_tui.output_handler);
-    lock.lock();
-
-    s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
-      return s_tui.stop_requested.load();
-    });
+  } catch (std::exception const &e) {
+    std::fprintf(stderr, "[TUI final flush exception: %s]\n", e.what());
+    std::fflush(stderr);
+  } catch (...) {
+    std::fprintf(stderr, "[TUI final flush exception: unknown]\n");
+    std::fflush(stderr);
   }
-
-  std::queue<log_entry> pending;
-  pending.swap(s_tui.messages);
-
-  lock.unlock();
-  flush_messages(pending, s_tui.output_handler);
 }
 
 void log_formatted(level severity, char const *fmt, va_list args) {
@@ -357,9 +861,76 @@ void print_stdout(char const *fmt, ...) {
   if (written > 0) { std::fflush(stdout); }
 }
 
-void pause_rendering() {}
+void pause_rendering() {
+  std::lock_guard lock{ s_tui.mutex };
+  if (is_ansi_supported() && s_progress.last_line_count > 0) {
+    std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
+    std::fprintf(stderr, "\x1b[?25h");  // Show cursor
+    s_progress.last_line_count = 0;
+    std::fflush(stderr);
+  }
+}
 
-void resume_rendering() {}
+void resume_rendering() {
+  // No-op: next render cycle will redraw
+}
+
+section_handle section_create() {
+  if (!s_progress.enabled) { return 0; }  // Skip if disabled
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  unsigned const handle{ s_progress.next_handle++ };
+  s_progress.sections.push_back(section_state{ .handle = handle,
+                                               .cached_frame = {},
+                                               .active = true,
+                                               .last_fallback_output = {} });
+
+  return handle;
+}
+
+void section_set_content(section_handle h, section_frame const &frame) {
+  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  for (auto &sec : s_progress.sections) {
+    if (sec.handle == h && sec.active) {
+      sec.cached_frame = frame;
+      sec.has_content = true;
+      s_progress.max_label_width =
+          std::max(s_progress.max_label_width, measure_label_width(frame));
+      break;
+    }
+  }
+}
+
+void section_release(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  for (auto &sec : s_progress.sections) {
+    if (sec.handle == h) {
+      sec.active = false;
+      break;
+    }
+  }
+}
+
+void acquire_interactive_mode() {
+  s_progress.interactive_mutex.lock();
+  pause_rendering();
+}
+
+void release_interactive_mode() {
+  resume_rendering();
+  s_progress.interactive_mutex.unlock();
+}
+
+interactive_mode_guard::interactive_mode_guard() { acquire_interactive_mode(); }
+
+interactive_mode_guard::~interactive_mode_guard() { release_interactive_mode(); }
 
 void set_output_handler(std::function<void(std::string_view)> handler) {
   if (!s_tui.initialized) {
@@ -382,6 +953,36 @@ scope::scope(std::optional<level> threshold, bool decorated_logging) {
 
 scope::~scope() {
   if (active) { shutdown(); }
+}
+
+#ifdef ENVY_UNIT_TEST
+namespace test {
+std::string render_section_frame(section_frame const &frame) {
+  int const width{ g_terminal_width > 0 ? g_terminal_width : 80 };
+  auto const now{ g_now.time_since_epoch().count() > 0
+                      ? g_now
+                      : std::chrono::steady_clock::now() };
+  std::size_t const max_width{ measure_label_width(frame) };
+  return ::render_section_frame(frame, max_width, width, g_isatty, now);
+}
+}  // namespace test
+#endif
+
+namespace {
+std::size_t measure_label_width_impl(section_frame const &frame, std::size_t indent) {
+  std::size_t len{ indent + frame.label.size() };
+  if (!frame.phase_label.empty()) { len += frame.phase_label.size() + 3; }
+
+  std::size_t max_len{ len };
+  for (auto const &child : frame.children) {
+    max_len = std::max(max_len, measure_label_width_impl(child, indent + 2));
+  }
+  return max_len;
+}
+}  // namespace
+
+std::size_t measure_label_width(section_frame const &frame) {
+  return measure_label_width_impl(frame, 0);
 }
 
 }  // namespace envy::tui
