@@ -12,6 +12,7 @@
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <queue>
 #include <sstream>
@@ -171,8 +172,23 @@ std::string render_progress_bar(envy::tui::progress_data const &data,
 
   // Status text (downloaded amount) on the right
   if (!data.status.empty()) {
+    // Truncate status if it would wrap the terminal width
+    int const base_len{
+      static_cast<int>(output.size()) + 1  // pending space before status
+    };
+    int const available{ width > 0 ? width - base_len : std::numeric_limits<int>::max() };
+    std::string status{ data.status };
+    if (available > 0 && static_cast<int>(status.size()) > available) {
+      if (available > 3) {
+        status.resize(static_cast<std::size_t>(available - 3));
+        status += "...";
+      } else {
+        status.resize(static_cast<std::size_t>(available));
+      }
+    }
+
     output += " ";
-    output += data.status;
+    output += status;
   }
 
   output += "\n";
@@ -262,6 +278,24 @@ std::string render_static_text(envy::tui::static_text_data const &data,
 
 std::string render_section_frame_fallback(envy::tui::section_frame const &frame,
                                           std::chrono::steady_clock::time_point now) {
+  if (!frame.children.empty()) {
+    std::string output;
+    auto parent_copy{ frame };
+    parent_copy.children.clear();
+    if (!parent_copy.phase_label.empty()) {
+      parent_copy.label += " (" + parent_copy.phase_label + ")";
+      parent_copy.phase_label.clear();
+    }
+    output += render_section_frame_fallback(parent_copy, now);
+
+    for (auto const &child : frame.children) {
+      auto child_copy{ child };
+      child_copy.label = "  " + child_copy.label;
+      output += render_section_frame_fallback(child_copy, now);
+    }
+    return output;
+  }
+
   return std::visit(
       [&](auto const &data) -> std::string {
         using T = std::decay_t<decltype(data)>;
@@ -334,6 +368,25 @@ std::string render_section_frame(envy::tui::section_frame const &frame,
                                  bool ansi_mode,
                                  std::chrono::steady_clock::time_point now) {
   if (!ansi_mode) { return render_section_frame_fallback(frame, now); }
+
+  if (!frame.children.empty()) {
+    // Parent line (with optional phase suffix), then children indented by two spaces
+    std::string output;
+    auto parent_copy{ frame };
+    parent_copy.children.clear();
+    if (!parent_copy.phase_label.empty()) {
+      parent_copy.label += " (" + parent_copy.phase_label + ")";
+      parent_copy.phase_label.clear();
+    }
+    output += render_section_frame(parent_copy, max_label_width, width, ansi_mode, now);
+
+    for (auto const &child : frame.children) {
+      auto child_copy{ child };
+      child_copy.label = "  " + child_copy.label;
+      output += render_section_frame(child_copy, max_label_width, width, ansi_mode, now);
+    }
+    return output;
+  }
 
   return std::visit(
       [&](auto const &data) -> std::string {
@@ -865,7 +918,7 @@ void section_set_content(section_handle h, section_frame const &frame) {
       sec.cached_frame = frame;
       sec.has_content = true;
       s_progress.max_label_width =
-          std::max(s_progress.max_label_width, frame.label.size());
+          std::max(s_progress.max_label_width, measure_label_width(frame));
       break;
     }
   }
@@ -928,9 +981,27 @@ std::string render_section_frame(section_frame const &frame) {
   auto const now{ g_now.time_since_epoch().count() > 0
                       ? g_now
                       : std::chrono::steady_clock::now() };
-  return ::render_section_frame(frame, frame.label.size(), width, g_isatty, now);
+  std::size_t const max_width{ measure_label_width(frame) };
+  return ::render_section_frame(frame, max_width, width, g_isatty, now);
 }
 }  // namespace test
 #endif
+
+namespace {
+std::size_t measure_label_width_impl(section_frame const &frame, std::size_t indent) {
+  std::size_t len{ indent + frame.label.size() };
+  if (!frame.phase_label.empty()) { len += frame.phase_label.size() + 3; }
+
+  std::size_t max_len{ len };
+  for (auto const &child : frame.children) {
+    max_len = std::max(max_len, measure_label_width_impl(child, indent + 2));
+  }
+  return max_len;
+}
+}  // namespace
+
+std::size_t measure_label_width(section_frame const &frame) {
+  return measure_label_width_impl(frame, 0);
+}
 
 }  // namespace envy::tui

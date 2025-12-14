@@ -1,7 +1,10 @@
 #include "util.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -113,6 +116,25 @@ std::vector<unsigned char> util_load_file(std::filesystem::path const &path) {
   }
 
   return buffer;
+}
+
+std::string util_format_bytes(std::uint64_t bytes) {
+  static constexpr std::array<char const *, 5> kUnits{ "B", "KB", "MB", "GB", "TB" };
+
+  double value{ static_cast<double>(bytes) };
+  std::size_t unit{ 0 };
+
+  while (value >= 1024.0 && unit + 1 < kUnits.size()) {
+    value /= 1024.0;
+    ++unit;
+  }
+
+  if (unit == 0) { return std::to_string(static_cast<std::uint64_t>(value)) + "B"; }
+
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed, std::ios::floatfield);
+  oss << std::setprecision(2) << value << kUnits[unit];
+  return oss.str();
 }
 
 scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path)

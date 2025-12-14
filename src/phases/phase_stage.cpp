@@ -11,9 +11,13 @@
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "util.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <functional>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -25,8 +29,13 @@ namespace {
 
 // Count files in fetch_dir and check if any are archives
 struct fetch_dir_info {
-  std::uint64_t file_count{ 0 };
-  bool has_archives{ false };
+  std::uint64_t archive_count{ 0 };
+  std::uint64_t archive_bytes{ 0 };
+  std::uint64_t plain_count{ 0 };
+  std::uint64_t plain_bytes{ 0 };
+
+  bool empty() const { return archive_count == 0 && plain_count == 0; }
+  std::uint64_t total_bytes() const { return archive_bytes + plain_bytes; }
 };
 
 fetch_dir_info analyze_fetch_dir(std::filesystem::path const &fetch_dir) {
@@ -38,44 +47,78 @@ fetch_dir_info analyze_fetch_dir(std::filesystem::path const &fetch_dir) {
     std::string const filename{ entry.path().filename().string() };
     if (filename == "envy-complete") { continue; }
 
-    ++info.file_count;
-    if (extract_is_archive_extension(entry.path())) { info.has_archives = true; }
+    std::error_code ec;
+    auto const size{ std::filesystem::file_size(entry.path(), ec) };
+    if (ec) {
+      throw std::runtime_error("phase stage: failed to stat " + entry.path().string() +
+                               ": " + ec.message());
+    }
+
+    if (extract_is_archive_extension(entry.path())) {
+      ++info.archive_count;
+      info.archive_bytes += size;
+    } else {
+      ++info.plain_count;
+      info.plain_bytes += size;
+    }
   }
   return info;
 }
 
-void update_stage_progress(tui::section_handle handle,
+void render_stage_progress(tui::section_handle handle,
                            std::string const &label,
-                           extract_progress const &prog,
-                           bool has_archives) {
-  if (has_archives) {
-    // Extracting archives - unknown total, use spinner with file count
-    std::ostringstream oss;
-    oss << prog.bytes_processed << " files";
+                           extract_progress const &prog) {
+  std::ostringstream status;
+  status << prog.files_processed;
+  if (prog.total_files) { status << "/" << *prog.total_files; }
+  status << " files";
 
-    // Use epoch for start_time so animation is based on absolute time
+  if (prog.total_bytes) {
+    status << " " << util_format_bytes(prog.bytes_processed) << "/"
+           << util_format_bytes(*prog.total_bytes);
+  } else if (prog.bytes_processed > 0) {
+    status << " " << util_format_bytes(prog.bytes_processed);
+  }
+
+  if (!prog.current_entry.empty()) {
+    status << " " << prog.current_entry.filename().string();
+  }
+
+  if (prog.total_bytes) {
+    double percent{ 0.0 };
+    if (*prog.total_bytes > 0) {
+      percent = std::min(
+          100.0,
+          (prog.bytes_processed / static_cast<double>(*prog.total_bytes)) * 100.0);
+    }
+    tui::section_set_content(
+        handle,
+        tui::section_frame{
+            .label = label,
+            .content = tui::progress_data{ .percent = percent, .status = status.str() } });
+  } else {
     static auto const epoch{ std::chrono::steady_clock::time_point{} };
     tui::section_set_content(
         handle,
         tui::section_frame{
             .label = label,
-            .content = tui::spinner_data{ .text = oss.str(), .start_time = epoch } });
-  } else {
-    // Copying non-archive files - known total, show progress bar
-    double const percent{
-      prog.total_bytes.has_value() && *prog.total_bytes > 0
-          ? (prog.bytes_processed / static_cast<double>(*prog.total_bytes)) * 100.0
-          : 100.0
-    };
-    std::ostringstream oss;
-    oss << prog.bytes_processed << "/" << prog.total_bytes.value_or(0) << " files";
-
-    tui::section_set_content(
-        handle,
-        tui::section_frame{
-            .label = label,
-            .content = tui::progress_data{ .percent = percent, .status = oss.str() } });
+            .content = tui::spinner_data{ .text = status.str(), .start_time = epoch } });
   }
+}
+
+void render_stage_complete(tui::section_handle handle,
+                           std::string const &label,
+                           extract_progress const &prog) {
+  std::ostringstream status;
+  status << prog.files_processed;
+  if (prog.total_files) { status << "/" << *prog.total_files; }
+  status << " files";
+  if (prog.total_bytes) { status << " " << util_format_bytes(prog.bytes_processed); }
+
+  tui::section_set_content(
+      handle,
+      tui::section_frame{ .label = label,
+                          .content = tui::static_text_data{ .text = status.str() } });
 }
 
 struct stage_phase_ctx : lua_ctx_common {
@@ -130,61 +173,136 @@ stage_options parse_stage_options(sol::table const &stage_tbl, std::string const
   return opts;
 }
 
-void run_default_stage(std::filesystem::path const &fetch_dir,
+void run_extract_stage(fetch_dir_info const &info,
+                       extract_totals const &totals,
+                       std::filesystem::path const &fetch_dir,
                        std::filesystem::path const &dest_dir,
-                       std::string const &label,
                        std::string const &identity,
+                       std::string const &label,
                        tui::section_handle section,
-                       bool has_archives) {
-  tui::debug("phase stage: no stage field, running default extraction");
+                       int strip_components) {
+  tui::debug("phase stage: extracting (strip=%d)", strip_components);
 
-  std::uint64_t final_file_count{ 0 };
-  auto progress_cb{ extract_progress_cb_t{ [section, label, has_archives, &final_file_count](
-                                               extract_progress const &prog) -> bool {
-    final_file_count = prog.bytes_processed;
-    update_stage_progress(section, label, prog, has_archives);
+  // Build item list for per-file grouping
+  std::vector<std::string> items;
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    if (entry.path().filename() == "envy-complete") { continue; }
+    items.push_back(entry.path().filename().string());
+  }
+  bool const grouped{ items.size() > 1 };
+
+  struct stage_state {
+    std::mutex mutex;
+    std::vector<tui::section_frame> children;
+    std::optional<std::size_t> current_idx;
+    bool grouped{ false };
+    std::string label;
+  } state;
+
+  state.grouped = grouped;
+  state.label = label;
+  state.children.reserve(items.size());
+  for (auto const &name : items) {
+    state.children.push_back(
+        tui::section_frame{ .label = name,
+                            .content = tui::static_text_data{ .text = "pending" } });
+  }
+
+  std::optional<extract_progress> last_prog{ std::nullopt };
+
+  auto set_stage_frames{ [&](extract_progress const &prog) {
+    last_prog = prog;
+    double percent{ 0.0 };
+    if (prog.total_files && *prog.total_files > 0) {
+      percent = (prog.files_processed / static_cast<double>(*prog.total_files)) * 100.0;
+    } else if (prog.total_bytes && *prog.total_bytes > 0) {
+      percent = (prog.bytes_processed / static_cast<double>(*prog.total_bytes)) * 100.0;
+    }
+    if (percent > 100.0) { percent = 100.0; }
+
+    std::ostringstream status;
+    status << "stage " << prog.files_processed;
+    if (prog.total_files) { status << "/" << *prog.total_files; }
+    status << " files";
+    if (prog.total_bytes) {
+      status << " " << util_format_bytes(prog.bytes_processed) << "/"
+             << util_format_bytes(*prog.total_bytes);
+    } else if (prog.bytes_processed > 0) {
+      status << " " << util_format_bytes(prog.bytes_processed);
+    }
+
+    if (state.grouped) {
+      tui::section_frame parent{ .label = state.label,
+                                 .content = tui::progress_data{ .percent = percent,
+                                                                .status = status.str() },
+                                 .children = state.children,
+                                 .phase_label = {} };
+      tui::section_set_content(section, parent);
+    } else {
+      std::string item{ state.children.empty() ? "" : state.children.front().label };
+      tui::section_set_content(
+          section,
+          tui::section_frame{
+              .label = state.label,
+              .content = tui::progress_data{
+                  .percent = percent,
+                  .status = item.empty() ? status.str() : (item + " " + status.str()) } });
+    }
+  } };
+
+  extract_progress initial_progress{
+    .bytes_processed = 0,
+    .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
+    .files_processed = 0,
+    .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
+    .current_entry = {},
+    .is_regular_file = false
+  };
+  set_stage_frames(initial_progress);
+
+  auto progress_cb{ extract_progress_cb_t{ [&](extract_progress const &prog) -> bool {
+    std::lock_guard const lock{ state.mutex };
+    set_stage_frames(prog);
     return true;
   } } };
 
-  extract_all_archives(fetch_dir, dest_dir, 0, progress_cb, identity);
+  std::optional<std::size_t> last_idx;
 
-  // Show final count as static text (stop spinner animation)
-  std::ostringstream oss;
-  oss << final_file_count << " files";
-  tui::section_set_content(
-      section,
-      tui::section_frame{ .label = label,
-                          .content = tui::static_text_data{ .text = oss.str() } });
-}
+  auto on_file{ [&](std::string const &name) {
+    std::lock_guard const lock{ state.mutex };
+    if (last_idx && *last_idx < state.children.size()) {
+      state.children[*last_idx].content = tui::static_text_data{ .text = "done" };
+    }
 
-void run_declarative_stage(sol::table const &stage_tbl,
-                           std::filesystem::path const &fetch_dir,
-                           std::filesystem::path const &dest_dir,
-                           std::string const &identity,
-                           std::string const &label,
-                           tui::section_handle section,
-                           bool has_archives) {
-  stage_options const opts{ parse_stage_options(stage_tbl, identity) };
+    if (auto it{ std::find_if(state.children.begin(),
+                              state.children.end(),
+                              [&](auto const &c) { return c.label == name; }) };
+        it != state.children.end()) {
+      auto idx{ static_cast<std::size_t>(std::distance(state.children.begin(), it)) };
+      state.current_idx = idx;
+      last_idx = idx;
+      state.children[idx].content =
+          tui::spinner_data{ .text = "staging",
+                             .start_time = std::chrono::steady_clock::now() };
+    }
+    set_stage_frames(last_prog.value_or(initial_progress));
+  } };
 
-  tui::debug("phase stage: declarative extraction with strip=%d", opts.strip_components);
+  extract_all_archives(
+      fetch_dir,
+      dest_dir,
+      strip_components,
+      progress_cb,
+      identity,
+      items.size() > 1 ? on_file : std::function<void(std::string const &)>{},
+      totals);
 
-  std::uint64_t final_file_count{ 0 };
-  auto progress_cb{ extract_progress_cb_t{ [section, label, has_archives, &final_file_count](
-                                               extract_progress const &prog) -> bool {
-    final_file_count = prog.bytes_processed;
-    update_stage_progress(section, label, prog, has_archives);
-    return true;
-  } } };
-
-  extract_all_archives(fetch_dir, dest_dir, opts.strip_components, progress_cb, identity);
-
-  // Show final count as static text (stop spinner animation)
-  std::ostringstream oss;
-  oss << final_file_count << " files";
-  tui::section_set_content(
-      section,
-      tui::section_frame{ .label = label,
-                          .content = tui::static_text_data{ .text = oss.str() } });
+  if (last_idx && *last_idx < state.children.size()) {
+    std::lock_guard const lock{ state.mutex };
+    state.children[*last_idx].content = tui::static_text_data{ .text = "done" };
+    set_stage_frames(last_prog.value_or(initial_progress));
+  }
 }
 
 void run_programmatic_stage(sol::protected_function stage_func,
@@ -268,41 +386,25 @@ void run_stage_phase(recipe *r, engine &eng) {
 
   // Analyze fetch_dir to determine display strategy
   fetch_dir_info const info{ analyze_fetch_dir(fetch_dir) };
+  extract_totals const totals{ compute_extract_totals(fetch_dir) };
 
   // If there are no files to extract, skip stage entirely (don't overwrite fetch progress)
-  if (info.file_count == 0) {
+  if (info.empty()) {
     tui::debug("phase stage: no files in fetch_dir, skipping");
     return;
   }
 
   std::string const label{ "[" + identity + "]" };
 
-  // Initialize progress: spinner for archives (unknown total), progress bar for files (known)
-  if (info.has_archives) {
-    // Archives - start with spinner at 0 files
-    update_stage_progress(r->tui_section,
-                          label,
-                          extract_progress{ .bytes_processed = 0,
-                                            .total_bytes = std::nullopt,
-                                            .current_entry = {} },
-                          true);
-  } else {
-    // Non-archive files - start with progress bar at 0/N
-    update_stage_progress(r->tui_section,
-                          label,
-                          extract_progress{ .bytes_processed = 0,
-                                            .total_bytes = info.file_count,
-                                            .current_entry = {} },
-                          false);
-  }
-
   if (!stage_obj.valid()) {
-    run_default_stage(fetch_dir,
+    run_extract_stage(info,
+                      totals,
+                      fetch_dir,
                       dest_dir,
-                      label,
                       identity,
+                      label,
                       r->tui_section,
-                      info.has_archives);
+                      0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
@@ -317,13 +419,15 @@ void run_stage_phase(recipe *r, engine &eng) {
                            eng,
                            r);
   } else if (stage_obj.is<sol::table>()) {
-    run_declarative_stage(stage_obj.as<sol::table>(),
-                          fetch_dir,
-                          dest_dir,
-                          identity,
-                          label,
-                          r->tui_section,
-                          info.has_archives);
+    stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
+    run_extract_stage(info,
+                      totals,
+                      fetch_dir,
+                      dest_dir,
+                      identity,
+                      label,
+                      r->tui_section,
+                      opts.strip_components);
   } else {
     throw std::runtime_error("STAGE field must be nil, string, table, or function for " +
                              identity);

@@ -764,6 +764,52 @@ TEST_CASE("progress section line counting with text stream") {
   CHECK(line_count == 4);
 }
 
+TEST_CASE("grouped render ansi") {
+  envy::tui::test::g_terminal_width = 80;
+  envy::tui::test::g_isatty = true;
+  auto const now{ std::chrono::steady_clock::now() };
+  envy::tui::test::g_now = now;
+
+  envy::tui::section_frame parent{ .label = "pkg",
+                                   .content = envy::tui::progress_data{ .percent = 50.0,
+                                                                         .status = "fetch" },
+                                   .phase_label = "" };
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "ninja.git",
+      .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "googletest.git",
+      .content = envy::tui::progress_data{ .percent = 80.0, .status = "80%" } });
+
+  std::string const output{ envy::tui::test::render_section_frame(parent) };
+
+  CHECK(output.find("pkg") != std::string::npos);
+  CHECK(output.find("fetch") != std::string::npos);
+  CHECK(output.find("  ninja.git") != std::string::npos);
+  CHECK(output.find("  googletest.git") != std::string::npos);
+}
+
+TEST_CASE("grouped render fallback") {
+  envy::tui::test::g_terminal_width = 80;
+  envy::tui::test::g_isatty = false;
+  auto const now{ std::chrono::steady_clock::now() };
+  envy::tui::test::g_now = now;
+
+  envy::tui::section_frame parent{ .label = "pkg",
+                                   .content = envy::tui::progress_data{ .percent = 50.0,
+                                                                         .status = "fetch" },
+                                   .phase_label = "" };
+  parent.children.push_back(envy::tui::section_frame{
+      .label = "ninja.git",
+      .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
+
+  std::string const output{ envy::tui::test::render_section_frame(parent) };
+
+  CHECK(output.find("pkg") != std::string::npos);
+  CHECK(output.find("fetch") != std::string::npos);
+  CHECK(output.find("  ninja.git") != std::string::npos);
+}
+
 TEST_CASE("inactive sections do not render") {
   auto const h1{ envy::tui::section_create() };
   auto const h2{ envy::tui::section_create() };

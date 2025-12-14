@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -55,6 +56,10 @@ file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 // Load entire file into memory as bytes.
 // Throws std::runtime_error if file cannot be opened or read.
 std::vector<unsigned char> util_load_file(std::filesystem::path const &path);
+
+// Human-readable byte formatter (B, KB, MB, GB, TB). B uses integer form, higher
+// units use one decimal place with rounding (e.g., 1536 -> "1.5KB").
+std::string util_format_bytes(std::uint64_t bytes);
 
 class scoped_path_cleanup : public unmovable {
  public:

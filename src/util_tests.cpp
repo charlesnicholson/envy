@@ -3,6 +3,7 @@
 #include "doctest.h"
 
 #include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -124,34 +125,32 @@ TEST_CASE("util_bytes_to_hex converts empty input") {
 }
 
 TEST_CASE("util_bytes_to_hex converts single byte") {
-  unsigned char data[] = {0xab};
+  unsigned char data[] = { 0xab };
   std::string result = envy::util_bytes_to_hex(data, 1);
   CHECK(result == "ab");
 }
 
 TEST_CASE("util_bytes_to_hex converts multiple bytes") {
-  unsigned char data[] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef};
+  unsigned char data[] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef };
   std::string result = envy::util_bytes_to_hex(data, 8);
   CHECK(result == "0123456789abcdef");
 }
 
 TEST_CASE("util_bytes_to_hex produces lowercase") {
-  unsigned char data[] = {0xff, 0xaa, 0xbb, 0xcc};
+  unsigned char data[] = { 0xff, 0xaa, 0xbb, 0xcc };
   std::string result = envy::util_bytes_to_hex(data, 4);
   CHECK(result == "ffaabbcc");
 }
 
 TEST_CASE("util_bytes_to_hex handles zero bytes") {
-  unsigned char data[] = {0x00, 0x00, 0x00};
+  unsigned char data[] = { 0x00, 0x00, 0x00 };
   std::string result = envy::util_bytes_to_hex(data, 3);
   CHECK(result == "000000");
 }
 
 TEST_CASE("util_bytes_to_hex handles all byte values") {
   unsigned char data[256];
-  for (int i = 0; i < 256; ++i) {
-    data[i] = static_cast<unsigned char>(i);
-  }
+  for (int i = 0; i < 256; ++i) { data[i] = static_cast<unsigned char>(i); }
   std::string result = envy::util_bytes_to_hex(data, 256);
   CHECK(result.size() == 512);
   // Spot check a few values
@@ -233,7 +232,7 @@ TEST_CASE("util_hex_to_bytes throws on invalid character") {
 }
 
 TEST_CASE("util_bytes_to_hex and util_hex_to_bytes round-trip") {
-  unsigned char original[] = {0x00, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff};
+  unsigned char original[] = { 0x00, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff };
   std::string hex = envy::util_bytes_to_hex(original, 9);
   auto recovered = envy::util_hex_to_bytes(hex);
   REQUIRE(recovered.size() == 9);
@@ -246,6 +245,29 @@ TEST_CASE("util_hex_to_bytes and util_bytes_to_hex round-trip") {
   std::string recovered_hex = envy::util_bytes_to_hex(bytes.data(), bytes.size());
   // Result should be lowercase
   CHECK(recovered_hex == "0123456789abcdefabcdef");
+}
+
+TEST_CASE("util_format_bytes uses integer for bytes") {
+  CHECK(envy::util_format_bytes(0) == "0B");
+  CHECK(envy::util_format_bytes(1) == "1B");
+  CHECK(envy::util_format_bytes(1023) == "1023B");
+}
+
+TEST_CASE("util_format_bytes scales to KB with one decimal") {
+  CHECK(envy::util_format_bytes(1024) == "1.00KB");
+  CHECK(envy::util_format_bytes(1536) == "1.50KB");
+  CHECK(envy::util_format_bytes(10 * 1024) == "10.00KB");
+}
+
+TEST_CASE("util_format_bytes scales to MB/GB/TB") {
+  constexpr std::uint64_t kMB{ 1024ull * 1024ull };
+  constexpr std::uint64_t kGB{ kMB * 1024ull };
+  constexpr std::uint64_t kTB{ kGB * 1024ull };
+
+  CHECK(envy::util_format_bytes(kMB) == "1.00MB");
+  CHECK(envy::util_format_bytes(static_cast<std::uint64_t>(1.75 * kMB)) == "1.75MB");
+  CHECK(envy::util_format_bytes(5 * kGB) == "5.00GB");
+  CHECK(envy::util_format_bytes(3 * kTB) == "3.00TB");
 }
 
 TEST_CASE("scoped_path_cleanup removes file on destruction") {
@@ -302,7 +324,7 @@ TEST_CASE("util_load_file loads small text file") {
 
 TEST_CASE("util_load_file loads binary data") {
   auto path = make_temp_path("binary");
-  unsigned char const test_data[] = {0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd};
+  unsigned char const test_data[] = { 0x00, 0x01, 0x02, 0xff, 0xfe, 0xfd };
   {
     std::ofstream out{ path, std::ios::binary };
     out.write(reinterpret_cast<char const *>(test_data), sizeof(test_data));
@@ -343,7 +365,7 @@ TEST_CASE("util_load_file throws on nonexistent file") {
 
 TEST_CASE("util_load_file handles files with null bytes") {
   auto path = make_temp_path("nullbytes");
-  unsigned char const test_data[] = {'a', 'b', 0x00, 'c', 'd', 0x00, 0x00, 'e'};
+  unsigned char const test_data[] = { 'a', 'b', 0x00, 'c', 'd', 0x00, 0x00, 'e' };
   {
     std::ofstream out{ path, std::ios::binary };
     out.write(reinterpret_cast<char const *>(test_data), sizeof(test_data));

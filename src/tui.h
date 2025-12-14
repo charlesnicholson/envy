@@ -85,7 +85,12 @@ struct static_text_data {
 struct section_frame {
   std::string label;
   std::variant<progress_data, text_stream_data, spinner_data, static_text_data> content;
+  std::vector<section_frame> children;  // Optional grouped children (indented render)
+  std::string phase_label;              // Optional phase suffix for grouped parents
 };
+
+// Helper for providers/tests that need the rendered label width for alignment.
+std::size_t measure_label_width(section_frame const &frame);
 
 section_handle section_create();
 void section_set_content(section_handle h, section_frame const &frame);
