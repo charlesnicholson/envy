@@ -309,9 +309,9 @@ Flat list, tests immediately after feature bringup:
 - ✓ Integrate progress bar in `phase_fetch.cpp`: create section in recipe, update on progress callbacks
 - ✓ Build with `./build.sh` (verify no compile errors after fetch integration)
 - ✓ Manual test: run `envy sync` with package requiring fetch, verify progress bar visible and animates
-- Integrate progress bar in `phase_stage.cpp`: create section, update via `archive_extract_observer`, release after
-- Build with `./build.sh` (verify no compile errors after stage integration)
-- Manual test: run `envy sync` with package requiring extraction, verify progress bar visible
+- ✓ Integrate progress bar in `phase_stage.cpp`: create section, update via `archive_extract_observer`, release after
+- ✓ Build with `./build.sh` (verify no compile errors after stage integration)
+- ✓ Manual test: run `envy sync` with package requiring extraction, verify progress bar visible
 - Integrate text stream in `phase_build.cpp`: create section, maintain deque, update in `on_output_line` callback, release after
 - Build with `./build.sh` (verify no compile errors after build integration)
 - Manual test: run `envy sync` with package requiring build, verify last 3 lines of output visible

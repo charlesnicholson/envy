@@ -478,6 +478,8 @@ void engine::extend_dependencies_to_completion(recipe *r) {
   extend_dependencies_recursive(r, visited);
 }
 
+std::filesystem::path const &engine::cache_root() const { return cache_.root(); }
+
 void engine::extend_dependencies_recursive(recipe *r,
                                            std::unordered_set<recipe_key> &visited) {
   if (!visited.insert(r->key).second) { return; }  // Already visited (cycle detection)

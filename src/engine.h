@@ -101,6 +101,9 @@ class engine : unmovable {
   // Extend recipe and all transitive dependencies to completion target
   void extend_dependencies_to_completion(recipe *r);
 
+  // Get cache root path
+  std::filesystem::path const &cache_root() const;
+
 #ifdef ENVY_UNIT_TEST
   recipe_phase get_recipe_target_phase(recipe_key const &key) const;
 #endif

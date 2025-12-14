@@ -383,3 +383,151 @@ TEST_CASE("util_load_file handles files with null bytes") {
   CHECK(data[6] == 0x00);
   CHECK(data[7] == 'e');
 }
+
+TEST_CASE("util_flatten_script_with_semicolons handles empty script") {
+  CHECK(envy::util_flatten_script_with_semicolons("") == "");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles single line") {
+  CHECK(envy::util_flatten_script_with_semicolons("python script.py") ==
+        "python script.py");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons replaces newlines with semicolons") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\ncmd2\ncmd3") ==
+        "cmd1; cmd2; cmd3");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles no trailing semicolon") {
+  std::string const script{ "python build/gen.py\nninja -C out\nout/gn_unittests" };
+  CHECK(envy::util_flatten_script_with_semicolons(script) ==
+        "python build/gen.py; ninja -C out; out/gn_unittests");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles carriage returns") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\rcmd2") == "cmd1; cmd2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles windows line endings") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\r\ncmd2\r\ncmd3") ==
+        "cmd1; cmd2; cmd3");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons collapses multiple spaces") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd   arg1    arg2") ==
+        "cmd arg1 arg2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons collapses tabs") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd\t\targ1\targ2") == "cmd arg1 arg2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons trims leading whitespace per line") {
+  CHECK(envy::util_flatten_script_with_semicolons("  cmd1\n  cmd2") == "cmd1; cmd2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons trims trailing whitespace") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\ncmd2  \n") == "cmd1; cmd2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles empty lines") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\n\ncmd2") == "cmd1; cmd2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles multiple empty lines") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1\n\n\ncmd2") == "cmd1; cmd2");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles mixed whitespace") {
+  std::string const script{ "  cmd1 arg1  \n\t cmd2  arg2\t\n  cmd3  " };
+  CHECK(envy::util_flatten_script_with_semicolons(script) == "cmd1 arg1; cmd2 arg2; cmd3");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles real ninja example") {
+  std::string const script{
+    "python build/gen.py\n"
+    "ninja -C out\n"
+    "out/gn_unittests"
+  };
+  CHECK(envy::util_flatten_script_with_semicolons(script) ==
+        "python build/gen.py; ninja -C out; out/gn_unittests");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons handles complex real-world script") {
+  std::string const script{
+    "python ./configure.py --bootstrap --gtest-source-dir=googletest\n"
+    "./ninja all\n"
+    "./ninja_test"
+  };
+  CHECK(envy::util_flatten_script_with_semicolons(script) ==
+        "python ./configure.py --bootstrap --gtest-source-dir=googletest; ./ninja all; "
+        "./ninja_test");
+}
+
+TEST_CASE("util_flatten_script_with_semicolons preserves internal semicolons") {
+  CHECK(envy::util_flatten_script_with_semicolons("cmd1 ; cmd2\ncmd3") ==
+        "cmd1 ; cmd2; cmd3");
+}
+
+TEST_CASE("util_simplify_cache_paths handles empty command") {
+  std::filesystem::path const cache_root{ "/path/to/cache" };
+  CHECK(envy::util_simplify_cache_paths("", cache_root) == "");
+}
+
+TEST_CASE("util_simplify_cache_paths handles empty cache root") {
+  CHECK(envy::util_simplify_cache_paths("python script.py", std::filesystem::path{}) ==
+        "python script.py");
+}
+
+TEST_CASE("util_simplify_cache_paths preserves command without cache paths") {
+  std::filesystem::path const cache_root{ "/path/to/cache" };
+  std::string const cmd{ "python script.py --arg value" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == cmd);
+}
+
+TEST_CASE("util_simplify_cache_paths replaces single cache path") {
+  std::filesystem::path const cache_root{ "/home/user/.cache/envy" };
+  std::string const cmd{ "/home/user/.cache/envy/assets/local.python@r0/bin/python" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "python");
+}
+
+TEST_CASE("util_simplify_cache_paths replaces cache paths in command with args") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "/cache/assets/python/bin/python /cache/assets/script/run.py" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "python run.py");
+}
+
+TEST_CASE("util_simplify_cache_paths preserves non-cache paths") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "/cache/assets/python/bin/python /usr/local/bin/script.sh" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
+        "python /usr/local/bin/script.sh");
+}
+
+TEST_CASE("util_simplify_cache_paths handles mixed whitespace") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "/cache/bin/tool  \t arg1\n/cache/bin/other" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "tool  \t arg1\nother");
+}
+
+TEST_CASE("util_simplify_cache_paths preserves leading/trailing whitespace") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "  /cache/bin/python script.py  " };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "  python script.py  ");
+}
+
+TEST_CASE("util_simplify_cache_paths handles partial cache path match") {
+  std::filesystem::path const cache_root{ "/home/cache" };
+  std::string const cmd{ "/home/cacheother/bin/tool" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "/home/cacheother/bin/tool");
+}
+
+TEST_CASE("util_simplify_cache_paths handles complex real-world example") {
+  std::filesystem::path const cache_root{ "/Users/charlesnicholson/Library/Caches/envy" };
+  std::string const cmd{
+    "/Users/charlesnicholson/Library/Caches/envy/assets/local.python@r0/"
+    "darwin-arm64-blake3-abc123/assets/installed/bin/python3 ./configure.py --bootstrap"
+  };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
+        "python3 ./configure.py --bootstrap");
+}

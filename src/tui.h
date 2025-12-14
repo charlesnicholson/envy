@@ -70,6 +70,7 @@ struct text_stream_data {
   std::vector<std::string> lines;
   std::size_t line_limit{ 0 };  // 0 = show all lines, N = show last N lines
   std::chrono::steady_clock::time_point start_time;  // For spinner animation
+  std::string header_text;  // Text shown after spinner (e.g., flattened command)
 };
 
 struct spinner_data {

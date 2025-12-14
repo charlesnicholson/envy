@@ -27,98 +27,14 @@
 namespace envy {
 namespace {
 
-// Count files in fetch_dir and check if any are archives
-struct fetch_dir_info {
-  std::uint64_t archive_count{ 0 };
-  std::uint64_t archive_bytes{ 0 };
-  std::uint64_t plain_count{ 0 };
-  std::uint64_t plain_bytes{ 0 };
-
-  bool empty() const { return archive_count == 0 && plain_count == 0; }
-  std::uint64_t total_bytes() const { return archive_bytes + plain_bytes; }
-};
-
-fetch_dir_info analyze_fetch_dir(std::filesystem::path const &fetch_dir) {
-  fetch_dir_info info;
-  if (!std::filesystem::exists(fetch_dir)) { return info; }
-
+bool fetch_dir_has_files(std::filesystem::path const &fetch_dir) {
+  if (!std::filesystem::exists(fetch_dir)) { return false; }
   for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
     if (!entry.is_regular_file()) { continue; }
-    std::string const filename{ entry.path().filename().string() };
-    if (filename == "envy-complete") { continue; }
-
-    std::error_code ec;
-    auto const size{ std::filesystem::file_size(entry.path(), ec) };
-    if (ec) {
-      throw std::runtime_error("phase stage: failed to stat " + entry.path().string() +
-                               ": " + ec.message());
-    }
-
-    if (extract_is_archive_extension(entry.path())) {
-      ++info.archive_count;
-      info.archive_bytes += size;
-    } else {
-      ++info.plain_count;
-      info.plain_bytes += size;
-    }
+    if (entry.path().filename() == "envy-complete") { continue; }
+    return true;
   }
-  return info;
-}
-
-void render_stage_progress(tui::section_handle handle,
-                           std::string const &label,
-                           extract_progress const &prog) {
-  std::ostringstream status;
-  status << prog.files_processed;
-  if (prog.total_files) { status << "/" << *prog.total_files; }
-  status << " files";
-
-  if (prog.total_bytes) {
-    status << " " << util_format_bytes(prog.bytes_processed) << "/"
-           << util_format_bytes(*prog.total_bytes);
-  } else if (prog.bytes_processed > 0) {
-    status << " " << util_format_bytes(prog.bytes_processed);
-  }
-
-  if (!prog.current_entry.empty()) {
-    status << " " << prog.current_entry.filename().string();
-  }
-
-  if (prog.total_bytes) {
-    double percent{ 0.0 };
-    if (*prog.total_bytes > 0) {
-      percent = std::min(
-          100.0,
-          (prog.bytes_processed / static_cast<double>(*prog.total_bytes)) * 100.0);
-    }
-    tui::section_set_content(
-        handle,
-        tui::section_frame{
-            .label = label,
-            .content = tui::progress_data{ .percent = percent, .status = status.str() } });
-  } else {
-    static auto const epoch{ std::chrono::steady_clock::time_point{} };
-    tui::section_set_content(
-        handle,
-        tui::section_frame{
-            .label = label,
-            .content = tui::spinner_data{ .text = status.str(), .start_time = epoch } });
-  }
-}
-
-void render_stage_complete(tui::section_handle handle,
-                           std::string const &label,
-                           extract_progress const &prog) {
-  std::ostringstream status;
-  status << prog.files_processed;
-  if (prog.total_files) { status << "/" << *prog.total_files; }
-  status << " files";
-  if (prog.total_bytes) { status << " " << util_format_bytes(prog.bytes_processed); }
-
-  tui::section_set_content(
-      handle,
-      tui::section_frame{ .label = label,
-                          .content = tui::static_text_data{ .text = status.str() } });
+  return false;
 }
 
 struct stage_phase_ctx : lua_ctx_common {
@@ -173,8 +89,7 @@ stage_options parse_stage_options(sol::table const &stage_tbl, std::string const
   return opts;
 }
 
-void run_extract_stage(fetch_dir_info const &info,
-                       extract_totals const &totals,
+void run_extract_stage(extract_totals const &totals,
                        std::filesystem::path const &fetch_dir,
                        std::filesystem::path const &dest_dir,
                        std::string const &identity,
@@ -190,17 +105,15 @@ void run_extract_stage(fetch_dir_info const &info,
     if (entry.path().filename() == "envy-complete") { continue; }
     items.push_back(entry.path().filename().string());
   }
-  bool const grouped{ items.size() > 1 };
 
   struct stage_state {
     std::mutex mutex;
     std::vector<tui::section_frame> children;
-    std::optional<std::size_t> current_idx;
     bool grouped{ false };
     std::string label;
   } state;
 
-  state.grouped = grouped;
+  state.grouped = items.size() > 1;
   state.label = label;
   state.children.reserve(items.size());
   for (auto const &name : items) {
@@ -209,7 +122,14 @@ void run_extract_stage(fetch_dir_info const &info,
                             .content = tui::static_text_data{ .text = "pending" } });
   }
 
-  std::optional<extract_progress> last_prog{ std::nullopt };
+  extract_progress last_prog{
+    .bytes_processed = 0,
+    .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
+    .files_processed = 0,
+    .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
+    .current_entry = {},
+    .is_regular_file = false
+  };
 
   auto set_stage_frames{ [&](extract_progress const &prog) {
     last_prog = prog;
@@ -251,15 +171,7 @@ void run_extract_stage(fetch_dir_info const &info,
     }
   } };
 
-  extract_progress initial_progress{
-    .bytes_processed = 0,
-    .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
-    .files_processed = 0,
-    .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
-    .current_entry = {},
-    .is_regular_file = false
-  };
-  set_stage_frames(initial_progress);
+  set_stage_frames(last_prog);
 
   auto progress_cb{ extract_progress_cb_t{ [&](extract_progress const &prog) -> bool {
     std::lock_guard const lock{ state.mutex };
@@ -280,13 +192,12 @@ void run_extract_stage(fetch_dir_info const &info,
                               [&](auto const &c) { return c.label == name; }) };
         it != state.children.end()) {
       auto idx{ static_cast<std::size_t>(std::distance(state.children.begin(), it)) };
-      state.current_idx = idx;
       last_idx = idx;
       state.children[idx].content =
           tui::spinner_data{ .text = "staging",
                              .start_time = std::chrono::steady_clock::now() };
     }
-    set_stage_frames(last_prog.value_or(initial_progress));
+    set_stage_frames(last_prog);
   } };
 
   extract_all_archives(
@@ -301,7 +212,7 @@ void run_extract_stage(fetch_dir_info const &info,
   if (last_idx && *last_idx < state.children.size()) {
     std::lock_guard const lock{ state.mutex };
     state.children[*last_idx].content = tui::static_text_data{ .text = "done" };
-    set_stage_frames(last_prog.value_or(initial_progress));
+    set_stage_frames(last_prog);
   }
 }
 
@@ -338,11 +249,9 @@ void run_shell_stage(std::string_view script,
 
   shell_env_t env{ shell_getenv() };
 
-  std::vector<std::string> output_lines;
   shell_run_cfg inv{ .on_output_line =
                          [&](std::string_view line) {
                            tui::info("%.*s", static_cast<int>(line.size()), line.data());
-                           output_lines.emplace_back(line);
                          },
                      .cwd = dest_dir,
                      .env = std::move(env),
@@ -384,12 +293,7 @@ void run_stage_phase(recipe *r, engine &eng) {
 
   sol::object stage_obj{ lua_view["STAGE"] };
 
-  // Analyze fetch_dir to determine display strategy
-  fetch_dir_info const info{ analyze_fetch_dir(fetch_dir) };
-  extract_totals const totals{ compute_extract_totals(fetch_dir) };
-
-  // If there are no files to extract, skip stage entirely (don't overwrite fetch progress)
-  if (info.empty()) {
+  if (!fetch_dir_has_files(fetch_dir)) {
     tui::debug("phase stage: no files in fetch_dir, skipping");
     return;
   }
@@ -397,14 +301,8 @@ void run_stage_phase(recipe *r, engine &eng) {
   std::string const label{ "[" + identity + "]" };
 
   if (!stage_obj.valid()) {
-    run_extract_stage(info,
-                      totals,
-                      fetch_dir,
-                      dest_dir,
-                      identity,
-                      label,
-                      r->tui_section,
-                      0);
+    extract_totals const totals{ compute_extract_totals(fetch_dir) };
+    run_extract_stage(totals, fetch_dir, dest_dir, identity, label, r->tui_section, 0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
@@ -420,8 +318,8 @@ void run_stage_phase(recipe *r, engine &eng) {
                            r);
   } else if (stage_obj.is<sol::table>()) {
     stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
-    run_extract_stage(info,
-                      totals,
+    extract_totals const totals{ compute_extract_totals(fetch_dir) };
+    run_extract_stage(totals,
                       fetch_dir,
                       dest_dir,
                       identity,

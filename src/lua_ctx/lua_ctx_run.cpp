@@ -135,13 +135,18 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     std::string stdout_buffer;
     std::string stderr_buffer;
+    std::function<void(std::string_view)> forwarded_output;
+    if (!quiet && ctx && ctx->on_output_line) { forwarded_output = ctx->on_output_line; }
 
     shell_run_cfg const inv{
       .on_output_line =
-          quiet ? std::function<void(std::string_view)>{ [](std::string_view) {} }
-                : std::function<void(std::string_view)>{ [&](std::string_view line) {
-                    tui::info("%s", std::string{ line }.c_str());
-                  } },
+          [&](std::string_view line) {
+            if (forwarded_output) {
+              forwarded_output(line);
+            } else if (!quiet) {
+              tui::info("%s", std::string{ line }.c_str());
+            }
+          },
       .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
       .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
       .cwd = cwd,
@@ -151,6 +156,9 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     std::optional<tui::interactive_mode_guard> guard;
     if (interactive) { guard.emplace(); }
+
+    // Notify callback before executing command (for TUI header updates)
+    if (ctx && ctx->on_command_start) { ctx->on_command_start(script_view); }
 
     shell_result const result{ shell_run(script_view, inv) };
 
@@ -163,21 +171,25 @@ make_ctx_run(lua_ctx_common *ctx) {
                                     static_cast<std::int64_t>(duration_ms));
 
     if (result.signal) {
-      throw std::runtime_error(format_run_error(script_view,
-                                                result.exit_code,
-                                                result.signal,
-                                                stdout_buffer,
-                                                stderr_buffer,
-                                                ctx->recipe_->spec->identity));
+      auto const err{ format_run_error(script_view,
+                                       result.exit_code,
+                                       result.signal,
+                                       stdout_buffer,
+                                       stderr_buffer,
+                                       ctx->recipe_->spec->identity) };
+      tui::error("%s", err.c_str());
+      throw std::runtime_error(err);
     }
 
     if (check && result.exit_code != 0) {
-      throw std::runtime_error(format_run_error(script_view,
-                                                result.exit_code,
-                                                std::nullopt,
-                                                stdout_buffer,
-                                                stderr_buffer,
-                                                ctx->recipe_->spec->identity));
+      auto const err{ format_run_error(script_view,
+                                       result.exit_code,
+                                       std::nullopt,
+                                       stdout_buffer,
+                                       stderr_buffer,
+                                       ctx->recipe_->spec->identity) };
+      tui::error("%s", err.c_str());
+      throw std::runtime_error(err);
     }
 
     sol::state_view lua_view{ L };
