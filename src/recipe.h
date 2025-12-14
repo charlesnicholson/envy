@@ -45,7 +45,7 @@ struct recipe {
     std::string name;
     recipe_phase needed_by{ recipe_phase::asset_build };
     recipe *provider{ nullptr };  // strong deps immediately, weak deps after resolution
-    std::string constraint_identity;  // required provider identity (empty if none)
+    std::string constraint_identity;  // Optional required provider identity (empty if none)
   };
   std::unordered_map<std::string, product_dependency> product_dependencies;
 

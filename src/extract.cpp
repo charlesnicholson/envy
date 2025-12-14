@@ -367,14 +367,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                             } };
 
       std::uint64_t const files{ extract(path, dest_dir, opts) };
-      if (!progress) {
-        std::error_code ec;
-        last_archive_bytes = std::filesystem::file_size(path, ec);
-        if (ec) {
-          throw std::runtime_error("extract_all_archives: failed to stat " +
-                                   path.string() + ": " + ec.message());
-        }
-      }
+      // last_archive_bytes is already updated via the progress callback
       total_files_extracted += files;
       processed_bytes = archive_base + last_archive_bytes;
 
