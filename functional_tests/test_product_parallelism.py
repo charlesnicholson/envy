@@ -143,9 +143,6 @@ PACKAGES = {{
         # Find all target_extended events
         target_extended_events = [e for e in events if e.event == "target_extended"]
 
-        # Find all thread_start events
-        thread_start_events = [e for e in events if e.event == "thread_start"]
-
         # Extract recipes that had targets extended to completion (phase 7)
         extended_to_completion = set()
         for event in target_extended_events:
