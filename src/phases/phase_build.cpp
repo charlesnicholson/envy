@@ -9,11 +9,9 @@
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
-#include "tui_actions.h"
 
 #include <chrono>
 #include <filesystem>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -46,8 +44,7 @@ void run_programmatic_build(sol::protected_function build_func,
                             std::filesystem::path const &install_dir,
                             std::string const &identity,
                             engine &eng,
-                            recipe *r,
-                            tui_actions::run_progress &progress) {
+                            recipe *r) {
   tui::debug("phase build: running programmatic build function");
 
   build_phase_ctx ctx{};
@@ -56,49 +53,78 @@ void run_programmatic_build(sol::protected_function build_func,
   ctx.engine_ = &eng;
   ctx.recipe_ = r;
   ctx.install_dir = install_dir;
-  ctx.on_output_line = [&](std::string_view line) { progress.on_output_line(line); };
-  ctx.on_command_start = [&](std::string_view cmd) { progress.on_command_start(cmd); };
 
   sol::state_view lua{ build_func.lua_state() };
   sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  call_lua_function_with_enriched_errors(r, "BUILD", [&]() {
-    return build_func(ctx_table, opts);
-  });
+  // Call BUILD function and capture result
+  sol::protected_function_result build_result{ build_func(ctx_table, opts) };
+
+  if (!build_result.valid()) {
+    sol::error err{ build_result };
+    lua_error_context err_ctx{ .lua_error_message = err.what(), .r = r, .phase = "BUILD" };
+    throw std::runtime_error(format_lua_error(err_ctx));
+  }
+
+  // If function returned a string, execute it via ctx.run()
+  if (build_result.return_count() > 0) {
+    sol::object return_value = build_result;
+    if (return_value.is<std::string>()) {
+      std::string const script{ return_value.as<std::string>() };
+      tui::debug("phase build: function returned string, executing via ctx.run()");
+
+      sol::protected_function run_fn = ctx_table["run"];
+      sol::protected_function_result result = run_fn(script);
+
+      if (!result.valid()) {
+        sol::error err = result;
+        throw std::runtime_error("Build function returned script failed for " + identity +
+                                 ": " + std::string{ err.what() });
+      }
+
+      sol::table result_table = result;
+      int const exit_code{ result_table["exit_code"] };
+      if (exit_code != 0) {
+        throw std::runtime_error("Build function returned script failed for " + identity +
+                                 " (exit code " + std::to_string(exit_code) + ")");
+      }
+    }
+  }
 }
 
-void run_shell_build(std::string_view script,
+void run_shell_build(sol::state_view lua,
+                     std::string_view script,
+                     std::filesystem::path const &fetch_dir,
                      std::filesystem::path const &stage_dir,
+                     std::filesystem::path const &install_dir,
                      std::string const &identity,
-                     resolved_shell shell,
-                     tui_actions::run_progress &progress) {
-  tui::debug("phase build: running shell script");
+                     engine &eng,
+                     recipe *r) {
+  tui::debug("phase build: running shell script via Lua ctx.run()");
 
-  shell_env_t env{ shell_getenv() };
+  build_phase_ctx ctx{};
+  ctx.fetch_dir = fetch_dir;
+  ctx.run_dir = stage_dir;
+  ctx.engine_ = &eng;
+  ctx.recipe_ = r;
+  ctx.install_dir = install_dir;
 
-  std::string stdout_buffer;
-  std::string stderr_buffer;
-  shell_run_cfg const inv{
-    .on_output_line = [&](std::string_view line) { progress.on_output_line(line); },
-    .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
-    .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
-    .cwd = stage_dir,
-    .env = std::move(env),
-    .shell = std::move(shell)
-  };
+  sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
+  sol::protected_function run_fn = ctx_table["run"];
+  sol::protected_function_result result = run_fn(script);
 
-  if (shell_result const result{ shell_run(script, inv) }; result.exit_code != 0) {
-    if (!stdout_buffer.empty()) { tui::error("%s", stdout_buffer.c_str()); }
-    if (!stderr_buffer.empty()) { tui::error("%s", stderr_buffer.c_str()); }
+  if (!result.valid()) {
+    sol::error err = result;
+    throw std::runtime_error("Build shell script failed for " + identity + ": " +
+                             std::string{ err.what() });
+  }
 
-    if (result.signal) {
-      throw std::runtime_error("Build shell script terminated by signal " +
-                               std::to_string(*result.signal) + " for " + identity);
-    } else {
-      throw std::runtime_error("Build shell script failed for " + identity +
-                               " (exit code " + std::to_string(result.exit_code) + ")");
-    }
+  sol::table result_table = result;
+  int const exit_code{ result_table["exit_code"] };
+  if (exit_code != 0) {
+    throw std::runtime_error("Build shell script failed for " + identity + " (exit code " +
+                             std::to_string(exit_code) + ")");
   }
 }
 
@@ -119,31 +145,23 @@ void run_build_phase(recipe *r, engine &eng) {
   if (!build_obj.valid()) {
     tui::debug("phase build: no build field, skipping");
   } else if (build_obj.is<std::string>()) {
-    tui_actions::run_progress progress{ r->tui_section,
-                                        r->spec->identity,
-                                        eng.cache_root() };
-
     std::string const script{ build_obj.as<std::string>() };
-    progress.on_command_start(script);
-
-    run_shell_build(script,
+    run_shell_build(lua_view,
+                    script,
+                    r->lock->fetch_dir(),
                     r->lock->stage_dir(),
+                    r->lock->install_dir(),
                     r->spec->identity,
-                    shell_resolve_default(r->default_shell_ptr),
-                    progress);
+                    eng,
+                    r);
   } else if (build_obj.is<sol::protected_function>()) {
-    tui_actions::run_progress progress{ r->tui_section,
-                                        r->spec->identity,
-                                        eng.cache_root() };
-
     run_programmatic_build(build_obj.as<sol::protected_function>(),
                            r->lock->fetch_dir(),
                            r->lock->stage_dir(),
                            r->lock->install_dir(),
                            r->spec->identity,
                            eng,
-                           r,
-                           progress);
+                           r);
   } else {
     throw std::runtime_error("BUILD field must be nil, string, or function for " +
                              r->spec->identity);

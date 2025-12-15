@@ -255,6 +255,28 @@ class TestBuildPhase(unittest.TestCase):
         self.run_recipe("build_output_capture.lua", "local.build_output_capture@v1")
         # Success is verified by recipe validating captured output
 
+    def test_build_function_returns_string(self):
+        """Build function can return a string that gets executed."""
+        self.run_recipe(
+            "build_function_returns_string.lua", "local.build_function_returns_string@v1"
+        )
+
+        # Verify setup directory was created by function body
+        asset_path = self.get_asset_path("local.build_function_returns_string@v1")
+        self.assertIsNotNone(asset_path)
+        self.assertTrue((asset_path / "setup_dir").exists())
+
+        # Verify output from returned script was created
+        self.assertTrue((asset_path / "output_from_returned_script").exists())
+        self.assertTrue(
+            (asset_path / "output_from_returned_script" / "marker.txt").exists()
+        )
+
+        content = (
+            asset_path / "output_from_returned_script" / "marker.txt"
+        ).read_text()
+        self.assertEqual(content.strip(), "returned_script_artifact")
+
 
 if __name__ == "__main__":
     unittest.main()
