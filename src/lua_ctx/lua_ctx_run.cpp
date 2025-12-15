@@ -1,11 +1,13 @@
 #include "lua_ctx_bindings.h"
 
+#include "engine.h"
 #include "lua_shell.h"
 #include "recipe.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 
 #include <chrono>
 #include <filesystem>
@@ -133,16 +135,23 @@ make_ctx_run(lua_ctx_common *ctx) {
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "ctx.run");
     }
 
+    // Auto-manage TUI progress for ctx.run()
+    std::optional<tui_actions::run_progress> progress;
+    if (ctx && ctx->recipe_ && ctx->recipe_->tui_section && ctx->engine_) {
+      progress.emplace(ctx->recipe_->tui_section,
+                       ctx->recipe_->spec->identity,
+                       ctx->engine_->cache_root());
+      progress->on_command_start(script_view);
+    }
+
     std::string stdout_buffer;
     std::string stderr_buffer;
-    std::function<void(std::string_view)> forwarded_output;
-    if (!quiet && ctx && ctx->on_output_line) { forwarded_output = ctx->on_output_line; }
 
     shell_run_cfg const inv{
       .on_output_line =
           [&](std::string_view line) {
-            if (forwarded_output) {
-              forwarded_output(line);
+            if (progress && !quiet) {
+              progress->on_output_line(line);
             } else if (!quiet) {
               tui::info("%s", std::string{ line }.c_str());
             }
@@ -156,9 +165,6 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     std::optional<tui::interactive_mode_guard> guard;
     if (interactive) { guard.emplace(); }
-
-    // Notify callback before executing command (for TUI header updates)
-    if (ctx && ctx->on_command_start) { ctx->on_command_start(script_view); }
 
     shell_result const result{ shell_run(script_view, inv) };
 
