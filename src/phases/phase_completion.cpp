@@ -26,7 +26,7 @@ void run_completion_phase(recipe *r, engine &eng) {
                r->spec->identity.c_str());
   }
 
-  if (r->tui_section) {
+  if (r->tui_section && tui::section_has_content(r->tui_section)) {
     tui::section_set_content(
         r->tui_section,
         tui::section_frame{ .label = "[" + r->spec->identity + "]",

@@ -177,10 +177,8 @@ void run_stage_phase(recipe *r, engine &eng) {
                                        std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock{ r->lock.get() };
-  if (!lock) {  // Cache hit - no work to do
+  if (!lock) {
     tui::debug("phase stage: no lock (cache hit), skipping");
-    // Release section on cache hit (fetch will have already set final content)
-    tui::section_release(r->tui_section);
     return;
   }
 

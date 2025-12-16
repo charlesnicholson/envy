@@ -3,7 +3,6 @@
 #include "trace.h"
 
 #include <chrono>
-#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -50,8 +49,7 @@ void pause_rendering();
 void resume_rendering();
 
 struct scope {  // raii helper
-  explicit scope(std::optional<level> threshold = std::nullopt,
-                 bool decorated_logging = false);
+  explicit scope(std::optional<level> threshold, bool decorated_logging);
   ~scope();
 
  private:
@@ -95,7 +93,11 @@ std::size_t measure_label_width(section_frame const &frame);
 
 section_handle section_create();
 void section_set_content(section_handle h, section_frame const &frame);
+bool section_has_content(section_handle h);
 void section_release(section_handle h);
+
+// Final render - forces one final render cycle of all sections before program exit
+void flush_final_render();
 
 // Interactive mode API
 void acquire_interactive_mode();

@@ -10,6 +10,7 @@
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 
 #include <filesystem>
 #include <optional>
@@ -105,15 +106,28 @@ bool run_shell_install(std::string_view script,
                        std::filesystem::path const &install_dir,
                        cache::scoped_entry_lock *lock,
                        std::string const &identity,
-                       resolved_shell shell) {
+                       resolved_shell shell,
+                       tui::section_handle tui_section,
+                       std::filesystem::path const &cache_root) {
   tui::debug("phase install: running shell script");
+
+  // Create run_progress tracker if TUI section is valid
+  std::optional<tui_actions::run_progress> progress;
+  if (tui_section) {
+    progress.emplace(tui_section, identity, cache_root);
+    progress->on_command_start(script);
+  }
 
   shell_env_t env{ shell_getenv() };
   shell_run_cfg const cfg{ .on_output_line =
                                [&](std::string_view line) {
-                                 tui::info("%.*s",
-                                           static_cast<int>(line.size()),
-                                           line.data());
+                                 if (progress) {
+                                   progress->on_output_line(line);
+                                 } else {
+                                   tui::info("%.*s",
+                                             static_cast<int>(line.size()),
+                                             line.data());
+                                 }
                                },
                            .cwd = install_dir,
                            .env = std::move(env),
@@ -198,7 +212,9 @@ bool run_programmatic_install(sol::protected_function install_func,
         string_cwd,
         is_user_managed ? nullptr : lock,
         identity,
-        shell_resolve_default(r->default_shell_ptr)) };
+        shell_resolve_default(r->default_shell_ptr),
+        r->tui_section,
+        eng.cache_root()) };
 
     return shell_marked_complete || lock->is_install_complete();
   }
@@ -264,7 +280,9 @@ void run_install_phase(recipe *r, engine &eng) {
                                         string_cwd,
                                         is_user_managed ? nullptr : lock.get(),
                                         r->spec->identity,
-                                        shell_resolve_default(r->default_shell_ptr));
+                                        shell_resolve_default(r->default_shell_ptr),
+                                        r->tui_section,
+                                        eng.cache_root());
   } else if (install_obj.is<sol::protected_function>()) {
     marked_complete = run_programmatic_install(install_obj.as<sol::protected_function>(),
                                                lock.get(),

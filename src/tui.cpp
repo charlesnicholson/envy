@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <queue>
 #include <sstream>
 #include <stdexcept>
@@ -421,20 +422,38 @@ std::string truncate_lines_to_width(std::string const &text, int width_hint) {
   return out;
 }
 
-void render_ansi_frame_unlocked(std::vector<std::string> const &frames,
-                                int rendered_line_count) {
-  // Hide cursor
+int render_progress_sections_ansi(std::vector<section_state> const &sections,
+                                  std::size_t max_label_width,
+                                  int last_line_count,
+                                  int width,
+                                  std::chrono::steady_clock::time_point now) {
+  std::vector<std::string> rendered_frames;
+  int rendered_line_count{ 0 };
+
+  for (auto const &sec : sections) {
+    if (!sec.active || !sec.has_content) { continue; }
+    std::string frame{
+      render_section_frame(sec.cached_frame, max_label_width, width, true, now)
+    };
+    frame = truncate_lines_to_width(frame, width);
+    int const frame_lines{ count_wrapped_lines(frame, width) };
+    rendered_line_count += frame_lines;
+    rendered_frames.push_back(std::move(frame));
+  }
+
+  if (last_line_count > 0) {
+    std::fprintf(stderr, "\x1b[%dF\x1b[0J", last_line_count);
+    std::fflush(stderr);
+  }
+
   std::fprintf(stderr, "\x1b[?25l");
-
-  // Render all active sections that have content
-  for (auto const &output : frames) { std::fprintf(stderr, "%s", output.c_str()); }
-
-  // Show cursor
+  for (auto const &output : rendered_frames) {
+    std::fprintf(stderr, "%s", output.c_str());
+  }
   std::fprintf(stderr, "\x1b[?25h");
   std::fflush(stderr);
 
-  // Caller updates s_progress.last_line_count after render to avoid counting inactive
-  // sections.
+  return rendered_line_count;
 }
 
 void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
@@ -613,48 +632,26 @@ void worker_thread() {
 
       lock.unlock();
 
-      std::vector<std::string> rendered_frames;
       int rendered_line_count{ 0 };
-      int clear_lines{ 0 };
-      int width{ 0 };
-      auto now = get_now();
       bool ansi{ false };
+      auto const now{ get_now() };
 
       if (s_progress.enabled) {
-        width = get_terminal_width();
+        int const width{ get_terminal_width() };
         ansi = is_ansi_supported();
 
         if (ansi) {
-          for (auto const &sec : sections_snapshot) {
-            if (!sec.active || !sec.has_content) { continue; }
-            std::string frame{
-              render_section_frame(sec.cached_frame, max_label_width, width, true, now)
-            };
-            frame = truncate_lines_to_width(frame, width);
-            int const frame_lines{ count_wrapped_lines(frame, width) };
-            rendered_line_count += frame_lines;
-            rendered_frames.push_back(std::move(frame));
-          }
-          clear_lines = last_line_count;  // Only clear what we rendered last time
-        }
-      }
-
-      if (s_progress.enabled) {
-        if (ansi && clear_lines > 0) {
-          std::fprintf(stderr, "\x1b[%dF\x1b[0J", clear_lines);
-          std::fflush(stderr);
-        }
-      }
-
-      flush_messages(pending, s_tui.output_handler);
-
-      if (s_progress.enabled) {
-        if (ansi) {
-          render_ansi_frame_unlocked(rendered_frames, rendered_line_count);
+          rendered_line_count = render_progress_sections_ansi(sections_snapshot,
+                                                              max_label_width,
+                                                              last_line_count,
+                                                              width,
+                                                              now);
         } else {
           render_fallback_frame_unlocked(sections_snapshot, now);
         }
       }
+
+      flush_messages(pending, s_tui.output_handler);
 
       lock.lock();
 
@@ -890,31 +887,69 @@ section_handle section_create() {
 }
 
 void section_set_content(section_handle h, section_frame const &frame) {
-  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+  if (h == 0 || !s_progress.enabled) { return; }
 
   std::lock_guard lock{ s_tui.mutex };
 
-  for (auto &sec : s_progress.sections) {
-    if (sec.handle == h && sec.active) {
-      sec.cached_frame = frame;
-      sec.has_content = true;
-      s_progress.max_label_width =
-          std::max(s_progress.max_label_width, measure_label_width(frame));
-      break;
-    }
+  if (auto it{ std::ranges::find_if(
+          s_progress.sections,
+          [h](auto const &sec) { return sec.handle == h && sec.active; }) };
+      it != s_progress.sections.end()) {
+    it->cached_frame = frame;
+    it->has_content = true;
+    s_progress.max_label_width =
+        std::max(s_progress.max_label_width, measure_label_width(frame));
   }
 }
 
-void section_release(section_handle h) {
-  if (h == 0 || !s_progress.enabled) { return; }  // Skip if disabled or invalid
+bool section_has_content(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return false; }
 
   std::lock_guard lock{ s_tui.mutex };
 
-  for (auto &sec : s_progress.sections) {
-    if (sec.handle == h) {
-      sec.active = false;
-      break;
+  auto it{ std::ranges::find_if(s_progress.sections,
+                                [h](auto const &sec) { return sec.handle == h; }) };
+  return it != s_progress.sections.end() && it->has_content;
+}
+
+void section_release(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return; }
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  if (auto it{ std::ranges::find_if(s_progress.sections,
+                                    [h](auto &sec) { return sec.handle == h; }) };
+      it != s_progress.sections.end()) {
+    it->active = false;
+  }
+}
+
+void flush_final_render() {
+  if (!s_progress.enabled) { return; }
+
+  auto const [sections_snapshot, max_label_width, last_line_count] = [&] {
+    std::lock_guard lock{ s_tui.mutex };
+    return std::tuple{ s_progress.sections,
+                       s_progress.max_label_width,
+                       s_progress.last_line_count };
+  }();
+
+  auto const now{ get_now() };
+  int const width{ get_terminal_width() };
+
+  if (is_ansi_supported()) {
+    render_progress_sections_ansi(sections_snapshot,
+                                  max_label_width,
+                                  last_line_count,
+                                  width,
+                                  now);
+  } else {  // Fallback mode: render all sections without throttling (final render)
+    for (auto const &sec : sections_snapshot) {
+      if (!sec.active || !sec.has_content) { continue; }
+      std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
+      std::fprintf(stderr, "%s", output.c_str());
     }
+    std::fflush(stderr);
   }
 }
 
@@ -952,7 +987,10 @@ scope::scope(std::optional<level> threshold, bool decorated_logging) {
 }
 
 scope::~scope() {
-  if (active) { shutdown(); }
+  if (active) {
+    flush_final_render();
+    shutdown();
+  }
 }
 
 #ifdef ENVY_UNIT_TEST
@@ -973,11 +1011,13 @@ std::size_t measure_label_width_impl(section_frame const &frame, std::size_t ind
   std::size_t len{ indent + frame.label.size() };
   if (!frame.phase_label.empty()) { len += frame.phase_label.size() + 3; }
 
-  std::size_t max_len{ len };
-  for (auto const &child : frame.children) {
-    max_len = std::max(max_len, measure_label_width_impl(child, indent + 2));
-  }
-  return max_len;
+  return std::accumulate(frame.children.begin(),
+                         frame.children.end(),
+                         len,
+                         [&](std::size_t acc, auto const &child) {
+                           return std::max(acc,
+                                           measure_label_width_impl(child, indent + 2));
+                         });
 }
 }  // namespace
 
