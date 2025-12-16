@@ -246,12 +246,6 @@ engine::~engine() {
   for (auto &[key, ctx] : execution_ctxs_) {
     if (ctx->worker.joinable()) { ctx->worker.join(); }
   }
-
-  for (auto &[key, recipe_ptr] : recipes_) {
-    if (recipe_ptr && recipe_ptr->tui_section != 0) {
-      tui::section_release(recipe_ptr->tui_section);
-    }
-  }
 }
 
 void engine::notify_all_global_locked() {
