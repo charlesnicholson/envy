@@ -163,63 +163,60 @@ Recipes define verbs describing how to acquire, validate, and install packages:
 
 ### User-Managed vs Cache-Managed Packages
 
-Envy supports two distinct package management models based on check verb presence:
+Envy supports two package models distinguished by CHECK verb presence:
 
-**Cache-Managed Packages** (no check verb):
-- Default behavior—artifacts stored in cache
-- Install phase writes to `install_dir`, calls `ctx.mark_install_complete()`
-- Cache entry persists: `install/` renamed to `asset/`, marked with `envy-complete`
-- Subsequent runs detect marker and skip all phases (cache hit)
-- Example: compiled toolchains, libraries, build tools
+**Cache-Managed Packages** (no CHECK verb):
+- Artifacts stored in cache—hash-based lookup via `cache::ensure_asset()`
+- Install writes to `lock->install_dir()`, calls `ctx.mark_install_complete()`
+- Lock destructor renames `install/` → `asset/`, touches `envy-complete`
+- Subsequent runs: cache hit (asset exists) skips all phases
+- Full ctx API: `fetch_dir`, `stage_dir`, `install_dir`, `mark_install_complete()`, `extract_all()`, etc.
+- Example: toolchains, libraries, build tools
 
-**User-Managed Packages** (check verb present):
-- Artifacts managed outside envy's cache (system installs, environment state)
-- Check verb determines install state (returns true if already satisfied)
-- Install phase modifies system but does NOT call `ctx.mark_install_complete()`
-- Cache entry is ephemeral workspace—fully purged after install completes
-- Subsequent runs call check verb to skip work
-- Example: system package wrappers (brew, apt), Python venv setup, credential files
+**User-Managed Packages** (CHECK verb present):
+- Artifacts live outside cache (system state, environment, user directories)
+- CHECK verb tests satisfaction (string command or function returning bool)
+- Lock marked user-managed via `lock->mark_user_managed()`—destructor purges entire `entry_dir` (ephemeral workspace)
+- Install phase modifies system; CANNOT call `mark_install_complete()` (not exposed in ctx)
+- Restricted ctx API: only `tmp_dir`, `run()`, `asset()`, `product()`, `identity`, `options`
+- Forbidden: `fetch_dir`, `stage_dir`, `install_dir`, `mark_install_complete()`, `extract_all()`, `copy()`, `move()`, etc.
+- Attempting forbidden APIs throws runtime error
+- Example: brew/apt wrappers, environment setup, credential files
 
-**Check XOR Cache Constraint:**
-Recipes must choose one model—cannot mix both:
-- ✅ Check verb + no `mark_install_complete()` → user-managed, cache purged
-- ✅ No check verb + `mark_install_complete()` → cache-managed, artifacts persist
-- ❌ Check verb + `mark_install_complete()` → **ERROR** (validation enforced at runtime)
+**Double-Check Lock Pattern (user-managed only):**
+Coordinates concurrent processes, prevents duplicate work:
+1. **Pre-lock check:** Run CHECK verb; if true (satisfied), skip all phases
+2. **Acquire lock:** Mark user-managed, block while other process works
+3. **Post-lock re-check:** Run CHECK again; if true (race—other process completed), release lock, purge entry_dir
+4. **Install:** If still false, execute phases; destructor purges entry_dir after completion
 
-**Double-Check Lock Pattern:**
-User-managed packages use double-check locking to coordinate concurrent processes:
-1. **Pre-lock check:** Run check verb; if true (satisfied), skip all phases
-2. **Acquire lock:** Block while another process installs
-3. **Post-lock re-check:** Run check verb again; if now true (race), release lock and skip
-4. **Install:** If still needed, run install phase; lock destructor purges cache entry
+Race example: Process A checks (false), waits for lock. Process B holds lock, installs Python via brew. B releases. A acquires lock, re-checks (true—Python now installed), releases, skips phases.
 
-This prevents duplicate work when check state changes between initial check and lock acquisition (e.g., another process completed install while waiting for lock).
-
-**Ephemeral Workspace:**
-User-managed packages can use fetch/stage/build phases—workspace directories created during install, fully deleted after completion. This enables complex system installations that need downloaded files or build artifacts without polluting cache.
+**Implementation mechanics:**
+- Detection: `recipe_has_check_verb(r, lua)` → user vs cache path in `run_check_phase()`
+- User-managed lock: `phase_check.cpp:169` calls `lock->mark_user_managed()`
+- Lock destructor (`cache.cpp:158`): `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_asset(); }`
+- Ctx isolation: `phase_install.cpp:67` builds restricted table, forbidden APIs throw errors
 
 **Example: System Package Wrapper**
 ```lua
 -- python.interpreter@v3 (user-managed)
 IDENTITY = "python.interpreter@v3"
 
--- Check if Python already installed via system package manager
+-- Check if Python already installed
 CHECK = function(ctx)
-  -- Try running python3 --version (returns true/false on success/failure)
-  local success = pcall(function()
-    ctx:run("python3", "--version")
-  end)
-  return success
+  local result = ctx.run("python3 --version", {quiet = true})
+  return result.exit_code == 0
 end
 
 -- Install via platform package manager
 INSTALL = function(ctx)
   if ENVY_PLATFORM == "darwin" then
-    ctx:run("brew", "install", "python3")
+    ctx.run("brew install python3")
   elseif ENVY_PLATFORM == "linux" then
-    ctx:run("apt-get", "install", "-y", "python3")
+    ctx.run("sudo apt-get install -y python3")
   end
-  -- No ctx.mark_install_complete() call—artifacts managed by brew/apt
+  -- No mark_install_complete() call—not exposed for user-managed packages
 end
 ```
 
@@ -227,15 +224,15 @@ end
 ```lua
 -- arm.gcc@v2 (cache-managed)
 IDENTITY = "arm.gcc@v2"
--- No check verb—use cache marker
+-- No CHECK verb—hash-based cache lookup
 
 FETCH = {url = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
 
-STAGE = function(ctx) ctx:extract_all() end
+STAGE = function(ctx) ctx.extract_all() end
 
 INSTALL = function(ctx)
-  ctx:copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
-  ctx.mark_install_complete()  -- Required—signals cache persistence
+  ctx.copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
+  ctx.mark_install_complete()  -- Required—lock destructor renames install → asset
 end
 ```
 
