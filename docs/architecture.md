@@ -558,6 +558,33 @@ assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
 
 **Stderr:** All human communication—logs, progress bars, warnings, errors. Thread-safe queue-based rendering.
 
+### Immediate-Mode Architecture
+
+**Stateless rendering:** TUI is pure function `(frame, width, now, ansi) → string`. Workers cache section frames; renderer reads at 30fps. No animation state—spinners computed from timestamps, progress bars show current values. Benefits: deterministic output, full unit testability, no state sync.
+
+**Section state:** Vector of sections (allocation order = render order). Each: handle, active flag, cached frame. Worker thread calls `section_set_content(handle, frame)` on progress events; main thread renders all active sections each cycle.
+
+**Render cycle (30fps):**
+1. ANSI: clear previous progress region (cursor up, clear to end). Fallback: no-op.
+2. Flush log queue (logs print in cleared space)
+3. Get terminal width (syscall), current time
+4. For each active section: `render_section_frame(cached_frame, width, ansi, now)`
+5. ANSI: update line count for next clear. Fallback: throttle (2s), print if changed.
+
+**Critical ordering:** Clear BEFORE flush prevents logs from being erased. Logs print where old progress was; new progress renders below logs.
+
+**Section frame types:**
+- `progress_data`: percent (0-100), status string → `[label] status [=====>   ] 42.5%`
+- `text_stream_data`: line buffer, line_limit, start_time → last N lines of build output with spinner
+- `spinner_data`: text, start_time, frame_duration → animated `|/-\` computed from elapsed time
+- `static_text_data`: text → `[label] text`
+
+**Interactive mode:** Global mutex serializes recipes needing terminal control (sudo, installers). Acquire locks, pauses rendering; release unlocks, resumes. RAII guard available.
+
+**Integration:** Phases delegate TUI management to `tui_actions` helpers (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`)—single-responsibility, consistent formatting, testable in isolation. `ctx.run()` auto-creates `run_progress` when recipe has `tui_section`; Lua code gets TUI integration automatically.
+
+**Test API:** `#ifdef ENVY_UNIT_TEST` exposes `g_terminal_width`, `g_isatty`, `g_now` globals and `test::render_section_frame()` for pure rendering tests without TUI thread.
+
 ### Log Formatting
 
 **Plain mode** (`init(std::nullopt)`): Clean output, no timestamps/severity prefixes. Threshold = info.
