@@ -11,6 +11,7 @@
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "util.h"
 
 #include <chrono>
@@ -23,11 +24,25 @@ namespace envy {
 bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
+  // Create run_progress tracker if recipe has TUI section
+  std::optional<tui_actions::run_progress> progress;
+  if (r && r->tui_section) {
+    progress.emplace(r->tui_section, r->spec->identity, eng.cache_root());
+    progress->on_command_start(check_cmd);
+  }
+
   std::string stdout_capture;
   std::string stderr_capture;
 
   shell_run_cfg cfg;
   cfg.env = shell_getenv();
+  cfg.on_output_line = [&](std::string_view line) {
+    if (progress) {
+      progress->on_output_line(line);
+    } else {
+      tui::info("%.*s", static_cast<int>(line.size()), line.data());
+    }
+  };
   cfg.on_stdout_line = [&](std::string_view line) {
     stdout_capture += line;
     stdout_capture += '\n';

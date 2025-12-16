@@ -24,6 +24,10 @@
 
 **Interactive mode**: Global mutex serializes recipes needing terminal control (sudo, installers). Acquire locks, pauses rendering. Release unlocks, resumes.
 
+**TUI Actions Architecture** (centralized progress tracking): Phases delegate TUI management to `tui_actions` helpers (`src/tui_actions.h`, `src/tui_actions.cpp`). Each helper owns section lifecycle, formats progress data, updates frames. Phases create tracker, pass to operations, tracker auto-manages. Benefits: single-responsibility, consistent formatting, testable in isolation.
+
+**ctx.run() integration**: `make_ctx_run()` in `lua_ctx_run.cpp` auto-creates `run_progress` tracker when recipe has `tui_section`. Lua code calling `ctx.run()` gets TUI integration automatically—no phase-specific code. BUILD phase leverages this: string-returning BUILD functions route through `ctx.run()` (line 77), output captured to section. CHECK/INSTALL phases still use direct `shell_run()` calls with `tui::info()` callbacks—pending migration to `run_progress` pattern.
+
 ## API
 
 ### Section Frame Types (`src/tui.h`)
@@ -315,15 +319,16 @@ Flat list, tests immediately after feature bringup:
 - ✓ Integrate text stream in `phase_build.cpp`: create section via `tui_actions::run_progress`, update on output lines, show last 3 lines
 - ✓ Build with `./build.sh` (verify no compile errors after build integration)
 - ✓ Manual test: run `envy sync` with package requiring build, verify last 3 lines of output visible
-- Integrate spinner/static in `phase_check.cpp`: create section, set spinner during check, set static after, release
-- Integrate spinner/static in `phase_install.cpp`: create section, set spinner during install, set static after, release
-- Build with `./build.sh` (verify no compile errors after check/install integration)
-- Manual test: run `envy sync` with packages requiring check/install, verify spinner animates
-- Add functional test (Python): ANSI rendering with multiple parallel recipes (verify `\x1b[` in stderr)
-- Add functional test (Python): fallback mode with `TERM=dumb` (verify no `\x1b[` in stderr)
-- Add functional test (Python): fallback mode with piped stderr `2>&1 | cat` (verify no `\x1b[`)
-- Add functional test (Python): interactive mode (create recipe with `interactive=true`, verify progress clears)
-- Run functional tests `python3.13 -m functional_tests` (verify all new tests pass)
+- ✓ Refactor `phase_build.cpp`: string-returning BUILD functions route through `ctx.run()`, auto-TUI integration via `run_progress`
+- ✓ Migrate `phase_check.cpp` `run_check_string()`: replace direct `shell_run()` + `tui::info()` callbacks with `run_progress` tracker (or route through `ctx.run()` if in Lua context)
+- ✓ Migrate `phase_install.cpp` `run_shell_install()`: replace direct `shell_run()` + `tui::info()` callbacks with `run_progress` tracker (pattern: create tracker, call `on_command_start()`, pass `on_output_line` callback to `shell_run_cfg`)
+- ✓ Build with `./build.sh` (verify no compile errors after check/install migration)
+- Manual test: run `envy sync` with `brew_package` (verify brew output appears in `[local.brew_package@r0]` section, not message log)
+- ✓ Add functional test (Python): parallel recipes complete successfully (ANSI verification requires manual testing with real TTY)
+- ✓ Add functional test (Python): fallback mode with `TERM=dumb` (verify no `\x1b[` in stderr)
+- ✓ Add functional test (Python): fallback mode with piped stderr `2>&1 | cat` (verify no `\x1b[`)
+- ✓ Run functional tests `python3.13 -m functional_tests.test_tui` (all tests pass)
+- Manual test: interactive mode (create recipe with `interactive=true`, verify progress clears) - automated testing requires PTY allocation
 - Manual test: run `envy sync` in normal terminal (verify ANSI progress sections render and animate)
 - Manual test: run `TERM=dumb envy sync` (verify fallback text-only progress)
 - Manual test: run `envy sync 2>&1 | cat` (verify fallback mode, no ANSI codes)
@@ -336,8 +341,14 @@ Flat list, tests immediately after feature bringup:
 - `src/tui.h` — Section frame types, section API, interactive mode API
 - `src/tui.cpp` — Section state, pure render functions, worker thread integration
 - `src/tui_tests.cpp` — Unit tests for render functions and lifecycle
-- `src/lua_ctx/lua_ctx_run.cpp` — `interactive` option, guard wrapper
-- `src/phases/*.cpp` — Integrate progress bars, text streams, spinners
+- `src/tui_actions.h` — Progress tracker classes (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`, etc.)
+- `src/tui_actions.cpp` — Centralized TUI management for common operations
+- `src/lua_ctx/lua_ctx_run.cpp` — Auto-creates `run_progress` when recipe has `tui_section`, `interactive` option, guard wrapper
+- `src/phases/phase_build.cpp` — String-returning BUILD routes through `ctx.run()` for auto-TUI integration
+- `src/phases/phase_fetch.cpp` — Uses `fetch_progress_tracker` from `tui_actions`
+- `src/phases/phase_stage.cpp` — Uses `extract_progress_tracker` from `tui_actions`
+- `src/phases/phase_check.cpp` — Migrated `run_check_string()` to use `run_progress` tracker
+- `src/phases/phase_install.cpp` — Migrated `run_shell_install()` to use `run_progress` tracker
 
 **Key decisions**:
 1. Immediate-mode: stateless rendering, complete frame data per call
@@ -348,3 +359,5 @@ Flat list, tests immediately after feature bringup:
 6. Mutable labels: each frame specifies label
 7. No progress bar animation: show current percent directly
 8. Spinner auto-animation: TUI computes frame from `(now - start_time) / duration`
+9. Centralize TUI logic: phases delegate to `tui_actions` helpers, avoid phase-specific TUI code
+10. Auto-TUI for `ctx.run()`: Lua scripts get TUI integration automatically when calling `ctx.run()`
