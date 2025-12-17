@@ -541,36 +541,12 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
       render_section_frame(sec.cached_frame, max_label_width, width, true, now)
     };
 
-    // DEBUG: Log frame content
-    static FILE *debug = std::fopen("C:\\tmp\\tui_line_count.txt", "a");
-    if (debug) {
-      std::fprintf(debug, "=== Section handle=%u ===\n", sec.handle);
-      std::fprintf(debug, "Frame content:\n%s", frame.c_str());
-      std::fprintf(debug, "Frame ends with newline: %s\n",
-                   frame.empty() ? "empty" : (frame.back() == '\n' ? "yes" : "no"));
-      std::fflush(debug);
-    }
-
     // Split frame into lines
     std::istringstream iss{ frame };
     std::string line;
-    int line_count_before = rendered_lines.size();
     while (std::getline(iss, line)) {
       rendered_lines.push_back(line);
     }
-
-    if (debug) {
-      std::fprintf(debug, "Lines added: %d\n\n",
-                   (int)rendered_lines.size() - line_count_before);
-      std::fflush(debug);
-    }
-  }
-
-  // DEBUG: Log the transition
-  if (debug) {
-    std::fprintf(debug, "Total lines to render: %zu (last_line_count=%d)\n",
-                 rendered_lines.size(), last_line_count);
-    std::fflush(debug);
   }
 
   // Ensure column 0, then move up to start position (improg: line 559-564)
@@ -596,11 +572,6 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
   }
 
   std::fflush(stderr);
-
-  if (debug) {
-    std::fprintf(debug, "Returning cur_frame_line_count=%d\n\n", cur_frame_line_count);
-    std::fflush(debug);
-  }
 
   return cur_frame_line_count;
 }
