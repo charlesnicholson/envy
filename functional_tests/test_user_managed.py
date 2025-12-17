@@ -197,15 +197,13 @@ class TestUserManagedPackages(unittest.TestCase):
     # Validation error tests
     # ========================================================================
 
-    def test_validation_error_check_plus_mark_complete(self):
-        """Recipe with check + mark_install_complete throws clear error."""
+    def test_validation_error_check_with_forbidden_api(self):
+        """User-managed packages cannot access cache-managed APIs like install_dir."""
         recipe_path = self.recipe_dir / "user_managed_invalid.lua"
 
         result = self.run_envy("local.user_managed_invalid@v1", recipe_path)
         self.assertNotEqual(result.returncode, 0, "Should fail validation")
-        # mark_install_complete is not exposed, so Lua sees nil and throws error
-        self.assertIn("attempt to call a nil value", result.stderr)
-        self.assertIn("mark_install_complete", result.stderr)
+        self.assertIn("not available for user-managed", result.stderr)
 
     # ========================================================================
     # Double-check lock and race condition tests
@@ -332,16 +330,6 @@ class TestUserManagedPackages(unittest.TestCase):
             "local.user_managed_ctx_isolation_forbidden@v1",
             recipe_path,
             env_vars={"ENVY_TEST_FORBIDDEN_API": "extract_all"},
-        )
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-    def test_user_managed_ctx_forbids_mark_install_complete(self):
-        """User-managed packages cannot call ctx.mark_install_complete()."""
-        recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
-        result = self.run_envy(
-            "local.user_managed_ctx_isolation_forbidden@v1",
-            recipe_path,
-            env_vars={"ENVY_TEST_FORBIDDEN_API": "mark_install_complete"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 

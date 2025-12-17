@@ -28,5 +28,4 @@ end
 
 INSTALL = function(ctx, opts)
   ctx.asset("local.needed_by_install_dep@v1")
-  ctx.mark_install_complete()
 end

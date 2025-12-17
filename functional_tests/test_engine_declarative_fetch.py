@@ -341,7 +341,6 @@ function INSTALL(ctx, opts)
         error("Git repo should NOT be in fetch_dir, found at: " .. fetch_readme)
     end
 
-    ctx.mark_install_complete()
 end
 """
         recipe_path = self.cache_root / "git_location_test.lua"
@@ -380,7 +379,6 @@ function INSTALL(ctx, opts)
         error("Git repo not found")
     end
     f:close()
-    ctx.mark_install_complete()
 end
 """
         recipe_path = self.cache_root / "git_no_cache.lua"

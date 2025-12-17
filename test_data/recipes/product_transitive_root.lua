@@ -19,5 +19,4 @@ FETCH = {
 INSTALL = function(ctx)
     -- If fallback was used, we have intermediate; if provider was in manifest, we don't
     -- Either way, the transitive provision validation should have ensured correctness
-    ctx.mark_install_complete()
 end

@@ -541,31 +541,31 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
       render_section_frame(sec.cached_frame, max_label_width, width, true, now)
     };
 
-    // Split frame into lines
+    // Split frame into lines and truncate each to terminal width
     std::istringstream iss{ frame };
     std::string line;
     while (std::getline(iss, line)) {
-      rendered_lines.push_back(line);
+      rendered_lines.push_back(truncate_to_width_ansi_aware(line, width));
     }
   }
 
-  // Ensure column 0, then move up to start position (improg: line 559-564)
+  // Ensure column 0, then move up to start position
   std::fprintf(stderr, "\r");
   if (last_line_count > 1) {
     std::fprintf(stderr, "\x1b[%dF", last_line_count - 1);
   }
 
-  // Render each line with per-line clear (improg: line 610, 619, 622)
+  // Render each line with per-line clear
   int cur_frame_line_count{ 0 };
   for (auto const &line : rendered_lines) {
-    if (cur_frame_line_count > 0) {  // improg: print \n before all lines except first
+    if (cur_frame_line_count > 0) {  // Print \n before all lines except first
       std::fprintf(stderr, "\n");
     }
     std::fprintf(stderr, "%s\x1b[K", line.c_str());
     ++cur_frame_line_count;
   }
 
-  // Clear remaining old lines if shrinking (improg: line 578-581)
+  // Clear remaining old lines if shrinking
   if (cur_frame_line_count < last_line_count) {
     std::fprintf(stderr, "\n\x1b[0J");
     ++cur_frame_line_count;  // Account for the newline we just printed
@@ -989,6 +989,8 @@ void pause_rendering() {
 }
 
 void resume_rendering() {
+  // No mutex needed: only writes to stderr without accessing shared state
+  // pause_rendering() needs mutex because it reads/modifies s_progress.last_line_count
   // Disable auto-wrap and hide cursor again after interactive command completes
   if (is_ansi_supported()) {
     std::fprintf(stderr, "\x1b[?25l\x1b[?7l");

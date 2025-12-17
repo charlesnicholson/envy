@@ -22,7 +22,6 @@ end
 
 INSTALL = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ENVY_EXE_EXT, ctx.install_dir)
-  ctx.mark_install_complete()
 end
 
 PRODUCTS = { ninja = "ninja" .. ENVY_EXE_EXT }

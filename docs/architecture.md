@@ -167,19 +167,19 @@ Envy supports two package models distinguished by CHECK verb presence:
 
 **Cache-Managed Packages** (no CHECK verb):
 - Artifacts stored in cache—hash-based lookup via `cache::ensure_asset()`
-- Install writes to `lock->install_dir()`, calls `ctx.mark_install_complete()`
+- Install writes to `lock->install_dir()`; on successful return, envy auto-marks complete
 - Lock destructor renames `install/` → `asset/`, touches `envy-complete`
 - Subsequent runs: cache hit (asset exists) skips all phases
-- Full ctx API: `fetch_dir`, `stage_dir`, `install_dir`, `mark_install_complete()`, `extract_all()`, etc.
+- Full ctx API: `fetch_dir`, `stage_dir`, `install_dir`, `extract_all()`, etc.
 - Example: toolchains, libraries, build tools
 
 **User-Managed Packages** (CHECK verb present):
 - Artifacts live outside cache (system state, environment, user directories)
 - CHECK verb tests satisfaction (string command or function returning bool)
 - Lock marked user-managed via `lock->mark_user_managed()`—destructor purges entire `entry_dir` (ephemeral workspace)
-- Install phase modifies system; CANNOT call `mark_install_complete()` (not exposed in ctx)
+- Install phase modifies system; workspace never persists to cache
 - Restricted ctx API: only `tmp_dir`, `run()`, `asset()`, `product()`, `identity`, `options`
-- Forbidden: `fetch_dir`, `stage_dir`, `install_dir`, `mark_install_complete()`, `extract_all()`, `copy()`, `move()`, etc.
+- Forbidden: `fetch_dir`, `stage_dir`, `install_dir`, `extract_all()`, `copy()`, `move()`, etc.
 - Attempting forbidden APIs throws runtime error
 - Example: brew/apt wrappers, environment setup, credential files
 
@@ -216,7 +216,7 @@ INSTALL = function(ctx)
   elseif ENVY_PLATFORM == "linux" then
     ctx.run("sudo apt-get install -y python3")
   end
-  -- No mark_install_complete() call—not exposed for user-managed packages
+  -- Workspace is ephemeral—purged after completion
 end
 ```
 
@@ -232,7 +232,7 @@ STAGE = function(ctx) ctx.extract_all() end
 
 INSTALL = function(ctx)
   ctx.copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
-  ctx.mark_install_complete()  -- Required—lock destructor renames install → asset
+  -- Auto-marked complete on successful return—lock destructor renames install → asset
 end
 ```
 

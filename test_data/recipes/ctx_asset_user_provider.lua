@@ -5,5 +5,5 @@ function CHECK(ctx)
 end
 
 function INSTALL(ctx)
-  -- User-managed: no cache artifacts, no mark_install_complete
+  -- User-managed: ephemeral workspace, no persistent cache artifacts
 end

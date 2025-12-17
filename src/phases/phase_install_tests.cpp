@@ -186,22 +186,25 @@ TEST_CASE_FIXTURE(
 
 TEST_CASE_FIXTURE(
     install_test_fixture,
-    "install phase allows cache-managed package with mark_install_complete") {
+    "install phase auto-marks cache-managed package complete on success") {
   // No check verb (cache-managed)
   clear_check_verb();
 
-  // Install function that calls mark_install_complete (correct for cache-managed)
+  // Install function that returns successfully (auto-marks complete)
   set_install_function(R"(
     function(ctx)
-      ctx.mark_install_complete()
+      -- Auto-marked complete on successful return
     end
   )");
 
   acquire_lock();
   write_install_content();
 
-  // Should not throw
+  // Should not throw and should mark complete
   CHECK_NOTHROW(run_install_phase(r.get(), eng));
+
+  // Verify asset was marked complete
+  CHECK(r->asset_path.string().find("asset") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(
@@ -225,22 +228,21 @@ TEST_CASE_FIXTURE(
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase rejects user-managed with string check that calls "
-                  "mark_install_complete") {
+                  "install phase rejects user-managed calling forbidden extract_all") {
   // String check verb (user-managed)
   set_check_verb("echo test");
 
-  // Install that incorrectly calls mark_install_complete
+  // Install that incorrectly calls extract_all (forbidden for user-managed)
   set_install_function(R"(
     function(ctx)
-      ctx.mark_install_complete()
+      ctx.extract_all()
     end
   )");
 
   acquire_lock();
   write_install_content();
 
-  // Should throw - string check is still a check verb
+  // Should throw - extract_all is forbidden for user-managed packages
   bool exception_thrown = false;
   std::string exception_msg;
   try {
@@ -251,10 +253,9 @@ TEST_CASE_FIXTURE(install_test_fixture,
   }
   REQUIRE(exception_thrown);
   INFO("Exception message: ", exception_msg);
-  // mark_install_complete is not exposed at all for user-managed packages,
-  // so Lua sees it as nil and throws "attempt to call a nil value"
-  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
-  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
+  // Forbidden APIs throw error mentioning "not available for user-managed"
+  CHECK(exception_msg.find("not available for user-managed") != std::string::npos);
+  CHECK(exception_msg.find("extract_all") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,

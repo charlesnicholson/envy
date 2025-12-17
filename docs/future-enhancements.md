@@ -292,11 +292,6 @@ stderr_reader.join();
 
 **Alternative:** Add configuration option for max line length with truncation warning if pathologically long lines become an issue.
 
-## Simplify install completion semantics
-- Consider removing `ctx.mark_install_complete()` requirement for cache-managed recipes; treat normal install function return (including returned string execution) as success.
-- Non-zero exit in install functions or returned-string shells still fails install; zero exit means complete for cache-managed.
-- User-managed packages (check verb) remain ephemeral—no cache markers even on success.
-
 ## Dynamic Alias Computation
 
 Allow recipe files to compute aliases from options passed by manifest. String form is static; function form takes options table and returns alias string. Enables single recipe to generate descriptive aliases like `python3.13` or `gcc-arm-13.2` based on version option.

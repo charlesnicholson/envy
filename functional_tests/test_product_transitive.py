@@ -178,7 +178,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         mid2_path = self.test_dir / "transitive_mid2.lua"
@@ -200,7 +199,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         mid1_path = self.test_dir / "transitive_mid1.lua"
@@ -225,7 +223,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         consumer_path = self.test_dir / "transitive_consumer.lua"

@@ -15,15 +15,7 @@ function INSTALL(ctx)
     -- Try to access the forbidden API
     local value = ctx[forbidden_api]
 
-    -- For mark_install_complete, it should be nil (not exposed at all)
-    if forbidden_api == "mark_install_complete" then
-        if value ~= nil then
-            error("ctx.mark_install_complete should be nil for user-managed packages, got " .. type(value))
-        end
-        return  -- Success - it's properly not exposed
-    end
-
-    -- For other forbidden APIs, they should throw errors when accessed/called
+    -- Forbidden APIs should throw errors when accessed/called
     local success, err = pcall(function()
         -- If it's a function, try to call it
         if type(value) == "function" then

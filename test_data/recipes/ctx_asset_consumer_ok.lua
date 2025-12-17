@@ -15,5 +15,4 @@ STAGE = function(ctx)
 end
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end

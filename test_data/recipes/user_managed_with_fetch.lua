@@ -50,5 +50,4 @@ function INSTALL(ctx)
     end
 
     -- Mark install complete for cache-managed package
-    ctx.mark_install_complete()
 end

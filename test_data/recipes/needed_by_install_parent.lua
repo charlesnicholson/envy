@@ -17,5 +17,4 @@ end
 INSTALL = function(ctx, opts)
   -- Can access dependency in install phase
   ctx.asset("local.needed_by_install_dep@v1")
-  ctx.mark_install_complete()
 end

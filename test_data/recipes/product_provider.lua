@@ -9,5 +9,4 @@ FETCH = {
 
 INSTALL = function(ctx)
   -- No real payload needed; just mark complete to populate asset_path
-  ctx.mark_install_complete()
 end
