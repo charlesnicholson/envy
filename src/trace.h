@@ -236,6 +236,25 @@ struct extract_archive_complete {
   std::int64_t duration_ms;
 };
 
+struct product_transitive_check {
+  std::string recipe;
+  std::string product;
+  bool has_product_directly;
+  std::size_t dependency_count;
+};
+
+struct product_transitive_check_dep {
+  std::string recipe;
+  std::string product;
+  std::string checking_dependency;
+};
+
+struct product_parsed {
+  std::string recipe;
+  std::string product_name;
+  std::string product_value;
+};
+
 }  // namespace trace_events
 
 using trace_event_t = std::variant<trace_events::phase_blocked,
@@ -273,7 +292,10 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::file_exists_check,
                                    trace_events::directory_flush_failed,
                                    trace_events::extract_archive_start,
-                                   trace_events::extract_archive_complete>;
+                                   trace_events::extract_archive_complete,
+                                   trace_events::product_transitive_check,
+                                   trace_events::product_transitive_check_dep,
+                                   trace_events::product_parsed>;
 
 std::string_view trace_event_name(trace_event_t const &event);
 std::string trace_event_to_string(trace_event_t const &event);

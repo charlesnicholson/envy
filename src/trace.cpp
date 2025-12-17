@@ -156,6 +156,9 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(directory_flush_failed),
           TRACE_NAME(extract_archive_start),
           TRACE_NAME(extract_archive_complete),
+          TRACE_NAME(product_transitive_check),
+          TRACE_NAME(product_transitive_check_dep),
+          TRACE_NAME(product_parsed),
           [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
@@ -601,6 +604,22 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "archive_path", value.archive_path);
             append_kv(output, "files_extracted", value.files_extracted);
             append_kv(output, "duration_ms", value.duration_ms);
+          },
+          [&](trace_events::product_transitive_check const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "product", value.product);
+            append_kv(output, "has_product_directly", value.has_product_directly);
+            append_kv(output, "dependency_count", static_cast<std::int64_t>(value.dependency_count));
+          },
+          [&](trace_events::product_transitive_check_dep const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "product", value.product);
+            append_kv(output, "checking_dependency", value.checking_dependency);
+          },
+          [&](trace_events::product_parsed const &value) {
+            append_recipe(value.recipe);
+            append_kv(output, "product_name", value.product_name);
+            append_kv(output, "product_value", value.product_value);
           },
           [](auto const &) {},
       },
