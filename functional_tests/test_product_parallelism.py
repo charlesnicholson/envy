@@ -55,7 +55,6 @@ FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
-INSTALL = function(ctx) ctx.mark_install_complete() end
 """
         tool_c_path = self.test_dir / "tool_c.lua"
         tool_c_path.write_text(tool_c_recipe, encoding="utf-8")
@@ -72,7 +71,6 @@ FETCH = {{
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }}
-INSTALL = function(ctx) ctx.mark_install_complete() end
 """
         tool_b_path = self.test_dir / "tool_b.lua"
         tool_b_path.write_text(tool_b_recipe, encoding="utf-8")
@@ -89,7 +87,6 @@ FETCH = {{
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }}
-INSTALL = function(ctx) ctx.mark_install_complete() end
 """
         tool_a_path = self.test_dir / "tool_a.lua"
         tool_a_path.write_text(tool_a_recipe, encoding="utf-8")
@@ -101,7 +98,6 @@ FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
-INSTALL = function(ctx) ctx.mark_install_complete() end
 """
         tool_d_path = self.test_dir / "tool_d.lua"
         tool_d_path.write_text(tool_d_recipe, encoding="utf-8")

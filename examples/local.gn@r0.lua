@@ -37,7 +37,6 @@ end
 
 INSTALL = function(ctx, opts)
   ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. ENVY_EXE_EXT, ctx.install_dir)
-  ctx.mark_install_complete()
 end
 
 PRODUCTS = { gn = "gn" .. ENVY_EXE_EXT }

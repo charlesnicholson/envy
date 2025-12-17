@@ -19,5 +19,4 @@ FETCH = {
 }
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end

@@ -255,7 +255,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         consumer_path = self.test_dir / "hash_consumer_refonly.lua"
@@ -338,7 +337,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         consumer_path = self.test_dir / "hash_consumer_strong.lua"
@@ -371,7 +369,6 @@ FETCH = {
 }
 
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         consumer_nodeps_path = self.test_dir / "hash_consumer_nodeps.lua"

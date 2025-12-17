@@ -54,7 +54,6 @@ sol::table build_install_phase_ctx_table(sol::state_view lua,
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->stage_dir.string();
   ctx_table["install_dir"] = ctx->install_dir.string();
-  ctx_table["mark_install_complete"] = [ctx]() { ctx->lock->mark_install_complete(); };
 
   lua_ctx_add_common_bindings(ctx_table, ctx);
   return ctx_table;
@@ -63,7 +62,7 @@ sol::table build_install_phase_ctx_table(sol::state_view lua,
 // Build user-managed install phase context table (restricted access)
 // Exposes: tmp_dir, run(), options, identity, asset()
 // Hides: fetch_dir, stage_dir, build_dir, install_dir, asset_dir,
-//        fetch(), extract_all(), mark_install_complete()
+//        fetch(), extract_all()
 sol::table build_user_managed_install_ctx_table(sol::state_view lua,
                                                 std::string const &identity,
                                                 install_phase_ctx *ctx) {
@@ -95,9 +94,6 @@ sol::table build_user_managed_install_ctx_table(sol::state_view lua,
   ctx_table["move"] = forbidden_error("move");
   ctx_table["ls"] = forbidden_error("ls");
   ctx_table["commit_fetch"] = forbidden_error("commit_fetch");
-
-  // Note: mark_install_complete is NOT exposed at all for user-managed packages
-  // (not even as an error lambda) - it simply doesn't exist in the context
 
   return ctx_table;
 }
@@ -207,19 +203,24 @@ bool run_programmatic_install(sol::protected_function install_func,
     };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
-    bool const shell_marked_complete{ run_shell_install(
+    // Cache-managed packages mark on shell exit 0
+    return run_shell_install(
         returned_script,
         string_cwd,
         is_user_managed ? nullptr : lock,
         identity,
         shell_resolve_default(r->default_shell_ptr),
         r->tui_section,
-        eng.cache_root()) };
-
-    return shell_marked_complete || lock->is_install_complete();
+        eng.cache_root());
   }
 
-  return lock->is_install_complete();
+  // Function returned nil/none successfully - mark complete for cache-managed
+  if (!is_user_managed && lock) {
+    lock->mark_install_complete();
+    return true;
+  }
+
+  return false;
 }
 
 bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
@@ -298,8 +299,8 @@ void run_install_phase(recipe *r, engine &eng) {
                              r->spec->identity);
   }
 
-  // User-managed packages cannot call mark_install_complete() because it's not exposed
-  // in their context table, so no runtime validation needed - enforced at API level
+  // Cache-managed packages are auto-marked complete on successful INSTALL return
+  // User-managed packages are never marked complete (ephemeral workspace)
 
   if (marked_complete) { r->asset_path = final_asset_path; }
 }

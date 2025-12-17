@@ -30,5 +30,5 @@ function INSTALL(ctx)
     f:write("installed by user_managed_string_check")
     f:close()
 
-    -- No mark_install_complete() - user-managed
+    -- User-managed: workspace purged after completion
 end

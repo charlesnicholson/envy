@@ -51,8 +51,9 @@
 - Workspace separates `fetch/` (durable, persists across failures) and `work/` (ephemeral, wiped each attempt).
 - Per-file caching: `fetch/` persists across failed attempts. On subsequent runs, each file is verified by SHA256 before re-downloading. Only missing or corrupted files trigger new downloads. Files without SHA256 are always re-downloaded (no cache trust without verification).
 - Recipes call `mark_fetch_complete()` once all fetches succeed; this drops `envy-complete` sentinel inside `fetch/`.
-- On success (recipe calls `mark_install_complete()`):
-  - Envy atomically renames `install/` → `asset/`
+- On success (INSTALL returns successfully):
+  - Envy auto-marks complete internally
+  - Lock destructor atomically renames `install/` → `asset/`
   - Fingerprints payload into `envy-fingerprint.blake3`
   - Deletes both `work/` and `fetch/`
   - Touches `entry/envy-complete`
@@ -63,7 +64,7 @@
 - Lock calls `mark_user_managed()` to signal ephemeral workspace
 - Workspace created same as cache-managed: `install/`, `fetch/`, `work/` directories
 - Recipe can use all phases (fetch/stage/build/install) for workspace operations
-- Install phase must NOT call `mark_install_complete()` (validated at runtime)
+- Install phase modifies system; workspace never persists to cache
 - On completion (lock destructor detects `user_managed_` flag):
   - Entire `entry_dir` deleted (no `asset/` rename)
   - Cache entry fully purged—no persistent artifacts
@@ -133,5 +134,3 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 3. **Concurrent install**: Process A checks (false) → acquires lock, marks user-managed, re-checks (false) → starts install. Process B checks (false) → blocks on lock. Process A completes install, destructor purges entry. Process B acquires lock, marks user-managed, re-checks (NOW true, A finished) → releases lock immediately without running phases.
 
 4. **User-managed with fetch**: check=false → lock acquired → fetch downloads files to `fetch/` → stage extracts to `work/stage/` → install runs system command → destructor purges ALL directories (fetch/, work/, install/) → no artifacts remain.
-
-5. **Validation error**: User-managed recipe incorrectly calls `mark_install_complete()` → install phase throws runtime error: "Recipe {identity} has check verb (user-managed) but called mark_install_complete(). User-managed recipes must not populate cache. Remove check verb or remove mark_install_complete() call."

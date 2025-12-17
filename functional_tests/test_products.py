@@ -185,7 +185,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         provider_path = self.test_dir / "bad_provider.lua"
@@ -214,7 +213,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         provider_path = self.test_dir / "bad_provider.lua"
@@ -244,7 +242,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         provider_a_path = self.test_dir / "provider_a.lua"
@@ -258,7 +255,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         provider_b_path = self.test_dir / "provider_b.lua"
@@ -284,7 +280,6 @@ INSTALL = function(ctx)
   if not tool_path:match("provider_a") then
     error("Expected provider_a but got: " .. tool_path)
   end
-  ctx.mark_install_complete()
 end
 """
         consumer_path = self.test_dir / "consumer_strong.lua"
@@ -392,7 +387,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         list_provider_path = self.test_dir / "list_provider.lua"
@@ -486,7 +480,6 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 INSTALL = function(ctx)
-  ctx.mark_install_complete()
 end
 """
         no_products_path = self.test_dir / "no_products.lua"
@@ -522,7 +515,6 @@ FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
 
 INSTALL = function(ctx)
-    ctx.mark_install_complete()
 end
 
 PRODUCTS = { test_query_tool = "bin/query_tool" }

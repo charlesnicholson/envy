@@ -1,4 +1,4 @@
--- Simple user-managed package: check verb + install, no mark_install_complete
+-- Simple user-managed package: check verb + install, ephemeral workspace
 -- This recipe simulates a system package wrapper (like brew install python)
 IDENTITY = "local.user_managed_simple@v1"
 
@@ -31,6 +31,5 @@ function INSTALL(ctx)
     f:write("installed by user_managed_simple")
     f:close()
 
-    -- User-managed packages must NOT call mark_install_complete()
-    -- Cache entry will be purged after this function completes
+    -- User-managed: cache workspace is ephemeral, purged after completion
 end

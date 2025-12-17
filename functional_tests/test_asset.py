@@ -385,7 +385,6 @@ function INSTALL(ctx, opts)
     local f = io.open(ctx.install_dir .. "/variant.txt", "w")
     f:write(opts.variant or "none")
     f:close()
-    ctx.mark_install_complete()
 end
 """
         recipe_path = self.test_dir / "test_options_cache.lua"
@@ -486,7 +485,6 @@ FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
 
 INSTALL = function(ctx)
-    ctx.mark_install_complete()
 end
 
 PRODUCTS = { test_tool = "bin/tool" }
@@ -507,7 +505,6 @@ FETCH = {{
 }}
 
 INSTALL = function(ctx)
-    ctx.mark_install_complete()
 end
 """
         consumer_path = self.test_dir / "test_product_consumer.lua"
