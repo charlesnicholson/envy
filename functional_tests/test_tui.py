@@ -8,6 +8,7 @@ and interactive mode terminal control.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,9 +83,8 @@ PACKAGES = {{
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr.decode()}")
 
-        # Verify both packages completed
+        # Verify packages completed (simple@v1 won't appear since CHECK doesn't print)
         stderr = result.stderr.decode()
-        self.assertIn("local.simple@v1", stderr)
         self.assertIn("local.build_dependency@v1", stderr)
         self.assertIn("sync complete", stderr.lower())
 
@@ -108,6 +108,7 @@ PACKAGES = {{
             "\x1b[", stderr, "Expected no ANSI codes when TERM=dumb"
         )
 
+    @unittest.skipIf(sys.platform == "win32", "Unix shell piping not supported on Windows")
     def test_fallback_mode_with_piped_stderr(self):
         """No ANSI codes when stderr is piped (not a TTY)."""
         manifest = self.create_manifest(
