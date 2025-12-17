@@ -116,6 +116,11 @@ extern bool g_isatty;
 extern std::chrono::steady_clock::time_point g_now;
 
 std::string render_section_frame(section_frame const &frame);
+
+// Helper functions for testing ANSI-aware line padding and truncation
+int calculate_visible_length(std::string_view str);
+std::string truncate_to_width_ansi_aware(std::string const &str, int target_width);
+std::string pad_to_width(std::string const &str, int target_width);
 }  // namespace test
 #endif
 

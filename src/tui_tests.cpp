@@ -907,4 +907,364 @@ TEST_CASE("serialized interactive mode") {
   CHECK(counter == 2);
 }
 
+// ============================================================================
+// ANSI-aware visible length and padding tests
+// ============================================================================
+
+TEST_CASE("calculate_visible_length - plain text") {
+  CHECK(envy::tui::test::calculate_visible_length("") == 0);
+  CHECK(envy::tui::test::calculate_visible_length("a") == 1);
+  CHECK(envy::tui::test::calculate_visible_length("hello") == 5);
+  CHECK(envy::tui::test::calculate_visible_length("hello world") == 11);
+  CHECK(envy::tui::test::calculate_visible_length("123456789") == 9);
+}
+
+TEST_CASE("calculate_visible_length - single ANSI escape") {
+  // Red text: ESC[31m
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31m") == 0);
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31mred") == 3);
+  CHECK(envy::tui::test::calculate_visible_length("text\x1b[0m") == 4);
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31mred\x1b[0m") == 3);
+}
+
+TEST_CASE("calculate_visible_length - multiple ANSI escapes") {
+  // Bold red: ESC[1;31m
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[1;31mbold red\x1b[0m") == 8);
+
+  // Multiple colors
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31mred\x1b[32mgreen\x1b[0m") == 8);
+
+  // Complex formatting
+  std::string complex = "\x1b[1m\x1b[31mBold Red\x1b[0m Normal \x1b[32mGreen\x1b[0m";
+  CHECK(envy::tui::test::calculate_visible_length(complex) == 21);  // "Bold Red Normal Green"
+}
+
+TEST_CASE("calculate_visible_length - only ANSI codes") {
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31m\x1b[0m") == 0);
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[1;31;42m") == 0);
+}
+
+TEST_CASE("calculate_visible_length - mixed content") {
+  // Progress bar with colors: [[package]] 50%
+  std::string colored = "\x1b[1m[[package]]\x1b[0m \x1b[32m50%\x1b[0m";
+  CHECK(envy::tui::test::calculate_visible_length(colored) == 15);  // "[[package]] 50%"
+
+  // Real-world TUI output
+  std::string progress = "[[arm.gcc@v2]] \x1b[32mBuilding...\x1b[0m [=====>    ] 50.0%";
+  CHECK(envy::tui::test::calculate_visible_length(progress) == 45);
+}
+
+TEST_CASE("calculate_visible_length - incomplete ANSI sequence") {
+  // Incomplete sequences stay in escape mode (waiting for 'm' terminator)
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[") == 0);  // Started but not finished
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31") == 0);  // Still in escape, no 'm' yet
+  CHECK(envy::tui::test::calculate_visible_length("text\x1b[") == 4);  // "text" visible, then incomplete escape
+}
+
+TEST_CASE("calculate_visible_length - ESC without bracket") {
+  // ESC character without [ should count ESC as visible
+  CHECK(envy::tui::test::calculate_visible_length("\x1b" "text") == 5);  // ESC + "text"
+  CHECK(envy::tui::test::calculate_visible_length("a\x1b" "b") == 3);  // "a" + ESC + "b"
+}
+
+TEST_CASE("calculate_visible_length - unicode and special chars") {
+  // Regular ASCII punctuation and symbols
+  CHECK(envy::tui::test::calculate_visible_length("[](){}<>") == 8);
+  CHECK(envy::tui::test::calculate_visible_length("!@#$%^&*") == 8);
+  CHECK(envy::tui::test::calculate_visible_length("  spaces  ") == 10);
+  CHECK(envy::tui::test::calculate_visible_length("\t\ttabs\t") == 28);  // tabs count as 8 columns: 8+8+4+8=28
+}
+
+TEST_CASE("pad_to_width - plain text shorter than width") {
+  CHECK(envy::tui::test::pad_to_width("hello", 10) == "hello     ");
+  CHECK(envy::tui::test::pad_to_width("a", 5) == "a    ");
+  CHECK(envy::tui::test::pad_to_width("", 3) == "   ");
+}
+
+TEST_CASE("pad_to_width - plain text equal to width") {
+  CHECK(envy::tui::test::pad_to_width("hello", 5) == "hello");
+  CHECK(envy::tui::test::pad_to_width("exact", 5) == "exact");
+}
+
+TEST_CASE("pad_to_width - plain text longer than width") {
+  // Now truncates to fit within width
+  CHECK(envy::tui::test::pad_to_width("hello world", 5) == "hello");
+  CHECK(envy::tui::test::pad_to_width("toolong", 3) == "too");
+}
+
+TEST_CASE("pad_to_width - width zero and negative") {
+  // Zero or negative width truncates to empty (nothing fits)
+  CHECK(envy::tui::test::pad_to_width("text", 0) == "");
+  CHECK(envy::tui::test::pad_to_width("text", -5) == "");
+  CHECK(envy::tui::test::pad_to_width("", 0) == "");
+}
+
+TEST_CASE("pad_to_width - ANSI colored text") {
+  std::string red = "\x1b[31mred\x1b[0m";
+  std::string padded = envy::tui::test::pad_to_width(red, 10);
+
+  // Should be: "\x1b[31mred\x1b[0m       " (3 visible chars + 7 spaces)
+  CHECK(padded.size() == red.size() + 7);
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 10);
+  CHECK(padded.starts_with("\x1b[31mred\x1b[0m"));
+  CHECK(padded.ends_with("       "));
+}
+
+TEST_CASE("pad_to_width - multiple ANSI sequences") {
+  std::string multicolor = "\x1b[31mred\x1b[32mgreen\x1b[0m";  // visible: "redgreen" = 8
+  std::string padded = envy::tui::test::pad_to_width(multicolor, 12);
+
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 12);
+  CHECK(padded.starts_with(multicolor));
+  CHECK(padded.ends_with("    "));  // 4 spaces
+}
+
+TEST_CASE("pad_to_width - complex formatting") {
+  // Bold red text: ESC[1;31m ... ESC[0m
+  std::string formatted = "\x1b[1;31mBold\x1b[0m";  // visible: "Bold" = 4
+  std::string padded = envy::tui::test::pad_to_width(formatted, 10);
+
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 10);
+  CHECK(padded.starts_with(formatted));
+}
+
+TEST_CASE("pad_to_width - only ANSI codes") {
+  std::string only_ansi = "\x1b[31m\x1b[0m";  // visible: 0
+  std::string padded = envy::tui::test::pad_to_width(only_ansi, 5);
+
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 5);
+  CHECK(padded == only_ansi + "     ");
+}
+
+TEST_CASE("pad_to_width - real-world progress bar") {
+  // Simulate: [[package]] Building... [=====>    ] 50.0%
+  std::string bar = "\x1b[1m[[pkg]]\x1b[0m Build [==>  ] \x1b[32m50%\x1b[0m";
+  // Visible: "[[pkg]] Build [==>  ] 50%" = 25 chars (7 + 15 + 3)
+
+  int visible = envy::tui::test::calculate_visible_length(bar);
+  CHECK(visible == 25);
+
+  std::string padded = envy::tui::test::pad_to_width(bar, 80);
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 80);
+  CHECK(padded.starts_with(bar));
+  CHECK(padded.size() == bar.size() + (80 - 25));
+}
+
+TEST_CASE("pad_to_width - nested ANSI sequences") {
+  // Some terminals support nested formatting
+  std::string nested = "\x1b[1m\x1b[31mbold red\x1b[0m\x1b[0m";  // visible: "bold red" = 8
+  std::string padded = envy::tui::test::pad_to_width(nested, 15);
+
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 15);
+  CHECK(padded.starts_with(nested));
+  CHECK(padded.ends_with("       "));  // 7 spaces
+}
+
+TEST_CASE("pad_to_width - interleaved text and ANSI") {
+  std::string interleaved = "a\x1b[31mb\x1b[0mc\x1b[32md\x1b[0me";  // visible: "abcde" = 5
+  std::string padded = envy::tui::test::pad_to_width(interleaved, 10);
+
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 10);
+  CHECK(padded.starts_with(interleaved));
+  CHECK(padded.ends_with("     "));
+}
+
+TEST_CASE("pad_to_width - edge case empty with width") {
+  std::string padded = envy::tui::test::pad_to_width("", 5);
+  CHECK(padded == "     ");
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 5);
+}
+
+TEST_CASE("pad_to_width - preserves exact ANSI codes") {
+  // Verify that padding doesn't modify the original ANSI content
+  std::string original = "\x1b[38;5;214mOrange\x1b[0m";  // 256-color orange
+  std::string padded = envy::tui::test::pad_to_width(original, 15);
+
+  CHECK(padded.substr(0, original.size()) == original);
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 15);
+}
+
+TEST_CASE("calculate_visible_length - stress test long string") {
+  // Build a long string with many ANSI sequences
+  std::string long_str;
+  for (int i = 0; i < 100; ++i) {
+    long_str += "\x1b[31m" + std::string(10, 'a' + (i % 26)) + "\x1b[0m";
+  }
+  // Expected: 100 * 10 = 1000 visible chars
+  CHECK(envy::tui::test::calculate_visible_length(long_str) == 1000);
+
+  std::string padded = envy::tui::test::pad_to_width(long_str, 1200);
+  CHECK(envy::tui::test::calculate_visible_length(padded) == 1200);
+}
+
+TEST_CASE("pad_to_width - idempotent when already at width") {
+  std::string text = "exactly ten!";  // 12 chars
+  std::string first_pad = envy::tui::test::pad_to_width(text, 12);
+  std::string second_pad = envy::tui::test::pad_to_width(first_pad, 12);
+
+  CHECK(first_pad == text);
+  CHECK(second_pad == text);
+  CHECK(first_pad == second_pad);
+}
+
+TEST_CASE("calculate_visible_length - all escape sequences end with 'm'") {
+  // Verify we correctly identify 'm' as terminator for all SGR sequences
+  std::vector<std::string> sequences = {
+    "\x1b[0m",          // Reset
+    "\x1b[1m",          // Bold
+    "\x1b[2m",          // Dim
+    "\x1b[3m",          // Italic
+    "\x1b[4m",          // Underline
+    "\x1b[31m",         // Red
+    "\x1b[1;31m",       // Bold red
+    "\x1b[38;5;214m",   // 256-color
+    "\x1b[38;2;255;128;0m",  // RGB color
+  };
+
+  for (auto const& seq : sequences) {
+    CHECK(envy::tui::test::calculate_visible_length(seq) == 0);
+    CHECK(envy::tui::test::calculate_visible_length(seq + "text") == 4);
+  }
+}
+
+// ============================================================================
+// ANSI-aware truncation tests
+// ============================================================================
+
+TEST_CASE("truncate_to_width_ansi_aware - plain text shorter than width") {
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("hello", 10) == "hello");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("ab", 5) == "ab");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - plain text exact width") {
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("hello", 5) == "hello");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("12345", 5) == "12345");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - plain text longer than width") {
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("hello world", 5) == "hello");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("abcdefghij", 3) == "abc");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("1234567890", 7) == "1234567");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - width zero") {
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("hello", 0) == "");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("", 0) == "");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - empty string") {
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("", 10) == "");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - ANSI at end preserved") {
+  // "hello" (5 chars) + reset code
+  std::string s = "hello\x1b[0m";
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == s);
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 10) == s);
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - ANSI at start preserved") {
+  std::string s = "\x1b[31mhello";  // Red "hello"
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == s);
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 3) == "\x1b[31mhel");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - ANSI in middle preserved") {
+  std::string s = "hel\x1b[31mlo world";  // "hel" + red + "lo world"
+  std::string result = envy::tui::test::truncate_to_width_ansi_aware(s, 5);
+  CHECK(result == "hel\x1b[31mlo");
+  CHECK(envy::tui::test::calculate_visible_length(result) == 5);
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - multiple ANSI codes") {
+  std::string s = "\x1b[1m\x1b[31mBold Red Text\x1b[0m";  // Bold red "Bold Red Text"
+  std::string result = envy::tui::test::truncate_to_width_ansi_aware(s, 8);
+  CHECK(result == "\x1b[1m\x1b[31mBold Red");
+  CHECK(envy::tui::test::calculate_visible_length(result) == 8);
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - truncate with ANSI code") {
+  std::string s = "hello\x1b[31m world";  // "hello" + red + " world"
+  // Truncate to 5: includes ANSI after "hello"
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == "hello\x1b[31m");
+  // Truncate to 6: includes ANSI + space
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 6) == "hello\x1b[31m ");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - very long line") {
+  std::string long_line = "[[local.armgcc@r0]] 100% [====================] 276.57MB/276.57MB "
+                         "arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip";
+  int width = 80;
+  std::string result = envy::tui::test::truncate_to_width_ansi_aware(long_line, width);
+  CHECK(envy::tui::test::calculate_visible_length(result) == width);
+  CHECK(result.size() <= long_line.size());
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - colored very long line") {
+  std::string s = "\x1b[1m[[local.armgcc@r0]]\x1b[0m 100% "
+                 "[====================] 276.57MB/276.57MB "
+                 "\x1b[32marm-gnu-toolchain.zip\x1b[0m extra text";
+  int width = 60;
+  std::string result = envy::tui::test::truncate_to_width_ansi_aware(s, width);
+  CHECK(envy::tui::test::calculate_visible_length(result) == width);
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - only ANSI codes") {
+  std::string s = "\x1b[31m\x1b[1m\x1b[0m";
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == s);
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 0) == "");
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - complete ANSI after truncation point") {
+  // Complete ANSI sequences after truncation point should be included
+  std::string s = "hello\x1b[31m world";  // "hello" + red code + " world"
+  std::string result = envy::tui::test::truncate_to_width_ansi_aware(s, 5);
+  // Should include the complete ANSI sequence after "hello"
+  CHECK(result == "hello\x1b[31m");
+  CHECK(envy::tui::test::calculate_visible_length(result) == 5);
+}
+
+TEST_CASE("pad_to_width - now truncates long lines") {
+  // After our fix, pad_to_width should truncate lines that are too long
+  std::string long_line = "This is a very long line that exceeds the terminal width";
+  std::string result = envy::tui::test::pad_to_width(long_line, 20);
+  CHECK(envy::tui::test::calculate_visible_length(result) == 20);
+  CHECK(result == "This is a very long ");
+}
+
+TEST_CASE("pad_to_width - truncates colored long lines") {
+  std::string s = "\x1b[31mThis is a very long colored line\x1b[0m that exceeds width";
+  std::string result = envy::tui::test::pad_to_width(s, 15);
+  CHECK(envy::tui::test::calculate_visible_length(result) == 15);
+}
+
+TEST_CASE("calculate_visible_length - handles tabs") {
+  // Tabs count as 8 columns
+  CHECK(envy::tui::test::calculate_visible_length("\t") == 8);
+  CHECK(envy::tui::test::calculate_visible_length("a\tb") == 10);  // a + tab + b = 1 + 8 + 1
+  CHECK(envy::tui::test::calculate_visible_length("\t\t") == 16);
+  CHECK(envy::tui::test::calculate_visible_length("hello\tworld") == 18);  // 5 + 8 + 5 = 18
+}
+
+TEST_CASE("truncate_to_width_ansi_aware - handles tabs") {
+  // Tab counts as 8 columns, so should be truncated
+  std::string s = "hello\tworld";  // 5 + 8 + 5 = 18 columns
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 13) == "hello\t");  // 5 + 8 = 13
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 10) == "hello");  // Tab would exceed, so truncate before it
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == "hello");
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("a\tb", 5) == "a");  // 'a' fits, tab would exceed
+}
+
+TEST_CASE("pad_to_width - handles tabs") {
+  // Tabs count as 8 columns
+  std::string s = "a\tb";  // 1 + 8 + 1 = 10 columns
+  CHECK(envy::tui::test::calculate_visible_length(envy::tui::test::pad_to_width(s, 10)) == 10);
+  CHECK(envy::tui::test::pad_to_width(s, 10) == "a\tb");  // Exactly fits
+
+  // Tab makes line too long, should truncate to just "a" then pad to 5
+  std::string result = envy::tui::test::pad_to_width(s, 5);
+  CHECK(result == "a    ");  // 'a' + 4 spaces = 5 visible chars
+  CHECK(envy::tui::test::calculate_visible_length(result) == 5);
+}
+
 #endif  // ENVY_UNIT_TEST

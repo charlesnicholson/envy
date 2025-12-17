@@ -20,7 +20,10 @@ BUILD = function(ctx, opts)
 
   -- Return a script to be executed
   if ENVY_PLATFORM == "windows" then
-    return [[mkdir output_from_returned_script 2> nul & echo returned_script_artifact > output_from_returned_script\marker.txt]]
+    return [[
+      New-Item -ItemType Directory -Force -Path output_from_returned_script | Out-Null
+      Set-Content -Path output_from_returned_script\marker.txt -Value "returned_script_artifact" -NoNewline
+    ]]
   else
     return [[
       mkdir -p output_from_returned_script

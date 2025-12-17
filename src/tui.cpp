@@ -138,6 +138,111 @@ std::chrono::steady_clock::time_point get_now() {
   return std::chrono::steady_clock::now();
 }
 
+// Calculate visible character count, ignoring ANSI escape sequences.
+// Handles SGR (Select Graphic Rendition) sequences: ESC [ ... m
+// Returns the number of printable characters that will appear on screen.
+int calculate_visible_length(std::string_view str) {
+  int visible_count{ 0 };
+  bool in_escape{ false };
+
+  for (std::size_t i = 0; i < str.size(); ++i) {
+    char const c{ str[i] };
+
+    if (c == '\x1b' && i + 1 < str.size() && str[i + 1] == '[') {
+      // Start of ANSI escape sequence
+      in_escape = true;
+      ++i;  // Skip the '['
+    } else if (in_escape) {
+      // Inside escape sequence - look for terminator
+      if (c == 'm') {
+        in_escape = false;
+      }
+      // Otherwise stay in escape mode (consuming sequence chars)
+    } else if (c == '\t') {
+      // Tabs render as 8 columns (simplified - proper tab stops would be more complex)
+      visible_count += 8;
+    } else {
+      // Regular printable character
+      ++visible_count;
+    }
+  }
+
+  return visible_count;
+}
+
+// Truncate a string to exactly `target_width` visible characters, preserving ANSI codes.
+// Truncates at the last visible character that fits within target_width.
+// Returns the truncated string with all ANSI escape sequences preserved.
+std::string truncate_to_width_ansi_aware(std::string const &str, int target_width) {
+  if (target_width <= 0) {
+    return "";
+  }
+
+  int visible_count{ 0 };
+  bool in_escape{ false };
+  std::size_t last_valid_pos{ 0 };
+
+  for (std::size_t i = 0; i < str.size(); ++i) {
+    char const c{ str[i] };
+
+    if (c == '\x1b' && i + 1 < str.size() && str[i + 1] == '[') {
+      in_escape = true;
+      ++i;  // Skip the '['
+    } else if (in_escape) {
+      if (c == 'm') {
+        in_escape = false;
+        last_valid_pos = i + 1;  // Include the 'm'
+      }
+    } else if (c == '\t') {
+      // Tabs render as 8 columns
+      visible_count += 8;
+      if (visible_count <= target_width) {
+        last_valid_pos = i + 1;
+      } else {
+        // Exceeded width, truncate here
+        break;
+      }
+    } else {
+      // Regular visible character
+      ++visible_count;
+      if (visible_count <= target_width) {
+        last_valid_pos = i + 1;
+      } else {
+        // Exceeded width, truncate here
+        break;
+      }
+    }
+  }
+
+  return str.substr(0, last_valid_pos);
+}
+
+// Pad a string to exactly `target_width` visible characters by appending spaces.
+// Preserves ANSI escape sequences while calculating visible length.
+// If visible length already >= target_width, truncates to target_width.
+std::string pad_to_width(std::string const &str, int target_width) {
+  int const visible{ calculate_visible_length(str) };
+
+  if (visible > target_width) {
+    // Too long - truncate first, then pad
+    std::string truncated{ truncate_to_width_ansi_aware(str, target_width) };
+    int const truncated_visible{ calculate_visible_length(truncated) };
+    if (truncated_visible < target_width) {
+      // Truncation may result in fewer chars than target (e.g., tab boundaries)
+      int const padding{ target_width - truncated_visible };
+      return truncated + std::string(padding, ' ');
+    }
+    return truncated;
+  } else if (visible == target_width) {
+    // Exact fit
+    return str;
+  }
+
+  // Too short - pad
+  int const padding{ target_width - visible };
+  return str + std::string(padding, ' ');
+}
+
 constexpr char const *kSpinnerFrames[]{ "|", "/", "-", "\\" };
 
 std::string render_progress_bar(envy::tui::progress_data const &data,
@@ -427,33 +532,48 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
                                   int last_line_count,
                                   int width,
                                   std::chrono::steady_clock::time_point now) {
-  std::vector<std::string> rendered_frames;
-  int rendered_line_count{ 0 };
+  std::vector<std::string> rendered_lines;
 
+  // Render each section and split into individual lines
   for (auto const &sec : sections) {
     if (!sec.active || !sec.has_content) { continue; }
     std::string frame{
       render_section_frame(sec.cached_frame, max_label_width, width, true, now)
     };
-    frame = truncate_lines_to_width(frame, width);
-    int const frame_lines{ count_wrapped_lines(frame, width) };
-    rendered_line_count += frame_lines;
-    rendered_frames.push_back(std::move(frame));
+
+    // Split frame into lines
+    std::istringstream iss{ frame };
+    std::string line;
+    while (std::getline(iss, line)) {
+      rendered_lines.push_back(line);
+    }
   }
 
-  if (last_line_count > 0) {
-    std::fprintf(stderr, "\x1b[%dF\x1b[0J", last_line_count);
-    std::fflush(stderr);
+  // Ensure column 0, then move up to start position (improg: line 559-564)
+  std::fprintf(stderr, "\r");
+  if (last_line_count > 1) {
+    std::fprintf(stderr, "\x1b[%dF", last_line_count - 1);
   }
 
-  std::fprintf(stderr, "\x1b[?25l");
-  for (auto const &output : rendered_frames) {
-    std::fprintf(stderr, "%s", output.c_str());
+  // Render each line with per-line clear (improg: line 610, 619, 622)
+  int cur_frame_line_count{ 0 };
+  for (auto const &line : rendered_lines) {
+    if (cur_frame_line_count > 0) {  // improg: print \n before all lines except first
+      std::fprintf(stderr, "\n");
+    }
+    std::fprintf(stderr, "%s\x1b[K", line.c_str());
+    ++cur_frame_line_count;
   }
-  std::fprintf(stderr, "\x1b[?25h");
+
+  // Clear remaining old lines if shrinking (improg: line 578-581)
+  if (cur_frame_line_count < last_line_count) {
+    std::fprintf(stderr, "\n\x1b[0J");
+    ++cur_frame_line_count;  // Account for the newline we just printed
+  }
+
   std::fflush(stderr);
 
-  return rendered_line_count;
+  return cur_frame_line_count;
 }
 
 void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
@@ -862,14 +982,19 @@ void pause_rendering() {
   std::lock_guard lock{ s_tui.mutex };
   if (is_ansi_supported() && s_progress.last_line_count > 0) {
     std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
-    std::fprintf(stderr, "\x1b[?25h");  // Show cursor
+    std::fprintf(stderr, "\x1b[?7h\x1b[?25h");  // Re-enable auto-wrap and show cursor
     s_progress.last_line_count = 0;
     std::fflush(stderr);
   }
 }
 
 void resume_rendering() {
-  // No-op: next render cycle will redraw
+  // Disable auto-wrap and hide cursor again after interactive command completes
+  if (is_ansi_supported()) {
+    std::fprintf(stderr, "\x1b[?25l\x1b[?7l");
+    std::fflush(stderr);
+  }
+  // Next render cycle will redraw
 }
 
 section_handle section_create() {
@@ -984,11 +1109,24 @@ scope::scope(std::optional<level> threshold, bool decorated_logging) {
   if (!s_tui.initialized) { return; }
   run(std::move(threshold), decorated_logging);
   active = true;
+
+  // Hide cursor and disable auto-wrap for the entire TUI session
+  if (is_ansi_supported()) {
+    std::fprintf(stderr, "\x1b[?25l\x1b[?7l");
+    std::fflush(stderr);
+  }
 }
 
 scope::~scope() {
   if (active) {
     flush_final_render();
+
+    // Re-enable auto-wrap and show cursor after final render
+    if (is_ansi_supported()) {
+      std::fprintf(stderr, "\x1b[?7h\x1b[?25h");
+      std::fflush(stderr);
+    }
+
     shutdown();
   }
 }
@@ -1002,6 +1140,18 @@ std::string render_section_frame(section_frame const &frame) {
                       : std::chrono::steady_clock::now() };
   std::size_t const max_width{ measure_label_width(frame) };
   return ::render_section_frame(frame, max_width, width, g_isatty, now);
+}
+
+int calculate_visible_length(std::string_view str) {
+  return ::calculate_visible_length(str);
+}
+
+std::string truncate_to_width_ansi_aware(std::string const &str, int target_width) {
+  return ::truncate_to_width_ansi_aware(str, target_width);
+}
+
+std::string pad_to_width(std::string const &str, int target_width) {
+  return ::pad_to_width(str, target_width);
 }
 }  // namespace test
 #endif

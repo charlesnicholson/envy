@@ -62,7 +62,7 @@ void run_programmatic_build(sol::protected_function build_func,
   sol::protected_function_result build_result{ build_func(ctx_table, opts) };
 
   if (!build_result.valid()) {
-    sol::error err{ build_result };
+    sol::error err = build_result;
     lua_error_context err_ctx{ .lua_error_message = err.what(), .r = r, .phase = "BUILD" };
     throw std::runtime_error(format_lua_error(err_ctx));
   }
