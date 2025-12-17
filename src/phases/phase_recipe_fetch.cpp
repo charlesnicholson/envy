@@ -571,6 +571,10 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
   }
 
   r->products = parse_products_table(spec, *lua, r);
+  for (auto const &[name, value] : r->products) {
+    ENVY_TRACE_EMIT((trace_events::product_parsed{
+        .recipe = spec.identity, .product_name = name, .product_value = value}));
+  }
   r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
 
   for (auto *dep_spec : r->owned_dependency_specs) { dep_spec->parent = r->spec; }

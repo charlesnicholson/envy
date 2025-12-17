@@ -201,9 +201,19 @@ bool recipe_provides_product_transitively_impl(
     std::unordered_set<recipe const *> &visited) {
   if (!visited.insert(r).second) { return false; }
 
+  ENVY_TRACE_EMIT((trace_events::product_transitive_check{
+      .recipe = r->spec->identity,
+      .product = product_name,
+      .has_product_directly = r->products.contains(product_name),
+      .dependency_count = r->dependencies.size()}));
+
   if (r->products.contains(product_name)) { return true; }
 
-  for (auto const &[_, dep_info] : r->dependencies) {
+  for (auto const &[dep_id, dep_info] : r->dependencies) {
+    ENVY_TRACE_EMIT((trace_events::product_transitive_check_dep{
+        .recipe = r->spec->identity,
+        .product = product_name,
+        .checking_dependency = dep_id}));
     if (recipe_provides_product_transitively_impl(dep_info.recipe_ptr,
                                                   product_name,
                                                   visited)) {

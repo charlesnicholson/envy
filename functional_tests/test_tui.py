@@ -72,7 +72,7 @@ class TestTUIRendering(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }},
     {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
 }}
 """
@@ -84,7 +84,7 @@ PACKAGES = {{
 
         # Verify both packages completed
         stderr = result.stderr.decode()
-        self.assertIn("local.simple@v1", stderr)
+        self.assertIn("local.build_function@v1", stderr)
         self.assertIn("local.build_dependency@v1", stderr)
         self.assertIn("sync complete", stderr.lower())
 
