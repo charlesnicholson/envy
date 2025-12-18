@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       for ($i = 1; $i -le 100; $i++) {
         Write-Output "Output line $i with some content to make it longer"

@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   -- Extract
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path steps.txt -Value "Step 1"
     ]], { shell = ENVY_SHELL.POWERSHELL })

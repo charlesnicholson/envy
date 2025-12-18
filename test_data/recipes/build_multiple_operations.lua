@@ -12,7 +12,7 @@ BUILD = function(ctx, opts)
   print("Testing multiple operations")
 
   -- Operation 1: Create initial structure
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Path step1 -Force | Out-Null
       Set-Content -Path step1/data.txt -Value "step1_output"
@@ -28,7 +28,7 @@ BUILD = function(ctx, opts)
   ctx.copy("step1", "step2")
 
   -- Operation 3: Modify in step2
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Add-Content -Path step2/data.txt -Value "step2_additional"
       Set-Content -Path step2/new.txt -Value "step2_new"
@@ -44,7 +44,7 @@ BUILD = function(ctx, opts)
   ctx.move("step2", "final")
 
   -- Operation 5: Verify final state
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path final -PathType Container)) {
         Write-Output "missing final"

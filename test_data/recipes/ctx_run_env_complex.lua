@@ -16,7 +16,7 @@ STAGE = function(ctx, opts)
     SPECIAL = "a=b:c;d"
   }
 
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
       ctx.run([[
         if (-not $env:STRING) { exit 44 }
         Set-Content -Path env_complex.txt -Value ("STRING=" + $env:STRING)

@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Write-Output "Line 1 to stdout"
       Write-Output "Line 2 to stdout"

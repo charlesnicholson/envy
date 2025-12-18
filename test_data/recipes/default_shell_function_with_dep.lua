@@ -11,7 +11,7 @@ FETCH = {
 }
 
 STAGE = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     error("default_shell_function_with_dep test only runs on POSIX")
   end
 

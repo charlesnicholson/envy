@@ -12,7 +12,7 @@ BUILD = function(ctx, opts)
   print("Creating nested directory structure")
 
   -- Create complex directory hierarchy
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Path output/bin -Force | Out-Null
       New-Item -ItemType Directory -Path output/lib/x86_64 -Force | Out-Null
@@ -42,7 +42,7 @@ BUILD = function(ctx, opts)
   ctx.copy("output", "copied_output")
 
   -- Verify all files exist in copied structure
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path copied_output/bin/app)) {
         Write-Output "missing bin/app"

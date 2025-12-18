@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   -- Extract first
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
       ctx.run([[
         Get-ChildItem -Name | Set-Content -Path extracted_files.txt
         if (Test-Path file1.txt) { Set-Content -Path verify_extract.txt -Value "Extraction verified" } else { exit 52 }

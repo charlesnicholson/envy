@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Write-Output "About to fail"
       Set-Content -Path will_fail.txt -Value "Intentional failure sentinel"

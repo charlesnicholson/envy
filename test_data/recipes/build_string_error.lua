@@ -10,7 +10,7 @@ STAGE = {strip = 1}
 
 -- This build script should fail
 BUILD = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     local result = ctx.run([[Write-Output "Starting build"; Write-Error "Intentional failure"; exit 7 ]], { shell = ENVY_SHELL.POWERSHELL })
     error("Intentional failure after ctx.run")
   else

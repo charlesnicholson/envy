@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   local res
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     res = ctx.run([[
       Write-Output "stdout content"
       [Console]::Error.WriteLine("stderr content")
@@ -36,7 +36,7 @@ STAGE = function(ctx, opts)
     error("Expected stderr to contain 'stderr content', got: " .. tostring(res.stderr))
   end
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path capture_success.txt -Value "Captured output successfully"
     ]], { shell = ENVY_SHELL.POWERSHELL })

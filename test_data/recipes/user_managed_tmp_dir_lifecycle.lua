@@ -7,7 +7,7 @@ function CHECK(ctx)
 
     -- Check if marker exists (non-zero means doesn't exist, need install)
     -- Use pcall since ctx.run throws on non-zero exit
-    local test_cmd = ENVY_PLATFORM == "windows"
+    local test_cmd = envy.PLATFORM == "windows"
         and ('if (Test-Path \'' .. marker .. '\') { exit 0 } else { exit 1 }')
         or ("test -f '" .. marker .. "'")
     local success, res = pcall(function()
@@ -26,16 +26,16 @@ function INSTALL(ctx)
     assert(ctx.tmp_dir ~= nil, "tmp_dir should be exposed")
 
     -- Write a file to tmp_dir to verify it works
-    local path_sep = ENVY_PLATFORM == "windows" and "\\" or "/"
+    local path_sep = envy.PLATFORM == "windows" and "\\" or "/"
     local test_file = ctx.tmp_dir .. path_sep .. "test_file.txt"
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('"test" | Out-File -FilePath \'' .. test_file .. '\'')
     else
         ctx.run("echo 'test' > " .. test_file)
     end
 
     -- Verify the file was created
-    local test_cmd = ENVY_PLATFORM == "windows"
+    local test_cmd = envy.PLATFORM == "windows"
         and ('if (Test-Path \'' .. test_file .. '\') { exit 0 } else { exit 1 }')
         or ("test -f " .. test_file)
     local res = ctx.run(test_cmd, {quiet = true})
@@ -44,7 +44,7 @@ function INSTALL(ctx)
     end
 
     -- Create marker file to indicate success
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('New-Item -ItemType File -Force -Path \'' .. marker .. '\' | Out-Null')
     else
         ctx.run("touch '" .. marker .. "'")

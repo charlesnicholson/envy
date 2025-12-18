@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Force -Path dir1,dir2 | Out-Null
     ]], { shell = ENVY_SHELL.POWERSHELL })
@@ -20,7 +20,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 1: cwd + env
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo1_pwd.txt -Value (Get-Location).Path
       Set-Content -Path combo1_env.txt -Value ("VAR1=" + $env:VAR1)
@@ -33,7 +33,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 2: cwd with a failing command in the middle
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo2_pwd.txt -Value (Get-Location).Path
       cmd /c exit 1
@@ -48,7 +48,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 3: env with a failing command (default cwd)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo3_env.txt -Value ("VAR2=" + $env:VAR2)
       cmd /c exit 1
@@ -63,7 +63,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 4: Just env
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo4_env.txt -Value ("VAR3=" + $env:VAR3)
     ]], {env = {VAR3 = "value3"}, shell = ENVY_SHELL.POWERSHELL})
@@ -74,7 +74,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 5: Just cwd
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path combo5_pwd.txt -Value (Get-Location).Path
     ]], {cwd = "dir1", shell = ENVY_SHELL.POWERSHELL})
@@ -85,7 +85,7 @@ STAGE = function(ctx, opts)
   end
 
   -- Combination 6: Failing command without any other options
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       cmd /c exit 1
       Set-Content -Path combo6_continued.txt -Value "Standalone failure scenario"

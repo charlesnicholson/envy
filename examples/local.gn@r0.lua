@@ -24,7 +24,7 @@ BUILD = function(ctx, opts)
 {{ninja}} -C out
 ]]
 
-  if ENVY_PLATFORM ~= "windows" then
+  if envy.PLATFORM ~= "windows" then
     cmd = cmd .. [[
 out/gn_unittests
 ]]
@@ -36,8 +36,8 @@ out/gn_unittests
 end
 
 INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. ENVY_EXE_EXT, ctx.install_dir)
+  ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. envy.EXE_EXT, ctx.install_dir)
 end
 
-PRODUCTS = { gn = "gn" .. ENVY_EXE_EXT }
+PRODUCTS = { gn = "gn" .. envy.EXE_EXT }
 

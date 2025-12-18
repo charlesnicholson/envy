@@ -9,14 +9,14 @@ end
 
 function INSTALL(ctx)
     -- Write a file using relative path
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('"test" | Out-File -FilePath cwd_marker.txt')
     else
         ctx.run("echo 'test' > cwd_marker.txt")
     end
 
     -- Verify it's in install_dir by checking relative path works
-    local test_cmd = ENVY_PLATFORM == "windows"
+    local test_cmd = envy.PLATFORM == "windows"
         and 'if (Test-Path cwd_marker.txt) { exit 0 } else { exit 1 }'
         or "test -f cwd_marker.txt"
     local res = ctx.run(test_cmd, {quiet = true})
@@ -26,8 +26,8 @@ function INSTALL(ctx)
     end
 
     -- Also verify install_dir contains the file
-    local marker_path = ctx.install_dir .. (ENVY_PLATFORM == "windows" and "\\cwd_marker.txt" or "/cwd_marker.txt")
-    local test_cmd2 = ENVY_PLATFORM == "windows"
+    local marker_path = ctx.install_dir .. (envy.PLATFORM == "windows" and "\\cwd_marker.txt" or "/cwd_marker.txt")
+    local test_cmd2 = envy.PLATFORM == "windows"
         and ('if (Test-Path \'' .. marker_path .. '\') { exit 0 } else { exit 1 }')
         or ("test -f '" .. marker_path .. "'")
     local res2 = ctx.run(test_cmd2, {quiet = true})

@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     local temp = os.getenv("TEMP") or "C:\\\\Temp"
     local needs_sep = temp:match("[/\\\\]$") == nil
     local target = temp .. (needs_sep and "\\\\" or "") .. "envy_ctx_run_test.txt"

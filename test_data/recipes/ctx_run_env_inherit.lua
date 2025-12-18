@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path inherited_path.txt -Value ("PATH=" + $env:Path)
       $echoPath = (Get-Command echo.exe).Source

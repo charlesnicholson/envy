@@ -4,7 +4,7 @@ IDENTITY = "local.check_concurrent@v1"
 function CHECK(ctx)
     -- Generate large output on both stdout and stderr
     local cmd
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         cmd = [[
 for ($i=1; $i -le 1000; $i++) {
     Write-Output "stdout line $i"

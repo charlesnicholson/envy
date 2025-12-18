@@ -12,14 +12,14 @@ BUILD = function(ctx, opts)
   print("Testing custom working directory")
 
   -- Create subdirectory
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path subdir -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p subdir")
   end
 
   -- Run in subdirectory (relative path)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       (Get-Location).Path | Out-File -FilePath current_dir.txt
       Set-Content -Path marker.txt -Value "In subdirectory"
@@ -32,7 +32,7 @@ BUILD = function(ctx, opts)
   end
 
   -- Verify we ran in subdirectory
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path subdir/marker.txt)) {
         Write-Output "missing subdir/marker.txt"
@@ -53,14 +53,14 @@ BUILD = function(ctx, opts)
   end
 
   -- Create nested structure
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path nested/deep/dir -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p nested/deep/dir")
   end
 
   -- Run in deeply nested directory
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path deep_marker.txt -Value "deep"
     ]], {cwd = "nested/deep/dir", shell = ENVY_SHELL.POWERSHELL})
@@ -71,7 +71,7 @@ BUILD = function(ctx, opts)
   end
 
   -- Verify
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path nested/deep/dir/deep_marker.txt)) {
         Write-Output "missing deep_marker.txt"

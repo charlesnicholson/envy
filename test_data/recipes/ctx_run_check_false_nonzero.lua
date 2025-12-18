@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   local res
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     res = ctx.run([[
       Write-Output "Command that fails"
       exit 7
@@ -26,7 +26,7 @@ STAGE = function(ctx, opts)
     error("Expected exit_code to be 7, got " .. tostring(res.exit_code))
   end
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path continued_after_failure.txt -Value "Recipe continued after non-zero exit"
     ]], { shell = ENVY_SHELL.POWERSHELL })

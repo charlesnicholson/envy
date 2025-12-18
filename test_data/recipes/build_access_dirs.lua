@@ -15,7 +15,7 @@ BUILD = function(ctx, opts)
   print("install_dir: " .. ctx.install_dir)
 
   -- Verify directories exist
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[' -PathType Container)) { exit 42 }
       if (-not (Test-Path -LiteralPath ']] .. ctx.stage_dir .. [[' -PathType Container)) { exit 43 }
@@ -32,7 +32,7 @@ BUILD = function(ctx, opts)
   end
 
   -- Verify fetch_dir contains the archive
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[/test.tar.gz')) { exit 45 }
       Write-Output "Archive found in fetch_dir"
@@ -45,7 +45,7 @@ BUILD = function(ctx, opts)
   end
 
   -- Create output in install_dir for later verification
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -LiteralPath "]] .. ctx.install_dir .. [[/build_marker.txt" -Value "Built successfully"
       Set-Content -Path dest_file.txt -Value "dest"

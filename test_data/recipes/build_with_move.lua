@@ -12,7 +12,7 @@ BUILD = function(ctx, opts)
   print("Testing ctx.move()")
 
   -- Create source files
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path source_move.txt -Value "moveable_file"
       New-Item -ItemType Directory -Path move_dir -Force | Out-Null
@@ -33,7 +33,7 @@ BUILD = function(ctx, opts)
   ctx.move("move_dir", "moved_dir")
 
   -- Verify moves (source should not exist, dest should exist)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (Test-Path source_move.txt) { exit 1 }
       if (-not (Test-Path moved_file.txt)) { exit 1 }

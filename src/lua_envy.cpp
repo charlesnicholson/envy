@@ -1,5 +1,7 @@
 #include "lua_envy.h"
 
+#include "lua_ctx/lua_envy_file_ops.h"
+#include "lua_ctx/lua_envy_path.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -103,12 +105,6 @@ void lua_envy_install(sol::state &lua) {
 
   std::string const platform_arch{ std::string{ platform } + "-" + arch };
 
-  // Platform globals
-  lua["ENVY_PLATFORM"] = platform;
-  lua["ENVY_ARCH"] = arch;
-  lua["ENVY_PLATFORM_ARCH"] = platform_arch;
-  lua["ENVY_EXE_EXT"] = exe_ext;
-
   // Override print to route through TUI
   lua["print"] = [](sol::variadic_args va) {
     std::ostringstream oss;
@@ -139,6 +135,16 @@ void lua_envy_install(sol::state &lua) {
     sol::error err = result;
     tui::error("Failed to load envy.template: %s", err.what());
   }
+
+  // Platform globals (moved from root level ENVY_* to envy.*)
+  envy_table["PLATFORM"] = platform;
+  envy_table["ARCH"] = arch;
+  envy_table["PLATFORM_ARCH"] = platform_arch;
+  envy_table["EXE_EXT"] = exe_ext;
+
+  // Install module functions
+  lua_envy_path_install(envy_table);
+  lua_envy_file_ops_install(envy_table);
 
   lua["envy"] = envy_table;
   sol::table shell_tbl{ lua.create_table_with("BASH",

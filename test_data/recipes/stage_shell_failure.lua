@@ -8,7 +8,7 @@ FETCH = {
 
 -- Shell script that intentionally fails
 STAGE = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Write-Output "About to fail"
       exit 9

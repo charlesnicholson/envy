@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path after_empty.txt -Value "After empty script"

@@ -7,7 +7,7 @@ FETCH = {
 }
 
 -- Shell script that extracts and creates a marker file
-if ENVY_PLATFORM == "windows" then
+if envy.PLATFORM == "windows" then
   -- PowerShell variant
   STAGE = [[
     # PowerShell still invoked; use tar (Windows 10+ includes bsdtar) and Out-File

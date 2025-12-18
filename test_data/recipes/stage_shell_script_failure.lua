@@ -7,7 +7,7 @@ FETCH = {
 }
 
 STAGE = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[Write-Output "About to fail"; exit 9; Write-Output "Should not reach"]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
     ctx.run([[

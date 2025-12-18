@@ -4,7 +4,7 @@ IDENTITY = "local.check_ctx_run_capture@v1"
 function CHECK(ctx)
     -- Capture=true: should get stdout, stderr, exit_code fields
     local cmd
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         cmd = "Write-Output 'stdout text'; [Console]::Error.WriteLine('stderr text')"
     else
         cmd = "echo 'stdout text' && echo 'stderr text' >&2"

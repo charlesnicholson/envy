@@ -13,7 +13,7 @@ BUILD = function(ctx, opts)
 
   -- Create build artifacts
   local result
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     result = ctx.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
                      { shell = ENVY_SHELL.CMD, capture = true })
   else

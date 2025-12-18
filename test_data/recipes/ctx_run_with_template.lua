@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path greeting.tmpl -Value "Hello {{name}}, you are {{age}} years old"
     ]], { shell = ENVY_SHELL.POWERSHELL })

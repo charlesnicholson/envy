@@ -21,7 +21,7 @@ BUILD = function(ctx, opts)
 end
 
 INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ENVY_EXE_EXT, ctx.install_dir)
+  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. envy.EXE_EXT, ctx.install_dir)
 end
 
-PRODUCTS = { ninja = "ninja" .. ENVY_EXE_EXT }
+PRODUCTS = { ninja = "ninja" .. envy.EXE_EXT }

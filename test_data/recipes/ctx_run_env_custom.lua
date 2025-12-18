@@ -11,7 +11,7 @@ STAGE = function(ctx, opts)
 
   local env_values = {MY_VAR = "test_value", MY_NUM = "42"}
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path env_output.txt -Value ("MY_VAR=" + $env:MY_VAR)
       Add-Content -Path env_output.txt -Value ("MY_NUM=" + $env:MY_NUM)

@@ -9,7 +9,7 @@ FETCH = {
 -- Skip stage phase, extract manually in build
 STAGE = function(ctx, opts)
   -- Don't extract yet, just prepare
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("mkdir -p manual_build")
@@ -24,7 +24,7 @@ BUILD = function(ctx, opts)
   print("Extracted " .. files_extracted .. " files")
 
   -- Extract again with strip_components
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Path stripped -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[Set-Location stripped; $true]], { shell = ENVY_SHELL.POWERSHELL })  -- Create directory
     ctx.run([[New-Item -ItemType Directory -Path extracted_stripped -Force | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
@@ -36,7 +36,7 @@ BUILD = function(ctx, opts)
 
   -- Note: extract extracts to cwd, so we need to work around this
   -- For now, just verify the first extraction worked
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path root -PathType Container)) { exit 1 }
       if (-not (Test-Path root/file1.txt)) { exit 1 }

@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path run_marker.txt -Value "Hello from ctx.run"
       Add-Content -Path run_marker.txt -Value ("Stage directory: " + (Get-Location).Path)

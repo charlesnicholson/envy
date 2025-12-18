@@ -11,7 +11,7 @@ STAGE = function(ctx, opts)
 
   local invalid_cwd
   local script
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     invalid_cwd = "Z:/nonexistent/directory/that/does/not/exist"
     script = [[
       Write-Output "Should not execute"

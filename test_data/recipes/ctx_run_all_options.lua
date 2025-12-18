@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[New-Item -ItemType Directory -Force -Path subdir | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
     ctx.run([[
       Set-Content -Path all_opts_pwd.txt -Value (Get-Location).Path

@@ -12,14 +12,14 @@ BUILD = function(ctx, opts)
   print("BUILD function executing, preparing to return script")
 
   -- Do some setup work first
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run("mkdir setup_dir 2> nul", { shell = ENVY_SHELL.CMD })
   else
     ctx.run("mkdir -p setup_dir")
   end
 
   -- Return a script to be executed
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     return [[
       New-Item -ItemType Directory -Force -Path output_from_returned_script | Out-Null
       Set-Content -Path output_from_returned_script\marker.txt -Value "returned_script_artifact" -NoNewline

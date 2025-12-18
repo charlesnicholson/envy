@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path pwd_default.txt -Value (Get-Location).Path
       Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path ls_output.txt

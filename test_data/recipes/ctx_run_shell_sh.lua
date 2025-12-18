@@ -7,7 +7,7 @@ FETCH = {
 }
 
 STAGE = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     error("ctx_run_shell_sh should not run on Windows")
   end
 

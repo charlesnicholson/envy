@@ -1,0 +1,80 @@
+#include "lua_envy_file_ops.h"
+
+#include <filesystem>
+#include <stdexcept>
+#include <string>
+
+namespace envy {
+
+void lua_envy_file_ops_install(sol::table &envy_table) {
+  // envy.copy(src, dst) - Copy file or directory (no implicit anchoring)
+  envy_table["copy"] = [](std::string const &src_str, std::string const &dst_str) {
+    std::filesystem::path const src{ src_str };
+    std::filesystem::path dst{ dst_str };
+
+    if (!std::filesystem::exists(src)) {
+      throw std::runtime_error("envy.copy: source not found: " + src.string());
+    }
+
+    // If copying file to directory, append filename
+    if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
+      dst = dst / src.filename();
+    }
+
+    if (std::filesystem::is_directory(src)) {
+      std::filesystem::copy(src,
+                            dst,
+                            std::filesystem::copy_options::recursive |
+                                std::filesystem::copy_options::overwrite_existing);
+    } else {
+      if (dst.has_parent_path()) {
+        std::filesystem::create_directories(dst.parent_path());
+      }
+      std::filesystem::copy_file(src,
+                                 dst,
+                                 std::filesystem::copy_options::overwrite_existing);
+    }
+  };
+
+  // envy.move(src, dst) - Move/rename file or directory
+  envy_table["move"] = [](std::string const &src_str, std::string const &dst_str) {
+    std::filesystem::path const src{ src_str };
+    std::filesystem::path dst{ dst_str };
+
+    if (!std::filesystem::exists(src)) {
+      throw std::runtime_error("envy.move: source not found: " + src.string());
+    }
+
+    // If moving file to directory, append filename
+    if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
+      dst = dst / src.filename();
+    }
+
+    if (dst.has_parent_path()) { std::filesystem::create_directories(dst.parent_path()); }
+
+    std::filesystem::rename(src, dst);
+  };
+
+  // envy.remove(path) - Delete file or directory recursively
+  envy_table["remove"] = [](std::string const &path_str) {
+    std::filesystem::path const path{ path_str };
+    std::filesystem::remove_all(path);
+  };
+
+  // envy.exists(path) - Check if path exists
+  envy_table["exists"] = [](std::string const &path_str) -> bool {
+    return std::filesystem::exists(std::filesystem::path{ path_str });
+  };
+
+  // envy.is_file(path) - Check if path is regular file
+  envy_table["is_file"] = [](std::string const &path_str) -> bool {
+    return std::filesystem::is_regular_file(std::filesystem::path{ path_str });
+  };
+
+  // envy.is_dir(path) - Check if path is directory
+  envy_table["is_dir"] = [](std::string const &path_str) -> bool {
+    return std::filesystem::is_directory(std::filesystem::path{ path_str });
+  };
+}
+
+}  // namespace envy

@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path file1.txt)) { throw "Missing file1.txt" }
       if ((Get-Item file1.txt).Length -eq 0) { throw "File is empty" }

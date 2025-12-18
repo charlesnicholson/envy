@@ -13,7 +13,7 @@ BUILD = function(ctx, opts)
 
   -- Run with custom environment
   local result
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     result = ctx.run([[
       Write-Output "BUILD_MODE=$env:BUILD_MODE"
       Write-Output "CUSTOM_VAR=$env:CUSTOM_VAR"

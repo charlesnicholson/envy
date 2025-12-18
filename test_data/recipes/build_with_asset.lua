@@ -20,7 +20,7 @@ BUILD = function(ctx, opts)
 
   -- Copy dependency file
   local result
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     result = ctx.run([[
       $depFile = ']] .. dep_path .. [[/dependency.txt'
       if (-not (Test-Path $depFile)) { Start-Sleep -Milliseconds 100 }

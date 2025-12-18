@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       [System.Console]::Error.WriteLine("Line 1 to stderr")
       [System.Console]::Error.WriteLine("Line 2 to stderr")

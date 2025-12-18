@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       (Get-Item file1.txt).Attributes = 'Normal'
       Add-Content -Path permissions.txt -Value ((Get-Item file1.txt).Attributes)

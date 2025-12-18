@@ -7,7 +7,7 @@ function CHECK(ctx)
 
     -- Check if marker exists (non-zero means doesn't exist, need install)
     -- Use pcall since ctx.run throws on non-zero exit
-    local test_cmd = ENVY_PLATFORM == "windows"
+    local test_cmd = envy.PLATFORM == "windows"
         and ('if (Test-Path \'' .. marker .. '\') { exit 0 } else { exit 1 }')
         or ("test -f '" .. marker .. "'")
     local success, res = pcall(function()
@@ -25,9 +25,9 @@ function INSTALL(ctx)
     assert(ctx.tmp_dir ~= nil, "tmp_dir should be exposed")
 
     -- Write to tmp_dir
-    local path_sep = ENVY_PLATFORM == "windows" and "\\" or "/"
+    local path_sep = envy.PLATFORM == "windows" and "\\" or "/"
     local tmp_file = ctx.tmp_dir .. path_sep .. "tmp_marker.txt"
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('"tmp test" | Out-File -FilePath \'' .. tmp_file .. '\'')
         ctx.run('"cwd test" | Out-File -FilePath cwd_marker.txt')
     else
@@ -37,7 +37,7 @@ function INSTALL(ctx)
 
     -- Verify the tmp_dir file is NOT in cwd (different directories)
     -- Use pcall since test -f throws on non-zero
-    local test_cmd1 = ENVY_PLATFORM == "windows"
+    local test_cmd1 = envy.PLATFORM == "windows"
         and 'if (Test-Path tmp_marker.txt) { exit 0 } else { exit 1 }'
         or "test -f tmp_marker.txt"
     local success, res2 = pcall(function()
@@ -48,7 +48,7 @@ function INSTALL(ctx)
     end
 
     -- Verify the file IS in tmp_dir
-    local test_cmd2 = ENVY_PLATFORM == "windows"
+    local test_cmd2 = envy.PLATFORM == "windows"
         and ('if (Test-Path \'' .. tmp_file .. '\') { exit 0 } else { exit 1 }')
         or ("test -f '" .. tmp_file .. "'")
     local res3 = ctx.run(test_cmd2, {quiet = true})
@@ -57,14 +57,14 @@ function INSTALL(ctx)
     end
 
     -- Clean up cwd marker
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('Remove-Item -Force -ErrorAction SilentlyContinue cwd_marker.txt', {quiet = true})
     else
         ctx.run("rm -f cwd_marker.txt", {quiet = true})
     end
 
     -- Create marker file to indicate success
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         ctx.run('New-Item -ItemType File -Force -Path \'' .. marker .. '\' | Out-Null')
     else
         ctx.run("touch '" .. marker .. "'")

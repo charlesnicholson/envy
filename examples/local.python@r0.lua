@@ -12,7 +12,7 @@ local uri_prefix =
 
   local arch = ({ darwin = "aarch64-apple-darwin-pgo+lto",
     linux = "x86_64_v3-unknown-linux-gnu-pgo+lto",
-    windows = "x86_64-pc-windows-msvc-pgo" })[ENVY_PLATFORM]
+    windows = "x86_64-pc-windows-msvc-pgo" })[envy.PLATFORM]
   assert(arch)
 
   local suffix = "-full.tar.zst"
@@ -22,7 +22,7 @@ end
 STAGE = { strip = 1 }
 
 PRODUCTS = function(opts)
-  local python = (ENVY_PLATFORM == "windows") and
+  local python = (envy.PLATFORM == "windows") and
       "install/python.exe" or "install/bin/python"
 
   return {

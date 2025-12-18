@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   -- Script should keep running even if an intermediate command fails
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       cmd /c exit 1
       Set-Content -Path continued.txt -Value "This executes even after false"

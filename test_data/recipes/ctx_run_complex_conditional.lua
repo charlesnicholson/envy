@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       $osInfo = @("Running on Windows", "Use Windows commands")
       $osInfo | Set-Content -Path os_info.txt

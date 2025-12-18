@@ -9,7 +9,7 @@ FETCH = {
 STAGE = {strip = 1}
 
 BUILD = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Write-Host "Building in shell script mode"
       New-Item -ItemType Directory -Path build_output -Force | Out-Null

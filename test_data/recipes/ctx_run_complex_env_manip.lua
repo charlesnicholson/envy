@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   -- First run with base environment
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path env_step1.txt -Value ("BASE_VAR=" + $env:BASE_VAR)
     ]], {env = {BASE_VAR = "base_value"}, shell = ENVY_SHELL.POWERSHELL})
@@ -20,7 +20,7 @@ STAGE = function(ctx, opts)
     ]], {env = {BASE_VAR = "base_value"}})
   end
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path env_step2.txt -Value ("BASE_VAR=" + $env:BASE_VAR)
       Add-Content -Path env_step2.txt -Value ("EXTRA_VAR=" + $env:EXTRA_VAR)
@@ -42,7 +42,7 @@ STAGE = function(ctx, opts)
     }})
   end
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path env_step3.txt -Value ("CONFIG_DIR=" + $env:CONFIG_DIR)
       Add-Content -Path env_step3.txt -Value ("DATA_DIR=" + $env:DATA_DIR)

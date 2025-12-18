@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path unicode.txt -Value "Unicode: Hello 世界 🌍 café"
       Add-Content -Path unicode.txt -Value "More Unicode: Ω α β γ δ"

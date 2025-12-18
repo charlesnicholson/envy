@@ -9,7 +9,7 @@ FETCH = {
 STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Force -Path "level1/level2/level3/level4" | Out-Null
     ]], { shell = ENVY_SHELL.POWERSHELL })

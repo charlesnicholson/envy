@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   -- Create archives
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       New-Item -ItemType Directory -Force -Path "archive_test/subdir" | Out-Null
       Set-Content -Path archive_test/file1.txt -Value "file1"

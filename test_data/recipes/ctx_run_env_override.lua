@@ -10,7 +10,7 @@ STAGE = function(ctx, opts)
   ctx.extract_all({strip = 1})
 
   -- Override a variable (USER is typically set)
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
       ctx.run([[
         if ($env:USER -ne 'test_override_user') { exit 42 }
         Set-Content -Path overridden_user.txt -Value ("USER=" + $env:USER)

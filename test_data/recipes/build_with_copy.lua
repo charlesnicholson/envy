@@ -12,7 +12,7 @@ BUILD = function(ctx, opts)
   print("Testing ctx.copy()")
 
   -- Create source files
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       Set-Content -Path source.txt -Value "source_file"
       New-Item -ItemType Directory -Path source_dir -Force | Out-Null
@@ -36,7 +36,7 @@ BUILD = function(ctx, opts)
   ctx.copy("source_dir", "dest_dir")
 
   -- Verify copies
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run([[
       if (-not (Test-Path dest_file.txt)) {
         Write-Output "missing dest_file.txt"

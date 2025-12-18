@@ -12,7 +12,7 @@ BUILD = function(ctx, opts)
   print("Testing error handling")
 
   -- This should fail and abort the build
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     ctx.run("exit 42", { shell = ENVY_SHELL.POWERSHELL })
   else
     ctx.run("exit 42")
