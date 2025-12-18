@@ -487,35 +487,35 @@ if (build_obj.is<std::string>()) {
 
 ### Process Execution Migration
 
-- [ ] Create `src/lua_ctx/lua_envy_run.cpp` with registration function `lua_envy_run_install(sol::table& envy_table)`
-- [ ] Implement `envy.run(script, opts?)` with optional cwd (no implicit default yet)
-- [ ] Add default cwd logic per phase: tmp_dir (FETCH), stage_dir (STAGE/BUILD), install_dir (INSTALL cache-managed), tmp_dir (INSTALL user-managed), project_root (CHECK)
-- [ ] Support script as string or string[] (array of commands)
-- [ ] Support opts table: {cwd, env, quiet, capture, check, interactive}
-- [ ] Return table: {exit_code, stdout?, stderr?}
-- [ ] Register envy.run via `lua_envy_run_install()`
-- [ ] Update `src/lua_envy.cpp` to call `lua_envy_run_install(envy_table)` from `lua_envy_install()`
+- [x] Create `src/lua_ctx/lua_envy_run.cpp` with registration function `lua_envy_run_install(sol::table& envy_table)`
+- [x] Implement `envy.run(script, opts?)` with optional cwd (no implicit default yet)
+- [ ] Add default cwd logic per phase: tmp_dir (FETCH), stage_dir (STAGE/BUILD), install_dir (INSTALL cache-managed), project_root (INSTALL user-managed), project_root (CHECK)
+- [x] Support script as string or string[] (array of commands)
+- [x] Support opts table: {cwd, env, quiet, capture, check, interactive}
+- [x] Return table: {exit_code, stdout?, stderr?}
+- [x] Register envy.run via `lua_envy_run_install()`
+- [x] Update `src/lua_envy.cpp` to call `lua_envy_run_install(envy_table)` from `lua_envy_install()`
 
 ### Archive Operations Migration
 
-- [ ] Create `src/lua_ctx/lua_envy_extract.cpp` with registration function `lua_envy_extract_install(sol::table& envy_table)`
-- [ ] Implement `envy.extract(archive_path, dest_dir, opts?)` - Single archive extraction with explicit destination
-- [ ] Implement `envy.extract_all(src_dir, dest_dir, opts?)` - Extract all archives in src_dir to dest_dir
-- [ ] Support opts table: {strip} for strip_components
-- [ ] Register extraction functions via `lua_envy_extract_install()`
-- [ ] Update `src/lua_envy.cpp` to call `lua_envy_extract_install(envy_table)` from `lua_envy_install()`
+- [x] Create `src/lua_ctx/lua_envy_extract.cpp` with registration function `lua_envy_extract_install(sol::table& envy_table)`
+- [x] Implement `envy.extract(archive_path, dest_dir, opts?)` - Single archive extraction with explicit destination
+- [x] Implement `envy.extract_all(src_dir, dest_dir, opts?)` - Extract all archives in src_dir to dest_dir
+- [x] Support opts table: {strip} for strip_components
+- [x] Register extraction functions via `lua_envy_extract_install()`
+- [x] Update `src/lua_envy.cpp` to call `lua_envy_extract_install(envy_table)` from `lua_envy_install()`
 
 ### Fetch Operations Migration
 
-- [ ] Create `src/lua_ctx/lua_envy_fetch.cpp` with registration function `lua_envy_fetch_install(sol::table& envy_table)`
-- [ ] Implement `envy.fetch(url_or_spec, opts)` with required `dest` in opts
-- [ ] Support url_or_spec as string, table {url, sha256?}, or array of tables
-- [ ] Return basename string (single file) or array of basenames (multiple files)
-- [ ] Implement `envy.commit_fetch(files)` - atomically move verified files from tmp_dir to fetch_dir
-- [ ] commit_fetch only callable from FETCH phase (throw error in other phases)
-- [ ] Implement `envy.verify_hash(file_path, sha256)` - SHA256 verification utility
-- [ ] Register fetch operations via `lua_envy_fetch_install()`
-- [ ] Update `src/lua_envy.cpp` to call `lua_envy_fetch_install(envy_table)` from `lua_envy_install()`
+- [x] Create `src/lua_ctx/lua_envy_fetch.cpp` with registration function `lua_envy_fetch_install(sol::table& envy_table)`
+- [x] Implement `envy.fetch(url_or_spec, opts)` with required `dest` in opts
+- [x] Support url_or_spec as string, table {url, sha256?}, or array of tables
+- [x] Return basename string (single file) or array of basenames (multiple files)
+- [x] Implement `envy.commit_fetch(files)` - atomically move verified files from tmp_dir to fetch_dir
+- [x] commit_fetch only callable from FETCH phase (throw error in other phases)
+- [x] Implement `envy.verify_hash(file_path, sha256)` - SHA256 verification utility
+- [x] Register fetch operations via `lua_envy_fetch_install()`
+- [x] Update `src/lua_envy.cpp` to call `lua_envy_fetch_install(envy_table)` from `lua_envy_install()`
 
 ### Dependency Access Migration
 

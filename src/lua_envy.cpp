@@ -1,7 +1,10 @@
 #include "lua_envy.h"
 
+#include "lua_ctx/lua_envy_extract.h"
+#include "lua_ctx/lua_envy_fetch.h"
 #include "lua_ctx/lua_envy_file_ops.h"
 #include "lua_ctx/lua_envy_path.h"
+#include "lua_ctx/lua_envy_run.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -145,6 +148,9 @@ void lua_envy_install(sol::state &lua) {
   // Install module functions
   lua_envy_path_install(envy_table);
   lua_envy_file_ops_install(envy_table);
+  lua_envy_run_install(envy_table);
+  lua_envy_extract_install(envy_table);
+  lua_envy_fetch_install(envy_table);
 
   lua["envy"] = envy_table;
   sol::table shell_tbl{ lua.create_table_with("BASH",
