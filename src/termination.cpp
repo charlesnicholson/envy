@@ -35,12 +35,13 @@ void termination_handler_install() { ::SetConsoleCtrlHandler(console_ctrl_handle
 #include <unistd.h>
 
 #include <csignal>
+#include <tuple>
 
 namespace {
 
 void signal_handler(int sig) {
   // Restore cursor visibility and auto-wrap before exit
-  (void)write(STDERR_FILENO, "\x1b[?25h\x1b[?7h", 12);
+  std::ignore = write(STDERR_FILENO, "\x1b[?25h\x1b[?7h", 12);
   _exit(128 + sig);
 }
 
