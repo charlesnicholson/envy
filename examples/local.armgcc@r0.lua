@@ -6,7 +6,7 @@ VALIDATE = function(opts)
   end
 end
 
-FETCH = function(ctx, opts)
+FETCH = function(tmp_dir, opts)
   local sha256_fingerprints = {
     ["14.3.rel1-darwin-arm64"] =
     "30f4d08b219190a37cded6aa796f4549504902c53cfc3c7e044a8490b6eba1f7",

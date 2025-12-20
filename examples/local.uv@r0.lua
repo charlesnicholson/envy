@@ -6,7 +6,7 @@ VALIDATE = function(opts)
   end
 end
 
-FETCH = function(ctx, opts)
+FETCH = function(tmp_dir, opts)
   local uri_prefix = "https://github.com/astral-sh/uv/releases/download/"
   local filename = ({
     windows = "x86_64-pc-windows-msvc.zip",

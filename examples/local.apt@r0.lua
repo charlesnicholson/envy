@@ -2,9 +2,9 @@ IDENTITY = "local.apt@r0"
 
 local missing_packages = {}
 
-CHECK = function(ctx, opts)
+CHECK = function(tmp_dir, opts)
   local cmd = "dpkg-query -W -f='${Package}\n' " .. table.concat(opts.packages, " ")
-  local res = ctx.run(cmd, { capture = true, quiet = true })
+  local res = envy.run(cmd, { capture = true, quiet = true })
 
   local installed = {}
 
@@ -26,6 +26,6 @@ CHECK = function(ctx, opts)
   return #missing_packages == 0
 end
 
-INSTALL = function(ctx, opts)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
 end

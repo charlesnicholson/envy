@@ -11,14 +11,14 @@ VALIDATE = function(opts)
   end
 end
 
-FETCH = function(ctx, opts)
+FETCH = function(tmp_dir, opts)
   return {
     source = "https://gn.googlesource.com/gn.git",
     ref = opts.ref
   }
 end
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
   local cmd = [[
 {{python}} build/gen.py
 {{ninja}} -C out
@@ -30,14 +30,14 @@ out/gn_unittests
 ]]
   end
 
-  ctx.run(envy.template(cmd,
-      { python = ctx.product("python3"), ninja = ctx.product("ninja") }),
-    { cwd = ctx.stage_dir .. "/gn.git", check = true, shell = ENVY_SHELL.cmd })
+  local shell = envy.PLATFORM == "windows" and ENVY_SHELL.CMD or ENVY_SHELL.BASH
+  envy.run(envy.template(cmd,
+      { python = envy.product("python3"), ninja = envy.product("ninja") }),
+    { cwd = stage_dir .. "/gn.git", check = true, shell = shell })
 end
 
-INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/gn.git/out/gn" .. envy.EXE_EXT, ctx.install_dir)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  envy.move(stage_dir .. "/gn.git/out/gn" .. envy.EXE_EXT, install_dir)
 end
 
 PRODUCTS = { gn = "gn" .. envy.EXE_EXT }
-
