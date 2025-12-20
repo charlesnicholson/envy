@@ -205,15 +205,15 @@ bool recipe_provides_product_transitively_impl(
       .recipe = r->spec->identity,
       .product = product_name,
       .has_product_directly = r->products.contains(product_name),
-      .dependency_count = r->dependencies.size()}));
+      .dependency_count = r->dependencies.size() }));
 
   if (r->products.contains(product_name)) { return true; }
 
   for (auto const &[dep_id, dep_info] : r->dependencies) {
-    ENVY_TRACE_EMIT((trace_events::product_transitive_check_dep{
-        .recipe = r->spec->identity,
-        .product = product_name,
-        .checking_dependency = dep_id}));
+    ENVY_TRACE_EMIT(
+        (trace_events::product_transitive_check_dep{ .recipe = r->spec->identity,
+                                                     .product = product_name,
+                                                     .checking_dependency = dep_id }));
     if (recipe_provides_product_transitively_impl(dep_info.recipe_ptr,
                                                   product_name,
                                                   visited)) {
@@ -581,7 +581,7 @@ void engine::run_recipe_thread(recipe *r) {
 
       if (current >= target) {  // Check if we've reached target
         std::unique_lock lock(ctx.mutex);
-        ctx.cv.wait(lock,  // Wait for target extension
+        ctx.cv.wait(lock,
                     [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
 
         if (ctx.target_phase == current || ctx.failed) { break; }

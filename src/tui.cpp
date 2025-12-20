@@ -24,9 +24,7 @@
 #include <utility>
 #include <variant>
 
-#ifdef _WIN32
-#include "platform_windows.h"
-#else
+#ifndef _WIN32
 #include <sys/ioctl.h>
 #include <unistd.h>
 #endif
@@ -154,9 +152,7 @@ int calculate_visible_length(std::string_view str) {
       ++i;  // Skip the '['
     } else if (in_escape) {
       // Inside escape sequence - look for terminator
-      if (c == 'm') {
-        in_escape = false;
-      }
+      if (c == 'm') { in_escape = false; }
       // Otherwise stay in escape mode (consuming sequence chars)
     } else if (c == '\t') {
       // Tabs render as 8 columns (simplified - proper tab stops would be more complex)
@@ -174,9 +170,7 @@ int calculate_visible_length(std::string_view str) {
 // Truncates at the last visible character that fits within target_width.
 // Returns the truncated string with all ANSI escape sequences preserved.
 std::string truncate_to_width_ansi_aware(std::string const &str, int target_width) {
-  if (target_width <= 0) {
-    return "";
-  }
+  if (target_width <= 0) { return ""; }
 
   int visible_count{ 0 };
   bool in_escape{ false };
@@ -551,9 +545,7 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
 
   // Ensure column 0, then move up to start position
   std::fprintf(stderr, "\r");
-  if (last_line_count > 1) {
-    std::fprintf(stderr, "\x1b[%dF", last_line_count - 1);
-  }
+  if (last_line_count > 1) { std::fprintf(stderr, "\x1b[%dF", last_line_count - 1); }
 
   // Render each line with per-line clear
   int cur_frame_line_count{ 0 };
@@ -1176,5 +1168,3 @@ std::size_t measure_label_width_impl(section_frame const &frame, std::size_t ind
 std::size_t measure_label_width(section_frame const &frame) {
   return measure_label_width_impl(frame, 0);
 }
-
-}  // namespace envy::tui

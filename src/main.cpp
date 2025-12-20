@@ -2,12 +2,14 @@
 #include "cli.h"
 #include "libgit2_util.h"
 #include "shell.h"
+#include "termination.h"
 #include "tui.h"
 
 #include <cstdlib>
 #include <variant>
 
 int main(int argc, char **argv) {
+  envy::termination_handler_install();
   envy::tui::init();
   envy::shell_init();
 

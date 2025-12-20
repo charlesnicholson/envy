@@ -4,7 +4,7 @@
 
 #include "shell.h"
 
-#include "platform_windows.h"
+#include "platform.h"
 #include "util.h"
 
 #include <algorithm>

@@ -1,8 +1,6 @@
 #include "cmd_version.h"
 
-#ifdef _WIN32
-#include "platform_windows.h"  // Provides winsock2 + lean windows definitions
-#endif
+#include "platform.h"
 
 #include "CLI11.hpp"
 #include "archive.h"
