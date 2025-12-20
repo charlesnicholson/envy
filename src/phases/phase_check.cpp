@@ -3,7 +3,6 @@
 #include "blake3_util.h"
 #include "cache.h"
 #include "engine.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
@@ -73,9 +72,9 @@ bool run_check_function(recipe *r,
 
   std::filesystem::path const project_root{ recipe_spec::compute_project_root(r->spec) };
 
-  // Set up Lua registry context for envy.* functions
+  // Set up Lua registry context for envy.* functions (run_dir = project_root)
   // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
-  phase_context_guard ctx_guard{ nullptr, r };
+  phase_context_guard ctx_guard{ nullptr, r, project_root };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 

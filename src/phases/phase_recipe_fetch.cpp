@@ -2,7 +2,6 @@
 
 #include "engine.h"
 #include "fetch.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
@@ -202,15 +201,9 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
   if (cache_result.lock) {
     tui::debug("fetch recipe %s via custom fetch function", spec.identity.c_str());
 
-    // Create fetch_phase_ctx for custom fetch function
-    fetch_phase_ctx ctx;
-    ctx.fetch_dir = cache_result.lock->install_dir();
-    ctx.run_dir = cache_result.lock->work_dir() / "tmp";
-    ctx.stage_dir = cache_result.lock->stage_dir();
-    ctx.engine_ = &eng;
-    ctx.recipe_ = parent;
-
-    std::filesystem::create_directories(ctx.run_dir);
+    // Set up paths for custom fetch function
+    std::filesystem::path const tmp_dir{ cache_result.lock->work_dir() / "tmp" };
+    std::filesystem::create_directories(tmp_dir);
 
     std::lock_guard const lock(parent->lua_mutex);
 
@@ -228,7 +221,6 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
       }
 
       // Stack: [function]
-      // Call fetch(tmp_dir, options) - new signature matches FETCH phase
       sol::protected_function fetch_func{ parent_lua_view,
                                           sol::stack_reference(parent_lua_view.lua_state(),
                                                                -1) };
@@ -240,12 +232,11 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
       // will look up parent from the registry and need parent->lock to be valid.
       std::swap(parent->lock, cache_result.lock);
 
-      // Set up phase context so envy.* functions can find the recipe
-      phase_context_guard ctx_guard{ &eng, parent };
+      // Set up phase context so envy.* functions can find the recipe (run_dir = tmp)
+      phase_context_guard ctx_guard{ &eng, parent, tmp_dir };
 
-      sol::protected_function_result fetch_result{
-        fetch_func(ctx.run_dir.string(), options_obj)
-      };
+      sol::protected_function_result fetch_result{ fetch_func(tmp_dir.string(),
+                                                              options_obj) };
 
       std::swap(parent->lock, cache_result.lock);
 
@@ -599,8 +590,9 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   r->products = parse_products_table(spec, *lua, r);
   for (auto const &[name, value] : r->products) {
-    ENVY_TRACE_EMIT((trace_events::product_parsed{
-        .recipe = spec.identity, .product_name = name, .product_value = value}));
+    ENVY_TRACE_EMIT((trace_events::product_parsed{ .recipe = spec.identity,
+                                                   .product_name = name,
+                                                   .product_value = value }));
   }
   r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
 

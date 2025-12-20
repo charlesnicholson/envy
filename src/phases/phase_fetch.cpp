@@ -3,7 +3,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "fetch.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
@@ -108,8 +107,8 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
   std::filesystem::path const tmp_dir{ lock->tmp_dir() };
 
-  // Set up Lua registry context for envy.* functions
-  phase_context_guard ctx_guard{ &eng, r };
+  // Set up Lua registry context for envy.* functions (run_dir = tmp_dir)
+  phase_context_guard ctx_guard{ &eng, r, tmp_dir };
 
   sol::state_view lua{ fetch_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };

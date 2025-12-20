@@ -3,7 +3,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "extract.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
@@ -33,21 +32,6 @@ bool fetch_dir_has_files(std::filesystem::path const &fetch_dir) {
     return true;
   }
   return false;
-}
-
-struct stage_phase_ctx : lua_ctx_common {
-  // run_dir inherited from base is dest_dir (stage_dir)
-};
-
-sol::table build_stage_phase_ctx_table(sol::state_view lua,
-                                       std::string const &identity,
-                                       stage_phase_ctx *ctx) {
-  sol::table ctx_table{ lua.create_table() };
-  ctx_table["identity"] = identity;
-  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
-  ctx_table["stage_dir"] = ctx->run_dir.string();
-  lua_ctx_add_common_bindings(ctx_table, ctx);
-  return ctx_table;
 }
 
 std::filesystem::path determine_stage_destination(sol::state_view lua,
@@ -124,8 +108,8 @@ void run_programmatic_stage(sol::protected_function stage_func,
                             recipe *r) {
   tui::debug("phase stage: running imperative stage function");
 
-  // Set up Lua registry context for envy.* functions
-  phase_context_guard ctx_guard{ &eng, r };
+  // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
+  phase_context_guard ctx_guard{ &eng, r, stage_dir };
 
   sol::state_view lua{ stage_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };

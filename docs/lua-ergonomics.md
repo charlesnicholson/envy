@@ -489,7 +489,7 @@ if (build_obj.is<std::string>()) {
 
 - [x] Create `src/lua_ctx/lua_envy_run.cpp` with registration function `lua_envy_run_install(sol::table& envy_table)`
 - [x] Implement `envy.run(script, opts?)` with optional cwd (no implicit default yet)
-- [ ] Add default cwd logic per phase: tmp_dir (FETCH), stage_dir (STAGE/BUILD), install_dir (INSTALL cache-managed), project_root (INSTALL user-managed), project_root (CHECK)
+- [x] Add default cwd logic per phase: tmp_dir (FETCH), stage_dir (STAGE/BUILD), install_dir (INSTALL cache-managed), project_root (INSTALL user-managed), project_root (CHECK)
 - [x] Support script as string or string[] (array of commands)
 - [x] Support opts table: {cwd, env, quiet, capture, check, interactive}
 - [x] Return table: {exit_code, stdout?, stderr?}
@@ -519,28 +519,28 @@ if (build_obj.is<std::string>()) {
 
 ### Dependency Access Migration
 
-- [ ] Create `src/lua_ctx/lua_envy_deps.cpp` with registration function `lua_envy_deps_install(sol::table& envy_table)`
-- [ ] Implement `envy.asset(identity)` using thread-local context (get_current_engine/recipe)
-- [ ] Implement `envy.product(name)` using thread-local context
-- [ ] Register dependency functions via `lua_envy_deps_install()`
-- [ ] Update `src/lua_envy.cpp` to call `lua_envy_deps_install(envy_table)` from `lua_envy_install()`
-- [ ] Validate thread-local context is set (throw clear error if called outside phase execution)
+- [x] Create `src/lua_ctx/lua_envy_deps.cpp` with registration function `lua_envy_deps_install(sol::table& envy_table)`
+- [x] Implement `envy.asset(identity)` using thread-local context (get_current_engine/recipe)
+- [x] Implement `envy.product(name)` using thread-local context
+- [x] Register dependency functions via `lua_envy_deps_install()`
+- [x] Update `src/lua_envy.cpp` to call `lua_envy_deps_install(envy_table)` from `lua_envy_install()`
+- [x] Validate thread-local context is set (throw clear error if called outside phase execution)
 
 ### Phase Signature Updates - FETCH
 
-- [ ] Update `src/phases/phase_recipe_fetch.cpp` - Change custom FETCH function signature to (tmp_dir) only
-- [ ] fetch_dir never exposed to FETCH function—must use envy.commit_fetch() to move verified files
-- [ ] Implement envy.commit_fetch(files) - atomically moves basenames from tmp_dir to fetch_dir
-- [ ] Set thread-local context with phase_context_guard before calling FETCH function
-- [ ] Handle declarative FETCH forms (string, table, array) with C++ expansion
-- [ ] Update default cwd for this phase to tmp_dir (if envy.run called without explicit cwd)
+- [x] Update `src/phases/phase_fetch.cpp` - FETCH function signature is (tmp_dir, opts)
+- [x] fetch_dir never exposed to FETCH function—must use envy.commit_fetch() to move verified files
+- [x] Implement envy.commit_fetch(files) - atomically moves basenames from tmp_dir to fetch_dir
+- [x] Set thread-local context with phase_context_guard before calling FETCH function
+- [x] Handle declarative FETCH forms (string, table, array) with C++ expansion
+- [x] Update default cwd for this phase to tmp_dir (if envy.run called without explicit cwd)
 
 ### Phase Signature Updates - STAGE
 
-- [ ] Update `src/phases/phase_stage.cpp` - Change STAGE function signature to (fetch_dir, stage_dir, tmp_dir)
-- [ ] Set thread-local context with phase_context_guard before calling STAGE function
-- [ ] Handle declarative STAGE form {strip = N} with C++ expansion to envy.extract_all
-- [ ] Update default cwd for this phase to stage_dir
+- [x] Update `src/phases/phase_stage.cpp` - Change STAGE function signature to (fetch_dir, stage_dir, tmp_dir)
+- [x] Set thread-local context with phase_context_guard before calling STAGE function
+- [x] Handle declarative STAGE form {strip = N} with C++ expansion to envy.extract_all
+- [x] Update default cwd for this phase to stage_dir
 
 ### Phase Signature Updates - BUILD
 
@@ -552,47 +552,47 @@ if (build_obj.is<std::string>()) {
 
 ### Phase Signature Updates - INSTALL
 
-- [ ] Update `src/phases/phase_install.cpp` - Unified INSTALL signature: (install_dir, stage_dir, fetch_dir, tmp_dir)
-- [ ] Pass nil for install_dir when user-managed (CHECK present)
-- [ ] Set thread-local context with phase_context_guard before calling INSTALL function
-- [ ] Handle declarative INSTALL form (string or array) with C++ expansion to envy.run
-- [ ] Update default cwd for cache-managed to install_dir
-- [ ] Update default cwd for user-managed to project_root
-- [ ] Remove old forbidden method logic (no longer needed—nil install_dir signals user-managed)
+- [x] Update `src/phases/phase_install.cpp` - Unified INSTALL signature: (install_dir, stage_dir, fetch_dir, tmp_dir)
+- [x] Pass nil for install_dir when user-managed (CHECK present)
+- [x] Set thread-local context with phase_context_guard before calling INSTALL function
+- [x] Handle declarative INSTALL form (string or array) with C++ expansion to envy.run
+- [x] Update default cwd for cache-managed to install_dir
+- [x] Update default cwd for user-managed to project_root
+- [x] Remove old forbidden method logic (no longer needed—nil install_dir signals user-managed)
 
 ### Phase Signature Updates - CHECK
 
-- [ ] Update `src/phases/phase_check.cpp` - Change CHECK function signature to (project_root)
-- [ ] Set thread-local context with phase_context_guard before calling CHECK function
-- [ ] Update default cwd for this phase to project_root
-- [ ] Handle CHECK return value (boolean or string command)
+- [x] Update `src/phases/phase_check.cpp` - Change CHECK function signature to (project_root)
+- [x] Set thread-local context with phase_context_guard before calling CHECK function
+- [x] Update default cwd for this phase to project_root
+- [x] Handle CHECK return value (boolean or string command)
 
 ### User-Managed Packages Full Pipeline
 
-- [ ] User-managed packages (CHECK present) can define FETCH/STAGE/BUILD verbs
-- [ ] INSTALL receives (install_dir, stage_dir, fetch_dir, tmp_dir) for all packages
-- [ ] install_dir = nil for user-managed packages (signaling not applicable)
-- [ ] tmp_dir available to all phases except CHECK (lock not yet acquired)
-- [ ] Existing scoped_entry_lock with user_managed_ flag already purges workspace on completion
-- [ ] Update architecture.md to clarify user-managed packages can use full pipeline
-- [ ] Add functional test for user-managed package with FETCH+STAGE+INSTALL
+- [x] User-managed packages (CHECK present) CANNOT define FETCH/STAGE/BUILD verbs (enforced in phase_recipe_fetch.cpp)
+- [x] INSTALL receives (install_dir, stage_dir, fetch_dir, tmp_dir) for all packages
+- [x] install_dir = nil for user-managed packages (signaling not applicable)
+- [x] tmp_dir available to INSTALL phase for user-managed (via lock)
+- [x] Existing scoped_entry_lock with user_managed_ flag already purges workspace on completion
+- [x] Update architecture.md to clarify user-managed package restrictions
+- [x] Add functional test for user-managed package with CHECK+INSTALL (existing in test_user_managed.py)
 
 ### Remove Old ctx Implementation
 
-- [ ] Remove `src/lua_ctx/lua_ctx_bindings.h` build_*_ctx_table functions (no longer used)
-- [ ] Remove old ctx construction code from all phase_*.cpp files
-- [ ] Remove `src/lua_ctx/lua_ctx_common` struct definition (replaced by thread-local)
-- [ ] Clean up unused includes and forward declarations
+- [x] Remove `src/lua_ctx/lua_ctx_bindings.h` build_*_ctx_table functions (no longer used by phases)
+- [x] Remove old ctx construction code from all phase_*.cpp files
+- [x] Keep `src/lua_ctx/lua_ctx_common` struct (still needed for DEFAULT_SHELL function ctx:asset() calls in manifest.cpp)
+- [x] Clean up unused includes and forward declarations from phase files
 
 ### Test Recipe Migration
 
-- [ ] Audit all recipes in `test_data/recipes/*.lua` - identify patterns
-- [ ] Create regex migration script `scripts/migrate_recipes.py` for common patterns
-- [ ] Run migration script on test recipes
-- [ ] Build envy and run functional tests - identify failures
-- [ ] Manually fix recipes that script couldn't handle
-- [ ] Verify all functional tests pass
-- [ ] Review migrated recipes for clarity and best practices
+- [x] Audit all recipes in `test_data/recipes/*.lua` - identify patterns
+- [x] Create regex migration script `scripts/migrate_recipes.py` for common patterns
+- [x] Run migration script on test recipes
+- [x] Build envy and run functional tests - identify failures
+- [x] Manually fix recipes that script couldn't handle
+- [x] Verify all functional tests pass
+- [x] Review migrated recipes for clarity and best practices
 
 ### lua_ls Type Definitions
 
@@ -613,24 +613,24 @@ if (build_obj.is<std::string>()) {
 
 ### Documentation Updates
 
-- [ ] Update `docs/architecture.md` - Rewrite "Recipes" section with new API
-- [ ] Update `docs/architecture.md` - Remove ctx table documentation
-- [ ] Create `docs/lua_api.md` - Complete envy.* namespace reference
-- [ ] Create `docs/lua_ls_setup.md` - IDE integration guide for users
-- [ ] Update `README.md` - Add section on IDE support with lua_ls
-- [ ] Document declarative form behavior and C++ expansion strategy
-- [ ] Document thread-local context approach and safety analysis
-- [ ] Add migration guide for existing recipes (old ctx → new envy.*)
+- [x] Update `docs/architecture.md` - Rewrite "Recipes" section with new API
+- [x] Update `docs/architecture.md` - Remove ctx table documentation
+- [x] Create `docs/lua_api.md` - Complete envy.* namespace reference
+- [ ] Create `docs/lua_ls_setup.md` - IDE integration guide for users (lua_ls related)
+- [ ] Update `README.md` - Add section on IDE support with lua_ls (lua_ls related)
+- [x] Document declarative form behavior and C++ expansion strategy (see "Declarative Expansion Strategy" section above)
+- [x] Document thread-local context approach and safety analysis (see "Thread-Local Context Analysis" section above)
+- [x] Add migration guide for existing recipes (see `docs/lua_api.md` migration table)
 
 ### Final Validation
 
-- [ ] Run `./build.sh` - Verify clean build with no warnings
-- [ ] Run all unit tests - Verify 100% pass rate
-- [ ] Run all functional tests - Verify 100% pass rate
+- [x] Run `./build.sh` - Verify clean build with no warnings
+- [x] Run all unit tests - Verify 100% pass rate
+- [x] Run all functional tests - Verify 100% pass rate
 - [ ] Test lua_ls integration in real editor (VSCode or Neovim)
 - [ ] Verify autocomplete works for envy.* namespace
 - [ ] Verify hover documentation shows for all functions
-- [ ] Verify declarative forms still work (FETCH/BUILD/INSTALL shortcuts)
-- [ ] Verify user-managed packages work correctly (CHECK + INSTALL)
-- [ ] Verify cache-managed packages work correctly (full phase pipeline)
-- [ ] Spot-check error messages include resolved paths (not relative paths)
+- [x] Verify declarative forms still work (FETCH/BUILD/INSTALL shortcuts)
+- [x] Verify user-managed packages work correctly (CHECK + INSTALL)
+- [x] Verify cache-managed packages work correctly (full phase pipeline)
+- [x] Spot-check error messages include resolved paths (not relative paths)
