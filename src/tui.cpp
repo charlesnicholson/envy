@@ -1168,3 +1168,5 @@ std::size_t measure_label_width_impl(section_frame const &frame, std::size_t ind
 std::size_t measure_label_width(section_frame const &frame) {
   return measure_label_width_impl(frame, 0);
 }
+
+}  // namespace envy::tui
