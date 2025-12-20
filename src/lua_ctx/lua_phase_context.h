@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cache.h"
 #include "util.h"
 
 #include "sol/sol.hpp"
@@ -13,40 +14,34 @@ namespace envy {
 class engine;
 struct recipe;
 
-// Lua registry-based phase context storage for envy.* functions.
-// Context is stored in the Lua state's registry, accessed via sol::this_state.
-// Context is set by phase_context_guard RAII object during phase execution.
+// Phase execution context - all state available to envy.* functions during phase
+// execution. Stored in Lua registry, accessed via sol::this_state.
+struct phase_context {
+  engine *eng;
+  recipe *r;
+  std::optional<std::filesystem::path> run_dir;  // default cwd for envy.run()
 
-// Get engine/recipe from Lua registry (returns nullptr if not set)
-engine *lua_phase_context_get_engine(lua_State *L);
-recipe *lua_phase_context_get_recipe(lua_State *L);
+  // May not be the same as r->lock: "custom fetch" runs with child package's lock!
+  cache::scoped_entry_lock const *lock;
+};
 
-// Get the run_dir for the current phase (the default cwd for envy.run())
-std::optional<std::filesystem::path> lua_phase_context_get_run_dir(lua_State *L);
-
-// Convenience overloads for sol::this_state
-inline engine *lua_phase_context_get_engine(sol::this_state ts) {
-  return lua_phase_context_get_engine(ts.L);
-}
-inline recipe *lua_phase_context_get_recipe(sol::this_state ts) {
-  return lua_phase_context_get_recipe(ts.L);
-}
-inline std::optional<std::filesystem::path> lua_phase_context_get_run_dir(sol::this_state ts) {
-  return lua_phase_context_get_run_dir(ts.L);
-}
+// Get phase context from Lua registry (returns nullptr if not in phase execution)
+phase_context const *lua_phase_context_get(sol::this_state ts);
 
 // RAII guard that sets Lua registry context for phase execution scope.
 // Automatically clears context on destruction (including exception unwinding).
+// The guard owns the context struct on the stack; registry stores pointer to it.
 class phase_context_guard : unmovable {
  public:
-  // run_dir: the default cwd for envy.run() calls in this phase
   phase_context_guard(engine *eng,
                       recipe *r,
-                      std::optional<std::filesystem::path> run_dir = std::nullopt);
+                      std::optional<std::filesystem::path> run_dir = std::nullopt,
+                      cache::scoped_entry_lock const *lock = nullptr);
   ~phase_context_guard();
 
  private:
   lua_State *lua_state_;
+  phase_context ctx_;
 };
 
 }  // namespace envy

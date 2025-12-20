@@ -205,7 +205,8 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     // Track used basenames for deduplication
     std::unordered_set<std::string> used_basenames;
 
-    recipe *r{ lua_phase_context_get_recipe(L) };
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    recipe *r{ ctx ? ctx->r : nullptr };
 
     for (auto const &item : items) {
       std::string basename{ uri_extract_filename(item.source) };
@@ -289,12 +290,12 @@ void lua_envy_fetch_install(sol::table &envy_table) {
 
   // envy.commit_fetch(files) - Atomically move verified files from tmp_dir to fetch_dir
   envy_table["commit_fetch"] = [](sol::object arg, sol::this_state L) {
-    recipe *r{ lua_phase_context_get_recipe(L) };
-    if (!r || !r->lock) {
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    if (!ctx || !ctx->lock) {
       throw std::runtime_error(
           "envy.commit_fetch: can only be called from FETCH phase with cache lock active");
     }
-    commit_files(parse_commit_fetch_args(arg), r->lock->tmp_dir(), r->lock->fetch_dir());
+    commit_files(parse_commit_fetch_args(arg), ctx->lock->tmp_dir(), ctx->lock->fetch_dir());
   };
 
   // envy.verify_hash(file_path, expected_sha256) - Verify file hash

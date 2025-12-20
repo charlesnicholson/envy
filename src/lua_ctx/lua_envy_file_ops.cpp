@@ -13,10 +13,9 @@ namespace {
 // Resolve relative path to phase working directory (from registry, or stage_dir fallback)
 std::filesystem::path resolve_relative(std::filesystem::path const &path, sol::this_state L) {
   if (path.is_absolute()) { return path; }
-  std::optional<std::filesystem::path> run_dir{ lua_phase_context_get_run_dir(L) };
-  if (run_dir) { return *run_dir / path; }
-  recipe *r{ lua_phase_context_get_recipe(L) };
-  if (r && r->lock) { return r->lock->stage_dir() / path; }
+  phase_context const *ctx{ lua_phase_context_get(L) };
+  if (ctx && ctx->run_dir) { return *ctx->run_dir / path; }
+  if (ctx && ctx->r && ctx->r->lock) { return ctx->r->lock->stage_dir() / path; }
   return std::filesystem::current_path() / path;
 }
 

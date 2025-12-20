@@ -227,18 +227,13 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
       lua_pop(parent_lua_view.lua_state(), 1);  // pop function
       sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
-      // Temporarily swap parent->lock so envy.commit_fetch can access paths.
-      // The inline source.fetch runs in parent's Lua state, so envy.commit_fetch
-      // will look up parent from the registry and need parent->lock to be valid.
-      std::swap(parent->lock, cache_result.lock);
-
-      // Set up phase context so envy.* functions can find the recipe (run_dir = tmp)
-      phase_context_guard ctx_guard{ &eng, parent, tmp_dir };
+      // Set up phase context with lock so envy.commit_fetch can access paths.
+      // The inline source.fetch runs in parent's Lua state, so we pass the lock
+      // explicitly rather than through parent->lock.
+      phase_context_guard ctx_guard{ &eng, parent, tmp_dir, cache_result.lock.get() };
 
       sol::protected_function_result fetch_result{ fetch_func(tmp_dir.string(),
                                                               options_obj) };
-
-      std::swap(parent->lock, cache_result.lock);
 
       if (!fetch_result.valid()) {
         sol::error err = fetch_result;

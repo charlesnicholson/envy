@@ -62,7 +62,8 @@ bool strong_reachable(recipe *from,
 void lua_envy_deps_install(sol::table &envy_table) {
   // envy.asset(identity) -> path_string
   envy_table["asset"] = [](std::string const &identity, sol::this_state L) -> std::string {
-    recipe *consumer{ lua_phase_context_get_recipe(L) };
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    recipe *consumer{ ctx ? ctx->r : nullptr };
     if (!consumer) {
       throw std::runtime_error("envy.asset: not in phase context (missing recipe)");
     }
@@ -138,7 +139,8 @@ void lua_envy_deps_install(sol::table &envy_table) {
   // envy.product(name) -> path_or_value_string
   envy_table["product"] = [](std::string const &product_name,
                              sol::this_state L) -> std::string {
-    recipe *consumer{ lua_phase_context_get_recipe(L) };
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    recipe *consumer{ ctx ? ctx->r : nullptr };
     if (!consumer) {
       throw std::runtime_error("envy.product: not in phase context (missing recipe)");
     }

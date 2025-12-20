@@ -95,8 +95,9 @@ void lua_envy_run_install(sol::table &envy_table) {
       opts_table = opts_obj->as<sol::table>();
     }
 
-    // Get recipe for default shell (if in phase context)
-    recipe *r{ lua_phase_context_get_recipe(L) };
+    // Get phase context for default shell, run_dir, engine
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    recipe *r{ ctx ? ctx->r : nullptr };
     resolved_shell shell{ shell_resolve_default(r ? r->default_shell_ptr : nullptr) };
 
     std::optional<std::filesystem::path> cwd;
@@ -124,9 +125,9 @@ void lua_envy_run_install(sol::table &envy_table) {
     }
 
     // Resolve cwd: use phase's run_dir (stored in registry), fall back to stage_dir
-    std::optional<std::filesystem::path> run_dir{ lua_phase_context_get_run_dir(L) };
     std::filesystem::path const base_dir{
-      run_dir ? *run_dir : (r && r->lock ? r->lock->stage_dir() : std::filesystem::current_path())
+      ctx && ctx->run_dir ? *ctx->run_dir
+                          : (r && r->lock ? r->lock->stage_dir() : std::filesystem::current_path())
     };
 
     if (!cwd) {
@@ -149,7 +150,7 @@ void lua_envy_run_install(sol::table &envy_table) {
 
     // Auto-manage TUI progress if in phase context
     std::optional<tui_actions::run_progress> progress;
-    engine *eng{ lua_phase_context_get_engine(L) };
+    engine *eng{ ctx ? ctx->eng : nullptr };
     if (r && r->tui_section && eng) {
       progress.emplace(r->tui_section, r->spec->identity, eng->cache_root());
       progress->on_command_start(script_view);
