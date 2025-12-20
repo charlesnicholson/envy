@@ -113,11 +113,11 @@ DEPENDENCIES = {{
   }}
 }}
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx, opts)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("SHA256 verification succeeded")
 end
 """)
@@ -165,11 +165,11 @@ DEPENDENCIES = {{
   }}
 }}
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx, opts)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("This should not execute")
 end
 """)
@@ -324,8 +324,8 @@ end
             tmp.write("""
 -- Missing identity in local recipe
 DEPENDENCIES = {}
-function CHECK(ctx) return false end
-function INSTALL(ctx, opts) end
+function CHECK(project_root, options) return false end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """)
             tmp_path = tmp.name
 

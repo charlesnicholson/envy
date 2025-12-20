@@ -215,7 +215,7 @@ class TestCheckInstallRuntime(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
     def test_table_field_chained_access(self):
-        """Test chained table field access: ctx.run(...).stdout."""
+        """Test chained table field access: envy.run(...).stdout."""
         recipe_path = self.recipe_dir / "check_table_chained_access.lua"
         result = self.run_envy("local.check_table_chained@v1", recipe_path)
 

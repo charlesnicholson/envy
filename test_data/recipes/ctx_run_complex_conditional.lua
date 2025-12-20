@@ -1,4 +1,4 @@
--- Test ctx.run() with conditional operations
+-- Test envy.run() with conditional operations
 IDENTITY = "local.ctx_run_complex_conditional@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       $osInfo = @("Running on Windows", "Use Windows commands")
       $osInfo | Set-Content -Path os_info.txt
 
@@ -31,7 +31,7 @@ STAGE = function(ctx, opts)
       }
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       if [ "$(uname)" = "Darwin" ]; then
         echo "Running on macOS" > os_info.txt
         echo "Use BSD commands" >> os_info.txt

@@ -1,4 +1,4 @@
--- Test ctx.run() with check=false and capture returns exit_code and output
+-- Test envy.run() with check=false and capture returns exit_code and output
 IDENTITY = "local.ctx_run_check_false_capture@v1"
 
 FETCH = {
@@ -6,18 +6,18 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   local res
-  if ENVY_PLATFORM == "windows" then
-    res = ctx.run([[
+  if envy.PLATFORM == "windows" then
+    res = envy.run([[
       Write-Output "stdout content"
       [Console]::Error.WriteLine("stderr content")
       exit 42
     ]], { shell = ENVY_SHELL.POWERSHELL, check = false, capture = true })
   else
-    res = ctx.run([[
+    res = envy.run([[
       echo "stdout content"
       echo "stderr content" >&2
       exit 42
@@ -36,12 +36,12 @@ STAGE = function(ctx, opts)
     error("Expected stderr to contain 'stderr content', got: " .. tostring(res.stderr))
   end
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       Set-Content -Path capture_success.txt -Value "Captured output successfully"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       echo "Captured output successfully" > capture_success.txt
     ]])
   end

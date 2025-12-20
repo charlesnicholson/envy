@@ -8,31 +8,31 @@ DEPENDENCIES = {
         { recipe = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" },
         { recipe = "local.fetch_dep_helper@v1", source = "fetch_dep_helper.lua" }
       },
-      fetch = function(ctx, opts)
+      fetch = function(tmp_dir, options)
         local recipe_content = [[
 IDENTITY = "local.multiple_fetch_deps_child@v1"
 DEPENDENCIES = {}
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 ]]
-        local recipe_path = ctx.tmp_dir .. "/recipe.lua"
+        local recipe_path = tmp_dir .. "/recipe.lua"
         local f = io.open(recipe_path, "w")
         f:write(recipe_content)
         f:close()
-        ctx.commit_fetch("recipe.lua")
+        envy.commit_fetch("recipe.lua")
       end
     }
   }
 }
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end

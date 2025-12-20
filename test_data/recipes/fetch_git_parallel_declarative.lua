@@ -13,12 +13,12 @@ FETCH = {
   }
 }
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Verify both repos were actually fetched by checking for .git/HEAD
     -- If fetch failed or didn't happen, these files won't exist and install will fail
     local repos = {"ninja.git", "re2.git"}
     for _, repo in ipairs(repos) do
-        local git_head = ctx.stage_dir .. "/" .. repo .. "/.git/HEAD"
+        local git_head = stage_dir .. "/" .. repo .. "/.git/HEAD"
         local f = io.open(git_head, "r")
         if not f then
             error("Parallel git fetch failed: repo not found: " .. repo)

@@ -278,7 +278,7 @@ class TestUserManagedPackages(unittest.TestCase):
     # ========================================================================
 
     def test_user_managed_ctx_tmp_dir_accessible(self):
-        """User-managed packages can access and use ctx.tmp_dir."""
+        """User-managed packages can access and use tmp_dir."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_tmp_dir.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_tmp_dir@v1", recipe_path
@@ -294,7 +294,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_fetch_dir(self):
-        """User-managed packages cannot access ctx.fetch_dir."""
+        """User-managed packages cannot access fetch_dir."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_forbidden@v1",
@@ -304,7 +304,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_stage_dir(self):
-        """User-managed packages cannot access ctx.stage_dir."""
+        """User-managed packages cannot access stage_dir."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_forbidden@v1",
@@ -314,7 +314,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_install_dir(self):
-        """User-managed packages cannot access ctx.install_dir."""
+        """User-managed packages cannot access install_dir."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_forbidden@v1",
@@ -324,7 +324,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_extract_all(self):
-        """User-managed packages cannot call ctx.extract_all()."""
+        """User-managed packages cannot call envy.extract_all()."""
         recipe_path = self.recipe_dir / "user_managed_ctx_isolation_forbidden.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_forbidden@v1",

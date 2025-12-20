@@ -5,10 +5,10 @@ DEPENDENCIES = {
   { recipe = "local.simple@v1", source = "simple.lua" }
 }
 
-FETCH = function(ctx, opts)
-  ctx.run("echo 'testing ctx.run in fetch'")
+FETCH = function(tmp_dir, options)
+  envy.run("echo 'testing ctx.run in fetch'")
 end
 
-INSTALL = function(ctx, opts)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end

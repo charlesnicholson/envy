@@ -1,4 +1,4 @@
--- Test build phase: build = function(ctx, opts) (programmatic with ctx.run())
+-- Test build phase: build = function(ctx, opts) (programmatic with envy.run())
 IDENTITY = "local.build_function@v1"
 
 FETCH = {
@@ -8,16 +8,16 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
-  print("Building with ctx.run()")
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("Building with envy.run()")
 
   -- Create build artifacts
   local result
-  if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
+  if envy.PLATFORM == "windows" then
+    result = envy.run([[mkdir build_output 2> nul & echo function_artifact > build_output\result.txt & if not exist build_output\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
                      { shell = ENVY_SHELL.CMD, capture = true })
   else
-    result = ctx.run([[
+    result = envy.run([[
       mkdir -p build_output
       echo "function_artifact" > build_output/result.txt
       echo "Build complete"

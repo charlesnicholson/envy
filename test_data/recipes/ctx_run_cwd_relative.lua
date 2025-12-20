@@ -1,4 +1,4 @@
--- Test ctx.run() with relative cwd option
+-- Test envy.run() with relative cwd option
 IDENTITY = "local.ctx_run_cwd_relative@v1"
 
 FETCH = {
@@ -6,18 +6,18 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[New-Item -ItemType Directory -Force -Path "custom/subdir" | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[New-Item -ItemType Directory -Force -Path "custom/subdir" | Out-Null]], { shell = ENVY_SHELL.POWERSHELL })
+    envy.run([[
       Set-Content -Path pwd_output.txt -Value (Get-Location).Path
       Set-Content -Path marker.txt -Value "Running in subdir"
     ]], {cwd = "custom/subdir", shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[mkdir -p custom/subdir]])
-    ctx.run([[
+    envy.run([[mkdir -p custom/subdir]])
+    envy.run([[
       pwd > pwd_output.txt
       echo "Running in subdir" > marker.txt
     ]], {cwd = "custom/subdir"})

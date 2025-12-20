@@ -3,7 +3,7 @@ IDENTITY = "local.install_default_shell@v1"
 
 -- Cache-managed (no check verb)
 -- Need fetch for cache-managed packages
-function FETCH(ctx)
+function FETCH(tmp_dir, options)
     -- Empty fetch
 end
 

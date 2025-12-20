@@ -94,7 +94,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "build_artifact")
 
     def test_build_function_with_ctx_run(self):
-        """Recipe with build = function(ctx) uses ctx.run()."""
+        """Recipe with build = function(ctx) uses envy.run()."""
         self.run_recipe("build_function.lua", "local.build_function@v1")
 
         # Verify build artifacts
@@ -106,7 +106,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "function_artifact")
 
     def test_build_with_asset_dependency(self):
-        """Build phase can access dependencies via ctx.asset()."""
+        """Build phase can access dependencies via envy.asset()."""
         # Build recipe with dependency (engine will build dependency automatically)
         self.run_recipe("build_with_asset.lua", "local.build_with_asset@v1")
 
@@ -119,7 +119,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "dependency_data")
 
     def test_build_with_copy_operations(self):
-        """Build phase can copy files and directories with ctx.copy()."""
+        """Build phase can copy files and directories with envy.copy()."""
         self.run_recipe("build_with_copy.lua", "local.build_with_copy@v1")
 
         # Verify copies
@@ -137,7 +137,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertTrue((asset_path / "dest_dir" / "file2.txt").exists())
 
     def test_build_with_move_operations(self):
-        """Build phase can move files and directories with ctx.move()."""
+        """Build phase can move files and directories with envy.move()."""
         self.run_recipe("build_with_move.lua", "local.build_with_move@v1")
 
         # Verify moves
@@ -154,7 +154,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertTrue((asset_path / "moved_dir" / "content.txt").exists())
 
     def test_build_with_extract(self):
-        """Build phase can extract archives with ctx.extract()."""
+        """Build phase can extract archives with envy.extract()."""
         self.run_recipe("build_with_extract.lua", "local.build_with_extract@v1")
 
         # Verify extraction
@@ -276,6 +276,39 @@ class TestBuildPhase(unittest.TestCase):
             asset_path / "output_from_returned_script" / "marker.txt"
         ).read_text()
         self.assertEqual(content.strip(), "returned_script_artifact")
+
+    def test_cache_path_includes_platform_arch(self):
+        """Verify cache variant directory includes platform-arch prefix, not empty."""
+        self.run_recipe("build_function.lua", "local.build_function@v1")
+
+        # Find the variant subdirectory under the identity
+        identity_dir = self.cache_root / "assets" / "local.build_function@v1"
+        self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+
+        variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]
+        self.assertEqual(len(variant_dirs), 1, "Should have exactly one variant directory")
+
+        variant_name = variant_dirs[0].name
+        # Verify format is {platform}-{arch}-blake3-{hash}, not --blake3-{hash}
+        self.assertNotIn(
+            variant_name.startswith("--blake3-"),
+            [True],
+            f"Variant dir should not start with '--blake3-' (missing platform/arch): {variant_name}",
+        )
+
+        # Verify it starts with a valid platform
+        valid_platforms = ("darwin-", "linux-", "windows-")
+        self.assertTrue(
+            any(variant_name.startswith(p) for p in valid_platforms),
+            f"Variant dir should start with platform prefix: {variant_name}",
+        )
+
+        # Verify it contains blake3 hash marker
+        self.assertIn(
+            "-blake3-",
+            variant_name,
+            f"Variant dir should contain '-blake3-': {variant_name}",
+        )
 
 
 if __name__ == "__main__":

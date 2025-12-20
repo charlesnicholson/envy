@@ -9,9 +9,9 @@ DEPENDENCIES = {
   { recipe = "local.ctx_asset_user_provider@v1", source = "ctx_asset_user_provider.lua", needed_by = "stage" },
 }
 
-STAGE = function(ctx)
-  ctx.asset("local.ctx_asset_user_provider@v1")
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.asset("local.ctx_asset_user_provider@v1")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

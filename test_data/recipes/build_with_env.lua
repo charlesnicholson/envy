@@ -1,4 +1,4 @@
--- Test build phase: ctx.run() with custom environment variables
+-- Test build phase: envy.run() with custom environment variables
 IDENTITY = "local.build_with_env@v1"
 
 FETCH = {
@@ -8,13 +8,13 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing custom environment variables")
 
   -- Run with custom environment
   local result
-  if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[
+  if envy.PLATFORM == "windows" then
+    result = envy.run([[
       Write-Output "BUILD_MODE=$env:BUILD_MODE"
       Write-Output "CUSTOM_VAR=$env:CUSTOM_VAR"
       if ($env:BUILD_MODE -ne "release") { exit 1 }
@@ -28,7 +28,7 @@ BUILD = function(ctx, opts)
       capture = true
     })
   else
-    result = ctx.run([[
+    result = envy.run([[
       echo "BUILD_MODE=$BUILD_MODE"
       echo "CUSTOM_VAR=$CUSTOM_VAR"
       test "$BUILD_MODE" = "release" || exit 1

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "util.h"
+
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -12,16 +14,28 @@
 #define ENVY_UNREACHABLE() __builtin_unreachable()
 #endif
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <io.h>
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 namespace envy::platform {
 
-class file_lock {
+class file_lock : uncopyable {
  public:
   explicit file_lock(std::filesystem::path const &path);
   ~file_lock();
   file_lock(file_lock &&) noexcept;
   file_lock &operator=(file_lock &&) noexcept;
-  file_lock(file_lock const &) = delete;
-  file_lock &operator=(file_lock const &) = delete;
 
   explicit operator bool() const;
 

@@ -1,9 +1,9 @@
 -- Test ctx.run with both quiet=true and capture=true
 IDENTITY = "local.check_combo_both@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Both quiet and capture: no TUI, returns stdout/stderr/exit_code
-    local res = ctx.run("echo 'both test'", {quiet = true, capture = true})
+    local res = envy.run("echo 'both test'", {quiet = true, capture = true})
 
     assert(res.exit_code == 0)
     assert(res.stdout ~= nil, "stdout should be captured")
@@ -13,6 +13,6 @@ function CHECK(ctx)
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end

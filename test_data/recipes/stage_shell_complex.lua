@@ -7,7 +7,7 @@ FETCH = {
 }
 
 -- Shell script with complex operations
-if ENVY_PLATFORM == "windows" then
+if envy.PLATFORM == "windows" then
   STAGE = [[
     tar -xzf ../fetch/test.tar.gz --strip-components=1
     New-Item -ItemType Directory -Force -Path custom/bin | Out-Null

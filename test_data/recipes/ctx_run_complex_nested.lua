@@ -1,4 +1,4 @@
--- Test ctx.run() with nested operations and complex scripts
+-- Test envy.run() with nested operations and complex scripts
 IDENTITY = "local.ctx_run_complex_nested@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       $level2 = @("level2a", "level2b")
       $level3 = @("level3a", "level3b")
       foreach ($l2 in $level2) {
@@ -38,7 +38,7 @@ STAGE = function(ctx, opts)
       }
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       mkdir -p level1/{level2a,level2b}/{level3a,level3b}
 
       for l2 in level1/level2*; do

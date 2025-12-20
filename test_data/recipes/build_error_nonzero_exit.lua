@@ -8,14 +8,14 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing error handling")
 
   -- This should fail and abort the build
-  if ENVY_PLATFORM == "windows" then
-    ctx.run("exit 42", { shell = ENVY_SHELL.POWERSHELL })
+  if envy.PLATFORM == "windows" then
+    envy.run("exit 42", { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run("exit 42")
+    envy.run("exit 42")
   end
 
   -- This should never execute

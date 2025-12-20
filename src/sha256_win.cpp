@@ -1,6 +1,6 @@
 #include "sha256.h"
 
-#include "platform_windows.h"
+#include "platform.h"
 #include "util.h"
 
 #include <cstdio>

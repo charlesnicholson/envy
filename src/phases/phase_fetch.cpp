@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "fetch.h"
-#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
@@ -105,25 +105,19 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
                             recipe *r) {
   tui::debug("phase fetch: executing fetch function");
 
-  // Build context (inherits from lua_ctx_common)
-  fetch_phase_ctx ctx{};
-  ctx.fetch_dir = lock->fetch_dir();
-  ctx.run_dir = lock->tmp_dir();
-  ctx.stage_dir = lock->stage_dir();
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.used_basenames = {};
+  std::filesystem::path const tmp_dir{ lock->tmp_dir() };
+
+  // Set up Lua registry context for envy.* functions (run_dir = tmp_dir, lock for
+  // commit_fetch)
+  phase_context_guard ctx_guard{ &eng, r, tmp_dir, lock };
 
   sol::state_view lua{ fetch_func.lua_state() };
-  sol::table ctx_table{ build_fetch_phase_ctx_table(lua, identity, &ctx) };
-
-  // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result result{ call_lua_function_with_enriched_errors(
       r,
       "FETCH",
-      [&]() { return fetch_func(ctx_table, opts); }) };
+      [&]() { return fetch_func(tmp_dir.string(), opts); }) };
 
   bool should_mark_complete{ true };
   sol::object return_value{ result };

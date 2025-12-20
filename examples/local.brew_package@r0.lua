@@ -4,8 +4,8 @@ DEPENDENCIES = { recipe = "local.brew@r0", source = "local.brew@r0.lua" }
 
 local missing_packages = {}
 
-CHECK = function(ctx, opts)
-  local res = ctx.run("brew list", { capture = true, quiet = true })
+CHECK = function(tmp_dir, opts)
+  local res = envy.run("brew list", { capture = true, quiet = true })
   if res.exit_code ~= 0 then
     return false
   end
@@ -26,7 +26,7 @@ CHECK = function(ctx, opts)
   return #missing_packages == 0
 end
 
-INSTALL = function(ctx, opts)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   return "brew install " .. table.concat(missing_packages, " ")
 end
 

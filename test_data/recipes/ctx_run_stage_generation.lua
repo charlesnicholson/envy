@@ -1,4 +1,4 @@
--- Test ctx.run() in stage for code generation
+-- Test envy.run() in stage for code generation
 IDENTITY = "local.ctx_run_stage_generation@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
 $header = @"
 #ifndef GENERATED_H
 #define GENERATED_H
@@ -23,7 +23,7 @@ Set-Content -Path generated.bat -Value "@echo off`necho Generated script"
 Set-Content -Path generated.sh -Value "echo Generated script"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
 cat > generated.h <<EOF
 #ifndef GENERATED_H
 #define GENERATED_H

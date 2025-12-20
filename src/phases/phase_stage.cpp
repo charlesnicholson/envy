@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "extract.h"
-#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
@@ -32,21 +32,6 @@ bool fetch_dir_has_files(std::filesystem::path const &fetch_dir) {
     return true;
   }
   return false;
-}
-
-struct stage_phase_ctx : lua_ctx_common {
-  // run_dir inherited from base is dest_dir (stage_dir)
-};
-
-sol::table build_stage_phase_ctx_table(sol::state_view lua,
-                                       std::string const &identity,
-                                       stage_phase_ctx *ctx) {
-  sol::table ctx_table{ lua.create_table() };
-  ctx_table["identity"] = identity;
-  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
-  ctx_table["stage_dir"] = ctx->run_dir.string();
-  lua_ctx_add_common_bindings(ctx_table, ctx);
-  return ctx_table;
 }
 
 std::filesystem::path determine_stage_destination(sol::state_view lua,
@@ -116,26 +101,21 @@ void run_extract_stage(extract_totals const &totals,
 
 void run_programmatic_stage(sol::protected_function stage_func,
                             std::filesystem::path const &fetch_dir,
-                            std::filesystem::path const &dest_dir,
+                            std::filesystem::path const &stage_dir,
+                            std::filesystem::path const &tmp_dir,
                             std::string const &identity,
                             engine &eng,
                             recipe *r) {
   tui::debug("phase stage: running imperative stage function");
 
-  stage_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = dest_dir;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
+  // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
+  phase_context_guard ctx_guard{ &eng, r, stage_dir };
 
   sol::state_view lua{ stage_func.lua_state() };
-  sol::table ctx_table{ build_stage_phase_ctx_table(lua, identity, &ctx) };
-
-  // Get options from registry and pass as 2nd arg
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   call_lua_function_with_enriched_errors(r, "STAGE", [&]() {
-    return stage_func(ctx_table, opts);
+    return stage_func(fetch_dir.string(), stage_dir.string(), tmp_dir.string(), opts);
   });
 }
 
@@ -184,38 +164,38 @@ void run_stage_phase(recipe *r, engine &eng) {
 
   std::string const &identity{ r->spec->identity };
   sol::state_view lua_view{ *r->lua };
-  std::filesystem::path const dest_dir{ determine_stage_destination(lua_view, lock) };
-  std::filesystem::path const fetch_dir{ lock->fetch_dir() };
+  std::filesystem::path const stage_dir{ determine_stage_destination(lua_view, lock) };
 
   sol::object stage_obj{ lua_view["STAGE"] };
 
-  if (!fetch_dir_has_files(fetch_dir)) {
+  if (!fetch_dir_has_files(lock->fetch_dir())) {
     tui::debug("phase stage: no files in fetch_dir, skipping");
     return;
   }
 
   if (!stage_obj.valid()) {
-    extract_totals const totals{ compute_extract_totals(fetch_dir) };
-    run_extract_stage(totals, fetch_dir, dest_dir, identity, r->tui_section, 0);
+    extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
+    run_extract_stage(totals, lock->fetch_dir(), stage_dir, identity, r->tui_section, 0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
-                    dest_dir,
+                    stage_dir,
                     identity,
                     shell_resolve_default(r->default_shell_ptr));
   } else if (stage_obj.is<sol::protected_function>()) {
     run_programmatic_stage(stage_obj.as<sol::protected_function>(),
-                           fetch_dir,
-                           dest_dir,
+                           lock->fetch_dir(),
+                           stage_dir,
+                           lock->tmp_dir(),
                            identity,
                            eng,
                            r);
   } else if (stage_obj.is<sol::table>()) {
     stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
-    extract_totals const totals{ compute_extract_totals(fetch_dir) };
+    extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
     run_extract_stage(totals,
-                      fetch_dir,
-                      dest_dir,
+                      lock->fetch_dir(),
+                      stage_dir,
                       identity,
                       r->tui_section,
                       opts.strip_components);

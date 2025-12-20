@@ -1,4 +1,4 @@
--- Test build phase: verify ctx.run() captures stdout/stderr
+-- Test build phase: verify envy.run() captures stdout/stderr
 IDENTITY = "local.build_output_capture@v1"
 
 FETCH = {
@@ -8,17 +8,17 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing output capture")
 
   -- Capture output from command
   local result
-  if ENVY_PLATFORM == "windows" then
-    result = ctx.run(
+  if envy.PLATFORM == "windows" then
+    result = envy.run(
         [[if (-not $PSVersionTable) { Write-Output "psversion-init" }; Write-Output "line1"; if (-not ("line1")) { Write-Output "line1" }; Write-Output "line2"; Write-Output "line3"; exit 0]],
         { shell = ENVY_SHELL.POWERSHELL, capture = true })
   else
-    result = ctx.run(
+    result = envy.run(
         [[
       echo "line1"
       echo "line2"
@@ -39,12 +39,12 @@ BUILD = function(ctx, opts)
   end
 
   -- Test with special characters
-  if ENVY_PLATFORM == "windows" then
-      result = ctx.run(
+  if envy.PLATFORM == "windows" then
+      result = envy.run(
           [[Write-Output "Special: !@#$%^&*()"; Write-Output "Unicode: 你好世界"; Write-Output "Quotes: 'single' \"double\""; exit 0]],
           { shell = ENVY_SHELL.POWERSHELL, capture = true })
   else
-    result = ctx.run(
+    result = envy.run(
         [[
       echo "Special: !@#$%^&*()"
       echo "Unicode: 你好世界"

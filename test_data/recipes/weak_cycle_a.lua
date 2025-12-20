@@ -4,10 +4,10 @@ DEPENDENCIES = {
   { recipe = "foo" },  -- Weak ref-only, will match weak_cycle_b
 }
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic install
 end

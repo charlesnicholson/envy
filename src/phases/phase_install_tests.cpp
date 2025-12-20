@@ -135,34 +135,29 @@ struct install_test_fixture {
 
 TEST_CASE_FIXTURE(
     install_test_fixture,
-    "install phase rejects user-managed package that calls mark_install_complete") {
+    "install phase provides nil install_dir for user-managed packages") {
   // Recipe with check verb (user-managed)
   set_check_verb("echo test");
 
-  // Install function that incorrectly calls mark_install_complete
+  // Install function that verifies install_dir is nil for user-managed packages
+  // and properly guards against using it as a path
   set_install_function(R"(
-    function(ctx)
-      ctx.mark_install_complete()
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      -- install_dir is nil for user-managed packages
+      if install_dir ~= nil then
+        error("expected install_dir to be nil for user-managed package")
+      end
+      -- Verify other directories are valid strings
+      if type(stage_dir) ~= "string" then
+        error("expected stage_dir to be string")
+      end
     end
   )");
 
   acquire_lock();
 
-  // run_install_phase should throw error about check XOR cache violation
-  bool exception_thrown = false;
-  std::string exception_msg;
-  try {
-    run_install_phase(r.get(), eng);
-  } catch (std::runtime_error const &e) {
-    exception_thrown = true;
-    exception_msg = e.what();
-  }
-  REQUIRE(exception_thrown);
-  INFO("Exception message: ", exception_msg);
-  // mark_install_complete is not exposed at all for user-managed packages,
-  // so Lua sees it as nil and throws "attempt to call a nil value"
-  CHECK(exception_msg.find("attempt to call a nil value") != std::string::npos);
-  CHECK(exception_msg.find("mark_install_complete") != std::string::npos);
+  // Should succeed - the function properly checks for nil
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(
@@ -171,10 +166,11 @@ TEST_CASE_FIXTURE(
   // Recipe with check verb (user-managed)
   set_check_verb("echo test");
 
-  // Install function that does NOT call mark_install_complete (correct)
+  // Install function with new signature (install_dir is nil for user-managed)
   set_install_function(R"(
-    function(ctx)
-      -- User-managed packages do work but don't populate cache
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      -- User-managed packages receive nil for install_dir
+      -- They do work but don't populate cache
     end
   )");
 
@@ -190,9 +186,9 @@ TEST_CASE_FIXTURE(
   // No check verb (cache-managed)
   clear_check_verb();
 
-  // Install function that returns successfully (auto-marks complete)
+  // Install function with new signature (auto-marks complete)
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       -- Auto-marked complete on successful return
     end
   )");
@@ -214,9 +210,9 @@ TEST_CASE_FIXTURE(
   // No check verb (cache-managed)
   clear_check_verb();
 
-  // Install function that does NOT call mark_install_complete (programmatic package)
+  // Install function with new signature
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       -- Programmatic packages don't populate cache either
     end
   )");
@@ -228,34 +224,34 @@ TEST_CASE_FIXTURE(
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase rejects user-managed calling forbidden extract_all") {
+                  "install phase user-managed receives nil install_dir") {
   // String check verb (user-managed)
   set_check_verb("echo test");
 
-  // Install that incorrectly calls extract_all (forbidden for user-managed)
+  // Install function that verifies install_dir is nil for user-managed
   set_install_function(R"(
-    function(ctx)
-      ctx.extract_all()
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      if install_dir ~= nil then
+        error("expected install_dir to be nil for user-managed package")
+      end
+      -- stage_dir, fetch_dir, tmp_dir should still be valid strings
+      if type(stage_dir) ~= "string" then
+        error("expected stage_dir to be string")
+      end
+      if type(fetch_dir) ~= "string" then
+        error("expected fetch_dir to be string")
+      end
+      if type(tmp_dir) ~= "string" then
+        error("expected tmp_dir to be string")
+      end
     end
   )");
 
   acquire_lock();
   write_install_content();
 
-  // Should throw - extract_all is forbidden for user-managed packages
-  bool exception_thrown = false;
-  std::string exception_msg;
-  try {
-    run_install_phase(r.get(), eng);
-  } catch (std::runtime_error const &e) {
-    exception_thrown = true;
-    exception_msg = e.what();
-  }
-  REQUIRE(exception_thrown);
-  INFO("Exception message: ", exception_msg);
-  // Forbidden APIs throw error mentioning "not available for user-managed"
-  CHECK(exception_msg.find("not available for user-managed") != std::string::npos);
-  CHECK(exception_msg.find("extract_all") != std::string::npos);
+  // Should not throw - all assertions pass
+  CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
@@ -365,7 +361,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
   set_check_verb("echo test");
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       error("Should not run - no lock means cache hit")
     end
   )");
@@ -384,7 +380,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return nil
     end
   )");
@@ -399,7 +395,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   set_check_verb("echo test");
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return nil
     end
   )");
@@ -414,7 +410,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       -- No return statement
     end
   )");
@@ -429,7 +425,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return 42
     end
   )");
@@ -455,7 +451,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return {foo = "bar"}
     end
   )");
@@ -481,7 +477,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return true
     end
   )");
@@ -512,7 +508,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "echo 'returned string executed'"
     end
   )");
@@ -533,7 +529,7 @@ TEST_CASE_FIXTURE(
   set_check_verb("echo test");
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "exit 0"
     end
   )");
@@ -548,20 +544,20 @@ TEST_CASE_FIXTURE(
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function can call ctx.run and return string (cache-managed)") {
+                  "install function can call envy.run and return string (cache-managed)") {
   // No check verb (cache-managed)
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
-      ctx.run("echo 'first command'")
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      envy.run("echo 'first command'")
       return "echo 'second command'"
     end
   )");
 
   acquire_lock();
 
-  // Both ctx.run() and returned string should execute
+  // Both envy.run() and returned string should execute
   CHECK_NOTHROW(run_install_phase(r.get(), eng));
   CHECK(!r->asset_path.empty());
 }
@@ -573,7 +569,7 @@ TEST_CASE_FIXTURE(
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "exit 1"
     end
   )");
@@ -599,7 +595,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   clear_check_verb();
 
   set_install_function(R"(
-    function(ctx)
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return ""
     end
   )");

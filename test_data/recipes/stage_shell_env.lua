@@ -7,7 +7,7 @@ FETCH = {
 }
 
 -- Shell script that uses environment variables
-if ENVY_PLATFORM == "windows" then
+if envy.PLATFORM == "windows" then
   STAGE = [[
     tar -xzf ../fetch/test.tar.gz --strip-components=1
     $pathStatus = if ($env:Path) { 'yes' } else { '' }

@@ -4,7 +4,7 @@ set(ENVY_VERSION "0.0.0")
 
 project(envy
     VERSION ${ENVY_VERSION}
-    DESCRIPTION "Static test driver bundling libgit2, libcurl (mbedTLS), libssh2, mbedTLS, Lua, oneTBB, libarchive, and BLAKE3"
+    DESCRIPTION "Unopionated adaptive package manager"
     LANGUAGES C CXX)
 
 list(PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
@@ -171,6 +171,13 @@ set(ENVY_BASE_SOURCES
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
     src/lua_ctx/lua_ctx_product.cpp
+    src/lua_ctx/lua_envy_deps.cpp
+    src/lua_ctx/lua_envy_extract.cpp
+    src/lua_ctx/lua_envy_fetch.cpp
+    src/lua_ctx/lua_envy_file_ops.cpp
+    src/lua_ctx/lua_envy_path.cpp
+    src/lua_ctx/lua_envy_run.cpp
+    src/lua_ctx/lua_phase_context.cpp
     src/product_util.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
@@ -194,7 +201,9 @@ set(ENVY_BASE_SOURCES
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
     src/libcurl_util.cpp
-    src/platform.cpp
+    $<$<PLATFORM_ID:Windows>:src/platform_win.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/platform_posix.cpp>
+    src/termination.cpp
     src/shell.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>

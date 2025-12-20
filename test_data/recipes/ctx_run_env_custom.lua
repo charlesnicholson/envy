@@ -1,4 +1,4 @@
--- Test ctx.run() with custom environment variables
+-- Test envy.run() with custom environment variables
 IDENTITY = "local.ctx_run_env_custom@v1"
 
 FETCH = {
@@ -6,20 +6,20 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   local env_values = {MY_VAR = "test_value", MY_NUM = "42"}
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       Set-Content -Path env_output.txt -Value ("MY_VAR=" + $env:MY_VAR)
       Add-Content -Path env_output.txt -Value ("MY_NUM=" + $env:MY_NUM)
       if ($env:PATH) { $status = "yes" } else { $status = "" }
       Add-Content -Path env_output.txt -Value ("PATH_AVAILABLE=" + $status)
     ]], {env = env_values, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       echo "MY_VAR=$MY_VAR" > env_output.txt
       echo "MY_NUM=$MY_NUM" >> env_output.txt
       echo "PATH_AVAILABLE=${PATH:+yes}" >> env_output.txt

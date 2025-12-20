@@ -1,4 +1,4 @@
--- Test ctx.run() with only whitespace and comments
+-- Test envy.run() with only whitespace and comments
 IDENTITY = "local.ctx_run_edge_whitespace@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       # This is a comment
 
       # Another comment
@@ -18,11 +18,11 @@ STAGE = function(ctx, opts)
 
     ]], { shell = ENVY_SHELL.POWERSHELL })
 
-    ctx.run([[
+    envy.run([[
       Set-Content -Path after_whitespace.txt -Value "After whitespace script"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       # This is a comment
 
       # Another comment
@@ -30,7 +30,7 @@ STAGE = function(ctx, opts)
 
     ]])
 
-    ctx.run([[
+    envy.run([[
       echo "After whitespace script" > after_whitespace.txt
     ]])
   end

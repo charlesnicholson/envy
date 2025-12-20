@@ -2,7 +2,7 @@
 
 #include "cache.h"
 #include "engine.h"
-#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "phase_check.h"
@@ -20,13 +20,6 @@
 namespace envy {
 namespace {
 
-struct install_phase_ctx : lua_ctx_common {
-  std::filesystem::path install_dir;
-  std::filesystem::path stage_dir;
-  std::filesystem::path tmp_dir;
-  cache::scoped_entry_lock *lock{ nullptr };
-};
-
 bool directory_has_entries(std::filesystem::path const &dir) {
   std::error_code ec;
   if (!std::filesystem::exists(dir, ec) || ec) { return false; }
@@ -41,61 +34,6 @@ bool directory_has_entries(std::filesystem::path const &dir) {
   for (; it != end_iter; ++it) { return true; }
 
   return false;
-}
-
-// Build cache-managed install context table (full access to all directories and APIs)
-sol::table build_install_phase_ctx_table(sol::state_view lua,
-                                         std::string const &identity,
-                                         install_phase_ctx *ctx) {
-  sol::table ctx_table{ lua.create_table() };
-
-  ctx_table["identity"] = identity;
-
-  ctx_table["fetch_dir"] = ctx->fetch_dir.string();
-  ctx_table["stage_dir"] = ctx->stage_dir.string();
-  ctx_table["install_dir"] = ctx->install_dir.string();
-
-  lua_ctx_add_common_bindings(ctx_table, ctx);
-  return ctx_table;
-}
-
-// Build user-managed install phase context table (restricted access)
-// Exposes: tmp_dir, run(), options, identity, asset()
-// Hides: fetch_dir, stage_dir, build_dir, install_dir, asset_dir,
-//        fetch(), extract_all()
-sol::table build_user_managed_install_ctx_table(sol::state_view lua,
-                                                std::string const &identity,
-                                                install_phase_ctx *ctx) {
-  sol::table ctx_table{ lua.create_table() };
-
-  ctx_table["identity"] = identity;
-  ctx_table["tmp_dir"] = ctx->tmp_dir.string();
-  ctx_table["run"] = make_ctx_run(ctx);
-  ctx_table["asset"] = make_ctx_asset(ctx);
-  ctx_table["product"] = make_ctx_product(ctx);
-
-  auto const forbidden_error{ [identity](std::string const name) {
-    return [identity, name]() {
-      throw std::runtime_error("ctx." + name +
-                               " is not available for user-managed package " + identity +
-                               ". User-managed packages cannot use cache-managed APIs.");
-    };
-  } };
-
-  ctx_table["fetch_dir"] = forbidden_error("fetch_dir");
-  ctx_table["stage_dir"] = forbidden_error("stage_dir");
-  ctx_table["build_dir"] = forbidden_error("build_dir");
-  ctx_table["install_dir"] = forbidden_error("install_dir");
-  ctx_table["asset_dir"] = forbidden_error("asset_dir");
-  ctx_table["fetch"] = forbidden_error("fetch");
-  ctx_table["extract"] = forbidden_error("extract");
-  ctx_table["extract_all"] = forbidden_error("extract_all");
-  ctx_table["copy"] = forbidden_error("copy");
-  ctx_table["move"] = forbidden_error("move");
-  ctx_table["ls"] = forbidden_error("ls");
-  ctx_table["commit_fetch"] = forbidden_error("commit_fetch");
-
-  return ctx_table;
 }
 
 bool run_shell_install(std::string_view script,
@@ -153,35 +91,36 @@ bool run_programmatic_install(sol::protected_function install_func,
                               std::filesystem::path const &fetch_dir,
                               std::filesystem::path const &stage_dir,
                               std::filesystem::path const &install_dir,
+                              std::filesystem::path const &tmp_dir,
                               std::string const &identity,
                               engine &eng,
                               recipe *r,
                               bool is_user_managed) {
   tui::debug("phase install: running programmatic install function");
 
-  // User-managed packages use manifest dir as cwd, cache-managed use install_dir
-  std::filesystem::path const run_cwd{ is_user_managed
+  // Determine run_dir: install_dir for cache-managed, project_root for user-managed
+  std::filesystem::path const run_dir{ is_user_managed
                                            ? recipe_spec::compute_project_root(r->spec)
                                            : install_dir };
 
-  install_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = run_cwd;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.install_dir = install_dir;
-  ctx.stage_dir = stage_dir;
-  ctx.tmp_dir = lock->tmp_dir();
-  ctx.lock = lock;
+  // Set up Lua registry context for envy.* functions
+  phase_context_guard ctx_guard{ &eng, r, run_dir };
 
   sol::state_view lua{ install_func.lua_state() };
-  sol::table ctx_table{ is_user_managed
-                            ? build_user_managed_install_ctx_table(lua, identity, &ctx)
-                            : build_install_phase_ctx_table(lua, identity, &ctx) };
-
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+  // no install_dir for user-managed packages.
+  sol::object install_dir_arg{
+    is_user_managed ? sol::object{ sol::lua_nil }
+                    : sol::object{ lua, sol::in_place, install_dir.string() }
+  };
+
   sol::object result_obj{ call_lua_function_with_enriched_errors(r, "INSTALL", [&]() {
-    return install_func(ctx_table, opts);
+    return install_func(install_dir_arg,
+                        stage_dir.string(),
+                        fetch_dir.string(),
+                        tmp_dir.string(),
+                        opts);
   }) };
 
   // Validate return type: must be nil or string
@@ -197,21 +136,20 @@ bool run_programmatic_install(sol::protected_function install_func,
     std::string const returned_script{ result_obj.as<std::string>() };
     tui::debug("phase install: running returned string from install function");
 
-    // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+    // User-managed packages use project_root as cwd, cache-managed use install_dir
     std::filesystem::path const string_cwd{
       is_user_managed ? recipe_spec::compute_project_root(r->spec) : install_dir
     };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
     // Cache-managed packages mark on shell exit 0
-    return run_shell_install(
-        returned_script,
-        string_cwd,
-        is_user_managed ? nullptr : lock,
-        identity,
-        shell_resolve_default(r->default_shell_ptr),
-        r->tui_section,
-        eng.cache_root());
+    return run_shell_install(returned_script,
+                             string_cwd,
+                             is_user_managed ? nullptr : lock,
+                             identity,
+                             shell_resolve_default(r->default_shell_ptr),
+                             r->tui_section,
+                             eng.cache_root());
   }
 
   // Function returned nil/none successfully - mark complete for cache-managed
@@ -290,6 +228,7 @@ void run_install_phase(recipe *r, engine &eng) {
                                                lock->fetch_dir(),
                                                lock->stage_dir(),
                                                lock->install_dir(),
+                                               lock->tmp_dir(),
                                                r->spec->identity,
                                                eng,
                                                r,

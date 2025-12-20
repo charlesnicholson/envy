@@ -14,10 +14,10 @@ DEPENDENCIES = {
   },
 }
 
-STAGE = function(ctx)
-  local val = ctx.product("tool")
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  local val = envy.product("tool")
   assert(val:match("bin/tool"), "expected product path")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

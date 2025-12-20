@@ -3,7 +3,7 @@
 IDENTITY = "local.user_managed_simple@v1"
 
 -- Check if "package" is already installed (simulated by marker file)
-function CHECK(ctx)
+function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
         error("ENVY_TEST_MARKER_SIMPLE must be set")
@@ -18,7 +18,7 @@ function CHECK(ctx)
 end
 
 -- Install the "package" (create marker file)
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
     if not marker then
         error("ENVY_TEST_MARKER_SIMPLE must be set")

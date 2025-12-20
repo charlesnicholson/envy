@@ -4,20 +4,20 @@ IDENTITY = "local.user_managed_string_check@v1"
 
 -- String check: command exits 0 if "installed", non-zero otherwise
 -- Platform-specific: use commands that exist on all platforms
-if ENVY_PLATFORM == "windows" then
+if envy.PLATFORM == "windows" then
     CHECK = "powershell -Command \"Test-Path $env:TEMP\\envy-test-marker-string\""
 else
     CHECK = "test -f $HOME/.envy-test-marker-string"
 end
 
 -- Empty fetch (required for validation)
-function FETCH(ctx)
+function FETCH(tmp_dir, options)
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Create marker file for next check
     local marker
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         marker = os.getenv("TEMP") .. "\\envy-test-marker-string"
     else
         marker = os.getenv("HOME") .. "/.envy-test-marker-string"

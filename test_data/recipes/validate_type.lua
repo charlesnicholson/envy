@@ -4,5 +4,5 @@ VALIDATE = function(opts)
   return 123
 end
 
-CHECK = function(ctx) return true end
-INSTALL = function(ctx) end
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end

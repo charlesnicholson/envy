@@ -13,16 +13,16 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 end
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Access tool (direct dependency) - should work
-  local tool_path = ctx.asset("local.dep_val_tool@v1")
+  local tool_path = envy.asset("local.dep_val_tool@v1")
 
   -- Access lib (transitive dependency: us → tool → lib) - SHOULD WORK
-  local lib_path = ctx.asset("local.dep_val_lib@v1")
+  local lib_path = envy.asset("local.dep_val_lib@v1")
 
-  ctx.run([[echo "transitive access worked" > transitive.txt]])
+  envy.run([[echo "transitive access worked" > transitive.txt]])
 end

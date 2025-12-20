@@ -4,10 +4,10 @@ DEPENDENCIES = {
   { recipe = "local.tool@v1", source = "tool.lua" }
 }
 
-function FETCH(ctx)
+function FETCH(tmp_dir, options)
   -- Fetch phase uses a dependency
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Install from fetched materials
 end

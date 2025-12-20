@@ -8,9 +8,9 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       Write-Host "Building in shell script mode"
       New-Item -ItemType Directory -Path build_output -Force | Out-Null
       Set-Content -Path build_output/artifact.txt -Value "build_artifact"
@@ -19,7 +19,7 @@ BUILD = function(ctx, opts)
       Write-Output "Build string shell success"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       echo "Building in shell script mode"
       mkdir -p build_output
       echo "build_artifact" > build_output/artifact.txt

@@ -7,21 +7,21 @@ FETCH = {
   { source = "https://github.com/google/googletest.git", ref = "v1.16.0" }
 }
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
   local cmd = envy.template([[
 {{python}} ./configure.py --bootstrap --gtest-source-dir={{googletest}}
 ./ninja all
 ./ninja_test
   ]], {
-    python = ctx.product("python3"),
-    googletest = ctx.stage_dir .. "/googletest.git"
+    python = envy.product("python3"),
+    googletest = stage_dir .. "/googletest.git"
   })
 
-  ctx.run(cmd, { cwd = ctx.stage_dir .. "/ninja.git" })
+  envy.run(cmd, { cwd = stage_dir .. "/ninja.git" })
 end
 
-INSTALL = function(ctx, opts)
-  ctx.move(ctx.stage_dir .. "/ninja.git/ninja" .. ENVY_EXE_EXT, ctx.install_dir)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  envy.move(stage_dir .. "/ninja.git/ninja" .. envy.EXE_EXT, install_dir)
 end
 
-PRODUCTS = { ninja = "ninja" .. ENVY_EXE_EXT }
+PRODUCTS = { ninja = "ninja" .. envy.EXE_EXT }

@@ -10,11 +10,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 end
 
-INSTALL = function(ctx, opts)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Can access dependency in install phase
-  ctx.asset("local.needed_by_install_dep@v1")
+  envy.asset("local.needed_by_install_dep@v1")
 end

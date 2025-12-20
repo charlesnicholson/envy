@@ -14,9 +14,9 @@ DEPENDENCIES = {
   },
 }
 
-STAGE = function(ctx)
-  ctx.product("tool")
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.product("tool")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

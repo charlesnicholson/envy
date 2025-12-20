@@ -28,7 +28,7 @@ PACKAGES = {
     options = { ref = "5964f499767097d81dbe034e8b541c3988168073" }},
 }
 
-if ENVY_PLATFORM == "darwin" then
+if envy.PLATFORM == "darwin" then
   append_lists(PACKAGES, { {
     recipe = "local.brew_package@r0", source = "local.brew_package@r0.lua",
     options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } }
@@ -36,7 +36,7 @@ if ENVY_PLATFORM == "darwin" then
 
 end
 
-if ENVY_PLATFORM == "linux" then
+if envy.PLATFORM == "linux" then
   append_lists(PACKAGES, { {
     recipe = "local.apt@r0", source = "local.apt@r0.lua",
     options = { packages = {

@@ -1,10 +1,10 @@
 -- Test concurrent large stdout+stderr with capture (no deadlock)
 IDENTITY = "local.check_concurrent@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Generate large output on both stdout and stderr
     local cmd
-    if ENVY_PLATFORM == "windows" then
+    if envy.PLATFORM == "windows" then
         cmd = [[
 for ($i=1; $i -le 1000; $i++) {
     Write-Output "stdout line $i"
@@ -20,7 +20,7 @@ done
 ]]
     end
 
-    local res = ctx.run(cmd, {capture = true})
+    local res = envy.run(cmd, {capture = true})
 
     -- Verify we got output and didn't deadlock
     assert(res.exit_code == 0, "command should succeed")
@@ -30,6 +30,6 @@ done
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end

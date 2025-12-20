@@ -1,4 +1,4 @@
--- Test ctx.run() with absolute cwd path
+-- Test envy.run() with absolute cwd path
 IDENTITY = "local.ctx_run_cwd_absolute@v1"
 
 FETCH = {
@@ -6,14 +6,14 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
+  if envy.PLATFORM == "windows" then
     local temp = os.getenv("TEMP") or "C:\\\\Temp"
     local needs_sep = temp:match("[/\\\\]$") == nil
     local target = temp .. (needs_sep and "\\\\" or "") .. "envy_ctx_run_test.txt"
-    ctx.run(string.format([[
+    envy.run(string.format([[
       Set-Content -Path pwd_absolute.txt -Value (Get-Location).Path
       # Use Out-File with -Force to ensure file is created and flushed
       "Running in TEMP" | Out-File -FilePath "%s" -Force -Encoding ascii
@@ -23,7 +23,7 @@ STAGE = function(ctx, opts)
       }
     ]], target, target), {cwd = temp, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       pwd > pwd_absolute.txt
       echo "Running in /tmp" > /tmp/envy_ctx_run_test.txt
       # Verify file was created

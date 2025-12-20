@@ -25,11 +25,10 @@ local common = {
     },
     {  -- Custom fetch (JFrog example)
         recipe = "corporate.toolchain@v1",
-        FETCH = function(ctx)
-            local jfrog = ctx:asset("jfrog.cli@v2")
-            local tmp = ctx.tmp_dir
-            ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
-            ctx:commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
+        FETCH = function(tmp_dir, options)
+            local jfrog = envy.asset("jfrog.cli@v2")
+            envy.run(jfrog .. "/bin/jfrog rt download recipes/toolchain.lua " .. tmp_dir .. "/recipe.lua")
+            envy.commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
         end,
         DEPENDENCIES = {
             { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
@@ -63,7 +62,7 @@ PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 - `fetch` — Custom Lua function for exotic sources (JFrog, authenticated APIs); mutually exclusive with `source`
 - `file` — Project-local recipe path (never cached; `local.*` namespace only)
 - `subdir` — Subdirectory within archive or git repo containing recipe entry point
-- `options` — Recipe-specific configuration (passed to recipe Lua as `ctx.options`)
+- `options` — Recipe-specific configuration (passed to phase functions as `options` parameter)
 - `dependencies` — Transitive dependencies (recipes this recipe needs)
   - **Strong:** full recipe spec with `source` (or manifest-provided source)
   - **Weak:** partial `recipe` plus `weak = { ... }` fallback spec
@@ -75,7 +74,7 @@ PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 ## Shell Configuration
 
-Manifests can specify a `DEFAULT_SHELL` global to control how `ctx:run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
+Manifests can specify a `DEFAULT_SHELL` global to control how `envy.run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
 
 **Built-in shells (constants):**
 - `ENVY_SHELL.BASH` — POSIX bash (default on macOS/Linux)
@@ -94,6 +93,8 @@ Manifests can specify a `DEFAULT_SHELL` global to control how `ctx:run()` execut
 ```lua
 DEFAULT_SHELL = function(ctx)
   -- Query deployed assets to use as interpreter
+  -- Note: ctx:asset() used here (not envy.asset()) because DEFAULT_SHELL
+  -- runs in manifest context before recipe phases execute
   local python = ctx:asset("python@v3.11")
   return {inline = {python .. "/bin/python3", "-c"}}
 end
@@ -104,6 +105,7 @@ end
 **Implementation notes:**
 - Functions evaluated lazily during engine execution (after dependency graph built)
 - Result cached per manifest
+- DEFAULT_SHELL functions use `ctx:asset()` (not `envy.asset()`) because they run in manifest context
 - **Future work:** Dependency analysis—extract `ctx:asset()` calls from function to add implicit dependencies, ensuring interpreter deploys before dependent recipes run
 
 ## Recipes
@@ -114,7 +116,7 @@ end
 
 **Sources:**
 - **Declarative:** `source` field with URL (http/https/s3/file) or git repo; verified via `sha256` (URL) or `ref` (git); cached
-- **Custom fetch:** `fetch` function with verification enforced at API boundary (`ctx:fetch`, `ctx:import_file`); cached
+- **Custom fetch:** `fetch` function with verification enforced at API boundary (`envy.fetch`, `envy.commit_fetch`); cached
 - **Project-local:** `file` path in project tree; never cached; `local.*` namespace only
 - **Fetch prerequisites (nested):** `source.dependencies` declares recipes that must reach completion before this recipe’s fetch runs. These can be strong, weak, or reference-only.
 
@@ -131,7 +133,7 @@ end
 
 2. **SHA256 verification** (optional, namespace-specific):
   - Declarative sources accept SHA256 (URL) or commit SHA (git)
-  - Custom fetch accepts SHA256 per-file via `ctx.fetch()` API
+  - Custom fetch accepts SHA256 per-file via `envy.fetch()` API
   - If SHA256 provided, verification happens at fetch time; mismatch causes hard failure
   - Never re-verified from cache
   - **Permissive by default**: SHA256 optional for all recipes
@@ -155,8 +157,8 @@ Recipes define verbs describing how to acquire, validate, and install packages:
   - String: `fetch = "https://..."` (no verification)
   - Single file: `fetch = {url="...", sha256="..."}` (optional verification)
   - Multiple files: `fetch = {{url="..."}, {url="..."}}` (concurrent, optional verification per-file)
-  - Custom function: `fetch = function(ctx) ctx.fetch(...) end` (imperative with `ctx.fetch()` API)
-  - Function returning declarative: `fetch = function(ctx) return "https://..." end` (enables templating with `ctx.options`; return value can be any declarative form: string, table, array; can mix with imperative `ctx.fetch()` calls)
+  - Custom function: `FETCH = function(tmp_dir, options) envy.fetch(...) end` (imperative with `envy.fetch()` API)
+  - Function returning declarative: `FETCH = function(tmp_dir, options) return "https://..." end` (enables templating with options; return value can be any declarative form: string, table, array; can mix with imperative `envy.fetch()` calls)
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
 - **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
@@ -167,10 +169,10 @@ Envy supports two package models distinguished by CHECK verb presence:
 
 **Cache-Managed Packages** (no CHECK verb):
 - Artifacts stored in cache—hash-based lookup via `cache::ensure_asset()`
-- Install writes to `lock->install_dir()`; on successful return, envy auto-marks complete
+- Install writes to `install_dir`; on successful return, envy auto-marks complete
 - Lock destructor renames `install/` → `asset/`, touches `envy-complete`
 - Subsequent runs: cache hit (asset exists) skips all phases
-- Full ctx API: `fetch_dir`, `stage_dir`, `install_dir`, `extract_all()`, etc.
+- Full pipeline: FETCH → STAGE → BUILD → INSTALL
 - Example: toolchains, libraries, build tools
 
 **User-Managed Packages** (CHECK verb present):
@@ -178,9 +180,9 @@ Envy supports two package models distinguished by CHECK verb presence:
 - CHECK verb tests satisfaction (string command or function returning bool)
 - Lock marked user-managed via `lock->mark_user_managed()`—destructor purges entire `entry_dir` (ephemeral workspace)
 - Install phase modifies system; workspace never persists to cache
-- Restricted ctx API: only `tmp_dir`, `run()`, `asset()`, `product()`, `identity`, `options`
-- Forbidden: `fetch_dir`, `stage_dir`, `install_dir`, `extract_all()`, `copy()`, `move()`, etc.
-- Attempting forbidden APIs throws runtime error
+- **Cannot define FETCH/STAGE/BUILD verbs**—only CHECK and INSTALL allowed
+- INSTALL receives `nil` for `install_dir` (signals user-managed context)
+- Default cwd for `envy.run()` is `project_root` (not cache directory)
 - Example: brew/apt wrappers, environment setup, credential files
 
 **Double-Check Lock Pattern (user-managed only):**
@@ -194,9 +196,9 @@ Race example: Process A checks (false), waits for lock. Process B holds lock, in
 
 **Implementation mechanics:**
 - Detection: `recipe_has_check_verb(r, lua)` → user vs cache path in `run_check_phase()`
-- User-managed lock: `phase_check.cpp:169` calls `lock->mark_user_managed()`
-- Lock destructor (`cache.cpp:158`): `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_asset(); }`
-- Ctx isolation: `phase_install.cpp:67` builds restricted table, forbidden APIs throw errors
+- User-managed lock: `phase_check.cpp` calls `lock->mark_user_managed()`
+- Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_asset(); }`
+- Validation: `phase_recipe_fetch.cpp` rejects FETCH/STAGE/BUILD verbs when CHECK present
 
 **Example: System Package Wrapper**
 ```lua
@@ -204,17 +206,17 @@ Race example: Process A checks (false), waits for lock. Process B holds lock, in
 IDENTITY = "python.interpreter@v3"
 
 -- Check if Python already installed
-CHECK = function(ctx)
-  local result = ctx.run("python3 --version", {quiet = true})
+CHECK = function(project_root, options)
+  local result = envy.run("python3 --version", {quiet = true})
   return result.exit_code == 0
 end
 
--- Install via platform package manager
-INSTALL = function(ctx)
-  if ENVY_PLATFORM == "darwin" then
-    ctx.run("brew install python3")
-  elseif ENVY_PLATFORM == "linux" then
-    ctx.run("sudo apt-get install -y python3")
+-- Install via platform package manager (install_dir is nil for user-managed)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  if envy.PLATFORM == "darwin" then
+    envy.run("brew install python3")
+  elseif envy.PLATFORM == "linux" then
+    envy.run("sudo apt-get install -y python3")
   end
   -- Workspace is ephemeral—purged after completion
 end
@@ -226,12 +228,12 @@ end
 IDENTITY = "arm.gcc@v2"
 -- No CHECK verb—hash-based cache lookup
 
-FETCH = {url = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
+FETCH = {source = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
 
-STAGE = function(ctx) ctx.extract_all() end
+STAGE = {strip = 1}
 
-INSTALL = function(ctx)
-  ctx.copy(ctx.stage_dir .. "/gcc", ctx.install_dir)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.copy(stage_dir .. "/gcc", install_dir)
   -- Auto-marked complete on successful return—lock destructor renames install → asset
 end
 ```
@@ -251,14 +253,14 @@ DEPENDENCIES = {
   },
 }
 
-BUILD = function(ctx)
-  local gcc_root = ctx:asset("arm.gcc@v2")
-  ctx:run("./configure", "--prefix=" .. ctx.install_dir, "CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
-  ctx:run("make", "-j" .. ctx.cores)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  local gcc_root = envy.asset("arm.gcc@v2")
+  envy.run("./configure --prefix=" .. stage_dir .. " CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
+  envy.run("make -j$(nproc)")
 end
 
-INSTALL = function(ctx)
-  ctx:run("make", "install")
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("make install DESTDIR=" .. install_dir)
 end
 ```
 
@@ -327,15 +329,15 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 ```lua
 {
   recipe = "corporate.toolchain@v1",
-  FETCH = function(ctx)
-    local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
+  FETCH = function(tmp_dir, options)
+    local jfrog = envy.asset("jfrog.cli@v2")  -- Access installed dependency
 
     -- Download files concurrently with verification
-    local files = ctx.fetch({
-      {url = "https://internal.com/recipe.lua", sha256 = "abc..."},
-      {url = "https://internal.com/helpers.lua", sha256 = "def..."}
+    envy.fetch({
+      {source = "https://internal.com/recipe.lua", sha256 = "abc..."},
+      {source = "https://internal.com/helpers.lua", sha256 = "def..."}
     })
-    -- files = {"recipe.lua", "helpers.lua"}
+    envy.commit_fetch({"recipe.lua", "helpers.lua"})
   end,
   DEPENDENCIES = {
     { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
@@ -343,40 +345,15 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 }
 ```
 
-**Recipe fetch context API:**
-```lua
-ctx = {
-  -- Identity & configuration
-  IDENTITY = string,                                -- Recipe identity (recipes only, not manifests)
-  options = table,                                  -- Recipe options (always present, may be empty)
-
-  -- Directories
-  tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
-
-  -- Download functions (concurrent, atomic commit)
-  FETCH = function(spec) -> string | table,         -- Download file(s), verify SHA256 if provided
-                                                    -- spec: {url="...", sha256="..."} or {{...}, {...}}
-                                                    -- Returns: basename(s) of downloaded file(s)
-
-  -- Dependency access
-  asset = function(identity) -> string,             -- Path to installed dependency
-
-  -- Process execution
-  run = function(cmd, ...) -> number,               -- Execute subprocess, stream output
-  run_capture = function(cmd, ...) -> table,        -- Capture stdout/stderr/exitcode
-}
-
--- Platform globals
-ENVY_PLATFORM, ENVY_ARCH, ENVY_PLATFORM_ARCH
-```
+**Fetch phase signature:** `FETCH(tmp_dir, options)` — tmp_dir is ephemeral workspace; options passed from manifest.
 
 **Fetch behavior:**
-- **Polymorphic API**: Single file `ctx.fetch({url="..."})` or batch `ctx.fetch({{url="..."}, {url="..."}})`
+- **Polymorphic API**: Single file `envy.fetch({source="..."})` or batch `envy.fetch({{source="..."}, ...})`
 - **Concurrent**: All downloads happen in parallel via TBB task_group
 - **Atomic**: All files downloaded and verified before ANY committed to fetch_dir (all-or-nothing)
 - **SHA256 optional**: If provided, verified after download; if absent, permissive
 
-**Verification:** SHA256 is **optional**. If `sha256` field present, Envy verifies after download. If absent, download proceeds without verification (permissive mode). Custom fetch functions cannot bypass—all downloads go through `ctx.fetch()` API. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
+**Verification:** SHA256 is **optional**. If `sha256` field present, Envy verifies after download. If absent, download proceeds without verification (permissive mode). Custom fetch functions cannot bypass—all downloads go through `envy.fetch()` API. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
 
 **Cache layout:** Custom fetch → multi-file cache directory with `recipe.lua` entry point:
 ```
@@ -388,7 +365,7 @@ ENVY_PLATFORM, ENVY_ARCH, ENVY_PLATFORM_ARCH
     ├── fetch/               # Downloaded files moved here after verification
     │   └── envy-complete
     └── work/
-        └── tmp/             # Temp directory for ctx.fetch() (cleaned after)
+        └── tmp/             # Temp directory for envy.fetch() (cleaned after)
 ```
 
 ### Phase Dependencies via `needed_by`
@@ -410,8 +387,8 @@ DEPENDENCIES = {
 {
   {
     recipe = "corporate.toolchain@v1",
-    FETCH = function(ctx)
-      local jfrog = ctx:asset("jfrog.cli@v2")  -- Tool must be installed first
+    FETCH = function(tmp_dir, options)
+      local jfrog = envy.asset("jfrog.cli@v2")  -- Tool must be installed first
       -- ... fetch using jfrog CLI ...
     end,
     DEPENDENCIES = {
@@ -450,7 +427,7 @@ DEPENDENCIES = {
 **Cycle detection:** Must catch cycles during graph construction. Example illegal cycle:
 ```lua
 -- Recipe A
-{ recipe = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
+{ recipe = "A@v1", FETCH = function(tmp_dir, opts) envy.asset("B@v1") end,
   DEPENDENCIES = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
 
 -- Recipe B
@@ -496,8 +473,8 @@ Recipes run only on host platform—no cross-deployment. Single recipe file adap
 
 **Single-file with conditionals:**
 ```lua
-FETCH = function(ctx)
-  local version = ctx.options.version or "13.2.0"
+FETCH = function(tmp_dir, options)
+  local version = options.version or "13.2.0"
   local hashes = {
     ["13.2.0"] = {
       ["darwin-arm64"] = "a1b2...", ["linux-x86_64"] = "c3d4...",
@@ -505,21 +482,17 @@ FETCH = function(ctx)
   }
 
   return {
-    url = string.format("https://arm.com/gcc-%s-%s-%s.tar.xz",
-                       version, ENVY_PLATFORM, ENVY_ARCH),
-    sha256 = hashes[version][ENVY_PLATFORM_ARCH],
+    source = string.format("https://arm.com/gcc-%s-%s-%s.tar.xz",
+                       version, envy.PLATFORM, envy.ARCH),
+    sha256 = hashes[version][envy.PLATFORM_ARCH],
   }
 end
 
-STAGE = function(ctx)
-  ctx:extract_all()
-end
+STAGE = {strip = 1}  -- Declarative form: extract all archives, strip 1 level
 
-INSTALL = function(ctx)
-  ctx:add_to_path("bin")
-  if ENVY_PLATFORM == "darwin" then
-    ctx:fixup_macos_rpaths()
-  end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Copy bin/ to install_dir, platform-specific post-processing if needed
+  envy.copy(stage_dir .. "/bin", install_dir .. "/bin")
 end
 ```
 
@@ -578,7 +551,7 @@ assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
 
 **Interactive mode:** Global mutex serializes recipes needing terminal control (sudo, installers). Acquire locks, pauses rendering; release unlocks, resumes. RAII guard available.
 
-**Integration:** Phases delegate TUI management to `tui_actions` helpers (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`)—single-responsibility, consistent formatting, testable in isolation. `ctx.run()` auto-creates `run_progress` when recipe has `tui_section`; Lua code gets TUI integration automatically.
+**Integration:** Phases delegate TUI management to `tui_actions` helpers (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`)—single-responsibility, consistent formatting, testable in isolation. `envy.run()` auto-creates `run_progress` when recipe has `tui_section`; Lua code gets TUI integration automatically.
 
 **Test API:** `#ifdef ENVY_UNIT_TEST` exposes `g_terminal_width`, `g_isatty`, `g_now` globals and `test::render_section_frame()` for pure rendering tests without TUI thread.
 

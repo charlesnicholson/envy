@@ -2,7 +2,7 @@
 
 #include "engine.h"
 #include "fetch.h"
-#include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
@@ -201,15 +201,9 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
   if (cache_result.lock) {
     tui::debug("fetch recipe %s via custom fetch function", spec.identity.c_str());
 
-    // Create fetch_phase_ctx for custom fetch function
-    fetch_phase_ctx ctx;
-    ctx.fetch_dir = cache_result.lock->install_dir();
-    ctx.run_dir = cache_result.lock->work_dir() / "tmp";
-    ctx.stage_dir = cache_result.lock->stage_dir();
-    ctx.engine_ = &eng;
-    ctx.recipe_ = parent;
-
-    std::filesystem::create_directories(ctx.run_dir);
+    // Set up paths for custom fetch function
+    std::filesystem::path const tmp_dir{ cache_result.lock->work_dir() / "tmp" };
+    std::filesystem::create_directories(tmp_dir);
 
     std::lock_guard const lock(parent->lua_mutex);
 
@@ -219,11 +213,7 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
     }
 
     {
-      // Build Lua context table with all fetch bindings
       sol::state_view parent_lua_view{ *parent->lua };
-      sol::table ctx_table{
-        build_fetch_phase_ctx_table(parent_lua_view, spec.identity, &ctx)
-      };
 
       // Look up the fetch function from parent's dependencies
       if (!recipe_spec::lookup_and_push_source_fetch(parent_lua_view, spec.identity)) {
@@ -231,14 +221,19 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
       }
 
       // Stack: [function]
-      // Call fetch(ctx, options)
       sol::protected_function fetch_func{ parent_lua_view,
                                           sol::stack_reference(parent_lua_view.lua_state(),
                                                                -1) };
       lua_pop(parent_lua_view.lua_state(), 1);  // pop function
       sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
-      sol::protected_function_result fetch_result{ fetch_func(ctx_table, options_obj) };
+      // Set up phase context with lock so envy.commit_fetch can access paths.
+      // The inline source.fetch runs in parent's Lua state, so we pass the lock
+      // explicitly rather than through parent->lock.
+      phase_context_guard ctx_guard{ &eng, parent, tmp_dir, cache_result.lock.get() };
+
+      sol::protected_function_result fetch_result{ fetch_func(tmp_dir.string(),
+                                                              options_obj) };
 
       if (!fetch_result.valid()) {
         sol::error err = fetch_result;
@@ -247,11 +242,29 @@ std::filesystem::path fetch_custom_function(recipe_spec const &spec,
       }
     }
 
+    // Custom fetch creates recipe.lua in fetch_dir via envy.commit_fetch.
+    // The lock destructor will clean up fetch_dir, so move recipe.lua to install_dir
+    // which gets renamed to asset_dir on successful completion.
+    std::filesystem::path const fetch_dir{ cache_result.lock->fetch_dir() };
+    std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
+    std::filesystem::path const recipe_src{ fetch_dir / "recipe.lua" };
+    std::filesystem::path const recipe_dst{ install_dir / "recipe.lua" };
+
+    if (!std::filesystem::exists(recipe_src)) {
+      throw std::runtime_error("Custom fetch did not create recipe.lua for: " +
+                               spec.identity);
+    }
+
+    std::filesystem::rename(recipe_src, recipe_dst);
+
     cache_result.lock->mark_install_complete();
     cache_result.lock.reset();
+
+    // Recipe is now at asset_path / "recipe.lua" after lock cleanup
+    return cache_result.asset_path / "recipe.lua";
   }
 
-  // Validate the recipe.lua that was created by custom fetch
+  // Cache was already complete - recipe.lua should exist in asset_path
   std::filesystem::path const recipe_path{ cache_result.asset_path / "recipe.lua" };
   if (!std::filesystem::exists(recipe_path)) {
     throw std::runtime_error("Custom fetch did not create recipe.lua for: " +
@@ -572,8 +585,9 @@ void run_recipe_fetch_phase(recipe *r, engine &eng) {
 
   r->products = parse_products_table(spec, *lua, r);
   for (auto const &[name, value] : r->products) {
-    ENVY_TRACE_EMIT((trace_events::product_parsed{
-        .recipe = spec.identity, .product_name = name, .product_value = value}));
+    ENVY_TRACE_EMIT((trace_events::product_parsed{ .recipe = spec.identity,
+                                                   .product_name = name,
+                                                   .product_value = value }));
   }
   r->owned_dependency_specs = parse_dependencies_table(*lua, recipe_path, spec);
 

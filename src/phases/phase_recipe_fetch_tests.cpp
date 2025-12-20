@@ -52,7 +52,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name) {
     std::ofstream ofs{ recipe_file };
     ofs << "IDENTITY = \"test.check_" << phase_name << "@v1\"\n";
     ofs << "CHECK = \"echo test\"\n";
-    ofs << phase_name << " = function(ctx) end\n";
+    ofs << phase_name << " = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   }
 
   auto *spec{ make_local_spec("test.check_" + phase_name + "@v1", recipe_file) };
@@ -164,8 +164,8 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
     std::ofstream ofs{ recipe_file_ok };
     ofs << "IDENTITY = \"test.validate_ok@v1\"\n";
     ofs << "VALIDATE = function(opts) assert(opts.foo == \"bar\") end\n";
-    ofs << "CHECK = function(ctx) return true end\n";
-    ofs << "INSTALL = function(ctx) end\n";
+    ofs << "CHECK = function(project_root) return true end\n";
+    ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
   }
 
@@ -174,8 +174,8 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
     std::ofstream ofs{ recipe_file_true };
     ofs << "IDENTITY = \"test.validate_true@v1\"\n";
     ofs << "VALIDATE = function(opts) return true end\n";
-    ofs << "CHECK = function(ctx) return true end\n";
-    ofs << "INSTALL = function(ctx) end\n";
+    ofs << "CHECK = function(project_root) return true end\n";
+    ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
   }
 
@@ -203,8 +203,8 @@ TEST_CASE("VALIDATE returns false fails") {
   std::ofstream ofs{ recipe_file };
   ofs << "IDENTITY = \"test.validate_false@v1\"\n";
   ofs << "VALIDATE = function(opts) return false end\n";
-  ofs << "CHECK = function(ctx) return true end\n";
-  ofs << "INSTALL = function(ctx) end\n";
+  ofs << "CHECK = function(project_root) return true end\n";
+  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
   auto *spec{ make_local_spec("test.validate_false@v1", recipe_file) };
@@ -236,8 +236,8 @@ TEST_CASE("VALIDATE returns string fails with message") {
   std::ofstream ofs{ recipe_file };
   ofs << "IDENTITY = \"test.validate_string@v1\"\n";
   ofs << "VALIDATE = function(opts) return \"nope\" end\n";
-  ofs << "CHECK = function(ctx) return true end\n";
-  ofs << "INSTALL = function(ctx) end\n";
+  ofs << "CHECK = function(project_root) return true end\n";
+  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
   auto *spec{ make_local_spec("test.validate_string@v1", recipe_file) };
@@ -268,8 +268,8 @@ TEST_CASE("VALIDATE invalid return type errors") {
   std::ofstream ofs{ recipe_file };
   ofs << "IDENTITY = \"test.validate_type@v1\"\n";
   ofs << "VALIDATE = function(opts) return 123 end\n";
-  ofs << "CHECK = function(ctx) return true end\n";
-  ofs << "INSTALL = function(ctx) end\n";
+  ofs << "CHECK = function(project_root) return true end\n";
+  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
   auto *spec{ make_local_spec("test.validate_type@v1", recipe_file) };
@@ -291,8 +291,8 @@ TEST_CASE("VALIDATE set to non-function errors") {
   std::ofstream ofs{ recipe_file };
   ofs << "IDENTITY = \"test.validate_nonfn@v1\"\n";
   ofs << "VALIDATE = 42\n";
-  ofs << "CHECK = function(ctx) return true end\n";
-  ofs << "INSTALL = function(ctx) end\n";
+  ofs << "CHECK = function(project_root) return true end\n";
+  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
   auto *spec{ make_local_spec("test.validate_nonfn@v1", recipe_file) };
@@ -314,8 +314,8 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
   std::ofstream ofs{ recipe_file };
   ofs << "IDENTITY = \"test.validate_error@v1\"\n";
   ofs << "VALIDATE = function(opts) error(\"boom\") end\n";
-  ofs << "CHECK = function(ctx) return true end\n";
-  ofs << "INSTALL = function(ctx) end\n";
+  ofs << "CHECK = function(project_root) return true end\n";
+  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
   auto *spec{ make_local_spec("test.validate_error@v1", recipe_file) };

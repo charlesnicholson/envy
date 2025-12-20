@@ -9,10 +9,10 @@ DEPENDENCIES = {
   { recipe = "local.ctx_asset_provider@v1", source = "ctx_asset_provider.lua", needed_by = "stage" },
 }
 
-STAGE = function(ctx)
-  local path = ctx.asset("local.ctx_asset_provider@v1")
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  local path = envy.asset("local.ctx_asset_provider@v1")
   assert(path:match("ctx_asset_provider"), "asset path should include provider identity")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

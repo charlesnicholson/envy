@@ -9,9 +9,9 @@ FETCH = {
 }
 
 -- No check verb - this is cache-managed
-function STAGE(ctx)
+function STAGE(fetch_dir, stage_dir, tmp_dir, options)
     -- Verify fetch happened
-    local readme = ctx.fetch_dir .. "/README.md"
+    local readme = fetch_dir .. "/README.md"
     local f = io.open(readme, "r")
     if not f then
         error("Fetch did not produce README.md in fetch_dir")
@@ -22,15 +22,15 @@ function STAGE(ctx)
     -- Stage will be purged after install completes
 end
 
-function BUILD(ctx)
+function BUILD(stage_dir, install_dir, fetch_dir, tmp_dir, options)
     -- Verify stage_dir exists and is accessible
-    if not ctx.stage_dir then
+    if not stage_dir then
         error("stage_dir not available in build phase")
     end
     -- Build dir will be purged after install completes
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Simulate system installation (create marker)
     local marker = os.getenv("ENVY_TEST_MARKER_WITH_FETCH")
     if not marker then
@@ -45,7 +45,7 @@ function INSTALL(ctx)
     f:close()
 
     -- Verify all directories were available during install
-    if not ctx.fetch_dir or not ctx.stage_dir or not ctx.install_dir then
+    if not fetch_dir or not stage_dir or not install_dir then
         error("Missing directory context in install phase")
     end
 

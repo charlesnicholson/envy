@@ -268,11 +268,11 @@ TEST_CASE("manifest::load parses mixed string and table packages") {
 TEST_CASE("manifest::load allows platform conditionals") {
   char const *script{ R"(
     PACKAGES = {}
-    if ENVY_PLATFORM == "darwin" then
+    if envy.PLATFORM == "darwin" then
       PACKAGES = { { recipe = "envy.homebrew@v4", source = "/fake/r.lua" } }
-    elseif ENVY_PLATFORM == "linux" then
+    elseif envy.PLATFORM == "linux" then
       PACKAGES = { { recipe = "system.apt@v1", source = "/fake/r.lua" } }
-    elseif ENVY_PLATFORM == "windows" then
+    elseif envy.PLATFORM == "windows" then
       PACKAGES = { { recipe = "system.choco@v1", source = "/fake/r.lua" } }
     end
   )" };

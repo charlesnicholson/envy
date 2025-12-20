@@ -9,10 +9,10 @@ DEPENDENCIES = {
   { recipe = "local.ctx_asset_provider@v1", source = "ctx_asset_provider.lua", needed_by = "install" },
 }
 
-STAGE = function(ctx)
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   -- needed_by is install, so this should fail when enforced
-  ctx.asset("local.ctx_asset_provider@v1")
+  envy.asset("local.ctx_asset_provider@v1")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

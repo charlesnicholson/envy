@@ -6,11 +6,13 @@
 
 namespace envy {
 
-TEST_CASE("ENVY_EXE_EXT injected into Lua state") {
+TEST_CASE("envy.EXE_EXT injected into Lua state") {
   auto lua{ sol_util_make_lua_state() };
   lua_envy_install(*lua);
 
-  sol::object ext_obj{ (*lua)["ENVY_EXE_EXT"] };
+  sol::table envy_table{ (*lua)["envy"] };
+  REQUIRE(envy_table.valid());
+  sol::object ext_obj{ envy_table["EXE_EXT"] };
   REQUIRE(ext_obj.is<std::string>());
   std::string const ext{ ext_obj.as<std::string>() };
 

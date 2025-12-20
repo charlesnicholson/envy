@@ -1,5 +1,11 @@
 #include "lua_envy.h"
 
+#include "lua_ctx/lua_envy_deps.h"
+#include "lua_ctx/lua_envy_extract.h"
+#include "lua_ctx/lua_envy_fetch.h"
+#include "lua_ctx/lua_envy_file_ops.h"
+#include "lua_ctx/lua_envy_path.h"
+#include "lua_ctx/lua_envy_run.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -103,12 +109,6 @@ void lua_envy_install(sol::state &lua) {
 
   std::string const platform_arch{ std::string{ platform } + "-" + arch };
 
-  // Platform globals
-  lua["ENVY_PLATFORM"] = platform;
-  lua["ENVY_ARCH"] = arch;
-  lua["ENVY_PLATFORM_ARCH"] = platform_arch;
-  lua["ENVY_EXE_EXT"] = exe_ext;
-
   // Override print to route through TUI
   lua["print"] = [](sol::variadic_args va) {
     std::ostringstream oss;
@@ -140,15 +140,31 @@ void lua_envy_install(sol::state &lua) {
     tui::error("Failed to load envy.template: %s", err.what());
   }
 
+  // Platform globals (moved from root level ENVY_* to envy.*)
+  envy_table["PLATFORM"] = platform;
+  envy_table["ARCH"] = arch;
+  envy_table["PLATFORM_ARCH"] = platform_arch;
+  envy_table["EXE_EXT"] = exe_ext;
+
+  // Install module functions
+  lua_envy_path_install(envy_table);
+  lua_envy_file_ops_install(envy_table);
+  lua_envy_run_install(envy_table);
+  lua_envy_extract_install(envy_table);
+  lua_envy_fetch_install(envy_table);
+  lua_envy_deps_install(envy_table);
+
   lua["envy"] = envy_table;
+
+  // Register all shell constants on all platforms; runtime validation rejects incompatible shells
   sol::table shell_tbl{ lua.create_table_with("BASH",
                                               static_cast<int>(shell_choice::bash),
                                               "SH",
-                                              static_cast<int>(shell_choice::sh)) };
-#if defined(_WIN32)
-  shell_tbl["CMD"] = static_cast<int>(shell_choice::cmd);
-  shell_tbl["POWERSHELL"] = static_cast<int>(shell_choice::powershell);
-#endif
+                                              static_cast<int>(shell_choice::sh),
+                                              "CMD",
+                                              static_cast<int>(shell_choice::cmd),
+                                              "POWERSHELL",
+                                              static_cast<int>(shell_choice::powershell)) };
   lua["ENVY_SHELL"] = shell_tbl;
 }
 

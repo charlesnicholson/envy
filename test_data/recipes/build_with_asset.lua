@@ -1,4 +1,4 @@
--- Test build phase: ctx.asset() for dependency access
+-- Test build phase: envy.asset() for dependency access
 IDENTITY = "local.build_with_asset@v1"
 
 DEPENDENCIES = {
@@ -12,16 +12,16 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
-  print("Accessing dependency via ctx.asset()")
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("Accessing dependency via envy.asset()")
 
-  local dep_path = ctx.asset("local.build_dependency@v1")
+  local dep_path = envy.asset("local.build_dependency@v1")
   print("Dependency path: " .. dep_path)
 
   -- Copy dependency file
   local result
-  if ENVY_PLATFORM == "windows" then
-    result = ctx.run([[
+  if envy.PLATFORM == "windows" then
+    result = envy.run([[
       $depFile = ']] .. dep_path .. [[/dependency.txt'
       if (-not (Test-Path $depFile)) { Start-Sleep -Milliseconds 100 }
       if (-not (Test-Path $depFile)) { Write-Error "Dependency artifact missing"; exit 61 }
@@ -32,7 +32,7 @@ BUILD = function(ctx, opts)
     ]],
                      { shell = ENVY_SHELL.POWERSHELL, capture = true })
   else
-    result = ctx.run([[
+    result = envy.run([[
       cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt
       echo "Used dependency data"
     ]],

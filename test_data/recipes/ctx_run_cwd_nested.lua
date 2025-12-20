@@ -1,4 +1,4 @@
--- Test ctx.run() with deeply nested relative cwd
+-- Test envy.run() with deeply nested relative cwd
 IDENTITY = "local.ctx_run_cwd_nested@v1"
 
 FETCH = {
@@ -6,24 +6,24 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
       New-Item -ItemType Directory -Force -Path "level1/level2/level3/level4" | Out-Null
     ]], { shell = ENVY_SHELL.POWERSHELL })
 
-    ctx.run([[
+    envy.run([[
       Set-Content -Path pwd_nested.txt -Value (Get-Location).Path
       Set-Content -Path nested_marker.txt -Value "Deep nesting works"
     ]], {cwd = "level1/level2/level3/level4", shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       mkdir -p level1/level2/level3/level4
     ]])
 
-    ctx.run([[
+    envy.run([[
       pwd > pwd_nested.txt
       echo "Deep nesting works" > nested_marker.txt
     ]], {cwd = "level1/level2/level3/level4"})

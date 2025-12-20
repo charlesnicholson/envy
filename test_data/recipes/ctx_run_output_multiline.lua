@@ -1,4 +1,4 @@
--- Test ctx.run() with multi-line output
+-- Test envy.run() with multi-line output
 IDENTITY = "local.ctx_run_output_multiline@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  if ENVY_PLATFORM == "windows" then
-    ctx.run([[
+  if envy.PLATFORM == "windows" then
+    envy.run([[
 $thisContent = @"
 This is line 1
 This is line 2
@@ -25,7 +25,7 @@ Get-Content output.txt | ForEach-Object { Write-Output $_ }
 Set-Content -Path multiline_marker.txt -Value "Multi-line test complete"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
 cat > output.txt <<'MULTILINE'
 This is line 1
 This is line 2
