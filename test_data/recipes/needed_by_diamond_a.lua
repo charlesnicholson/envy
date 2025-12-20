@@ -12,12 +12,12 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 end
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Can access both B and C in build phase
-  ctx.asset("local.needed_by_diamond_b@v1")
-  ctx.asset("local.needed_by_diamond_c@v1")
+  envy.asset("local.needed_by_diamond_b@v1")
+  envy.asset("local.needed_by_diamond_c@v1")
 end

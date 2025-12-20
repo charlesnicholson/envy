@@ -1,4 +1,4 @@
--- Test ctx.run() with very long lines
+-- Test envy.run() with very long lines
 IDENTITY = "local.ctx_run_edge_long_line@v1"
 
 FETCH = {
@@ -6,17 +6,17 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   local long = "This is a very long line with lots of content AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
   if envy.PLATFORM == "windows" then
-    ctx.run(string.format([[
+    envy.run(string.format([[
       Set-Content -Path long_line.txt -Value "%s"
     ]], long), { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run(string.format([[
+    envy.run(string.format([[
       echo "%s" > long_line.txt
     ]], long))
   end

@@ -4,6 +4,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
@@ -70,20 +71,17 @@ bool run_check_function(recipe *r,
                         sol::protected_function check_func) {
   tui::debug("phase check: executing function check");
 
-  struct check_phase_ctx : lua_ctx_common {};
+  std::filesystem::path const project_root{ recipe_spec::compute_project_root(r->spec) };
 
-  check_phase_ctx ctx{};
-  ctx.run_dir = recipe_spec::compute_project_root(r->spec);
-  ctx.engine_ = nullptr;
-  ctx.recipe_ = r;
-
-  sol::table ctx_table{ lua.create_table() };
-  ctx_table["identity"] = r->spec->identity;
-  ctx_table["run"] = make_ctx_run(&ctx);
+  // Set up Lua registry context for envy.* functions
+  // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
+  phase_context_guard ctx_guard{ nullptr, r };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+  // New signature: CHECK(project_root, options)
   sol::object result_obj{ call_lua_function_with_enriched_errors(r, "CHECK", [&]() {
-    return check_func(ctx_table, opts);
+    return check_func(project_root.string(), opts);
   }) };
 
   // Check function can return:

@@ -5,9 +5,9 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-STAGE = function(ctx)
-  ctx.product("tool")
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.product("tool")
 end
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end

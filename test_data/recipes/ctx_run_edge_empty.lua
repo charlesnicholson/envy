@@ -1,4 +1,4 @@
--- Test ctx.run() with empty script
+-- Test envy.run() with empty script
 IDENTITY = "local.ctx_run_edge_empty@v1"
 
 FETCH = {
@@ -6,17 +6,17 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[]], { shell = ENVY_SHELL.POWERSHELL })
-    ctx.run([[
+    envy.run([[]], { shell = ENVY_SHELL.POWERSHELL })
+    envy.run([[
       Set-Content -Path after_empty.txt -Value "After empty script"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[]])
-    ctx.run([[
+    envy.run([[]])
+    envy.run([[
       echo "After empty script" > after_empty.txt
     ]])
   end

@@ -94,7 +94,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "build_artifact")
 
     def test_build_function_with_ctx_run(self):
-        """Recipe with build = function(ctx) uses ctx.run()."""
+        """Recipe with build = function(ctx) uses envy.run()."""
         self.run_recipe("build_function.lua", "local.build_function@v1")
 
         # Verify build artifacts
@@ -106,7 +106,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "function_artifact")
 
     def test_build_with_asset_dependency(self):
-        """Build phase can access dependencies via ctx.asset()."""
+        """Build phase can access dependencies via envy.asset()."""
         # Build recipe with dependency (engine will build dependency automatically)
         self.run_recipe("build_with_asset.lua", "local.build_with_asset@v1")
 
@@ -119,7 +119,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "dependency_data")
 
     def test_build_with_copy_operations(self):
-        """Build phase can copy files and directories with ctx.copy()."""
+        """Build phase can copy files and directories with envy.copy()."""
         self.run_recipe("build_with_copy.lua", "local.build_with_copy@v1")
 
         # Verify copies
@@ -137,7 +137,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertTrue((asset_path / "dest_dir" / "file2.txt").exists())
 
     def test_build_with_move_operations(self):
-        """Build phase can move files and directories with ctx.move()."""
+        """Build phase can move files and directories with envy.move()."""
         self.run_recipe("build_with_move.lua", "local.build_with_move@v1")
 
         # Verify moves
@@ -154,7 +154,7 @@ class TestBuildPhase(unittest.TestCase):
         self.assertTrue((asset_path / "moved_dir" / "content.txt").exists())
 
     def test_build_with_extract(self):
-        """Build phase can extract archives with ctx.extract()."""
+        """Build phase can extract archives with envy.extract()."""
         self.run_recipe("build_with_extract.lua", "local.build_with_extract@v1")
 
         # Verify extraction

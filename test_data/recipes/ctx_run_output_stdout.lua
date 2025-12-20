@@ -1,4 +1,4 @@
--- Test ctx.run() captures stdout output
+-- Test envy.run() captures stdout output
 IDENTITY = "local.ctx_run_output_stdout@v1"
 
 FETCH = {
@@ -6,18 +6,18 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Write-Output "Line 1 to stdout"
       Write-Output "Line 2 to stdout"
       Write-Output "Line 3 to stdout"
       "stdout test complete" | Out-File -Encoding UTF8 stdout_marker.txt
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       echo "Line 1 to stdout"
       echo "Line 2 to stdout"
       echo "Line 3 to stdout"

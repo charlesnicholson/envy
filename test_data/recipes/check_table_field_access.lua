@@ -1,9 +1,9 @@
 -- Test direct table field access patterns
 IDENTITY = "local.check_table_fields@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Test direct field access
-    local res = ctx.run("echo 'test output'", {capture = true})
+    local res = envy.run("echo 'test output'", {capture = true})
 
     -- Access via variable
     local code = res.exit_code
@@ -18,6 +18,6 @@ function CHECK(ctx)
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end

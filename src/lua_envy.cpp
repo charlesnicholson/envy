@@ -1,5 +1,6 @@
 #include "lua_envy.h"
 
+#include "lua_ctx/lua_envy_deps.h"
 #include "lua_ctx/lua_envy_extract.h"
 #include "lua_ctx/lua_envy_fetch.h"
 #include "lua_ctx/lua_envy_file_ops.h"
@@ -151,16 +152,19 @@ void lua_envy_install(sol::state &lua) {
   lua_envy_run_install(envy_table);
   lua_envy_extract_install(envy_table);
   lua_envy_fetch_install(envy_table);
+  lua_envy_deps_install(envy_table);
 
   lua["envy"] = envy_table;
+
+  // Register all shell constants on all platforms; runtime validation rejects incompatible shells
   sol::table shell_tbl{ lua.create_table_with("BASH",
                                               static_cast<int>(shell_choice::bash),
                                               "SH",
-                                              static_cast<int>(shell_choice::sh)) };
-#if defined(_WIN32)
-  shell_tbl["CMD"] = static_cast<int>(shell_choice::cmd);
-  shell_tbl["POWERSHELL"] = static_cast<int>(shell_choice::powershell);
-#endif
+                                              static_cast<int>(shell_choice::sh),
+                                              "CMD",
+                                              static_cast<int>(shell_choice::cmd),
+                                              "POWERSHELL",
+                                              static_cast<int>(shell_choice::powershell)) };
   lua["ENVY_SHELL"] = shell_tbl;
 }
 

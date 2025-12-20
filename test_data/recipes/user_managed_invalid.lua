@@ -1,15 +1,18 @@
--- INVALID: User-managed package that tries to use forbidden cache-managed APIs
--- This recipe demonstrates user-managed packages cannot access cache directories
+-- INVALID: User-managed package that tries to use install_dir (which is nil)
+-- This recipe demonstrates user-managed packages cannot access install_dir
 IDENTITY = "local.user_managed_invalid@v1"
 
 -- Has check verb (makes it user-managed)
-function CHECK(ctx)
+function CHECK(project_root, options)
     return false  -- Always needs work
 end
 
--- Attempts to use cache-managed APIs (should error)
-function INSTALL(ctx)
-    -- User-managed packages have restricted API access
-    -- Attempting to call extract_all will trigger an error
-    ctx.extract_all()
+-- User-managed packages receive nil for install_dir
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    -- Try to use install_dir, which should be nil for user-managed packages
+    if install_dir == nil then
+        error("install_dir not available for user-managed package local.user_managed_invalid@v1")
+    end
+    -- This should not be reached since install_dir is nil
+    local path = install_dir .. "/test.txt"
 end

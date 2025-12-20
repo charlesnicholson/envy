@@ -11,10 +11,10 @@ else
 end
 
 -- Empty fetch (required for validation)
-function FETCH(ctx)
+function FETCH(tmp_dir, options)
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Create marker file for next check
     local marker
     if envy.PLATFORM == "windows" then

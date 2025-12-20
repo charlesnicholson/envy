@@ -1,4 +1,4 @@
--- Test ctx.run() with complex real-world workflow
+-- Test envy.run() with complex real-world workflow
 IDENTITY = "local.ctx_run_complex_workflow@v1"
 
 FETCH = {
@@ -6,12 +6,12 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
     -- Consolidate workflow to avoid path issues and ensure directories created.
-    ctx.run([[
+    envy.run([[
       @('build','src','include') | ForEach-Object { if (-not (Test-Path $_)) { New-Item -ItemType Directory -Path $_ | Out-Null } }
       Set-Content -Path config.mk -Value "PROJECT=myapp"
       Add-Content -Path config.mk -Value "VERSION=1.0.0"
@@ -25,23 +25,23 @@ STAGE = function(ctx, opts)
       Set-Content -Path workflow_complete.txt -Value "Workflow complete"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       mkdir -p build src include
       echo "PROJECT=myapp" > config.mk
       echo "VERSION=1.0.0" >> config.mk
     ]])
 
-    ctx.run([[
+    envy.run([[
       echo "#define VERSION \"1.0.0\"" > src/version.h
     ]])
 
-    ctx.run([[
+    envy.run([[
       cd build
       echo "Configuring..." > config.log
       echo "CFLAGS=-O2 -Wall" > build.mk
     ]], {cwd = "."})
 
-    ctx.run([[
+    envy.run([[
       test -f config.mk || exit 1
       test -d build || exit 1
       test -f build/build.mk || exit 1

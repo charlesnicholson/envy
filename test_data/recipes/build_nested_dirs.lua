@@ -8,12 +8,12 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Creating nested directory structure")
 
   -- Create complex directory hierarchy
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       New-Item -ItemType Directory -Path output/bin -Force | Out-Null
       New-Item -ItemType Directory -Path output/lib/x86_64 -Force | Out-Null
       New-Item -ItemType Directory -Path output/include/subproject -Force | Out-Null
@@ -25,7 +25,7 @@ BUILD = function(ctx, opts)
       Set-Content -Path output/share/doc/README.md -Value "documentation"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       mkdir -p output/bin
       mkdir -p output/lib/x86_64
       mkdir -p output/include/subproject
@@ -39,11 +39,11 @@ BUILD = function(ctx, opts)
   end
 
   -- Copy nested structure
-  ctx.copy("output", "copied_output")
+  envy.copy("output", "copied_output")
 
   -- Verify all files exist in copied structure
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       if (-not (Test-Path copied_output/bin/app)) {
         Write-Output "missing bin/app"
         exit 1
@@ -67,7 +67,7 @@ BUILD = function(ctx, opts)
       Write-Output "Nested directory operations successful"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       test -f copied_output/bin/app || exit 1
       test -f copied_output/lib/x86_64/libapp.so || exit 1
       test -f copied_output/include/app.h || exit 1

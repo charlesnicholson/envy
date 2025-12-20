@@ -7,14 +7,14 @@ FETCH = {
 }
 
 -- Shell script that intentionally fails
-STAGE = function(ctx, opts)
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Write-Output "About to fail"
       exit 9
     ]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
-    ctx.run([[
+    envy.run([[
       set -euo pipefail
       echo "About to fail"
       false

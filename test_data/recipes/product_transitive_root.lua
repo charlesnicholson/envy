@@ -16,7 +16,7 @@ FETCH = {
     sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-INSTALL = function(ctx)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- If fallback was used, we have intermediate; if provider was in manifest, we don't
     -- Either way, the transitive provision validation should have ensured correctness
 end

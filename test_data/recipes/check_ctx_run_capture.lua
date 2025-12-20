@@ -1,7 +1,7 @@
 -- Test check with ctx.run capture=true returns stdout, stderr, exit_code
 IDENTITY = "local.check_ctx_run_capture@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Capture=true: should get stdout, stderr, exit_code fields
     local cmd
     if envy.PLATFORM == "windows" then
@@ -9,7 +9,7 @@ function CHECK(ctx)
     else
         cmd = "echo 'stdout text' && echo 'stderr text' >&2"
     end
-    local res = ctx.run(cmd, {capture = true})
+    local res = envy.run(cmd, {capture = true})
 
     -- Verify all three fields exist
     assert(res.stdout ~= nil, "stdout field should exist")
@@ -23,6 +23,6 @@ function CHECK(ctx)
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end

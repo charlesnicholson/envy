@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
-    ctx.run([[Write-Output "About to fail"; exit 9; Write-Output "Should not reach"]], { shell = ENVY_SHELL.POWERSHELL, check = true })
+    envy.run([[Write-Output "About to fail"; exit 9; Write-Output "Should not reach"]], { shell = ENVY_SHELL.POWERSHELL, check = true })
   else
-    ctx.run([[
+    envy.run([[
       set -e
       echo "About to fail"
       false

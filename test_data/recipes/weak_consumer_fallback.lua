@@ -4,11 +4,11 @@ DEPENDENCIES = {
   { recipe = "local.missing_dep", weak = { recipe = "local.weak_fallback@v1", source = "weak_fallback.lua" } },
 }
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic install: no cache artifacts
 end
 

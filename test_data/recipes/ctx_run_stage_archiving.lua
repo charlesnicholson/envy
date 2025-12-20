@@ -1,4 +1,4 @@
--- Test ctx.run() in stage for creating archives
+-- Test envy.run() in stage for creating archives
 IDENTITY = "local.ctx_run_stage_archiving@v1"
 
 FETCH = {
@@ -6,12 +6,12 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   -- Create archives
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       New-Item -ItemType Directory -Force -Path "archive_test/subdir" | Out-Null
       Set-Content -Path archive_test/file1.txt -Value "file1"
       Set-Content -Path archive_test/subdir/file2.txt -Value "file2"
@@ -25,7 +25,7 @@ STAGE = function(ctx, opts)
       exit 0
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       # Create a directory structure
       mkdir -p archive_test/subdir
       echo "file1" > archive_test/file1.txt

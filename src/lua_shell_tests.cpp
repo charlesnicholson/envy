@@ -20,17 +20,16 @@ void set_light_userdata(sol::table &tbl, char const *key, void *ptr) {
 }
 
 // Helper: Create Lua state with ENVY_SHELL constants registered
+// All constants are registered on all platforms; runtime validation rejects incompatible shells
 sol_state_ptr make_test_lua_state() {
   auto lua{ envy::sol_util_make_lua_state() };
 
-  // Register ENVY_SHELL table with constants (cast enum to void* for light userdata)
+  // Register ENVY_SHELL table with all constants on all platforms
   sol::table envy_shell{ lua->create_table() };
   set_light_userdata(envy_shell, "BASH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
   set_light_userdata(envy_shell, "SH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
-#if defined(_WIN32)
   set_light_userdata(envy_shell, "CMD", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
   set_light_userdata(envy_shell, "POWERSHELL", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
-#endif
   (*lua)["ENVY_SHELL"] = envy_shell;
 
   return lua;
@@ -38,7 +37,8 @@ sol_state_ptr make_test_lua_state() {
 
 }  // namespace
 
-TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH") {
+#if !defined(_WIN32)
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH on Unix") {
   auto lua{ make_test_lua_state() };
 
   sol::object bash_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::bash)) };
@@ -48,7 +48,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH") {
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::bash);
 }
 
-TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH") {
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH on Unix") {
   auto lua{ make_test_lua_state() };
 
   sol::object sh_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::sh)) };
@@ -57,9 +57,10 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH") {
   CHECK(std::holds_alternative<envy::shell_choice>(result));
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::sh);
 }
+#endif
 
 #if defined(_WIN32)
-TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD") {
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD on Windows") {
   auto lua{ make_test_lua_state() };
 
   sol::object cmd_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::cmd)) };
@@ -69,7 +70,7 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD") {
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::cmd);
 }
 
-TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL") {
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL on Windows") {
   auto lua{ make_test_lua_state() };
 
   sol::object powershell_obj{
@@ -79,6 +80,48 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL") {
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
   CHECK(std::get<envy::shell_choice>(result) == envy::shell_choice::powershell);
+}
+
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH rejected on Windows") {
+  auto lua{ make_test_lua_state() };
+
+  sol::object bash_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::bash)) };
+
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(bash_obj, "test_ctx"),
+                       "test_ctx: BASH/SH shells are only available on Unix",
+                       std::runtime_error);
+}
+
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.SH rejected on Windows") {
+  auto lua{ make_test_lua_state() };
+
+  sol::object sh_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::sh)) };
+
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(sh_obj, "test_ctx"),
+                       "test_ctx: BASH/SH shells are only available on Unix",
+                       std::runtime_error);
+}
+#else
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.CMD rejected on Unix") {
+  auto lua{ make_test_lua_state() };
+
+  sol::object cmd_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::cmd)) };
+
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(cmd_obj, "test_ctx"),
+                       "test_ctx: CMD/POWERSHELL shells are only available on Windows",
+                       std::runtime_error);
+}
+
+TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL rejected on Unix") {
+  auto lua{ make_test_lua_state() };
+
+  sol::object powershell_obj{
+    sol::make_object(*lua, static_cast<int>(envy::shell_choice::powershell))
+  };
+
+  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(powershell_obj, "test_ctx"),
+                       "test_ctx: CMD/POWERSHELL shells are only available on Windows",
+                       std::runtime_error);
 }
 #endif
 

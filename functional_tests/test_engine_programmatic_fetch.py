@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Functional tests for engine programmatic fetch (fetch functions).
 
-Tests FETCH = function(ctx) ... end syntax with ctx.fetch() and ctx.commit_fetch().
+Tests FETCH = function(ctx) ... end syntax with envy.fetch() and envy.commit_fetch().
 """
 
 import os
@@ -42,18 +42,18 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
         return result.stdout.strip()
 
     def test_fetch_single_string(self):
-        """ctx.fetch(\"url\") returns scalar string basename."""
+        """envy.fetch(\"url\") returns scalar string basename."""
         recipe_content = """IDENTITY = "local.prog_fetch_single@v1"
 
-function FETCH(ctx, opts)
-  local file = ctx.fetch("test_data/lua/simple.lua")
+function FETCH(tmp_dir, options)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
 
   -- Verify return is scalar string, not array
   if type(file) ~= "string" then
     error("Expected string return, got " .. type(file))
   end
 
-  ctx.commit_fetch(file)
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_single.lua"
@@ -76,14 +76,14 @@ end
         self.assertIn("local.prog_fetch_single@v1", result.stdout)
 
     def test_fetch_string_array(self):
-        """ctx.fetch({\"url1\", \"url2\"}) returns array of basenames."""
+        """envy.fetch({\"url1\", \"url2\"}) returns array of basenames."""
         recipe_content = """IDENTITY = "local.prog_fetch_array@v1"
 
-function FETCH(ctx, opts)
-  local files = ctx.fetch({
+function FETCH(tmp_dir, options)
+  local files = envy.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua"
-  })
+  }, {dest = tmp_dir})
 
   -- Verify return is array
   if type(files) ~= "table" then
@@ -93,7 +93,7 @@ function FETCH(ctx, opts)
     error("Expected 2 files, got " .. #files)
   end
 
-  ctx.commit_fetch(files)
+  envy.commit_fetch(files)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_array.lua"
@@ -115,18 +115,18 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_single_table(self):
-        """ctx.fetch({url=\"...\"}) returns scalar basename."""
+        """envy.fetch({url=\"...\"}) returns scalar basename."""
         recipe_content = """IDENTITY = "local.prog_fetch_table@v1"
 
-function FETCH(ctx, opts)
-  local file = ctx.fetch({source = "test_data/lua/simple.lua"})
+function FETCH(tmp_dir, options)
+  local file = envy.fetch({source = "test_data/lua/simple.lua"}, {dest = tmp_dir})
 
   -- Verify return is scalar string
   if type(file) ~= "string" then
     error("Expected string return, got " .. type(file))
   end
 
-  ctx.commit_fetch(file)
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_table.lua"
@@ -148,21 +148,21 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_table_array(self):
-        """ctx.fetch({{url=\"...\"}, {...}}) returns array."""
+        """envy.fetch({{url=\"...\"}, {...}}) returns array."""
         recipe_content = """IDENTITY = "local.prog_fetch_table_array@v1"
 
-function FETCH(ctx, opts)
-  local files = ctx.fetch({
+function FETCH(tmp_dir, options)
+  local files = envy.fetch({
     {source = "test_data/lua/simple.lua"},
     {source = "test_data/lua/print_single.lua"}
-  })
+  }, {dest = tmp_dir})
 
   -- Verify return is array
   if type(files) ~= "table" or #files ~= 2 then
     error("Expected array of 2 files")
   end
 
-  ctx.commit_fetch(files)
+  envy.commit_fetch(files)
 end
 """
         recipe_path = self.cache_root / "prog_fetch_table_array.lua"
@@ -184,21 +184,21 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_commit_fetch_scalar_string(self):
-        """ctx.commit_fetch(\"file.tar.gz\") moves file to fetch_dir."""
+        """envy.commit_fetch(\"file.tar.gz\") moves file to fetch_dir."""
         recipe_content = """IDENTITY = "local.prog_commit_scalar@v1"
 
-function FETCH(ctx, opts)
-  local file = ctx.fetch("test_data/lua/simple.lua")
+function FETCH(tmp_dir, options)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
 
   -- File should be in tmp before commit
-  local tmp_path = ctx.tmp_dir .. "/" .. file
+  local tmp_path = tmp_dir .. "/" .. file
   local f = io.open(tmp_path, "r")
   if not f then
     error("File not in tmp: " .. tmp_path)
   end
   f:close()
 
-  ctx.commit_fetch(file)
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_commit_scalar.lua"
@@ -220,18 +220,18 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_commit_fetch_with_sha256(self):
-        """ctx.commit_fetch({filename=\"...\", sha256=\"...\"}) verifies hash."""
+        """envy.commit_fetch({filename=\"...\", sha256=\"...\"}) verifies hash."""
         # Compute hash dynamically
         test_file = Path("test_data/lua/simple.lua")
         file_hash = self.get_file_hash(test_file)
 
         recipe_content = f"""IDENTITY = "local.prog_commit_sha256@v1"
 
-function FETCH(ctx, opts)
-  local file = ctx.fetch("test_data/lua/simple.lua")
+function FETCH(tmp_dir, options)
+  local file = envy.fetch("test_data/lua/simple.lua", {{dest = tmp_dir}})
 
   -- Commit with SHA256 verification
-  ctx.commit_fetch({{
+  envy.commit_fetch({{
     filename = file,
     sha256 = "{file_hash}"
   }})
@@ -261,11 +261,11 @@ end
         """Wrong SHA256 in commit_fetch causes verification error."""
         recipe_content = """IDENTITY = "local.prog_commit_bad_sha256@v1"
 
-function FETCH(ctx, opts)
-  local file = ctx.fetch("test_data/lua/simple.lua")
+function FETCH(tmp_dir, options)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
 
   -- Commit with wrong SHA256
-  ctx.commit_fetch({
+  envy.commit_fetch({
     filename = file,
     sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
   })
@@ -291,16 +291,16 @@ end
         self.assertIn("sha256", result.stderr.lower())
 
     def test_commit_fetch_array(self):
-        """ctx.commit_fetch({\"file1\", \"file2\"}) commits multiple files."""
+        """envy.commit_fetch({\"file1\", \"file2\"}) commits multiple files."""
         recipe_content = """IDENTITY = "local.prog_commit_array@v1"
 
-function FETCH(ctx, opts)
-  local files = ctx.fetch({
+function FETCH(tmp_dir, options)
+  local files = envy.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua"
-  })
+  }, {dest = tmp_dir})
 
-  ctx.commit_fetch(files)
+  envy.commit_fetch(files)
 end
 """
         recipe_path = self.cache_root / "prog_commit_array.lua"
@@ -322,12 +322,12 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_commit_fetch_missing_file(self):
-        """Trying to commit file not in ctx.tmp_dir fails with clear error."""
+        """Trying to commit file not in tmp_dir fails with clear error."""
         recipe_content = """IDENTITY = "local.prog_commit_missing@v1"
 
-function FETCH(ctx, opts)
+function FETCH(tmp_dir, options)
   -- Try to commit file that was never fetched
-  ctx.commit_fetch("nonexistent.tar.gz")
+  envy.commit_fetch("nonexistent.tar.gz")
 end
 """
         recipe_path = self.cache_root / "prog_commit_missing.lua"
@@ -357,15 +357,15 @@ end
         """Fetch 3 files, commit 2, verify tmp cleanup removes uncommitted."""
         recipe_content = """IDENTITY = "local.prog_selective_commit@v1"
 
-function FETCH(ctx, opts)
-  local files = ctx.fetch({
+function FETCH(tmp_dir, options)
+  local files = envy.fetch({
     "test_data/lua/simple.lua",
     "test_data/lua/print_single.lua",
     "test_data/lua/print_multiple.lua"
-  })
+  }, {dest = tmp_dir})
 
   -- Only commit first 2
-  ctx.commit_fetch({files[1], files[2]})
+  envy.commit_fetch({files[1], files[2]})
 
   -- Third file should still be in tmp here but will be cleaned up
 end
@@ -389,17 +389,17 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_ctx_identity(self):
-        """ctx.identity contains recipe identity."""
+        """IDENTITY contains recipe identity."""
         recipe_content = """IDENTITY = "local.prog_ctx_identity@v1"
 
-function FETCH(ctx, opts)
-  if ctx.identity ~= "local.prog_ctx_identity@v1" then
-    error("Expected identity 'local.prog_ctx_identity@v1', got: " .. ctx.identity)
+function FETCH(tmp_dir, options)
+  if IDENTITY ~= "local.prog_ctx_identity@v1" then
+    error("Expected identity 'local.prog_ctx_identity@v1', got: " .. IDENTITY)
   end
 
   -- Fetch something so phase completes successfully
-  local file = ctx.fetch("test_data/lua/simple.lua")
-  ctx.commit_fetch(file)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_identity.lua"
@@ -424,14 +424,14 @@ end
         """opts is accessible as a table (empty when no options passed)."""
         recipe_content = """IDENTITY = "local.prog_ctx_options@v1"
 
-function FETCH(ctx, opts)
-  -- Verify opts exists and is a table
-  if type(opts) ~= "table" then
-    error("Expected opts to be table, got: " .. type(opts))
+function FETCH(tmp_dir, options)
+  -- Verify options exists and is a table
+  if type(options) ~= "table" then
+    error("Expected options to be table, got: " .. type(options))
   end
 
-  local file = ctx.fetch("test_data/lua/simple.lua")
-  ctx.commit_fetch(file)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_options.lua"
@@ -456,14 +456,14 @@ end
         """opts exists as empty table when no options specified."""
         recipe_content = """IDENTITY = "local.prog_ctx_options_empty@v1"
 
-function FETCH(ctx, opts)
-  if type(opts) ~= "table" then
-    error("Expected opts to be table, got: " .. type(opts))
+function FETCH(tmp_dir, options)
+  if type(options) ~= "table" then
+    error("Expected options to be table, got: " .. type(options))
   end
 
   -- Check it's empty
   local count = 0
-  for k, v in pairs(opts) do
+  for k, v in pairs(options) do
     count = count + 1
   end
 
@@ -471,8 +471,8 @@ function FETCH(ctx, opts)
     error("Expected empty options, got " .. count .. " entries")
   end
 
-  local file = ctx.fetch("test_data/lua/simple.lua")
-  ctx.commit_fetch(file)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
+  envy.commit_fetch(file)
 end
 """
         recipe_path = self.cache_root / "prog_ctx_options_empty.lua"
@@ -494,35 +494,35 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_multiple_serial_fetches(self):
-        """Multiple ctx.fetch() calls execute serially, files accumulate."""
+        """Multiple envy.fetch() calls execute serially, files accumulate."""
         recipe_content = """IDENTITY = "local.prog_serial_fetches@v1"
 
-function FETCH(ctx, opts)
+function FETCH(tmp_dir, options)
   -- First fetch
-  local file1 = ctx.fetch("test_data/lua/simple.lua")
+  local file1 = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
 
   -- Verify file1 exists in tmp
-  local f = io.open(ctx.tmp_dir .. "/" .. file1, "r")
+  local f = io.open(tmp_dir .. "/" .. file1, "r")
   if not f then error("file1 not in tmp after first fetch") end
   f:close()
 
   -- Second fetch
-  local file2 = ctx.fetch("test_data/lua/print_single.lua")
+  local file2 = envy.fetch("test_data/lua/print_single.lua", {dest = tmp_dir})
 
   -- Verify both files exist
-  f = io.open(ctx.tmp_dir .. "/" .. file1, "r")
+  f = io.open(tmp_dir .. "/" .. file1, "r")
   if not f then error("file1 disappeared after second fetch") end
   f:close()
 
-  f = io.open(ctx.tmp_dir .. "/" .. file2, "r")
+  f = io.open(tmp_dir .. "/" .. file2, "r")
   if not f then error("file2 not in tmp after second fetch") end
   f:close()
 
   -- Third fetch
-  local file3 = ctx.fetch("test_data/lua/print_multiple.lua")
+  local file3 = envy.fetch("test_data/lua/print_multiple.lua", {dest = tmp_dir})
 
   -- Commit all
-  ctx.commit_fetch({file1, file2, file3})
+  envy.commit_fetch({file1, file2, file3})
 end
 """
         recipe_path = self.cache_root / "prog_serial_fetches.lua"
@@ -547,7 +547,7 @@ end
         """Lua errors in fetch function propagate with recipe identity."""
         recipe_content = """IDENTITY = "local.prog_error_prop@v1"
 
-function FETCH(ctx, opts)
+function FETCH(tmp_dir, options)
   error("Intentional test error")
 end
 """
@@ -699,7 +699,8 @@ end
         # Real-world usage would pass options via manifest
         recipe_content = """IDENTITY = "local.prog_options_template@v1"
 
-FETCH = function(ctx, opts)
+function FETCH(tmp_dir, options)
+  local opts = options or {}
   local filename = opts.filename or "simple.lua"
   return "test_data/lua/" .. filename
 end
@@ -723,13 +724,13 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_function_mixed_imperative_and_declarative(self):
-        """FETCH = function(ctx) calls ctx.fetch() and returns table (mixed mode)."""
+        """FETCH = function(ctx) calls envy.fetch() and returns table (mixed mode)."""
         recipe_content = """IDENTITY = "local.prog_mixed_mode@v1"
 
-FETCH = function(ctx)
+function FETCH(tmp_dir, options)
   -- Imperative: fetch and commit one file
-  local file1 = ctx.fetch("test_data/lua/simple.lua")
-  ctx.commit_fetch(file1)
+  local file1 = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
+  envy.commit_fetch(file1)
 
   -- Declarative: return spec for more files
   return {
@@ -760,9 +761,9 @@ end
         """FETCH = function(ctx) with explicit return nil (imperative mode)."""
         recipe_content = """IDENTITY = "local.prog_return_nil@v1"
 
-FETCH = function(ctx)
-  local file = ctx.fetch("test_data/lua/simple.lua")
-  ctx.commit_fetch(file)
+function FETCH(tmp_dir, options)
+  local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
+  envy.commit_fetch(file)
   return nil
 end
 """

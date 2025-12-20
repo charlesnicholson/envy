@@ -8,14 +8,14 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("BUILD function executing, preparing to return script")
 
   -- Do some setup work first
   if envy.PLATFORM == "windows" then
-    ctx.run("mkdir setup_dir 2> nul", { shell = ENVY_SHELL.CMD })
+    envy.run("mkdir setup_dir 2> nul", { shell = ENVY_SHELL.CMD })
   else
-    ctx.run("mkdir -p setup_dir")
+    envy.run("mkdir -p setup_dir")
   end
 
   -- Return a script to be executed

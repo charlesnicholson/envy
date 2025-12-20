@@ -1,4 +1,4 @@
--- Test build phase: access to fetch_dir, stage_dir, install_dir
+-- Test build phase: access to fetch_dir, stage_dir
 IDENTITY = "local.build_access_dirs@v1"
 
 FETCH = {
@@ -8,51 +8,47 @@ FETCH = {
 
 STAGE = {strip = 1}
 
-BUILD = function(ctx, opts)
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing directory access")
-  print("fetch_dir: " .. ctx.fetch_dir)
-  print("stage_dir: " .. ctx.stage_dir)
-  print("install_dir: " .. ctx.install_dir)
+  print("fetch_dir: " .. fetch_dir)
+  print("stage_dir: " .. stage_dir)
 
   -- Verify directories exist
   if envy.PLATFORM == "windows" then
-    ctx.run([[
-      if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[' -PathType Container)) { exit 42 }
-      if (-not (Test-Path -LiteralPath ']] .. ctx.stage_dir .. [[' -PathType Container)) { exit 43 }
-      if (-not (Test-Path -LiteralPath ']] .. ctx.install_dir .. [[' -PathType Container)) { exit 44 }
+    envy.run([[
+      if (-not (Test-Path -LiteralPath ']] .. fetch_dir .. [[' -PathType Container)) { exit 42 }
+      if (-not (Test-Path -LiteralPath ']] .. stage_dir .. [[' -PathType Container)) { exit 43 }
       Write-Output "All directories exist"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
-      test -d "]] .. ctx.fetch_dir .. [[" || exit 1
-      test -d "]] .. ctx.stage_dir .. [[" || exit 1
-      test -d "]] .. ctx.install_dir .. [[" || exit 1
+    envy.run([[
+      test -d "]] .. fetch_dir .. [[" || exit 1
+      test -d "]] .. stage_dir .. [[" || exit 1
       echo "All directories exist"
     ]])
   end
 
   -- Verify fetch_dir contains the archive
   if envy.PLATFORM == "windows" then
-    ctx.run([[
-      if (-not (Test-Path -LiteralPath ']] .. ctx.fetch_dir .. [[/test.tar.gz')) { exit 45 }
+    envy.run([[
+      if (-not (Test-Path -LiteralPath ']] .. fetch_dir .. [[/test.tar.gz')) { exit 45 }
       Write-Output "Archive found in fetch_dir"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
-      test -f "]] .. ctx.fetch_dir .. [[/test.tar.gz" || exit 1
+    envy.run([[
+      test -f "]] .. fetch_dir .. [[/test.tar.gz" || exit 1
       echo "Archive found in fetch_dir"
     ]])
   end
 
-  -- Create output in install_dir for later verification
+  -- Create output in stage_dir for later verification
   if envy.PLATFORM == "windows" then
-    ctx.run([[
-      Set-Content -LiteralPath "]] .. ctx.install_dir .. [[/build_marker.txt" -Value "Built successfully"
-      Set-Content -Path dest_file.txt -Value "dest"
+    envy.run([[
+      Set-Content -Path build_marker.txt -Value "Built successfully"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
-      echo "Built successfully" > "]] .. ctx.install_dir .. [[/build_marker.txt"
+    envy.run([[
+      echo "Built successfully" > build_marker.txt
     ]])
   end
 

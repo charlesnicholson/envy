@@ -1,49 +1,49 @@
--- Test that user-managed packages CAN access allowed ctx APIs
+-- Test that user-managed packages CAN access envy.* APIs
 IDENTITY = "local.user_managed_ctx_isolation_allowed@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     return false  -- Always needs install
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Verify identity is accessible
-    if not ctx.identity then
-        error("ctx.identity should be accessible")
+    if not IDENTITY then
+        error("IDENTITY should be accessible")
     end
-    if ctx.identity ~= "local.user_managed_ctx_isolation_allowed@v1" then
-        error("ctx.identity mismatch: " .. ctx.identity)
-    end
-
-    -- Verify run() is accessible
-    if not ctx.run then
-        error("ctx.run should be accessible")
-    end
-    if type(ctx.run) ~= "function" then
-        error("ctx.run should be a function")
+    if IDENTITY ~= "local.user_managed_ctx_isolation_allowed@v1" then
+        error("IDENTITY mismatch: " .. IDENTITY)
     end
 
-    -- Actually call ctx.run to verify it works
-    local result = ctx.run("echo test", {capture = true, quiet = true})
+    -- Verify envy.run is accessible
+    if not envy.run then
+        error("envy.run should be accessible")
+    end
+    if type(envy.run) ~= "function" then
+        error("envy.run should be a function")
+    end
+
+    -- Actually call envy.run to verify it works
+    local result = envy.run("echo test", {capture = true, quiet = true})
     if result.exit_code ~= 0 then
-        error("ctx.run failed: " .. result.exit_code)
+        error("envy.run failed: " .. result.exit_code)
     end
     if not result.stdout:find("test") then
-        error("ctx.run stdout missing 'test': " .. result.stdout)
+        error("envy.run stdout missing 'test': " .. result.stdout)
     end
 
-    -- Verify asset() is accessible (even if we don't have dependencies)
-    if not ctx.asset then
-        error("ctx.asset should be accessible")
+    -- Verify envy.asset is accessible (even if we don't have dependencies)
+    if not envy.asset then
+        error("envy.asset should be accessible")
     end
-    if type(ctx.asset) ~= "function" then
-        error("ctx.asset should be a function")
+    if type(envy.asset) ~= "function" then
+        error("envy.asset should be a function")
     end
 
-    -- Verify product() is accessible
-    if not ctx.product then
-        error("ctx.product should be accessible")
+    -- Verify envy.product is accessible
+    if not envy.product then
+        error("envy.product should be accessible")
     end
-    if type(ctx.product) ~= "function" then
-        error("ctx.product should be a function")
+    if type(envy.product) ~= "function" then
+        error("envy.product should be a function")
     end
 end

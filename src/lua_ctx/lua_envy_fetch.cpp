@@ -3,6 +3,7 @@
 #include "fetch.h"
 #include "lua_phase_context.h"
 #include "phases/phase_fetch.h"
+#include "recipe.h"
 #include "sha256.h"
 #include "sol_util.h"
 #include "tui.h"
@@ -14,6 +15,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -21,7 +23,7 @@ namespace envy {
 namespace {
 
 struct fetch_item {
-  std::string url;
+  std::string source;
   std::optional<std::string> sha256;
   std::optional<std::string> ref;
 };
@@ -39,13 +41,15 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
     sol::object first_elem{ tbl[1] };
 
     if (first_elem.get_type() == sol::type::lua_nil) {
-      // Single table: {url="...", sha256="...", ref="..."}
-      std::string url{ sol_util_get_required<std::string>(tbl, "url", "envy.fetch") };
+      // Single table: {source="...", sha256="...", ref="..."}
+      std::string source{
+        sol_util_get_required<std::string>(tbl, "source", "envy.fetch")
+      };
       auto sha256{ sol_util_get_optional<std::string>(tbl, "sha256", "envy.fetch") };
       auto ref{ sol_util_get_optional<std::string>(tbl, "ref", "envy.fetch") };
-      items.push_back({ url, sha256, ref });
+      items.push_back({ source, sha256, ref });
     } else if (first_elem.is<std::string>()) {
-      // Array of strings: {"url1", "url2"}
+      // Array of strings: {"source1", "source2"}
       is_array = true;
       for (auto const &[key, value] : tbl) {
         if (!value.is<std::string>()) {
@@ -54,19 +58,22 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
         items.push_back({ value.as<std::string>(), std::nullopt, std::nullopt });
       }
     } else if (first_elem.is<sol::table>()) {
-      // Array of tables: {{url="...", sha256="..."}, {...}}
+      // Array of tables: {{source="...", sha256="..."}, {...}}
       is_array = true;
       for (auto const &[key, value] : tbl) {
         if (!value.is<sol::table>()) {
           throw std::runtime_error("envy.fetch: array elements must be tables");
         }
         sol::table item_tbl{ value.as<sol::table>() };
-        std::string url{
-          sol_util_get_required<std::string>(item_tbl, "url", "envy.fetch array element")
+        std::string source{ sol_util_get_required<std::string>(
+            item_tbl,
+            "source",
+            "envy.fetch array element") };
+        auto sha256{
+          sol_util_get_optional<std::string>(item_tbl, "sha256", "envy.fetch")
         };
-        auto sha256{ sol_util_get_optional<std::string>(item_tbl, "sha256", "envy.fetch") };
         auto ref{ sol_util_get_optional<std::string>(item_tbl, "ref", "envy.fetch") };
-        items.push_back({ url, sha256, ref });
+        items.push_back({ source, sha256, ref });
       }
     } else {
       throw std::runtime_error("envy.fetch: invalid array element type");
@@ -118,7 +125,9 @@ std::vector<commit_entry> parse_commit_fetch_args(sol::object const &arg) {
         }
         sol::table item_tbl{ value.as<sol::table>() };
         std::string filename{ sol_util_get_required<std::string>(
-            item_tbl, "filename", "envy.commit_fetch array element") };
+            item_tbl,
+            "filename",
+            "envy.commit_fetch array element") };
         auto sha256{
           sol_util_get_optional<std::string>(item_tbl, "sha256", "envy.commit_fetch")
         };
@@ -177,8 +186,9 @@ void commit_files(std::vector<commit_entry> const &entries,
 }  // namespace
 
 void lua_envy_fetch_install(sol::table &envy_table) {
-  // envy.fetch(url_or_spec, opts) - Download files with explicit destination
-  envy_table["fetch"] = [](sol::object arg, sol::table opts, sol::this_state L) -> sol::object {
+  // envy.fetch(source_or_spec, opts) - Download files with explicit destination
+  envy_table["fetch"] =
+      [](sol::object arg, sol::table opts, sol::this_state L) -> sol::object {
     sol::state_view lua{ L };
 
     // dest is required
@@ -187,7 +197,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
 
     auto [items, is_array] = parse_fetch_args(arg);
 
-    std::vector<std::string> urls, basenames;
+    std::vector<std::string> sources, basenames;
     std::vector<fetch_request> requests;
     std::vector<std::unique_ptr<tui_actions::fetch_progress_tracker>> trackers;
     trackers.reserve(items.size());
@@ -195,13 +205,13 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     // Track used basenames for deduplication
     std::unordered_set<std::string> used_basenames;
 
-    recipe *r{ lua_phase_context_get_recipe() };
+    recipe *r{ lua_phase_context_get_recipe(L) };
 
     for (auto const &item : items) {
-      std::string basename{ uri_extract_filename(item.url) };
+      std::string basename{ uri_extract_filename(item.source) };
       if (basename.empty()) {
-        throw std::runtime_error("envy.fetch: cannot extract filename from URL: " +
-                                 item.url);
+        throw std::runtime_error("envy.fetch: cannot extract filename from source: " +
+                                 item.source);
       }
 
       // Deduplicate basenames
@@ -219,15 +229,19 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       }
       used_basenames.insert(final_basename);
       basenames.push_back(final_basename);
-      urls.push_back(item.url);
+      sources.push_back(item.source);
 
       std::filesystem::path const file_dest{ dest_dir / final_basename };
-      fetch_request req{ url_to_fetch_request(item.url, file_dest, item.ref, "envy.fetch") };
+      fetch_request req{
+        url_to_fetch_request(item.source, file_dest, item.ref, "envy.fetch")
+      };
 
       // Set up progress tracking if in phase context
       if (items.size() == 1 && r && r->tui_section) {
-        trackers.push_back(std::make_unique<tui_actions::fetch_progress_tracker>(
-            r->tui_section, r->spec->identity, item.url));
+        trackers.push_back(
+            std::make_unique<tui_actions::fetch_progress_tracker>(r->tui_section,
+                                                                  r->spec->identity,
+                                                                  item.source));
         std::visit([&](auto &rq) { rq.progress = std::ref(*trackers.back()); }, req);
       }
 
@@ -235,7 +249,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     }
 
     tui::debug("envy.fetch: downloading %zu file(s) to %s",
-               urls.size(),
+               sources.size(),
                dest_dir.string().c_str());
 
     auto const results{ fetch(requests) };
@@ -244,14 +258,14 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     std::vector<std::string> errors;
     for (size_t i = 0; i < results.size(); ++i) {
       if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
-        errors.push_back(urls[i] + ": " + *err);
+        errors.push_back(sources[i] + ": " + *err);
       } else if (items[i].sha256) {
         // Verify SHA256 if specified
         std::filesystem::path const file_path{ dest_dir / basenames[i] };
         try {
           sha256_verify(*items[i].sha256, sha256(file_path));
         } catch (std::exception const &e) {
-          errors.push_back(urls[i] + ": " + e.what());
+          errors.push_back(sources[i] + ": " + e.what());
         }
       }
     }
@@ -264,7 +278,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     }
 
     // Return basename(s) to Lua
-    if (is_array || urls.size() > 1) {
+    if (is_array || sources.size() > 1) {
       sol::table result{ lua.create_table(static_cast<int>(basenames.size()), 0) };
       for (size_t i = 0; i < basenames.size(); ++i) { result[i + 1] = basenames[i]; }
       return result;
@@ -274,16 +288,13 @@ void lua_envy_fetch_install(sol::table &envy_table) {
   };
 
   // envy.commit_fetch(files) - Atomically move verified files from tmp_dir to fetch_dir
-  envy_table["commit_fetch"] = [](sol::object arg) {
-    auto const *tmp_dir{ lua_phase_context_get_tmp_dir() };
-    auto const *fetch_dir{ lua_phase_context_get_fetch_dir() };
-
-    if (!tmp_dir || !fetch_dir) {
+  envy_table["commit_fetch"] = [](sol::object arg, sol::this_state L) {
+    recipe *r{ lua_phase_context_get_recipe(L) };
+    if (!r || !r->lock) {
       throw std::runtime_error(
-          "envy.commit_fetch: can only be called from FETCH phase with phase context set");
+          "envy.commit_fetch: can only be called from FETCH phase with cache lock active");
     }
-
-    commit_files(parse_commit_fetch_args(arg), *tmp_dir, *fetch_dir);
+    commit_files(parse_commit_fetch_args(arg), r->lock->tmp_dir(), r->lock->fetch_dir());
   };
 
   // envy.verify_hash(file_path, expected_sha256) - Verify file hash
@@ -298,9 +309,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     try {
       sha256_verify(expected_sha256, sha256(file_path));
       return true;
-    } catch (std::exception const &) {
-      return false;
-    }
+    } catch (std::exception const &) { return false; }
   };
 }
 

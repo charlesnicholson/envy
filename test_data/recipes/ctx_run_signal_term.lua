@@ -1,4 +1,4 @@
--- Test ctx.run() error on signal termination
+-- Test envy.run() error on signal termination
 IDENTITY = "local.ctx_run_signal_term@v1"
 
 FETCH = {
@@ -6,15 +6,15 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Stop-Process -Id $PID -Force
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       kill -TERM $$
     ]])
   end

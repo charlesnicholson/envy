@@ -1,4 +1,4 @@
--- Test ctx.run() with loops and iterations
+-- Test envy.run() with loops and iterations
 IDENTITY = "local.ctx_run_complex_loops@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Remove-Item loop_output.txt, file_loop.txt, while_loop.txt, even_numbers.txt, odd_numbers.txt -ErrorAction SilentlyContinue
       for ($i = 1; $i -le 5; $i++) {
         $line = "Iteration $i"
@@ -58,7 +58,7 @@ STAGE = function(ctx, opts)
       }
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       for i in {1..5}; do
         echo "Iteration $i" >> loop_output.txt
       done

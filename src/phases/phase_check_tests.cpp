@@ -101,7 +101,7 @@ TEST_CASE("recipe_has_check_verb detects string check") {
 
 TEST_CASE("recipe_has_check_verb detects function check") {
   test_recipe_fixture f;
-  f.set_check_function("function(ctx) return true end");
+  f.set_check_function("function(project_root) return true end");
 
   bool has_check = recipe_has_check_verb(f.r.get(), sol::state_view{ *f.r->lua });
   CHECK(has_check);
@@ -205,7 +205,7 @@ TEST_CASE("run_check_function returns true when function returns true") {
   engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) return true end",
+      "return function(project_root) return true end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
@@ -223,7 +223,7 @@ TEST_CASE("run_check_function returns false when function returns false") {
   engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) return false end",
+      "return function(project_root) return false end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
@@ -240,9 +240,9 @@ TEST_CASE("run_check_function throws when function returns nil") {
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) return nil end", sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(project_root) return nil end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
@@ -257,9 +257,9 @@ TEST_CASE("run_check_function throws when function returns number") {
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
-  sol::protected_function_result res{
-    f.r->lua->safe_script("return function(ctx) return 42 end", sol::script_pass_on_error)
-  };
+  sol::protected_function_result res{ f.r->lua->safe_script(
+      "return function(project_root) return 42 end",
+      sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
 
@@ -275,7 +275,7 @@ TEST_CASE("run_check_function executes string return as shell command") {
   engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) return 'exit 0' end",
+      "return function(project_root) return 'exit 0' end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
@@ -286,7 +286,7 @@ TEST_CASE("run_check_function executes string return as shell command") {
   CHECK(result);
 }
 
-TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
+TEST_CASE("run_check_function receives project_root as directory path") {
   namespace fs = std::filesystem;
   test_recipe_fixture f;
 
@@ -297,18 +297,10 @@ TEST_CASE("run_check_function exposes ctx.run with project-root cwd") {
   fs::create_directories(project_dir);
   f.spec->declaring_file_path = project_dir / "envy.lua";
 
-  std::error_code ec;
-  fs::path canonical_dir{ fs::weakly_canonical(project_dir, ec) };
-  if (ec) { canonical_dir = fs::absolute(project_dir); }
-
+  // New signature: CHECK(project_root, options) - project_root is a string path
   std::string lua_script =
-      "return function(ctx)\n"
-#if defined(_WIN32)
-      "  local out = ctx.run(\"Get-Location | Select-Object -ExpandProperty Path\", {capture=true}).stdout\n"
-#else
-      "  local out = ctx.run(\"pwd\", {capture=true}).stdout\n"
-#endif
-      "  return string.find(out, \"envy%-check%-cwd\") ~= nil\n"
+      "return function(project_root)\n"
+      "  return string.find(project_root, \"envy%-check%-cwd\") ~= nil\n"
       "end";
 
   sol::protected_function_result res{ f.r->lua->safe_script(lua_script,
@@ -329,7 +321,7 @@ TEST_CASE("run_check_function throws when function has Lua error") {
   engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) error('test error') end",
+      "return function(project_root) error('test error') end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
   sol::protected_function check_func{ res };
@@ -339,16 +331,17 @@ TEST_CASE("run_check_function throws when function has Lua error") {
       std::runtime_error);
 }
 
-TEST_CASE("run_check_function receives ctx table") {
+TEST_CASE("run_check_function receives project_root as string") {
   test_recipe_fixture f;
 
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
 
+  // New signature: CHECK(project_root, options) - project_root is a string
   sol::protected_function_result res{ f.r->lua->safe_script(
       R"(
-        return function(ctx)
-          return type(ctx) == 'table'
+        return function(project_root)
+          return type(project_root) == 'string' and #project_root > 0
         end
       )",
       sol::script_pass_on_error) };
@@ -378,7 +371,7 @@ TEST_CASE("run_check_verb dispatches to string handler") {
 
 TEST_CASE("run_check_verb dispatches to function handler") {
   test_recipe_fixture f;
-  f.set_check_function("function(ctx) return true end");
+  f.set_check_function("function(project_root) return true end");
 
   cache test_cache;
   engine eng{ test_cache, std::nullopt };
@@ -436,13 +429,13 @@ TEST_CASE("run_check_verb function check respects return value") {
   engine eng{ test_cache, std::nullopt };
 
   SUBCASE("function returns true") {
-    f.set_check_function("function(ctx) return true end");
+    f.set_check_function("function(project_root) return true end");
     bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK(result);
   }
 
   SUBCASE("function returns false") {
-    f.set_check_function("function(ctx) return false end");
+    f.set_check_function("function(project_root) return false end");
     bool result = run_check_verb(f.r.get(), eng, sol::state_view{ *f.r->lua });
     CHECK_FALSE(result);
   }
@@ -460,7 +453,7 @@ TEST_CASE("run_check_function propagates Lua error with context") {
   engine eng{ test_cache, std::nullopt };
 
   sol::protected_function_result res{ f.r->lua->safe_script(
-      "return function(ctx) error('something went wrong') end",
+      "return function(project_root) error('something went wrong') end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
 
@@ -493,7 +486,7 @@ TEST_CASE("run_check_function receives options parameter") {
 
   sol::protected_function_result res{ f.r->lua->safe_script(
       R"(
-        return function(ctx, opts)
+        return function(project_root, opts)
           return opts ~= nil and opts.package == 'ghostty'
         end
       )",
@@ -520,7 +513,7 @@ TEST_CASE("run_check_function returns string with options interpolation") {
 
   sol::protected_function_result res{ f.r->lua->safe_script(
       R"(
-        return function(ctx, opts)
+        return function(project_root, opts)
           return 'exit ' .. opts.exit_code
         end
       )",

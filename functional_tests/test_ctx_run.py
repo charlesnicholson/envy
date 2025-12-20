@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Functional tests for ctx.run() in stage phase.
+"""Functional tests for envy.run() in stage phase.
 
-Tests comprehensive functionality of ctx.run() including:
+Tests comprehensive functionality of envy.run() including:
 - Basic execution
 - Error handling
 - Working directory control
@@ -27,7 +27,7 @@ from . import test_config
 
 
 class TestCtxRun(unittest.TestCase):
-    """Tests for ctx.run() functionality."""
+    """Tests for envy.run() functionality."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-ctx-run-test-"))
@@ -83,7 +83,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Basic Functionality Tests =====
 
     def test_basic_execution(self):
-        """ctx.run() executes shell commands successfully."""
+        """envy.run() executes shell commands successfully."""
         self.run_recipe(
             "local.ctx_run_basic@v1",
             "test_data/recipes/ctx_run_basic.lua",
@@ -93,7 +93,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "run_marker.txt").exists())
 
     def test_multiple_commands(self):
-        """ctx.run() executes multiple commands in sequence."""
+        """envy.run() executes multiple commands in sequence."""
         self.run_recipe(
             "local.ctx_run_multiple_cmds@v1",
             "test_data/recipes/ctx_run_multiple_cmds.lua",
@@ -103,7 +103,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "all_cmds.txt").exists())
 
     def test_file_operations(self):
-        """ctx.run() can perform file operations."""
+        """envy.run() can perform file operations."""
         self.run_recipe(
             "local.ctx_run_file_ops@v1",
             "test_data/recipes/ctx_run_file_ops.lua",
@@ -113,7 +113,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "ops_result.txt").exists())
 
     def test_runs_in_stage_dir(self):
-        """ctx.run() executes in stage directory by default."""
+        """envy.run() executes in stage directory by default."""
         self.run_recipe(
             "local.ctx_run_in_stage_dir@v1",
             "test_data/recipes/ctx_run_in_stage_dir.lua",
@@ -123,7 +123,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "stage_verification.txt").exists())
 
     def test_with_pipes(self):
-        """ctx.run() supports shell pipes and redirection."""
+        """envy.run() supports shell pipes and redirection."""
         self.run_recipe(
             "local.ctx_run_with_pipes@v1",
             "test_data/recipes/ctx_run_with_pipes.lua",
@@ -135,7 +135,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Error Handling Tests =====
 
     def test_error_nonzero_exit(self):
-        """ctx.run() fails on non-zero exit code."""
+        """envy.run() fails on non-zero exit code."""
         self.run_recipe(
             "local.ctx_run_error_nonzero@v1",
             "test_data/recipes/ctx_run_error_nonzero.lua",
@@ -143,7 +143,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_check_mode_catches_failures(self):
-        """ctx.run() check mode catches command failures."""
+        """envy.run() check mode catches command failures."""
         self.run_recipe(
             "local.ctx_run_check_mode@v1",
             "test_data/recipes/ctx_run_check_mode.lua",
@@ -152,7 +152,7 @@ class TestCtxRun(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Signals not supported on Windows")
     def test_signal_termination(self):
-        """ctx.run() reports signal termination."""
+        """envy.run() reports signal termination."""
         self.run_recipe(
             "local.ctx_run_signal_term@v1",
             "test_data/recipes/ctx_run_signal_term.lua",
@@ -160,7 +160,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_invalid_cwd(self):
-        """ctx.run() fails when cwd doesn't exist."""
+        """envy.run() fails when cwd doesn't exist."""
         self.run_recipe(
             "local.ctx_run_invalid_cwd@v1",
             "test_data/recipes/ctx_run_invalid_cwd.lua",
@@ -168,7 +168,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_command_not_found(self):
-        """ctx.run() fails when command doesn't exist."""
+        """envy.run() fails when command doesn't exist."""
         self.run_recipe(
             "local.ctx_run_command_not_found@v1",
             "test_data/recipes/ctx_run_command_not_found.lua",
@@ -177,7 +177,7 @@ class TestCtxRun(unittest.TestCase):
 
     @unittest.skipUnless(os.name != "nt", "requires POSIX shells")
     def test_shell_sh(self):
-        """ctx.run() executes explicitly via /bin/sh."""
+        """envy.run() executes explicitly via /bin/sh."""
         self.run_recipe(
             "local.ctx_run_shell_sh@v1",
             "test_data/recipes/ctx_run_shell_sh.lua",
@@ -188,7 +188,7 @@ class TestCtxRun(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "requires Windows CMD")
     def test_shell_cmd(self):
-        """ctx.run() executes explicitly via cmd.exe."""
+        """envy.run() executes explicitly via cmd.exe."""
         self.run_recipe(
             "local.ctx_run_shell_cmd@v1",
             "test_data/recipes/ctx_run_shell_cmd.lua",
@@ -200,7 +200,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== CWD Tests =====
 
     def test_cwd_relative(self):
-        """ctx.run() supports relative cwd paths."""
+        """envy.run() supports relative cwd paths."""
         self.run_recipe(
             "local.ctx_run_cwd_relative@v1",
             "test_data/recipes/ctx_run_cwd_relative.lua",
@@ -210,7 +210,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "custom" / "subdir" / "marker.txt").exists())
 
     def test_cwd_absolute(self):
-        """ctx.run() supports absolute cwd paths."""
+        """envy.run() supports absolute cwd paths."""
         self.run_recipe(
             "local.ctx_run_cwd_absolute@v1",
             "test_data/recipes/ctx_run_cwd_absolute.lua",
@@ -223,7 +223,7 @@ class TestCtxRun(unittest.TestCase):
         target.unlink(missing_ok=True)
 
     def test_cwd_parent(self):
-        """ctx.run() handles parent directory (..) in cwd."""
+        """envy.run() handles parent directory (..) in cwd."""
         self.run_recipe(
             "local.ctx_run_cwd_parent@v1",
             "test_data/recipes/ctx_run_cwd_parent.lua",
@@ -233,7 +233,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "deep" / "parent_marker.txt").exists())
 
     def test_cwd_nested(self):
-        """ctx.run() handles deeply nested relative cwd."""
+        """envy.run() handles deeply nested relative cwd."""
         self.run_recipe(
             "local.ctx_run_cwd_nested@v1",
             "test_data/recipes/ctx_run_cwd_nested.lua",
@@ -254,7 +254,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Check Mode Tests =====
 
     def test_continue_after_failure(self):
-        """ctx.run() continues execution after a failing command."""
+        """envy.run() continues execution after a failing command."""
         self.run_recipe(
             "local.ctx_run_continue_after_failure@v1",
             "test_data/recipes/ctx_run_continue_after_failure.lua",
@@ -264,7 +264,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "continued.txt").exists())
 
     def test_check_undefined_variable(self):
-        """ctx.run() check mode catches undefined variables."""
+        """envy.run() check mode catches undefined variables."""
         self.run_recipe(
             "local.ctx_run_check_undefined@v1",
             "test_data/recipes/ctx_run_check_undefined.lua",
@@ -272,7 +272,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_check_pipefail(self):
-        """ctx.run() check mode catches pipe failures."""
+        """envy.run() check mode catches pipe failures."""
         self.run_recipe(
             "local.ctx_run_check_pipefail@v1",
             "test_data/recipes/ctx_run_check_pipefail.lua",
@@ -280,7 +280,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_check_false_nonzero(self):
-        """ctx.run() with check=false allows non-zero exit codes."""
+        """envy.run() with check=false allows non-zero exit codes."""
         self.run_recipe(
             "local.ctx_run_check_false_nonzero@v1",
             "test_data/recipes/ctx_run_check_false_nonzero.lua",
@@ -290,7 +290,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "continued_after_failure.txt").exists())
 
     def test_check_false_capture(self):
-        """ctx.run() with check=false and capture returns exit_code and output."""
+        """envy.run() with check=false and capture returns exit_code and output."""
         self.run_recipe(
             "local.ctx_run_check_false_capture@v1",
             "test_data/recipes/ctx_run_check_false_capture.lua",
@@ -302,7 +302,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Environment Tests =====
 
     def test_env_custom(self):
-        """ctx.run() supports custom environment variables."""
+        """envy.run() supports custom environment variables."""
         self.run_recipe(
             "local.ctx_run_env_custom@v1",
             "test_data/recipes/ctx_run_env_custom.lua",
@@ -315,7 +315,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertIn("MY_NUM=42", content)
 
     def test_env_inherit(self):
-        """ctx.run() inherits environment variables like PATH."""
+        """envy.run() inherits environment variables like PATH."""
         self.run_recipe(
             "local.ctx_run_env_inherit@v1",
             "test_data/recipes/ctx_run_env_inherit.lua",
@@ -325,7 +325,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "path_verification.txt").exists())
 
     def test_env_override(self):
-        """ctx.run() can override inherited environment variables."""
+        """envy.run() can override inherited environment variables."""
         self.run_recipe(
             "local.ctx_run_env_override@v1",
             "test_data/recipes/ctx_run_env_override.lua",
@@ -336,7 +336,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertIn("USER=test_override_user", content)
 
     def test_env_empty(self):
-        """ctx.run() with empty env table still inherits."""
+        """envy.run() with empty env table still inherits."""
         self.run_recipe(
             "local.ctx_run_env_empty@v1",
             "test_data/recipes/ctx_run_env_empty.lua",
@@ -346,7 +346,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "empty_env.txt").exists())
 
     def test_env_complex(self):
-        """ctx.run() handles complex environment values."""
+        """envy.run() handles complex environment values."""
         self.run_recipe(
             "local.ctx_run_env_complex@v1",
             "test_data/recipes/ctx_run_env_complex.lua",
@@ -361,7 +361,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Integration Tests =====
 
     def test_with_extract(self):
-        """ctx.run() works with ctx.extract_all()."""
+        """envy.run() works with envy.extract_all()."""
         self.run_recipe(
             "local.ctx_run_with_extract@v1",
             "test_data/recipes/ctx_run_with_extract.lua",
@@ -371,7 +371,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "verify_extract.txt").exists())
 
     def test_with_rename(self):
-        """ctx.run() works with ctx.rename()."""
+        """envy.run() works with ctx.rename()."""
         self.run_recipe(
             "local.ctx_run_with_rename@v1",
             "test_data/recipes/ctx_run_with_rename.lua",
@@ -381,7 +381,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "rename_check.txt").exists())
 
     def test_with_template(self):
-        """ctx.run() works with ctx.template()."""
+        """envy.run() works with envy.template()."""
         self.run_recipe(
             "local.ctx_run_with_template@v1",
             "test_data/recipes/ctx_run_with_template.lua",
@@ -391,7 +391,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "template_check.txt").exists())
 
     def test_multiple_calls(self):
-        """Multiple ctx.run() calls work in sequence."""
+        """Multiple envy.run() calls work in sequence."""
         self.run_recipe(
             "local.ctx_run_multiple_calls@v1",
             "test_data/recipes/ctx_run_multiple_calls.lua",
@@ -401,7 +401,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "all_calls.txt").exists())
 
     def test_interleaved(self):
-        """ctx.run() interleaves with other operations."""
+        """envy.run() interleaves with other operations."""
         self.run_recipe(
             "local.ctx_run_interleaved@v1",
             "test_data/recipes/ctx_run_interleaved.lua",
@@ -413,7 +413,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Phase-Specific Tests =====
 
     def test_stage_build_prep(self):
-        """ctx.run() in stage for build preparation."""
+        """envy.run() in stage for build preparation."""
         self.run_recipe(
             "local.ctx_run_stage_build_prep@v1",
             "test_data/recipes/ctx_run_stage_build_prep.lua",
@@ -423,7 +423,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "build" / "config.txt").exists())
 
     def test_stage_patch(self):
-        """ctx.run() in stage for patching."""
+        """envy.run() in stage for patching."""
         self.run_recipe(
             "local.ctx_run_stage_patch@v1",
             "test_data/recipes/ctx_run_stage_patch.lua",
@@ -433,7 +433,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "patch_log.txt").exists())
 
     def test_stage_permissions(self):
-        """ctx.run() in stage for setting permissions."""
+        """envy.run() in stage for setting permissions."""
         self.run_recipe(
             "local.ctx_run_stage_permissions@v1",
             "test_data/recipes/ctx_run_stage_permissions.lua",
@@ -443,7 +443,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "permissions.txt").exists())
 
     def test_stage_verification(self):
-        """ctx.run() in stage for verification checks."""
+        """envy.run() in stage for verification checks."""
         self.run_recipe(
             "local.ctx_run_stage_verification@v1",
             "test_data/recipes/ctx_run_stage_verification.lua",
@@ -453,7 +453,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "verification.txt").exists())
 
     def test_stage_generation(self):
-        """ctx.run() in stage for code generation."""
+        """envy.run() in stage for code generation."""
         self.run_recipe(
             "local.ctx_run_stage_generation@v1",
             "test_data/recipes/ctx_run_stage_generation.lua",
@@ -464,7 +464,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "generated.sh").exists())
 
     def test_stage_cleanup(self):
-        """ctx.run() in stage for cleanup operations."""
+        """envy.run() in stage for cleanup operations."""
         self.run_recipe(
             "local.ctx_run_stage_cleanup@v1",
             "test_data/recipes/ctx_run_stage_cleanup.lua",
@@ -474,7 +474,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "cleanup_log.txt").exists())
 
     def test_stage_compilation(self):
-        """ctx.run() in stage for compilation."""
+        """envy.run() in stage for compilation."""
         self.run_recipe(
             "local.ctx_run_stage_compilation@v1",
             "test_data/recipes/ctx_run_stage_compilation.lua",
@@ -484,7 +484,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "compile_log.txt").exists())
 
     def test_stage_archiving(self):
-        """ctx.run() in stage for creating archives."""
+        """envy.run() in stage for creating archives."""
         self.run_recipe(
             "local.ctx_run_stage_archiving@v1",
             "test_data/recipes/ctx_run_stage_archiving.lua",
@@ -496,7 +496,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Output/Logging Tests =====
 
     def test_output_stdout(self):
-        """ctx.run() captures stdout output."""
+        """envy.run() captures stdout output."""
         self.run_recipe(
             "local.ctx_run_output_stdout@v1",
             "test_data/recipes/ctx_run_output_stdout.lua",
@@ -506,7 +506,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "stdout_marker.txt").exists())
 
     def test_output_stderr(self):
-        """ctx.run() captures stderr output."""
+        """envy.run() captures stderr output."""
         self.run_recipe(
             "local.ctx_run_output_stderr@v1",
             "test_data/recipes/ctx_run_output_stderr.lua",
@@ -517,7 +517,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "stderr_marker.txt").exists())
 
     def test_output_large(self):
-        """ctx.run() handles large output."""
+        """envy.run() handles large output."""
         self.run_recipe(
             "local.ctx_run_output_large@v1",
             "test_data/recipes/ctx_run_output_large.lua",
@@ -527,7 +527,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "large_output_marker.txt").exists())
 
     def test_output_multiline(self):
-        """ctx.run() handles multi-line output."""
+        """envy.run() handles multi-line output."""
         self.run_recipe(
             "local.ctx_run_output_multiline@v1",
             "test_data/recipes/ctx_run_output_multiline.lua",
@@ -539,7 +539,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Complex Scenario Tests =====
 
     def test_complex_workflow(self):
-        """ctx.run() handles complex real-world workflow."""
+        """envy.run() handles complex real-world workflow."""
         self.run_recipe(
             "local.ctx_run_complex_workflow@v1",
             "test_data/recipes/ctx_run_complex_workflow.lua",
@@ -549,7 +549,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "workflow_complete.txt").exists())
 
     def test_complex_env_manipulation(self):
-        """ctx.run() handles complex environment manipulation."""
+        """envy.run() handles complex environment manipulation."""
         self.run_recipe(
             "local.ctx_run_complex_env_manip@v1",
             "test_data/recipes/ctx_run_complex_env_manip.lua",
@@ -561,7 +561,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "env_step3.txt").exists())
 
     def test_complex_conditional(self):
-        """ctx.run() handles conditional operations."""
+        """envy.run() handles conditional operations."""
         self.run_recipe(
             "local.ctx_run_complex_conditional@v1",
             "test_data/recipes/ctx_run_complex_conditional.lua",
@@ -572,7 +572,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "test_info.txt").exists())
 
     def test_complex_loops(self):
-        """ctx.run() handles loops and iterations."""
+        """envy.run() handles loops and iterations."""
         self.run_recipe(
             "local.ctx_run_complex_loops@v1",
             "test_data/recipes/ctx_run_complex_loops.lua",
@@ -582,7 +582,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "loop_output.txt").exists())
 
     def test_complex_nested(self):
-        """ctx.run() handles nested operations."""
+        """envy.run() handles nested operations."""
         self.run_recipe(
             "local.ctx_run_complex_nested@v1",
             "test_data/recipes/ctx_run_complex_nested.lua",
@@ -594,7 +594,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Edge Case Tests =====
 
     def test_edge_empty_script(self):
-        """ctx.run() handles empty script."""
+        """envy.run() handles empty script."""
         self.run_recipe(
             "local.ctx_run_edge_empty@v1",
             "test_data/recipes/ctx_run_edge_empty.lua",
@@ -604,7 +604,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "after_empty.txt").exists())
 
     def test_edge_whitespace(self):
-        """ctx.run() handles whitespace-only script."""
+        """envy.run() handles whitespace-only script."""
         self.run_recipe(
             "local.ctx_run_edge_whitespace@v1",
             "test_data/recipes/ctx_run_edge_whitespace.lua",
@@ -614,7 +614,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "after_whitespace.txt").exists())
 
     def test_edge_long_line(self):
-        """ctx.run() handles very long lines."""
+        """envy.run() handles very long lines."""
         self.run_recipe(
             "local.ctx_run_edge_long_line@v1",
             "test_data/recipes/ctx_run_edge_long_line.lua",
@@ -624,7 +624,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "long_line.txt").exists())
 
     def test_edge_special_chars(self):
-        """ctx.run() handles special characters."""
+        """envy.run() handles special characters."""
         self.run_recipe(
             "local.ctx_run_edge_special_chars@v1",
             "test_data/recipes/ctx_run_edge_special_chars.lua",
@@ -634,7 +634,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "special_chars.txt").exists())
 
     def test_edge_unicode(self):
-        """ctx.run() handles Unicode characters."""
+        """envy.run() handles Unicode characters."""
         self.run_recipe(
             "local.ctx_run_edge_unicode@v1",
             "test_data/recipes/ctx_run_edge_unicode.lua",
@@ -644,7 +644,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "unicode.txt").exists())
 
     def test_edge_many_files(self):
-        """ctx.run() handles creating many files."""
+        """envy.run() handles creating many files."""
         self.run_recipe(
             "local.ctx_run_edge_many_files@v1",
             "test_data/recipes/ctx_run_edge_many_files.lua",
@@ -654,7 +654,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "many_files_marker.txt").exists())
 
     def test_edge_slow_command(self):
-        """ctx.run() waits for slow commands."""
+        """envy.run() waits for slow commands."""
         self.run_recipe(
             "local.ctx_run_edge_slow_command@v1",
             "test_data/recipes/ctx_run_edge_slow_command.lua",
@@ -666,7 +666,7 @@ class TestCtxRun(unittest.TestCase):
     # ===== Lua Error Integration Tests =====
 
     def test_lua_error_after(self):
-        """Lua error after ctx.run() succeeds."""
+        """Lua error after envy.run() succeeds."""
         self.run_recipe(
             "local.ctx_run_lua_error_after@v1",
             "test_data/recipes/ctx_run_lua_error_after.lua",
@@ -674,7 +674,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_lua_error_before(self):
-        """Lua error before ctx.run()."""
+        """Lua error before envy.run()."""
         self.run_recipe(
             "local.ctx_run_lua_error_before@v1",
             "test_data/recipes/ctx_run_lua_error_before.lua",
@@ -682,7 +682,7 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_lua_bad_args(self):
-        """ctx.run() with invalid arguments."""
+        """envy.run() with invalid arguments."""
         self.run_recipe(
             "local.ctx_run_lua_bad_args@v1",
             "test_data/recipes/ctx_run_lua_bad_args.lua",
@@ -690,17 +690,17 @@ class TestCtxRun(unittest.TestCase):
         )
 
     def test_lua_bad_opts(self):
-        """ctx.run() with invalid options."""
+        """envy.run() with invalid options."""
         self.run_recipe(
             "local.ctx_run_lua_bad_opts@v1",
-            "test_data/recipes/ctx_run_lua_bad_opts.lua",
+            "test_data/recipes/ctx_run_lua_bad_options.lua",
             should_fail=True,
         )
 
     # ===== Option Combination Tests =====
 
     def test_all_options(self):
-        """ctx.run() with all options combined."""
+        """envy.run() with all options combined."""
         self.run_recipe(
             "local.ctx_run_all_options@v1",
             "test_data/recipes/ctx_run_all_options.lua",
@@ -710,7 +710,7 @@ class TestCtxRun(unittest.TestCase):
         self.assertTrue((asset_path / "subdir" / "all_opts_continued.txt").exists())
 
     def test_option_combinations(self):
-        """ctx.run() with various option combinations."""
+        """envy.run() with various option combinations."""
         self.run_recipe(
             "local.ctx_run_option_combinations@v1",
             "test_data/recipes/ctx_run_option_combinations.lua",

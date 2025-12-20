@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Functional tests for two-step fetch pattern (fetch → commit).
 
-Tests the security gating pattern where ctx.fetch() downloads to tmp
-and ctx.commit_fetch() moves files to fetch_dir with SHA256 verification.
+Tests the security gating pattern where envy.fetch() downloads to tmp
+and envy.commit_fetch() moves files to fetch_dir with SHA256 verification.
 """
 
 import os
@@ -50,15 +50,15 @@ class TestEngineTwoStepFetch(unittest.TestCase):
 
         recipe_content = f"""IDENTITY = "local.two_step_sha256@v1"
 
-function FETCH(ctx, opts)
+function FETCH(tmp_dir, options)
   -- Step 1: Download to tmp (ungated)
-  local file = ctx.fetch("{self.lua_path(test_file)}")
+  local file = envy.fetch("{self.lua_path(test_file)}", {{dest = tmp_dir}})
 
-  -- At this point, file is in ctx.tmp_dir (run_dir), not fetch_dir
+  -- At this point, file is in tmp_dir (run_dir), not fetch_dir
   -- User could inspect it, read manifest, fetch more files, etc.
 
   -- Step 2: Commit with SHA256 (gated)
-  ctx.commit_fetch({{
+  envy.commit_fetch({{
     filename = file,
     sha256 = "{expected_hash}"
   }})
@@ -101,12 +101,12 @@ end
 
         recipe_content = f"""IDENTITY = "local.manifest_workflow@v1"
 
-function FETCH(ctx, opts)
+function FETCH(tmp_dir, options)
   -- Step 1: Fetch manifest
-  local manifest_file = ctx.fetch("{self.lua_path(manifest_file)}")
+  local manifest_file = envy.fetch("{self.lua_path(manifest_file)}", {{dest = tmp_dir}})
 
   -- Step 2: Read manifest from tmp (this is the point of two-step pattern!)
-  local manifest_path = ctx.tmp_dir .. "/" .. manifest_file
+  local manifest_path = tmp_dir .. "/" .. manifest_file
   local f = io.open(manifest_path, "r")
   if not f then error("Cannot read manifest from tmp") end
   local manifest_content = f:read("*all")
@@ -118,14 +118,14 @@ function FETCH(ctx, opts)
   end
 
   -- Step 3: Fetch files listed in manifest
-  local files = ctx.fetch({{
+  local files = envy.fetch({{
     "{self.lua_path(manifest_dir / "file1.txt")}",
     "{self.lua_path(manifest_dir / "file2.txt")}"
-  }})
+  }}, {{dest = tmp_dir}})
 
   -- Step 4: Commit all files (manifest + listed files)
-  ctx.commit_fetch(manifest_file)
-  ctx.commit_fetch(files)
+  envy.commit_fetch(manifest_file)
+  envy.commit_fetch(files)
 end
 """
         recipe_path = self.cache_root / "manifest_workflow.lua"

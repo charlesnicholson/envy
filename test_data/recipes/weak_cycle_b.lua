@@ -4,10 +4,10 @@ DEPENDENCIES = {
   { recipe = "local.weak_cycle_a@v1", source = "weak_cycle_a.lua" }
 }
 
-function CHECK(ctx)
+function CHECK(project_root, options)
   return false
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic install
 end

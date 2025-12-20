@@ -2,6 +2,7 @@
 
 #include "extract.h"
 #include "lua_phase_context.h"
+#include "recipe.h"
 #include "tui_actions.h"
 
 #include <cstdint>
@@ -9,12 +10,27 @@
 #include <string>
 
 namespace envy {
+namespace {
+
+// Resolve relative path to phase working directory (from registry, or stage_dir fallback)
+std::filesystem::path resolve_relative(std::filesystem::path const &path,
+                                       sol::this_state L) {
+  if (path.is_absolute()) { return path; }
+  std::optional<std::filesystem::path> run_dir{ lua_phase_context_get_run_dir(L) };
+  if (run_dir) { return *run_dir / path; }
+  recipe *r{ lua_phase_context_get_recipe(L) };
+  if (r && r->lock) { return r->lock->stage_dir() / path; }
+  return std::filesystem::current_path() / path;
+}
+
+}  // namespace
 
 void lua_envy_extract_install(sol::table &envy_table) {
   // envy.extract(archive_path, dest_dir, opts?) - Single archive extraction
   envy_table["extract"] = [](std::string const &archive_path_str,
                              std::string const &dest_dir_str,
-                             sol::optional<sol::table> opts_table) -> int {
+                             sol::optional<sol::table> opts_table,
+                             sol::this_state L) -> int {
     int strip_components{ 0 };
 
     if (opts_table) {
@@ -27,15 +43,15 @@ void lua_envy_extract_install(sol::table &envy_table) {
       }
     }
 
-    std::filesystem::path const archive_path{ archive_path_str };
-    std::filesystem::path const dest_dir{ dest_dir_str };
+    std::filesystem::path const archive_path{ resolve_relative(archive_path_str, L) };
+    std::filesystem::path const dest_dir{ resolve_relative(dest_dir_str, L) };
 
     if (!std::filesystem::exists(archive_path)) {
       throw std::runtime_error("envy.extract: file not found: " + archive_path.string());
     }
 
     // Set up progress tracking if in phase context
-    recipe *r{ lua_phase_context_get_recipe() };
+    recipe *r{ lua_phase_context_get_recipe(L) };
     std::optional<tui_actions::extract_progress_tracker> tracker;
     if (r && r->tui_section) {
       tracker.emplace(r->tui_section, r->spec->identity, archive_path.filename().string());
@@ -53,7 +69,8 @@ void lua_envy_extract_install(sol::table &envy_table) {
   // envy.extract_all(src_dir, dest_dir, opts?) - Extract all archives in directory
   envy_table["extract_all"] = [](std::string const &src_dir_str,
                                  std::string const &dest_dir_str,
-                                 sol::optional<sol::table> opts_table) {
+                                 sol::optional<sol::table> opts_table,
+                                 sol::this_state L) {
     int strip_components{ 0 };
 
     if (opts_table) {
@@ -66,8 +83,8 @@ void lua_envy_extract_install(sol::table &envy_table) {
       }
     }
 
-    std::filesystem::path const src_dir{ src_dir_str };
-    std::filesystem::path const dest_dir{ dest_dir_str };
+    std::filesystem::path const src_dir{ resolve_relative(src_dir_str, L) };
+    std::filesystem::path const dest_dir{ resolve_relative(dest_dir_str, L) };
 
     if (!std::filesystem::exists(src_dir)) {
       throw std::runtime_error("envy.extract_all: source directory not found: " +

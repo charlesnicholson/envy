@@ -1,4 +1,4 @@
--- Test imperative stage using ctx.extract for single file
+-- Test imperative stage using envy.extract for single file
 IDENTITY = "local.stage_extract_single@v1"
 
 FETCH = {
@@ -6,8 +6,8 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   -- Extract single archive with specific options
-  local files = ctx.extract("test.tar.gz", {strip = 1})
+  local files = envy.extract(fetch_dir .. "/test.tar.gz", stage_dir, {strip = 1})
   -- files should be 5 (the number of regular files extracted)
 end

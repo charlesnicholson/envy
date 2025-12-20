@@ -1,4 +1,4 @@
--- Test ctx.run() executes in stage_dir by default
+-- Test envy.run() executes in stage_dir by default
 IDENTITY = "local.ctx_run_in_stage_dir@v1"
 
 FETCH = {
@@ -6,11 +6,11 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Set-Content -Path pwd_default.txt -Value (Get-Location).Path
       Get-ChildItem | Select-Object -ExpandProperty Name | Set-Content -Path ls_output.txt
       if (Test-Path file1.txt) {
@@ -18,7 +18,7 @@ STAGE = function(ctx, opts)
       }
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
-    ctx.run([[
+    envy.run([[
       pwd > pwd_default.txt
       ls > ls_output.txt
       test -f file1.txt && echo "Found file1.txt from archive" > stage_verification.txt

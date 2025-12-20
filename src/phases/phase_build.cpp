@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "recipe.h"
@@ -21,7 +22,6 @@ namespace {
 
 struct build_phase_ctx : lua_ctx_common {
   // run_dir inherited from base is stage_dir (build working directory)
-  std::filesystem::path install_dir;
 };
 
 sol::table build_build_phase_ctx_table(sol::state_view lua,
@@ -32,7 +32,6 @@ sol::table build_build_phase_ctx_table(sol::state_view lua,
   ctx_table["identity"] = identity;
   ctx_table["fetch_dir"] = ctx->fetch_dir.string();
   ctx_table["stage_dir"] = ctx->run_dir.string();
-  ctx_table["install_dir"] = ctx->install_dir.string();
 
   lua_ctx_add_common_bindings(ctx_table, ctx);
   return ctx_table;
@@ -41,90 +40,73 @@ sol::table build_build_phase_ctx_table(sol::state_view lua,
 void run_programmatic_build(sol::protected_function build_func,
                             std::filesystem::path const &fetch_dir,
                             std::filesystem::path const &stage_dir,
-                            std::filesystem::path const &install_dir,
+                            std::filesystem::path const &tmp_dir,
                             std::string const &identity,
                             engine &eng,
                             recipe *r) {
   tui::debug("phase build: running programmatic build function");
 
-  build_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = stage_dir;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.install_dir = install_dir;
+  // Set up Lua registry context for envy.* functions
+  phase_context_guard ctx_guard{ &eng, r };
 
   sol::state_view lua{ build_func.lua_state() };
-  sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  // Call BUILD function and capture result
-  sol::protected_function_result build_result{ build_func(ctx_table, opts) };
+  sol::protected_function_result build_result{ call_lua_function_with_enriched_errors(
+      r,
+      "BUILD",
+      [&]() {
+        return build_func(stage_dir.string(), fetch_dir.string(), tmp_dir.string(), opts);
+      }) };
 
-  if (!build_result.valid()) {
-    sol::error err = build_result;
-    lua_error_context err_ctx{ .lua_error_message = err.what(), .r = r, .phase = "BUILD" };
-    throw std::runtime_error(format_lua_error(err_ctx));
-  }
-
-  // If function returned a string, execute it via ctx.run()
+  // If function returned a string, execute it via envy.run()
   if (build_result.return_count() > 0) {
     sol::object return_value = build_result;
     if (return_value.is<std::string>()) {
       std::string const script{ return_value.as<std::string>() };
-      tui::debug("phase build: function returned string, executing via ctx.run()");
+      tui::debug("phase build: function returned string, executing via shell");
 
-      sol::protected_function run_fn = ctx_table["run"];
-      sol::protected_function_result result = run_fn(script);
+      shell_env_t env{ shell_getenv() };
+      shell_run_cfg const cfg{ .on_output_line =
+                                   [&](std::string_view line) {
+                                     tui::info("%.*s",
+                                               static_cast<int>(line.size()),
+                                               line.data());
+                                   },
+                               .cwd = stage_dir,
+                               .env = std::move(env),
+                               .shell = shell_resolve_default(r->default_shell_ptr) };
 
-      if (!result.valid()) {
-        sol::error err = result;
+      shell_result const result{ shell_run(script, cfg) };
+      if (result.exit_code != 0) {
         throw std::runtime_error("Build function returned script failed for " + identity +
-                                 ": " + std::string{ err.what() });
-      }
-
-      sol::table result_table = result;
-      int const exit_code{ result_table["exit_code"] };
-      if (exit_code != 0) {
-        throw std::runtime_error("Build function returned script failed for " + identity +
-                                 " (exit code " + std::to_string(exit_code) + ")");
+                                 " (exit code " + std::to_string(result.exit_code) + ")");
       }
     }
   }
 }
 
-void run_shell_build(sol::state_view lua,
-                     std::string_view script,
-                     std::filesystem::path const &fetch_dir,
+void run_shell_build(std::string_view script,
                      std::filesystem::path const &stage_dir,
-                     std::filesystem::path const &install_dir,
                      std::string const &identity,
-                     engine &eng,
                      recipe *r) {
-  tui::debug("phase build: running shell script via Lua ctx.run()");
+  tui::debug("phase build: running shell script");
 
-  build_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = stage_dir;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.install_dir = install_dir;
+  shell_env_t env{ shell_getenv() };
+  shell_run_cfg const cfg{ .on_output_line =
+                               [&](std::string_view line) {
+                                 tui::info("%.*s",
+                                           static_cast<int>(line.size()),
+                                           line.data());
+                               },
+                           .cwd = stage_dir,
+                           .env = std::move(env),
+                           .shell = shell_resolve_default(r->default_shell_ptr) };
 
-  sol::table ctx_table{ build_build_phase_ctx_table(lua, identity, &ctx) };
-  sol::protected_function run_fn = ctx_table["run"];
-  sol::protected_function_result result = run_fn(script);
-
-  if (!result.valid()) {
-    sol::error err = result;
-    throw std::runtime_error("Build shell script failed for " + identity + ": " +
-                             std::string{ err.what() });
-  }
-
-  sol::table result_table = result;
-  int const exit_code{ result_table["exit_code"] };
-  if (exit_code != 0) {
+  shell_result const result{ shell_run(script, cfg) };
+  if (result.exit_code != 0) {
     throw std::runtime_error("Build shell script failed for " + identity + " (exit code " +
-                             std::to_string(exit_code) + ")");
+                             std::to_string(result.exit_code) + ")");
   }
 }
 
@@ -146,19 +128,12 @@ void run_build_phase(recipe *r, engine &eng) {
     tui::debug("phase build: no build field, skipping");
   } else if (build_obj.is<std::string>()) {
     std::string const script{ build_obj.as<std::string>() };
-    run_shell_build(lua_view,
-                    script,
-                    r->lock->fetch_dir(),
-                    r->lock->stage_dir(),
-                    r->lock->install_dir(),
-                    r->spec->identity,
-                    eng,
-                    r);
+    run_shell_build(script, r->lock->stage_dir(), r->spec->identity, r);
   } else if (build_obj.is<sol::protected_function>()) {
     run_programmatic_build(build_obj.as<sol::protected_function>(),
                            r->lock->fetch_dir(),
                            r->lock->stage_dir(),
-                           r->lock->install_dir(),
+                           r->lock->tmp_dir(),
                            r->spec->identity,
                            eng,
                            r);

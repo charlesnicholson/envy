@@ -14,8 +14,8 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
   -- Access diamond base through both left and right paths
-  ctx.asset("local.dep_val_diamond_base@v1")
+  envy.asset("local.dep_val_diamond_base@v1")
 end

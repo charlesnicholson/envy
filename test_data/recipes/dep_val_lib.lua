@@ -6,10 +6,10 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 end
 
-BUILD = function(ctx, opts)
-  ctx.run([[echo "lib built" > lib.txt]])
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  envy.run([[echo "lib built" > lib.txt]])
 end

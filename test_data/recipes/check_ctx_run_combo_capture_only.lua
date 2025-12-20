@@ -1,9 +1,9 @@
 -- Test ctx.run with capture=true only
 IDENTITY = "local.check_combo_capture@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Capture only: streams to TUI, returns stdout/stderr/exit_code
-    local res = ctx.run("echo 'capture test'", {capture = true})
+    local res = envy.run("echo 'capture test'", {capture = true})
 
     assert(res.exit_code == 0)
     assert(res.stdout ~= nil, "stdout should be captured")
@@ -13,6 +13,6 @@ function CHECK(ctx)
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end

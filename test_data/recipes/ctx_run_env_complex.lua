@@ -1,4 +1,4 @@
--- Test ctx.run() with complex environment variables
+-- Test envy.run() with complex environment variables
 IDENTITY = "local.ctx_run_env_complex@v1"
 
 FETCH = {
@@ -6,8 +6,8 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   local env_values = {
     STRING = "hello_world",
@@ -17,7 +17,7 @@ STAGE = function(ctx, opts)
   }
 
     if envy.PLATFORM == "windows" then
-      ctx.run([[
+      envy.run([[
         if (-not $env:STRING) { exit 44 }
         Set-Content -Path env_complex.txt -Value ("STRING=" + $env:STRING)
         Add-Content -Path env_complex.txt -Value ("NUMBER=" + $env:NUMBER)
@@ -25,7 +25,7 @@ STAGE = function(ctx, opts)
         Add-Content -Path env_complex.txt -Value ("SPECIAL=" + $env:SPECIAL)
       ]], {env = env_values, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       echo "STRING=$STRING" > env_complex.txt
       echo "NUMBER=$NUMBER" >> env_complex.txt
       echo "WITH_SPACE=$WITH_SPACE" >> env_complex.txt

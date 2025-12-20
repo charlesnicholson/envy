@@ -228,11 +228,11 @@ IDENTITY = "test.ninja@v1"
 
 FETCH = { source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1" }
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     return false
 end
 
-function INSTALL(ctx, opts)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Nothing needed - source is already fetched by git
 end
 """

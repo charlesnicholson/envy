@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
+#include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "phase_check.h"
@@ -153,35 +154,36 @@ bool run_programmatic_install(sol::protected_function install_func,
                               std::filesystem::path const &fetch_dir,
                               std::filesystem::path const &stage_dir,
                               std::filesystem::path const &install_dir,
+                              std::filesystem::path const &tmp_dir,
                               std::string const &identity,
                               engine &eng,
                               recipe *r,
                               bool is_user_managed) {
   tui::debug("phase install: running programmatic install function");
 
-  // User-managed packages use manifest dir as cwd, cache-managed use install_dir
-  std::filesystem::path const run_cwd{ is_user_managed
-                                           ? recipe_spec::compute_project_root(r->spec)
-                                           : install_dir };
+  // Determine run_dir: install_dir for cache-managed, project_root for user-managed
+  std::filesystem::path const run_dir{
+    is_user_managed ? recipe_spec::compute_project_root(r->spec) : install_dir
+  };
 
-  install_phase_ctx ctx{};
-  ctx.fetch_dir = fetch_dir;
-  ctx.run_dir = run_cwd;
-  ctx.engine_ = &eng;
-  ctx.recipe_ = r;
-  ctx.install_dir = install_dir;
-  ctx.stage_dir = stage_dir;
-  ctx.tmp_dir = lock->tmp_dir();
-  ctx.lock = lock;
+  // Set up Lua registry context for envy.* functions
+  phase_context_guard ctx_guard{ &eng, r, run_dir };
 
   sol::state_view lua{ install_func.lua_state() };
-  sol::table ctx_table{ is_user_managed
-                            ? build_user_managed_install_ctx_table(lua, identity, &ctx)
-                            : build_install_phase_ctx_table(lua, identity, &ctx) };
-
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+  // no install_dir for user-managed packages.
+  sol::object install_dir_arg{
+    is_user_managed ? sol::object{ sol::lua_nil }
+                    : sol::object{ lua, sol::in_place, install_dir.string() }
+  };
+
   sol::object result_obj{ call_lua_function_with_enriched_errors(r, "INSTALL", [&]() {
-    return install_func(ctx_table, opts);
+    return install_func(install_dir_arg,
+                        stage_dir.string(),
+                        fetch_dir.string(),
+                        tmp_dir.string(),
+                        opts);
   }) };
 
   // Validate return type: must be nil or string
@@ -197,21 +199,20 @@ bool run_programmatic_install(sol::protected_function install_func,
     std::string const returned_script{ result_obj.as<std::string>() };
     tui::debug("phase install: running returned string from install function");
 
-    // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+    // User-managed packages use project_root as cwd, cache-managed use install_dir
     std::filesystem::path const string_cwd{
       is_user_managed ? recipe_spec::compute_project_root(r->spec) : install_dir
     };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
     // Cache-managed packages mark on shell exit 0
-    return run_shell_install(
-        returned_script,
-        string_cwd,
-        is_user_managed ? nullptr : lock,
-        identity,
-        shell_resolve_default(r->default_shell_ptr),
-        r->tui_section,
-        eng.cache_root());
+    return run_shell_install(returned_script,
+                             string_cwd,
+                             is_user_managed ? nullptr : lock,
+                             identity,
+                             shell_resolve_default(r->default_shell_ptr),
+                             r->tui_section,
+                             eng.cache_root());
   }
 
   // Function returned nil/none successfully - mark complete for cache-managed
@@ -290,6 +291,7 @@ void run_install_phase(recipe *r, engine &eng) {
                                                lock->fetch_dir(),
                                                lock->stage_dir(),
                                                lock->install_dir(),
+                                               lock->tmp_dir(),
                                                r->spec->identity,
                                                eng,
                                                r,

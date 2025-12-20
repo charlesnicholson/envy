@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Functional coverage for ctx.asset() and ctx.product() enforcement."""
+"""Functional coverage for envy.asset() and envy.product() enforcement."""
 
 import shutil
 import subprocess

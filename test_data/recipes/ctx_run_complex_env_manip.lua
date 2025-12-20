@@ -1,4 +1,4 @@
--- Test ctx.run() with complex environment manipulation
+-- Test envy.run() with complex environment manipulation
 IDENTITY = "local.ctx_run_complex_env_manip@v1"
 
 FETCH = {
@@ -6,22 +6,22 @@ FETCH = {
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 }
 
-STAGE = function(ctx, opts)
-  ctx.extract_all({strip = 1})
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   -- First run with base environment
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Set-Content -Path env_step1.txt -Value ("BASE_VAR=" + $env:BASE_VAR)
     ]], {env = {BASE_VAR = "base_value"}, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       echo "BASE_VAR=$BASE_VAR" > env_step1.txt
     ]], {env = {BASE_VAR = "base_value"}})
   end
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Set-Content -Path env_step2.txt -Value ("BASE_VAR=" + $env:BASE_VAR)
       Add-Content -Path env_step2.txt -Value ("EXTRA_VAR=" + $env:EXTRA_VAR)
       Add-Content -Path env_step2.txt -Value ("ANOTHER=" + $env:ANOTHER)
@@ -31,7 +31,7 @@ STAGE = function(ctx, opts)
       ANOTHER = "another"
     }, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       echo "BASE_VAR=$BASE_VAR" > env_step2.txt
       echo "EXTRA_VAR=$EXTRA_VAR" >> env_step2.txt
       echo "ANOTHER=$ANOTHER" >> env_step2.txt
@@ -43,7 +43,7 @@ STAGE = function(ctx, opts)
   end
 
   if envy.PLATFORM == "windows" then
-    ctx.run([[
+    envy.run([[
       Set-Content -Path env_step3.txt -Value ("CONFIG_DIR=" + $env:CONFIG_DIR)
       Add-Content -Path env_step3.txt -Value ("DATA_DIR=" + $env:DATA_DIR)
       Add-Content -Path env_step3.txt -Value ("LOG_LEVEL=" + $env:LOG_LEVEL)
@@ -53,7 +53,7 @@ STAGE = function(ctx, opts)
       LOG_LEVEL = "debug"
     }, shell = ENVY_SHELL.POWERSHELL})
   else
-    ctx.run([[
+    envy.run([[
       echo "CONFIG_DIR=$CONFIG_DIR" > env_step3.txt
       echo "DATA_DIR=$DATA_DIR" >> env_step3.txt
       echo "LOG_LEVEL=$LOG_LEVEL" >> env_step3.txt

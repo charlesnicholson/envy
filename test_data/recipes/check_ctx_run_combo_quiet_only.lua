@@ -1,9 +1,9 @@
 -- Test ctx.run with quiet=true only
 IDENTITY = "local.check_combo_quiet@v1"
 
-function CHECK(ctx)
+function CHECK(project_root, options)
     -- Quiet only: no TUI, returns exit_code only
-    local res = ctx.run("echo 'quiet test'", {quiet = true})
+    local res = envy.run("echo 'quiet test'", {quiet = true})
 
     assert(res.exit_code == 0)
     assert(res.stdout == nil, "stdout not captured")
@@ -12,6 +12,6 @@ function CHECK(ctx)
     return true
 end
 
-function INSTALL(ctx)
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Not reached since check returns true
 end
