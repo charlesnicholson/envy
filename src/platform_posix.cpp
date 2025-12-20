@@ -108,7 +108,7 @@ file_lock::file_lock(std::filesystem::path const &path) {
                    .l_len = 0,
                    .l_pid = 0 };
 
-  if (::fcntl(fd, F_SETLKW, &fl) != 0) {
+  if (::fcntl(fd, F_SETLKW, &fl) == -1) {
     int const err{ errno };
     ::close(fd);
     throw std::system_error(err,
