@@ -135,8 +135,8 @@ cache::ensure_result compute_hash_and_lookup_cache(recipe *r, sol::state_view lu
   r->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
 
-  std::string const platform{ lua["ENVY_PLATFORM"].get<std::string>() };
-  std::string const arch{ lua["ENVY_ARCH"].get<std::string>() };
+  std::string const platform{ lua["envy"]["PLATFORM"].get<std::string>() };
+  std::string const arch{ lua["envy"]["ARCH"].get<std::string>() };
 
   return r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix);
 }

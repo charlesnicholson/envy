@@ -277,6 +277,39 @@ class TestBuildPhase(unittest.TestCase):
         ).read_text()
         self.assertEqual(content.strip(), "returned_script_artifact")
 
+    def test_cache_path_includes_platform_arch(self):
+        """Verify cache variant directory includes platform-arch prefix, not empty."""
+        self.run_recipe("build_function.lua", "local.build_function@v1")
+
+        # Find the variant subdirectory under the identity
+        identity_dir = self.cache_root / "assets" / "local.build_function@v1"
+        self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+
+        variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]
+        self.assertEqual(len(variant_dirs), 1, "Should have exactly one variant directory")
+
+        variant_name = variant_dirs[0].name
+        # Verify format is {platform}-{arch}-blake3-{hash}, not --blake3-{hash}
+        self.assertNotIn(
+            variant_name.startswith("--blake3-"),
+            [True],
+            f"Variant dir should not start with '--blake3-' (missing platform/arch): {variant_name}",
+        )
+
+        # Verify it starts with a valid platform
+        valid_platforms = ("darwin-", "linux-", "windows-")
+        self.assertTrue(
+            any(variant_name.startswith(p) for p in valid_platforms),
+            f"Variant dir should start with platform prefix: {variant_name}",
+        )
+
+        # Verify it contains blake3 hash marker
+        self.assertIn(
+            "-blake3-",
+            variant_name,
+            f"Variant dir should contain '-blake3-': {variant_name}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
