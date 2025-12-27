@@ -342,25 +342,23 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
 
   recipe_key const key(*spec);
 
-  auto r{ std::unique_ptr<recipe>(new recipe{
-      .key = key,
-      .spec = spec,
-      .exec_ctx = nullptr,
-      .lua = nullptr,
-      .lock = nullptr,
-      .declared_dependencies = {},
-      .owned_dependency_specs = {},
-      .dependencies = {},
-      .product_dependencies = {},
-      .weak_references = {},
-      .canonical_identity_hash = key.canonical(),
-      .asset_path = std::filesystem::path{},
-      .result_hash = {},
-      .type = recipe_type::UNKNOWN,
-      .cache_ptr = &cache_,
-      .default_shell_ptr = &default_shell_,
-      .tui_section = tui::section_create(),
-  }) };
+  auto r{ std::unique_ptr<recipe>(new recipe{ .key = key,
+                                              .spec = spec,
+                                              .cache_ptr = &cache_,
+                                              .default_shell_ptr = &default_shell_,
+                                              .tui_section = tui::section_create(),
+                                              .exec_ctx = nullptr,
+                                              .lua = nullptr,
+                                              .lock = nullptr,
+                                              .canonical_identity_hash = key.canonical(),
+                                              .asset_path = std::filesystem::path{},
+                                              .result_hash = {},
+                                              .type = recipe_type::UNKNOWN,
+                                              .declared_dependencies = {},
+                                              .owned_dependency_specs = {},
+                                              .dependencies = {},
+                                              .product_dependencies = {},
+                                              .weak_references = {} }) };
 
   auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
   if (inserted) {
