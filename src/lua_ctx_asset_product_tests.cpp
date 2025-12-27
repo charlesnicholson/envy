@@ -29,23 +29,17 @@ std::unique_ptr<recipe> make_recipe(std::string identity, recipe_type type) {
   return std::unique_ptr<recipe>(new recipe{
       .key = recipe_key(*spec),
       .spec = spec,
+      .cache_ptr = nullptr,
+      .default_shell_ptr = nullptr,
+      .tui_section = {},
       .exec_ctx = nullptr,
       .lua = nullptr,
       .lock = nullptr,
-      .declared_dependencies = {},
-      .owned_dependency_specs = {},
-      .dependencies = {},
-      .product_dependencies = {},
-      .weak_references = {},
-      .products = {},
-      .resolved_weak_dependency_keys = {},
       .canonical_identity_hash = {},
       .asset_path = {},
       .recipe_file_path = std::nullopt,
       .result_hash = {},
       .type = type,
-      .cache_ptr = nullptr,
-      .default_shell_ptr = nullptr,
   });
 }
 
