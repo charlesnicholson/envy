@@ -31,7 +31,7 @@ Initialize a project with `envy init`:
 
 ```bash
 # Download envy binary (one-time)
-curl -fsSL -o /tmp/envy https://github.com/anthropics/envy/releases/latest/download/envy-darwin-arm64
+curl -fsSL -o /tmp/envy https://github.com/charlesnicholson/envy/releases/latest/download/envy-darwin-arm64
 chmod +x /tmp/envy
 
 # Initialize your project

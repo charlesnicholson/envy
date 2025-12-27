@@ -216,7 +216,7 @@ Alice creates a new project with envy:
 
 ```bash
 # 1. Download envy somehow (one-time, any method)
-curl -fsSL -o /tmp/envy https://github.com/anthropics/envy/releases/latest/download/envy-darwin-arm64
+curl -fsSL -o /tmp/envy https://github.com/charlesnicholson/envy/releases/latest/download/envy-darwin-arm64
 chmod +x /tmp/envy
 
 # 2. Initialize project

@@ -12,8 +12,19 @@
 #include "cache.h"
 
 #include <filesystem>
+#include <string>
+#include <string_view>
 
 namespace envy {
+
+// Default download URL for envy releases
+inline constexpr std::string_view kEnvyDownloadUrl{
+  "https://github.com/charlesnicholson/envy/releases/download"
+};
+
+// Replace @@ENVY_VERSION@@ and @@DOWNLOAD_URL@@ placeholders in content.
+std::string bootstrap_stamp_placeholders(std::string_view content,
+                                         std::string_view download_url);
 
 // Deploy the running envy binary and type definitions to the cache.
 // Uses file locking for concurrent safety. Called from main() before command dispatch.

@@ -3,7 +3,6 @@
 #include "bootstrap.h"
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
-#include "platform.h"
 #include "tui.h"
 
 #include <cstring>
@@ -22,8 +21,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-char constexpr kEnvyUri[]{ "https://github.com/anthropics/envy/releases/download" };
-
 std::string_view get_bootstrap() {
   return { reinterpret_cast<char const *>(embedded::kBootstrap),
            embedded::kBootstrapSize };
@@ -32,21 +29,6 @@ std::string_view get_bootstrap() {
 std::string_view get_manifest_template() {
   return { reinterpret_cast<char const *>(embedded::kManifestTemplate),
            embedded::kManifestTemplateSize };
-}
-
-void replace_all(std::string &s, std::string_view from, std::string_view to) {
-  size_t pos{ 0 };
-  while ((pos = s.find(from, pos)) != std::string::npos) {
-    s.replace(pos, from.length(), to);
-    pos += to.length();
-  }
-}
-
-std::string stamp_placeholders(std::string_view content, std::string_view download_url) {
-  std::string result{ content };
-  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
-  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
-  return result;
 }
 
 void write_file(fs::path const &path, std::string_view content) {
@@ -63,8 +45,8 @@ void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &
   fs::path const script_path{ bin_dir / "envy" };
 #endif
 
-  std::string const download_url{ mirror.value_or(kEnvyUri) };
-  std::string const content{ stamp_placeholders(get_bootstrap(), download_url) };
+  std::string_view const url{ mirror ? std::string_view{ *mirror } : kEnvyDownloadUrl };
+  std::string const content{ bootstrap_stamp_placeholders(get_bootstrap(), url) };
   write_file(script_path, content);
 
 #ifndef _WIN32
@@ -91,7 +73,8 @@ void write_manifest(fs::path const &project_dir) {
     return;
   }
 
-  std::string const content{ stamp_placeholders(get_manifest_template(), kEnvyUri) };
+  std::string const content{ bootstrap_stamp_placeholders(get_manifest_template(),
+                                                          kEnvyDownloadUrl) };
   write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());

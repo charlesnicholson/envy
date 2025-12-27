@@ -18,8 +18,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-char constexpr kEnvyUri[]{ "https://github.com/anthropics/envy/releases/download" };
-
 std::string_view get_type_definitions() {
   return { reinterpret_cast<char const *>(embedded::kTypeDefinitions),
            embedded::kTypeDefinitionsSize };
@@ -31,13 +29,6 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
     s.replace(pos, from.length(), to);
     pos += to.length();
   }
-}
-
-std::string stamp_placeholders(std::string_view content) {
-  std::string result{ content };
-  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
-  replace_all(result, "@@DOWNLOAD_URL@@", kEnvyUri);
-  return result;
 }
 
 void write_file(fs::path const &path, std::string_view content) {
@@ -72,6 +63,14 @@ bool copy_binary(fs::path const &src, fs::path const &dst) {
 
 }  // namespace
 
+std::string bootstrap_stamp_placeholders(std::string_view content,
+                                         std::string_view download_url) {
+  std::string result{ content };
+  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
+  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
+  return result;
+}
+
 bool bootstrap_deploy_envy(cache &c) {
   auto const [envy_dir, needs_install]{ c.ensure_envy(ENVY_VERSION_STR) };
   if (!needs_install) { return true; }
@@ -86,8 +85,9 @@ bool bootstrap_deploy_envy(cache &c) {
   fs::path const exe_path{ platform::get_exe_path() };
   if (!copy_binary(exe_path, binary_path)) { return true; }
 
-  std::string const types_content{ stamp_placeholders(get_type_definitions()) };
-  write_file(types_path, types_content);
+  auto const types{ bootstrap_stamp_placeholders(get_type_definitions(),
+                                                 kEnvyDownloadUrl) };
+  write_file(types_path, types);
 
   return true;
 }
@@ -113,8 +113,9 @@ std::filesystem::path bootstrap_extract_lua_ls_types() {
                              types_dir.string() + ": " + ec.message());
   }
 
-  std::string const content{ stamp_placeholders(get_type_definitions()) };
-  write_file(types_path, content);
+  auto const types{ bootstrap_stamp_placeholders(get_type_definitions(),
+                                                 kEnvyDownloadUrl) };
+  write_file(types_path, types);
 
   tui::info("Extracted type definitions to %s", types_path.string().c_str());
   return types_dir;
