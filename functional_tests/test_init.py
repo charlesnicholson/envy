@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .test_config import get_envy_executable, get_test_env
+from .test_config import get_test_env
 
 
 def _get_envy_binary() -> Path:
