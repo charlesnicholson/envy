@@ -27,19 +27,19 @@ while read -r key val; do
     val="${val//\\\"/\"}"
     val="${val//\\\\/\\}"
     case "$key" in
-        version) VERSION=$val ;; cache) MANIFEST_CACHE=$val ;; mirror) MANIFEST_MIRROR=$val ;;
+        version) VERSION="$val" ;; cache) MANIFEST_CACHE="$val" ;; mirror) MANIFEST_MIRROR="$val" ;;
     esac
 done < <(parse_directives)
 
 if [[ -z $VERSION ]]; then
     echo "WARNING: @envy version not found in $MANIFEST, using fallback $FALLBACK_VERSION" >&2
-    VERSION=$FALLBACK_VERSION
+    VERSION="$FALLBACK_VERSION"
 fi
 
-[[ -n $MANIFEST_MIRROR ]] && ENVY_MIRROR=$MANIFEST_MIRROR
+[[ -n $MANIFEST_MIRROR ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
 
-if [[ -n ${ENVY_CACHE_ROOT:-} ]]; then CACHE=$ENVY_CACHE_ROOT
-elif [[ -n $MANIFEST_CACHE ]]; then CACHE=$MANIFEST_CACHE
+if [[ -n ${ENVY_CACHE_ROOT:-} ]]; then CACHE="$ENVY_CACHE_ROOT"
+elif [[ -n $MANIFEST_CACHE ]]; then CACHE="$MANIFEST_CACHE"
 elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
 else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
 
