@@ -13,6 +13,110 @@
 
 namespace envy {
 
+namespace {
+
+size_t skip_whitespace(std::string_view s, size_t pos) {
+  while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t')) { ++pos; }
+  return pos;
+}
+
+std::string_view parse_identifier(std::string_view s, size_t &pos) {
+  size_t const start{ pos };
+  while (pos < s.size() &&
+         (std::isalnum(static_cast<unsigned char>(s[pos])) || s[pos] == '_')) {
+    ++pos;
+  }
+  return s.substr(start, pos - start);
+}
+
+// Expects pos to be at opening quote, advances pos past closing quote
+std::optional<std::string> parse_quoted_value(std::string_view s, size_t &pos) {
+  if (pos >= s.size() || s[pos] != '"') { return std::nullopt; }
+  ++pos;  // skip opening quote
+
+  std::string result;
+  while (pos < s.size() && s[pos] != '"') {
+    if (s[pos] == '\\' && pos + 1 < s.size()) {
+      char const next{ s[pos + 1] };
+      if (next == '"' || next == '\\') {
+        result += next;
+        pos += 2;
+        continue;
+      }
+    }
+
+    result += s[pos];
+    ++pos;
+  }
+
+  if (pos >= s.size() || s[pos] != '"') { return std::nullopt; }
+  ++pos;  // skip closing quote
+  return result;
+}
+
+// Parse a single line for @envy directive
+// Returns key and value if found, nullopt otherwise
+std::optional<std::pair<std::string, std::string>> parse_directive_line(
+    std::string_view line) {
+  size_t pos{ 0 };
+
+  // Must start with "--"
+  if (line.size() < 2 || line[0] != '-' || line[1] != '-') { return std::nullopt; }
+  pos = 2;
+
+  pos = skip_whitespace(line, pos);
+
+  // Must have "@envy"
+  if (pos + 5 > line.size()) { return std::nullopt; }
+  if (line.substr(pos, 5) != "@envy") { return std::nullopt; }
+  pos += 5;
+
+  if (pos >= line.size() || (line[pos] != ' ' && line[pos] != '\t')) {
+    return std::nullopt;
+  }
+  pos = skip_whitespace(line, pos);
+
+  auto const key{ parse_identifier(line, pos) };
+  if (key.empty()) { return std::nullopt; }
+
+  pos = skip_whitespace(line, pos);
+
+  auto const value{ parse_quoted_value(line, pos) };
+  if (!value) { return std::nullopt; }
+
+  return std::make_pair(std::string{ key }, *value);
+}
+
+}  // namespace
+
+envy_meta parse_envy_meta(std::string_view content) {
+  envy_meta result;
+  size_t line_start{ 0 };
+
+  while (line_start < content.size()) {
+    size_t const line_end{ content.find('\n', line_start) };
+    auto const line{ content.substr(
+        line_start,
+        (line_end == std::string_view::npos ? content.size() : line_end) - line_start) };
+
+    if (auto const directive{ parse_directive_line(line) }) {
+      auto const &[key, value]{ *directive };
+      if (key == "version") {
+        result.version = value;
+      } else if (key == "cache") {
+        result.cache = value;
+      } else if (key == "mirror") {
+        result.mirror = value;
+      }
+    }
+
+    if (line_end == std::string_view::npos) { break; }
+    line_start = line_end + 1;
+  }
+
+  return result;
+}
+
 std::optional<std::filesystem::path> manifest::discover() {
   namespace fs = std::filesystem;
 
@@ -58,6 +162,8 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   std::string const script{ reinterpret_cast<char const *>(content.data()),
                             content.size() };
 
+  auto meta{ parse_envy_meta(script) };
+
   auto state{ sol_util_make_lua_state() };
   lua_envy_install(*state);
 
@@ -71,6 +177,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
   auto m{ std::make_unique<manifest>() };
   m->manifest_path = manifest_path;
+  m->meta = std::move(meta);
   m->lua_ = std::move(state);  // Keep lua state alive for DEFAULT_SHELL access
 
   sol::object packages_obj = (*m->lua_)["PACKAGES"];
@@ -101,17 +208,16 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
   if (!default_shell_obj.valid()) { return std::nullopt; }
 
   // Helper to convert flat variant to nested variant structure
-  auto const convert_parsed{
-    [](resolved_shell const &parsed) -> default_shell_value {
-      if (std::holds_alternative<shell_choice>(parsed)) {
-        return std::get<shell_choice>(parsed);
-      } else if (std::holds_alternative<custom_shell_file>(parsed)) {
-        return custom_shell{ std::get<custom_shell_file>(parsed) };
-      } else {
-        return custom_shell{ std::get<custom_shell_inline>(parsed) };
-      }
-    }
-  };
+  auto const convert_parsed{ [](resolved_shell const &parsed) -> default_shell_value {
+    return std::visit(match{ [](shell_choice c) -> default_shell_value { return c; },
+                             [](custom_shell_file const &f) -> default_shell_value {
+                               return custom_shell{ f };
+                             },
+                             [](custom_shell_inline const &i) -> default_shell_value {
+                               return custom_shell{ i };
+                             } },
+                      parsed);
+  } };
 
   if (default_shell_obj.is<sol::protected_function>()) {
     sol::protected_function default_shell_func{

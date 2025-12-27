@@ -48,11 +48,11 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.fetch_string@v1",
                 "test_data/recipes/fetch_string.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -90,11 +90,11 @@ FETCH = {{
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.fetch_single@v1",
                 str(modified_recipe),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -143,11 +143,11 @@ FETCH = {{
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.fetch_array@v1",
                 str(modified_recipe),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -174,11 +174,11 @@ FETCH = {{
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_collision@v1",
                 "test_data/recipes/fetch_collision.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -203,11 +203,11 @@ FETCH = {{
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_bad_sha256@v1",
                 "test_data/recipes/fetch_bad_sha256.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -241,11 +241,11 @@ FETCH = {
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.fetch_string_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -300,11 +300,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_test@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -349,11 +349,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.git_location_test@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -387,11 +387,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.git_no_cache@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace envy::platform {
 
@@ -31,6 +32,10 @@ file_lock &file_lock::operator=(file_lock &&) noexcept = default;
 file_lock::operator bool() const { return impl_ != nullptr; }
 
 std::optional<std::filesystem::path> get_default_cache_root() {
+  if (char const *env_root{ std::getenv("ENVY_CACHE_ROOT") }) {
+    return std::filesystem::path{ env_root };
+  }
+
   if (char const *local_app_data{ std::getenv("LOCALAPPDATA") }) {
     return std::filesystem::path{ local_app_data } / "envy";
   }
@@ -43,6 +48,16 @@ std::optional<std::filesystem::path> get_default_cache_root() {
 }
 
 char const *get_default_cache_root_env_vars() { return "LOCALAPPDATA or USERPROFILE"; }
+
+std::filesystem::path get_exe_path() {
+  std::vector<wchar_t> buf(32768);
+  if (::GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size())) == 0) {
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "GetModuleFileNameW failed");
+  }
+  return std::filesystem::path{ buf.data() };
+}
 
 void set_env_var(char const *name, char const *value) {
   if (name == nullptr || value == nullptr) {

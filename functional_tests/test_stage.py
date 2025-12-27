@@ -50,11 +50,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_default@v1",
                 "test_data/recipes/stage_default.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -79,11 +79,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_declarative_strip@v1",
                 "test_data/recipes/stage_declarative_strip.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -107,11 +107,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_imperative@v1",
                 "test_data/recipes/stage_imperative.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -134,11 +134,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_extract_single@v1",
                 "test_data/recipes/stage_extract_single.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -160,11 +160,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_basic@v1",
                 "test_data/recipes/stage_shell_basic.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -196,11 +196,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_failure@v1",
                 "test_data/recipes/stage_shell_failure.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -223,11 +223,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_complex@v1",
                 "test_data/recipes/stage_shell_complex.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -270,11 +270,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_env@v1",
                 "test_data/recipes/stage_shell_env.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -300,11 +300,11 @@ class TestStagePhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_basic@v1",
                 "test_data/recipes/stage_shell_basic.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

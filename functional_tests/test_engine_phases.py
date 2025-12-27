@@ -43,11 +43,11 @@ class TestEnginePhases(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -67,11 +67,11 @@ class TestEnginePhases(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher@v1",
                 "test_data/recipes/fetch_function_basic.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -97,11 +97,11 @@ class TestEnginePhases(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher_with_dep@v1",
                 "test_data/recipes/fetch_function_with_dep.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENVY_MIRROR="${ENVY_MIRROR:-@@DOWNLOAD_URL@@}"
+FALLBACK_VERSION="@@ENVY_VERSION@@"
+
+find_manifest() {
+    local d=$PWD
+    while [[ $d != / ]]; do
+        [[ -f $d/envy.lua ]] && echo "$d/envy.lua" && return
+        d=${d%/*}; d=${d:-/}
+    done; return 1
+}
+
+MANIFEST=$(find_manifest) || { echo "ERROR: envy.lua not found" >&2; exit 1; }
+
+parse_directives() {
+    head -20 "$MANIFEST" | sed -nE '
+        s/^--[[:space:]]*@envy[[:space:]]+version[[:space:]]+"(([^"\\]|\\.)*)".*/version \1/p
+        s/^--[[:space:]]*@envy[[:space:]]+cache[[:space:]]+"(([^"\\]|\\.)*)".*/cache \1/p
+        s/^--[[:space:]]*@envy[[:space:]]+mirror[[:space:]]+"(([^"\\]|\\.)*)".*/mirror \1/p
+    '
+}
+
+VERSION="" MANIFEST_CACHE="" MANIFEST_MIRROR=""
+while read -r key val; do
+    val="${val//\\\"/\"}"
+    val="${val//\\\\/\\}"
+    case "$key" in
+        version) VERSION=$val ;; cache) MANIFEST_CACHE=$val ;; mirror) MANIFEST_MIRROR=$val ;;
+    esac
+done < <(parse_directives)
+
+if [[ -z $VERSION ]]; then
+    echo "WARNING: @envy version not found in $MANIFEST, using fallback $FALLBACK_VERSION" >&2
+    VERSION=$FALLBACK_VERSION
+fi
+
+[[ -n $MANIFEST_MIRROR ]] && ENVY_MIRROR=$MANIFEST_MIRROR
+
+if [[ -n ${ENVY_CACHE_ROOT:-} ]]; then CACHE=$ENVY_CACHE_ROOT
+elif [[ -n $MANIFEST_CACHE ]]; then CACHE=$MANIFEST_CACHE
+elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
+else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
+
+case "$(uname -s)" in
+    Darwin) PLATFORM=darwin ;; Linux) PLATFORM=linux ;;
+    *) echo "ERROR: Unsupported platform: $(uname -s)" >&2; exit 1 ;;
+esac
+
+case "$(uname -m)" in
+    x86_64) ARCH=x86_64 ;; aarch64|arm64) ARCH=arm64 ;;
+    *) echo "ERROR: Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
+ENVY_BIN="$CACHE/envy/$VERSION/envy"
+[[ -x $ENVY_BIN ]] && exec "$ENVY_BIN" "$@"
+
+echo "Downloading envy $VERSION..." >&2
+T=${TMPDIR:-/tmp}/envy-$$
+curl -fsSL -o "$T" "$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH" || { echo "ERROR: Download failed" >&2; rm -f "$T"; exit 1; }
+chmod +x "$T" && exec "$T" "$@"

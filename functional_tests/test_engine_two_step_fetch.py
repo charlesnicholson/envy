@@ -72,11 +72,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.two_step_sha256@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -134,11 +134,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.manifest_workflow@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

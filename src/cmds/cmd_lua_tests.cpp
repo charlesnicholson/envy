@@ -1,4 +1,6 @@
 #include "cmds/cmd_lua.h"
+
+#include "cache.h"
 #include "tui.h"
 
 #include "doctest.h"
@@ -8,13 +10,6 @@
 #include <string_view>
 #include <vector>
 
-TEST_CASE("cmd_lua constructor accepts config") {
-  envy::cmd_lua::cfg cfg;
-  cfg.script_path = "/tmp/test.lua";
-  envy::cmd_lua cmd{ cfg };
-  CHECK(cmd.get_cfg().script_path == cfg.script_path);
-}
-
 TEST_CASE("cmd_lua config exposes cmd_t alias") {
   using config_type = envy::cmd_lua::cfg;
   using expected_command = envy::cmd_lua;
@@ -22,19 +17,11 @@ TEST_CASE("cmd_lua config exposes cmd_t alias") {
   CHECK(std::is_same_v<actual_command, expected_command>);
 }
 
-TEST_CASE("cmd_lua execute is callable") {
-  envy::cmd_lua::cfg cfg;
-  cfg.script_path = "/tmp/test.lua";
-  envy::cmd_lua cmd{ cfg };
-
-  // Will fail because file doesn't exist, but verifies execute() is callable
-  cmd.execute();
-}
-
 namespace {
 
 struct lua_test_fixture {
   std::vector<std::string> messages;
+  envy::cache cache{ std::filesystem::temp_directory_path() / "envy-test-lua" };
 
   lua_test_fixture() {
     envy::tui::set_output_handler(
@@ -49,7 +36,7 @@ struct lua_test_fixture {
     envy::tui::run(envy::tui::level::TUI_INFO);
     envy::cmd_lua::cfg cfg;
     cfg.script_path = script_path;
-    envy::cmd_lua cmd{ cfg };
+    envy::cmd_lua cmd{ cfg, cache };
     cmd.execute();
     envy::tui::shutdown();
   }
@@ -57,14 +44,16 @@ struct lua_test_fixture {
   std::vector<std::string> filter_output() const {
     std::vector<std::string> script_output;
     for (auto const &msg : messages) {
-      // Filter out error messages, trace messages, and cache diagnostic messages
-      // Also filter messages starting with whitespace (detailed trace output)
+      // Filter out error messages, trace messages, cache diagnostic messages,
+      // and bootstrap messages. Also filter messages starting with whitespace.
       if (msg.find("Failed") == std::string::npos &&
           msg.find("error") == std::string::npos &&
           msg.find("cannot open") == std::string::npos &&
           msg.find("[TRC]") == std::string::npos &&
           msg.find("ensure_entry") == std::string::npos &&
-          msg.find("scoped_entry_lock") == std::string::npos && !msg.empty() &&
+          msg.find("scoped_entry_lock") == std::string::npos &&
+          msg.find("type definitions") == std::string::npos &&
+          msg.find("Type definitions") == std::string::npos && !msg.empty() &&
           msg[0] != ' ' && msg[0] != '\t') {
         script_output.push_back(msg);
       }

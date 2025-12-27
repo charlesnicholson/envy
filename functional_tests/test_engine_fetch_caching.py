@@ -90,11 +90,11 @@ FETCH = {{
             result1 = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     f"--trace=file:{trace_file1}",
                     "engine-test",
                     "local.fetch_partial@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
                 text=True,
@@ -133,11 +133,11 @@ FETCH = {{
             result2 = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     f"--trace=file:{trace_file2}",
                     "engine-test",
                     "local.fetch_partial@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
                 text=True,
@@ -203,11 +203,11 @@ FETCH = {{
             result1 = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",  # Has 3 files
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=2",
                 ],
                 capture_output=True,
@@ -246,11 +246,11 @@ FETCH = {{
             result2 = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
                 text=True,
@@ -312,11 +312,11 @@ FETCH = {{
             result_setup = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=1",  # Fail after 1 file
                 ],
                 capture_output=True,
@@ -342,11 +342,11 @@ FETCH = {{
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
                 text=True,
@@ -417,11 +417,11 @@ FETCH = {{
             result_setup = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                     "--fail-after-fetch-count=1",
                 ],
                 capture_output=True,
@@ -453,11 +453,11 @@ FETCH = {{
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={shared_cache}",
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_recipe),
-                    f"--cache-root={shared_cache}",
                 ],
                 capture_output=True,
                 text=True,

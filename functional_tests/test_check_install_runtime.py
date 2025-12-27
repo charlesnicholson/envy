@@ -40,12 +40,11 @@ class TestCheckInstallRuntime(unittest.TestCase):
         self, identity, recipe_path, should_fail=False, env_vars=None, verbose=False
     ):
         """Run envy_functional_tester with recipe, return subprocess result."""
-        cmd = [str(self.envy_test)]
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}"]
         cmd.extend(self.trace_flag)
         if verbose:
             cmd.append("--verbose")
         cmd.extend(["engine-test", identity, str(recipe_path)])
-        cmd.append(f"--cache-root={self.cache_root}")
 
         env = os.environ.copy()
         if env_vars:

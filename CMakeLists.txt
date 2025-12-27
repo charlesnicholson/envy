@@ -142,9 +142,30 @@ if(MSVC AND ENVY_ENABLE_ASAN)
 endif()
 
 include(cmake/Dependencies.cmake)
+include(cmake/EmbedResource.cmake)
+
+# Generate embedded resource header for cmd_init (platform-specific bootstrap)
+if(WIN32)
+    embed_resources(envy_embedded_resources
+        OUTPUT embedded_init_resources.h
+        RESOURCES
+            bootstrap=src/envy-init/envy.bat
+            manifest_template=src/envy-init/manifest_template.lua
+            type_definitions=src/envy-init/envy.lua
+    )
+else()
+    embed_resources(envy_embedded_resources
+        OUTPUT embedded_init_resources.h
+        RESOURCES
+            bootstrap=src/envy-init/envy
+            manifest_template=src/envy-init/manifest_template.lua
+            type_definitions=src/envy-init/envy.lua
+    )
+endif()
 
 # Common source files shared by all envy executables (main added separately)
 set(ENVY_BASE_SOURCES
+    src/bootstrap.cpp
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
@@ -153,6 +174,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
     src/cmds/cmd_hash.cpp
+    src/cmds/cmd_init.cpp
     src/cmds/cmd_lua.cpp
     src/cmds/cmd_product.cpp
     src/cmds/cmd_sync.cpp
@@ -238,7 +260,11 @@ set(ENVY_COMMON_COMPILE_OPTIONS
 # Function to configure an envy executable
 function(configure_envy_executable TARGET_NAME SANITIZERS)
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
-    target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_include_directories(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
+    )
+    add_dependencies(${TARGET_NAME} envy_embedded_resources)
     target_compile_options(${TARGET_NAME} PRIVATE ${ENVY_COMMON_COMPILE_OPTIONS})
     target_link_options(${TARGET_NAME} PRIVATE
         $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
@@ -352,6 +378,7 @@ endif()
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
     src/blake3_util_tests.cpp
+    src/bootstrap_tests.cpp
     src/cache_tests.cpp
     src/cli_tests.cpp
     src/cmds/cmd_tests.cpp
@@ -380,6 +407,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx_asset_product_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
     src/lua_envy_tests.cpp
+    src/platform_tests.cpp
     src/product_util_tests.cpp
     src/sha256_tests.cpp
     src/sol_util_tests.cpp

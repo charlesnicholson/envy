@@ -17,9 +17,9 @@ class cmd_fetch : public cmd {
     std::optional<std::string> ref;
   };
 
-  explicit cmd_fetch(cfg cfg);
+  cmd_fetch(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:

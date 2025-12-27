@@ -44,11 +44,11 @@ class TestEngineRecipeLoading(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -69,11 +69,11 @@ class TestEngineRecipeLoading(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.nophases@v1",
                 "test_data/recipes/no_phases.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -127,11 +127,11 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={self.cache_root}",
                     *self.trace_flag,
                     "engine-test",
                     "test.sha256_ok@v1",
                     tmp_path,
-                    f"--cache-root={self.cache_root}",
                 ],
                 capture_output=True,
                 text=True,
@@ -179,11 +179,11 @@ end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={self.cache_root}",
                     *self.trace_flag,
                     "engine-test",
                     "test.sha256_fail@v1",
                     tmp_path,
-                    f"--cache-root={self.cache_root}",
                 ],
                 capture_output=True,
                 text=True,
@@ -210,11 +210,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_correct@v1",
                 "test_data/recipes/identity_correct.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -230,11 +230,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_missing@v1",
                 "test_data/recipes/identity_missing.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -259,11 +259,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_expected@v1",
                 "test_data/recipes/identity_mismatch.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -293,11 +293,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_wrong_type@v1",
                 "test_data/recipes/identity_wrong_type.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -333,11 +333,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
             result = subprocess.run(
                 [
                     str(self.envy_test),
+                    f"--cache-root={self.cache_root}",
                     *self.trace_flag,
                     "engine-test",
                     "local.temp_no_identity@v1",
                     tmp_path,
-                    f"--cache-root={self.cache_root}",
                 ],
                 capture_output=True,
                 text=True,
@@ -359,11 +359,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_ok@v1",
                 "test_data/recipes/validate_ok.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -375,11 +375,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_false@v1",
                 "test_data/recipes/validate_false.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -392,11 +392,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_string@v1",
                 "test_data/recipes/validate_string.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -409,11 +409,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_type@v1",
                 "test_data/recipes/validate_type.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -426,11 +426,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_nonfn@v1",
                 "test_data/recipes/validate_nonfn.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -443,11 +443,11 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_error@v1",
                 "test_data/recipes/validate_error.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

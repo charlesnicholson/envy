@@ -242,11 +242,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "test.ninja@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -264,11 +264,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_parallel@v1",
                 "test_data/recipes/fetch_git_parallel.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -282,11 +282,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_parallel_declarative@v1",
                 "test_data/recipes/fetch_git_parallel_declarative.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

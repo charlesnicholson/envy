@@ -282,14 +282,12 @@ TEST_CASE("cli_parse: cmd_product") {
     REQUIRE(cfg != nullptr);
     CHECK(cfg->product_name == "tool");
     CHECK_FALSE(cfg->manifest_path.has_value());
-    CHECK_FALSE(cfg->cache_root.has_value());
     CHECK_FALSE(cfg->json);
   }
 
-  SUBCASE("with manifest and cache root") {
+  SUBCASE("with manifest") {
     std::vector<std::string> args{ "envy",       "product",       "tool",
-                                   "--manifest", "/tmp/envy.lua", "--cache-root",
-                                   "/tmp/cache" };
+                                   "--manifest", "/tmp/envy.lua" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -300,8 +298,6 @@ TEST_CASE("cli_parse: cmd_product") {
     CHECK(cfg->product_name == "tool");
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/tmp/envy.lua"));
-    REQUIRE(cfg->cache_root.has_value());
-    CHECK(*cfg->cache_root == std::filesystem::path("/tmp/cache"));
     CHECK_FALSE(cfg->json);
   }
 
@@ -420,5 +416,41 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
     CHECK(parsed.trace_outputs.empty());
+  }
+}
+
+TEST_CASE("cli_parse: global cache-root flag") {
+  SUBCASE("no cache-root by default") {
+    std::vector<std::string> args{ "envy", "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cache_root.has_value());
+  }
+
+  SUBCASE("cache-root with value") {
+    std::vector<std::string> args{ "envy", "--cache-root", "/tmp/cache", "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.cache_root.has_value());
+    CHECK(*parsed.cache_root == std::filesystem::path("/tmp/cache"));
+  }
+
+  SUBCASE("cache-root works with sync command") {
+    std::vector<std::string> args{ "envy", "--cache-root", "/my/cache", "sync" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.cache_root.has_value());
+    CHECK(*parsed.cache_root == std::filesystem::path("/my/cache"));
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
   }
 }

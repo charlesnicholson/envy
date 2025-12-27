@@ -12,9 +12,9 @@ class cmd_hash : public cmd {
     std::filesystem::path file_path;
   };
 
-  explicit cmd_hash(cfg cfg);
+  cmd_hash(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:

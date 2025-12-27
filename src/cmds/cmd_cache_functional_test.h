@@ -27,7 +27,6 @@ class cmd_cache_ensure_asset : public cmd {
     std::string platform;
     std::string arch;
     std::string hash_prefix;
-    std::filesystem::path cache_root;
     std::string test_id;
     std::filesystem::path barrier_dir;  // empty = use default
     std::string barrier_signal;         // empty = no barrier
@@ -38,18 +37,18 @@ class cmd_cache_ensure_asset : public cmd {
     bool fail_before_complete = false;
   };
 
-  explicit cmd_cache_ensure_asset(cfg const &config);
-  bool execute() override;
+  cmd_cache_ensure_asset(cfg const &config, cache &c);
+  void execute() override;
 
  private:
   cfg cfg_;
+  cache &cache_;
 };
 
 class cmd_cache_ensure_recipe : public cmd {
  public:
   struct cfg : cmd_cfg<cmd_cache_ensure_recipe> {
     std::string identity;
-    std::filesystem::path cache_root;
     std::string test_id;
     std::filesystem::path barrier_dir;  // empty = use default
     std::string barrier_signal;         // empty = no barrier
@@ -60,11 +59,12 @@ class cmd_cache_ensure_recipe : public cmd {
     bool fail_before_complete = false;
   };
 
-  explicit cmd_cache_ensure_recipe(cfg const &config);
-  bool execute() override;
+  cmd_cache_ensure_recipe(cfg const &config, cache &c);
+  void execute() override;
 
  private:
   cfg cfg_;
+  cache &cache_;
 };
 
 }  // namespace envy

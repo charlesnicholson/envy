@@ -46,10 +46,9 @@ class TestAssetCommand(unittest.TestCase):
         self, identity: str, manifest: Optional[Path] = None, cwd: Optional[Path] = None
     ):
         """Run 'envy asset' command and return result."""
-        cmd = [str(self.envy), "asset", identity]
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "asset", identity]
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
-        cmd.extend(["--cache-root", str(self.cache_root)])
 
         # Run from project root so relative paths in recipes work
         result = subprocess.run(
@@ -101,9 +100,9 @@ PACKAGES = {{
 
         result = self.run_asset("local.diamond_a@v1", manifest)
 
-        # Currently fails because diamond_a is programmatic
+        # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr)
+        self.assertIn("not cache-managed", result.stderr)
 
     def test_asset_already_cached(self):
         """Query asset that's already installed, should return immediately."""
@@ -449,9 +448,9 @@ PACKAGES = {{
 
         result = self.run_asset("local.diamond_a@v1", manifest)
 
-        # Currently fails because diamond_a is programmatic
+        # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr)
+        self.assertIn("not cache-managed", result.stderr)
 
     def test_asset_diamond_dependency(self):
         """Install package with diamond dependency: A → B,C → D."""
@@ -467,9 +466,9 @@ PACKAGES = {{
 
         result = self.run_asset("local.diamond_a@v1", manifest)
 
-        # Currently fails because diamond_a is programmatic
+        # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr)
+        self.assertIn("not cache-managed", result.stderr)
 
     def test_asset_with_product_dependency_clean_cache(self):
         """Asset command must resolve graph to find product providers.

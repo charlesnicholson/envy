@@ -43,11 +43,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.withdep@v1",
                 "test_data/recipes/with_dep.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -68,11 +68,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.cycle_a@v1",
                 "test_data/recipes/cycle_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -90,11 +90,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.self_dep@v1",
                 "test_data/recipes/self_dep.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -114,11 +114,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.diamond_a@v1",
                 "test_data/recipes/diamond_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -153,11 +153,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_dep_blocked@v1",
                 "test_data/recipes/fetch_dep_blocked.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -183,11 +183,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.multiple_roots@v1",
                 "test_data/recipes/multiple_roots.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -209,11 +209,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.options_parent@v1",
                 "test_data/recipes/options_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -239,11 +239,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.chain_a@v1",
                 "test_data/recipes/chain_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -269,11 +269,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fanout_root@v1",
                 "test_data/recipes/fanout_root.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -297,11 +297,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "remote.badrecipe@v1",
                 "test_data/recipes/nonlocal_bad.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -321,11 +321,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "remote.fileuri@v1",
                 "test_data/recipes/remote_fileuri.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -345,11 +345,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "remote.parent@v1",
                 "test_data/recipes/remote_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -369,11 +369,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.wrapper@v1",
                 "test_data/recipes/local_wrapper.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -393,11 +393,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.parent@v1",
                 "test_data/recipes/local_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -417,11 +417,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "remote.a@v1",
                 "test_data/recipes/remote_transitive_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -441,11 +441,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_cycle_a@v1",
                 "test_data/recipes/fetch_cycle_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -478,11 +478,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.simple_fetch_dep_parent@v1",
                 "test_data/recipes/simple_fetch_dep_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -509,11 +509,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.multi_level_a@v1",
                 "test_data/recipes/multi_level_a.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -541,11 +541,11 @@ class TestEngineDependencyResolution(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.multiple_fetch_deps_parent@v1",
                 "test_data/recipes/multiple_fetch_deps_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

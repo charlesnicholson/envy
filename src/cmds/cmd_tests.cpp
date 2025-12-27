@@ -1,5 +1,7 @@
 #include "cmd.h"
 
+#include "cache.h"
+
 #include "doctest.h"
 
 namespace {
@@ -7,8 +9,8 @@ namespace {
 class test_cmd : public envy::cmd {
  public:
   struct cfg : envy::cmd_cfg<test_cmd> {};
-  explicit test_cmd(cfg) {}
-  bool execute() override { return true; }
+  test_cmd(cfg, envy::cache & /*c*/) {}
+  void execute() override {}
 };
 
 }  // namespace
@@ -22,7 +24,8 @@ TEST_CASE("cmd_cfg exposes cmd_t alias") {
 
 TEST_CASE("cmd factory creates command from cfg") {
   test_cmd::cfg cfg{};
-  auto c{ envy::cmd::create(cfg) };
-  REQUIRE(c);
-  CHECK(dynamic_cast<test_cmd *>(c.get()));
+  envy::cache c{ std::filesystem::temp_directory_path() / "envy-test-cmd" };
+  auto cmd{ envy::cmd::create(cfg, c) };
+  REQUIRE(cmd);
+  CHECK(dynamic_cast<test_cmd *>(cmd.get()));
 }

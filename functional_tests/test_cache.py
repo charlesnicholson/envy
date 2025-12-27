@@ -56,8 +56,7 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         fail_before_complete=False,
     ):
         """Helper to run envy_functional_tester cache command."""
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if barrier_signal:
@@ -190,8 +189,7 @@ class TestStagingAndCommit(CacheTestBase):
 
     def run_cache_cmd(self, *args, **kwargs):
         # Each process gets unique trace file in test's trace directory
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -279,8 +277,7 @@ class TestCrashRecovery(CacheTestBase):
 
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -373,8 +370,7 @@ class TestLockFileLifecycle(CacheTestBase):
 
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -445,8 +441,7 @@ class TestEntryPathsAndStructure(CacheTestBase):
 
 
     def run_cache_cmd(self, *args):
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         return subprocess.Popen(
@@ -542,8 +537,7 @@ class TestEdgeCases(CacheTestBase):
 
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -617,10 +611,10 @@ class TestEdgeCases(CacheTestBase):
     def test_multiple_assets_same_identity_different_platforms(self):
         """Same identity but different platform/arch/hash → different cache entries."""
         proc_darwin = self.run_cache_cmd(
-            "cache", "ensure-asset", "gcc", "darwin", "arm64", "multi1"
+            "ensure-asset", "gcc", "darwin", "arm64", "multi1"
         )
         proc_linux = self.run_cache_cmd(
-            "cache", "ensure-asset", "gcc", "linux", "x86_64", "multi1"
+            "ensure-asset", "gcc", "linux", "x86_64", "multi1"
         )
 
         stdout_darwin, _ = proc_darwin.communicate()
@@ -644,13 +638,13 @@ class TestEdgeCases(CacheTestBase):
         proc = subprocess.Popen(
             [
                 str(self.envy_test),
+                f"--cache-root={custom_root}",
                 "cache",
                 "ensure-asset",
                 "gcc",
                 "darwin",
                 "arm64",
                 "custom1",
-                f"--cache-root={custom_root}",
             ],
             stdout=subprocess.PIPE,
             text=True,
@@ -669,8 +663,7 @@ class TestSubprocessConcurrency(CacheTestBase):
 
 
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
-        cmd.append(f"--cache-root={self.cache_root}")
+        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         if "crash_after_ms" in kwargs:
             cmd.append(f"--crash-after={kwargs['crash_after_ms']}")

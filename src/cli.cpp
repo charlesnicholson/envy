@@ -23,6 +23,9 @@ cli_args cli_parse(int argc, char **argv) {
       verbose,
       "Enable decorated verbose logging (prefix stdout/stderr with timestamp and level)");
 
+  std::optional<std::filesystem::path> cache_root;
+  app.add_option("--cache-root", cache_root, "Cache root directory (overrides default)");
+
   std::string trace_spec;
   auto *trace_option{ app.add_option("--trace",
                                      trace_spec,
@@ -48,6 +51,15 @@ cli_args cli_parse(int argc, char **argv) {
   auto *version{ app.add_subcommand("version", "Show version information") };
   version->callback([&cmd_cfg] { cmd_cfg = cmd_version::cfg{}; });
 
+  // Init subcommand
+  cmd_init::cfg init_cfg{};
+  auto *init{ app.add_subcommand("init", "Initialize envy project with bootstrap scripts") };
+  init->add_option("project-dir", init_cfg.project_dir, "Project directory for manifest")
+      ->required();
+  init->add_option("bin-dir", init_cfg.bin_dir, "Directory for bootstrap scripts")->required();
+  init->add_option("--mirror", init_cfg.mirror, "Override download mirror URL");
+  init->callback([&cmd_cfg, &init_cfg] { cmd_cfg = init_cfg; });
+
   // Asset subcommand
   cmd_asset::cfg query_asset_cfg{};
   auto *asset{ app.add_subcommand("asset",
@@ -60,7 +72,6 @@ cli_args cli_parse(int argc, char **argv) {
   asset->add_option("--manifest",
                     query_asset_cfg.manifest_path,
                     "Path to envy.lua manifest");
-  asset->add_option("--cache-root", query_asset_cfg.cache_root, "Cache root directory");
   asset->callback([&cmd_cfg, &query_asset_cfg] { cmd_cfg = query_asset_cfg; });
 
   // Product subcommand
@@ -74,7 +85,6 @@ cli_args cli_parse(int argc, char **argv) {
   product->add_option("--manifest",
                       product_cfg.manifest_path,
                       "Path to envy.lua manifest");
-  product->add_option("--cache-root", product_cfg.cache_root, "Cache root directory");
   product->add_flag("--json", product_cfg.json, "Output as JSON (to stdout)");
   product->callback([&cmd_cfg, &product_cfg] { cmd_cfg = product_cfg; });
 
@@ -85,7 +95,6 @@ cli_args cli_parse(int argc, char **argv) {
                    sync_cfg.identities,
                    "Recipe identities to sync (sync all if omitted)");
   sync->add_option("--manifest", sync_cfg.manifest_path, "Path to envy.lua manifest");
-  sync->add_option("--cache-root", sync_cfg.cache_root, "Cache root directory");
   sync->callback([&cmd_cfg, &sync_cfg] { cmd_cfg = sync_cfg; });
 
   // Extract subcommand
@@ -143,7 +152,6 @@ cli_args cli_parse(int argc, char **argv) {
       ->required();
   ensure_asset->add_option("hash_prefix", asset_cfg.hash_prefix, "Hash prefix")
       ->required();
-  ensure_asset->add_option("--cache-root", asset_cfg.cache_root, "Cache root directory");
   ensure_asset->add_option("--test-id",
                            asset_cfg.test_id,
                            "Test ID for barrier isolation");
@@ -173,7 +181,6 @@ cli_args cli_parse(int argc, char **argv) {
   auto *ensure_recipe{ cache->add_subcommand("ensure-recipe", "Test recipe cache entry") };
   ensure_recipe->add_option("identity", recipe_cfg.identity, "Recipe identity")
       ->required();
-  ensure_recipe->add_option("--cache-root", recipe_cfg.cache_root, "Cache root directory");
   ensure_recipe->add_option("--test-id",
                             recipe_cfg.test_id,
                             "Test ID for barrier isolation");
@@ -206,9 +213,6 @@ cli_args cli_parse(int argc, char **argv) {
   engine_test->add_option("recipe_path", engine_test_cfg.recipe_path, "Recipe file path")
       ->required()
       ->check(CLI::ExistingFile);
-  engine_test->add_option("--cache-root",
-                          engine_test_cfg.cache_root,
-                          "Cache root directory");
   engine_test
       ->add_option("--fail-after-fetch-count",
                    engine_test_cfg.fail_after_fetch_count,
@@ -272,6 +276,7 @@ cli_args cli_parse(int argc, char **argv) {
 
   if (version_flag_short || version_flag_long) {
     args.cmd_cfg = cmd_version::cfg{};
+    args.cache_root = cache_root;
     return args;
   }
 
@@ -281,6 +286,7 @@ cli_args cli_parse(int argc, char **argv) {
     args.cli_output = app.help();
   }
 
+  args.cache_root = cache_root;
   return args;
 }
 

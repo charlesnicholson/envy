@@ -34,11 +34,11 @@ class TestStructuredTrace(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 "--trace=stderr",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -68,11 +68,11 @@ class TestStructuredTrace(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -110,11 +110,11 @@ class TestStructuredTrace(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 f"--trace=stderr,file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -139,11 +139,11 @@ class TestStructuredTrace(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -177,10 +177,10 @@ class TestStructuredTrace(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 "engine-test",
                 "local.simple@v1",
                 "test_data/recipes/simple.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

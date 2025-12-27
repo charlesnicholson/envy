@@ -45,11 +45,11 @@ class TestBuildPhase(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 identity,
                 f"test_data/recipes/{recipe_file}",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

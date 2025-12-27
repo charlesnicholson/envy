@@ -28,11 +28,11 @@ class TestDefaultNeededBy(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.default_needed_by_parent@v1",
                 "test_data/recipes/default_needed_by_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -65,11 +65,11 @@ class TestDefaultNeededBy(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.explicit_check_parent@v1",
                 "test_data/recipes/explicit_check_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -94,11 +94,11 @@ class TestDefaultNeededBy(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.explicit_fetch_parent@v1",
                 "test_data/recipes/explicit_fetch_parent.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

@@ -62,11 +62,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_single@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -102,11 +102,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -135,11 +135,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_table@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -171,11 +171,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_table_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -207,11 +207,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_scalar@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -243,11 +243,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 "--trace",
                 "engine-test",
                 "local.prog_commit_sha256@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -277,11 +277,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_bad_sha256@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -309,11 +309,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -336,11 +336,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_missing@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -376,11 +376,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_selective_commit@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -408,11 +408,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_identity@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -440,11 +440,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_options@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -481,11 +481,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_options_empty@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -531,11 +531,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_serial_fetches@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -557,11 +557,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_error_prop@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -586,11 +586,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_string@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -623,11 +623,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_table@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -652,11 +652,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -681,11 +681,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_str_array@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -711,11 +711,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_options_template@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -745,11 +745,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_mixed_mode@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -773,11 +773,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_nil@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -799,11 +799,11 @@ end
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_invalid@v1",
                 str(recipe_path),
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

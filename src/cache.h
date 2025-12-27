@@ -68,6 +68,14 @@ class cache : unmovable {
 
   ensure_result ensure_recipe(std::string_view identity);
 
+  // Ensure envy binary cache entry exists. Returns lock if installation needed.
+  // Unlike ensure_asset/recipe, envy entries use flat structure (no asset/ subdir).
+  struct ensure_envy_result {
+    path envy_dir;   // $CACHE/envy/$VERSION
+    bool needs_install;
+  };
+  ensure_envy_result ensure_envy(std::string_view version);
+
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 
  private:

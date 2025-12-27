@@ -1,5 +1,6 @@
 #include "cmd_fetch.h"
 
+#include "cache.h"
 #include "fetch.h"
 #include "tui.h"
 #include "uri.h"
@@ -10,17 +11,12 @@
 
 namespace envy {
 
-cmd_fetch::cmd_fetch(cmd_fetch::cfg cfg) : cfg_{ std::move(cfg) } {}
+cmd_fetch::cmd_fetch(cmd_fetch::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
 
-bool cmd_fetch::execute() {
-  if (cfg_.source.empty()) {
-    tui::error("fetch: source URI is empty");
-    return false;
-  }
-
+void cmd_fetch::execute() {
+  if (cfg_.source.empty()) { throw std::runtime_error("fetch: source URI is empty"); }
   if (cfg_.destination.empty()) {
-    tui::error("fetch: destination path is empty");
-    return false;
+    throw std::runtime_error("fetch: destination path is empty");
   }
 
   // Determine the request type based on URL scheme
@@ -51,37 +47,26 @@ bool cmd_fetch::execute() {
       break;
     case uri_scheme::GIT:
       if (!cfg_.ref.has_value() || cfg_.ref->empty()) {
-        tui::error("fetch: git sources require --ref <branch|tag|sha>");
-        return false;
+        throw std::runtime_error("fetch: git sources require --ref <branch|tag|sha>");
       }
       req = fetch_request_git{ .source = info.canonical,
                                .destination = cfg_.destination,
                                .ref = *cfg_.ref };
       break;
-    default: tui::error("fetch: unsupported URL scheme"); return false;
+    default: throw std::runtime_error("fetch: unsupported URL scheme");
   }
 
-  try {
-    auto const results{ fetch({ req }) };
-    if (results.empty()) {
-      tui::error("fetch failed: no result returned");
-      return false;
-    }
+  auto const results{ fetch({ req }) };
+  if (results.empty()) { throw std::runtime_error("fetch: no result returned"); }
 
-    if (std::holds_alternative<std::string>(results[0])) {
-      tui::error("fetch failed: %s", std::get<std::string>(results[0]).c_str());
-      return false;
-    }
-
-    auto const &result{ std::get<fetch_result>(results[0]) };
-    tui::info("Fetched %s -> %s",
-              result.resolved_source.string().c_str(),
-              result.resolved_destination.string().c_str());
-    return true;
-  } catch (std::exception const &ex) {
-    tui::error("fetch failed: %s", ex.what());
-    return false;
+  if (std::holds_alternative<std::string>(results[0])) {
+    throw std::runtime_error("fetch: " + std::get<std::string>(results[0]));
   }
+
+  auto const &result{ std::get<fetch_result>(results[0]) };
+  tui::debug("Fetched %s -> %s",
+             result.resolved_source.string().c_str(),
+             result.resolved_destination.string().c_str());
 }
 
 }  // namespace envy

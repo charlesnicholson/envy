@@ -6,15 +6,17 @@
 
 namespace envy {
 
+class cache;
+
 class cmd : unmovable {
  public:
   using ptr_t = std::unique_ptr<cmd>;
 
   virtual ~cmd() = default;
-  virtual bool execute() = 0;
+  virtual void execute() = 0;
 
   template <typename config>
-  static ptr_t create(config const &cfg);
+  static ptr_t create(config const &cfg, cache &c);
 
  protected:
   cmd() = default;
@@ -27,8 +29,8 @@ struct cmd_cfg {
 };
 
 template <typename config>
-cmd::ptr_t cmd::create(config const &cfg) {
-  return std::make_unique<typename config::cmd_t>(cfg);
+cmd::ptr_t cmd::create(config const &cfg, cache &c) {
+  return std::make_unique<typename config::cmd_t>(cfg, c);
 }
 
 }  // namespace envy

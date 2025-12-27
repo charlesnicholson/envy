@@ -1,16 +1,10 @@
 #include "cmds/cmd_extract.h"
 
+#include "cache.h"
+
 #include "doctest.h"
 
 #include <filesystem>
-
-TEST_CASE("cmd_extract constructor accepts config") {
-  envy::cmd_extract::cfg cfg;
-  cfg.archive_path = "/tmp/test.tar.gz";
-  cfg.destination = "/tmp/dest";
-  envy::cmd_extract cmd{ cfg };
-  CHECK_NOTHROW(cmd.get_cfg());
-}
 
 TEST_CASE("cmd_extract config exposes cmd_t alias") {
   using config_type = envy::cmd_extract::cfg;
@@ -18,16 +12,6 @@ TEST_CASE("cmd_extract config exposes cmd_t alias") {
   using actual_command = config_type::cmd_t;
 
   CHECK(std::is_same_v<actual_command, expected_command>);
-}
-
-TEST_CASE("cmd_extract execute is callable") {
-  envy::cmd_extract::cfg cfg;
-  cfg.archive_path = "/tmp/test.tar.gz";
-  cfg.destination = "/tmp";
-  envy::cmd_extract cmd{ cfg };
-
-  // Will fail because file doesn't exist, but verifies execute() is callable
-  cmd.execute();
 }
 
 TEST_CASE("cmd_extract config stores archive path") {

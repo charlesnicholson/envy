@@ -25,11 +25,11 @@ class TestCtxAccessTrace(unittest.TestCase):
         return subprocess.run(
             [
                 str(self.envy),
+                f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.trace_ctx_access@v1",
                 "test_data/recipes/trace_ctx_access.lua",
-                f"--cache-root={self.cache_root}",
             ],
             cwd=self.project_root,
             capture_output=True,
