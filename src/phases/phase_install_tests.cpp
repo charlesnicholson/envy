@@ -56,28 +56,26 @@ struct install_test_fixture {
     lua_envy_install(*lua_state);
 
     // Initialize options to empty table
-    r = std::unique_ptr<recipe>(new recipe{
-        .key = recipe_key(*spec),
-        .spec = spec,
-        .exec_ctx = nullptr,
-        .lua = std::move(lua_state),
-        // lua_mutex is default-initialized
-        .lock = nullptr,
-        .declared_dependencies = {},
-        .owned_dependency_specs = {},
-        .dependencies = {},
-        .product_dependencies = {},
-        .weak_references = {},
-        .products = {},
-        .resolved_weak_dependency_keys = {},
-        .canonical_identity_hash = {},
-        .asset_path = std::filesystem::path{},
-        .recipe_file_path = std::nullopt,
-        .result_hash = {},
-        .type = recipe_type::UNKNOWN,
-        .cache_ptr = &test_cache,
-        .default_shell_ptr = nullptr,
-    });
+    r = std::unique_ptr<recipe>(new recipe{ .key = recipe_key(*spec),
+                                            .spec = spec,
+                                            .cache_ptr = &test_cache,
+                                            .default_shell_ptr = nullptr,
+                                            .exec_ctx = nullptr,
+                                            .lua = std::move(lua_state),
+                                            // lua_mutex is default-initialized
+                                            .lock = nullptr,
+                                            .canonical_identity_hash = {},
+                                            .asset_path = std::filesystem::path{},
+                                            .recipe_file_path = std::nullopt,
+                                            .result_hash = {},
+                                            .type = recipe_type::UNKNOWN,
+                                            .declared_dependencies = {},
+                                            .owned_dependency_specs = {},
+                                            .dependencies = {},
+                                            .product_dependencies = {},
+                                            .weak_references = {},
+                                            .products = {},
+                                            .resolved_weak_dependency_keys = {} });
   }
 
   ~install_test_fixture() {
@@ -133,9 +131,8 @@ struct install_test_fixture {
 // Check XOR Cache validation tests
 // ============================================================================
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase provides nil install_dir for user-managed packages") {
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install phase provides nil install_dir for user-managed packages") {
   // Recipe with check verb (user-managed)
   set_check_verb("echo test");
 
@@ -180,9 +177,8 @@ TEST_CASE_FIXTURE(
   CHECK_NOTHROW(run_install_phase(r.get(), eng));
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase auto-marks cache-managed package complete on success") {
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install phase auto-marks cache-managed package complete on success") {
   // No check verb (cache-managed)
   clear_check_verb();
 
