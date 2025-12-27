@@ -8,6 +8,10 @@
 ## Layout
 ```
 ~/.cache/envy/
+├── envy/                         # Envy binaries + types (self-deployed)
+│   └── {version}/
+│       ├── envy                  # Binary (or envy.exe on Windows)
+│       └── envy.lua              # lua_ls type definitions
 ├── recipes/                      # Lua sources (declarative and custom fetch)
 │   ├── envy.cmake@v1.lua         # Single-file declarative recipe
 │   ├── arm.gcc@v2.lua
@@ -30,8 +34,20 @@
 │           └── work/             # Ephemeral workspace (stage/, etc.)
 │               └── stage/        # Build staging tree (wiped before each attempt)
 └── locks/
-    └── {recipe|asset}.*.lock
+    └── {recipe|asset|envy}.*.lock
 ```
+
+## Envy Binaries
+
+The `envy/` directory stores envy binaries and their lua_ls type definitions. Bootstrap scripts check this location; if missing, they download to a temp directory and exec from there. The envy binary self-deploys on startup:
+
+1. **Lock-free check:** If `$CACHE/envy/$VERSION/envy` exists, continue immediately
+2. **Acquire lock:** `$CACHE/locks/envy.$VERSION.lock` (exclusive, blocking)
+3. **Re-check:** Another process may have completed deployment while waiting
+4. **Deploy:** Copy self to cache, extract embedded types alongside
+5. **Release lock:** Continue with requested command
+
+This uses the same locking strategy as recipe/asset installation (see Locking & Workspace Lifecycle below). Multiple concurrent envy instances (parallel CI, multiple terminals) safely coordinate without corruption or duplicate work. Each version is self-contained; deleting `envy/1.2.3/` removes that version completely.
 
 ## Keys
 - **Recipe**: `{namespace}.{name}@{version}.lua` for single-file declarative sources, `{namespace}.{name}@{version}/` for multi-file (custom fetch, archives, git repos). Custom fetch recipes always use directory layout with `recipe.lua` entry point.

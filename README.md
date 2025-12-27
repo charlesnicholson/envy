@@ -25,15 +25,88 @@ build.bat           # Windows
 
 The build script lazily configures `out/build` if needed and builds all targets including `envy` and unit tests. Run `out/build/envy` to verify the build.
 
+## Using Envy in Your Project
+
+Initialize a project with `envy init`:
+
+```bash
+# Download envy binary (one-time)
+curl -fsSL -o /tmp/envy https://github.com/charlesnicholson/envy/releases/latest/download/envy-darwin-arm64
+chmod +x /tmp/envy
+
+# Initialize your project
+mkdir my-project && cd my-project
+/tmp/envy init . ./tools
+
+# From now on, use the bootstrap script
+./tools/envy sync
+```
+
+This creates:
+- `./envy.lua` — Manifest with `@envy version` directive
+- `./tools/envy` — Bootstrap script (or `envy.bat` on Windows)
+- `./.luarc.json` — IDE config for lua_ls autocompletion
+
+The bootstrap script downloads and caches the pinned envy version automatically. Teammates clone and run `./tools/envy sync`—no manual installation needed.
+
+### Upgrading Envy
+
+Edit the `@envy version` directive in `envy.lua`:
+
+```lua
+-- @envy version "1.4.0"
+```
+
+Next `./tools/envy` invocation downloads the new version.
+
+### Enterprise/Air-Gapped Environments
+
+Use `--mirror` to point to an internal server:
+
+```bash
+/tmp/envy init . ./tools --mirror=https://internal.corp/envy-releases
+```
+
+Or set `ENVY_MIRROR` environment variable for the bootstrap script.
+
 ## Cache Location
 
-Envy uses a user-wide cache to share packages across projects. The default cache root varies by platform:
+Envy uses a user-wide cache to share packages across projects. Cache root resolution (highest to lowest priority):
 
-- **macOS**: `~/Library/Caches/envy`
-- **Linux**: `$XDG_CACHE_HOME/envy` (or `~/.cache/envy` if `XDG_CACHE_HOME` is unset)
-- **Windows**: `%LOCALAPPDATA%\envy` (or `%USERPROFILE%\AppData\Local\envy` if `LOCALAPPDATA` is unset)
+1. `ENVY_CACHE_ROOT` environment variable
+2. `@envy cache` directive in manifest
+3. Platform default:
+   - **macOS**: `~/Library/Caches/envy`
+   - **Linux**: `$XDG_CACHE_HOME/envy` (or `~/.cache/envy`)
+   - **Windows**: `%LOCALAPPDATA%\envy`
 
-Override the default by setting the `ENVY_CACHE_ROOT` environment variable.
+### Cache Structure
+
+```
+$CACHE_ROOT/
+├── envy/          # Cached envy binaries + type definitions
+│   ├── 1.2.3/
+│   │   ├── envy       # Binary
+│   │   └── envy.lua   # lua_ls type definitions
+│   └── 1.4.0/
+├── assets/        # Installed package artifacts
+├── recipes/       # Cached recipe files
+└── locks/         # Lock files for concurrent access
+```
+
+### Cache Cleanup
+
+Remove old envy versions:
+
+```bash
+rm -rf ~/Library/Caches/envy/envy/1.2.3  # Remove specific version
+```
+
+Remove all cached packages (fresh start):
+
+```bash
+rm -rf ~/Library/Caches/envy
+```
 
 ## Project Structure
 

@@ -22,7 +22,7 @@ bool dependency_reachable(recipe *from,
   if (!visited.insert(from).second) { return false; }
 
   for (auto const &[dep_id, dep_info] : from->dependencies) {
-    recipe *child{ dep_info.recipe_ptr };
+    recipe *child{ dep_info.r };
     if (!child) { continue; }
     if (dep_id == target_identity) { return true; }
     if (dependency_reachable(child, target_identity, visited)) { return true; }
@@ -37,7 +37,7 @@ bool strong_reachable(recipe *from,
   bool found{ false };
 
   for (auto const &[dep_id, dep_info] : from->dependencies) {
-    recipe *child{ dep_info.recipe_ptr };
+    recipe *child{ dep_info.r };
     if (!child) { continue; }
 
     bool reachable{ dep_id == target_identity };
@@ -110,7 +110,7 @@ void lua_envy_deps_install(sol::table &envy_table) {
       throw std::runtime_error(msg);
     }
 
-    recipe const *dep{ it->second.recipe_ptr };
+    recipe const *dep{ it->second.r };
     if (!dep) {
       std::string const msg{ "envy.asset: null dependency pointer: " + identity };
       emit_access(false, first_needed_by, msg);

@@ -117,13 +117,13 @@ PACKAGES = {{
         result = subprocess.run(
             [
                 str(self.envy),
+                "--cache-root",
+                str(self.cache_root),
                 f"--trace=file:{trace_file}",
                 "product",
                 "tool_a",
                 "--manifest",
                 str(manifest),
-                "--cache-root",
-                str(self.cache_root),
             ],
             capture_output=True,
             text=True,

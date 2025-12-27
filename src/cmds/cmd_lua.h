@@ -12,9 +12,9 @@ class cmd_lua : public cmd {
     std::filesystem::path script_path;
   };
 
-  explicit cmd_lua(cfg cfg);
+  cmd_lua(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:

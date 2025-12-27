@@ -22,7 +22,7 @@ bool dependency_reachable(recipe *from,
   if (!visited.insert(from).second) { return false; }
 
   for (auto const &[dep_id, dep_info] : from->dependencies) {
-    recipe *child{ dep_info.recipe_ptr };
+    recipe *child{ dep_info.r };
     if (!child) { continue; }
     if (dep_id == target_identity) { return true; }
     if (dependency_reachable(child, target_identity, visited)) { return true; }
@@ -37,7 +37,7 @@ bool strong_reachable(recipe *from,
   bool found{ false };
 
   for (auto const &[dep_id, dep_info] : from->dependencies) {
-    recipe *child{ dep_info.recipe_ptr };
+    recipe *child{ dep_info.r };
     if (!child) { continue; }
 
     bool reachable{ dep_id == target_identity };
@@ -72,21 +72,22 @@ std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *c
 
     recipe_phase const current_phase{ exec_ctx->current_phase.load() };
 
-    auto emit_access =
-        [&](bool allowed, recipe_phase needed_by, std::string const &reason) {
-          ENVY_TRACE_LUA_CTX_ASSET_ACCESS(consumer->spec->identity,
-                                          identity,
-                                          current_phase,
-                                          needed_by,
-                                          allowed,
-                                          reason);
-        };
+    auto const trace_access{
+      [&](bool allowed, recipe_phase needed_by, std::string const &reason) {
+        ENVY_TRACE_LUA_CTX_ASSET_ACCESS(consumer->spec->identity,
+                                        identity,
+                                        current_phase,
+                                        needed_by,
+                                        allowed,
+                                        reason);
+      }
+    };
 
     recipe_phase first_needed_by{ recipe_phase::completion };
     if (!strong_reachable(consumer, identity, first_needed_by)) {
       std::string const msg{ "ctx.asset: recipe '" + consumer->spec->identity +
                              "' has no strong dependency on '" + identity + "'" };
-      emit_access(false, recipe_phase::none, msg);
+      trace_access(false, recipe_phase::none, msg);
       throw std::runtime_error(msg);
     }
 
@@ -94,41 +95,42 @@ std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *c
       std::string const msg{ "ctx.asset: dependency '" + identity + "' needed_by '" +
                              phase_name_str(first_needed_by) + "' but accessed during '" +
                              phase_name_str(current_phase) + "'" };
-      emit_access(false, first_needed_by, msg);
+      trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
-    // Look up dependency in recipe's dependency map
-    auto it{ consumer->dependencies.find(identity) };
-    if (it == consumer->dependencies.end()) {
-      std::string const msg{ "ctx.asset: dependency not found in map: " + identity };
-      emit_access(false, first_needed_by, msg);
-      throw std::runtime_error(msg);
-    }
+    recipe const *dep{ [&] {  // Look up dependency in recipe's dependency map
+      auto it{ consumer->dependencies.find(identity) };
+      if (it == consumer->dependencies.end()) {
+        std::string const msg{ "ctx.asset: dependency not found in map: " + identity };
+        trace_access(false, first_needed_by, msg);
+        throw std::runtime_error(msg);
+      }
+      return it->second.r;
+    }() };
 
-    recipe const *dep{ it->second.recipe_ptr };
     if (!dep) {
       std::string const msg{ "ctx.asset: null dependency pointer: " + identity };
-      emit_access(false, first_needed_by, msg);
+      trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
     if (dep->type == recipe_type::USER_MANAGED) {
       std::string const msg{ "ctx.asset: dependency '" + identity +
                              "' is user-managed and has no asset path" };
-      emit_access(false, first_needed_by, msg);
+      trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
     if (dep->asset_path.empty()) {
       std::string const msg{ "ctx.asset: dependency '" + identity +
                              "' has no asset path (phase ordering issue?)" };
-      emit_access(false, first_needed_by, msg);
+      trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
     std::string const asset_path{ dep->asset_path.string() };
-    emit_access(true, first_needed_by, asset_path);
+    trace_access(true, first_needed_by, asset_path);
     return asset_path;
   };
 }

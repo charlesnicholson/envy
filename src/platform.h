@@ -52,6 +52,8 @@ bool file_exists(std::filesystem::path const &path);
 std::optional<std::filesystem::path> get_default_cache_root();
 char const *get_default_cache_root_env_vars();
 
+std::filesystem::path get_exe_path();
+
 void set_env_var(char const *name, char const *value);
 
 [[noreturn]] void terminate_process();

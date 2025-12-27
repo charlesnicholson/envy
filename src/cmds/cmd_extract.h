@@ -13,9 +13,9 @@ class cmd_extract : public cmd {
     std::filesystem::path destination;
   };
 
-  explicit cmd_extract(cfg cfg);
+  cmd_extract(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:

@@ -8,15 +8,27 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace envy {
 
 struct lua_ctx_common;
 
+// @envy metadata parsed from comment headers in manifest
+struct envy_meta {
+  std::optional<std::string> version;  // @envy version "x.y.z"
+  std::optional<std::string> cache;    // @envy cache "/path"
+  std::optional<std::string> mirror;   // @envy mirror "https://..."
+};
+
+// Parse @envy metadata from manifest content
+envy_meta parse_envy_meta(std::string_view content);
+
 struct manifest : unmovable {
   std::vector<recipe_spec *> packages;
   std::filesystem::path manifest_path;
+  envy_meta meta;
 
   manifest() = default;
 

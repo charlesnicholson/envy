@@ -15,7 +15,7 @@
 
 namespace envy {
 
-cmd_product::cmd_product(cfg cfg) : cfg_{ std::move(cfg) } {}
+cmd_product::cmd_product(cfg cfg, cache &c) : cfg_{ std::move(cfg) }, cache_{ c } {}
 
 namespace {
 
@@ -84,48 +84,38 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
 }  // namespace
 
-bool cmd_product::execute() {
-  try {
-    auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
-    auto const cache_root{ resolve_cache_root(cfg_.cache_root) };
+void cmd_product::execute() {
+  auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
 
-    cache c{ cache_root };
-    engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ cache_, m->get_default_shell(nullptr) };
 
-    std::vector<recipe_spec const *> roots;
-    roots.reserve(m->packages.size());
-    for (auto *pkg : m->packages) { roots.push_back(pkg); }
+  std::vector<recipe_spec const *> roots;
+  roots.reserve(m->packages.size());
+  for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
-    eng.resolve_graph(roots);
+  eng.resolve_graph(roots);
 
-    if (cfg_.product_name.empty()) {
-      auto const products{ eng.collect_all_products() };
-      if (cfg_.json) {
-        print_products_json(products);
-      } else {
-        print_products_aligned(products);
-      }
-      return true;
+  if (cfg_.product_name.empty()) {
+    auto const products{ eng.collect_all_products() };
+    if (cfg_.json) {
+      print_products_json(products);
+    } else {
+      print_products_aligned(products);
     }
-
-    recipe *provider{ eng.find_product_provider(cfg_.product_name) };
-    if (!provider) {
-      tui::error("Product '%s' has no provider in resolved dependency graph",
-                 cfg_.product_name.c_str());
-      return false;
-    }
-
-    eng.extend_dependencies_to_completion(provider);
-    eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
-
-    std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
-    tui::print_stdout("%s\n", rendered_value.c_str());
-
-    return true;
-  } catch (std::exception const &ex) {
-    tui::error("product command failed: %s", ex.what());
-    return false;
+    return;
   }
+
+  recipe *provider{ eng.find_product_provider(cfg_.product_name) };
+  if (!provider) {
+    throw std::runtime_error("product: '" + cfg_.product_name +
+                             "' has no provider in resolved dependency graph");
+  }
+
+  eng.extend_dependencies_to_completion(provider);
+  eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
+
+  std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
+  tui::print_stdout("%s\n", rendered_value.c_str());
 }
 
 }  // namespace envy

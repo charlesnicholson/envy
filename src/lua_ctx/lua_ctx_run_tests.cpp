@@ -45,9 +45,16 @@ struct ctx_run_fixture {
     recipe_ptr = std::unique_ptr<envy::recipe>(new envy::recipe{
         .key = envy::recipe_key(*spec),
         .spec = spec,
+        .cache_ptr = nullptr,
+        .default_shell_ptr = nullptr,
         .exec_ctx = nullptr,
         .lua = envy::sol_state_ptr{},
         .lock = nullptr,
+        .canonical_identity_hash = {},
+        .asset_path = std::filesystem::path{},
+        .recipe_file_path = std::nullopt,
+        .result_hash = {},
+        .type = envy::recipe_type::UNKNOWN,
         .declared_dependencies = {},
         .owned_dependency_specs = {},
         .dependencies = {},
@@ -55,13 +62,6 @@ struct ctx_run_fixture {
         .weak_references = {},
         .products = {},
         .resolved_weak_dependency_keys = {},
-        .canonical_identity_hash = {},
-        .asset_path = std::filesystem::path{},
-        .recipe_file_path = std::nullopt,
-        .result_hash = {},
-        .type = envy::recipe_type::UNKNOWN,
-        .cache_ptr = nullptr,
-        .default_shell_ptr = nullptr,
     });
 
     ctx.run_dir = tmp_dir;

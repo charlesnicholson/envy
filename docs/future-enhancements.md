@@ -315,6 +315,14 @@ end
 
 **Implementation:** Function evaluated during recipe_fetch phase after loading recipe Lua. Takes `options` table from recipe_spec (not full ctx—aliases needed before asset phases). Cached per recipe instance. String result must be unique (enforced at registration time).
 
+## `.luarc.json` Merge Logic
+
+`envy init` creates `.luarc.json` if absent but only prints guidance if it exists. Full merge would parse existing JSON, append envy types path to `workspace.library` array, preserve user settings, write back. Requires JSON library or minimal hand-rolled parser.
+
+```json
+{ "workspace.library": ["/path/to/cache/envy/0.1.0/envy.lua"] }
+```
+
 ## Cross-Platform Recipe Variants
 
 Higher-level abstraction for platform-specific variants within a single recipe identity. Current Lua approach handles this programmatically.

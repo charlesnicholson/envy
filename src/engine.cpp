@@ -51,8 +51,8 @@ bool has_dependency_path(recipe const *from, recipe const *to) {
     visited.insert(current);
 
     for (auto const &[dep_identity, dep_info] : current->dependencies) {
-      if (dep_info.recipe_ptr == to) { return true; }
-      if (!visited.contains(dep_info.recipe_ptr)) { stack.push_back(dep_info.recipe_ptr); }
+      if (dep_info.r == to) { return true; }
+      if (!visited.contains(dep_info.r)) { stack.push_back(dep_info.r); }
     }
   }
 
@@ -214,9 +214,7 @@ bool recipe_provides_product_transitively_impl(
         (trace_events::product_transitive_check_dep{ .recipe = r->spec->identity,
                                                      .product = product_name,
                                                      .checking_dependency = dep_id }));
-    if (recipe_provides_product_transitively_impl(dep_info.recipe_ptr,
-                                                  product_name,
-                                                  visited)) {
+    if (recipe_provides_product_transitively_impl(dep_info.r, product_name, visited)) {
       return true;
     }
   }
@@ -344,25 +342,23 @@ recipe *engine::ensure_recipe(recipe_spec const *spec) {
 
   recipe_key const key(*spec);
 
-  auto r{ std::unique_ptr<recipe>(new recipe{
-      .key = key,
-      .spec = spec,
-      .exec_ctx = nullptr,
-      .lua = nullptr,
-      .lock = nullptr,
-      .declared_dependencies = {},
-      .owned_dependency_specs = {},
-      .dependencies = {},
-      .product_dependencies = {},
-      .weak_references = {},
-      .canonical_identity_hash = key.canonical(),
-      .asset_path = std::filesystem::path{},
-      .result_hash = {},
-      .type = recipe_type::UNKNOWN,
-      .cache_ptr = &cache_,
-      .default_shell_ptr = &default_shell_,
-      .tui_section = tui::section_create(),
-  }) };
+  auto r{ std::unique_ptr<recipe>(new recipe{ .key = key,
+                                              .spec = spec,
+                                              .cache_ptr = &cache_,
+                                              .default_shell_ptr = &default_shell_,
+                                              .tui_section = tui::section_create(),
+                                              .exec_ctx = nullptr,
+                                              .lua = nullptr,
+                                              .lock = nullptr,
+                                              .canonical_identity_hash = key.canonical(),
+                                              .asset_path = std::filesystem::path{},
+                                              .result_hash = {},
+                                              .type = recipe_type::UNKNOWN,
+                                              .declared_dependencies = {},
+                                              .owned_dependency_specs = {},
+                                              .dependencies = {},
+                                              .product_dependencies = {},
+                                              .weak_references = {} }) };
 
   auto const [it, inserted]{ recipes_.try_emplace(key, std::move(r)) };
   if (inserted) {
@@ -500,7 +496,7 @@ void engine::extend_dependencies_recursive(recipe *r,
 
   // Recursively extend all dependencies
   for (auto const &[dep_identity, dep_info] : r->dependencies) {
-    extend_dependencies_recursive(dep_info.recipe_ptr, visited);
+    extend_dependencies_recursive(dep_info.r, visited);
   }
 }
 
@@ -603,7 +599,7 @@ void engine::run_recipe_thread(recipe *r) {
                                    next,
                                    dep_identity,
                                    recipe_phase::completion);
-          ensure_recipe_at_phase(dep_info.recipe_ptr->key, recipe_phase::completion);
+          ensure_recipe_at_phase(dep_info.r->key, recipe_phase::completion);
           ENVY_TRACE_PHASE_UNBLOCKED(r->spec->identity, next, dep_identity);
         }
       }
@@ -651,7 +647,7 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
   }
 
   {
-    std::lock_guard lock(mutex_);               // Protect iteration over execution_ctxs_
+    std::lock_guard lock(mutex_);
     for (auto &[key, ctx] : execution_ctxs_) {  // Launch all recipes running to completion
       ctx->set_target_phase(recipe_phase::completion);
     }
@@ -676,15 +672,17 @@ recipe_result_map_t engine::run_full(std::vector<recipe_spec const *> const &roo
     }
   }
 
-  recipe_result_map_t results;
-  {
+  auto const results{ [&] {
+    recipe_result_map_t r;
     std::lock_guard lock(mutex_);
-    for (auto const &[key, r] : recipes_) {
+    for (auto const &[key, rec] : recipes_) {
       auto const &ctx{ execution_ctxs_.at(key) };
-      recipe_type const result_type{ ctx->failed ? recipe_type::UNKNOWN : r->type };
-      results[r->key.canonical()] = { result_type, r->result_hash, r->asset_path };
+      recipe_type const result_type{ ctx->failed ? recipe_type::UNKNOWN : rec->type };
+      r[rec->key.canonical()] = { result_type, rec->result_hash, rec->asset_path };
     }
-  }
+    return r;
+  }() };
+
   return results;
 }
 

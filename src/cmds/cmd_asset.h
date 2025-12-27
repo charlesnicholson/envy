@@ -13,16 +13,16 @@ class cmd_asset : public cmd {
   struct cfg : cmd_cfg<cmd_asset> {
     std::string identity;  // Required: "namespace.name@version"
     std::optional<std::filesystem::path> manifest_path;
-    std::optional<std::filesystem::path> cache_root;
   };
 
-  explicit cmd_asset(cfg cfg);
+  cmd_asset(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
+  cache &cache_;
 };
 
 }  // namespace envy

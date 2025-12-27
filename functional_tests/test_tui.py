@@ -45,11 +45,11 @@ class TestTUIRendering(unittest.TestCase):
         """Run 'envy sync' and return result."""
         cmd = [
             str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
             "sync",
             "--manifest",
             str(manifest),
-            "--cache-root",
-            str(self.cache_root),
         ]
 
         run_env = os.environ.copy()
@@ -122,11 +122,11 @@ PACKAGES = {{
 
         cmd = [
             str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
             "sync",
             "--manifest",
             str(manifest),
-            "--cache-root",
-            str(self.cache_root),
         ]
 
         # Pipe stderr through cat to simulate non-TTY

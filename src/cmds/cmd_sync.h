@@ -14,16 +14,16 @@ class cmd_sync : public cmd {
   struct cfg : cmd_cfg<cmd_sync> {
     std::vector<std::string> identities;  // Optional: if empty, sync all manifest packages
     std::optional<std::filesystem::path> manifest_path;
-    std::optional<std::filesystem::path> cache_root;
   };
 
-  explicit cmd_sync(cfg cfg);
+  cmd_sync(cfg cfg, cache &c);
 
-  bool execute() override;
+  void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
+  cache &cache_;
 };
 
 }  // namespace envy

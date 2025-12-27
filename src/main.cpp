@@ -1,4 +1,6 @@
 #include "aws_util.h"
+#include "bootstrap.h"
+#include "cache.h"
 #include "cli.h"
 #include "libgit2_util.h"
 #include "shell.h"
@@ -8,7 +10,7 @@
 #include <cstdlib>
 #include <variant>
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
   envy::termination_handler_install();
   envy::tui::init();
   envy::shell_init();
@@ -16,6 +18,12 @@ int main(int argc, char **argv) {
   auto args{ envy::cli_parse(argc, argv) };
   envy::tui::configure_trace_outputs(args.trace_outputs);
   envy::tui::scope tui_scope{ args.verbosity, args.decorated_logging };
+
+  envy::cache c{ args.cache_root };
+
+  try {
+    envy::bootstrap_deploy_envy(c);
+  } catch (...) {}
 
   envy::aws_shutdown_guard aws_guard;
   envy::libgit2_scope git_guard;
@@ -30,16 +38,15 @@ int main(int argc, char **argv) {
 
   if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
 
-  auto cmd{ std::visit([](auto const &cfg) { return envy::cmd::create(cfg); },
+  auto cmd{ std::visit([&c](auto const &cfg) { return envy::cmd::create(cfg, c); },
                        *args.cmd_cfg) };
 
-  bool ok{ false };
   try {
-    ok = cmd->execute();
+    cmd->execute();
   } catch (std::exception const &ex) {
-    envy::tui::error("Execution failed: %s", ex.what());
+    envy::tui::error("%s", ex.what());
     return EXIT_FAILURE;
   }
 
-  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }

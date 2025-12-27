@@ -4,6 +4,7 @@
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
+#include "cmds/cmd_init.h"
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_sync.h"
@@ -26,6 +27,7 @@ struct cli_args {
                                  cmd_extract::cfg,
                                  cmd_fetch::cfg,
                                  cmd_hash::cfg,
+                                 cmd_init::cfg,
                                  cmd_lua::cfg,
                                  cmd_product::cfg,
                                  cmd_sync::cfg,
@@ -39,6 +41,7 @@ struct cli_args {
                                  >;
 
   std::optional<cmd_cfg_t> cmd_cfg;
+  std::optional<std::filesystem::path> cache_root;  // Global cache root override
   std::optional<tui::level> verbosity;
   bool decorated_logging{ false };
   std::vector<tui::trace_output_spec> trace_outputs;

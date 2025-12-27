@@ -1,5 +1,6 @@
 #include "cmd_version.h"
 
+#include "cache.h"
 #include "platform.h"
 
 #include "CLI11.hpp"
@@ -35,10 +36,11 @@ extern "C" {
 
 namespace envy {
 
-cmd_version::cmd_version(cmd_version::cfg cfg) : cfg_{ std::move(cfg) } {}
+cmd_version::cmd_version(cmd_version::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
 
-bool cmd_version::execute() {
+void cmd_version::execute() {
   tui::info("envy version %s", ENVY_VERSION_STR);
+  tui::info("Executable: %s", platform::get_exe_path().string().c_str());
   tui::info("");
   tui::info("Third-party component versions:");
 
@@ -91,8 +93,6 @@ bool cmd_version::execute() {
             static_cast<unsigned>(crt_version.patch));
 
   tui::info("  CLI11: %s", CLI11_VERSION);
-
-  return true;
 }
 
 }  // namespace envy

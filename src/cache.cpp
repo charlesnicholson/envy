@@ -316,4 +316,36 @@ cache::ensure_result cache::ensure_recipe(std::string_view identity) {
                       id);
 }
 
+cache::ensure_envy_result cache::ensure_envy(std::string_view version) {
+  path const envy_dir{ m->root_ / "envy" / std::string{ version } };
+#ifdef _WIN32
+  path const binary_path{ envy_dir / "envy.exe" };
+#else
+  path const binary_path{ envy_dir / "envy" };
+#endif
+  path const types_path{ envy_dir / "envy.lua" };
+
+  // Fast path: already deployed
+  if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
+    return { envy_dir, false };
+  }
+
+  // Need to deploy; acquire lock for concurrent safety
+  std::filesystem::create_directories(m->locks_dir());
+  path const lock_path{ m->locks_dir() / ("envy." + std::string{ version } + ".lock") };
+  platform::file_lock lock{ lock_path };
+  if (!lock) { return { envy_dir, false }; }
+
+  // Re-check after lock (another process may have completed)
+  if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
+    return { envy_dir, false };
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(envy_dir, ec);
+  if (ec) { return { envy_dir, false }; }
+
+  return { envy_dir, true };
+}
+
 }  // namespace envy

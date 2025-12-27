@@ -2,13 +2,13 @@
 
 #include "engine.h"
 #include "recipe.h"
-#include "recipe_spec.h"
 #include "recipe_key.h"
+#include "recipe_spec.h"
 
 #include "doctest.h"
 
-#include <memory>
 #include <filesystem>
+#include <memory>
 
 namespace envy {
 
@@ -28,23 +28,17 @@ std::unique_ptr<recipe> make_recipe(std::string identity, recipe_type type) {
   return std::unique_ptr<recipe>(new recipe{
       .key = recipe_key(*spec),
       .spec = spec,
+      .cache_ptr = nullptr,
+      .default_shell_ptr = nullptr,
+      .tui_section = {},
       .exec_ctx = nullptr,
       .lua = nullptr,
       .lock = nullptr,
-      .declared_dependencies = {},
-      .owned_dependency_specs = {},
-      .dependencies = {},
-      .product_dependencies = {},
-      .weak_references = {},
-      .products = {},
-      .resolved_weak_dependency_keys = {},
       .canonical_identity_hash = {},
       .asset_path = {},
       .recipe_file_path = std::nullopt,
       .result_hash = {},
       .type = type,
-      .cache_ptr = nullptr,
-      .default_shell_ptr = nullptr,
   });
 }
 
@@ -91,10 +85,9 @@ TEST_CASE("product_util_resolve throws on empty product value") {
 TEST_CASE("product_util_resolve throws on missing asset path for cached provider") {
   auto provider{ make_recipe("local.provider@v1", recipe_type::CACHE_MANAGED) };
   provider->products["tool"] = "bin/tool";
-  CHECK_THROWS_WITH_AS(
-      product_util_resolve(provider.get(), "tool"),
-      "Product 'tool' provider 'local.provider@v1' missing asset path",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(product_util_resolve(provider.get(), "tool"),
+                       "Product 'tool' provider 'local.provider@v1' missing asset path",
+                       std::runtime_error);
 }
 
 }  // namespace envy

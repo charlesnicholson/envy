@@ -32,11 +32,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_direct@v1",
                 "test_data/recipes/dep_val_direct.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -53,11 +53,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_missing@v1",
                 "test_data/recipes/dep_val_missing.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -74,11 +74,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_transitive@v1",
                 "test_data/recipes/dep_val_transitive.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -95,11 +95,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_level3_top@v1",
                 "test_data/recipes/dep_val_level3_top.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -115,11 +115,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_diamond_top@v1",
                 "test_data/recipes/dep_val_diamond_top.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -135,11 +135,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_chain5_e@v1",
                 "test_data/recipes/dep_val_chain5_e.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -155,11 +155,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_unrelated@v1",
                 "test_data/recipes/dep_val_unrelated.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -177,11 +177,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_needed_by_direct@v1",
                 "test_data/recipes/dep_val_needed_by_direct.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -197,11 +197,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_needed_by_transitive@v1",
                 "test_data/recipes/dep_val_needed_by_transitive.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -217,11 +217,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_needed_by_undeclared@v1",
                 "test_data/recipes/dep_val_needed_by_undeclared.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -243,11 +243,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_parallel_manifest@v1",
                 "test_data/recipes/dep_val_parallel_manifest.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -264,11 +264,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_shell_with_dep@v1",
                 "test_data/recipes/dep_val_shell_with_dep.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,
@@ -288,11 +288,11 @@ class TestDependencyValidation(unittest.TestCase):
         result = subprocess.run(
             [
                 str(self.envy_test),
+                f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
                 "local.dep_val_chain5_e@v1",
                 "test_data/recipes/dep_val_chain5_e.lua",
-                f"--cache-root={self.cache_root}",
             ],
             capture_output=True,
             text=True,

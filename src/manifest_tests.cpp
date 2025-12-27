@@ -238,7 +238,7 @@ TEST_CASE("manifest::load parses table package with options") {
   sol::state lua;
   auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts = opts_result;
+  sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
   CHECK(sol::object(opts["target"]).as<std::string>() == "arm-none-eabi");
 }
@@ -500,7 +500,7 @@ TEST_CASE("manifest::load accepts non-string option values") {
   sol::state lua;
   auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts = opts_result;
+  sol::table opts{ opts_result };
   CHECK(sol::object(opts["version"]).is<lua_Integer>());
   CHECK(sol::object(opts["version"]).as<int64_t>() == 123);
   CHECK(sol::object(opts["debug"]).is<bool>());
@@ -544,4 +544,128 @@ TEST_CASE("manifest::load errors on Lua runtime error") {
   CHECK_THROWS_AS(
       envy::manifest::load("error('intentional error')", fs::path("/fake/envy.lua")),
       std::runtime_error);
+}
+
+// @envy directive parsing tests -------------------------------------------
+
+TEST_CASE("parse_envy_meta extracts version") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy version "1.2.3"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "1.2.3");
+  CHECK_FALSE(directives.cache.has_value());
+  CHECK_FALSE(directives.mirror.has_value());
+}
+
+TEST_CASE("parse_envy_meta extracts all directives") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy version "2.0.0"
+-- @envy cache "/opt/envy-cache"
+-- @envy mirror "https://internal.corp/releases"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "2.0.0");
+  REQUIRE(directives.cache.has_value());
+  CHECK(*directives.cache == "/opt/envy-cache");
+  REQUIRE(directives.mirror.has_value());
+  CHECK(*directives.mirror == "https://internal.corp/releases");
+}
+
+TEST_CASE("parse_envy_meta handles escaped quotes") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy version "1.0.0-\"beta\""
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "1.0.0-\"beta\"");
+}
+
+TEST_CASE("parse_envy_meta handles escaped backslash") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy cache "C:\\Users\\test\\cache"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.cache.has_value());
+  CHECK(*directives.cache == "C:\\Users\\test\\cache");
+}
+
+TEST_CASE("parse_envy_meta handles mixed escapes") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy version "test-\"quoted\"-and-\\backslash"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "test-\"quoted\"-and-\\backslash");
+}
+
+TEST_CASE("parse_envy_meta returns empty for missing directives") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- This manifest has no @envy directives
+PACKAGES = {}
+)") };
+
+  CHECK_FALSE(directives.version.has_value());
+  CHECK_FALSE(directives.cache.has_value());
+  CHECK_FALSE(directives.mirror.has_value());
+}
+
+TEST_CASE("parse_envy_meta handles whitespace variants") {
+  auto directives{ envy::parse_envy_meta(
+      "--   @envy   version   \"1.0.0\"\n"
+      "--\t@envy\tcache\t\"/path\"\n"
+      "PACKAGES = {}\n") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "1.0.0");
+  REQUIRE(directives.cache.has_value());
+  CHECK(*directives.cache == "/path");
+}
+
+TEST_CASE("parse_envy_meta finds directives anywhere in file") {
+  std::string script;
+  for (int i = 0; i < 50; ++i) { script += "-- line " + std::to_string(i) + "\n"; }
+  script += "-- @envy version \"deep-in-file\"\n";
+  script += "PACKAGES = {}\n";
+
+  auto const meta{ envy::parse_envy_meta(script) };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "deep-in-file");
+}
+
+TEST_CASE("parse_envy_meta ignores unknown directives") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy version "1.0.0"
+-- @envy unknown "some-value"
+-- @envy future_directive "another-value"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.version.has_value());
+  CHECK(*directives.version == "1.0.0");
+  // Unknown directives silently ignored
+}
+
+TEST_CASE("manifest::load populates directives field") {
+  char const *script{ R"(
+-- @envy version "1.2.3"
+-- @envy cache "/custom/cache"
+PACKAGES = {}
+)" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->meta.version.has_value());
+  CHECK(*m->meta.version == "1.2.3");
+  REQUIRE(m->meta.cache.has_value());
+  CHECK(*m->meta.cache == "/custom/cache");
+  CHECK_FALSE(m->meta.mirror.has_value());
 }

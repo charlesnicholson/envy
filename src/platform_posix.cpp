@@ -3,6 +3,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
 #include <cerrno>
 #include <cstdlib>
 #include <mutex>
@@ -10,6 +14,7 @@
 #include <string>
 #include <system_error>
 #include <unordered_map>
+#include <vector>
 
 namespace envy::platform {
 
@@ -34,8 +39,7 @@ file_lock::~file_lock() {
     ::close(impl_->fd);
     if (impl_->path_mutex) { impl_->path_mutex->unlock(); }
 
-    std::error_code
-        ec;  // Ignore errors - lock file may already be deleted or inaccessible.
+    std::error_code ec;  // Ignore errors - lock file may  be deleted or inaccessible.
     std::filesystem::remove(impl_->lock_path, ec);
   }
 }
@@ -46,6 +50,11 @@ file_lock &file_lock::operator=(file_lock &&) noexcept = default;
 file_lock::operator bool() const { return impl_ != nullptr; }
 
 std::optional<std::filesystem::path> get_default_cache_root() {
+  // ENVY_CACHE_ROOT takes precedence
+  if (char const *env_root{ std::getenv("ENVY_CACHE_ROOT") }) {
+    return std::filesystem::path{ env_root };
+  }
+
 #ifdef __APPLE__
   if (char const *home{ std::getenv("HOME") }) {
     return std::filesystem::path{ home } / "Library" / "Caches" / "envy";
@@ -68,6 +77,28 @@ char const *get_default_cache_root_env_vars() {
   return "HOME";
 #else
   return "XDG_CACHE_HOME or HOME";
+#endif
+}
+
+std::filesystem::path get_exe_path() {
+#ifdef __APPLE__
+  uint32_t size{ 0 };
+  _NSGetExecutablePath(nullptr, &size);
+  std::vector<char> buf(size);
+  if (_NSGetExecutablePath(buf.data(), &size) != 0) {
+    throw std::runtime_error("_NSGetExecutablePath failed");
+  }
+  return std::filesystem::canonical(buf.data());
+#else
+  std::vector<char> buf(4096);
+  ssize_t const len{ ::readlink("/proc/self/exe", buf.data(), buf.size() - 1) };
+  if (len == -1) {
+    throw std::system_error(errno,
+                            std::system_category(),
+                            "readlink /proc/self/exe failed");
+  }
+  buf[static_cast<size_t>(len)] = '\0';
+  return std::filesystem::path{ buf.data() };
 #endif
 }
 

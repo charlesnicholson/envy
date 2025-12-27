@@ -45,12 +45,11 @@ class TestSyncCommand(unittest.TestCase):
         self, identities: Optional[List[str]] = None, manifest: Optional[Path] = None
     ):
         """Run 'envy sync' command and return result."""
-        cmd = [str(self.envy), "sync"]
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
         if identities:
             cmd.extend(identities)
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
-        cmd.extend(["--cache-root", str(self.cache_root)])
 
         result = subprocess.run(
             cmd,
@@ -181,13 +180,13 @@ PACKAGES = {{
         trace_file1 = self.cache_root / "trace1.jsonl"
         cmd1 = [
             str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
             f"--trace=file:{trace_file1}",
             "sync",
             "local.simple@v1",
             "--manifest",
             str(manifest),
-            "--cache-root",
-            str(self.cache_root),
         ]
         result1 = subprocess.run(
             cmd1, cwd=self.project_root, capture_output=True, text=True
@@ -202,13 +201,13 @@ PACKAGES = {{
         trace_file2 = self.cache_root / "trace2.jsonl"
         cmd2 = [
             str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
             f"--trace=file:{trace_file2}",
             "sync",
             "local.simple@v1",
             "--manifest",
             str(manifest),
-            "--cache-root",
-            str(self.cache_root),
         ]
         result2 = subprocess.run(
             cmd2, cwd=self.project_root, capture_output=True, text=True
@@ -256,11 +255,11 @@ PACKAGES = {{
             # Use custom cache root
             cmd = [
                 str(self.envy),
+                "--cache-root",
+                str(custom_cache),
                 "sync",
                 "--manifest",
                 str(manifest),
-                "--cache-root",
-                str(custom_cache),
             ]
             result = subprocess.run(
                 cmd, cwd=self.project_root, capture_output=True, text=True

@@ -33,7 +33,7 @@ class TestWeakDepHash(unittest.TestCase):
         return manifest_path
 
     def run_envy(self, args):
-        cmd = [str(self.envy), *args, "--cache-root", str(self.cache_root)]
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), *args]
         return subprocess.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
