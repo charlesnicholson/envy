@@ -3,6 +3,7 @@
 #include "extract.h"
 #include "fetch.h"
 #include "tui.h"
+#include "util.h"
 
 #include <chrono>
 #include <filesystem>
@@ -20,7 +21,8 @@ class run_progress {
  public:
   run_progress(tui::section_handle section,
                std::string const &recipe_identity,
-               std::filesystem::path const &cache_root);
+               std::filesystem::path const &cache_root,
+               product_map_t products = {});
 
   void on_command_start(std::string_view cmd);
   void on_output_line(std::string_view line);
@@ -29,6 +31,7 @@ class run_progress {
   tui::section_handle section_;
   std::string label_;
   std::filesystem::path cache_root_;
+  product_map_t products_;
   std::chrono::steady_clock::time_point start_time_;
   std::vector<std::string> lines_;
   std::string header_text_;
