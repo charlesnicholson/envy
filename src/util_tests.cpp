@@ -302,7 +302,7 @@ TEST_CASE("scoped_path_cleanup reset switches targets and cleans previous file")
 
 TEST_CASE("util_load_file loads empty file") {
   auto path = make_temp_path("empty");
-  std::ofstream{ path };  // Create empty file
+  std::ignore = std::ofstream{ path };  // Create empty file
   envy::scoped_path_cleanup cleanup{ path };
 
   auto data = envy::util_load_file(path);
@@ -550,12 +550,13 @@ TEST_CASE("util_simplify_cache_paths matches product with .exe suffix") {
 
 TEST_CASE("util_simplify_cache_paths matches multiple products") {
   std::filesystem::path const cache_root{ "/cache" };
-  envy::product_map_t const products{
-    { "cmake", "bin/cmake.exe" },
-    { "ninja", "bin/ninja.exe" }
+  envy::product_map_t const products{ { "cmake", "bin/cmake.exe" },
+                                      { "ninja", "bin/ninja.exe" } };
+  std::string const cmd{
+    "/cache/cmake@v1/bin/cmake.exe -G Ninja /cache/ninja@v1/bin/ninja.exe"
   };
-  std::string const cmd{ "/cache/cmake@v1/bin/cmake.exe -G Ninja /cache/ninja@v1/bin/ninja.exe" };
-  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake -G Ninja ninja");
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
+        "cmake -G Ninja ninja");
 }
 
 TEST_CASE("util_simplify_cache_paths product takes precedence over cache fallback") {
@@ -577,7 +578,9 @@ TEST_CASE("util_simplify_cache_paths falls back to filename when no product matc
 TEST_CASE("util_simplify_cache_paths handles Windows backslash paths with products") {
   std::filesystem::path const cache_root{ "C:\\Users\\test\\.cache\\envy" };
   envy::product_map_t const products{ { "cmake", "bin\\cmake.exe" } };
-  std::string const cmd{ "C:\\Users\\test\\.cache\\envy\\cmake@v1\\bin\\cmake.exe --version" };
+  std::string const cmd{
+    "C:\\Users\\test\\.cache\\envy\\cmake@v1\\bin\\cmake.exe --version"
+  };
   CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake --version");
 }
 
@@ -598,8 +601,11 @@ TEST_CASE("util_simplify_cache_paths Windows cache_root with forward slash comma
 
 TEST_CASE("util_simplify_cache_paths product with nested path") {
   std::filesystem::path const cache_root{ "/cache" };
-  envy::product_map_t const products{ { "arm-gcc", "arm-none-eabi/bin/arm-none-eabi-gcc" } };
-  std::string const cmd{ "/cache/toolchain@v1/arm-none-eabi/bin/arm-none-eabi-gcc -c foo.c" };
+  envy::product_map_t const products{ { "arm-gcc",
+                                        "arm-none-eabi/bin/arm-none-eabi-gcc" } };
+  std::string const cmd{
+    "/cache/toolchain@v1/arm-none-eabi/bin/arm-none-eabi-gcc -c foo.c"
+  };
   CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "arm-gcc -c foo.c");
 }
 
@@ -608,4 +614,67 @@ TEST_CASE("util_simplify_cache_paths empty products behaves like before") {
   envy::product_map_t const products{};
   std::string const cmd{ "/cache/python@v1/bin/python3 script.py" };
   CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "python3 script.py");
+}
+
+// key=value tests
+
+TEST_CASE("util_simplify_cache_paths simplifies key=value RHS with cache path") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "python --gtest-dir=/cache/gtest@v1/lib/gtest" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "python --gtest-dir=gtest");
+}
+
+TEST_CASE("util_simplify_cache_paths simplifies key=value RHS with product") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "googletest", "lib/googletest" } };
+  std::string const cmd{ "python --gtest=/cache/gtest@v1/lib/googletest" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
+        "python --gtest=googletest");
+}
+
+TEST_CASE("util_simplify_cache_paths preserves key=value when RHS is not cache path") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "cmake -DCMAKE_BUILD_TYPE=Release" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
+        "cmake -DCMAKE_BUILD_TYPE=Release");
+}
+
+TEST_CASE("util_simplify_cache_paths handles multiple key=value pairs") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "ninja", "bin/ninja" }, { "cmake", "bin/cmake" } };
+  std::string const cmd{
+    "-DCMAKE_MAKE_PROGRAM=/cache/ninja@v1/bin/ninja "
+    "-DCMAKE_C_COMPILER=/cache/gcc@v1/bin/gcc"
+  };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
+        "-DCMAKE_MAKE_PROGRAM=ninja -DCMAKE_C_COMPILER=gcc");
+}
+
+TEST_CASE("util_simplify_cache_paths handles Windows backslash in key=value") {
+  std::filesystem::path const cache_root{ "C:\\cache" };
+  envy::product_map_t const products{ { "ninja", "bin\\ninja.exe" } };
+  std::string const cmd{ "-DCMAKE_MAKE_PROGRAM=C:\\cache\\ninja@v1\\bin\\ninja.exe" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
+        "-DCMAKE_MAKE_PROGRAM=ninja");
+}
+
+TEST_CASE("util_simplify_cache_paths handles = at start or end of token") {
+  std::filesystem::path const cache_root{ "/cache" };
+  // = at start (no key)
+  CHECK(envy::util_simplify_cache_paths("=/cache/foo", cache_root) == "=/cache/foo");
+  // = at end (no value)
+  CHECK(envy::util_simplify_cache_paths("KEY=", cache_root) == "KEY=");
+  // Just =
+  CHECK(envy::util_simplify_cache_paths("=", cache_root) == "=");
+}
+
+TEST_CASE("util_simplify_cache_paths real-world ninja configure example") {
+  std::filesystem::path const cache_root{ "/Users/test/Library/Caches/envy" };
+  envy::product_map_t const products{ { "gtest", "lib/gtest" } };
+  std::string const cmd{
+    "python3 configure.py --bootstrap "
+    "--gtest-source-dir=/Users/test/Library/Caches/envy/assets/gtest@v1/abc123/lib/gtest"
+  };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
+        "python3 configure.py --bootstrap --gtest-source-dir=gtest");
 }

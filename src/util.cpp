@@ -230,6 +230,37 @@ std::string match_product_suffix(std::string_view token, product_map_t const &pr
   return {};
 }
 
+// Simplify a single path-like value (used for both standalone tokens and RHS of key=value)
+// Returns simplified string, or empty if no simplification possible
+std::string simplify_path_value(std::string_view value,
+                                std::string const &normalized_cache_root,
+                                product_map_t const &products) {
+  // Try product match first
+  std::string const product_name{ match_product_suffix(value, products) };
+  if (!product_name.empty()) { return product_name; }
+
+  // Try cache_root prefix detection
+  if (!normalized_cache_root.empty()) {
+    std::string const normalized_value{ normalize_slashes(value) };
+
+    bool const is_cache_path{ [&] {
+      if (normalized_value.size() > normalized_cache_root.size() &&
+          normalized_value.substr(0, normalized_cache_root.size()) ==
+              normalized_cache_root) {
+        return normalized_value[normalized_cache_root.size()] == '/';
+      }
+      return normalized_value == normalized_cache_root;
+    }() };
+
+    if (is_cache_path) {
+      std::filesystem::path const value_path{ value };
+      return value_path.filename().string();
+    }
+  }
+
+  return {};
+}
+
 }  // namespace
 
 std::string util_simplify_cache_paths(std::string_view command,
@@ -261,33 +292,27 @@ std::string util_simplify_cache_paths(std::string_view command,
 
     std::string_view const token{ command.data() + token_start, pos - token_start };
 
-    // First, try to match against known products (suffix matching)
-    std::string const product_name{ match_product_suffix(token, products) };
-    if (!product_name.empty()) {
-      result += product_name;
-      continue;
-    }
+    // Check for key=value pattern and process RHS separately
+    auto const eq_pos{ token.find('=') };
+    if (eq_pos != std::string_view::npos && eq_pos > 0 && eq_pos < token.size() - 1) {
+      std::string_view const key{ token.substr(0, eq_pos + 1) };  // Include '='
+      std::string_view const value{ token.substr(eq_pos + 1) };
 
-    // Fall back to cache_root prefix detection
-    if (!normalized_cache_root.empty()) {
-      std::string const normalized_token{ normalize_slashes(token) };
-
-      // Check if token starts with cache_root followed by path separator
-      bool is_cache_path{ false };
-      if (normalized_token.size() > normalized_cache_root.size() &&
-          normalized_token.substr(0, normalized_cache_root.size()) ==
-              normalized_cache_root) {
-        char const separator{ normalized_token[normalized_cache_root.size()] };
-        if (separator == '/') { is_cache_path = true; }
-      } else if (normalized_token == normalized_cache_root) {
-        is_cache_path = true;
-      }
-
-      if (is_cache_path) {
-        std::filesystem::path const token_path{ token };
-        result += token_path.filename().string();
+      if (std::string const simplified{
+              simplify_path_value(value, normalized_cache_root, products) };
+          !simplified.empty()) {
+        result.append(key.data(), key.size());
+        result += simplified;
         continue;
       }
+    }
+
+    // Try to simplify the whole token
+    if (std::string const simplified{
+            simplify_path_value(token, normalized_cache_root, products) };
+        !simplified.empty()) {
+      result += simplified;
+      continue;
     }
 
     result.append(token.data(), token.size());
