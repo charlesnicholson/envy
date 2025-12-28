@@ -387,6 +387,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
+    src/cmds/cmd_init_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
     src/extract_tests.cpp

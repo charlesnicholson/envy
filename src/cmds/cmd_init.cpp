@@ -5,6 +5,8 @@
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "tui.h"
 
+#include "lua.h"
+
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +20,30 @@
 namespace envy {
 
 namespace fs = std::filesystem;
+
+std::string make_portable_path(fs::path const &path) {
+#ifdef _WIN32
+  char const *home{ std::getenv("USERPROFILE") };
+  char const env_var[]{ "${env:USERPROFILE}" };
+  char const sep{ '\\' };
+#else
+  char const *home{ std::getenv("HOME") };
+  char const env_var[]{ "${env:HOME}" };
+  char const sep{ '/' };
+#endif
+  if (!home) { return path.string(); }
+
+  std::string const path_str{ path.string() };
+  std::string const home_str{ home };
+
+  if (path_str == home_str) { return env_var; }
+
+  if (path_str.starts_with(home_str + sep)) {
+    return env_var + path_str.substr(home_str.size());
+  }
+
+  return path_str;
+}
 
 namespace {
 
@@ -83,19 +109,21 @@ void write_manifest(fs::path const &project_dir) {
 void write_luarc(fs::path const &project_dir, fs::path const &types_dir) {
   fs::path const luarc_path{ project_dir / ".luarc.json" };
 
+  std::string const portable_types_dir{ make_portable_path(types_dir) };
+
   if (fs::exists(luarc_path)) {
     tui::info("");
     tui::info(".luarc.json already exists at %s", luarc_path.string().c_str());
     tui::info("To enable envy autocompletion, add the following to workspace.library:");
-    tui::info("  \"%s\"", types_dir.string().c_str());
+    tui::info("  \"%s\"", portable_types_dir.c_str());
     return;
   }
 
   std::string const content{ R"({
   "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-  "runtime.version": "Lua 5.4",
+  "runtime.version": ")" LUA_VERSION R"(",
   "workspace.library": [
-    ")" + types_dir.string() +
+    ")" + portable_types_dir +
                              R"("
   ],
   "diagnostics.globals": [
