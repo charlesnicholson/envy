@@ -18,6 +18,24 @@ extern "C" {
 namespace envy {
 namespace {
 
+constexpr char kEnvyExtendLua[] = R"lua(
+return function(target, ...)
+  if type(target) ~= "table" then
+    error("envy.extend: first argument must be a table", 2)
+  end
+  for i = 1, select("#", ...) do
+    local list = select(i, ...)
+    if type(list) ~= "table" then
+      error("envy.extend: argument " .. (i + 1) .. " must be a table", 2)
+    end
+    for _, item in ipairs(list) do
+      target[#target + 1] = item
+    end
+  end
+  return target
+end
+)lua";
+
 constexpr char kEnvyTemplateLua[] = R"lua(
 return function(str, values)
   if type(str) ~= "string" then
@@ -130,13 +148,25 @@ void lua_envy_install(sol::state &lua) {
   envy_table["error"] = [](std::string_view msg) { tui::error("%s", msg.data()); };
   envy_table["stdout"] = [](std::string_view msg) { tui::print_stdout("%s", msg.data()); };
 
-  // envy.template (load Lua code)
-  sol::protected_function_result result{ lua.safe_script(kEnvyTemplateLua,
-                                                         sol::script_pass_on_error) };
-  if (result.valid()) {
-    envy_table["template"] = result;
+  // envy.extend (load Lua code)
+  sol::protected_function_result extend_result{
+    lua.safe_script(kEnvyExtendLua, sol::script_pass_on_error)
+  };
+  if (extend_result.valid()) {
+    envy_table["extend"] = extend_result;
   } else {
-    sol::error err = result;
+    sol::error err = extend_result;
+    tui::error("Failed to load envy.extend: %s", err.what());
+  }
+
+  // envy.template (load Lua code)
+  sol::protected_function_result template_result{
+    lua.safe_script(kEnvyTemplateLua, sol::script_pass_on_error)
+  };
+  if (template_result.valid()) {
+    envy_table["template"] = template_result;
+  } else {
+    sol::error err = template_result;
     tui::error("Failed to load envy.template: %s", err.what());
   }
 
@@ -156,15 +186,17 @@ void lua_envy_install(sol::state &lua) {
 
   lua["envy"] = envy_table;
 
-  // Register all shell constants on all platforms; runtime validation rejects incompatible shells
-  sol::table shell_tbl{ lua.create_table_with("BASH",
-                                              static_cast<int>(shell_choice::bash),
-                                              "SH",
-                                              static_cast<int>(shell_choice::sh),
-                                              "CMD",
-                                              static_cast<int>(shell_choice::cmd),
-                                              "POWERSHELL",
-                                              static_cast<int>(shell_choice::powershell)) };
+  // Register all shell constants on all platforms; runtime validation rejects incompatible
+  // shells
+  sol::table shell_tbl{ lua.create_table_with(
+      "BASH",
+      static_cast<int>(shell_choice::bash),
+      "SH",
+      static_cast<int>(shell_choice::sh),
+      "CMD",
+      static_cast<int>(shell_choice::cmd),
+      "POWERSHELL",
+      static_cast<int>(shell_choice::powershell)) };
   lua["ENVY_SHELL"] = shell_tbl;
 }
 
