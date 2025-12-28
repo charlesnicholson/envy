@@ -5,10 +5,10 @@ ENVY_MIRROR="${ENVY_MIRROR:-@@DOWNLOAD_URL@@}"
 FALLBACK_VERSION="@@ENVY_VERSION@@"
 
 find_manifest() {
-    local d=$PWD
-    while [[ $d != / ]]; do
-        [[ -f $d/envy.lua ]] && echo "$d/envy.lua" && return
-        d=${d%/*}; d=${d:-/}
+    local d="$PWD"
+    while [[ "$d" != / ]]; do
+        [[ -f "$d/envy.lua" ]] && echo "$d/envy.lua" && return
+        d="${d%/*}"; d="${d:-/}"
     done; return 1
 }
 
@@ -31,15 +31,15 @@ while read -r key val; do
     esac
 done < <(parse_directives)
 
-if [[ -z $VERSION ]]; then
+if [[ -z "$VERSION" ]]; then
     echo "WARNING: @envy version not found in $MANIFEST, using fallback $FALLBACK_VERSION" >&2
     VERSION="$FALLBACK_VERSION"
 fi
 
-[[ -n $MANIFEST_MIRROR ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
+[[ -n "$MANIFEST_MIRROR" ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
 
-if [[ -n ${ENVY_CACHE_ROOT:-} ]]; then CACHE="$ENVY_CACHE_ROOT"
-elif [[ -n $MANIFEST_CACHE ]]; then CACHE="$MANIFEST_CACHE"
+if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
+elif [[ -n "$MANIFEST_CACHE" ]]; then CACHE="$MANIFEST_CACHE"
 elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
 else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
 
@@ -54,7 +54,7 @@ case "$(uname -m)" in
 esac
 
 ENVY_BIN="$CACHE/envy/$VERSION/envy"
-[[ -x $ENVY_BIN ]] && exec "$ENVY_BIN" "$@"
+[[ -x "$ENVY_BIN" ]] && exec "$ENVY_BIN" "$@"
 
 echo "Downloading envy $VERSION..." >&2
 T=${TMPDIR:-/tmp}/envy-$$

@@ -101,10 +101,7 @@ std::filesystem::path bootstrap_extract_lua_ls_types() {
   fs::path const types_dir{ *cache_root / "envy" / ENVY_VERSION_STR };
   fs::path const types_path{ types_dir / "envy.lua" };
 
-  if (fs::exists(types_path)) {
-    tui::info("Type definitions already exist: %s", types_path.string().c_str());
-    return types_dir;
-  }
+  if (fs::exists(types_path)) { return types_dir; }
 
   std::error_code ec;
   fs::create_directories(types_dir, ec);
