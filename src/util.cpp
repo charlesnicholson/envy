@@ -193,11 +193,52 @@ std::string util_flatten_script_with_semicolons(std::string_view script) {
   return result;
 }
 
-std::string util_simplify_cache_paths(std::string_view command,
-                                      std::filesystem::path const &cache_root) {
-  if (command.empty() || cache_root.empty()) { return std::string{ command }; }
+namespace {
 
-  std::string const cache_root_str{ cache_root.string() };
+// Normalize path separators to forward slashes for comparison
+std::string normalize_slashes(std::string_view path) {
+  std::string result{ path };
+  for (char &c : result) {
+    if (c == '\\') { c = '/'; }
+  }
+  return result;
+}
+
+// Check if token ends with product path (after a path separator)
+// Returns product name if matched, empty string otherwise
+std::string match_product_suffix(std::string_view token, product_map_t const &products) {
+  if (products.empty()) { return {}; }
+
+  std::string const normalized_token{ normalize_slashes(token) };
+
+  for (auto const &[name, path] : products) {
+    if (path.empty()) { continue; }
+
+    std::string const normalized_path{ normalize_slashes(path) };
+
+    // Check for exact match
+    if (normalized_token == normalized_path) { return name; }
+
+    // Check for suffix match: token ends with /path or \path
+    std::string const suffix{ "/" + normalized_path };
+    if (normalized_token.size() > suffix.size() &&
+        normalized_token.substr(normalized_token.size() - suffix.size()) == suffix) {
+      return name;
+    }
+  }
+
+  return {};
+}
+
+}  // namespace
+
+std::string util_simplify_cache_paths(std::string_view command,
+                                      std::filesystem::path const &cache_root,
+                                      product_map_t const &products) {
+  if (command.empty()) { return std::string{ command }; }
+
+  std::string const cache_root_str{ cache_root.empty() ? "" : cache_root.string() };
+  std::string const normalized_cache_root{ normalize_slashes(cache_root_str) };
   std::string result;
   result.reserve(command.size());
 
@@ -220,23 +261,36 @@ std::string util_simplify_cache_paths(std::string_view command,
 
     std::string_view const token{ command.data() + token_start, pos - token_start };
 
-    // Check if token starts with cache_root followed by path separator
-    // This ensures we match "/cache/foo" but not "/cacheother/foo" for cache_root="/cache"
-    bool is_cache_path{ false };
-    if (token.size() > cache_root_str.size() &&
-        token.substr(0, cache_root_str.size()) == cache_root_str) {
-      char const separator{ token[cache_root_str.size()] };
-      if (separator == '/' || separator == '\\') { is_cache_path = true; }
-    } else if (token == cache_root_str) {
-      is_cache_path = true;
+    // First, try to match against known products (suffix matching)
+    std::string const product_name{ match_product_suffix(token, products) };
+    if (!product_name.empty()) {
+      result += product_name;
+      continue;
     }
 
-    if (is_cache_path) {
-      std::filesystem::path const token_path{ token };
-      result += token_path.filename().string();
-    } else {
-      result.append(token.data(), token.size());
+    // Fall back to cache_root prefix detection
+    if (!normalized_cache_root.empty()) {
+      std::string const normalized_token{ normalize_slashes(token) };
+
+      // Check if token starts with cache_root followed by path separator
+      bool is_cache_path{ false };
+      if (normalized_token.size() > normalized_cache_root.size() &&
+          normalized_token.substr(0, normalized_cache_root.size()) ==
+              normalized_cache_root) {
+        char const separator{ normalized_token[normalized_cache_root.size()] };
+        if (separator == '/') { is_cache_path = true; }
+      } else if (normalized_token == normalized_cache_root) {
+        is_cache_path = true;
+      }
+
+      if (is_cache_path) {
+        std::filesystem::path const token_path{ token };
+        result += token_path.filename().string();
+        continue;
+      }
     }
+
+    result.append(token.data(), token.size());
   }
 
   return result;

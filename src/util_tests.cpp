@@ -531,3 +531,81 @@ TEST_CASE("util_simplify_cache_paths handles complex real-world example") {
   CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
         "python3 ./configure.py --bootstrap");
 }
+
+// Product matching tests
+
+TEST_CASE("util_simplify_cache_paths matches product by suffix") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "cmake", "bin/cmake" } };
+  std::string const cmd{ "/cache/assets/cmake@v1/bin/cmake --version" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake --version");
+}
+
+TEST_CASE("util_simplify_cache_paths matches product with .exe suffix") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "cmake", "bin/cmake.exe" } };
+  std::string const cmd{ "/cache/assets/cmake@v1/bin/cmake.exe --version" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake --version");
+}
+
+TEST_CASE("util_simplify_cache_paths matches multiple products") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{
+    { "cmake", "bin/cmake.exe" },
+    { "ninja", "bin/ninja.exe" }
+  };
+  std::string const cmd{ "/cache/cmake@v1/bin/cmake.exe -G Ninja /cache/ninja@v1/bin/ninja.exe" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake -G Ninja ninja");
+}
+
+TEST_CASE("util_simplify_cache_paths product takes precedence over cache fallback") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "my-cmake", "bin/cmake.exe" } };
+  std::string const cmd{ "/cache/cmake@v1/bin/cmake.exe" };
+  // Product match should return "my-cmake", not filename "cmake.exe"
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "my-cmake");
+}
+
+TEST_CASE("util_simplify_cache_paths falls back to filename when no product match") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "ninja", "bin/ninja.exe" } };
+  std::string const cmd{ "/cache/cmake@v1/bin/cmake.exe" };
+  // No product match for cmake, should fall back to filename extraction
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake.exe");
+}
+
+TEST_CASE("util_simplify_cache_paths handles Windows backslash paths with products") {
+  std::filesystem::path const cache_root{ "C:\\Users\\test\\.cache\\envy" };
+  envy::product_map_t const products{ { "cmake", "bin\\cmake.exe" } };
+  std::string const cmd{ "C:\\Users\\test\\.cache\\envy\\cmake@v1\\bin\\cmake.exe --version" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake --version");
+}
+
+TEST_CASE("util_simplify_cache_paths handles mixed slash styles") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "cmake", "bin/cmake.exe" } };
+  // Command uses backslashes but product uses forward slashes
+  std::string const cmd{ "/cache/cmake@v1\\bin\\cmake.exe --version" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "cmake --version");
+}
+
+TEST_CASE("util_simplify_cache_paths Windows cache_root with forward slash command") {
+  std::filesystem::path const cache_root{ "C:\\cache" };
+  // Command uses forward slashes (common in scripts)
+  std::string const cmd{ "C:/cache/assets/python/bin/python.exe script.py" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "python.exe script.py");
+}
+
+TEST_CASE("util_simplify_cache_paths product with nested path") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{ { "arm-gcc", "arm-none-eabi/bin/arm-none-eabi-gcc" } };
+  std::string const cmd{ "/cache/toolchain@v1/arm-none-eabi/bin/arm-none-eabi-gcc -c foo.c" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "arm-gcc -c foo.c");
+}
+
+TEST_CASE("util_simplify_cache_paths empty products behaves like before") {
+  std::filesystem::path const cache_root{ "/cache" };
+  envy::product_map_t const products{};
+  std::string const cmd{ "/cache/python@v1/bin/python3 script.py" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) == "python3 script.py");
+}

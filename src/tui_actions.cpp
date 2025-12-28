@@ -11,10 +11,12 @@ namespace envy::tui_actions {
 
 run_progress::run_progress(tui::section_handle section,
                            std::string const &recipe_identity,
-                           std::filesystem::path const &cache_root)
+                           std::filesystem::path const &cache_root,
+                           product_map_t products)
     : section_{ section },
       label_{ "[" + recipe_identity + "]" },
       cache_root_{ cache_root },
+      products_{ std::move(products) },
       start_time_{ std::chrono::steady_clock::now() },
       lines_{},
       header_text_{} {}
@@ -22,7 +24,7 @@ run_progress::run_progress(tui::section_handle section,
 void run_progress::on_command_start(std::string_view cmd) {
   // Flatten and simplify the command for display
   std::string const flattened{ util_flatten_script_with_semicolons(cmd) };
-  header_text_ = util_simplify_cache_paths(flattened, cache_root_);
+  header_text_ = util_simplify_cache_paths(flattened, cache_root_, products_);
 
   // Show spinner immediately with the command
   tui::section_set_content(
