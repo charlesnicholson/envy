@@ -13,7 +13,8 @@ PACKAGES = {
   { recipe = "local.python@r0", source = "local.python@r0.lua",
     options = { version = "3.14.2" } },
 
-  { recipe = "local.ninja@r0", source = "local.ninja@r0.lua" },
+  { recipe = "local.ninja@r0", source = "local.ninja@r0.lua",
+    options = { version = "v1.13.2" } },
 
   { recipe = "local.gn@r0", source = "local.gn@r0.lua",
     options = { ref = "5964f499767097d81dbe034e8b541c3988168073" }},

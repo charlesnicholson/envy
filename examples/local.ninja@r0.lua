@@ -2,10 +2,18 @@ IDENTITY = "local.ninja@r0"
 
 DEPENDENCIES = { { product = "python3" } }
 
-FETCH = {
-  { source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.1" },
-  { source = "https://github.com/google/googletest.git", ref = "v1.16.0" }
-}
+VALIDATE = function(opts)
+  if opts.version == nil then
+    return "version option is required"
+  end
+end
+
+FETCH = function(tmp_dir, opts)
+  return {
+    { source = "https://github.com/ninja-build/ninja.git", ref = opts.version },
+    { source = "https://github.com/google/googletest.git", ref = "v1.16.0" }
+  }
+end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
   local cmd = envy.template([[
