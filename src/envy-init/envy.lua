@@ -51,6 +51,12 @@ function envy.stdout(msg) end
 ---@return string
 function envy.template(str, values) end
 
+---Extend target array with items from one or more source arrays
+---@param target any[] Target array to extend (modified in-place)
+---@param ... any[] Source arrays to append
+---@return any[] target The same target array (for chaining)
+function envy.extend(target, ...) end
+
 --------------------------------------------------------------------------------
 -- Path Operations
 --------------------------------------------------------------------------------

@@ -1,13 +1,4 @@
-local function append_lists(target, ...)
-  local arrays = { ... }
-  for _, list in ipairs(arrays) do
-    for _, item in ipairs(list) do
-      table.insert(target, item)
-    end
-  end
-
-  return target
-end
+-- @envy version "0.0.0"
 
 PACKAGES = {
   { recipe = "local.uv@r0", source = "local.uv@r0.lua",
@@ -29,7 +20,7 @@ PACKAGES = {
 }
 
 if envy.PLATFORM == "darwin" then
-  append_lists(PACKAGES, { {
+  envy.extend(PACKAGES, { {
     recipe = "local.brew_package@r0", source = "local.brew_package@r0.lua",
     options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } }
   } })
@@ -37,7 +28,7 @@ if envy.PLATFORM == "darwin" then
 end
 
 if envy.PLATFORM == "linux" then
-  append_lists(PACKAGES, { {
+  envy.extend(PACKAGES, { {
     recipe = "local.apt@r0", source = "local.apt@r0.lua",
     options = { packages = {
       "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" } }
