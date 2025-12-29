@@ -3,10 +3,25 @@
 #include "extract.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
+
 #include <filesystem>
 #include <string>
 
 namespace envy {
+
+void cmd_extract::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("extract", "Extract archive to destination") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("archive", cfg_ptr->archive_path, "Archive file to extract")
+      ->required()
+      ->check(CLI::ExistingFile);
+  sub->add_option("destination",
+                  cfg_ptr->destination,
+                  "Destination directory (defaults to current directory)");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_extract::cmd_extract(cmd_extract::cfg cfg,
                          std::optional<std::filesystem::path> const & /*cli_cache_root*/)

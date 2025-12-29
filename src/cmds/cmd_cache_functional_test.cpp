@@ -4,12 +4,72 @@
 #include "platform.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <sstream>
 #include <thread>
 
 namespace envy {
+
+void cmd_cache_ensure_asset::register_cli(CLI::App &parent,
+                                          std::function<void(cfg)> on_selected) {
+  auto *sub{ parent.add_subcommand("ensure-asset", "Test asset cache entry") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("identity", cfg_ptr->identity, "Asset identity")->required();
+  sub->add_option("platform", cfg_ptr->platform, "Platform (darwin/linux/windows)")
+      ->required();
+  sub->add_option("arch", cfg_ptr->arch, "Architecture (arm64/x86_64)")->required();
+  sub->add_option("hash_prefix", cfg_ptr->hash_prefix, "Hash prefix")->required();
+  sub->add_option("--test-id", cfg_ptr->test_id, "Test ID for barrier isolation");
+  sub->add_option("--barrier-dir", cfg_ptr->barrier_dir, "Barrier directory");
+  sub->add_option("--barrier-signal",
+                  cfg_ptr->barrier_signal,
+                  "Barrier to signal before lock");
+  sub->add_option("--barrier-wait",
+                  cfg_ptr->barrier_wait,
+                  "Barrier to wait for before lock");
+  sub->add_option("--barrier-signal-after",
+                  cfg_ptr->barrier_signal_after,
+                  "Barrier to signal after lock");
+  sub->add_option("--barrier-wait-after",
+                  cfg_ptr->barrier_wait_after,
+                  "Barrier to wait for after lock");
+  sub->add_option("--crash-after", cfg_ptr->crash_after_ms, "Crash after N milliseconds");
+  sub->add_flag("--fail-before-complete",
+                cfg_ptr->fail_before_complete,
+                "Exit without marking complete");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
+
+void cmd_cache_ensure_recipe::register_cli(CLI::App &parent,
+                                           std::function<void(cfg)> on_selected) {
+  auto *sub{ parent.add_subcommand("ensure-recipe", "Test recipe cache entry") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("identity", cfg_ptr->identity, "Recipe identity")->required();
+  sub->add_option("--test-id", cfg_ptr->test_id, "Test ID for barrier isolation");
+  sub->add_option("--barrier-dir", cfg_ptr->barrier_dir, "Barrier directory");
+  sub->add_option("--barrier-signal",
+                  cfg_ptr->barrier_signal,
+                  "Barrier to signal before lock");
+  sub->add_option("--barrier-wait",
+                  cfg_ptr->barrier_wait,
+                  "Barrier to wait for before lock");
+  sub->add_option("--barrier-signal-after",
+                  cfg_ptr->barrier_signal_after,
+                  "Barrier to signal after lock");
+  sub->add_option("--barrier-wait-after",
+                  cfg_ptr->barrier_wait_after,
+                  "Barrier to wait for after lock");
+  sub->add_option("--crash-after", cfg_ptr->crash_after_ms, "Crash after N milliseconds");
+  sub->add_flag("--fail-before-complete",
+                cfg_ptr->fail_before_complete,
+                "Exit without marking complete");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 class test_barrier {
  public:
@@ -52,7 +112,8 @@ std::string cache_test_result::to_keyvalue() const {
 
 // cmd_cache_ensure_asset implementation
 cmd_cache_ensure_asset::cmd_cache_ensure_asset(
-    cfg const &config, std::optional<std::filesystem::path> const &cli_cache_root)
+    cfg const &config,
+    std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_asset::execute() {
@@ -138,7 +199,8 @@ void cmd_cache_ensure_asset::execute() {
 
 // cmd_cache_ensure_recipe implementation
 cmd_cache_ensure_recipe::cmd_cache_ensure_recipe(
-    cfg const &config, std::optional<std::filesystem::path> const &cli_cache_root)
+    cfg const &config,
+    std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_recipe::execute() {

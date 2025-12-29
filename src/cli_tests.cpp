@@ -56,6 +56,30 @@ TEST_CASE("cli_parse: cmd_version") {
     REQUIRE(parsed.cmd_cfg.has_value());
     CHECK(std::holds_alternative<envy::cmd_version::cfg>(*parsed.cmd_cfg));
   }
+
+  SUBCASE("version subcommand without --licenses") {
+    std::vector<std::string> args{ "envy", "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_version::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->show_licenses);
+  }
+
+  SUBCASE("version --licenses flag") {
+    std::vector<std::string> args{ "envy", "version", "--licenses" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_version::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->show_licenses);
+  }
 }
 
 TEST_CASE("cli_parse: cmd_extract") {

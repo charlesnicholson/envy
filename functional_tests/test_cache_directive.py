@@ -16,6 +16,8 @@ class TestCacheDirective(unittest.TestCase):
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
         self.test_data = self.project_root / "test_data"
+        # pid distinguishes between test runs, unique_suffix distinguishes parallel threads
+        self.unique_suffix = f"{os.getpid()}-{self.test_dir.name.split('-')[-1]}"
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
@@ -43,9 +45,7 @@ class TestCacheDirective(unittest.TestCase):
             cmd.extend(["--cache-root", cache_root])
         cmd.extend(["sync", "--manifest", str(manifest)])
 
-        env = test_config.get_test_env()
-        if env_override:
-            env.update(env_override)
+        env = env_override if env_override else test_config.get_test_env()
 
         result = subprocess.run(
             cmd,
@@ -59,7 +59,7 @@ class TestCacheDirective(unittest.TestCase):
     def test_cache_directive_tilde_expansion(self):
         """Cache directive with ~ expands to home directory."""
         # Create a custom cache path using ~
-        custom_cache_name = f".envy-cache-test-tilde-{os.getpid()}"
+        custom_cache_name = f".envy-cache-test-tilde-{self.unique_suffix}"
         home = Path.home()
         expected_cache = home / custom_cache_name
 
@@ -103,7 +103,7 @@ PACKAGES = {{
     def test_cache_directive_env_var_expansion(self):
         """Cache directive with $HOME expands environment variable."""
         # Create a custom cache path using $HOME
-        custom_cache_name = f".envy-cache-test-env-{os.getpid()}"
+        custom_cache_name = f".envy-cache-test-env-{self.unique_suffix}"
         home = Path.home()
         expected_cache = home / custom_cache_name
 
@@ -141,7 +141,7 @@ PACKAGES = {{
     def test_cli_cache_root_overrides_manifest(self):
         """CLI --cache-root takes precedence over manifest cache directive."""
         cli_cache = self.test_dir / "cli-cache"
-        manifest_cache_name = f".envy-cache-test-override-{os.getpid()}"
+        manifest_cache_name = f".envy-cache-test-override-{self.unique_suffix}"
         manifest_cache = Path.home() / manifest_cache_name
 
         try:
@@ -185,7 +185,7 @@ PACKAGES = {{
     def test_env_cache_root_overrides_manifest(self):
         """ENVY_CACHE_ROOT env takes precedence over manifest cache directive."""
         env_cache = self.test_dir / "env-cache"
-        manifest_cache_name = f".envy-cache-test-env-override-{os.getpid()}"
+        manifest_cache_name = f".envy-cache-test-env-override-{self.unique_suffix}"
         manifest_cache = Path.home() / manifest_cache_name
 
         try:

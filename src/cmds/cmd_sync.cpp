@@ -6,9 +6,22 @@
 #include "recipe_spec.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
+
 #include <stdexcept>
 
 namespace envy {
+
+void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("sync", "Install packages from manifest") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("identities",
+                  cfg_ptr->identities,
+                  "Recipe identities to sync (sync all if omitted)");
+  sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_sync::cmd_sync(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}

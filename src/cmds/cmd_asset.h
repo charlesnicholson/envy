@@ -3,8 +3,11 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+
+namespace CLI { class App; }
 
 namespace envy {
 
@@ -14,6 +17,8 @@ class cmd_asset : public cmd {
     std::string identity;  // Required: "namespace.name@version"
     std::optional<std::filesystem::path> manifest_path;
   };
+
+  static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
 
   cmd_asset(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 

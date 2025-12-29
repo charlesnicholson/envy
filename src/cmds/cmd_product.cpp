@@ -9,11 +9,25 @@
 #include "recipe_spec.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
+
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
 
 namespace envy {
+
+void cmd_product::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand(
+      "product",
+      "Query product value or list all products from manifest") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("product", cfg_ptr->product_name, "Product name (omit to list all)");
+  sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->add_flag("--json", cfg_ptr->json, "Output as JSON (to stdout)");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_product::cmd_product(cfg cfg,
                          std::optional<std::filesystem::path> const &cli_cache_root)
