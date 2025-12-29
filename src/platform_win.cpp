@@ -186,7 +186,9 @@ std::filesystem::path expand_path(std::string_view p) {
 
   // Leading ~ → USERPROFILE
   if (p[0] == '~' && (p.size() == 1 || p[1] == '/' || p[1] == '\\')) {
-    if (char const *home{ std::getenv("USERPROFILE") }) { result = home; }
+    char const *home{ std::getenv("USERPROFILE") };
+    if (!home) { throw std::runtime_error("USERPROFILE not set for tilde expansion"); }
+    result = home;
     i = 1;
   }
 

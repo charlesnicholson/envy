@@ -43,7 +43,12 @@ elif [[ -n "$MANIFEST_CACHE" ]]; then
     CACHE="$MANIFEST_CACHE"
     [[ "$CACHE" == "~/"* ]] && CACHE="$HOME${CACHE:1}"
     [[ "$CACHE" == "~" ]] && CACHE="$HOME"
-    eval "CACHE=\"$CACHE\""
+    while [[ "$CACHE" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+        var="${BASH_REMATCH[1]}"; CACHE="${CACHE/\$\{$var\}/${!var}}"
+    done
+    while [[ "$CACHE" =~ \$([A-Za-z_][A-Za-z0-9_]*) ]]; do
+        var="${BASH_REMATCH[1]}"; CACHE="${CACHE/\$$var/${!var}}"
+    done
 elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
 else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
 
