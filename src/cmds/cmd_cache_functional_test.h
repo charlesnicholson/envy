@@ -3,8 +3,11 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+
+namespace CLI { class App; }
 
 namespace envy {
 
@@ -38,6 +41,8 @@ class cmd_cache_ensure_asset : public cmd {
     bool fail_before_complete = false;
   };
 
+  static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
+
   cmd_cache_ensure_asset(cfg const &config,
                          std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
@@ -60,6 +65,8 @@ class cmd_cache_ensure_recipe : public cmd {
     int crash_after_ms = -1;            // -1 = no crash
     bool fail_before_complete = false;
   };
+
+  static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
 
   cmd_cache_ensure_recipe(cfg const &config,
                           std::optional<std::filesystem::path> const &cli_cache_root);

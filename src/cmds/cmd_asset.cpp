@@ -9,7 +9,21 @@
 #include "recipe_spec.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
+
 namespace envy {
+
+void cmd_asset::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("asset", "Query and install package, print asset path") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("identity",
+                  cfg_ptr->identity,
+                  "Recipe identity (namespace.name@version)")
+      ->required();
+  sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_asset::cmd_asset(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}

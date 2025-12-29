@@ -47,178 +47,28 @@ cli_args cli_parse(int argc, char **argv) {
 
   std::optional<cli_args::cmd_cfg_t> cmd_cfg;
 
-  // Version subcommand
-  auto *version{ app.add_subcommand("version", "Show version information") };
-  version->callback([&cmd_cfg] { cmd_cfg = cmd_version::cfg{}; });
+  auto const register_cmds{ [&]<typename... Ts>(CLI::App &parent) {
+    (Ts::register_cli(parent, [&](auto c) { cmd_cfg = c; }), ...);
+  } };
 
-  // Init subcommand
-  cmd_init::cfg init_cfg{};
-  auto *init{ app.add_subcommand("init", "Initialize envy project with bootstrap scripts") };
-  init->add_option("project-dir", init_cfg.project_dir, "Project directory for manifest")
-      ->required();
-  init->add_option("bin-dir", init_cfg.bin_dir, "Directory for bootstrap scripts")->required();
-  init->add_option("--mirror", init_cfg.mirror, "Override download mirror URL");
-  init->callback([&cmd_cfg, &init_cfg] { cmd_cfg = init_cfg; });
-
-  // Asset subcommand
-  cmd_asset::cfg query_asset_cfg{};
-  auto *asset{ app.add_subcommand("asset",
-                                  "Query and install package, print asset path") };
-  asset
-      ->add_option("identity",
-                   query_asset_cfg.identity,
-                   "Recipe identity (namespace.name@version)")
-      ->required();
-  asset->add_option("--manifest",
-                    query_asset_cfg.manifest_path,
-                    "Path to envy.lua manifest");
-  asset->callback([&cmd_cfg, &query_asset_cfg] { cmd_cfg = query_asset_cfg; });
-
-  // Product subcommand
-  cmd_product::cfg product_cfg{};
-  auto *product{ app.add_subcommand(
-      "product",
-      "Query product value or list all products from manifest") };
-  product->add_option("product",
-                      product_cfg.product_name,
-                      "Product name (omit to list all)");
-  product->add_option("--manifest",
-                      product_cfg.manifest_path,
-                      "Path to envy.lua manifest");
-  product->add_flag("--json", product_cfg.json, "Output as JSON (to stdout)");
-  product->callback([&cmd_cfg, &product_cfg] { cmd_cfg = product_cfg; });
-
-  // Sync subcommand
-  cmd_sync::cfg sync_cfg{};
-  auto *sync{ app.add_subcommand("sync", "Install packages from manifest") };
-  sync->add_option("identities",
-                   sync_cfg.identities,
-                   "Recipe identities to sync (sync all if omitted)");
-  sync->add_option("--manifest", sync_cfg.manifest_path, "Path to envy.lua manifest");
-  sync->callback([&cmd_cfg, &sync_cfg] { cmd_cfg = sync_cfg; });
-
-  // Extract subcommand
-  cmd_extract::cfg extract_cfg{};
-  auto *extract{ app.add_subcommand("extract", "Extract archive to destination") };
-  extract->add_option("archive", extract_cfg.archive_path, "Archive file to extract")
-      ->required()
-      ->check(CLI::ExistingFile);
-  extract->add_option("destination",
-                      extract_cfg.destination,
-                      "Destination directory (defaults to current directory)");
-  extract->callback([&cmd_cfg, &extract_cfg] { cmd_cfg = extract_cfg; });
-
-  // Fetch subcommand
-  cmd_fetch::cfg fetch_cfg{};
-  auto *fetch{ app.add_subcommand("fetch", "Download resource to local file") };
-  fetch->add_option("source", fetch_cfg.source, "Source URI (http/https/git/etc.)")
-      ->required();
-  fetch->add_option("destination", fetch_cfg.destination, "Destination file path")
-      ->required();
-  fetch->add_option("--manifest-root",
-                    fetch_cfg.manifest_root,
-                    "Manifest root for resolving relative file URIs");
-  fetch->add_option("--ref", fetch_cfg.ref, "Git ref (branch/tag/SHA) for git sources");
-  fetch->callback([&cmd_cfg, &fetch_cfg] { cmd_cfg = fetch_cfg; });
-
-  // Hash subcommand
-  cmd_hash::cfg hash_cfg{};
-  auto *hash{ app.add_subcommand("hash", "Compute SHA256 hash of a file") };
-  hash->add_option("file", hash_cfg.file_path, "File to hash")
-      ->required()
-      ->check(CLI::ExistingFile);
-  hash->callback([&cmd_cfg, &hash_cfg] { cmd_cfg = hash_cfg; });
-
-  // Lua subcommand
-  cmd_lua::cfg lua_cfg{};
-  auto *lua{ app.add_subcommand("lua", "Execute Lua script") };
-  lua->add_option("script", lua_cfg.script_path, "Lua script file to execute")
-      ->required()
-      ->check(CLI::ExistingFile);
-  lua->callback([&cmd_cfg, &lua_cfg] { cmd_cfg = lua_cfg; });
+  register_cmds.operator()<cmd_version,
+                           cmd_init,
+                           cmd_asset,
+                           cmd_product,
+                           cmd_sync,
+                           cmd_extract,
+                           cmd_fetch,
+                           cmd_hash,
+                           cmd_lua
+#ifdef ENVY_FUNCTIONAL_TESTER
+                           ,
+                           cmd_engine_functional_test
+#endif
+                           >(app);
 
 #ifdef ENVY_FUNCTIONAL_TESTER
-  // Cache testing subcommands
   auto *cache{ app.add_subcommand("cache", "Cache testing commands") };
-
-  // cache ensure-asset
-  cmd_cache_ensure_asset::cfg asset_cfg{};
-  auto *ensure_asset{ cache->add_subcommand("ensure-asset", "Test asset cache entry") };
-  ensure_asset->add_option("identity", asset_cfg.identity, "Asset identity")->required();
-  ensure_asset
-      ->add_option("platform", asset_cfg.platform, "Platform (darwin/linux/windows)")
-      ->required();
-  ensure_asset->add_option("arch", asset_cfg.arch, "Architecture (arm64/x86_64)")
-      ->required();
-  ensure_asset->add_option("hash_prefix", asset_cfg.hash_prefix, "Hash prefix")
-      ->required();
-  ensure_asset->add_option("--test-id",
-                           asset_cfg.test_id,
-                           "Test ID for barrier isolation");
-  ensure_asset->add_option("--barrier-dir", asset_cfg.barrier_dir, "Barrier directory");
-  ensure_asset->add_option("--barrier-signal",
-                           asset_cfg.barrier_signal,
-                           "Barrier to signal before lock");
-  ensure_asset->add_option("--barrier-wait",
-                           asset_cfg.barrier_wait,
-                           "Barrier to wait for before lock");
-  ensure_asset->add_option("--barrier-signal-after",
-                           asset_cfg.barrier_signal_after,
-                           "Barrier to signal after lock");
-  ensure_asset->add_option("--barrier-wait-after",
-                           asset_cfg.barrier_wait_after,
-                           "Barrier to wait for after lock");
-  ensure_asset->add_option("--crash-after",
-                           asset_cfg.crash_after_ms,
-                           "Crash after N milliseconds");
-  ensure_asset->add_flag("--fail-before-complete",
-                         asset_cfg.fail_before_complete,
-                         "Exit without marking complete");
-  ensure_asset->callback([&cmd_cfg, &asset_cfg] { cmd_cfg = asset_cfg; });
-
-  // cache ensure-recipe
-  cmd_cache_ensure_recipe::cfg recipe_cfg{};
-  auto *ensure_recipe{ cache->add_subcommand("ensure-recipe", "Test recipe cache entry") };
-  ensure_recipe->add_option("identity", recipe_cfg.identity, "Recipe identity")
-      ->required();
-  ensure_recipe->add_option("--test-id",
-                            recipe_cfg.test_id,
-                            "Test ID for barrier isolation");
-  ensure_recipe->add_option("--barrier-dir", recipe_cfg.barrier_dir, "Barrier directory");
-  ensure_recipe->add_option("--barrier-signal",
-                            recipe_cfg.barrier_signal,
-                            "Barrier to signal before lock");
-  ensure_recipe->add_option("--barrier-wait",
-                            recipe_cfg.barrier_wait,
-                            "Barrier to wait for before lock");
-  ensure_recipe->add_option("--barrier-signal-after",
-                            recipe_cfg.barrier_signal_after,
-                            "Barrier to signal after lock");
-  ensure_recipe->add_option("--barrier-wait-after",
-                            recipe_cfg.barrier_wait_after,
-                            "Barrier to wait for after lock");
-  ensure_recipe->add_option("--crash-after",
-                            recipe_cfg.crash_after_ms,
-                            "Crash after N milliseconds");
-  ensure_recipe->add_flag("--fail-before-complete",
-                          recipe_cfg.fail_before_complete,
-                          "Exit without marking complete");
-  ensure_recipe->callback([&cmd_cfg, &recipe_cfg] { cmd_cfg = recipe_cfg; });
-
-  // Engine functional test subcommand
-  cmd_engine_functional_test::cfg engine_test_cfg{};
-  auto *engine_test{ app.add_subcommand("engine-test", "Test engine execution") };
-  engine_test->add_option("identity", engine_test_cfg.identity, "Recipe identity")
-      ->required();
-  engine_test->add_option("recipe_path", engine_test_cfg.recipe_path, "Recipe file path")
-      ->required()
-      ->check(CLI::ExistingFile);
-  engine_test
-      ->add_option("--fail-after-fetch-count",
-                   engine_test_cfg.fail_after_fetch_count,
-                   "Fail after N successful file downloads (test only)")
-      ->default_val(-1);
-  engine_test->callback([&cmd_cfg, &engine_test_cfg] { cmd_cfg = engine_test_cfg; });
+  register_cmds.operator()<cmd_cache_ensure_asset, cmd_cache_ensure_recipe>(*cache);
 #endif
 
   cli_args args{};

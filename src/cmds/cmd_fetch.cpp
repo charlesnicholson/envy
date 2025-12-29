@@ -4,11 +4,28 @@
 #include "tui.h"
 #include "uri.h"
 
+#include "CLI11.hpp"
+
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 
 namespace envy {
+
+void cmd_fetch::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("fetch", "Download resource to local file") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("source", cfg_ptr->source, "Source URI (http/https/git/etc.)")
+      ->required();
+  sub->add_option("destination", cfg_ptr->destination, "Destination file path")
+      ->required();
+  sub->add_option("--manifest-root",
+                  cfg_ptr->manifest_root,
+                  "Manifest root for resolving relative file URIs");
+  sub->add_option("--ref", cfg_ptr->ref, "Git ref (branch/tag/SHA) for git sources");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_fetch::cmd_fetch(cmd_fetch::cfg cfg,
                      std::optional<std::filesystem::path> const & /*cli_cache_root*/)

@@ -1,5 +1,5 @@
 #if !defined(_WIN32)
-#error "shell_win32.cpp should only be compiled on Windows builds"
+#error "shell_win.cpp should only be compiled on Windows builds"
 #else
 
 #include "shell.h"

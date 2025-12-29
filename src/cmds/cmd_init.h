@@ -3,8 +3,11 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+
+namespace CLI { class App; }
 
 namespace envy {
 
@@ -18,6 +21,8 @@ class cmd_init : public cmd {
     std::filesystem::path bin_dir;
     std::optional<std::string> mirror;
   };
+
+  static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
 
   cmd_init(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 

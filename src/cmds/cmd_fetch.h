@@ -3,8 +3,11 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+
+namespace CLI { class App; }
 
 namespace envy {
 
@@ -16,6 +19,8 @@ class cmd_fetch : public cmd {
     std::optional<std::filesystem::path> manifest_root;
     std::optional<std::string> ref;
   };
+
+  static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
 
   cmd_fetch(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 

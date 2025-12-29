@@ -20,11 +20,12 @@ class TestPlatformExePath(unittest.TestCase):
     """Verify get_exe_path returns correct path."""
 
     def _extract_exe_path(self, output: str) -> str:
-        """Extract 'Executable: <path>' from version output."""
+        """Extract exe path from version output format: 'envy version X.X.X (path)'."""
         for line in output.splitlines():
-            if line.startswith("Executable: "):
-                return line[len("Executable: ") :]
-        raise ValueError("No 'Executable:' line found in output")
+            if line.startswith("envy version ") and "(" in line and line.endswith(")"):
+                start = line.rfind("(") + 1
+                return line[start:-1]
+        raise ValueError("No 'envy version ... (path)' line found in output")
 
     def test_exe_path_matches_invoked_binary(self):
         """Exe path should match the binary we invoked."""

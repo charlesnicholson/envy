@@ -5,6 +5,7 @@
 #include "platform.h"
 #include "tui.h"
 
+#include "CLI11.hpp"
 #include "lua.h"
 
 #include <cstring>
@@ -47,6 +48,19 @@ std::string make_portable_path(fs::path const &path) {
   }
 
   return path_str;
+}
+
+void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("init",
+                                "Initialize envy project with bootstrap scripts") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("project-dir", cfg_ptr->project_dir, "Project directory for manifest")
+      ->required();
+  sub->add_option("bin-dir", cfg_ptr->bin_dir, "Directory for bootstrap scripts")
+      ->required();
+  sub->add_option("--mirror", cfg_ptr->mirror, "Override download mirror URL");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
 
 namespace {

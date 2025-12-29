@@ -1,5 +1,6 @@
 #include "cmd_version.h"
 
+#include "embedded_licenses.h"
 #include "platform.h"
 
 #include "CLI11.hpp"
@@ -14,18 +15,15 @@
 #ifndef _WIN32
 #include "mbedtls/version.h"
 #endif
+#include "libssh2.h"
 #include "sol/sol.hpp"
 #include "tui.h"
 #include "zlib.h"
 #include "zstd.h"
 
-extern "C" {
-#include "lua.h"
-}
-
-#include "libssh2.h"
-
 #include <array>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -35,13 +33,70 @@ extern "C" {
 
 namespace envy {
 
+void cmd_version::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("version", "Show version information") };
+  auto *cfg_ptr{ new cfg{} };  // Leaked intentionally; CLI::App owns callback lifetime
+  sub->add_flag("--licenses", cfg_ptr->show_licenses, "Print all licenses");
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
+
+namespace {
+
+void print_licenses() {
+  z_stream strm{};
+  strm.next_in =
+      const_cast<Bytef *>(reinterpret_cast<Bytef const *>(embedded::kLicensesCompressed));
+  strm.avail_in = static_cast<uInt>(embedded::kLicensesCompressedSize);
+
+  // 16 + MAX_WBITS enables gzip header detection
+  if (inflateInit2(&strm, 16 + MAX_WBITS) != Z_OK) {
+    tui::error("Failed to initialize zlib for license decompression");
+    return;
+  }
+
+  std::vector<unsigned char> decompressed;
+  decompressed.resize(256 * 1024);
+
+  strm.next_out = decompressed.data();
+  strm.avail_out = static_cast<uInt>(decompressed.size());
+
+  int ret{ Z_OK };
+  while (ret != Z_STREAM_END) {
+    ret = inflate(&strm, Z_NO_FLUSH);
+    if (ret == Z_BUF_ERROR && strm.avail_out == 0) {
+      size_t const old_size{ decompressed.size() };
+      decompressed.resize(old_size * 2);
+      strm.next_out = decompressed.data() + old_size;
+      strm.avail_out = static_cast<uInt>(old_size);
+    } else if (ret != Z_OK && ret != Z_STREAM_END) {
+      inflateEnd(&strm);
+      tui::error("Failed to decompress licenses (zlib error %d)", ret);
+      return;
+    }
+  }
+
+  size_t const total_size{ strm.total_out };
+  inflateEnd(&strm);
+
+  std::fwrite(decompressed.data(), 1, total_size, stdout);
+}
+
+}  // namespace
+
 cmd_version::cmd_version(cmd_version::cfg cfg,
                          std::optional<std::filesystem::path> const & /*cli_cache_root*/)
     : cfg_{ std::move(cfg) } {}
 
 void cmd_version::execute() {
-  tui::info("envy version %s", ENVY_VERSION_STR);
-  tui::info("Executable: %s", platform::get_exe_path().string().c_str());
+  if (cfg_.show_licenses) {
+    print_licenses();
+    return;
+  }
+
+  tui::info("envy version %s (%s)",
+            ENVY_VERSION_STR,
+            platform::get_exe_path().string().c_str());
   tui::info("");
   tui::info("Third-party component versions:");
 

@@ -163,6 +163,45 @@ else()
     )
 endif()
 
+# Discover and compress third-party licenses for embedding
+include(cmake/FindLicenses.cmake)
+
+# Note: CLI11 and Doctest are single-header files with licenses embedded in comments.
+# All other dependencies have separate license files that are discovered automatically.
+set(ENVY_LICENSE_SOURCES
+    "envy=${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    "AWS SDK for C++=${aws_sdk_SOURCE_DIR}"
+    "BLAKE3=${blake3_SOURCE_DIR}"
+    "bzip2=${envy_libbz2_SOURCE_DIR}"
+    "libarchive=${libarchive_SOURCE_DIR}"
+    "libcurl=${libcurl_SOURCE_DIR}"
+    "libgit2=${libgit2_SOURCE_DIR}"
+    "liblzma=${envy_liblzma_SOURCE_DIR}"
+    "libssh2=${libssh2_SOURCE_DIR}"
+    "libzstd=${envy_libzstd_SOURCE_DIR}"
+    "Lua=${lua_SOURCE_DIR}"
+    "Sol2=${sol2_SOURCE_DIR}"
+    "zlib=${envy_zlib_SOURCE_DIR}"
+)
+
+# mbedTLS only used on non-Windows
+if(NOT WIN32)
+    list(APPEND ENVY_LICENSE_SOURCES "mbedTLS=${mbedtls_SOURCE_DIR}")
+endif()
+
+find_and_compress_licenses(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/licenses.gz"
+    SOURCES ${ENVY_LICENSE_SOURCES}
+)
+
+# Embed compressed licenses
+embed_resources(envy_embedded_licenses
+    OUTPUT embedded_licenses.h
+    RESOURCES
+        licenses_compressed=${CMAKE_CURRENT_BINARY_DIR}/generated/licenses.gz
+)
+add_dependencies(envy_embedded_licenses envy_licenses_compressed)
+
 # Common source files shared by all envy executables (main added separately)
 set(ENVY_BASE_SOURCES
     src/cache.cpp
@@ -226,7 +265,7 @@ set(ENVY_BASE_SOURCES
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/platform_posix.cpp>
     src/termination.cpp
     src/shell.cpp
-    $<$<PLATFORM_ID:Windows>:src/shell_win32.cpp>
+    $<$<PLATFORM_ID:Windows>:src/shell_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
     src/trace.cpp
     src/tui.cpp
@@ -263,7 +302,7 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_BINARY_DIR}/generated
     )
-    add_dependencies(${TARGET_NAME} envy_embedded_resources)
+    add_dependencies(${TARGET_NAME} envy_embedded_resources envy_embedded_licenses)
     target_compile_options(${TARGET_NAME} PRIVATE ${ENVY_COMMON_COMPILE_OPTIONS})
     target_link_options(${TARGET_NAME} PRIVATE
         $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
@@ -411,7 +450,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/sha256_tests.cpp
     src/sol_util_tests.cpp
     src/shell_tests_common.cpp
-    $<$<PLATFORM_ID:Windows>:src/shell_tests_win32.cpp>
+    $<$<PLATFORM_ID:Windows>:src/shell_tests_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>
     src/uri_tests.cpp
     src/tui_tests.cpp

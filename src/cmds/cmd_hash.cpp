@@ -4,9 +4,21 @@
 #include "tui.h"
 #include "util.h"
 
+#include "CLI11.hpp"
+
 #include <stdexcept>
 
 namespace envy {
+
+void cmd_hash::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("hash", "Compute SHA256 hash of a file") };
+  auto *cfg_ptr{ new cfg{} };
+  sub->add_option("file", cfg_ptr->file_path, "File to hash")
+      ->required()
+      ->check(CLI::ExistingFile);
+  sub->callback(
+      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+}
 
 cmd_hash::cmd_hash(cmd_hash::cfg cfg,
                    std::optional<std::filesystem::path> const & /*cli_cache_root*/)
