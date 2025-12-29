@@ -11,10 +11,13 @@
 
 namespace envy {
 
-cmd_asset::cmd_asset(cfg cfg, cache &c) : cfg_{ std::move(cfg) }, cache_{ c } {}
+cmd_asset::cmd_asset(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_asset::execute() {
   auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
+
+  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
   std::vector<recipe_spec const *> matches;
   for (auto const *pkg : m->packages) {
@@ -36,7 +39,7 @@ void cmd_asset::execute() {
     }
   }
 
-  engine eng{ cache_, m->get_default_shell(nullptr) };
+  engine eng{ *c, m->get_default_shell(nullptr) };
 
   std::vector<recipe_spec const *> roots;
   roots.reserve(m->packages.size());

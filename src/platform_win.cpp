@@ -178,4 +178,41 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 
+std::filesystem::path expand_path(std::string_view p) {
+  if (p.empty()) { return {}; }
+
+  std::string result;
+  size_t i{ 0 };
+
+  // Leading ~ → USERPROFILE
+  if (p[0] == '~' && (p.size() == 1 || p[1] == '/' || p[1] == '\\')) {
+    if (char const *home{ std::getenv("USERPROFILE") }) { result = home; }
+    i = 1;
+  }
+
+  while (i < p.size()) {
+    if (p[i] == '$') {
+      ++i;
+      bool const braced{ i < p.size() && p[i] == '{' };
+      if (braced) { ++i; }
+
+      size_t const start{ i };
+      while (i < p.size() &&
+             (std::isalnum(static_cast<unsigned char>(p[i])) || p[i] == '_')) {
+        ++i;
+      }
+
+      std::string var_name{ p.substr(start, i - start) };
+      if (braced && i < p.size() && p[i] == '}') { ++i; }
+
+      if (char const *val{ std::getenv(var_name.c_str()) }) { result += val; }
+      // undefined var → empty string on Windows
+    } else {
+      result += p[i++];
+    }
+  }
+
+  return result;
+}
+
 }  // namespace envy::platform

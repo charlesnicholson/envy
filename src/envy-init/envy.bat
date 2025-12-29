@@ -42,7 +42,14 @@ if "%VERSION%"=="" (
 
 if defined MANIFEST_MIRROR set "ENVY_MIRROR=%MANIFEST_MIRROR%"
 
-if defined ENVY_CACHE_ROOT (set "CACHE=%ENVY_CACHE_ROOT%") else if defined MANIFEST_CACHE (set "CACHE=%MANIFEST_CACHE%") else set "CACHE=%LOCALAPPDATA%\envy"
+if defined ENVY_CACHE_ROOT (
+    set "CACHE=%ENVY_CACHE_ROOT%"
+) else if defined MANIFEST_CACHE (
+    set "CACHE=%MANIFEST_CACHE%"
+    if "!CACHE:~0,1!"=="~" set "CACHE=%USERPROFILE%!CACHE:~1!"
+) else (
+    set "CACHE=%LOCALAPPDATA%\envy"
+)
 
 set "ENVY_BIN=%CACHE%\envy\%VERSION%\envy.exe"
 if exist "%ENVY_BIN%" goto :run

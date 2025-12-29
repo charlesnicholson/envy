@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <wordexp.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -183,5 +184,29 @@ bool file_exists(std::filesystem::path const &path) {
 [[noreturn]] void terminate_process() { std::abort(); }
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
+
+std::filesystem::path expand_path(std::string_view p) {
+  if (p.empty()) { return {}; }
+
+  wordexp_t we{};
+  std::string const path_str{ p };
+  int const flags{ WRDE_NOCMD | WRDE_UNDEF };  // no $(cmd), error on undefined
+
+  int const rc{ wordexp(path_str.c_str(), &we, flags) };
+
+  if (rc == 0 && we.we_wordc > 0) {
+    std::filesystem::path result{ we.we_wordv[0] };
+    wordfree(&we);
+    return result;
+  }
+
+  if (rc == WRDE_BADVAL) {
+    wordfree(&we);
+    throw std::runtime_error("undefined variable in path: " + path_str);
+  }
+
+  wordfree(&we);
+  throw std::runtime_error("path expansion failed: " + path_str);
+}
 
 }  // namespace envy::platform

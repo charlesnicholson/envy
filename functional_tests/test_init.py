@@ -208,6 +208,8 @@ class TestSelfDeployment(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-self-deploy-test-"))
         self._cache_dir = self._temp_dir / "cache"
+        self._project_dir = self._temp_dir / "project"
+        self._bin_dir = self._temp_dir / "bin"
         self._envy = _get_envy_binary()
 
         if not self._envy.exists():
@@ -225,11 +227,17 @@ class TestSelfDeployment(unittest.TestCase):
         cmd = [str(self._envy), *args]
         return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
 
+    def _run_envy_with_self_deploy(self) -> subprocess.CompletedProcess[str]:
+        """Run an envy command that triggers self-deployment."""
+        # Only commands that call cache::ensure() trigger self-deployment
+        # init is a good choice as it requires cache but not manifest
+        return self._run_envy("init", str(self._project_dir), str(self._bin_dir))
+
     def test_self_deploy_creates_binary_in_cache(self) -> None:
-        """Running any command deploys envy binary to cache."""
+        """Running a cache-aware command deploys envy binary to cache."""
         import sys
 
-        result = self._run_envy("version")
+        result = self._run_envy_with_self_deploy()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         # Check binary exists in cache
@@ -248,7 +256,7 @@ class TestSelfDeployment(unittest.TestCase):
 
     def test_self_deploy_creates_type_definitions(self) -> None:
         """Self-deployment also extracts type definitions."""
-        result = self._run_envy("version")
+        result = self._run_envy_with_self_deploy()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         envy_cache = self._cache_dir / "envy"
@@ -264,7 +272,7 @@ class TestSelfDeployment(unittest.TestCase):
         import sys
 
         # First run deploys
-        result1 = self._run_envy("version")
+        result1 = self._run_envy_with_self_deploy()
         self.assertEqual(0, result1.returncode, f"stderr: {result1.stderr}")
 
         # Verify binary exists after first run
@@ -280,7 +288,10 @@ class TestSelfDeployment(unittest.TestCase):
         mtime1 = cached_binary.stat().st_mtime
 
         # Second run should hit fast path (binary not modified)
-        result2 = self._run_envy("version")
+        # Use a fresh project dir to avoid "manifest already exists" message
+        self._project_dir = self._temp_dir / "project2"
+        self._bin_dir = self._temp_dir / "bin2"
+        result2 = self._run_envy_with_self_deploy()
         self.assertEqual(0, result2.returncode, f"stderr: {result2.stderr}")
 
         mtime2 = cached_binary.stat().st_mtime
@@ -293,7 +304,7 @@ class TestSelfDeployment(unittest.TestCase):
         if sys.platform == "win32":
             self.skipTest("Executable permissions not applicable on Windows")
 
-        result = self._run_envy("version")
+        result = self._run_envy_with_self_deploy()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         envy_cache = self._cache_dir / "envy"
@@ -307,7 +318,7 @@ class TestSelfDeployment(unittest.TestCase):
         import sys
 
         # First, trigger self-deployment
-        result = self._run_envy("version")
+        result = self._run_envy_with_self_deploy()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         # Find and run the cached binary

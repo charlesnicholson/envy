@@ -16,14 +16,14 @@ class cmd_product : public cmd {
     bool json{ false };  // JSON output mode
   };
 
-  cmd_product(cfg cfg, cache &c);
+  cmd_product(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

@@ -16,14 +16,14 @@ class cmd_sync : public cmd {
     std::optional<std::filesystem::path> manifest_path;
   };
 
-  cmd_sync(cfg cfg, cache &c);
+  cmd_sync(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

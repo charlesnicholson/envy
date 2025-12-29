@@ -2,11 +2,11 @@
 
 #include "util.h"
 
+#include <filesystem>
 #include <memory>
+#include <optional>
 
 namespace envy {
-
-class cache;
 
 class cmd : unmovable {
  public:
@@ -15,8 +15,10 @@ class cmd : unmovable {
   virtual ~cmd() = default;
   virtual void execute() = 0;
 
+  // Create command with CLI cache root override (for commands that may need cache)
   template <typename config>
-  static ptr_t create(config const &cfg, cache &c);
+  static ptr_t create(config const &cfg,
+                      std::optional<std::filesystem::path> const &cli_cache_root);
 
  protected:
   cmd() = default;
@@ -29,8 +31,9 @@ struct cmd_cfg {
 };
 
 template <typename config>
-cmd::ptr_t cmd::create(config const &cfg, cache &c) {
-  return std::make_unique<typename config::cmd_t>(cfg, c);
+cmd::ptr_t cmd::create(config const &cfg,
+                       std::optional<std::filesystem::path> const &cli_cache_root) {
+  return std::make_unique<typename config::cmd_t>(cfg, cli_cache_root);
 }
 
 }  // namespace envy

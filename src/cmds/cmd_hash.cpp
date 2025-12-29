@@ -1,6 +1,5 @@
 #include "cmd_hash.h"
 
-#include "cache.h"
 #include "sha256.h"
 #include "tui.h"
 #include "util.h"
@@ -9,7 +8,9 @@
 
 namespace envy {
 
-cmd_hash::cmd_hash(cmd_hash::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
+cmd_hash::cmd_hash(cmd_hash::cfg cfg,
+                   std::optional<std::filesystem::path> const & /*cli_cache_root*/)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_hash::execute() {
   if (cfg_.file_path.empty()) { throw std::runtime_error("hash: file path is required"); }

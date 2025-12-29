@@ -1,8 +1,8 @@
 #include "cmd_init.h"
 
-#include "bootstrap.h"
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
+#include "platform.h"
 #include "tui.h"
 
 #include "lua.h"
@@ -20,6 +20,10 @@
 namespace envy {
 
 namespace fs = std::filesystem;
+
+constexpr std::string_view kEnvyDownloadUrl{
+  "https://github.com/charlesnicholson/envy/releases/download"
+};
 
 std::string make_portable_path(fs::path const &path) {
 #ifdef _WIN32
@@ -57,11 +61,54 @@ std::string_view get_manifest_template() {
            embedded::kManifestTemplateSize };
 }
 
+std::string_view get_type_definitions() {
+  return { reinterpret_cast<char const *>(embedded::kTypeDefinitions),
+           embedded::kTypeDefinitionsSize };
+}
+
+void replace_all(std::string &s, std::string_view from, std::string_view to) {
+  size_t pos{ 0 };
+  while ((pos = s.find(from, pos)) != std::string::npos) {
+    s.replace(pos, from.length(), to);
+    pos += to.length();
+  }
+}
+
 void write_file(fs::path const &path, std::string_view content) {
   std::ofstream out{ path, std::ios::binary };
   if (!out) { throw std::runtime_error("init: failed to create " + path.string()); }
   out.write(content.data(), static_cast<std::streamsize>(content.size()));
   if (!out.good()) { throw std::runtime_error("init: failed to write " + path.string()); }
+}
+
+std::string stamp_placeholders(std::string_view content, std::string_view download_url) {
+  std::string result{ content };
+  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
+  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
+  return result;
+}
+
+fs::path extract_lua_ls_types() {
+  auto const cache_root{ platform::get_default_cache_root() };
+  if (!cache_root) { throw std::runtime_error("init: failed to determine cache root"); }
+
+  fs::path const types_dir{ *cache_root / "envy" / ENVY_VERSION_STR };
+  fs::path const types_path{ types_dir / "envy.lua" };
+
+  if (fs::exists(types_path)) { return types_dir; }
+
+  std::error_code ec;
+  fs::create_directories(types_dir, ec);
+  if (ec) {
+    throw std::runtime_error("init: failed to create types directory " +
+                             types_dir.string() + ": " + ec.message());
+  }
+
+  auto const types{ stamp_placeholders(get_type_definitions(), kEnvyDownloadUrl) };
+  write_file(types_path, types);
+
+  tui::info("Extracted type definitions to %s", types_path.string().c_str());
+  return types_dir;
 }
 
 void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &mirror) {
@@ -72,7 +119,7 @@ void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &
 #endif
 
   std::string_view const url{ mirror ? std::string_view{ *mirror } : kEnvyDownloadUrl };
-  std::string const content{ bootstrap_stamp_placeholders(get_bootstrap(), url) };
+  std::string const content{ stamp_placeholders(get_bootstrap(), url) };
   write_file(script_path, content);
 
 #ifndef _WIN32
@@ -99,8 +146,8 @@ void write_manifest(fs::path const &project_dir) {
     return;
   }
 
-  std::string const content{ bootstrap_stamp_placeholders(get_manifest_template(),
-                                                          kEnvyDownloadUrl) };
+  std::string const content{ stamp_placeholders(get_manifest_template(),
+                                                kEnvyDownloadUrl) };
   write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());
@@ -140,9 +187,12 @@ void write_luarc(fs::path const &project_dir, fs::path const &types_dir) {
 
 }  // namespace
 
-cmd_init::cmd_init(cmd_init::cfg cfg, cache &c) : cfg_{ std::move(cfg) }, cache_{ c } {}
+cmd_init::cmd_init(cmd_init::cfg cfg,
+                   std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_init::execute() {
+  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
   std::error_code ec;
 
   if (!fs::exists(cfg_.project_dir)) {
@@ -163,9 +213,7 @@ void cmd_init::execute() {
 
   write_bootstrap(cfg_.bin_dir, cfg_.mirror);
   write_manifest(cfg_.project_dir);
-
-  fs::path const types_dir{ bootstrap_extract_lua_ls_types() };
-  write_luarc(cfg_.project_dir, types_dir);
+  write_luarc(cfg_.project_dir, extract_lua_ls_types());
 
   tui::info("");
   tui::info("Initialized envy project.");

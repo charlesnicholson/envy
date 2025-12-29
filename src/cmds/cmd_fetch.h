@@ -17,7 +17,7 @@ class cmd_fetch : public cmd {
     std::optional<std::string> ref;
   };
 
-  cmd_fetch(cfg cfg, cache &c);
+  cmd_fetch(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }

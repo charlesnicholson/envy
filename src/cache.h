@@ -12,9 +12,16 @@
 
 namespace envy {
 
+std::filesystem::path resolve_cache_root(
+    std::optional<std::filesystem::path> const &cli_override,
+    std::optional<std::string> const &manifest_cache);
+
 class cache : unmovable {
  public:
   using path = std::filesystem::path;
+
+  static std::unique_ptr<cache> ensure(std::optional<path> const &cli_cache_root,
+                                       std::optional<std::string> const &manifest_cache);
 
   class scoped_entry_lock : unmovable {
    public:
@@ -37,7 +44,7 @@ class cache : unmovable {
     path stage_dir() const;
     path fetch_dir() const;
     path work_dir() const;
-    path tmp_dir() const;  // Ephemeral workspace for user-managed packages
+    path tmp_dir() const;
 
    private:
     scoped_entry_lock(path entry_dir,
@@ -68,13 +75,12 @@ class cache : unmovable {
 
   ensure_result ensure_recipe(std::string_view identity);
 
-  // Ensure envy binary cache entry exists. Returns lock if installation needed.
-  // Unlike ensure_asset/recipe, envy entries use flat structure (no asset/ subdir).
-  struct ensure_envy_result {
-    path envy_dir;   // $CACHE/envy/$VERSION
-    bool needs_install;
-  };
-  ensure_envy_result ensure_envy(std::string_view version);
+  // Ensure envy binary and type definitions are deployed to cache.
+  // Copies exe_path to $CACHE/envy/$VERSION/envy and writes type_definitions.
+  // Uses file locking for concurrent safety. Returns the envy directory.
+  path ensure_envy(std::string_view version,
+                   path const &exe_path,
+                   std::string_view type_definitions);
 
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 

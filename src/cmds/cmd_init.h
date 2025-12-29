@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cache.h"
 #include "cmd.h"
 
 #include <filesystem>
@@ -20,14 +19,14 @@ class cmd_init : public cmd {
     std::optional<std::string> mirror;
   };
 
-  cmd_init(cfg cfg, cache &c);
+  cmd_init(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

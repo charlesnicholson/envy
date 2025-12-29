@@ -3,6 +3,7 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <optional>
 
 namespace envy {
 
@@ -12,7 +13,7 @@ class cmd_lua : public cmd {
     std::filesystem::path script_path;
   };
 
-  cmd_lua(cfg cfg, cache &c);
+  cmd_lua(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }
