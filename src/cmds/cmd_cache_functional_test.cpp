@@ -51,10 +51,13 @@ std::string cache_test_result::to_keyvalue() const {
 }
 
 // cmd_cache_ensure_asset implementation
-cmd_cache_ensure_asset::cmd_cache_ensure_asset(cfg const &config, cache &c)
-    : cfg_{ config }, cache_{ c } {}
+cmd_cache_ensure_asset::cmd_cache_ensure_asset(
+    cfg const &config, std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_asset::execute() {
+  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+
   // Emit initial state so tests always have locked key even if we crash before output
   // later.
   tui::print_stdout("locked=false\nfast_path=false\n");
@@ -73,13 +76,13 @@ void cmd_cache_ensure_asset::execute() {
 
   // Ensure asset
   auto result{
-    cache_.ensure_asset(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
+    c->ensure_asset(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
   };
 
   // Construct lock file path for reporting
   std::string entry_name{ cfg_.identity + "." + cfg_.platform + "-" + cfg_.arch +
                           "-blake3-" + cfg_.hash_prefix };
-  std::filesystem::path lock_file{ cache_.root() / "locks" /
+  std::filesystem::path lock_file{ c->root() / "locks" /
                                    ("assets." + entry_name + ".lock") };
 
   // Determine result state
@@ -134,10 +137,13 @@ void cmd_cache_ensure_asset::execute() {
 }
 
 // cmd_cache_ensure_recipe implementation
-cmd_cache_ensure_recipe::cmd_cache_ensure_recipe(cfg const &config, cache &c)
-    : cfg_{ config }, cache_{ c } {}
+cmd_cache_ensure_recipe::cmd_cache_ensure_recipe(
+    cfg const &config, std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_recipe::execute() {
+  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+
   tui::print_stdout("locked=false\nfast_path=false\n");
   // Set up barrier coordination
   std::filesystem::path barrier_dir{ cfg_.barrier_dir.empty()
@@ -153,10 +159,10 @@ void cmd_cache_ensure_recipe::execute() {
   barrier.wait(cfg_.barrier_wait);
 
   // Ensure recipe
-  auto result{ cache_.ensure_recipe(cfg_.identity) };
+  auto result{ c->ensure_recipe(cfg_.identity) };
 
   // Construct lock file path for reporting
-  std::filesystem::path lock_file{ cache_.root() / "locks" /
+  std::filesystem::path lock_file{ c->root() / "locks" /
                                    ("recipe." + cfg_.identity + ".lock") };
 
   // Determine result state

@@ -3,6 +3,7 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace envy {
@@ -37,12 +38,13 @@ class cmd_cache_ensure_asset : public cmd {
     bool fail_before_complete = false;
   };
 
-  cmd_cache_ensure_asset(cfg const &config, cache &c);
+  cmd_cache_ensure_asset(cfg const &config,
+                         std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 class cmd_cache_ensure_recipe : public cmd {
@@ -59,12 +61,13 @@ class cmd_cache_ensure_recipe : public cmd {
     bool fail_before_complete = false;
   };
 
-  cmd_cache_ensure_recipe(cfg const &config, cache &c);
+  cmd_cache_ensure_recipe(cfg const &config,
+                          std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

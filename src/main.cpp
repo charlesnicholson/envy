@@ -1,6 +1,4 @@
 #include "aws_util.h"
-#include "bootstrap.h"
-#include "cache.h"
 #include "cli.h"
 #include "libgit2_util.h"
 #include "shell.h"
@@ -19,12 +17,6 @@ int main(int argc, char *argv[]) {
   envy::tui::configure_trace_outputs(args.trace_outputs);
   envy::tui::scope tui_scope{ args.verbosity, args.decorated_logging };
 
-  envy::cache c{ args.cache_root };
-
-  try {
-    envy::bootstrap_deploy_envy(c);
-  } catch (...) {}
-
   envy::aws_shutdown_guard aws_guard;
   envy::libgit2_scope git_guard;
 
@@ -38,8 +30,9 @@ int main(int argc, char *argv[]) {
 
   if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
 
-  auto cmd{ std::visit([&c](auto const &cfg) { return envy::cmd::create(cfg, c); },
-                       *args.cmd_cfg) };
+  auto cmd{ std::visit(
+      [&args](auto const &cfg) { return envy::cmd::create(cfg, args.cache_root); },
+      *args.cmd_cfg) };
 
   try {
     cmd->execute();

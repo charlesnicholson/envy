@@ -1,11 +1,16 @@
 #include "cache.h"
 
 #include "doctest.h"
+#include "embedded_init_resources.h"
 #include "platform.h"
 
 #include <filesystem>
 #include <fstream>
 #include <random>
+
+#ifndef ENVY_VERSION_STR
+#error "ENVY_VERSION_STR must be defined by the build system"
+#endif
 
 namespace {
 
@@ -497,4 +502,76 @@ TEST_CASE_FIXTURE(
 
   // Verify lock file deleted
   CHECK_FALSE(std::filesystem::exists(lock_path));
+}
+
+// Tests for resolve_cache_root()
+
+TEST_CASE("resolve_cache_root CLI override takes precedence") {
+  std::optional<std::filesystem::path> cli{ "/cli/override/path" };
+  std::optional<std::string> manifest{ "~/manifest/path" };
+
+  auto result{ envy::resolve_cache_root(cli, manifest) };
+  CHECK(result == "/cli/override/path");
+}
+
+TEST_CASE("resolve_cache_root manifest used when no CLI override") {
+  // This test uses expand_path internally, so test with a plain path
+  std::optional<std::filesystem::path> cli{ std::nullopt };
+  std::optional<std::string> manifest{ "/manifest/path" };
+
+  // Only run if ENVY_CACHE_ROOT is not set
+  char const *orig_env{ std::getenv("ENVY_CACHE_ROOT") };
+  if (orig_env) { return; }
+
+  auto result{ envy::resolve_cache_root(cli, manifest) };
+  CHECK(result == "/manifest/path");
+}
+
+#ifndef _WIN32
+TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
+  char const *home{ std::getenv("HOME") };
+  REQUIRE(home != nullptr);
+
+  // Only run if ENVY_CACHE_ROOT is not set
+  char const *orig_env{ std::getenv("ENVY_CACHE_ROOT") };
+  if (orig_env) { return; }
+
+  std::optional<std::filesystem::path> cli{ std::nullopt };
+  std::optional<std::string> manifest{ "~/.my-envy-cache" };
+
+  auto result{ envy::resolve_cache_root(cli, manifest) };
+  CHECK(result == std::filesystem::path{ home } / ".my-envy-cache");
+}
+#endif
+
+// Tests for ensure_envy()
+
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to cache") {
+  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+                                envy::embedded::kTypeDefinitionsSize };
+
+  auto const envy_dir{ cache->ensure_envy(ENVY_VERSION_STR,
+                                           envy::platform::get_exe_path(),
+                                           types) };
+
+  CHECK(std::filesystem::exists(envy_dir));
+
+#ifdef _WIN32
+  CHECK(std::filesystem::exists(envy_dir / "envy.exe"));
+#else
+  CHECK(std::filesystem::exists(envy_dir / "envy"));
+#endif
+
+  CHECK(std::filesystem::exists(envy_dir / "envy.lua"));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy is idempotent") {
+  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+                                envy::embedded::kTypeDefinitionsSize };
+  auto const exe{ envy::platform::get_exe_path() };
+
+  auto const dir1{ cache->ensure_envy(ENVY_VERSION_STR, exe, types) };
+  auto const dir2{ cache->ensure_envy(ENVY_VERSION_STR, exe, types) };
+
+  CHECK(dir1 == dir2);
 }

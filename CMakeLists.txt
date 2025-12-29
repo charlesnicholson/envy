@@ -165,7 +165,6 @@ endif()
 
 # Common source files shared by all envy executables (main added separately)
 set(ENVY_BASE_SOURCES
-    src/bootstrap.cpp
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
@@ -378,7 +377,6 @@ endif()
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
     src/blake3_util_tests.cpp
-    src/bootstrap_tests.cpp
     src/cache_tests.cpp
     src/cli_tests.cpp
     src/cmds/cmd_tests.cpp

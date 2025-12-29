@@ -39,7 +39,11 @@ fi
 [[ -n "$MANIFEST_MIRROR" ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
 
 if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
-elif [[ -n "$MANIFEST_CACHE" ]]; then CACHE="$MANIFEST_CACHE"
+elif [[ -n "$MANIFEST_CACHE" ]]; then
+    CACHE="$MANIFEST_CACHE"
+    [[ "$CACHE" == "~/"* ]] && CACHE="$HOME${CACHE:1}"
+    [[ "$CACHE" == "~" ]] && CACHE="$HOME"
+    eval "CACHE=\"$CACHE\""
 elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
 else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
 

@@ -1,6 +1,5 @@
 #include "cmd_version.h"
 
-#include "cache.h"
 #include "platform.h"
 
 #include "CLI11.hpp"
@@ -36,7 +35,9 @@ extern "C" {
 
 namespace envy {
 
-cmd_version::cmd_version(cmd_version::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
+cmd_version::cmd_version(cmd_version::cfg cfg,
+                         std::optional<std::filesystem::path> const & /*cli_cache_root*/)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_version::execute() {
   tui::info("envy version %s", ENVY_VERSION_STR);

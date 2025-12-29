@@ -1,6 +1,5 @@
 #include "cmd_extract.h"
 
-#include "cache.h"
 #include "extract.h"
 #include "tui.h"
 
@@ -8,7 +7,10 @@
 #include <string>
 
 namespace envy {
-cmd_extract::cmd_extract(cmd_extract::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
+
+cmd_extract::cmd_extract(cmd_extract::cfg cfg,
+                         std::optional<std::filesystem::path> const & /*cli_cache_root*/)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_extract::execute() {
   std::filesystem::path destination{ cfg_.destination };

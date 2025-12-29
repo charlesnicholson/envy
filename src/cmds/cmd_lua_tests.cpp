@@ -1,11 +1,11 @@
 #include "cmds/cmd_lua.h"
 
-#include "cache.h"
 #include "tui.h"
 
 #include "doctest.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,7 +21,6 @@ namespace {
 
 struct lua_test_fixture {
   std::vector<std::string> messages;
-  envy::cache cache{ std::filesystem::temp_directory_path() / "envy-test-lua" };
 
   lua_test_fixture() {
     envy::tui::set_output_handler(
@@ -36,7 +35,8 @@ struct lua_test_fixture {
     envy::tui::run(envy::tui::level::TUI_INFO);
     envy::cmd_lua::cfg cfg;
     cfg.script_path = script_path;
-    envy::cmd_lua cmd{ cfg, cache };
+    std::optional<std::filesystem::path> cli_cache_root{ std::nullopt };
+    envy::cmd_lua cmd{ cfg, cli_cache_root };
     cmd.execute();
     envy::tui::shutdown();
   }

@@ -15,7 +15,9 @@
 
 namespace envy {
 
-cmd_product::cmd_product(cfg cfg, cache &c) : cfg_{ std::move(cfg) }, cache_{ c } {}
+cmd_product::cmd_product(cfg cfg,
+                         std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 namespace {
 
@@ -86,8 +88,8 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
 void cmd_product::execute() {
   auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
-
-  engine eng{ cache_, m->get_default_shell(nullptr) };
+  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
+  engine eng{ *c, m->get_default_shell(nullptr) };
 
   std::vector<recipe_spec const *> roots;
   roots.reserve(m->packages.size());

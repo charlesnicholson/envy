@@ -10,13 +10,15 @@
 
 namespace envy {
 
-cmd_sync::cmd_sync(cfg cfg, cache &c) : cfg_{ std::move(cfg) }, cache_{ c } {}
+cmd_sync::cmd_sync(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_sync::execute() {
   auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
 
-  // Build set of targets to sync (pointers to specs in manifest)
+  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
+
   std::vector<recipe_spec const *> targets;
 
   if (cfg_.identities.empty()) {  // Sync entire manifest
@@ -43,7 +45,7 @@ void cmd_sync::execute() {
     return;
   }
 
-  engine eng{ cache_, m->get_default_shell(nullptr) };
+  engine eng{ *c, m->get_default_shell(nullptr) };
   auto result{ eng.run_full(targets) };
 
   size_t completed{ 0 };

@@ -1,6 +1,5 @@
 #include "cmd_fetch.h"
 
-#include "cache.h"
 #include "fetch.h"
 #include "tui.h"
 #include "uri.h"
@@ -11,7 +10,9 @@
 
 namespace envy {
 
-cmd_fetch::cmd_fetch(cmd_fetch::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
+cmd_fetch::cmd_fetch(cmd_fetch::cfg cfg,
+                     std::optional<std::filesystem::path> const & /*cli_cache_root*/)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_fetch::execute() {
   if (cfg_.source.empty()) { throw std::runtime_error("fetch: source URI is empty"); }

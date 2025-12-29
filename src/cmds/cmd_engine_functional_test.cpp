@@ -9,10 +9,13 @@
 
 namespace envy {
 
-cmd_engine_functional_test::cmd_engine_functional_test(cfg cfg, cache &c)
-    : cfg_{ std::move(cfg) }, cache_{ c } {}
+cmd_engine_functional_test::cmd_engine_functional_test(
+    cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_engine_functional_test::execute() {
+  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+
   // Set up test fail counter
   if (cfg_.fail_after_fetch_count > 0) {
     test::set_fail_after_fetch_count(cfg_.fail_after_fetch_count);
@@ -35,7 +38,7 @@ void cmd_engine_functional_test::execute() {
   auto m{ manifest::load("PACKAGES = {}", cfg_.recipe_path) };
 
   // Run engine
-  engine eng{ cache_, m->get_default_shell(nullptr) };
+  engine eng{ *c, m->get_default_shell(nullptr) };
   auto result{ eng.run_full({ recipe_cfg }) };
 
   // Output results as key -> type (avoid = which appears in option keys)

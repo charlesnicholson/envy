@@ -1,6 +1,5 @@
 #include "cmd_lua.h"
 
-#include "cache.h"
 #include "lua_envy.h"
 #include "sol_util.h"
 
@@ -8,7 +7,9 @@
 
 namespace envy {
 
-cmd_lua::cmd_lua(cmd_lua::cfg cfg, cache & /*c*/) : cfg_{ std::move(cfg) } {}
+cmd_lua::cmd_lua(cmd_lua::cfg cfg,
+                 std::optional<std::filesystem::path> const & /*cli_cache_root*/)
+    : cfg_{ std::move(cfg) } {}
 
 void cmd_lua::execute() {
   auto lua{ sol_util_make_lua_state() };

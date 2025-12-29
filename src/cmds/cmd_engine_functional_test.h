@@ -3,6 +3,7 @@
 #include "cmd.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace envy {
@@ -15,14 +16,15 @@ class cmd_engine_functional_test : public cmd {
     int fail_after_fetch_count = -1;  // -1 = disabled, >0 = fail after N files
   };
 
-  cmd_engine_functional_test(cfg cfg, cache &c);
+  cmd_engine_functional_test(cfg cfg,
+                             std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
-  cache &cache_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

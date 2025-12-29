@@ -769,3 +769,113 @@ for /f "delims=" %%L in ('findstr /n "@envy" "%MANIFEST%"') do (
 This works because `%%L` loop variables expand raw content when delayed expansion is disabled, preserving literal `!` characters for findstr to detect.
 
 **Status:** Deferred. The edge case is rare enough (version strings, paths, and URLs don't typically contain `!`) that we accept the limitation for now. Revisit if users report issues.
+
+### `@envy cache` Directive — Partial Fix Complete
+
+**Bug discovered 2024-12:** The `@envy cache` directive was parsed but not used by the C++ runtime. Additionally, tilde (`~`) expansion was broken in both bootstrap script and C++ paths.
+
+**Status (2024-12):** C++ runtime fix complete. Bootstrap script expansion still pending.
+
+#### Problem 1: C++ Runtime Ignores `meta.cache` — FIXED
+
+~~The manifest's cache directive is parsed into `manifest::meta.cache` but never consulted.~~ **Fixed:** Commands now call `cache::ensure(cli_cache_root, m->meta.cache)` which uses `resolve_cache_root()` with full precedence chain.
+
+Current precedence (fully implemented):
+1. `--cache-root` CLI flag
+2. `ENVY_CACHE_ROOT` env var
+3. `@envy cache` directive ← **Now works**
+4. Platform default
+
+#### Problem 2: No Tilde Expansion — FIXED
+
+~~Even if the directive were used, `~` paths would fail.~~ **Fixed:** `expand_path()` uses `wordexp()` on POSIX for full shell-like expansion (~, $VAR, ${VAR}). Bootstrap scripts now also expand `~` and `$VAR`.
+
+#### Problem 3: No Functional Test Coverage — FIXED
+
+~~All tests use `ENVY_CACHE_ROOT` env var (takes precedence, masks the bug).~~ **Fixed:** `functional_tests/test_cache_directive.py` tests:
+- Tilde expansion (`~/.cache`)
+- Env var expansion (`$HOME/.cache`)
+- CLI precedence over manifest
+- Env precedence over manifest
+- Plain path directive
+
+#### Fix Plan — C++ Runtime Complete
+
+**Approach: `cache::ensure()` static method** ✓
+
+Added a static `ensure()` method to the `cache` class, following the existing `ensure_asset()` / `ensure_recipe()` pattern. This method resolves the cache root (with path expansion), constructs the cache, and self-deploys. Only commands that need cache call it; stateless commands don't touch cache.
+
+**Command categories:**
+
+| Command | Needs Cache | Needs Manifest | Action |
+|---------|-------------|----------------|--------|
+| `sync` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
+| `asset` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
+| `product` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
+| `init` | Yes | No | `cache::ensure(cli_root, std::nullopt)` |
+| `fetch` | No | No | — |
+| `extract` | No | No | — |
+| `hash` | No | No | — |
+| `lua` | No | No | — |
+| `version` | No | No | — |
+
+**Phase A: Add `cache::ensure()` to `cache.{h,cpp}`** ✓
+
+```cpp
+// cache.h - added static method and free functions
+std::filesystem::path expand_path(std::string_view path);  // wordexp on POSIX
+std::filesystem::path resolve_cache_root(
+    std::optional<std::filesystem::path> const &cli_override,
+    std::optional<std::string> const &manifest_cache);
+
+class cache {
+public:
+  static std::unique_ptr<cache> ensure(
+      std::optional<std::filesystem::path> const &cli_cache_root,
+      std::optional<std::string> const &manifest_cache);
+  // ... existing members ...
+};
+```
+
+**Phase B: Update commands** ✓
+
+All commands updated to use new signature. Manifest-aware commands call `cache::ensure(cli_cache_root_, m->meta.cache)`, cache-only commands pass `std::nullopt`, stateless commands don't construct cache.
+
+**Phase C: Refactor `main.cpp`** ✓
+
+Removed centralized cache construction and self-deploy. Commands handle their own cache setup via `cache::ensure()`.
+
+**Phase D: Unit tests in `cache_tests.cpp`** ✓
+
+Added 10 tests for `expand_path()` and `resolve_cache_root()` covering tilde expansion, env var expansion, and precedence chain.
+
+**Phase E: Bootstrap script path expansion** ✓
+
+Unix (`src/envy-init/envy`): Expands `~` to `$HOME` and uses `eval` for `$VAR`/`${VAR}` expansion.
+
+Windows (`src/envy-init/envy.bat`): Expands `~` to `%USERPROFILE%`. Note: `$VAR` expansion not supported on Windows; use full paths or `%VAR%` syntax.
+
+**Phase G: Functional tests** ✓
+
+Added `functional_tests/test_cache_directive.py` with 5 tests:
+- `test_cache_directive_tilde_expansion` — verifies `~` expands to home
+- `test_cache_directive_env_var_expansion` — verifies `$HOME` expands
+- `test_cli_cache_root_overrides_manifest` — verifies CLI precedence
+- `test_env_cache_root_overrides_manifest` — verifies env precedence
+- `test_cache_directive_plain_path` — verifies plain paths work
+
+Bootstrap path expansion is tested via the existing functional tests which exercise the full bootstrap → C++ pipeline.
+
+**Implementation order:**
+
+1. [x] Add `cache::ensure()` static method to `cache.{h,cpp}` with path expansion logic
+2. [x] Add unit tests for path expansion and `cache::ensure()` precedence in `cache_tests.cpp`
+3. [x] Update command configs to store `cache_root` (remove `cache &` from constructors)
+4. [x] Update `cmd::create()` factory to pass `cache_root` instead of `cache &`
+5. [x] Refactor `main.cpp`: remove central cache construction and self-deploy
+6. [x] Update manifest-aware commands (`sync`, `asset`, `product`) to use `cache::ensure()`
+7. [x] Update cache-only command (`init`) to use `cache::ensure()`
+8. [x] Fix bootstrap script path expansion (Unix) — tilde + $VAR
+9. [x] Fix bootstrap script path expansion (Windows) — tilde
+10. [x] Add functional tests for `@envy cache` directive
+11. [x] Delete `src/runtime.{h,cpp,_tests.cpp}` (superseded by `cache::ensure()`)
