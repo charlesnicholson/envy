@@ -597,7 +597,9 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "archive_path", value.archive_path);
             append_kv(output, "destination", value.destination);
-            append_kv(output, "strip_components", static_cast<std::int64_t>(value.strip_components));
+            append_kv(output,
+                      "strip_components",
+                      static_cast<std::int64_t>(value.strip_components));
           },
           [&](trace_events::extract_archive_complete const &value) {
             append_recipe(value.recipe);
@@ -609,7 +611,9 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_recipe(value.recipe);
             append_kv(output, "product", value.product);
             append_kv(output, "has_product_directly", value.has_product_directly);
-            append_kv(output, "dependency_count", static_cast<std::int64_t>(value.dependency_count));
+            append_kv(output,
+                      "dependency_count",
+                      static_cast<std::int64_t>(value.dependency_count));
           },
           [&](trace_events::product_transitive_check_dep const &value) {
             append_recipe(value.recipe);

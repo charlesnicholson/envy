@@ -1,10 +1,7 @@
-// Unit tests for engine target phase promotion and notification.
-
-#include "engine.h"
-
 #include "doctest.h"
 
-#include <atomic>
+#include "pkg_phase.h"
+
 #include <condition_variable>
 #include <mutex>
 #include <thread>

@@ -3,12 +3,6 @@
 
 #include "doctest.h"
 
-extern "C" {
-#include "lauxlib.h"
-#include "lua.h"
-#include "lualib.h"
-}
-
 #include <filesystem>
 #include <fstream>
 
@@ -126,7 +120,8 @@ TEST_CASE("ctx.copy - overwrite existing file") {
 TEST_CASE("ctx.copy - missing source file") {
   lua_ctx_copy_fixture fixture;
 
-  auto result{ fixture.lua->script("copy_fn('missing.txt', 'dst.txt')", sol::script_pass_on_error) };
+  auto result{ fixture.lua->script("copy_fn('missing.txt', 'dst.txt')",
+                                   sol::script_pass_on_error) };
   CHECK(!result.valid());  // Should error
 }
 
@@ -145,7 +140,8 @@ TEST_CASE("ctx.copy - absolute paths") {
   fs::path abs_dst{ fixture.tmp.path / "dst.txt" };
   fixture.create_file("src.txt", "test content");
 
-  std::string lua_code{ "copy_fn('" + abs_src.generic_string() + "', '" + abs_dst.generic_string() + "')" };
+  std::string lua_code{ "copy_fn('" + abs_src.generic_string() + "', '" +
+                        abs_dst.generic_string() + "')" };
   auto result{ fixture.lua->safe_script(lua_code) };
   CHECK(result.valid());
   CHECK(fixture.file_exists("dst.txt"));

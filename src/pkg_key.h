@@ -28,10 +28,7 @@ class pkg_key {
   bool matches(std::string_view query) const;
 
   bool operator==(pkg_key const &other) const { return canonical_ == other.canonical_; }
-
-  auto operator<=>(pkg_key const &other) const {
-    return canonical_ <=> other.canonical_;
-  }
+  auto operator<=>(pkg_key const &other) const { return canonical_ <=> other.canonical_; }
 
   size_t hash() const { return hash_; }
 
@@ -48,7 +45,6 @@ class pkg_key {
 
 }  // namespace envy
 
-// Hash specialization for std::unordered_map
 template <>
 struct std::hash<envy::pkg_key> {
   size_t operator()(envy::pkg_key const &k) const { return k.hash(); }

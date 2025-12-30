@@ -14,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace envy {
 namespace {
@@ -126,8 +125,9 @@ void lua_envy_run_install(sol::table &envy_table) {
 
     // Resolve cwd: use phase's run_dir (stored in registry), fall back to stage_dir
     std::filesystem::path const base_dir{
-      ctx && ctx->run_dir ? *ctx->run_dir
-                          : (p && p->lock ? p->lock->stage_dir() : std::filesystem::current_path())
+      ctx && ctx->run_dir
+          ? *ctx->run_dir
+          : (p && p->lock ? p->lock->stage_dir() : std::filesystem::current_path())
     };
 
     if (!cwd) {

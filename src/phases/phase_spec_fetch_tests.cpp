@@ -179,9 +179,7 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
     ofs.close();
   }
 
-  auto *cfg{
-    make_local_cfg("test.validate_ok@v1", spec_file_ok, "{ foo = \"bar\" }")
-  };
+  auto *cfg{ make_local_cfg("test.validate_ok@v1", spec_file_ok, "{ foo = \"bar\" }") };
   pkg *p{ eng.ensure_pkg(cfg) };
   CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
 

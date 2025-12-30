@@ -547,12 +547,13 @@ TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
 // Tests for ensure_envy()
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to cache") {
-  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+  std::string_view const types{ reinterpret_cast<char const *>(
+                                    envy::embedded::kTypeDefinitions),
                                 envy::embedded::kTypeDefinitionsSize };
 
-  auto const envy_dir{ cache->ensure_envy(ENVY_VERSION_STR,
-                                           envy::platform::get_exe_path(),
-                                           types) };
+  auto const envy_dir{
+    cache->ensure_envy(ENVY_VERSION_STR, envy::platform::get_exe_path(), types)
+  };
 
   CHECK(std::filesystem::exists(envy_dir));
 
@@ -566,7 +567,8 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to c
 }
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy is idempotent") {
-  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+  std::string_view const types{ reinterpret_cast<char const *>(
+                                    envy::embedded::kTypeDefinitions),
                                 envy::embedded::kTypeDefinitionsSize };
   auto const exe{ envy::platform::get_exe_path() };
 

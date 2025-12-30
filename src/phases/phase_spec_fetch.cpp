@@ -182,12 +182,9 @@ std::filesystem::path fetch_git_source(pkg_cfg const &cfg, pkg *p) {
   return cache_result.pkg_path / "spec.lua";
 }
 
-std::filesystem::path fetch_custom_function(pkg_cfg const &cfg,
-                                            pkg *p,
-                                            engine &eng) {
+std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &eng) {
   if (!cfg.parent) {
-    throw std::runtime_error("Custom fetch function spec has no parent: " +
-                             cfg.identity);
+    throw std::runtime_error("Custom fetch function spec has no parent: " + cfg.identity);
   }
 
   pkg *parent{ eng.find_exact(pkg_key(*cfg.parent)) };
@@ -267,8 +264,7 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg,
   // Cache was already complete - spec.lua should exist in pkg_path
   std::filesystem::path const spec_path{ cache_result.pkg_path / "spec.lua" };
   if (!std::filesystem::exists(spec_path)) {
-    throw std::runtime_error("Custom fetch did not create spec.lua for: " +
-                             cfg.identity);
+    throw std::runtime_error("Custom fetch did not create spec.lua for: " + cfg.identity);
   }
 
   return spec_path;
@@ -307,8 +303,7 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
 
     sol::object result_obj{ result };
     if (result_obj.get_type() != sol::type::table) {
-      throw std::runtime_error("PRODUCTS function must return table in spec '" + id +
-                               "'");
+      throw std::runtime_error("PRODUCTS function must return table in spec '" + id + "'");
     }
     products_table = result_obj.as<sol::table>();
   } else if (products_obj.get_type() == sol::type::table) {
@@ -340,7 +335,8 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
       throw std::runtime_error("PRODUCTS value cannot be empty in spec '" + id + "'");
     }
 
-    // Validate path safety for cached packages (user-managed packages have arbitrary values)
+    // Validate path safety for cached packages (user-managed packages have arbitrary
+    // values)
     if (!has_check) {
       std::filesystem::path product_path{ val_str };
 
@@ -353,8 +349,8 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
       for (auto const &component : product_path) {
         if (component == "..") {
           throw std::runtime_error("PRODUCTS value '" + val_str +
-                                   "' cannot contain path traversal (..) in spec '" +
-                                   id + "'");
+                                   "' cannot contain path traversal (..) in spec '" + id +
+                                   "'");
         }
       }
     }
@@ -365,10 +361,9 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
   return parsed_products;
 }
 
-std::vector<pkg_cfg *> parse_dependencies_table(
-    sol::state &lua,
-    std::filesystem::path const &spec_path,
-    pkg_cfg const &cfg) {
+std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
+                                                std::filesystem::path const &spec_path,
+                                                pkg_cfg const &cfg) {
   std::vector<pkg_cfg *> parsed_deps;
   sol::object deps_obj{ lua["DEPENDENCIES"] };
 
@@ -453,10 +448,9 @@ void wire_dependency_graph(pkg *p, engine &eng) {
                                      p->cfg->identity,
                                      "Dependency");
 
-    pkg_phase const needed_by_phase{
-      dep_cfg->needed_by.has_value() ? static_cast<pkg_phase>(*dep_cfg->needed_by)
-                                     : pkg_phase::pkg_build
-    };
+    pkg_phase const needed_by_phase{ dep_cfg->needed_by.has_value()
+                                         ? static_cast<pkg_phase>(*dep_cfg->needed_by)
+                                         : pkg_phase::pkg_build };
     bool const is_product_dep{ dep_cfg->product.has_value() };
 
     if (is_product_dep) {
@@ -552,8 +546,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
       }
       return identity_obj.as<std::string>();
     } catch (std::runtime_error const &e) {
-      throw std::runtime_error(std::string(e.what()) + " (in spec: " + cfg.identity +
-                               ")");
+      throw std::runtime_error(std::string(e.what()) + " (in spec: " + cfg.identity + ")");
     }
   }() };
 

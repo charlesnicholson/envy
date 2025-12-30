@@ -1,9 +1,9 @@
 #pragma once
 
 #include "cache.h"
+#include "pkg_cfg.h"
 #include "pkg_key.h"
 #include "pkg_phase.h"
-#include "pkg_cfg.h"
 #include "shell.h"
 #include "util.h"
 
@@ -116,12 +116,10 @@ class engine : unmovable {
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point
-  void process_fetch_dependencies(pkg *p,
-                                  std::vector<std::string> const &ancestor_chain);
+  void process_fetch_dependencies(pkg *p, std::vector<std::string> const &ancestor_chain);
   void update_product_registry();
   void validate_product_fallbacks();
-  bool pkg_provides_product_transitively(pkg *p,
-                                         std::string const &product_name) const;
+  bool pkg_provides_product_transitively(pkg *p, std::string const &product_name) const;
   void extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited);
 
   friend struct pkg_execution_ctx;  // Allows worker threads to call run_pkg_thread

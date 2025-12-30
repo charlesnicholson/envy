@@ -1,10 +1,10 @@
 #include "lua_ctx/lua_ctx_bindings.h"
 
 #include "engine.h"
-#include "product_util.h"
 #include "pkg.h"
-#include "pkg_key.h"
 #include "pkg_cfg.h"
+#include "pkg_key.h"
+#include "product_util.h"
 
 #include "doctest.h"
 
@@ -130,8 +130,7 @@ TEST_CASE("ctx.asset picks earliest needed_by among multiple strong paths") {
   auto consumer{ make_pkg("local.consumer@v1", pkg_type::CACHE_MANAGED) };
   pkg_execution_ctx exec{ .current_phase = pkg_phase::pkg_stage };
   consumer->exec_ctx = &exec;
-  consumer->dependencies["local.target@v1"] = { target.get(),
-                                                pkg_phase::pkg_install };
+  consumer->dependencies["local.target@v1"] = { target.get(), pkg_phase::pkg_install };
   consumer->dependencies["local.mid@v1"] = { mid.get(), pkg_phase::pkg_fetch };
 
   lua_ctx_common ctx{ .fetch_dir = {},

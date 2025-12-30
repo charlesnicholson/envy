@@ -1,5 +1,5 @@
-#include "pkg_key.h"
 #include "pkg_cfg.h"
+#include "pkg_key.h"
 
 #include "doctest.h"
 

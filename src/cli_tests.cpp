@@ -310,8 +310,11 @@ TEST_CASE("cli_parse: cmd_product") {
   }
 
   SUBCASE("with manifest") {
-    std::vector<std::string> args{ "envy",       "product",       "tool",
-                                   "--manifest", "/tmp/envy.lua" };
+    std::vector<std::string> args{ "envy",
+                                   "product",
+                                   "tool",
+                                   "--manifest",
+                                   "/tmp/envy.lua" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };

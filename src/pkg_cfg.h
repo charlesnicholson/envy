@@ -63,8 +63,8 @@ struct pkg_cfg : unmovable {
 
   std::string identity;  // "namespace.name@version"
   source_t source;
-  std::string serialized_options;  // Serialized Lua table literal (empty "{}" if none)
-  std::optional<pkg_phase> needed_by;         // Phase dependency annotation
+  std::string serialized_options;      // Serialized Lua table literal (empty "{}" if none)
+  std::optional<pkg_phase> needed_by;  // Phase dependency annotation
   mutable pkg_cfg const *parent{ nullptr };  // Owning parent cfg
   pkg_cfg *weak{ nullptr };                  // Weak fallback cfg (if any)
 
@@ -137,10 +137,8 @@ class pkg_cfg_pool {
   std::deque<pkg_cfg> storage_;
 };
 
-bool operator==(pkg_cfg::remote_source const &lhs,
-                pkg_cfg::remote_source const &rhs);
-bool operator==(pkg_cfg::local_source const &lhs,
-                pkg_cfg::local_source const &rhs);
+bool operator==(pkg_cfg::remote_source const &lhs, pkg_cfg::remote_source const &rhs);
+bool operator==(pkg_cfg::local_source const &lhs, pkg_cfg::local_source const &rhs);
 bool operator==(pkg_cfg::git_source const &lhs, pkg_cfg::git_source const &rhs);
 
 }  // namespace envy

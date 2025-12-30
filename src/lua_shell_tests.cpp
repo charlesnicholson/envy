@@ -20,16 +20,29 @@ void set_light_userdata(sol::table &tbl, char const *key, void *ptr) {
 }
 
 // Helper: Create Lua state with ENVY_SHELL constants registered
-// All constants are registered on all platforms; runtime validation rejects incompatible shells
+// All constants are registered on all platforms; runtime validation rejects incompatible
+// shells
 sol_state_ptr make_test_lua_state() {
   auto lua{ envy::sol_util_make_lua_state() };
 
   // Register ENVY_SHELL table with all constants on all platforms
   sol::table envy_shell{ lua->create_table() };
-  set_light_userdata(envy_shell, "BASH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
-  set_light_userdata(envy_shell, "SH", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
-  set_light_userdata(envy_shell, "CMD", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
-  set_light_userdata(envy_shell, "POWERSHELL", reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
+  set_light_userdata(
+      envy_shell,
+      "BASH",
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::bash)));
+  set_light_userdata(
+      envy_shell,
+      "SH",
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::sh)));
+  set_light_userdata(
+      envy_shell,
+      "CMD",
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::cmd)));
+  set_light_userdata(
+      envy_shell,
+      "POWERSHELL",
+      reinterpret_cast<void *>(static_cast<uintptr_t>(envy::shell_choice::powershell)));
   (*lua)["ENVY_SHELL"] = envy_shell;
 
   return lua;
@@ -41,7 +54,8 @@ sol_state_ptr make_test_lua_state() {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH on Unix") {
   auto lua{ make_test_lua_state() };
 
-  sol::object bash_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::bash)) };
+  sol::object bash_obj{ sol::make_object(*lua,
+                                         static_cast<int>(envy::shell_choice::bash)) };
   auto result{ envy::parse_shell_config_from_lua(bash_obj, "test") };
 
   CHECK(std::holds_alternative<envy::shell_choice>(result));
@@ -85,7 +99,8 @@ TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.POWERSHELL on Windows") {
 TEST_CASE("parse_shell_config_from_lua - ENVY_SHELL.BASH rejected on Windows") {
   auto lua{ make_test_lua_state() };
 
-  sol::object bash_obj{ sol::make_object(*lua, static_cast<int>(envy::shell_choice::bash)) };
+  sol::object bash_obj{ sol::make_object(*lua,
+                                         static_cast<int>(envy::shell_choice::bash)) };
 
   CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(bash_obj, "test_ctx"),
                        "test_ctx: BASH/SH shells are only available on Unix",
@@ -136,7 +151,6 @@ TEST_CASE("parse_shell_config_from_lua - invalid ENVY_SHELL constant") {
                        std::runtime_error);
 }
 
-
 TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   auto lua{ make_test_lua_state() };
 
@@ -152,7 +166,8 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   CHECK(std::holds_alternative<envy::custom_shell_file>(result));
   auto const &shell_file{ std::get<envy::custom_shell_file>(result) };
   REQUIRE(shell_file.argv.size() == 1);
-  CHECK(shell_file.argv[0] == "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+  CHECK(shell_file.argv[0] ==
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
   CHECK(shell_file.ext == ".ps1");
 #else
   // Unix: use sh
@@ -329,8 +344,9 @@ TEST_CASE("parse_shell_config_from_lua - error context in message") {
                        "{file=..., ext=...} or {inline=...}",
                        std::runtime_error);
 
-  CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(invalid_obj, "DEFAULT_SHELL function"),
-                       "DEFAULT_SHELL function: shell must be ENVY_SHELL constant or "
-                       "table {file=..., ext=...} or {inline=...}",
-                       std::runtime_error);
+  CHECK_THROWS_WITH_AS(
+      envy::parse_shell_config_from_lua(invalid_obj, "DEFAULT_SHELL function"),
+      "DEFAULT_SHELL function: shell must be ENVY_SHELL constant or "
+      "table {file=..., ext=...} or {inline=...}",
+      std::runtime_error);
 }

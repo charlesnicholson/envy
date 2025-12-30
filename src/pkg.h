@@ -1,9 +1,9 @@
 #pragma once
 
 #include "cache.h"
+#include "pkg_cfg.h"
 #include "pkg_key.h"
 #include "pkg_phase.h"
-#include "pkg_cfg.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "tui.h"
@@ -32,7 +32,8 @@ struct pkg {
     std::string constraint_identity;
   };
 
-  struct weak_reference {  // unresolved dependency, may match multiple packages or fallback
+  struct weak_reference {  // unresolved dependency, may match multiple packages or
+                           // fallback
     std::string query;
     pkg_cfg const *fallback{ nullptr };
     pkg_phase needed_by{ pkg_phase::pkg_build };

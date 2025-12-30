@@ -185,9 +185,7 @@ std::wstring build_powershell_script_contents(std::string_view script) {
   wrapper.append(L"$Error.Clear()\r\n");  // Clear previous errors
   wrapper.append(user_script);
   // Only add newline if script doesn't already end with one
-  if (!user_script.empty() && user_script.back() != L'\n') {
-    wrapper.append(L"\r\n");
-  }
+  if (!user_script.empty() && user_script.back() != L'\n') { wrapper.append(L"\r\n"); }
   // Exit with external command exit code if set, else 1 if error occurred, else 0
   wrapper.append(L"if ($LASTEXITCODE) { exit $LASTEXITCODE }\r\n");
   wrapper.append(L"if ($Error.Count -gt 0) { exit 1 }\r\n");
@@ -405,9 +403,7 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-void stream_pipe_lines(HANDLE pipe,
-                       shell_stream stream,
-                       shell_run_cfg const &cfg) {
+void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cfg) {
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -577,9 +573,7 @@ void shell_init() {
     DWORD const err{ ::GetLastError() };
     ::CloseHandle(g_job_object);
     g_job_object = NULL;
-    throw std::system_error(err,
-                            std::system_category(),
-                            "Failed to configure job object");
+    throw std::system_error(err, std::system_category(), "Failed to configure job object");
   }
 }
 
@@ -735,17 +729,13 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
     std::thread stdout_reader{ [&]() {
       try {
         stream_pipe_lines(stdout_read_end.get(), shell_stream::std_out, cfg);
-      } catch (...) {
-        stdout_exception = std::current_exception();
-      }
+      } catch (...) { stdout_exception = std::current_exception(); }
     } };
 
     std::thread stderr_reader{ [&]() {
       try {
         stream_pipe_lines(stderr_read_end.get(), shell_stream::std_err, cfg);
-      } catch (...) {
-        stderr_exception = std::current_exception();
-      }
+      } catch (...) { stderr_exception = std::current_exception(); }
     } };
 
     stdout_reader.join();

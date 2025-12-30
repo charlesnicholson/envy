@@ -2,8 +2,8 @@
 
 #include "engine.h"
 #include "pkg.h"
-#include "pkg_key.h"
 #include "pkg_cfg.h"
+#include "pkg_key.h"
 
 #include "doctest.h"
 
@@ -25,21 +25,19 @@ std::unique_ptr<pkg> make_pkg(std::string identity, pkg_type type) {
                                          std::nullopt,
                                          std::filesystem::path{}) };
 
-  return std::unique_ptr<pkg>(new pkg{
-      .key = pkg_key(*cfg),
-      .cfg = cfg,
-      .cache_ptr = nullptr,
-      .default_shell_ptr = nullptr,
-      .tui_section = {},
-      .exec_ctx = nullptr,
-      .lua = nullptr,
-      .lock = nullptr,
-      .canonical_identity_hash = {},
-      .pkg_path = {},
-      .spec_file_path = std::nullopt,
-      .result_hash = {},
-      .type = type,
-  });
+  return std::unique_ptr<pkg>(new pkg{ .key = pkg_key(*cfg),
+                                       .cfg = cfg,
+                                       .cache_ptr = nullptr,
+                                       .default_shell_ptr = nullptr,
+                                       .tui_section = {},
+                                       .exec_ctx = nullptr,
+                                       .lua = nullptr,
+                                       .lock = nullptr,
+                                       .canonical_identity_hash = {},
+                                       .pkg_path = {},
+                                       .spec_file_path = std::nullopt,
+                                       .result_hash = {},
+                                       .type = type });
 }
 
 }  // namespace

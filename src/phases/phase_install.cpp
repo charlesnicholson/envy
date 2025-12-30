@@ -138,9 +138,9 @@ bool run_programmatic_install(sol::protected_function install_func,
     tui::debug("phase install: running returned string from install function");
 
     // User-managed packages use project_root as cwd, cache-managed use install_dir
-    std::filesystem::path const string_cwd{
-      is_user_managed ? pkg_cfg::compute_project_root(p->cfg) : install_dir
-    };
+    std::filesystem::path const string_cwd{ is_user_managed
+                                                ? pkg_cfg::compute_project_root(p->cfg)
+                                                : install_dir };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
     // Cache-managed packages mark on shell exit 0
@@ -198,8 +198,7 @@ void run_install_phase(pkg *p, engine &eng) {
   }
 
   cache::scoped_entry_lock::ptr_t lock{ std::move(p->lock) };
-  std::filesystem::path const final_pkg_path{ lock->install_dir().parent_path() /
-                                                "pkg" };
+  std::filesystem::path const final_pkg_path{ lock->install_dir().parent_path() / "pkg" };
 
   sol::state_view lua_view{ *p->lua };
   sol::object install_obj{ lua_view["INSTALL"] };
@@ -212,9 +211,9 @@ void run_install_phase(pkg *p, engine &eng) {
   } else if (install_obj.is<std::string>()) {
     // String installs: run command, mark complete only if cache-managed
     // User-managed packages use manifest dir as cwd, cache-managed use install_dir
-    std::filesystem::path const string_cwd{
-      is_user_managed ? pkg_cfg::compute_project_root(p->cfg) : lock->install_dir()
-    };
+    std::filesystem::path const string_cwd{ is_user_managed
+                                                ? pkg_cfg::compute_project_root(p->cfg)
+                                                : lock->install_dir() };
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
                                         string_cwd,

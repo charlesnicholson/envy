@@ -126,10 +126,10 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
       fetch_request req{ url_to_fetch_request(item.url, dest, item.ref, "ctx.fetch") };
 
       if (items.size() == 1 && ctx->pkg_ && ctx->pkg_->tui_section) {
-        trackers.push_back(std::make_unique<tui_actions::fetch_progress_tracker>(
-            ctx->pkg_->tui_section,
-            ctx->pkg_->cfg->identity,
-            item.url));
+        trackers.push_back(
+            std::make_unique<tui_actions::fetch_progress_tracker>(ctx->pkg_->tui_section,
+                                                                  ctx->pkg_->cfg->identity,
+                                                                  item.url));
 
         std::visit([&](auto &r) { r.progress = std::ref(*trackers.back()); }, req);
       }

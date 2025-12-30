@@ -11,7 +11,8 @@ namespace envy {
 namespace {
 
 // Resolve relative path to phase working directory (from registry, or stage_dir fallback)
-std::filesystem::path resolve_relative(std::filesystem::path const &path, sol::this_state L) {
+std::filesystem::path resolve_relative(std::filesystem::path const &path,
+                                       sol::this_state L) {
   if (path.is_absolute()) { return path; }
   phase_context const *ctx{ lua_phase_context_get(L) };
   if (ctx && ctx->run_dir) { return *ctx->run_dir / path; }
@@ -32,25 +33,25 @@ void lua_envy_file_ops_install(sol::table &envy_table) {
           throw std::runtime_error("envy.copy: source not found: " + src.string());
         }
 
-    // If copying file to directory, append filename
-    if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
-      dst = dst / src.filename();
-    }
+        // If copying file to directory, append filename
+        if (std::filesystem::is_regular_file(src) && std::filesystem::is_directory(dst)) {
+          dst = dst / src.filename();
+        }
 
-    if (std::filesystem::is_directory(src)) {
-      std::filesystem::copy(src,
-                            dst,
-                            std::filesystem::copy_options::recursive |
-                                std::filesystem::copy_options::overwrite_existing);
-    } else {
-      if (dst.has_parent_path()) {
-        std::filesystem::create_directories(dst.parent_path());
-      }
-      std::filesystem::copy_file(src,
-                                 dst,
-                                 std::filesystem::copy_options::overwrite_existing);
-    }
-  };
+        if (std::filesystem::is_directory(src)) {
+          std::filesystem::copy(src,
+                                dst,
+                                std::filesystem::copy_options::recursive |
+                                    std::filesystem::copy_options::overwrite_existing);
+        } else {
+          if (dst.has_parent_path()) {
+            std::filesystem::create_directories(dst.parent_path());
+          }
+          std::filesystem::copy_file(src,
+                                     dst,
+                                     std::filesystem::copy_options::overwrite_existing);
+        }
+      };
 
   // envy.move(src, dst) - Move/rename file or directory
   envy_table["move"] =

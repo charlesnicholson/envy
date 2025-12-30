@@ -176,8 +176,7 @@ TEST_CASE("format_lua_error includes spec_file_path when present") {
   lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Spec file: /home/user/.envy/recipes/test.lua") !=
-        std::string::npos);
+  CHECK(result.find("Spec file: /home/user/.envy/recipes/test.lua") != std::string::npos);
 }
 
 TEST_CASE("format_lua_error includes line number when extractable") {

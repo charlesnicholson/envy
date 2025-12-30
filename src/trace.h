@@ -476,7 +476,10 @@ struct phase_trace_scope {
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, pkg_path_value, fast_path_value) \
+#define ENVY_TRACE_CACHE_HIT(recipe_value, \
+                             cache_key_value, \
+                             pkg_path_value, \
+                             fast_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_hit{ \
       .recipe = (recipe_value), \
       .cache_key = (cache_key_value), \
@@ -537,14 +540,19 @@ struct phase_trace_scope {
       .was_completed = (was_completed_value), \
   }))
 
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(recipe_value, thread_id_value, num_files_value) \
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(recipe_value, \
+                                           thread_id_value, \
+                                           num_files_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_start{ \
       .recipe = (recipe_value), \
       .thread_id = (thread_id_value), \
       .num_files = (num_files_value), \
   }))
 
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(recipe_value, thread_id_value, num_files_value, duration_ms_value) \
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(recipe_value, \
+                                              thread_id_value, \
+                                              num_files_value, \
+                                              duration_ms_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_complete{ \
       .recipe = (recipe_value), \
       .thread_id = (thread_id_value), \

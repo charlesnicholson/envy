@@ -770,10 +770,11 @@ TEST_CASE("grouped render ansi") {
   auto const now{ std::chrono::steady_clock::now() };
   envy::tui::test::g_now = now;
 
-  envy::tui::section_frame parent{ .label = "pkg",
-                                   .content = envy::tui::progress_data{ .percent = 50.0,
-                                                                         .status = "fetch" },
-                                   .phase_label = "" };
+  envy::tui::section_frame parent{
+    .label = "pkg",
+    .content = envy::tui::progress_data{ .percent = 50.0, .status = "fetch" },
+    .phase_label = ""
+  };
   parent.children.push_back(envy::tui::section_frame{
       .label = "ninja.git",
       .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
@@ -795,10 +796,11 @@ TEST_CASE("grouped render fallback") {
   auto const now{ std::chrono::steady_clock::now() };
   envy::tui::test::g_now = now;
 
-  envy::tui::section_frame parent{ .label = "pkg",
-                                   .content = envy::tui::progress_data{ .percent = 50.0,
-                                                                         .status = "fetch" },
-                                   .phase_label = "" };
+  envy::tui::section_frame parent{
+    .label = "pkg",
+    .content = envy::tui::progress_data{ .percent = 50.0, .status = "fetch" },
+    .phase_label = ""
+  };
   parent.children.push_back(envy::tui::section_frame{
       .label = "ninja.git",
       .content = envy::tui::progress_data{ .percent = 20.0, .status = "20%" } });
@@ -936,7 +938,8 @@ TEST_CASE("calculate_visible_length - multiple ANSI escapes") {
 
   // Complex formatting
   std::string complex = "\x1b[1m\x1b[31mBold Red\x1b[0m Normal \x1b[32mGreen\x1b[0m";
-  CHECK(envy::tui::test::calculate_visible_length(complex) == 21);  // "Bold Red Normal Green"
+  CHECK(envy::tui::test::calculate_visible_length(complex) ==
+        21);  // "Bold Red Normal Green"
 }
 
 TEST_CASE("calculate_visible_length - only ANSI codes") {
@@ -956,15 +959,20 @@ TEST_CASE("calculate_visible_length - mixed content") {
 
 TEST_CASE("calculate_visible_length - incomplete ANSI sequence") {
   // Incomplete sequences stay in escape mode (waiting for 'm' terminator)
-  CHECK(envy::tui::test::calculate_visible_length("\x1b[") == 0);  // Started but not finished
-  CHECK(envy::tui::test::calculate_visible_length("\x1b[31") == 0);  // Still in escape, no 'm' yet
-  CHECK(envy::tui::test::calculate_visible_length("text\x1b[") == 4);  // "text" visible, then incomplete escape
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[") ==
+        0);  // Started but not finished
+  CHECK(envy::tui::test::calculate_visible_length("\x1b[31") ==
+        0);  // Still in escape, no 'm' yet
+  CHECK(envy::tui::test::calculate_visible_length("text\x1b[") ==
+        4);  // "text" visible, then incomplete escape
 }
 
 TEST_CASE("calculate_visible_length - ESC without bracket") {
   // ESC character without [ should count ESC as visible
-  CHECK(envy::tui::test::calculate_visible_length("\x1b" "text") == 5);  // ESC + "text"
-  CHECK(envy::tui::test::calculate_visible_length("a\x1b" "b") == 3);  // "a" + ESC + "b"
+  CHECK(envy::tui::test::calculate_visible_length("\x1b"
+                                                  "text") == 5);  // ESC + "text"
+  CHECK(envy::tui::test::calculate_visible_length("a\x1b"
+                                                  "b") == 3);  // "a" + ESC + "b"
 }
 
 TEST_CASE("calculate_visible_length - unicode and special chars") {
@@ -972,7 +980,8 @@ TEST_CASE("calculate_visible_length - unicode and special chars") {
   CHECK(envy::tui::test::calculate_visible_length("[](){}<>") == 8);
   CHECK(envy::tui::test::calculate_visible_length("!@#$%^&*") == 8);
   CHECK(envy::tui::test::calculate_visible_length("  spaces  ") == 10);
-  CHECK(envy::tui::test::calculate_visible_length("\t\ttabs\t") == 28);  // tabs count as 8 columns: 8+8+4+8=28
+  CHECK(envy::tui::test::calculate_visible_length("\t\ttabs\t") ==
+        28);  // tabs count as 8 columns: 8+8+4+8=28
 }
 
 TEST_CASE("pad_to_width - plain text shorter than width") {
@@ -1110,18 +1119,18 @@ TEST_CASE("pad_to_width - idempotent when already at width") {
 TEST_CASE("calculate_visible_length - all escape sequences end with 'm'") {
   // Verify we correctly identify 'm' as terminator for all SGR sequences
   std::vector<std::string> sequences = {
-    "\x1b[0m",          // Reset
-    "\x1b[1m",          // Bold
-    "\x1b[2m",          // Dim
-    "\x1b[3m",          // Italic
-    "\x1b[4m",          // Underline
-    "\x1b[31m",         // Red
-    "\x1b[1;31m",       // Bold red
-    "\x1b[38;5;214m",   // 256-color
+    "\x1b[0m",               // Reset
+    "\x1b[1m",               // Bold
+    "\x1b[2m",               // Dim
+    "\x1b[3m",               // Italic
+    "\x1b[4m",               // Underline
+    "\x1b[31m",              // Red
+    "\x1b[1;31m",            // Bold red
+    "\x1b[38;5;214m",        // 256-color
     "\x1b[38;2;255;128;0m",  // RGB color
   };
 
-  for (auto const& seq : sequences) {
+  for (auto const &seq : sequences) {
     CHECK(envy::tui::test::calculate_visible_length(seq) == 0);
     CHECK(envy::tui::test::calculate_visible_length(seq + "text") == 4);
   }
@@ -1192,8 +1201,9 @@ TEST_CASE("truncate_to_width_ansi_aware - truncate with ANSI code") {
 }
 
 TEST_CASE("truncate_to_width_ansi_aware - very long line") {
-  std::string long_line = "[[local.armgcc@r0]] 100% [====================] 276.57MB/276.57MB "
-                         "arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip";
+  std::string long_line =
+      "[[local.armgcc@r0]] 100% [====================] 276.57MB/276.57MB "
+      "arm-gnu-toolchain-14.3.rel1-mingw-w64-x86_64-arm-none-eabi.zip";
   int width = 80;
   std::string result = envy::tui::test::truncate_to_width_ansi_aware(long_line, width);
   CHECK(envy::tui::test::calculate_visible_length(result) == width);
@@ -1201,9 +1211,10 @@ TEST_CASE("truncate_to_width_ansi_aware - very long line") {
 }
 
 TEST_CASE("truncate_to_width_ansi_aware - colored very long line") {
-  std::string s = "\x1b[1m[[local.armgcc@r0]]\x1b[0m 100% "
-                 "[====================] 276.57MB/276.57MB "
-                 "\x1b[32marm-gnu-toolchain.zip\x1b[0m extra text";
+  std::string s =
+      "\x1b[1m[[local.armgcc@r0]]\x1b[0m 100% "
+      "[====================] 276.57MB/276.57MB "
+      "\x1b[32marm-gnu-toolchain.zip\x1b[0m extra text";
   int width = 60;
   std::string result = envy::tui::test::truncate_to_width_ansi_aware(s, width);
   CHECK(envy::tui::test::calculate_visible_length(result) == width);
@@ -1241,24 +1252,29 @@ TEST_CASE("pad_to_width - truncates colored long lines") {
 TEST_CASE("calculate_visible_length - handles tabs") {
   // Tabs count as 8 columns
   CHECK(envy::tui::test::calculate_visible_length("\t") == 8);
-  CHECK(envy::tui::test::calculate_visible_length("a\tb") == 10);  // a + tab + b = 1 + 8 + 1
+  CHECK(envy::tui::test::calculate_visible_length("a\tb") ==
+        10);  // a + tab + b = 1 + 8 + 1
   CHECK(envy::tui::test::calculate_visible_length("\t\t") == 16);
-  CHECK(envy::tui::test::calculate_visible_length("hello\tworld") == 18);  // 5 + 8 + 5 = 18
+  CHECK(envy::tui::test::calculate_visible_length("hello\tworld") ==
+        18);  // 5 + 8 + 5 = 18
 }
 
 TEST_CASE("truncate_to_width_ansi_aware - handles tabs") {
   // Tab counts as 8 columns, so should be truncated
   std::string s = "hello\tworld";  // 5 + 8 + 5 = 18 columns
   CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 13) == "hello\t");  // 5 + 8 = 13
-  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 10) == "hello");  // Tab would exceed, so truncate before it
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 10) ==
+        "hello");  // Tab would exceed, so truncate before it
   CHECK(envy::tui::test::truncate_to_width_ansi_aware(s, 5) == "hello");
-  CHECK(envy::tui::test::truncate_to_width_ansi_aware("a\tb", 5) == "a");  // 'a' fits, tab would exceed
+  CHECK(envy::tui::test::truncate_to_width_ansi_aware("a\tb", 5) ==
+        "a");  // 'a' fits, tab would exceed
 }
 
 TEST_CASE("pad_to_width - handles tabs") {
   // Tabs count as 8 columns
   std::string s = "a\tb";  // 1 + 8 + 1 = 10 columns
-  CHECK(envy::tui::test::calculate_visible_length(envy::tui::test::pad_to_width(s, 10)) == 10);
+  CHECK(envy::tui::test::calculate_visible_length(envy::tui::test::pad_to_width(s, 10)) ==
+        10);
   CHECK(envy::tui::test::pad_to_width(s, 10) == "a\tb");  // Exactly fits
 
   // Tab makes line too long, should truncate to just "a" then pad to 5

@@ -33,8 +33,8 @@ std::vector<pkg_cfg const *> build_provenance_chain(pkg_cfg const *spec) {
 }
 
 struct parsed_lua_error {
-  std::string headline;                  // First line of error
-  std::vector<std::string> stack_frames; // Cleaned stack frames
+  std::string headline;                   // First line of error
+  std::vector<std::string> stack_frames;  // Cleaned stack frames
 };
 
 parsed_lua_error parse_lua_error(std::string const &msg) {
@@ -84,8 +84,7 @@ std::string format_lua_error(lua_error_context const &ctx) {
 
   // Header: identity with options
   oss << "Lua error in " << ctx.r->cfg->identity;
-  if (!ctx.r->cfg->serialized_options.empty() &&
-      ctx.r->cfg->serialized_options != "{}") {
+  if (!ctx.r->cfg->serialized_options.empty() && ctx.r->cfg->serialized_options != "{}") {
     oss << ctx.r->cfg->serialized_options;
   }
   oss << ":\n  " << (parsed.headline.empty() ? ctx.lua_error_message : parsed.headline)

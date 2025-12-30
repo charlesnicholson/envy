@@ -64,8 +64,8 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
   std::vector<pkg_cfg const *> roots;
   pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
       "local.gn@r0",
-      pkg_cfg::local_source{
-          .file_path = fs::path("test_data/specs/dependency_chain_gn.lua") },
+      pkg_cfg::local_source{ .file_path =
+                                 fs::path("test_data/specs/dependency_chain_gn.lua") },
       "{}",
       std::nullopt,
       nullptr,
@@ -75,8 +75,7 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
       fs::path{});
   pkg_cfg *uv_cfg = pkg_cfg::pool()->emplace(
       "local.uv@r0",
-      pkg_cfg::local_source{ .file_path =
-                                 fs::path("test_data/specs/simple_uv.lua") },
+      pkg_cfg::local_source{ .file_path = fs::path("test_data/specs/simple_uv.lua") },
       "{}",
       std::nullopt,
       nullptr,
@@ -123,8 +122,8 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   std::vector<pkg_cfg const *> roots;
   pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
       "local.gn@r0",
-      pkg_cfg::local_source{
-          .file_path = fs::path("test_data/specs/dependency_chain_gn.lua") },
+      pkg_cfg::local_source{ .file_path =
+                                 fs::path("test_data/specs/dependency_chain_gn.lua") },
       "{}",
       std::nullopt,
       nullptr,
@@ -134,8 +133,7 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
       fs::path{});
   pkg_cfg *python_cfg = pkg_cfg::pool()->emplace(
       "local.python@r0",
-      pkg_cfg::local_source{ .file_path =
-                                 fs::path("test_data/specs/simple_python.lua") },
+      pkg_cfg::local_source{ .file_path = fs::path("test_data/specs/simple_python.lua") },
       "{}",
       std::nullopt,
       nullptr,

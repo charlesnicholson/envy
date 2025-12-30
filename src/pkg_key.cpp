@@ -6,9 +6,7 @@
 
 namespace envy {
 
-pkg_key::pkg_key(pkg_cfg const &cfg) : canonical_(cfg.format_key()) {
-  parse_components();
-}
+pkg_key::pkg_key(pkg_cfg const &cfg) : canonical_(cfg.format_key()) { parse_components(); }
 
 pkg_key::pkg_key(std::string_view canonical_or_identity)
     : canonical_(canonical_or_identity) {
@@ -19,8 +17,7 @@ pkg_key::pkg_key(pkg_key const &other) : canonical_(other.canonical_) {
   parse_components();
 }
 
-pkg_key::pkg_key(pkg_key &&other) noexcept
-    : canonical_(std::move(other.canonical_)) {
+pkg_key::pkg_key(pkg_key &&other) noexcept : canonical_(std::move(other.canonical_)) {
   parse_components();
 }
 

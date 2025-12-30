@@ -23,8 +23,8 @@ void setup_spec_environment(sol::state &lua,
   if (!dep_identities.empty()) {
     lua_code += "      dependencies = {\n";
     for (auto const &dep_id : dep_identities) {
-      lua_code += "        { spec = \"" + dep_id + "\", source = \"file:///tmp/" +
-                  dep_id + ".lua\" },\n";
+      lua_code += "        { spec = \"" + dep_id + "\", source = \"file:///tmp/" + dep_id +
+                  ".lua\" },\n";
     }
     lua_code += "      },\n";
   }

@@ -24,17 +24,16 @@ static pkg_result_map_t run_pkg_from_file(std::string const &identity,
   auto manifest_ptr{ manifest::load("PACKAGES = {}", spec_path) };
   engine eng{ c, manifest_ptr->get_default_shell(nullptr) };
 
-  pkg_cfg *cfg_ptr{ pkg_cfg::pool()->emplace(identity,
-                                             pkg_cfg::local_source{
-                                               .file_path = spec_path
-                                             },
-                                             "{}",
-                                             std::nullopt,
-                                             nullptr,
-                                             nullptr,
-                                             std::vector<pkg_cfg *>{},
-                                             std::nullopt,
-                                             std::filesystem::path{}) };
+  pkg_cfg *cfg_ptr{ pkg_cfg::pool()->emplace(
+      identity,
+      pkg_cfg::local_source{ .file_path = spec_path },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{}) };
 
   pkg_result_map_t results{ eng.run_full({ cfg_ptr }) };
   fs::remove_all(cache_root);
@@ -49,8 +48,7 @@ static bool contains_pkg(pkg_result_map_t const &results, std::string const &id)
 
 TEST_CASE("weak reference resolves to an existing provider") {
   fs::path const spec_path{ "test_data/specs/weak_consumer_ref_only.lua" };
-  auto const results{ run_pkg_from_file("local.weak_consumer_ref_only@v1",
-                                        spec_path) };
+  auto const results{ run_pkg_from_file("local.weak_consumer_ref_only@v1", spec_path) };
 
   CHECK(contains_pkg(results, "local.weak_consumer_ref_only@v1"));
   CHECK(contains_pkg(results, "local.weak_provider@v1"));
@@ -58,8 +56,7 @@ TEST_CASE("weak reference resolves to an existing provider") {
 
 TEST_CASE("weak dependency uses fallback when no match exists") {
   fs::path const spec_path{ "test_data/specs/weak_consumer_fallback.lua" };
-  auto const results{ run_pkg_from_file("local.weak_consumer_fallback@v1",
-                                        spec_path) };
+  auto const results{ run_pkg_from_file("local.weak_consumer_fallback@v1", spec_path) };
 
   CHECK(contains_pkg(results, "local.weak_consumer_fallback@v1"));
   CHECK(contains_pkg(results, "local.weak_fallback@v1"));
@@ -67,8 +64,7 @@ TEST_CASE("weak dependency uses fallback when no match exists") {
 
 TEST_CASE("weak dependency prefers existing match over fallback") {
   fs::path const spec_path{ "test_data/specs/weak_consumer_existing.lua" };
-  auto const results{ run_pkg_from_file("local.weak_consumer_existing@v1",
-                                        spec_path) };
+  auto const results{ run_pkg_from_file("local.weak_consumer_existing@v1", spec_path) };
 
   CHECK(contains_pkg(results, "local.weak_consumer_existing@v1"));
   CHECK(contains_pkg(results, "local.existing_dep@v1"));
@@ -111,8 +107,7 @@ TEST_CASE("weak fallbacks resolve across multiple iterations") {
 
 TEST_CASE("reference-only resolution succeeds after fallbacks grow the graph") {
   fs::path const spec_path{ "test_data/specs/weak_progress_flat_root.lua" };
-  auto const results{ run_pkg_from_file("local.weak_progress_flat_root@v1",
-                                        spec_path) };
+  auto const results{ run_pkg_from_file("local.weak_progress_flat_root@v1", spec_path) };
 
   CHECK(contains_pkg(results, "local.weak_progress_flat_root@v1"));
   CHECK(contains_pkg(results, "local.branch_one@v1"));

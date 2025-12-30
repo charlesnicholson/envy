@@ -1,9 +1,9 @@
 #include "lua_ctx_bindings.h"
 
-#include "product_util.h"
 #include "engine.h"
 #include "pkg.h"
 #include "pkg_phase.h"
+#include "product_util.h"
 #include "trace.h"
 
 #include <functional>
@@ -37,8 +37,8 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
     auto const dep_it{ consumer->product_dependencies.find(product_name) };
     if (dep_it == consumer->product_dependencies.end()) {
       std::string const msg{ "ctx.product: pkg '" + consumer->cfg->identity +
-                             "' does not declare product dependency on '" +
-                             product_name + "'" };
+                             "' does not declare product dependency on '" + product_name +
+                             "'" };
       ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(consumer->cfg->identity,
                                         product_name,
                                         "",
@@ -64,10 +64,9 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
     };
 
     if (current_phase < dep.needed_by) {
-      std::string const msg{ "ctx.product: product '" + product_name +
-                             "' needed_by '" + phase_name_str(dep.needed_by) +
-                             "' but accessed during '" + phase_name_str(current_phase) +
-                             "'" };
+      std::string const msg{ "ctx.product: product '" + product_name + "' needed_by '" +
+                             phase_name_str(dep.needed_by) + "' but accessed during '" +
+                             phase_name_str(current_phase) + "'" };
       emit_access(false, msg);
       throw std::runtime_error(msg);
     }
@@ -84,8 +83,7 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
         dep.provider->cfg->identity != dep.constraint_identity) {
       std::string const msg{ "ctx.product: product '" + product_name +
                              "' must come from '" + dep.constraint_identity +
-                             "', but provider is '" + dep.provider->cfg->identity +
-                             "'" };
+                             "', but provider is '" + dep.provider->cfg->identity + "'" };
       emit_access(false, msg);
       throw std::runtime_error(msg);
     }

@@ -9,7 +9,6 @@
 #include "tui.h"
 #include "tui_actions.h"
 #include "uri.h"
-#include "util.h"
 
 #include <filesystem>
 #include <optional>
@@ -295,7 +294,9 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       throw std::runtime_error(
           "envy.commit_fetch: can only be called from FETCH phase with cache lock active");
     }
-    commit_files(parse_commit_fetch_args(arg), ctx->lock->tmp_dir(), ctx->lock->fetch_dir());
+    commit_files(parse_commit_fetch_args(arg),
+                 ctx->lock->tmp_dir(),
+                 ctx->lock->fetch_dir());
   };
 
   // envy.verify_hash(file_path, expected_sha256) - Verify file hash

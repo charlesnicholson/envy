@@ -188,8 +188,7 @@ TEST_CASE("manifest::load parses table package with remote source") {
   REQUIRE(m->packages.size() == 1);
   CHECK(m->packages[0]->identity == "arm.gcc@v2");
 
-  auto const *remote{ std::get_if<envy::pkg_cfg::remote_source>(
-      &m->packages[0]->source) };
+  auto const *remote{ std::get_if<envy::pkg_cfg::remote_source>(&m->packages[0]->source) };
   REQUIRE(remote != nullptr);
   CHECK(remote->url == "https://example.com/gcc.lua");
   CHECK(remote->sha256 == "abc123");
@@ -210,8 +209,7 @@ TEST_CASE("manifest::load parses table package with local source") {
   REQUIRE(m->packages.size() == 1);
   CHECK(m->packages[0]->identity == "local.wrapper@v1");
 
-  auto const *local{ std::get_if<envy::pkg_cfg::local_source>(
-      &m->packages[0]->source) };
+  auto const *local{ std::get_if<envy::pkg_cfg::local_source>(&m->packages[0]->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
 }
@@ -311,8 +309,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
   auto m{ envy::manifest::load(script, fs::path("/project/sub/envy.lua")) };
 
   REQUIRE(m->packages.size() == 1);
-  auto const *local{ std::get_if<envy::pkg_cfg::local_source>(
-      &m->packages[0]->source) };
+  auto const *local{ std::get_if<envy::pkg_cfg::local_source>(&m->packages[0]->source) };
   REQUIRE(local != nullptr);
   CHECK(local->file_path == fs::path("/project/sibling/tool.lua"));
 }

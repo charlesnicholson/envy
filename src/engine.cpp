@@ -26,14 +26,14 @@ namespace {
 using phase_func_t = void (*)(pkg *, engine &);
 
 constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
-  run_spec_fetch_phase,   // pkg_phase::spec_fetch
-  run_check_phase,        // pkg_phase::pkg_check
-  run_fetch_phase,        // pkg_phase::pkg_fetch
-  run_stage_phase,        // pkg_phase::pkg_stage
-  run_build_phase,        // pkg_phase::pkg_build
-  run_install_phase,      // pkg_phase::pkg_install
-  run_deploy_phase,       // pkg_phase::pkg_deploy
-  run_completion_phase,   // pkg_phase::completion
+  run_spec_fetch_phase,  // pkg_phase::spec_fetch
+  run_check_phase,       // pkg_phase::pkg_check
+  run_fetch_phase,       // pkg_phase::pkg_fetch
+  run_stage_phase,       // pkg_phase::pkg_stage
+  run_build_phase,       // pkg_phase::pkg_build
+  run_install_phase,     // pkg_phase::pkg_install
+  run_deploy_phase,      // pkg_phase::pkg_deploy
+  run_completion_phase,  // pkg_phase::completion
 };
 
 bool has_dependency_path(pkg const *from, pkg const *to) {
@@ -160,10 +160,9 @@ void resolve_product_ref(pkg *p,
 
     if (!wr->constraint_identity.empty() &&
         dep->cfg->identity != wr->constraint_identity) {
-      throw std::runtime_error("Product '" + wr->query + "' in spec '" +
-                               p->cfg->identity + "' must come from '" +
-                               wr->constraint_identity + "', but provider is '" +
-                               dep->cfg->identity + "'");
+      throw std::runtime_error("Product '" + wr->query + "' in spec '" + p->cfg->identity +
+                               "' must come from '" + wr->constraint_identity +
+                               "', but provider is '" + dep->cfg->identity + "'");
     }
 
     if (has_dependency_path(dep, p)) {
@@ -195,10 +194,9 @@ void resolve_product_ref(pkg *p,
   }
 }
 
-bool pkg_provides_product_transitively_impl(
-    pkg *p,
-    std::string const &product_name,
-    std::unordered_set<pkg const *> &visited) {
+bool pkg_provides_product_transitively_impl(pkg *p,
+                                            std::string const &product_name,
+                                            std::unordered_set<pkg const *> &visited) {
   if (!visited.insert(p).second) { return false; }
 
   ENVY_TRACE_EMIT((trace_events::product_transitive_check{
@@ -418,9 +416,7 @@ std::vector<pkg *> engine::find_matches(std::string_view query) const {
   return matches;
 }
 
-pkg_execution_ctx &engine::get_execution_ctx(pkg *p) {
-  return get_execution_ctx(p->key);
-}
+pkg_execution_ctx &engine::get_execution_ctx(pkg *p) { return get_execution_ctx(p->key); }
 
 pkg_execution_ctx &engine::get_execution_ctx(pkg_key const &key) {
   std::lock_guard const lock(mutex_);
@@ -480,8 +476,7 @@ void engine::extend_dependencies_to_completion(pkg *p) {
 
 std::filesystem::path const &engine::cache_root() const { return cache_.root(); }
 
-void engine::extend_dependencies_recursive(pkg *p,
-                                           std::unordered_set<pkg_key> &visited) {
+void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited) {
   if (!visited.insert(p->key).second) { return; }  // Already visited (cycle detection)
 
   // Extend this package's target to completion
@@ -648,7 +643,8 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
 
   {
     std::lock_guard lock(mutex_);
-    for (auto &[key, ctx] : execution_ctxs_) {  // Launch all packages running to completion
+    for (auto &[key, ctx] :
+         execution_ctxs_) {  // Launch all packages running to completion
       ctx->set_target_phase(pkg_phase::completion);
     }
   }
@@ -678,7 +674,9 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
     for (auto const &[key, package] : packages_) {
       auto const &ctx{ execution_ctxs_.at(key) };
       pkg_type const result_type{ ctx->failed ? pkg_type::UNKNOWN : package->type };
-      r[package->key.canonical()] = { result_type, package->result_hash, package->pkg_path };
+      r[package->key.canonical()] = { result_type,
+                                      package->result_hash,
+                                      package->pkg_path };
     }
     return r;
   }() };
@@ -769,8 +767,7 @@ void engine::validate_product_fallbacks() {
     std::unordered_set<pkg const *> visited;
     if (!pkg_provides_product_transitively(wr->resolved, wr->query)) {
       errors.push_back("Fallback for product '" + wr->query + "' in spec '" +
-                       p->cfg->identity + "' resolved to '" +
-                       wr->resolved->cfg->identity +
+                       p->cfg->identity + "' resolved to '" + wr->resolved->cfg->identity +
                        "', which does not provide product transitively");
     }
   }

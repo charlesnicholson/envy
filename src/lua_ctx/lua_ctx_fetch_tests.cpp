@@ -62,9 +62,9 @@ TEST_CASE("ctx.fetch - collision detection with same basename") {
   (*lua)["ctx"] = ctx_table;
 
   // Fetch three files with same basename
-  std::string lua_code =
-      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\", \"" +
-      file3.generic_string() + "\"})";
+  std::string lua_code = "return ctx.fetch({\"" + file1.generic_string() + "\", \"" +
+                         file2.generic_string() + "\", \"" + file3.generic_string() +
+                         "\"})";
 
   // Execute
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
@@ -121,9 +121,9 @@ TEST_CASE("ctx.fetch - collision detection preserves extension") {
   envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
   (*lua)["ctx"] = ctx_table;
 
-  std::string lua_code =
-      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\", \"" +
-      file3.generic_string() + "\"})";
+  std::string lua_code = "return ctx.fetch({\"" + file1.generic_string() + "\", \"" +
+                         file2.generic_string() + "\", \"" + file3.generic_string() +
+                         "\"})";
 
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
   REQUIRE(result.valid());
@@ -166,8 +166,8 @@ TEST_CASE("ctx.fetch - collision detection with no extension") {
   envy::lua_ctx_add_common_bindings(ctx_table, &ctx);
   (*lua)["ctx"] = ctx_table;
 
-  std::string lua_code =
-      "return ctx.fetch({\"" + file1.generic_string() + "\", \"" + file2.generic_string() + "\"})";
+  std::string lua_code = "return ctx.fetch({\"" + file1.generic_string() + "\", \"" +
+                         file2.generic_string() + "\"})";
 
   auto result{ lua->safe_script(lua_code, sol::script_pass_on_error) };
   REQUIRE(result.valid());
@@ -208,14 +208,16 @@ TEST_CASE("ctx.fetch - collision tracking across multiple calls") {
   (*lua)["ctx"] = ctx_table;
 
   // First fetch call
-  std::string lua_code1 = "local f1 = ctx.fetch(\"" + file1.generic_string() + "\"); return f1";
+  std::string lua_code1 =
+      "local f1 = ctx.fetch(\"" + file1.generic_string() + "\"); return f1";
   auto result1{ lua->safe_script(lua_code1, sol::script_pass_on_error) };
   REQUIRE(result1.valid());
   std::string basename1{ result1.get<std::string>() };
   CHECK(basename1 == "lib.so");
 
   // Second fetch call - should detect collision from first call
-  std::string lua_code2 = "local f2 = ctx.fetch(\"" + file2.generic_string() + "\"); return f2";
+  std::string lua_code2 =
+      "local f2 = ctx.fetch(\"" + file2.generic_string() + "\"); return f2";
   auto result2{ lua->safe_script(lua_code2, sol::script_pass_on_error) };
   REQUIRE(result2.valid());
   std::string basename2{ result2.get<std::string>() };

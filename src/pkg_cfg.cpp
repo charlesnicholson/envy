@@ -103,16 +103,12 @@ pkg_cfg::source_t parse_source_string(std::string const &source_uri,
     std::string const ref_str{
       sol_util_get_required<std::string>(table, "ref", "Spec with git source")
     };
-    if (ref_str.empty()) {
-      throw std::runtime_error("Spec 'ref' field cannot be empty");
-    }
+    if (ref_str.empty()) { throw std::runtime_error("Spec 'ref' field cannot be empty"); }
 
     return pkg_cfg::git_source{ .url = info.canonical, .ref = ref_str };
   }
 
-  auto const sha256{
-    sol_util_get_optional<std::string>(table, "sha256", "Spec source")
-  };
+  auto const sha256{ sol_util_get_optional<std::string>(table, "sha256", "Spec source") };
 
   // If SHA256 is provided, always treat as remote_source (needs verification)
   // Otherwise, local files use local_source, remote URIs use remote_source
@@ -130,8 +126,7 @@ pkg_cfg::source_t parse_source_string(std::string const &source_uri,
         return info.canonical;
       }
     }() };
-    return pkg_cfg::remote_source{ .url = resolved_uri,
-                                   .sha256 = sha256.value_or("") };
+    return pkg_cfg::remote_source{ .url = resolved_uri, .sha256 = sha256.value_or("") };
   }
 
   // Local file without SHA256, unverified
@@ -319,9 +314,7 @@ pkg_cfg *pkg_cfg::parse(sol::object const &lua_val,
 
 bool pkg_cfg::is_git() const { return std::holds_alternative<git_source>(source); }
 bool pkg_cfg::is_local() const { return std::holds_alternative<local_source>(source); }
-bool pkg_cfg::is_remote() const {
-  return std::holds_alternative<remote_source>(source);
-}
+bool pkg_cfg::is_remote() const { return std::holds_alternative<remote_source>(source); }
 
 bool pkg_cfg::has_fetch_function() const {
   return holds_alternative<fetch_function>(source);
@@ -504,8 +497,7 @@ std::filesystem::path pkg_cfg::compute_project_root(pkg_cfg const *cfg) {
   while (cfg && cfg->parent) { cfg = cfg->parent; }
 
   if (cfg && !cfg->declaring_file_path.empty()) {
-    std::filesystem::path const abs{ std::filesystem::absolute(
-        cfg->declaring_file_path) };
+    std::filesystem::path const abs{ std::filesystem::absolute(cfg->declaring_file_path) };
     std::error_code ec;
     std::filesystem::path const canonical{ std::filesystem::weakly_canonical(abs, ec) };
     return (ec ? abs : canonical).parent_path();

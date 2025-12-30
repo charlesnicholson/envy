@@ -21,7 +21,6 @@ struct shell_result {
 };
 
 enum class shell_stream { std_out, std_err };
-
 enum class shell_choice { bash, sh, cmd, powershell };
 
 // Custom shell configuration for file mode (script written to temp file)

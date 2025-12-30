@@ -13,7 +13,8 @@ resolved_shell parse_shell_config_from_lua(sol::object const &obj, char const *c
 
     // Validate it's one of the known shell choices
     bool const valid_choice{ choice == shell_choice::bash || choice == shell_choice::sh ||
-                             choice == shell_choice::cmd || choice == shell_choice::powershell };
+                             choice == shell_choice::cmd ||
+                             choice == shell_choice::powershell };
 
     if (!valid_choice) {
       throw std::runtime_error(std::string{ context } + ": invalid ENVY_SHELL constant");

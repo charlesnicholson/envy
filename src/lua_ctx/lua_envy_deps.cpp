@@ -2,9 +2,9 @@
 
 #include "engine.h"
 #include "lua_phase_context.h"
-#include "product_util.h"
 #include "pkg.h"
 #include "pkg_phase.h"
+#include "product_util.h"
 #include "trace.h"
 
 #include <stdexcept>
@@ -76,15 +76,14 @@ void lua_envy_deps_install(sol::table &envy_table) {
 
     pkg_phase const current_phase{ exec_ctx->current_phase.load() };
 
-    auto emit_access =
-        [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
-          ENVY_TRACE_LUA_CTX_ASSET_ACCESS(consumer->cfg->identity,
-                                          identity,
-                                          current_phase,
-                                          needed_by,
-                                          allowed,
-                                          reason);
-        };
+    auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
+      ENVY_TRACE_LUA_CTX_ASSET_ACCESS(consumer->cfg->identity,
+                                      identity,
+                                      current_phase,
+                                      needed_by,
+                                      allowed,
+                                      reason);
+    };
 
     pkg_phase first_needed_by{ pkg_phase::completion };
     if (!strong_reachable(consumer, identity, first_needed_by)) {

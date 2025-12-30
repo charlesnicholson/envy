@@ -4,10 +4,6 @@
 
 #include "doctest.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 #include <filesystem>
 
 namespace {
@@ -142,9 +138,9 @@ TEST_CASE("pkg_cfg::parse parses table with options") {
 
 TEST_CASE("pkg_cfg::parse parses table with empty options") {
   sol::state lua;
-  auto lua_val{ lua_eval(
-      "result = { spec = 'arm.gcc@v2', source = '/fake/r.lua', options = {} }",
-      lua) };
+  auto lua_val{
+    lua_eval("result = { spec = 'arm.gcc@v2', source = '/fake/r.lua', options = {} }", lua)
+  };
 
   auto const *cfg{ envy::pkg_cfg::parse(lua_val, fs::path("/fake")) };
 
@@ -236,9 +232,9 @@ TEST_CASE("pkg_cfg::parse parses product dependency fields") {
 
   SUBCASE("rejects non-string product") {
     sol::state lua;
-    auto lua_val{ lua_eval(
-        "result = { spec = 'foo@v1', product = 42, source = '/fake/foo.lua' }",
-        lua) };
+    auto lua_val{
+      lua_eval("result = { spec = 'foo@v1', product = 42, source = '/fake/foo.lua' }", lua)
+    };
 
     CHECK_THROWS_WITH_AS(envy::pkg_cfg::parse(lua_val, fs::path("/fake")),
                          doctest::Contains("product"),
@@ -247,9 +243,9 @@ TEST_CASE("pkg_cfg::parse parses product dependency fields") {
 
   SUBCASE("rejects empty product") {
     sol::state lua;
-    auto lua_val{ lua_eval(
-        "result = { spec = 'foo@v1', product = '', source = '/fake/foo.lua' }",
-        lua) };
+    auto lua_val{
+      lua_eval("result = { spec = 'foo@v1', product = '', source = '/fake/foo.lua' }", lua)
+    };
 
     CHECK_THROWS_WITH_AS(envy::pkg_cfg::parse(lua_val, fs::path("/fake")),
                          doctest::Contains("cannot be empty"),
@@ -290,8 +286,7 @@ TEST_CASE("pkg_cfg::parse errors on identity missing name") {
 
 TEST_CASE("pkg_cfg::parse errors on identity missing version") {
   sol::state lua;
-  auto lua_val{ lua_eval("result = { spec = 'arm.gcc@', source = '/fake/r.lua' }",
-                         lua) };
+  auto lua_val{ lua_eval("result = { spec = 'arm.gcc@', source = '/fake/r.lua' }", lua) };
 
   CHECK_THROWS_WITH_AS(envy::pkg_cfg::parse(lua_val, fs::path("/fake")),
                        "Invalid spec identity format: arm.gcc@",
@@ -309,8 +304,7 @@ TEST_CASE("pkg_cfg::parse errors on identity missing @ sign") {
 
 TEST_CASE("pkg_cfg::parse errors on identity missing dot") {
   sol::state lua;
-  auto lua_val{ lua_eval("result = { spec = 'armgcc@v2', source = '/fake/r.lua' }",
-                         lua) };
+  auto lua_val{ lua_eval("result = { spec = 'armgcc@v2', source = '/fake/r.lua' }", lua) };
 
   CHECK_THROWS_WITH_AS(envy::pkg_cfg::parse(lua_val, fs::path("/fake")),
                        "Invalid spec identity format: armgcc@v2",
@@ -363,9 +357,8 @@ TEST_CASE("pkg_cfg::parse allows url without sha256 (permissive mode)") {
 
 TEST_CASE("pkg_cfg::parse errors on non-string source") {
   sol::state lua;
-  auto lua_val{
-    lua_eval("result = { spec = 'arm.gcc@v2', source = 123, sha256 = 'abc' }", lua)
-  };
+  auto lua_val{ lua_eval("result = { spec = 'arm.gcc@v2', source = 123, sha256 = 'abc' }",
+                         lua) };
 
   CHECK_THROWS_WITH_AS(envy::pkg_cfg::parse(lua_val, fs::path("/fake")),
                        "Spec 'source' field must be string or table",
