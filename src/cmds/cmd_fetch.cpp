@@ -7,6 +7,7 @@
 #include "CLI11.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -14,7 +15,7 @@ namespace envy {
 
 void cmd_fetch::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("fetch", "Download resource to local file") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("source", cfg_ptr->source, "Source URI (http/https/git/etc.)")
       ->required();
   sub->add_option("destination", cfg_ptr->destination, "Destination file path")

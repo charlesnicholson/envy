@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <memory>
 #include <sstream>
 #include <thread>
 
@@ -16,7 +17,7 @@ namespace envy {
 void cmd_cache_ensure_asset::register_cli(CLI::App &parent,
                                           std::function<void(cfg)> on_selected) {
   auto *sub{ parent.add_subcommand("ensure-asset", "Test asset cache entry") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity", cfg_ptr->identity, "Asset identity")->required();
   sub->add_option("platform", cfg_ptr->platform, "Platform (darwin/linux/windows)")
       ->required();
@@ -47,7 +48,7 @@ void cmd_cache_ensure_asset::register_cli(CLI::App &parent,
 void cmd_cache_ensure_recipe::register_cli(CLI::App &parent,
                                            std::function<void(cfg)> on_selected) {
   auto *sub{ parent.add_subcommand("ensure-recipe", "Test recipe cache entry") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity", cfg_ptr->identity, "Recipe identity")->required();
   sub->add_option("--test-id", cfg_ptr->test_id, "Test ID for barrier isolation");
   sub->add_option("--barrier-dir", cfg_ptr->barrier_dir, "Barrier directory");

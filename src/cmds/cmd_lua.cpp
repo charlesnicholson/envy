@@ -6,11 +6,13 @@
 #include "CLI11.hpp"
 #include "sol/sol.hpp"
 
+#include <memory>
+
 namespace envy {
 
 void cmd_lua::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("lua", "Execute Lua script") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("script", cfg_ptr->script_path, "Lua script file to execute")
       ->required()
       ->check(CLI::ExistingFile);

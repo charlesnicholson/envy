@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 
 namespace envy {
@@ -21,7 +22,7 @@ void cmd_product::register_cli(CLI::App &app, std::function<void(cfg)> on_select
   auto *sub{ app.add_subcommand(
       "product",
       "Query product value or list all products from manifest") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("product", cfg_ptr->product_name, "Product name (omit to list all)");
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
   sub->add_flag("--json", cfg_ptr->json, "Output as JSON (to stdout)");

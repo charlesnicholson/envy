@@ -11,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -53,7 +54,7 @@ std::string make_portable_path(fs::path const &path) {
 void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("init",
                                 "Initialize envy project with bootstrap scripts") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("project-dir", cfg_ptr->project_dir, "Project directory for manifest")
       ->required();
   sub->add_option("bin-dir", cfg_ptr->bin_dir, "Directory for bootstrap scripts")

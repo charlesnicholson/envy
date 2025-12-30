@@ -24,6 +24,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -35,7 +36,7 @@ namespace envy {
 
 void cmd_version::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("version", "Show version information") };
-  auto *cfg_ptr{ new cfg{} };  // Leaked intentionally; CLI::App owns callback lifetime
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_flag("--licenses", cfg_ptr->show_licenses, "Print all licenses");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
@@ -79,7 +80,9 @@ void print_licenses() {
   size_t const total_size{ strm.total_out };
   inflateEnd(&strm);
 
-  std::fwrite(decompressed.data(), 1, total_size, stdout);
+  if (std::fwrite(decompressed.data(), 1, total_size, stdout) != total_size) {
+    tui::error("Failed to write licenses to stdout");
+  }
 }
 
 }  // namespace

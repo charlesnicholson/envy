@@ -9,12 +9,14 @@
 
 #include "CLI11.hpp"
 
+#include <memory>
+
 namespace envy {
 
 void cmd_engine_functional_test::register_cli(CLI::App &app,
                                               std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("engine-test", "Test engine execution") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity", cfg_ptr->identity, "Recipe identity")->required();
   sub->add_option("recipe_path", cfg_ptr->recipe_path, "Recipe file path")
       ->required()

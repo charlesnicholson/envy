@@ -6,13 +6,14 @@
 #include "CLI11.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace envy {
 
 void cmd_extract::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("extract", "Extract archive to destination") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("archive", cfg_ptr->archive_path, "Archive file to extract")
       ->required()
       ->check(CLI::ExistingFile);

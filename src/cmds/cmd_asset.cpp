@@ -11,11 +11,13 @@
 
 #include "CLI11.hpp"
 
+#include <memory>
+
 namespace envy {
 
 void cmd_asset::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("asset", "Query and install package, print asset path") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity",
                   cfg_ptr->identity,
                   "Recipe identity (namespace.name@version)")
