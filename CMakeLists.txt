@@ -152,6 +152,7 @@ if(WIN32)
             bootstrap=src/envy-init/envy.bat
             manifest_template=src/envy-init/manifest_template.lua
             type_definitions=src/envy-init/envy.lua
+            luarc_template=src/envy-init/luarc_template.json
     )
 else()
     embed_resources(envy_embedded_resources
@@ -160,6 +161,7 @@ else()
             bootstrap=src/envy-init/envy
             manifest_template=src/envy-init/manifest_template.lua
             type_definitions=src/envy-init/envy.lua
+            luarc_template=src/envy-init/luarc_template.json
     )
 endif()
 

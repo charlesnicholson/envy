@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "@@LUA_VERSION@@",
+  "workspace.library": [
+    "@@TYPES_DIR@@"
+  ],
+  "diagnostics.globals": [
+    "envy", "IDENTITY", "PACKAGES", "DEPENDENCIES", "PRODUCTS",
+    "FETCH", "STAGE", "BUILD", "INSTALL", "CHECK"
+  ],
+  "completion.enable": true
+}
