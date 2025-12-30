@@ -30,7 +30,7 @@ class TestCheckInstallRuntime(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-check-install-work-"))
         self.envy_test = test_config.get_envy_executable()
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
-        self.recipe_dir = Path(__file__).parent.parent / "test_data" / "recipes"
+        self.recipe_dir = Path(__file__).parent.parent / "test_data" / "specs"
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -301,14 +301,14 @@ class TestCheckInstallRuntime(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
         # Verify no artifacts left in cache
-        asset_dir = self.cache_root / "assets" / "local.user_cleanup@v1"
+        asset_dir = self.cache_root / "packages" / "local.user_cleanup@v1"
         if asset_dir.exists():
-            # Should have no asset/ subdirectories
-            asset_subdirs = list(asset_dir.glob("*/asset"))
+            # Should have no pkg/ subdirectories
+            asset_subdirs = list(asset_dir.glob("*/pkg"))
             self.assertEqual(
                 len(asset_subdirs),
                 0,
-                "User-managed packages should not leave asset/ in cache",
+                "User-managed packages should not leave pkg/ in cache",
             )
 
     def test_user_managed_check_no_tmp_dir(self):

@@ -4,7 +4,7 @@ namespace envy {
 
 class engine;
 
-struct recipe;
-void run_install_phase(recipe *r, engine &eng);
+struct pkg;
+void run_install_phase(pkg *p, engine &eng);
 
 }  // namespace envy

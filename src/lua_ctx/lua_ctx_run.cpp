@@ -2,7 +2,7 @@
 
 #include "engine.h"
 #include "lua_shell.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "trace.h"
@@ -83,7 +83,7 @@ make_ctx_run(lua_ctx_common *ctx) {
     shell_env_t env{ shell_getenv() };
 
     resolved_shell shell{ shell_resolve_default(
-        ctx && ctx->recipe_ ? ctx->recipe_->default_shell_ptr : nullptr) };
+        ctx && ctx->pkg_ ? ctx->pkg_->default_shell_ptr : nullptr) };
 
     if (opts_table) {
       sol::table opts{ *opts_table };
@@ -118,7 +118,7 @@ make_ctx_run(lua_ctx_common *ctx) {
       if (sanitized_script.size() > 100) {
         sanitized_script = sanitized_script.substr(0, 97) + "...";
       }
-      ENVY_TRACE_LUA_CTX_RUN_START(ctx->recipe_->spec->identity,
+      ENVY_TRACE_LUA_CTX_RUN_START(ctx->pkg_->cfg->identity,
                                    sanitized_script,
                                    cwd->string());
     }
@@ -137,9 +137,9 @@ make_ctx_run(lua_ctx_common *ctx) {
 
     // Auto-manage TUI progress for ctx.run()
     std::optional<tui_actions::run_progress> progress;
-    if (ctx && ctx->recipe_ && ctx->recipe_->tui_section && ctx->engine_) {
-      progress.emplace(ctx->recipe_->tui_section,
-                       ctx->recipe_->spec->identity,
+    if (ctx && ctx->pkg_ && ctx->pkg_->tui_section && ctx->engine_) {
+      progress.emplace(ctx->pkg_->tui_section,
+                       ctx->pkg_->cfg->identity,
                        ctx->engine_->cache_root());
       progress->on_command_start(script_view);
     }
@@ -172,7 +172,7 @@ make_ctx_run(lua_ctx_common *ctx) {
                                 std::chrono::steady_clock::now() - start_time)
                                 .count() };
 
-    ENVY_TRACE_LUA_CTX_RUN_COMPLETE(ctx->recipe_->spec->identity,
+    ENVY_TRACE_LUA_CTX_RUN_COMPLETE(ctx->pkg_->cfg->identity,
                                     result.exit_code,
                                     static_cast<std::int64_t>(duration_ms));
 
@@ -182,7 +182,7 @@ make_ctx_run(lua_ctx_common *ctx) {
                                        result.signal,
                                        stdout_buffer,
                                        stderr_buffer,
-                                       ctx->recipe_->spec->identity) };
+                                       ctx->pkg_->cfg->identity) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }
@@ -193,7 +193,7 @@ make_ctx_run(lua_ctx_common *ctx) {
                                        std::nullopt,
                                        stdout_buffer,
                                        stderr_buffer,
-                                       ctx->recipe_->spec->identity) };
+                                       ctx->pkg_->cfg->identity) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }

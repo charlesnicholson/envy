@@ -81,6 +81,11 @@ std::string_view get_type_definitions() {
            embedded::kTypeDefinitionsSize };
 }
 
+std::string_view get_luarc_template() {
+  return { reinterpret_cast<char const *>(embedded::kLuarcTemplate),
+           embedded::kLuarcTemplateSize };
+}
+
 void replace_all(std::string &s, std::string_view from, std::string_view to) {
   size_t pos{ 0 };
   while ((pos = s.find(from, pos)) != std::string::npos) {
@@ -181,19 +186,9 @@ void write_luarc(fs::path const &project_dir, fs::path const &types_dir) {
     return;
   }
 
-  std::string const content{ R"({
-  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-  "runtime.version": ")" LUA_VERSION R"(",
-  "workspace.library": [
-    ")" + portable_types_dir +
-                             R"("
-  ],
-  "diagnostics.globals": [
-    "envy", "IDENTITY", "PACKAGES", "DEPENDENCIES", "PRODUCTS",
-    "FETCH", "STAGE", "BUILD", "INSTALL", "CHECK"
-  ]
-}
-)" };
+  std::string content{ get_luarc_template() };
+  replace_all(content, "@@LUA_VERSION@@", LUA_VERSION);
+  replace_all(content, "@@TYPES_DIR@@", portable_types_dir);
 
   write_file(luarc_path, content);
 

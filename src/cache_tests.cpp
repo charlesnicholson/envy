@@ -45,7 +45,7 @@ struct temp_cache_fixture {
 };
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "repeated mark_install_complete calls are safe") {
-  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   REQUIRE(result.lock != nullptr);
 
   // Write something to install_dir
@@ -91,9 +91,9 @@ TEST_CASE("scoped_entry_lock is unmovable") {
 TEST_CASE_FIXTURE(
     temp_cache_fixture,
     "ensure_asset returns lock for cold entry and publishes asset directory") {
-  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock != nullptr);
-  CHECK_FALSE(result.asset_path.empty());
+  CHECK_FALSE(result.pkg_path.empty());
   CHECK(std::filesystem::exists(result.lock->install_dir()));
   CHECK(std::filesystem::exists(result.lock->stage_dir()));
   CHECK(std::filesystem::exists(result.lock->fetch_dir()));
@@ -105,25 +105,25 @@ TEST_CASE_FIXTURE(
   result.lock.reset();
 
   CHECK(std::filesystem::exists(result.entry_path / "envy-complete"));
-  CHECK(std::filesystem::exists(result.asset_path / "sentinel.txt"));
+  CHECK(std::filesystem::exists(result.pkg_path / "sentinel.txt"));
   CHECK_FALSE(std::filesystem::exists(result.entry_path / "work"));
 }
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_asset fast path when marker present") {
-  auto entry_dir = temp_root / "assets" / "foo" / "darwin-arm64-blake3-deadbeef";
-  auto asset_dir = entry_dir / "asset";
+  auto entry_dir = temp_root / "packages" / "foo" / "darwin-arm64-blake3-deadbeef";
+  auto asset_dir = entry_dir / "pkg";
   std::filesystem::create_directories(asset_dir);
   std::ofstream{ asset_dir / "existing.txt" } << "cached";
   envy::platform::touch_file(entry_dir / "envy-complete");
 
-  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock == nullptr);
-  CHECK(result.asset_path == asset_dir);
-  CHECK(std::filesystem::exists(result.asset_path / "existing.txt"));
+  CHECK(result.pkg_path == asset_dir);
+  CHECK(std::filesystem::exists(result.pkg_path / "existing.txt"));
 }
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "mark_fetch_complete creates sentinel") {
-  auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+  auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   REQUIRE(result.lock != nullptr);
 
   CHECK_FALSE(result.lock->is_fetch_complete());
@@ -136,7 +136,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "mark_fetch_complete creates sentinel") {
 TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when marked complete") {
   // First acquisition: populate fetch/ and mark complete
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     auto fetch_file = result.lock->fetch_dir() / "payload.tar.gz";
@@ -146,7 +146,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when marked complete"
 
   // Second acquisition: verify fetch/ survived
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     CHECK(result.lock->is_fetch_complete());
@@ -162,7 +162,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when marked complete"
 TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when not marked complete") {
   // First acquisition: populate fetch/ but don't mark complete (simulates crash)
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     auto fetch_file = result.lock->fetch_dir() / "partial.tar.gz";
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "fetch_dir preserved when not marked compl
 
   // Second acquisition: verify fetch/ was preserved for per-file caching
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     CHECK_FALSE(result.lock->is_fetch_complete());
@@ -193,7 +193,7 @@ TEST_CASE_FIXTURE(
 
   // Acquire lock, don't mark complete, leave directories empty
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -215,7 +215,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "programmatic package with fetch_dir prese
 
   // First acquisition: populate fetch_dir but don't mark complete
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -245,7 +245,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 
   // Acquire lock, populate install_dir, but don't mark complete
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -271,7 +271,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 
   // Acquire lock, mark as user-managed, leave directories empty
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -294,7 +294,7 @@ TEST_CASE_FIXTURE(
 
   // Acquire lock, mark as user-managed, populate fetch_dir
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -321,7 +321,7 @@ TEST_CASE_FIXTURE(
 
   // Acquire lock, mark as user-managed, populate install_dir
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -346,7 +346,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 
   // Acquire lock, mark as user-managed, populate fetch/stage/install dirs
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
     entry_dir = result.entry_path;
 
@@ -371,11 +371,11 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
   std::filesystem::path lock_path;
 
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     // Capture lock path (not exposed via public API, but we can infer it)
-    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -395,10 +395,10 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
   std::filesystem::path lock_path;
 
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
-    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -418,11 +418,11 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
   std::filesystem::path lock_path;
 
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     entry_dir = result.entry_path;
-    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
 
     // Verify both exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));
@@ -461,12 +461,12 @@ TEST_CASE_FIXTURE(
   std::filesystem::path lock_path;
 
   {
-    auto result = cache->ensure_asset("foo", "darwin", "arm64", "deadbeef");
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
     entry_dir = result.entry_path;
-    asset_dir = result.asset_path;
-    lock_path = temp_root / "locks" / "assets.foo.darwin-arm64-blake3-deadbeef.lock";
+    asset_dir = result.pkg_path;
+    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
 
     // Verify entry_dir and lock file exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));
@@ -547,12 +547,13 @@ TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
 // Tests for ensure_envy()
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to cache") {
-  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+  std::string_view const types{ reinterpret_cast<char const *>(
+                                    envy::embedded::kTypeDefinitions),
                                 envy::embedded::kTypeDefinitionsSize };
 
-  auto const envy_dir{ cache->ensure_envy(ENVY_VERSION_STR,
-                                           envy::platform::get_exe_path(),
-                                           types) };
+  auto const envy_dir{
+    cache->ensure_envy(ENVY_VERSION_STR, envy::platform::get_exe_path(), types)
+  };
 
   CHECK(std::filesystem::exists(envy_dir));
 
@@ -566,7 +567,8 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to c
 }
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy is idempotent") {
-  std::string_view const types{ reinterpret_cast<char const *>(envy::embedded::kTypeDefinitions),
+  std::string_view const types{ reinterpret_cast<char const *>(
+                                    envy::embedded::kTypeDefinitions),
                                 envy::embedded::kTypeDefinitionsSize };
   auto const exe{ envy::platform::get_exe_path() };
 

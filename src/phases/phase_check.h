@@ -5,9 +5,9 @@
 namespace envy {
 
 class engine;
-struct recipe;
+struct pkg;
 
-void run_check_phase(recipe *r, engine &eng);
-bool recipe_has_check_verb(recipe *r, sol::state_view lua);
+void run_check_phase(pkg *p, engine &eng);
+bool pkg_has_check_verb(pkg *p, sol::state_view lua);
 
 }  // namespace envy

@@ -108,7 +108,7 @@ FETCH = {{
 
             # Verify fetch_dir has the 2 successful files (in asset cache, not recipe cache)
             # With hierarchical structure, find variant dirs under identity dir
-            identity_dir = shared_cache / "assets" / "local.fetch_partial@v1"
+            identity_dir = shared_cache / "packages" / "local.fetch_partial@v1"
             self.assertTrue(
                 identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
             )
@@ -225,7 +225,7 @@ FETCH = {{
 
             # Verify fetch_dir has the first 2 files cached (in asset cache, not recipe cache)
             # With hierarchical structure, find variant dirs under identity dir
-            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
             self.assertTrue(
                 identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
             )
@@ -306,7 +306,7 @@ FETCH = {{
             modified_recipe = shared_cache / "fetch_array.lua"
             modified_recipe.write_text(recipe_content)
 
-            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
             # Run 1: Let it create the structure but fail it
             result_setup = subprocess.run(
@@ -371,7 +371,7 @@ FETCH = {{
             )
 
             # Verify asset directory exists with installed files
-            asset_dir = variant_dirs[0] / "asset"
+            asset_dir = variant_dirs[0] / "pkg"
             self.assertTrue(
                 asset_dir.exists(), "Asset directory should exist after completion"
             )
@@ -411,7 +411,7 @@ FETCH = {{
             modified_recipe = shared_cache / "fetch_array.lua"
             modified_recipe.write_text(recipe_content)
 
-            identity_dir = shared_cache / "assets" / "local.fetch_array@v1"
+            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
             # Run once to establish cache structure, then fail it
             result_setup = subprocess.run(

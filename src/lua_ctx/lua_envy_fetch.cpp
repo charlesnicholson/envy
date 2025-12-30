@@ -3,13 +3,12 @@
 #include "fetch.h"
 #include "lua_phase_context.h"
 #include "phases/phase_fetch.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "sha256.h"
 #include "sol_util.h"
 #include "tui.h"
 #include "tui_actions.h"
 #include "uri.h"
-#include "util.h"
 
 #include <filesystem>
 #include <optional>
@@ -206,7 +205,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     std::unordered_set<std::string> used_basenames;
 
     phase_context const *ctx{ lua_phase_context_get(L) };
-    recipe *r{ ctx ? ctx->r : nullptr };
+    pkg *p{ ctx ? ctx->p : nullptr };
 
     for (auto const &item : items) {
       std::string basename{ uri_extract_filename(item.source) };
@@ -238,10 +237,10 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       };
 
       // Set up progress tracking if in phase context
-      if (items.size() == 1 && r && r->tui_section) {
+      if (items.size() == 1 && p && p->tui_section) {
         trackers.push_back(
-            std::make_unique<tui_actions::fetch_progress_tracker>(r->tui_section,
-                                                                  r->spec->identity,
+            std::make_unique<tui_actions::fetch_progress_tracker>(p->tui_section,
+                                                                  p->cfg->identity,
                                                                   item.source));
         std::visit([&](auto &rq) { rq.progress = std::ref(*trackers.back()); }, req);
       }
@@ -295,7 +294,9 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       throw std::runtime_error(
           "envy.commit_fetch: can only be called from FETCH phase with cache lock active");
     }
-    commit_files(parse_commit_fetch_args(arg), ctx->lock->tmp_dir(), ctx->lock->fetch_dir());
+    commit_files(parse_commit_fetch_args(arg),
+                 ctx->lock->tmp_dir(),
+                 ctx->lock->fetch_dir());
   };
 
   // envy.verify_hash(file_path, expected_sha256) - Verify file hash

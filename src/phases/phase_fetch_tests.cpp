@@ -109,29 +109,28 @@ TEST_CASE("url_to_fetch_request git with ref") {
 
 TEST_CASE("url_to_fetch_request git without ref throws") {
   CHECK_THROWS_WITH_AS(url_to_fetch_request("git://github.com/user/repo.git",
-                                             "/tmp/repo",
-                                             std::nullopt,
-                                             "test"),
+                                            "/tmp/repo",
+                                            std::nullopt,
+                                            "test"),
                        "Git URLs require 'ref' field in test",
                        std::runtime_error);
 }
 
 TEST_CASE("url_to_fetch_request git with empty ref throws") {
-  CHECK_THROWS_WITH_AS(url_to_fetch_request("git://github.com/user/repo.git",
-                                             "/tmp/repo",
-                                             "",
-                                             "test"),
-                       "Git URLs require 'ref' field in test",
-                       std::runtime_error);
+  CHECK_THROWS_WITH_AS(
+      url_to_fetch_request("git://github.com/user/repo.git", "/tmp/repo", "", "test"),
+      "Git URLs require 'ref' field in test",
+      std::runtime_error);
 }
 
 TEST_CASE("url_to_fetch_request unsupported scheme throws") {
-  CHECK_THROWS_WITH_AS(url_to_fetch_request("unsupported://example.com/file",
-                                             "/tmp/file",
-                                             std::nullopt,
-                                             "test context"),
-                       "Unsupported URL scheme in test context: unsupported://example.com/file",
-                       std::runtime_error);
+  CHECK_THROWS_WITH_AS(
+      url_to_fetch_request("unsupported://example.com/file",
+                           "/tmp/file",
+                           std::nullopt,
+                           "test context"),
+      "Unsupported URL scheme in test context: unsupported://example.com/file",
+      std::runtime_error);
 }
 
 }  // namespace envy

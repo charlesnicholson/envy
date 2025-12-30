@@ -43,8 +43,8 @@ class TestProducts(unittest.TestCase):
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_consumer_strong@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_consumer_strong.lua",
+    spec = "local.product_consumer_strong@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_consumer_strong.lua",
   }},
 }}
 """
@@ -53,8 +53,8 @@ PACKAGES = {{
         result = self.run_envy(["sync", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        provider_dir = self.cache_root / "assets" / "local.product_provider@v1"
-        consumer_dir = self.cache_root / "assets" / "local.product_consumer_strong@v1"
+        provider_dir = self.cache_root / "packages" / "local.product_provider@v1"
+        consumer_dir = self.cache_root / "packages" / "local.product_consumer_strong@v1"
         self.assertTrue(provider_dir.exists(), f"missing {provider_dir}")
         self.assertTrue(consumer_dir.exists(), f"missing {consumer_dir}")
 
@@ -63,8 +63,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_consumer_weak.lua",
+    spec = "local.product_consumer_weak@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_consumer_weak.lua",
   }},
 }}
 """
@@ -73,7 +73,7 @@ PACKAGES = {{
         result = self.run_envy(["sync", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        provider_dir = self.cache_root / "assets" / "local.product_provider@v1"
+        provider_dir = self.cache_root / "packages" / "local.product_provider@v1"
         self.assertTrue(provider_dir.exists(), f"missing {provider_dir}")
 
     def test_missing_product_dependency_errors(self):
@@ -81,8 +81,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_consumer_missing@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_consumer_missing.lua",
+    spec = "local.product_consumer_missing@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_consumer_missing.lua",
   }},
 }}
 """
@@ -99,12 +99,12 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+    spec = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
   }},
   {{
-    recipe = "local.product_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider_b.lua",
+    spec = "local.product_provider_b@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider_b.lua",
   }},
 }}
 """
@@ -119,8 +119,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+    spec = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
   }},
 }}
 """
@@ -137,8 +137,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_programmatic@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider_programmatic.lua",
+    spec = "local.product_programmatic@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider_programmatic.lua",
   }},
 }}
 """
@@ -155,8 +155,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_function@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider_function.lua",
+    spec = "local.product_function@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider_function.lua",
     options = {{ version = "3.14" }},
   }},
 }}
@@ -193,7 +193,7 @@ end
         manifest = self.manifest(
             f"""
 PACKAGES = {{{{
-  recipe = "local.bad_provider@v1",
+  spec = "local.bad_provider@v1",
   source = "{self.lua_path(provider_path)}"
 }}}}
 """
@@ -221,7 +221,7 @@ end
         manifest = self.manifest(
             f"""
 PACKAGES = {{{{
-  recipe = "local.bad_provider@v1",
+  spec = "local.bad_provider@v1",
   source = "{self.lua_path(provider_path)}"
 }}}}
 """
@@ -267,7 +267,7 @@ IDENTITY = "local.consumer_strong_only@v1"
 DEPENDENCIES = {{
   {{
     product = "tool",
-    recipe = "local.provider_a@v1",
+    spec = "local.provider_a@v1",
     source = "{self.lua_path(provider_a_path)}",
   }},
 }}
@@ -290,11 +290,11 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.provider_b@v1",
+    spec = "local.provider_b@v1",
     source = "{self.lua_path(provider_b_path)}"
   }},
   {{
-    recipe = "local.consumer_strong_only@v1",
+    spec = "local.consumer_strong_only@v1",
     source = "{self.lua_path(consumer_path)}"
   }},
 }}
@@ -305,7 +305,7 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, result.stderr)
 
         # Verify consumer used provider_a (from strong dep), not provider_b (from registry)
-        provider_a_dir = self.cache_root / "assets" / "local.provider_a@v1"
+        provider_a_dir = self.cache_root / "packages" / "local.provider_a@v1"
         self.assertTrue(provider_a_dir.exists(), "provider_a should be fetched")
 
     def test_product_semantic_cycle_detected(self):
@@ -314,8 +314,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.cycle_a@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_cycle_a.lua",
+    spec = "local.cycle_a@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_cycle_a.lua",
   }},
 }}
 """
@@ -335,12 +335,12 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+    spec = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
   }},
   {{
-    recipe = "local.ref_only_consumer@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_ref_only_consumer.lua",
+    spec = "local.ref_only_consumer@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_ref_only_consumer.lua",
   }},
 }}
 """
@@ -350,8 +350,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, result.stderr)
 
         # Both provider and consumer should exist
-        provider_dir = self.cache_root / "assets" / "local.product_provider@v1"
-        consumer_dir = self.cache_root / "assets" / "local.ref_only_consumer@v1"
+        provider_dir = self.cache_root / "packages" / "local.product_provider@v1"
+        consumer_dir = self.cache_root / "packages" / "local.ref_only_consumer@v1"
         self.assertTrue(provider_dir.exists(), f"missing {provider_dir}")
         self.assertTrue(consumer_dir.exists(), f"missing {consumer_dir}")
 
@@ -361,8 +361,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ref_only_consumer@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_ref_only_consumer.lua",
+    spec = "local.ref_only_consumer@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_ref_only_consumer.lua",
   }},
 }}
 """
@@ -396,11 +396,11 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+    spec = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
   }},
   {{
-    recipe = "local.list_provider@v1",
+    spec = "local.list_provider@v1",
     source = "{self.lua_path(list_provider_path)}",
   }},
 }}
@@ -422,8 +422,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider.lua",
+    spec = "local.product_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
   }},
 }}
 """
@@ -453,8 +453,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_programmatic@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_provider_programmatic.lua",
+    spec = "local.product_programmatic@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_provider_programmatic.lua",
   }},
 }}
 """
@@ -468,7 +468,7 @@ PACKAGES = {{
         assert tool_product
         self.assertIsNotNone(tool_product)
         self.assertTrue(tool_product["user_managed"])
-        self.assertEqual(tool_product["asset_path"], "")
+        self.assertEqual(tool_product["pkg_path"], "")
 
     def test_product_listing_empty(self):
         """Product listing with no products should indicate empty result."""
@@ -489,7 +489,7 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.no_products@v1",
+    spec = "local.no_products@v1",
     source = "{self.lua_path(no_products_path)}"
   }},
 }}
@@ -526,7 +526,7 @@ PRODUCTS = { test_query_tool = "bin/query_tool" }
         manifest = self.manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.test_product_query_provider@v1", source = "{self.lua_path(provider_path)}" }}
+    {{ spec = "local.test_product_query_provider@v1", source = "{self.lua_path(provider_path)}" }}
 }}
 """
         )

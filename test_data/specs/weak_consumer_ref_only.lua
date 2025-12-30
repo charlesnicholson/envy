@@ -1,0 +1,15 @@
+-- Reference-only dependency that is satisfied by an existing provider
+IDENTITY = "local.weak_consumer_ref_only@v1"
+DEPENDENCIES = {
+  { spec = "local.weak_provider@v1", source = "weak_provider.lua" },
+  { spec = "local.weak_provider" },
+}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic install: no cache artifacts
+end
+

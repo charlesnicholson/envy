@@ -22,10 +22,10 @@ This script:
 3. Generates all supported archive formats
 
 **Important**: After regenerating archives, you must update the SHA256 hashes in all recipe files that reference `test.tar.gz`:
-- `test_data/recipes/stage_default.lua`
-- `test_data/recipes/stage_declarative_strip.lua`
-- `test_data/recipes/stage_imperative.lua`
-- `test_data/recipes/stage_extract_single.lua`
+- `test_data/specs/stage_default.lua`
+- `test_data/specs/stage_declarative_strip.lua`
+- `test_data/specs/stage_imperative.lua`
+- `test_data/specs/stage_extract_single.lua`
 
 To get the new SHA256 hash:
 ```bash

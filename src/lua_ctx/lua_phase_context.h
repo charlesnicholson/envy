@@ -12,16 +12,16 @@ namespace envy {
 
 // Forward declarations
 class engine;
-struct recipe;
+struct pkg;
 
 // Phase execution context - all state available to envy.* functions during phase
 // execution. Stored in Lua registry, accessed via sol::this_state.
 struct phase_context {
   engine *eng;
-  recipe *r;
+  pkg *p;
   std::optional<std::filesystem::path> run_dir;  // default cwd for envy.run()
 
-  // May not be the same as r->lock: "custom fetch" runs with child package's lock!
+  // May not be the same as p->lock: "custom fetch" runs with child package's lock!
   cache::scoped_entry_lock const *lock;
 };
 
@@ -34,7 +34,7 @@ phase_context const *lua_phase_context_get(sol::this_state ts);
 class phase_context_guard : unmovable {
  public:
   phase_context_guard(engine *eng,
-                      recipe *r,
+                      pkg *p,
                       std::optional<std::filesystem::path> run_dir = std::nullopt,
                       cache::scoped_entry_lock const *lock = nullptr);
   ~phase_context_guard();

@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "manifest.h"
-#include "recipe_spec.h"
+#include "pkg_cfg.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -18,7 +18,7 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identities",
                   cfg_ptr->identities,
-                  "Recipe identities to sync (sync all if omitted)");
+                  "Spec identities to sync (sync all if omitted)");
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
@@ -33,7 +33,7 @@ void cmd_sync::execute() {
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
-  std::vector<recipe_spec const *> targets;
+  std::vector<pkg_cfg const *> targets;
 
   if (cfg_.identities.empty()) {  // Sync entire manifest
     for (auto const *pkg : m->packages) { targets.push_back(pkg); }
@@ -67,9 +67,9 @@ void cmd_sync::execute() {
   size_t failed{ 0 };
 
   for (auto const &[key, outcome] : result) {
-    if (outcome.type == recipe_type::UNKNOWN) {
+    if (outcome.type == pkg_type::UNKNOWN) {
       ++failed;
-    } else if (outcome.type == recipe_type::USER_MANAGED) {
+    } else if (outcome.type == pkg_type::USER_MANAGED) {
       ++user_managed;
     } else {
       ++completed;

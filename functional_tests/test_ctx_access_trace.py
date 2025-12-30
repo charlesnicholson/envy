@@ -29,7 +29,7 @@ class TestCtxAccessTrace(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.trace_ctx_access@v1",
-                "test_data/recipes/trace_ctx_access.lua",
+                "test_data/specs/trace_ctx_access.lua",
             ],
             cwd=self.project_root,
             capture_output=True,

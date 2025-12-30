@@ -1,12 +1,12 @@
 #if defined(_WIN32)
-#include "shell.h"
-#include "doctest.h"
 #include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "doctest.h"
+#include "shell.h"
 
 namespace fs = std::filesystem;
 
@@ -16,7 +16,8 @@ static std::vector<std::string> run_collect(
     std::optional<fs::path> cwd = std::nullopt,
     envy::shell_env_t env = envy::shell_getenv()) {
   std::vector<std::string> lines;
-  envy::shell_run_cfg inv{ .on_output_line = [&](std::string_view line) { lines.emplace_back(line); },
+  envy::shell_run_cfg inv{ .on_output_line =
+                               [&](std::string_view line) { lines.emplace_back(line); },
                            .cwd = std::move(cwd),
                            .env = std::move(env),
                            .shell = shell };
@@ -77,7 +78,13 @@ TEST_CASE("shell_run supports cmd shell option") {
 TEST_CASE("shell_run respects working directory (powershell)") {
   auto tmp_dir{ fs::temp_directory_path() / "envy-shell-test" };
   fs::create_directories(tmp_dir);
-  struct dir_cleanup { fs::path path; ~dir_cleanup(){ std::error_code ec; fs::remove_all(path, ec);} } cleanup{ tmp_dir };
+  struct dir_cleanup {
+    fs::path path;
+    ~dir_cleanup() {
+      std::error_code ec;
+      fs::remove_all(path, ec);
+    }
+  } cleanup{ tmp_dir };
   auto lines{ run_collect("Get-Location | Select-Object -ExpandProperty Path",
                           envy::shell_choice::powershell,
                           tmp_dir) };
@@ -106,4 +113,4 @@ TEST_CASE("shell_run handles callback exceptions (powershell)") {
   CHECK_THROWS_AS(envy::shell_run("Write-Output 'hi'", inv), std::runtime_error);
 }
 
-#endif // _WIN32
+#endif  // _WIN32

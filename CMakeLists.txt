@@ -152,6 +152,7 @@ if(WIN32)
             bootstrap=src/envy-init/envy.bat
             manifest_template=src/envy-init/manifest_template.lua
             type_definitions=src/envy-init/envy.lua
+            luarc_template=src/envy-init/luarc_template.json
     )
 else()
     embed_resources(envy_embedded_resources
@@ -160,6 +161,7 @@ else()
             bootstrap=src/envy-init/envy
             manifest_template=src/envy-init/manifest_template.lua
             type_definitions=src/envy-init/envy.lua
+            luarc_template=src/envy-init/luarc_template.json
     )
 endif()
 
@@ -218,8 +220,8 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_version.cpp
     src/engine.cpp
-    src/recipe_phase.cpp
-    src/recipe_key.cpp
+    src/pkg_phase.cpp
+    src/pkg_key.cpp
     src/lua_ctx/lua_ctx_bindings.cpp
     src/lua_ctx/lua_ctx_asset.cpp
     src/lua_ctx/lua_ctx_commit_fetch.cpp
@@ -245,7 +247,7 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_deploy.cpp
     src/phases/phase_fetch.cpp
     src/phases/phase_install.cpp
-    src/phases/phase_recipe_fetch.cpp
+    src/phases/phase_spec_fetch.cpp
     src/phases/phase_stage.cpp
     src/extract.cpp
     src/aws_util.cpp
@@ -256,7 +258,7 @@ set(ENVY_BASE_SOURCES
     src/lua_envy.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
-    src/recipe_spec.cpp
+    src/pkg_cfg.cpp
     $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
@@ -281,7 +283,7 @@ set(ENVY_COMMON_SOURCES ${ENVY_BASE_SOURCES} src/main.cpp)
 set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/cmds/cmd_cache_functional_test.cpp
     src/cmds/cmd_engine_functional_test.cpp
-    src/recipe_phase.cpp
+    src/pkg_phase.cpp
     src/test_support.cpp
 )
 
@@ -420,7 +422,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cli_tests.cpp
     src/cmds/cmd_tests.cpp
     src/phases/phase_check_tests.cpp
-    src/phases/phase_recipe_fetch_tests.cpp
+    src/phases/phase_spec_fetch_tests.cpp
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
@@ -435,9 +437,9 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_error_formatter_tests.cpp
     src/lua_shell_tests.cpp
     src/manifest_tests.cpp
-    src/recipe_spec_tests.cpp
-    src/recipe_spec_custom_source_tests.cpp
-    src/recipe_key_tests.cpp
+    src/pkg_cfg_tests.cpp
+    src/pkg_cfg_custom_source_tests.cpp
+    src/pkg_key_tests.cpp
     src/lua_ctx/lua_ctx_bindings_tests.cpp
     src/lua_ctx/lua_ctx_copy_tests.cpp
     src/lua_ctx/lua_ctx_fetch_tests.cpp

@@ -64,8 +64,8 @@ class TestSyncCommand(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -76,8 +76,8 @@ PACKAGES = {{
         self.assertIn("sync complete", result.stderr.lower())
 
         # Verify both packages were installed
-        build_dep_path = self.cache_root / "assets" / "local.build_dependency@v1"
-        simple_path = self.cache_root / "assets" / "local.simple@v1"
+        build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
+        simple_path = self.cache_root / "packages" / "local.simple@v1"
         self.assertTrue(build_dep_path.exists(), f"Expected {build_dep_path} to exist")
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
 
@@ -86,8 +86,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -97,8 +97,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify only simple was installed
-        simple_path = self.cache_root / "assets" / "local.simple@v1"
-        build_dep_path = self.cache_root / "assets" / "local.build_dependency@v1"
+        simple_path = self.cache_root / "packages" / "local.simple@v1"
+        build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
         # build_dependency should NOT exist (not a dependency of simple, not requested)
         self.assertFalse(
@@ -110,8 +110,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -124,8 +124,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify both were installed
-        simple_path = self.cache_root / "assets" / "local.simple@v1"
-        build_dep_path = self.cache_root / "assets" / "local.build_dependency@v1"
+        simple_path = self.cache_root / "packages" / "local.simple@v1"
+        build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
         self.assertTrue(build_dep_path.exists(), f"Expected {build_dep_path} to exist")
 
@@ -134,7 +134,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -150,7 +150,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -163,7 +163,7 @@ PACKAGES = {{
         self.assertIn("not found in manifest", result.stderr.lower())
 
         # Verify nothing was installed (error before execution)
-        simple_path = self.cache_root / "assets" / "local.simple@v1"
+        simple_path = self.cache_root / "packages" / "local.simple@v1"
         self.assertFalse(simple_path.exists(), f"Expected nothing installed on error")
 
     def test_sync_second_run_is_noop(self):
@@ -171,7 +171,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -230,7 +230,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -247,7 +247,7 @@ PACKAGES = {{
             manifest = self.create_manifest(
                 f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
             )
@@ -268,7 +268,7 @@ PACKAGES = {{
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
             # Verify package installed to custom cache
-            simple_path = custom_cache / "assets" / "local.simple@v1"
+            simple_path = custom_cache / "packages" / "local.simple@v1"
             self.assertTrue(
                 simple_path.exists(), f"Expected package in custom cache: {simple_path}"
             )
@@ -290,7 +290,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.diamond_c@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_c.lua" }},
+    {{ spec = "local.diamond_c@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_c.lua" }},
 }}
 """
         )

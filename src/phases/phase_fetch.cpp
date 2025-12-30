@@ -6,7 +6,7 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "sha256.h"
 #include "sol_util.h"
 #include "trace.h"
@@ -102,20 +102,20 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
                             cache::scoped_entry_lock *lock,
                             std::string const &identity,
                             engine &eng,
-                            recipe *r) {
+                            pkg *p) {
   tui::debug("phase fetch: executing fetch function");
 
   std::filesystem::path const tmp_dir{ lock->tmp_dir() };
 
   // Set up Lua registry context for envy.* functions (run_dir = tmp_dir, lock for
   // commit_fetch)
-  phase_context_guard ctx_guard{ &eng, r, tmp_dir, lock };
+  phase_context_guard ctx_guard{ &eng, p, tmp_dir, lock };
 
   sol::state_view lua{ fetch_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result result{ call_lua_function_with_enriched_errors(
-      r,
+      p,
       "FETCH",
       [&]() { return fetch_func(tmp_dir.string(), opts); }) };
 
@@ -138,7 +138,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
       auto const start{ std::chrono::steady_clock::now() };
 
       ENVY_TRACE_EXECUTE_DOWNLOADS_START(identity, tid, to_download.size());
-      execute_downloads(fetch_specs, to_download, identity, r->tui_section);
+      execute_downloads(fetch_specs, to_download, identity, p->tui_section);
 
       auto const duration{ std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::steady_clock::now() - start)
@@ -418,7 +418,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
 bool run_declarative_fetch(sol::object const &fetch_obj,
                            cache::scoped_entry_lock *lock,
                            std::string const &identity,
-                           recipe *r) {
+                           pkg *p) {
   tui::debug("phase fetch: executing declarative fetch");
 
   // Ensure stage_dir exists (needed for git repos that clone directly there)
@@ -438,7 +438,7 @@ bool run_declarative_fetch(sol::object const &fetch_obj,
   execute_downloads(fetch_specs,
                     determine_downloads_needed(fetch_specs),
                     identity,
-                    r->tui_section);
+                    p->tui_section);
   tui::debug("[%s] finished execute_downloads (thread %zu)", identity.c_str(), tid);
 
   // Check if git repos - if so, don't mark fetch complete (git clones are not cacheable)
@@ -460,12 +460,12 @@ bool run_declarative_fetch(sol::object const &fetch_obj,
 
 }  // namespace
 
-void run_fetch_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::asset_fetch,
+void run_fetch_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_fetch,
                                        std::chrono::steady_clock::now() };
 
-  cache::scoped_entry_lock *lock = r->lock.get();
+  cache::scoped_entry_lock *lock = p->lock.get();
   if (!lock) {
     tui::debug("phase fetch: no lock (cache hit), skipping");
     return;
@@ -476,9 +476,9 @@ void run_fetch_phase(recipe *r, engine &eng) {
     return;
   }
 
-  std::string const &identity{ r->spec->identity };
+  std::string const &identity{ p->cfg->identity };
 
-  sol::state_view lua_view{ *r->lua };
+  sol::state_view lua_view{ *p->lua };
   sol::object fetch_obj{ lua_view["FETCH"] };
 
   bool should_mark_complete{ true };
@@ -491,9 +491,9 @@ void run_fetch_phase(recipe *r, engine &eng) {
                                                   lock,
                                                   identity,
                                                   eng,
-                                                  r);
+                                                  p);
   } else if (fetch_obj.is<std::string>() || fetch_obj.is<sol::table>()) {
-    should_mark_complete = run_declarative_fetch(fetch_obj, lock, identity, r);
+    should_mark_complete = run_declarative_fetch(fetch_obj, lock, identity, p);
   } else {
     throw std::runtime_error("Fetch field must be nil, string, table, or function in " +
                              identity);

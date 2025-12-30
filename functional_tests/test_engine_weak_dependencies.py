@@ -44,7 +44,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_weak_fallback_used_when_no_match(self):
         result = self.run_engine(
             "local.weak_consumer_fallback@v1",
-            "test_data/recipes/weak_consumer_fallback.lua",
+            "test_data/specs/weak_consumer_fallback.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -55,7 +55,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_weak_prefers_existing_match(self):
         result = self.run_engine(
             "local.weak_consumer_existing@v1",
-            "test_data/recipes/weak_consumer_existing.lua",
+            "test_data/specs/weak_consumer_existing.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -66,7 +66,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_reference_only_resolves_to_existing_recipe(self):
         result = self.run_engine(
             "local.weak_consumer_ref_only@v1",
-            "test_data/recipes/weak_consumer_ref_only.lua",
+            "test_data/specs/weak_consumer_ref_only.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -76,7 +76,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_ambiguity_reports_all_candidates(self):
         result = self.run_engine(
             "local.weak_consumer_ambiguous@v1",
-            "test_data/recipes/weak_consumer_ambiguous.lua",
+            "test_data/specs/weak_consumer_ambiguous.lua",
         )
         self.assertNotEqual(result.returncode, 0, "Ambiguity should fail resolution")
         self.assertIn("ambiguous", result.stderr.lower())
@@ -86,7 +86,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_missing_reference_reports_progress_error(self):
         result = self.run_engine(
             "local.weak_missing_ref@v1",
-            "test_data/recipes/weak_missing_ref.lua",
+            "test_data/specs/weak_missing_ref.lua",
         )
         self.assertNotEqual(result.returncode, 0, "Missing reference should fail")
         self.assertIn("never_provided", result.stderr)
@@ -95,7 +95,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_cascading_weak_resolution(self):
         result = self.run_engine(
             "local.weak_chain_root@v1",
-            "test_data/recipes/weak_chain_root.lua",
+            "test_data/specs/weak_chain_root.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -106,7 +106,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_progress_with_flat_unresolved_count(self):
         result = self.run_engine(
             "local.weak_progress_flat_root@v1",
-            "test_data/recipes/weak_progress_flat_root.lua",
+            "test_data/specs/weak_progress_flat_root.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -118,7 +118,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_nested_weak_fetch_dep_uses_fallback(self):
         result = self.run_engine(
             "local.weak_custom_fetch_root@v1",
-            "test_data/recipes/weak_custom_fetch_root.lua",
+            "test_data/specs/weak_custom_fetch_root.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -131,7 +131,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def test_nested_weak_fetch_dep_prefers_existing_helper(self):
         result = self.run_engine(
             "local.weak_custom_fetch_root_with_helper@v1",
-            "test_data/recipes/weak_custom_fetch_root_with_helper.lua",
+            "test_data/specs/weak_custom_fetch_root_with_helper.lua",
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -145,7 +145,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
         """Weak reference resolution must detect cycles introduced after resolution."""
         result = self.run_engine(
             "local.weak_cycle_root@v1",
-            "test_data/recipes/weak_cycle_root.lua",
+            "test_data/specs/weak_cycle_root.lua",
         )
         self.assertNotEqual(result.returncode, 0, "Expected cycle to cause failure")
         self.assertIn("cycle", result.stderr.lower())

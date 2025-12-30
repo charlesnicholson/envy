@@ -4,8 +4,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <optional>
-#include <stdexcept>
 #include <string>
 
 TEST_CASE("fetch rejects empty sources") {

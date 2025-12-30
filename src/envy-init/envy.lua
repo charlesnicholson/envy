@@ -229,19 +229,19 @@ ENVY_SHELL = {}
 ---@field inline? string[] Command template array (use {} for script placeholder)
 
 --------------------------------------------------------------------------------
--- Recipe Globals
+-- Spec Globals
 --------------------------------------------------------------------------------
 
----Recipe identity in "namespace.name@version" format
+---Spec identity in "namespace.name@version" format
 ---@type string
 IDENTITY = ""
 
----Recipe dependencies array
----@alias envy.dependency { recipe: string, source?: string, needed_by?: "fetch"|"stage"|"build"|"install"|"check", product?: string, weak?: boolean, options?: table }
+---Spec dependencies array
+---@alias envy.dependency { spec: string, source?: string, needed_by?: "fetch"|"stage"|"build"|"install"|"check", product?: string, weak?: boolean, options?: table }
 ---@type envy.dependency[]
 DEPENDENCIES = {}
 
----Recipe products - paths relative to install_dir, or function returning same
+---Spec products - paths relative to install_dir, or function returning same
 ---@type table<string, string>|fun(options: table): table<string, string>
 PRODUCTS = {}
 
@@ -278,7 +278,7 @@ CHECK = nil
 -- Manifest Globals
 --------------------------------------------------------------------------------
 
----@alias envy.package_spec string|{ recipe: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean }
+---@alias envy.package_spec string|{ spec: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean }
 
 ---Manifest packages array
 ---@type envy.package_spec[]

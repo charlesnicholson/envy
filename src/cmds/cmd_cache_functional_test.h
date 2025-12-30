@@ -15,7 +15,7 @@ struct cache_test_result {
   bool locked{ false };
   bool fast_path{ false };
   std::filesystem::path entry_path;
-  std::filesystem::path asset_path;
+  std::filesystem::path pkg_path;
   std::filesystem::path install_path;
   std::filesystem::path fetch_path;
   std::filesystem::path stage_path;

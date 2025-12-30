@@ -4,9 +4,9 @@
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
 #include "product_util.h"
-#include "recipe.h"
-#include "recipe_spec.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -44,9 +44,9 @@ void print_products_json(std::vector<product_info> const &products) {
     oss << "\n  {";
     auto const type_str{ [&]() {
       switch (products[i].type) {
-        case recipe_type::CACHE_MANAGED: return "cache-managed";
-        case recipe_type::USER_MANAGED: return "user-managed";
-        case recipe_type::UNKNOWN: return "unknown";
+        case pkg_type::CACHE_MANAGED: return "cache-managed";
+        case pkg_type::USER_MANAGED: return "user-managed";
+        case pkg_type::UNKNOWN: return "unknown";
       }
       return "unknown";
     }() };
@@ -56,11 +56,10 @@ void print_products_json(std::vector<product_info> const &products) {
     oss << "\n    \"provider\": \"" << products[i].provider_canonical << "\",";
     oss << "\n    \"type\": \"" << type_str << "\",";
     oss << "\n    \"user_managed\": "
-        << (products[i].type == recipe_type::USER_MANAGED ? "true" : "false") << ",";
-    oss << "\n    \"asset_path\": \""
-        << (products[i].type == recipe_type::USER_MANAGED
-                ? ""
-                : products[i].asset_path.generic_string())
+        << (products[i].type == pkg_type::USER_MANAGED ? "true" : "false") << ",";
+    oss << "\n    \"pkg_path\": \""
+        << (products[i].type == pkg_type::USER_MANAGED ? ""
+                                                       : products[i].pkg_path.generic_string())
         << "\"";
     oss << "\n  }";
   }
@@ -88,9 +87,8 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
   // Print aligned rows
   for (auto const &p : products) {
-    std::string const user_managed_marker{ p.type == recipe_type::USER_MANAGED
-                                               ? " (user-managed)"
-                                               : "" };
+    std::string const user_managed_marker{ p.type == pkg_type::USER_MANAGED ? " (user-managed)"
+                                                                            : "" };
     std::ostringstream oss;
     oss << std::left << std::setw(max_product) << p.product_name << "  "
         << std::setw(max_value) << p.value << "  " << p.provider_canonical
@@ -106,7 +104,7 @@ void cmd_product::execute() {
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
   engine eng{ *c, m->get_default_shell(nullptr) };
 
-  std::vector<recipe_spec const *> roots;
+  std::vector<pkg_cfg const *> roots;
   roots.reserve(m->packages.size());
   for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
@@ -122,14 +120,14 @@ void cmd_product::execute() {
     return;
   }
 
-  recipe *provider{ eng.find_product_provider(cfg_.product_name) };
+  pkg *provider{ eng.find_product_provider(cfg_.product_name) };
   if (!provider) {
     throw std::runtime_error("product: '" + cfg_.product_name +
                              "' has no provider in resolved dependency graph");
   }
 
   eng.extend_dependencies_to_completion(provider);
-  eng.ensure_recipe_at_phase(provider->key, recipe_phase::completion);
+  eng.ensure_pkg_at_phase(provider->key, pkg_phase::completion);
 
   std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
   tui::print_stdout("%s\n", rendered_value.c_str());

@@ -14,7 +14,7 @@ namespace envy {
 
 class engine;
 struct manifest;
-struct recipe;
+struct pkg;
 
 // Common context fields that all phase contexts must provide.
 // Phase-specific contexts should embed this as their first member.
@@ -22,13 +22,13 @@ struct lua_ctx_common {
   std::filesystem::path fetch_dir;
   std::filesystem::path run_dir;  // ctx.run() (phase-specific: tmp_dir, stage_dir, etc.)
   engine *engine_;
-  recipe *recipe_;
+  pkg *pkg_;
   std::function<void(std::string_view)> on_output_line;
   std::function<void(std::string_view)> on_command_start;
 };
 
 // Fetch-phase-specific context (extends lua_ctx_common).
-// Used by both recipe_fetch and asset_fetch phases.
+// Used by both spec_fetch and pkg_fetch phases.
 struct fetch_phase_ctx : lua_ctx_common {
   std::filesystem::path stage_dir;  // Git repos bypass tmp, go directly here
   std::unordered_set<std::string> used_basenames;  // Collision detection for ctx.fetch()
@@ -81,19 +81,19 @@ std::function<void(sol::object)> make_ctx_commit_fetch(fetch_phase_ctx *ctx);
 
 // Register fetch-phase bindings (ctx.fetch + ctx.commit_fetch)
 // Requires fetch_phase_ctx* as context (extends lua_ctx_common)
-// Used by both recipe_fetch and asset_fetch phases
+// Used by both spec_fetch and pkg_fetch phases
 void lua_ctx_bindings_register_fetch_phase(sol::table &ctx_table,
                                            fetch_phase_ctx *context);
 
 // Build complete fetch phase context table with identity, tmp_dir, and all bindings
 // Returns a Sol2 table ready for use in fetch functions
-// Used by both recipe_fetch and asset_fetch phases
+// Used by both spec_fetch and pkg_fetch phases
 sol::table build_fetch_phase_ctx_table(sol::state_view lua,
                                        std::string const &identity,
                                        fetch_phase_ctx *ctx);
 
-// Check if target_identity is a declared dependency of current recipe
+// Check if target_identity is a declared dependency of current package
 // Used for ctx.asset() validation. Exposed for testing.
-bool is_declared_dependency(recipe *r, std::string const &target_identity);
+bool is_declared_dependency(pkg *p, std::string const &target_identity);
 
 }  // namespace envy

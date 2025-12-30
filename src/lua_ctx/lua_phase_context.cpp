@@ -1,6 +1,6 @@
 #include "lua_phase_context.h"
 
-#include "recipe.h"
+#include "pkg.h"
 
 extern "C" {
 #include "lua.h"
@@ -22,11 +22,11 @@ phase_context const *lua_phase_context_get(sol::this_state ts) {
 }
 
 phase_context_guard::phase_context_guard(engine *eng,
-                                         recipe *r,
+                                         pkg *p,
                                          std::optional<std::filesystem::path> run_dir,
                                          cache::scoped_entry_lock const *lock)
-    : lua_state_{ r ? r->lua->lua_state() : nullptr },
-      ctx_{ eng, r, std::move(run_dir), lock } {
+    : lua_state_{ p ? p->lua->lua_state() : nullptr },
+      ctx_{ eng, p, std::move(run_dir), lock } {
   if (!lua_state_) { return; }
 
   sol::state_view lua{ lua_state_ };

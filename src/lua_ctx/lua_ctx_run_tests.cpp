@@ -1,8 +1,8 @@
 #include "engine.h"
 #include "lua_ctx_bindings.h"
 #include "lua_envy.h"
-#include "recipe.h"
-#include "recipe_spec.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
 #include "sol_util.h"
 
 #include "doctest.h"
@@ -21,8 +21,8 @@ constexpr char const *kPythonCmd = "python3";
 #endif
 
 struct ctx_run_fixture {
-  envy::recipe_spec *spec{ nullptr };
-  std::unique_ptr<envy::recipe> recipe_ptr;
+  envy::pkg_cfg *cfg{ nullptr };
+  std::unique_ptr<envy::pkg> pkg_ptr;
   envy::lua_ctx_common ctx{};
   envy::sol_state_ptr lua;
   std::filesystem::path tmp_dir;
@@ -32,31 +32,31 @@ struct ctx_run_fixture {
     std::filesystem::remove_all(tmp_dir);
     std::filesystem::create_directories(tmp_dir);
 
-    spec = envy::recipe_spec::pool()->emplace("test.run@v1",
-                                              envy::recipe_spec::weak_ref{},
-                                              "{}",
-                                              std::nullopt,
-                                              nullptr,
-                                              nullptr,
-                                              std::vector<envy::recipe_spec *>{},
-                                              std::nullopt,
-                                              std::filesystem::path{});
+    cfg = envy::pkg_cfg::pool()->emplace("test.run@v1",
+                                         envy::pkg_cfg::weak_ref{},
+                                         "{}",
+                                         std::nullopt,
+                                         nullptr,
+                                         nullptr,
+                                         std::vector<envy::pkg_cfg *>{},
+                                         std::nullopt,
+                                         std::filesystem::path{});
 
-    recipe_ptr = std::unique_ptr<envy::recipe>(new envy::recipe{
-        .key = envy::recipe_key(*spec),
-        .spec = spec,
+    pkg_ptr = std::unique_ptr<envy::pkg>(new envy::pkg{
+        .key = envy::pkg_key(*cfg),
+        .cfg = cfg,
         .cache_ptr = nullptr,
         .default_shell_ptr = nullptr,
         .exec_ctx = nullptr,
         .lua = envy::sol_state_ptr{},
         .lock = nullptr,
         .canonical_identity_hash = {},
-        .asset_path = std::filesystem::path{},
-        .recipe_file_path = std::nullopt,
+        .pkg_path = std::filesystem::path{},
+        .spec_file_path = std::nullopt,
         .result_hash = {},
-        .type = envy::recipe_type::UNKNOWN,
+        .type = envy::pkg_type::UNKNOWN,
         .declared_dependencies = {},
-        .owned_dependency_specs = {},
+        .owned_dependency_cfgs = {},
         .dependencies = {},
         .product_dependencies = {},
         .weak_references = {},
@@ -66,7 +66,7 @@ struct ctx_run_fixture {
 
     ctx.run_dir = tmp_dir;
     ctx.engine_ = nullptr;
-    ctx.recipe_ = recipe_ptr.get();
+    ctx.pkg_ = pkg_ptr.get();
 
     lua = envy::sol_util_make_lua_state();
     envy::lua_envy_install(*lua);

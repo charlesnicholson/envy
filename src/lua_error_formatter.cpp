@@ -1,6 +1,6 @@
 #include "lua_error_formatter.h"
 
-#include "recipe_spec.h"
+#include "pkg_cfg.h"
 
 #include <sstream>
 
@@ -23,8 +23,8 @@ std::optional<int> extract_line_number(std::string const &error_msg) {
 }
 
 // Build provenance chain by walking parent pointers (for unit testing)
-std::vector<recipe_spec const *> build_provenance_chain(recipe_spec const *spec) {
-  std::vector<recipe_spec const *> chain;
+std::vector<pkg_cfg const *> build_provenance_chain(pkg_cfg const *spec) {
+  std::vector<pkg_cfg const *> chain;
   while (spec) {
     chain.push_back(spec);
     spec = spec->parent;
@@ -33,8 +33,8 @@ std::vector<recipe_spec const *> build_provenance_chain(recipe_spec const *spec)
 }
 
 struct parsed_lua_error {
-  std::string headline;                  // First line of error
-  std::vector<std::string> stack_frames; // Cleaned stack frames
+  std::string headline;                   // First line of error
+  std::vector<std::string> stack_frames;  // Cleaned stack frames
 };
 
 parsed_lua_error parse_lua_error(std::string const &msg) {
@@ -83,10 +83,9 @@ std::string format_lua_error(lua_error_context const &ctx) {
   parsed_lua_error parsed{ parse_lua_error(ctx.lua_error_message) };
 
   // Header: identity with options
-  oss << "Lua error in " << ctx.r->spec->identity;
-  if (!ctx.r->spec->serialized_options.empty() &&
-      ctx.r->spec->serialized_options != "{}") {
-    oss << ctx.r->spec->serialized_options;
+  oss << "Lua error in " << ctx.r->cfg->identity;
+  if (!ctx.r->cfg->serialized_options.empty() && ctx.r->cfg->serialized_options != "{}") {
+    oss << ctx.r->cfg->serialized_options;
   }
   oss << ":\n  " << (parsed.headline.empty() ? ctx.lua_error_message : parsed.headline)
       << "\n";
@@ -98,9 +97,9 @@ std::string format_lua_error(lua_error_context const &ctx) {
 
   oss << "\n";
 
-  // Recipe file path with line number
-  if (ctx.r->recipe_file_path) {
-    oss << "Recipe file: " << ctx.r->recipe_file_path->string();
+  // Spec file path with line number
+  if (ctx.r->spec_file_path) {
+    oss << "Spec file: " << ctx.r->spec_file_path->string();
     if (auto line_num = extract_line_number(ctx.lua_error_message)) {
       oss << ":" << *line_num;
     }
@@ -108,20 +107,20 @@ std::string format_lua_error(lua_error_context const &ctx) {
   }
 
   // Declared in (provenance)
-  if (!ctx.r->spec->declaring_file_path.empty()) {
-    oss << "Declared in: " << ctx.r->spec->declaring_file_path.string() << "\n";
+  if (!ctx.r->cfg->declaring_file_path.empty()) {
+    oss << "Declared in: " << ctx.r->cfg->declaring_file_path.string() << "\n";
   }
 
   // Phase
   if (!ctx.phase.empty()) { oss << "Phase: " << ctx.phase << "\n"; }
 
   // Options
-  if (!ctx.r->spec->serialized_options.empty()) {
-    oss << "Options: " << ctx.r->spec->serialized_options << "\n";
+  if (!ctx.r->cfg->serialized_options.empty()) {
+    oss << "Options: " << ctx.r->cfg->serialized_options << "\n";
   }
 
   // Provenance chain (if nested dependencies)
-  auto chain{ build_provenance_chain(ctx.r->spec) };
+  auto chain{ build_provenance_chain(ctx.r->cfg) };
   if (chain.size() > 1) {
     oss << "\nProvenance chain:\n";
     for (size_t i{ 0 }; i < chain.size(); ++i) {
