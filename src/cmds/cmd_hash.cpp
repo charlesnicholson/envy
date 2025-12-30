@@ -6,13 +6,14 @@
 
 #include "CLI11.hpp"
 
+#include <memory>
 #include <stdexcept>
 
 namespace envy {
 
 void cmd_hash::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("hash", "Compute SHA256 hash of a file") };
-  auto *cfg_ptr{ new cfg{} };
+  auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("file", cfg_ptr->file_path, "File to hash")
       ->required()
       ->check(CLI::ExistingFile);
