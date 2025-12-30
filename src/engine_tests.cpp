@@ -57,109 +57,109 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
 
   cache c{ cache_root };
   auto m{ manifest::load("PACKAGES = {}",
-                         fs::path("test_data/recipes/dependency_chain_gn.lua")) };
+                         fs::path("test_data/specs/dependency_chain_gn.lua")) };
   engine eng{ c, m->get_default_shell(nullptr) };
 
-  // Create specs for gn, ninja, python, uv
-  std::vector<recipe_spec const *> roots;
-  recipe_spec *gn_spec = recipe_spec::pool()->emplace(
+  // Create cfgs for gn, ninja, python, uv
+  std::vector<pkg_cfg const *> roots;
+  pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
       "local.gn@r0",
-      recipe_spec::local_source{
-          .file_path = fs::path("test_data/recipes/dependency_chain_gn.lua") },
+      pkg_cfg::local_source{
+          .file_path = fs::path("test_data/specs/dependency_chain_gn.lua") },
       "{}",
       std::nullopt,
       nullptr,
       nullptr,
-      std::vector<recipe_spec *>{},
+      std::vector<pkg_cfg *>{},
       std::nullopt,
       fs::path{});
-  recipe_spec *uv_spec = recipe_spec::pool()->emplace(
+  pkg_cfg *uv_cfg = pkg_cfg::pool()->emplace(
       "local.uv@r0",
-      recipe_spec::local_source{ .file_path =
-                                     fs::path("test_data/recipes/simple_uv.lua") },
+      pkg_cfg::local_source{ .file_path =
+                                 fs::path("test_data/specs/simple_uv.lua") },
       "{}",
       std::nullopt,
       nullptr,
       nullptr,
-      std::vector<recipe_spec *>{},
+      std::vector<pkg_cfg *>{},
       std::nullopt,
       fs::path{});
-  roots.push_back(gn_spec);
-  roots.push_back(uv_spec);
+  roots.push_back(gn_cfg);
+  roots.push_back(uv_cfg);
 
-  // resolve_graph starts all at recipe_fetch
+  // resolve_graph starts all at spec_fetch
   eng.resolve_graph(roots);
 
-  // All should be at recipe_fetch after resolve
-  CHECK(eng.get_recipe_target_phase(recipe_key(*gn_spec)) == recipe_phase::recipe_fetch);
-  CHECK(eng.get_recipe_target_phase(recipe_key(*uv_spec)) == recipe_phase::recipe_fetch);
+  // All should be at spec_fetch after resolve
+  CHECK(eng.get_pkg_target_phase(pkg_key(*gn_cfg)) == pkg_phase::spec_fetch);
+  CHECK(eng.get_pkg_target_phase(pkg_key(*uv_cfg)) == pkg_phase::spec_fetch);
 
-  // Find gn recipe
-  recipe *gn_recipe = eng.find_exact(recipe_key(*gn_spec));
-  REQUIRE(gn_recipe != nullptr);
+  // Find gn package
+  pkg *gn_pkg = eng.find_exact(pkg_key(*gn_cfg));
+  REQUIRE(gn_pkg != nullptr);
 
   // Extend gn's closure
-  eng.extend_dependencies_to_completion(gn_recipe);
+  eng.extend_dependencies_to_completion(gn_pkg);
 
   // gn and its dependencies should be at completion
-  CHECK(eng.get_recipe_target_phase(recipe_key(*gn_spec)) == recipe_phase::completion);
+  CHECK(eng.get_pkg_target_phase(pkg_key(*gn_cfg)) == pkg_phase::completion);
   // ninja and python should also be extended (they're gn's dependencies)
 
-  // uv should still be at recipe_fetch (not in gn's closure)
-  CHECK(eng.get_recipe_target_phase(recipe_key(*uv_spec)) == recipe_phase::recipe_fetch);
+  // uv should still be at spec_fetch (not in gn's closure)
+  CHECK(eng.get_pkg_target_phase(pkg_key(*uv_cfg)) == pkg_phase::spec_fetch);
 
   fs::remove_all(cache_root);
 }
 
-TEST_CASE("engine_extend_dependencies: leaf recipe only extends itself") {
+TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   namespace fs = std::filesystem;
   fs::path const cache_root{ fs::temp_directory_path() / "envy-extend-deps-test-2" };
 
   cache c{ cache_root };
   auto m{ manifest::load("PACKAGES = {}",
-                         fs::path("test_data/recipes/dependency_chain_gn.lua")) };
+                         fs::path("test_data/specs/dependency_chain_gn.lua")) };
   engine eng{ c, m->get_default_shell(nullptr) };
 
-  std::vector<recipe_spec const *> roots;
-  recipe_spec *gn_spec = recipe_spec::pool()->emplace(
+  std::vector<pkg_cfg const *> roots;
+  pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
       "local.gn@r0",
-      recipe_spec::local_source{
-          .file_path = fs::path("test_data/recipes/dependency_chain_gn.lua") },
+      pkg_cfg::local_source{
+          .file_path = fs::path("test_data/specs/dependency_chain_gn.lua") },
       "{}",
       std::nullopt,
       nullptr,
       nullptr,
-      std::vector<recipe_spec *>{},
+      std::vector<pkg_cfg *>{},
       std::nullopt,
       fs::path{});
-  recipe_spec *python_spec = recipe_spec::pool()->emplace(
+  pkg_cfg *python_cfg = pkg_cfg::pool()->emplace(
       "local.python@r0",
-      recipe_spec::local_source{ .file_path =
-                                     fs::path("test_data/recipes/simple_python.lua") },
+      pkg_cfg::local_source{ .file_path =
+                                 fs::path("test_data/specs/simple_python.lua") },
       "{}",
       std::nullopt,
       nullptr,
       nullptr,
-      std::vector<recipe_spec *>{},
+      std::vector<pkg_cfg *>{},
       std::nullopt,
       fs::path{});
-  roots.push_back(gn_spec);
-  roots.push_back(python_spec);
+  roots.push_back(gn_cfg);
+  roots.push_back(python_cfg);
 
   eng.resolve_graph(roots);
 
   // Find python (leaf with no dependencies)
-  recipe *python_recipe = eng.find_exact(recipe_key(*python_spec));
-  REQUIRE(python_recipe != nullptr);
+  pkg *python_pkg = eng.find_exact(pkg_key(*python_cfg));
+  REQUIRE(python_pkg != nullptr);
 
   // Extend python
-  eng.extend_dependencies_to_completion(python_recipe);
+  eng.extend_dependencies_to_completion(python_pkg);
 
   // Only python should be at completion
-  CHECK(eng.get_recipe_target_phase(recipe_key(*python_spec)) == recipe_phase::completion);
+  CHECK(eng.get_pkg_target_phase(pkg_key(*python_cfg)) == pkg_phase::completion);
 
-  // gn should still be at recipe_fetch (not python's dependency)
-  CHECK(eng.get_recipe_target_phase(recipe_key(*gn_spec)) == recipe_phase::recipe_fetch);
+  // gn should still be at spec_fetch (not python's dependency)
+  CHECK(eng.get_pkg_target_phase(pkg_key(*gn_cfg)) == pkg_phase::spec_fetch);
 
   fs::remove_all(cache_root);
 }

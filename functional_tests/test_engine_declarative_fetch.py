@@ -52,7 +52,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
                 "--trace",
                 "engine-test",
                 "local.fetch_string@v1",
-                "test_data/recipes/fetch_string.lua",
+                "test_data/specs/fetch_string.lua",
             ],
             capture_output=True,
             text=True,
@@ -178,7 +178,7 @@ FETCH = {{
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_collision@v1",
-                "test_data/recipes/fetch_collision.lua",
+                "test_data/specs/fetch_collision.lua",
             ],
             capture_output=True,
             text=True,
@@ -207,7 +207,7 @@ FETCH = {{
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_bad_sha256@v1",
-                "test_data/recipes/fetch_bad_sha256.lua",
+                "test_data/specs/fetch_bad_sha256.lua",
             ],
             capture_output=True,
             text=True,
@@ -403,7 +403,7 @@ end
         self.assertIn("skipping fetch completion marker", result.stderr.lower())
 
         # Verify fetch completion marker does NOT exist
-        asset_dir = self.cache_root / "assets" / "local.git_no_cache@v1"
+        asset_dir = self.cache_root / "packages" / "local.git_no_cache@v1"
         fetch_complete_files = list(asset_dir.rglob("fetch/envy-complete"))
         self.assertEqual(
             len(fetch_complete_files),

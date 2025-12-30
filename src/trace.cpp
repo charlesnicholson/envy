@@ -1,6 +1,6 @@
 #include "trace.h"
 
-#include "recipe_phase.h"
+#include "pkg_phase.h"
 #include "util.h"
 
 #include <chrono>
@@ -94,8 +94,8 @@ void append_kv(std::string &out, char const *key, bool value) {
   out.append(value ? "true" : "false");
 }
 
-void append_phase(std::string &out, char const *key, recipe_phase phase) {
-  append_kv(out, key, recipe_phase_name(phase));
+void append_phase(std::string &out, char const *key, pkg_phase phase) {
+  append_kv(out, key, pkg_phase_name(phase));
   std::string number_key = std::string(key) + "_num";
   append_kv(out, number_key.c_str(), static_cast<std::int64_t>(static_cast<int>(phase)));
 }
@@ -103,7 +103,7 @@ void append_phase(std::string &out, char const *key, recipe_phase phase) {
 }  // namespace
 
 phase_trace_scope::phase_trace_scope(std::string recipe_identity,
-                                     recipe_phase phase_value,
+                                     pkg_phase phase_value,
                                      std::chrono::steady_clock::time_point start_time)
     : recipe{ std::move(recipe_identity) }, phase{ phase_value }, start{ start_time } {
   ENVY_TRACE_PHASE_START(recipe, phase);
@@ -172,48 +172,48 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::phase_blocked const &value) {
             std::ostringstream oss;
             oss << "phase_blocked recipe=" << value.recipe
-                << " blocked_at=" << recipe_phase_name(value.blocked_at_phase)
+                << " blocked_at=" << pkg_phase_name(value.blocked_at_phase)
                 << " waiting_for=" << value.waiting_for
-                << " target_phase=" << recipe_phase_name(value.target_phase);
+                << " target_phase=" << pkg_phase_name(value.target_phase);
             return oss.str();
           },
           [](trace_events::phase_unblocked const &value) {
             std::ostringstream oss;
             oss << "phase_unblocked recipe=" << value.recipe
                 << " dependency=" << value.dependency
-                << " at=" << recipe_phase_name(value.unblocked_at_phase);
+                << " at=" << pkg_phase_name(value.unblocked_at_phase);
             return oss.str();
           },
           [](trace_events::dependency_added const &value) {
             std::ostringstream oss;
             oss << "dependency_added parent=" << value.parent
                 << " dependency=" << value.dependency
-                << " needed_by=" << recipe_phase_name(value.needed_by);
+                << " needed_by=" << pkg_phase_name(value.needed_by);
             return oss.str();
           },
           [](trace_events::phase_start const &value) {
             std::ostringstream oss;
             oss << "phase_start recipe=" << value.recipe
-                << " phase=" << recipe_phase_name(value.phase);
+                << " phase=" << pkg_phase_name(value.phase);
             return oss.str();
           },
           [](trace_events::phase_complete const &value) {
             std::ostringstream oss;
             oss << "phase_complete recipe=" << value.recipe
-                << " phase=" << recipe_phase_name(value.phase)
+                << " phase=" << pkg_phase_name(value.phase)
                 << " duration_ms=" << value.duration_ms;
             return oss.str();
           },
           [](trace_events::thread_start const &value) {
             std::ostringstream oss;
             oss << "thread_start recipe=" << value.recipe
-                << " target_phase=" << recipe_phase_name(value.target_phase);
+                << " target_phase=" << pkg_phase_name(value.target_phase);
             return oss.str();
           },
           [](trace_events::thread_complete const &value) {
             std::ostringstream oss;
             oss << "thread_complete recipe=" << value.recipe
-                << " final_phase=" << recipe_phase_name(value.final_phase);
+                << " final_phase=" << pkg_phase_name(value.final_phase);
             return oss.str();
           },
           [](trace_events::recipe_registered const &value) {
@@ -225,8 +225,8 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::target_extended const &value) {
             std::ostringstream oss;
             oss << "target_extended recipe=" << value.recipe
-                << " old_target=" << recipe_phase_name(value.old_target)
-                << " new_target=" << recipe_phase_name(value.new_target);
+                << " old_target=" << pkg_phase_name(value.old_target)
+                << " new_target=" << pkg_phase_name(value.new_target);
             return oss.str();
           },
           [](trace_events::lua_ctx_run_start const &value) {
@@ -273,8 +273,8 @@ std::string trace_event_to_string(trace_event_t const &event) {
             std::ostringstream oss;
             oss << "lua_ctx_asset_access recipe=" << value.recipe
                 << " target=" << value.target
-                << " current_phase=" << recipe_phase_name(value.current_phase)
-                << " needed_by=" << recipe_phase_name(value.needed_by)
+                << " current_phase=" << pkg_phase_name(value.current_phase)
+                << " needed_by=" << pkg_phase_name(value.needed_by)
                 << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
             return oss.str();
           },
@@ -282,15 +282,15 @@ std::string trace_event_to_string(trace_event_t const &event) {
             std::ostringstream oss;
             oss << "lua_ctx_product_access recipe=" << value.recipe
                 << " product=" << value.product << " provider=" << value.provider
-                << " current_phase=" << recipe_phase_name(value.current_phase)
-                << " needed_by=" << recipe_phase_name(value.needed_by)
+                << " current_phase=" << pkg_phase_name(value.current_phase)
+                << " needed_by=" << pkg_phase_name(value.needed_by)
                 << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
             return oss.str();
           },
           [](trace_events::cache_hit const &value) {
             std::ostringstream oss;
             oss << "cache_hit recipe=" << value.recipe << " cache_key=" << value.cache_key
-                << " asset_path=" << value.asset_path
+                << " pkg_path=" << value.pkg_path
                 << " fast_path=" << (value.fast_path ? "true" : "false");
             return oss.str();
           },
@@ -522,7 +522,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
           [&](trace_events::cache_hit const &value) {
             append_recipe(value.recipe);
             append_kv(output, "cache_key", value.cache_key);
-            append_kv(output, "asset_path", value.asset_path);
+            append_kv(output, "pkg_path", value.pkg_path);
             append_kv(output, "fast_path", value.fast_path);
           },
           [&](trace_events::cache_miss const &value) {

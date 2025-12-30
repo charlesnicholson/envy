@@ -2,8 +2,8 @@
 
 #include "engine.h"
 #include "lua_envy.h"
-#include "recipe.h"
-#include "recipe_spec.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
 #include "sol_util.h"
 
 #include "doctest.h"
@@ -14,51 +14,51 @@ namespace envy {
 
 // Extern declarations for testing internal functions (not in public API)
 extern std::optional<int> extract_line_number(std::string const &error_msg);
-extern std::vector<recipe_spec const *> build_provenance_chain(recipe_spec const *spec);
+extern std::vector<pkg_cfg const *> build_provenance_chain(pkg_cfg const *cfg);
 
 namespace {
 
-// Helper fixture for creating test recipes
+// Helper fixture for creating test packages
 struct formatter_test_fixture {
-  recipe_spec *spec;
-  std::unique_ptr<recipe> r;
+  pkg_cfg *cfg;
+  std::unique_ptr<pkg> p;
 
   formatter_test_fixture(std::string identity = "test.package@v1",
                          std::string options = "{}",
                          std::filesystem::path declaring_path = {},
-                         recipe_spec *parent_spec = nullptr) {
-    spec = recipe_spec::pool()->emplace(std::move(identity),
-                                        recipe_spec::weak_ref{},
-                                        std::move(options),
-                                        std::nullopt,
-                                        parent_spec,
-                                        nullptr,
-                                        std::vector<recipe_spec *>{},
-                                        std::nullopt,
-                                        std::move(declaring_path));
+                         pkg_cfg *parent_cfg = nullptr) {
+    cfg = pkg_cfg::pool()->emplace(std::move(identity),
+                                   pkg_cfg::weak_ref{},
+                                   std::move(options),
+                                   std::nullopt,
+                                   parent_cfg,
+                                   nullptr,
+                                   std::vector<pkg_cfg *>{},
+                                   std::nullopt,
+                                   std::move(declaring_path));
 
     auto lua_state = sol_util_make_lua_state();
     lua_envy_install(*lua_state);
 
-    r = std::unique_ptr<recipe>(new recipe{ .key = recipe_key(*spec),
-                                            .spec = spec,
-                                            .cache_ptr = nullptr,
-                                            .default_shell_ptr = nullptr,
-                                            .exec_ctx = nullptr,
-                                            .lua = std::move(lua_state),
-                                            .lock = nullptr,
-                                            .canonical_identity_hash = {},
-                                            .asset_path = std::filesystem::path{},
-                                            .recipe_file_path = std::nullopt,
-                                            .result_hash = {},
-                                            .type = recipe_type::UNKNOWN,
-                                            .declared_dependencies = {},
-                                            .owned_dependency_specs = {},
-                                            .dependencies = {},
-                                            .product_dependencies = {},
-                                            .weak_references = {},
-                                            .products = {},
-                                            .resolved_weak_dependency_keys = {} });
+    p = std::unique_ptr<pkg>(new pkg{ .key = pkg_key(*cfg),
+                                      .cfg = cfg,
+                                      .cache_ptr = nullptr,
+                                      .default_shell_ptr = nullptr,
+                                      .exec_ctx = nullptr,
+                                      .lua = std::move(lua_state),
+                                      .lock = nullptr,
+                                      .canonical_identity_hash = {},
+                                      .pkg_path = std::filesystem::path{},
+                                      .spec_file_path = std::nullopt,
+                                      .result_hash = {},
+                                      .type = pkg_type::UNKNOWN,
+                                      .declared_dependencies = {},
+                                      .owned_dependency_cfgs = {},
+                                      .dependencies = {},
+                                      .product_dependencies = {},
+                                      .weak_references = {},
+                                      .products = {},
+                                      .resolved_weak_dependency_keys = {} });
   }
 };
 
@@ -111,33 +111,33 @@ TEST_CASE("extract_line_number handles line number 1") {
 // build_provenance_chain() tests
 // ============================================================================
 
-TEST_CASE("build_provenance_chain returns single element for recipe without parent") {
+TEST_CASE("build_provenance_chain returns single element for package without parent") {
   formatter_test_fixture f;
-  auto chain = build_provenance_chain(f.spec);
+  auto chain = build_provenance_chain(f.cfg);
   REQUIRE(chain.size() == 1);
-  CHECK(chain[0] == f.spec);
+  CHECK(chain[0] == f.cfg);
 }
 
 TEST_CASE("build_provenance_chain builds chain with parent") {
   formatter_test_fixture parent{ "parent.package@v1" };
-  formatter_test_fixture child{ "child.package@v1", "{}", {}, parent.spec };
+  formatter_test_fixture child{ "child.package@v1", "{}", {}, parent.cfg };
 
-  auto chain = build_provenance_chain(child.spec);
+  auto chain = build_provenance_chain(child.cfg);
   REQUIRE(chain.size() == 2);
-  CHECK(chain[0] == child.spec);
-  CHECK(chain[1] == parent.spec);
+  CHECK(chain[0] == child.cfg);
+  CHECK(chain[1] == parent.cfg);
 }
 
 TEST_CASE("build_provenance_chain builds chain with grandparent") {
   formatter_test_fixture grandparent{ "grandparent.package@v1" };
-  formatter_test_fixture parent{ "parent.package@v1", "{}", {}, grandparent.spec };
-  formatter_test_fixture child{ "child.package@v1", "{}", {}, parent.spec };
+  formatter_test_fixture parent{ "parent.package@v1", "{}", {}, grandparent.cfg };
+  formatter_test_fixture child{ "child.package@v1", "{}", {}, parent.cfg };
 
-  auto chain = build_provenance_chain(child.spec);
+  auto chain = build_provenance_chain(child.cfg);
   REQUIRE(chain.size() == 3);
-  CHECK(chain[0] == child.spec);
-  CHECK(chain[1] == parent.spec);
-  CHECK(chain[2] == grandparent.spec);
+  CHECK(chain[0] == child.cfg);
+  CHECK(chain[1] == parent.cfg);
+  CHECK(chain[2] == grandparent.cfg);
 }
 
 TEST_CASE("build_provenance_chain handles nullptr") {
@@ -152,7 +152,7 @@ TEST_CASE("build_provenance_chain handles nullptr") {
 TEST_CASE("format_lua_error includes identity in header") {
   formatter_test_fixture f{ "my.package@v1.2.3" };
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find("Lua error in my.package@v1.2.3") != std::string::npos);
@@ -162,44 +162,44 @@ TEST_CASE("format_lua_error includes error message") {
   formatter_test_fixture f;
 
   lua_error_context ctx{ .lua_error_message = "assertion failed: version required",
-                         .r = f.r.get(),
+                         .r = f.p.get(),
                          .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find("assertion failed: version required") != std::string::npos);
 }
 
-TEST_CASE("format_lua_error includes recipe_file_path when present") {
+TEST_CASE("format_lua_error includes spec_file_path when present") {
   formatter_test_fixture f;
-  f.r->recipe_file_path = std::filesystem::path("/home/user/.envy/recipes/test.lua");
+  f.p->spec_file_path = std::filesystem::path("/home/user/.envy/recipes/test.lua");
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Recipe file: /home/user/.envy/recipes/test.lua") !=
+  CHECK(result.find("Spec file: /home/user/.envy/recipes/test.lua") !=
         std::string::npos);
 }
 
 TEST_CASE("format_lua_error includes line number when extractable") {
   formatter_test_fixture f;
-  f.r->recipe_file_path = std::filesystem::path("/path/to/recipe.lua");
+  f.p->spec_file_path = std::filesystem::path("/path/to/recipe.lua");
 
   lua_error_context ctx{ .lua_error_message = "recipe.lua:42: assertion failed",
-                         .r = f.r.get(),
+                         .r = f.p.get(),
                          .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Recipe file: /path/to/recipe.lua:42") != std::string::npos);
+  CHECK(result.find("Spec file: /path/to/recipe.lua:42") != std::string::npos);
 }
 
-TEST_CASE("format_lua_error omits recipe_file_path when not present") {
+TEST_CASE("format_lua_error omits spec_file_path when not present") {
   formatter_test_fixture f;
-  // recipe_file_path not set
+  // spec_file_path not set
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Recipe file:") == std::string::npos);
+  CHECK(result.find("Spec file:") == std::string::npos);
 }
 
 TEST_CASE("format_lua_error includes declaring_file_path") {
@@ -207,7 +207,7 @@ TEST_CASE("format_lua_error includes declaring_file_path") {
                             "{}",
                             std::filesystem::path("/path/to/manifest.lua") };
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find("Declared in: /path/to/manifest.lua") != std::string::npos);
@@ -217,7 +217,7 @@ TEST_CASE("format_lua_error includes phase when provided") {
   formatter_test_fixture f;
 
   lua_error_context ctx{ .lua_error_message = "test error",
-                         .r = f.r.get(),
+                         .r = f.p.get(),
                          .phase = "build" };
 
   std::string result = format_lua_error(ctx);
@@ -227,7 +227,7 @@ TEST_CASE("format_lua_error includes phase when provided") {
 TEST_CASE("format_lua_error omits phase when empty") {
   formatter_test_fixture f;
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find("Phase:") == std::string::npos);
@@ -236,7 +236,7 @@ TEST_CASE("format_lua_error omits phase when empty") {
 TEST_CASE("format_lua_error includes serialized options") {
   formatter_test_fixture f{ "test.package@v1", R"({"version":"3.13.9"})" };
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find(R"(Options: {"version":"3.13.9"})") != std::string::npos);
@@ -245,17 +245,17 @@ TEST_CASE("format_lua_error includes serialized options") {
 TEST_CASE("format_lua_error includes options in header when non-empty") {
   formatter_test_fixture f{ "test.package@v1", R"({"version":"3.13.9"})" };
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find(R"(Lua error in test.package@v1{"version":"3.13.9"})") !=
         std::string::npos);
 }
 
-TEST_CASE("format_lua_error omits provenance chain for single recipe") {
+TEST_CASE("format_lua_error omits provenance chain for single package") {
   formatter_test_fixture f;
 
-  lua_error_context ctx{ .lua_error_message = "test error", .r = f.r.get(), .phase = "" };
+  lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
   CHECK(result.find("Provenance chain:") == std::string::npos);
@@ -268,10 +268,10 @@ TEST_CASE("format_lua_error includes provenance chain for nested dependencies") 
   formatter_test_fixture child{ "child.package@v1",
                                 "{}",
                                 std::filesystem::path("parent.lua"),
-                                parent.spec };
+                                parent.cfg };
 
   lua_error_context ctx{ .lua_error_message = "test error",
-                         .r = child.r.get(),
+                         .r = child.p.get(),
                          .phase = "" };
 
   std::string result = format_lua_error(ctx);
@@ -290,13 +290,13 @@ TEST_CASE("format_lua_error full example with all context") {
                                 R"({"version":"1.11.1"})",
                                 std::filesystem::path(
                                     "/home/user/.envy/recipes/python.lua"),
-                                parent.spec };
+                                parent.cfg };
 
-  child.r->recipe_file_path = std::filesystem::path("/home/user/.envy/recipes/ninja.lua");
+  child.p->spec_file_path = std::filesystem::path("/home/user/.envy/recipes/ninja.lua");
 
   lua_error_context ctx{ .lua_error_message =
                              "ninja.lua:42: assertion failed: version mismatch",
-                         .r = child.r.get(),
+                         .r = child.p.get(),
                          .phase = "build" };
 
   std::string result = format_lua_error(ctx);
@@ -305,7 +305,7 @@ TEST_CASE("format_lua_error full example with all context") {
   CHECK(result.find("Lua error in test.ninja@r1.11.1") != std::string::npos);
   CHECK(result.find(R"({"version":"1.11.1"})") != std::string::npos);
   CHECK(result.find("assertion failed: version mismatch") != std::string::npos);
-  CHECK(result.find("Recipe file: /home/user/.envy/recipes/ninja.lua:42") !=
+  CHECK(result.find("Spec file: /home/user/.envy/recipes/ninja.lua:42") !=
         std::string::npos);
   CHECK(result.find("Declared in: /home/user/.envy/recipes/python.lua") !=
         std::string::npos);

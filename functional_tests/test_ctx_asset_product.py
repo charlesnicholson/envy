@@ -34,7 +34,7 @@ class TestCtxAssetProduct(unittest.TestCase):
         )
 
     def lua_path(self, rel: str) -> str:
-        return (self.test_data / "recipes" / rel).as_posix()
+        return (self.test_data / "specs" / rel).as_posix()
 
     # ===== ctx.asset =====
 
@@ -43,11 +43,11 @@ class TestCtxAssetProduct(unittest.TestCase):
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ctx_asset_provider@v1",
+    spec = "local.ctx_asset_provider@v1",
     source = "{self.lua_path("ctx_asset_provider.lua")}",
   }},
   {{
-    recipe = "local.ctx_asset_consumer_ok@v1",
+    spec = "local.ctx_asset_consumer_ok@v1",
     source = "{self.lua_path("ctx_asset_consumer_ok.lua")}",
   }},
 }}
@@ -62,11 +62,11 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ctx_asset_provider@v1",
+    spec = "local.ctx_asset_provider@v1",
     source = "{self.lua_path("ctx_asset_provider.lua")}",
   }},
   {{
-    recipe = "local.ctx_asset_needed_by_violation@v1",
+    spec = "local.ctx_asset_needed_by_violation@v1",
     source = "{self.lua_path("ctx_asset_needed_by_violation.lua")}",
   }},
 }}
@@ -82,11 +82,11 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ctx_asset_user_provider@v1",
+    spec = "local.ctx_asset_user_provider@v1",
     source = "{self.lua_path("ctx_asset_user_provider.lua")}",
   }},
   {{
-    recipe = "local.ctx_asset_user_consumer@v1",
+    spec = "local.ctx_asset_user_consumer@v1",
     source = "{self.lua_path("ctx_asset_user_consumer.lua")}",
   }},
 }}
@@ -95,14 +95,14 @@ PACKAGES = {{
 
         result = self.run_envy(["sync", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected user-managed asset access to fail")
-        self.assertIn("is user-managed and has no asset path", result.stderr)
+        self.assertIn("is user-managed and has no pkg path", result.stderr)
 
     def test_ctx_asset_missing_dependency(self):
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ctx_asset_missing_dep@v1",
+    spec = "local.ctx_asset_missing_dep@v1",
     source = "{self.lua_path("ctx_asset_missing_dep.lua")}",
   }},
 }}
@@ -120,11 +120,11 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
+    spec = "local.product_provider@v1",
     source = "{self.lua_path("product_provider.lua")}",
   }},
   {{
-    recipe = "local.ctx_product_consumer_ok@v1",
+    spec = "local.ctx_product_consumer_ok@v1",
     source = "{self.lua_path("ctx_product_consumer_ok.lua")}",
   }},
 }}
@@ -139,11 +139,11 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_provider@v1",
+    spec = "local.product_provider@v1",
     source = "{self.lua_path("product_provider.lua")}",
   }},
   {{
-    recipe = "local.ctx_product_needed_by_violation@v1",
+    spec = "local.ctx_product_needed_by_violation@v1",
     source = "{self.lua_path("ctx_product_needed_by_violation.lua")}",
   }},
 }}
@@ -159,7 +159,7 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.ctx_product_missing_dep@v1",
+    spec = "local.ctx_product_missing_dep@v1",
     source = "{self.lua_path("ctx_product_missing_dep.lua")}",
   }},
 }}

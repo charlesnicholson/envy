@@ -2,7 +2,7 @@
 
 #include "extract.h"
 #include "lua_phase_context.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "tui_actions.h"
 
 #include <cstdint>
@@ -18,7 +18,7 @@ std::filesystem::path resolve_relative(std::filesystem::path const &path,
   if (path.is_absolute()) { return path; }
   phase_context const *ctx{ lua_phase_context_get(L) };
   if (ctx && ctx->run_dir) { return *ctx->run_dir / path; }
-  if (ctx && ctx->r && ctx->r->lock) { return ctx->r->lock->stage_dir() / path; }
+  if (ctx && ctx->p && ctx->p->lock) { return ctx->p->lock->stage_dir() / path; }
   return std::filesystem::current_path() / path;
 }
 
@@ -51,10 +51,10 @@ void lua_envy_extract_install(sol::table &envy_table) {
 
     // Set up progress tracking if in phase context
     phase_context const *ctx{ lua_phase_context_get(L) };
-    recipe *r{ ctx ? ctx->r : nullptr };
+    pkg *p{ ctx ? ctx->p : nullptr };
     std::optional<tui_actions::extract_progress_tracker> tracker;
-    if (r && r->tui_section) {
-      tracker.emplace(r->tui_section, r->spec->identity, archive_path.filename().string());
+    if (p && p->tui_section) {
+      tracker.emplace(p->tui_section, p->cfg->identity, archive_path.filename().string());
     }
 
     std::uint64_t const files{ extract(

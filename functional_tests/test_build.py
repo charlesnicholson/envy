@@ -28,13 +28,13 @@ class TestBuildPhase(unittest.TestCase):
 
     def get_asset_path(self, identity):
         """Find asset directory for given identity in cache."""
-        assets_dir = self.cache_root / "assets" / identity
+        assets_dir = self.cache_root / "packages" / identity
         if not assets_dir.exists():
             return None
         # Find the platform-specific asset subdirectory
         for subdir in assets_dir.iterdir():
             if subdir.is_dir():
-                asset_dir = subdir / "asset"
+                asset_dir = subdir / "pkg"
                 if asset_dir.exists():
                     return asset_dir
                 return subdir
@@ -49,7 +49,7 @@ class TestBuildPhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 identity,
-                f"test_data/recipes/{recipe_file}",
+                f"test_data/specs/{recipe_file}",
             ],
             capture_output=True,
             text=True,
@@ -282,7 +282,7 @@ class TestBuildPhase(unittest.TestCase):
         self.run_recipe("build_function.lua", "local.build_function@v1")
 
         # Find the variant subdirectory under the identity
-        identity_dir = self.cache_root / "assets" / "local.build_function@v1"
+        identity_dir = self.cache_root / "packages" / "local.build_function@v1"
         self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
 
         variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]

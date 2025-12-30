@@ -6,7 +6,8 @@
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "phase_check.h"
-#include "recipe.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
@@ -94,17 +95,17 @@ bool run_programmatic_install(sol::protected_function install_func,
                               std::filesystem::path const &tmp_dir,
                               std::string const &identity,
                               engine &eng,
-                              recipe *r,
+                              pkg *p,
                               bool is_user_managed) {
   tui::debug("phase install: running programmatic install function");
 
   // Determine run_dir: install_dir for cache-managed, project_root for user-managed
   std::filesystem::path const run_dir{ is_user_managed
-                                           ? recipe_spec::compute_project_root(r->spec)
+                                           ? pkg_cfg::compute_project_root(p->cfg)
                                            : install_dir };
 
   // Set up Lua registry context for envy.* functions
-  phase_context_guard ctx_guard{ &eng, r, run_dir };
+  phase_context_guard ctx_guard{ &eng, p, run_dir };
 
   sol::state_view lua{ install_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
@@ -115,7 +116,7 @@ bool run_programmatic_install(sol::protected_function install_func,
                     : sol::object{ lua, sol::in_place, install_dir.string() }
   };
 
-  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "INSTALL", [&]() {
+  sol::object result_obj{ call_lua_function_with_enriched_errors(p, "INSTALL", [&]() {
     return install_func(install_dir_arg,
                         stage_dir.string(),
                         fetch_dir.string(),
@@ -138,7 +139,7 @@ bool run_programmatic_install(sol::protected_function install_func,
 
     // User-managed packages use project_root as cwd, cache-managed use install_dir
     std::filesystem::path const string_cwd{
-      is_user_managed ? recipe_spec::compute_project_root(r->spec) : install_dir
+      is_user_managed ? pkg_cfg::compute_project_root(p->cfg) : install_dir
     };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
@@ -147,8 +148,8 @@ bool run_programmatic_install(sol::protected_function install_func,
                              string_cwd,
                              is_user_managed ? nullptr : lock,
                              identity,
-                             shell_resolve_default(r->default_shell_ptr),
-                             r->tui_section,
+                             shell_resolve_default(p->default_shell_ptr),
+                             p->tui_section,
                              eng.cache_root());
   }
 
@@ -186,25 +187,25 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
 
 }  // namespace
 
-void run_install_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::asset_install,
+void run_install_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_install,
                                        std::chrono::steady_clock::now() };
 
-  if (!r->lock) {  // Cache hit - no work to do
+  if (!p->lock) {  // Cache hit - no work to do
     tui::debug("phase install: no lock (cache hit), skipping");
     return;
   }
 
-  cache::scoped_entry_lock::ptr_t lock{ std::move(r->lock) };
-  std::filesystem::path const final_asset_path{ lock->install_dir().parent_path() /
-                                                "asset" };
+  cache::scoped_entry_lock::ptr_t lock{ std::move(p->lock) };
+  std::filesystem::path const final_pkg_path{ lock->install_dir().parent_path() /
+                                                "pkg" };
 
-  sol::state_view lua_view{ *r->lua };
+  sol::state_view lua_view{ *p->lua };
   sol::object install_obj{ lua_view["INSTALL"] };
   bool marked_complete{ false };
 
-  bool const is_user_managed{ recipe_has_check_verb(r, lua_view) };
+  bool const is_user_managed{ pkg_has_check_verb(p, lua_view) };
 
   if (!install_obj.valid()) {
     marked_complete = promote_stage_to_install(lock.get());
@@ -212,15 +213,15 @@ void run_install_phase(recipe *r, engine &eng) {
     // String installs: run command, mark complete only if cache-managed
     // User-managed packages use manifest dir as cwd, cache-managed use install_dir
     std::filesystem::path const string_cwd{
-      is_user_managed ? recipe_spec::compute_project_root(r->spec) : lock->install_dir()
+      is_user_managed ? pkg_cfg::compute_project_root(p->cfg) : lock->install_dir()
     };
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
                                         string_cwd,
                                         is_user_managed ? nullptr : lock.get(),
-                                        r->spec->identity,
-                                        shell_resolve_default(r->default_shell_ptr),
-                                        r->tui_section,
+                                        p->cfg->identity,
+                                        shell_resolve_default(p->default_shell_ptr),
+                                        p->tui_section,
                                         eng.cache_root());
   } else if (install_obj.is<sol::protected_function>()) {
     marked_complete = run_programmatic_install(install_obj.as<sol::protected_function>(),
@@ -229,19 +230,19 @@ void run_install_phase(recipe *r, engine &eng) {
                                                lock->stage_dir(),
                                                lock->install_dir(),
                                                lock->tmp_dir(),
-                                               r->spec->identity,
+                                               p->cfg->identity,
                                                eng,
-                                               r,
+                                               p,
                                                is_user_managed);
   } else {
     throw std::runtime_error("INSTALL field must be nil, string, or function for " +
-                             r->spec->identity);
+                             p->cfg->identity);
   }
 
   // Cache-managed packages are auto-marked complete on successful INSTALL return
   // User-managed packages are never marked complete (ephemeral workspace)
 
-  if (marked_complete) { r->asset_path = final_asset_path; }
+  if (marked_complete) { p->pkg_path = final_pkg_path; }
 }
 
 }  // namespace envy

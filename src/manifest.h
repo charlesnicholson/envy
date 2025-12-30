@@ -1,6 +1,6 @@
 #pragma once
 
-#include "recipe_spec.h"
+#include "pkg_cfg.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "util.h"
@@ -26,7 +26,7 @@ struct envy_meta {
 envy_meta parse_envy_meta(std::string_view content);
 
 struct manifest : unmovable {
-  std::vector<recipe_spec *> packages;
+  std::vector<pkg_cfg *> packages;
   std::filesystem::path manifest_path;
   envy_meta meta;
 

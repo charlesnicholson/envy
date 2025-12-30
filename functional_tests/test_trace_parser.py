@@ -84,7 +84,7 @@ class TestTraceParser(unittest.TestCase):
                     "event": "cache_hit",
                     "recipe": "child@v2",
                     "cache_key": "key123",
-                    "asset_path": "/cache/path",
+                    "pkg_path": "/cache/path",
                 },
             ]
         )

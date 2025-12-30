@@ -19,7 +19,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-user-managed-work-"))
         self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-user-managed-markers-"))
         self.envy_test = test_config.get_envy_executable()
-        self.recipe_dir = Path(__file__).parent.parent / "test_data" / "recipes"
+        self.recipe_dir = Path(__file__).parent.parent / "test_data" / "specs"
 
         # Create marker paths in temp directory
         self.marker_simple = self.marker_dir / "marker-simple"
@@ -70,12 +70,12 @@ class TestUserManagedPackages(unittest.TestCase):
         )
 
         # Verify cache entry was purged (user-managed = ephemeral)
-        asset_dir = self.cache_root / "assets" / "local.user_managed_simple@v1"
+        asset_dir = self.cache_root / "packages" / "local.user_managed_simple@v1"
         if asset_dir.exists():
-            # Should be empty or minimal (no asset/ directory)
+            # Should be empty or minimal (no pkg/ directory)
             self.assertFalse(
-                any(asset_dir.glob("*/asset")),
-                "User-managed packages should not leave asset/ in cache",
+                any(asset_dir.glob("*/pkg")),
+                "User-managed packages should not leave pkg/ in cache",
             )
 
     def test_simple_second_run_check_true_skips(self):
@@ -172,18 +172,18 @@ class TestUserManagedPackages(unittest.TestCase):
         # Verify marker created
         self.assertTrue(self.marker_with_fetch.exists())
 
-        # Verify cache entry persists with asset/ directory (cache-managed behavior)
-        asset_dir = self.cache_root / "assets" / "local.user_managed_with_fetch@v1"
+        # Verify cache entry persists with pkg/ directory (cache-managed behavior)
+        asset_dir = self.cache_root / "packages" / "local.user_managed_with_fetch@v1"
         self.assertTrue(
             asset_dir.exists(), "Cache-managed packages should persist in cache"
         )
 
         # Verify asset directory exists
-        asset_subdirs = list(asset_dir.glob("*/asset"))
+        asset_subdirs = list(asset_dir.glob("*/pkg"))
         self.assertGreater(
             len(asset_subdirs),
             0,
-            "Cache-managed packages should have asset/ directory in cache",
+            "Cache-managed packages should have pkg/ directory in cache",
         )
 
     def test_user_managed_fetch_cached_on_retry(self):
@@ -248,7 +248,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
         # Check for any remaining directories
-        asset_base = self.cache_root / "assets" / "local.user_managed_simple@v1"
+        asset_base = self.cache_root / "packages" / "local.user_managed_simple@v1"
         if asset_base.exists():
             remaining = list(asset_base.rglob("*"))
             # Only lock files and empty dirs should remain

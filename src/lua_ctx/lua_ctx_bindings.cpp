@@ -1,15 +1,15 @@
 #include "lua_ctx_bindings.h"
 
-#include "recipe.h"
+#include "pkg.h"
 
 #include <string>
 
 namespace envy {
 
-// Check if target_identity is a declared dependency of current recipe
+// Check if target_identity is a declared dependency of current pkg
 // Used for ctx.asset() validation. Exposed for testing.
-bool is_declared_dependency(recipe *r, std::string const &target_identity) {
-  for (std::string const &dep_identity : r->declared_dependencies) {
+bool is_declared_dependency(pkg *p, std::string const &target_identity) {
+  for (std::string const &dep_identity : p->declared_dependencies) {
     if (dep_identity == target_identity) { return true; }
   }
   return false;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "recipe.h"
+#include "pkg.h"
 
 #include "sol/forward.hpp"
 
@@ -13,7 +13,7 @@ namespace envy {
 
 struct lua_error_context {
   std::string lua_error_message;  // From sol::error::what()
-  recipe const *r;                // For all context (spec, paths)
+  pkg const *r;                   // For all context (spec, paths)
   std::string_view phase;         // "fetch", "build", "check", etc.
 };
 
@@ -26,7 +26,7 @@ std::string format_lua_error(lua_error_context const &ctx);
 //     return build_func(ctx_table, opts);
 //   });
 template <typename Callable>
-auto call_lua_function_with_enriched_errors(recipe const *r,
+auto call_lua_function_with_enriched_errors(pkg const *r,
                                             std::string_view phase,
                                             Callable &&callable) {
   sol::protected_function_result result{ std::forward<Callable>(callable)() };

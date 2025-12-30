@@ -6,7 +6,7 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "trace.h"
@@ -105,16 +105,16 @@ void run_programmatic_stage(sol::protected_function stage_func,
                             std::filesystem::path const &tmp_dir,
                             std::string const &identity,
                             engine &eng,
-                            recipe *r) {
+                            pkg *p) {
   tui::debug("phase stage: running imperative stage function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
-  phase_context_guard ctx_guard{ &eng, r, stage_dir };
+  phase_context_guard ctx_guard{ &eng, p, stage_dir };
 
   sol::state_view lua{ stage_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  call_lua_function_with_enriched_errors(r, "STAGE", [&]() {
+  call_lua_function_with_enriched_errors(p, "STAGE", [&]() {
     return stage_func(fetch_dir.string(), stage_dir.string(), tmp_dir.string(), opts);
   });
 }
@@ -151,19 +151,19 @@ void run_shell_stage(std::string_view script,
 
 }  // namespace
 
-void run_stage_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::asset_stage,
+void run_stage_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_stage,
                                        std::chrono::steady_clock::now() };
 
-  cache::scoped_entry_lock *lock{ r->lock.get() };
+  cache::scoped_entry_lock *lock{ p->lock.get() };
   if (!lock) {
     tui::debug("phase stage: no lock (cache hit), skipping");
     return;
   }
 
-  std::string const &identity{ r->spec->identity };
-  sol::state_view lua_view{ *r->lua };
+  std::string const &identity{ p->cfg->identity };
+  sol::state_view lua_view{ *p->lua };
   std::filesystem::path const stage_dir{ determine_stage_destination(lua_view, lock) };
 
   sol::object stage_obj{ lua_view["STAGE"] };
@@ -175,13 +175,13 @@ void run_stage_phase(recipe *r, engine &eng) {
 
   if (!stage_obj.valid()) {
     extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
-    run_extract_stage(totals, lock->fetch_dir(), stage_dir, identity, r->tui_section, 0);
+    run_extract_stage(totals, lock->fetch_dir(), stage_dir, identity, p->tui_section, 0);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
                     stage_dir,
                     identity,
-                    shell_resolve_default(r->default_shell_ptr));
+                    shell_resolve_default(p->default_shell_ptr));
   } else if (stage_obj.is<sol::protected_function>()) {
     run_programmatic_stage(stage_obj.as<sol::protected_function>(),
                            lock->fetch_dir(),
@@ -189,7 +189,7 @@ void run_stage_phase(recipe *r, engine &eng) {
                            lock->tmp_dir(),
                            identity,
                            eng,
-                           r);
+                           p);
   } else if (stage_obj.is<sol::table>()) {
     stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
     extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
@@ -197,7 +197,7 @@ void run_stage_phase(recipe *r, engine &eng) {
                       lock->fetch_dir(),
                       stage_dir,
                       identity,
-                      r->tui_section,
+                      p->tui_section,
                       opts.strip_components);
   } else {
     throw std::runtime_error("STAGE field must be nil, string, table, or function for " +

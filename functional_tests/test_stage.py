@@ -32,14 +32,14 @@ class TestStagePhase(unittest.TestCase):
         Args:
             identity: Recipe identity (e.g., "local.stage_default@v1")
         """
-        assets_dir = self.cache_root / "assets" / identity
+        assets_dir = self.cache_root / "packages" / identity
         if not assets_dir.exists():
             return None
         # Find the platform-specific asset subdirectory
         for subdir in assets_dir.iterdir():
             if subdir.is_dir():
-                # Files are in the asset/ subdirectory
-                asset_dir = subdir / "asset"
+                # Files are in the pkg/ subdirectory
+                asset_dir = subdir / "pkg"
                 if asset_dir.exists():
                     return asset_dir
                 return subdir
@@ -54,7 +54,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_default@v1",
-                "test_data/recipes/stage_default.lua",
+                "test_data/specs/stage_default.lua",
             ],
             capture_output=True,
             text=True,
@@ -83,7 +83,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_declarative_strip@v1",
-                "test_data/recipes/stage_declarative_strip.lua",
+                "test_data/specs/stage_declarative_strip.lua",
             ],
             capture_output=True,
             text=True,
@@ -111,7 +111,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_imperative@v1",
-                "test_data/recipes/stage_imperative.lua",
+                "test_data/specs/stage_imperative.lua",
             ],
             capture_output=True,
             text=True,
@@ -138,7 +138,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_extract_single@v1",
-                "test_data/recipes/stage_extract_single.lua",
+                "test_data/specs/stage_extract_single.lua",
             ],
             capture_output=True,
             text=True,
@@ -164,7 +164,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_basic@v1",
-                "test_data/recipes/stage_shell_basic.lua",
+                "test_data/specs/stage_shell_basic.lua",
             ],
             capture_output=True,
             text=True,
@@ -200,7 +200,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_failure@v1",
-                "test_data/recipes/stage_shell_failure.lua",
+                "test_data/specs/stage_shell_failure.lua",
             ],
             capture_output=True,
             text=True,
@@ -227,7 +227,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_complex@v1",
-                "test_data/recipes/stage_shell_complex.lua",
+                "test_data/specs/stage_shell_complex.lua",
             ],
             capture_output=True,
             text=True,
@@ -274,7 +274,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_env@v1",
-                "test_data/recipes/stage_shell_env.lua",
+                "test_data/specs/stage_shell_env.lua",
             ],
             capture_output=True,
             text=True,
@@ -304,7 +304,7 @@ class TestStagePhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.stage_shell_basic@v1",
-                "test_data/recipes/stage_shell_basic.lua",
+                "test_data/specs/stage_shell_basic.lua",
             ],
             capture_output=True,
             text=True,

@@ -1,7 +1,7 @@
 #include "lua_ctx_bindings.h"
 
 #include "extract.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "trace.h"
 #include "tui_actions.h"
 
@@ -34,14 +34,14 @@ std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extr
       throw std::runtime_error("ctx.extract: file not found: " + filename);
     }
 
-    ENVY_TRACE_LUA_CTX_EXTRACT_START(ctx->recipe_->spec->identity,
+    ENVY_TRACE_LUA_CTX_EXTRACT_START(ctx->pkg_->cfg->identity,
                                      archive_path.string(),
                                      ctx->run_dir.string());
 
     auto const start_time{ std::chrono::steady_clock::now() };
 
-    tui_actions::extract_progress_tracker tracker{ ctx->recipe_->tui_section,
-                                                   ctx->recipe_->spec->identity,
+    tui_actions::extract_progress_tracker tracker{ ctx->pkg_->tui_section,
+                                                   ctx->pkg_->cfg->identity,
                                                    filename };
 
     std::uint64_t const files{ extract(
@@ -53,7 +53,7 @@ std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extr
                                 std::chrono::steady_clock::now() - start_time)
                                 .count() };
 
-    ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(ctx->recipe_->spec->identity,
+    ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(ctx->pkg_->cfg->identity,
                                         static_cast<std::int64_t>(files),
                                         static_cast<std::int64_t>(duration_ms));
 

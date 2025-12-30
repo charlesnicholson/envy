@@ -52,7 +52,7 @@ TEST_CASE("ctx.fetch - collision detection with same basename") {
   ctx.stage_dir = tmp.path / "stage";
   ctx.used_basenames = {};  // Empty, will track collisions
   ctx.engine_ = nullptr;
-  ctx.recipe_ = nullptr;
+  ctx.pkg_ = nullptr;
 
   // Setup Lua and register ctx.fetch
   auto lua{ envy::sol_util_make_lua_state() };
@@ -113,7 +113,7 @@ TEST_CASE("ctx.fetch - collision detection preserves extension") {
   ctx.stage_dir = tmp.path / "stage";
   ctx.used_basenames = {};
   ctx.engine_ = nullptr;
-  ctx.recipe_ = nullptr;
+  ctx.pkg_ = nullptr;
 
   auto lua{ envy::sol_util_make_lua_state() };
   sol::table ctx_table{ lua->create_table() };
@@ -158,7 +158,7 @@ TEST_CASE("ctx.fetch - collision detection with no extension") {
   ctx.stage_dir = tmp.path / "stage";
   ctx.used_basenames = {};
   ctx.engine_ = nullptr;
-  ctx.recipe_ = nullptr;
+  ctx.pkg_ = nullptr;
 
   auto lua{ envy::sol_util_make_lua_state() };
   sol::table ctx_table{ lua->create_table() };
@@ -199,7 +199,7 @@ TEST_CASE("ctx.fetch - collision tracking across multiple calls") {
   ctx.stage_dir = tmp.path / "stage";
   ctx.used_basenames = {};
   ctx.engine_ = nullptr;
-  ctx.recipe_ = nullptr;
+  ctx.pkg_ = nullptr;
 
   auto lua{ envy::sol_util_make_lua_state() };
   sol::table ctx_table{ lua->create_table() };

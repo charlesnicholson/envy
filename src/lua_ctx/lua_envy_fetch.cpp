@@ -3,7 +3,7 @@
 #include "fetch.h"
 #include "lua_phase_context.h"
 #include "phases/phase_fetch.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "sha256.h"
 #include "sol_util.h"
 #include "tui.h"
@@ -206,7 +206,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     std::unordered_set<std::string> used_basenames;
 
     phase_context const *ctx{ lua_phase_context_get(L) };
-    recipe *r{ ctx ? ctx->r : nullptr };
+    pkg *p{ ctx ? ctx->p : nullptr };
 
     for (auto const &item : items) {
       std::string basename{ uri_extract_filename(item.source) };
@@ -238,10 +238,10 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       };
 
       // Set up progress tracking if in phase context
-      if (items.size() == 1 && r && r->tui_section) {
+      if (items.size() == 1 && p && p->tui_section) {
         trackers.push_back(
-            std::make_unique<tui_actions::fetch_progress_tracker>(r->tui_section,
-                                                                  r->spec->identity,
+            std::make_unique<tui_actions::fetch_progress_tracker>(p->tui_section,
+                                                                  p->cfg->identity,
                                                                   item.source));
         std::visit([&](auto &rq) { rq.progress = std::ref(*trackers.back()); }, req);
       }

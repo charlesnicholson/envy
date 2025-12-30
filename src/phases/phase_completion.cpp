@@ -1,7 +1,7 @@
 #include "phase_completion.h"
 
 #include "engine.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "trace.h"
 #include "tui.h"
 
@@ -9,27 +9,27 @@
 
 namespace envy {
 
-void run_completion_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::completion,
+void run_completion_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::completion,
                                        std::chrono::steady_clock::now() };
 
-  if (r->type == recipe_type::CACHE_MANAGED) {
-    r->result_hash = r->canonical_identity_hash;
+  if (p->type == pkg_type::CACHE_MANAGED) {
+    p->result_hash = p->canonical_identity_hash;
 
     tui::debug("phase completion: result_hash=%s for %s",
-               r->result_hash.c_str(),
-               r->spec->identity.c_str());
+               p->result_hash.c_str(),
+               p->cfg->identity.c_str());
   } else {
-    r->result_hash = "user-managed";
-    tui::debug("phase completion: no asset_path for %s (user-managed package)",
-               r->spec->identity.c_str());
+    p->result_hash = "user-managed";
+    tui::debug("phase completion: no pkg_path for %s (user-managed package)",
+               p->cfg->identity.c_str());
   }
 
-  if (r->tui_section && tui::section_has_content(r->tui_section)) {
+  if (p->tui_section && tui::section_has_content(p->tui_section)) {
     tui::section_set_content(
-        r->tui_section,
-        tui::section_frame{ .label = "[" + r->spec->identity + "]",
+        p->tui_section,
+        tui::section_frame{ .label = "[" + p->cfg->identity + "]",
                             .content = tui::static_text_data{ .text = "done" } });
   }
 }

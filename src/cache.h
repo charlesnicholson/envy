@@ -30,7 +30,7 @@ class cache : unmovable {
     static ptr_t make(path entry_dir,
                       platform::file_lock lock,
                       path lock_path,
-                      std::string recipe_identity,
+                      std::string pkg_identity,
                       std::chrono::steady_clock::time_point lock_acquired_at);
     ~scoped_entry_lock();
 
@@ -50,7 +50,7 @@ class cache : unmovable {
     scoped_entry_lock(path entry_dir,
                       platform::file_lock lock,
                       path lock_path,
-                      std::string recipe_identity,
+                      std::string pkg_identity,
                       std::chrono::steady_clock::time_point lock_acquired_at);
 
     struct impl;
@@ -63,17 +63,17 @@ class cache : unmovable {
   path const &root() const;
 
   struct ensure_result {
-    path entry_path;                // entry directory containing metadata and asset/
-    path asset_path;                // entry_path / "asset"
+    path entry_path;                // entry directory containing metadata and pkg/
+    path pkg_path;                  // entry_path / "pkg"
     scoped_entry_lock::ptr_t lock;  // if present, lock held for installation
   };
 
-  ensure_result ensure_asset(std::string_view identity,
-                             std::string_view platform,
-                             std::string_view arch,
-                             std::string_view hash_prefix);
+  ensure_result ensure_pkg(std::string_view identity,
+                           std::string_view platform,
+                           std::string_view arch,
+                           std::string_view hash_prefix);
 
-  ensure_result ensure_recipe(std::string_view identity);
+  ensure_result ensure_spec(std::string_view identity);
 
   // Ensure envy binary and type definitions are deployed to cache.
   // Copies exe_path to $CACHE/envy/$VERSION/envy and writes type_definitions.

@@ -9,9 +9,9 @@
 namespace envy {
 
 class engine;
-struct recipe;
+struct pkg;
 
-void run_fetch_phase(recipe *r, engine &eng);
+void run_fetch_phase(pkg *p, engine &eng);
 
 fetch_request url_to_fetch_request(std::string const &url,
                                    std::filesystem::path const &dest,

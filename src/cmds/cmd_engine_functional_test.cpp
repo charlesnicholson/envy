@@ -3,7 +3,7 @@
 #include "cache.h"
 #include "engine.h"
 #include "manifest.h"
-#include "recipe_spec.h"
+#include "pkg_cfg.h"
 #include "test_support.h"
 #include "tui.h"
 
@@ -17,8 +17,8 @@ void cmd_engine_functional_test::register_cli(CLI::App &app,
                                               std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("engine-test", "Test engine execution") };
   auto cfg_ptr{ std::make_shared<cfg>() };
-  sub->add_option("identity", cfg_ptr->identity, "Recipe identity")->required();
-  sub->add_option("recipe_path", cfg_ptr->recipe_path, "Recipe file path")
+  sub->add_option("identity", cfg_ptr->identity, "Spec identity")->required();
+  sub->add_option("spec_path", cfg_ptr->spec_path, "Spec file path")
       ->required()
       ->check(CLI::ExistingFile);
   sub->add_option("--fail-after-fetch-count",
@@ -42,32 +42,32 @@ void cmd_engine_functional_test::execute() {
     test::set_fail_after_fetch_count(cfg_.fail_after_fetch_count);
   }
 
-  // Build recipe
-  recipe_spec *recipe_cfg{ recipe_spec::pool()->emplace(
+  // Build spec
+  pkg_cfg *spec_cfg{ pkg_cfg::pool()->emplace(
       cfg_.identity,
-      recipe_spec::local_source{ .file_path = cfg_.recipe_path },
+      pkg_cfg::local_source{ .file_path = cfg_.spec_path },
       "{}",
       std::nullopt,
       nullptr,
       nullptr,
-      std::vector<recipe_spec *>{},
+      std::vector<pkg_cfg *>{},
       std::nullopt,
       std::filesystem::path{}) };
 
   // Create minimal manifest for engine (no DEFAULT_SHELL for tests)
-  auto m{ manifest::load("PACKAGES = {}", cfg_.recipe_path) };
+  auto m{ manifest::load("PACKAGES = {}", cfg_.spec_path) };
 
   // Run engine
   engine eng{ *c, m->get_default_shell(nullptr) };
-  auto result{ eng.run_full({ recipe_cfg }) };
+  auto result{ eng.run_full({ spec_cfg }) };
 
   // Output results as key -> type (avoid = which appears in option keys)
   for (auto const &[id, res] : result) {
     auto const type_str{ [&]() {
       switch (res.type) {
-        case recipe_type::CACHE_MANAGED: return "cache-managed";
-        case recipe_type::USER_MANAGED: return "user-managed";
-        case recipe_type::UNKNOWN: return "unknown";
+        case pkg_type::CACHE_MANAGED: return "cache-managed";
+        case pkg_type::USER_MANAGED: return "user-managed";
+        case pkg_type::UNKNOWN: return "unknown";
       }
       return "unknown";
     }() };

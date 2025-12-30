@@ -69,7 +69,7 @@ class TestCacheDirective(unittest.TestCase):
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{custom_cache_name}"
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
             )
@@ -90,7 +90,7 @@ PACKAGES = {{
                 f"Cache should exist at {expected_cache}. stderr: {result.stderr}",
             )
             # Verify the package was installed in the custom cache
-            asset_path = expected_cache / "assets" / "local.build_dependency@v1"
+            asset_path = expected_cache / "packages" / "local.build_dependency@v1"
             self.assertTrue(
                 asset_path.exists(),
                 f"Asset should exist at {asset_path}",
@@ -113,7 +113,7 @@ PACKAGES = {{
             manifest = self.create_manifest(
                 f"""-- @envy cache "$HOME/{custom_cache_name}"
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
             )
@@ -150,7 +150,7 @@ PACKAGES = {{
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{manifest_cache_name}"
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
             )
@@ -194,7 +194,7 @@ PACKAGES = {{
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{manifest_cache_name}"
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
             )
@@ -233,7 +233,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""-- @envy cache "{self.lua_path(custom_cache)}"
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
         )
@@ -250,7 +250,7 @@ PACKAGES = {{
             f"Cache should exist at {custom_cache}",
         )
         # Verify the package was installed
-        asset_path = custom_cache / "assets" / "local.build_dependency@v1"
+        asset_path = custom_cache / "packages" / "local.build_dependency@v1"
         self.assertTrue(
             asset_path.exists(),
             f"Asset should exist at {asset_path}",

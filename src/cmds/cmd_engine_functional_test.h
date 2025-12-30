@@ -15,7 +15,7 @@ class cmd_engine_functional_test : public cmd {
  public:
   struct cfg : cmd_cfg<cmd_engine_functional_test> {
     std::string identity;
-    std::filesystem::path recipe_path;
+    std::filesystem::path spec_path;
     int fail_after_fetch_count = -1;  // -1 = disabled, >0 = fail after N files
   };
 

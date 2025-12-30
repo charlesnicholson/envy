@@ -1,7 +1,7 @@
 #include "lua_envy_file_ops.h"
 
 #include "lua_phase_context.h"
-#include "recipe.h"
+#include "pkg.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -15,7 +15,7 @@ std::filesystem::path resolve_relative(std::filesystem::path const &path, sol::t
   if (path.is_absolute()) { return path; }
   phase_context const *ctx{ lua_phase_context_get(L) };
   if (ctx && ctx->run_dir) { return *ctx->run_dir / path; }
-  if (ctx && ctx->r && ctx->r->lock) { return ctx->r->lock->stage_dir() / path; }
+  if (ctx && ctx->p && ctx->p->lock) { return ctx->p->lock->stage_dir() / path; }
   return std::filesystem::current_path() / path;
 }
 

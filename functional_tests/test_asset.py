@@ -65,7 +65,7 @@ class TestAssetCommand(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """
         )
@@ -80,10 +80,10 @@ PACKAGES = {{
             asset_path.is_absolute(), f"Expected absolute path: {asset_path}"
         )
         self.assertTrue(asset_path.exists(), f"Asset path should exist: {asset_path}")
-        # Check path ends with asset directory (accept both / and \ separators)
+        # Check path ends with pkg directory (accept both / and \ separators)
         self.assertTrue(
-            str(asset_path).endswith("/asset") or str(asset_path).endswith("\\asset"),
-            f"Path should end with asset directory: {asset_path}",
+            str(asset_path).endswith("/pkg") or str(asset_path).endswith("\\pkg"),
+            f"Path should end with pkg directory: {asset_path}",
         )
 
     def test_asset_with_dependencies(self):
@@ -93,7 +93,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
 }}
 """
         )
@@ -109,7 +109,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """
         )
@@ -143,7 +143,7 @@ PACKAGES = {{
             manifest.write_text(
                 f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """,
                 encoding="utf-8",
@@ -173,9 +173,9 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }},
-    {{ recipe = "local.build_nil@v1", source = "{self.lua_path(self.test_data)}/recipes/build_nil.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }},
+    {{ spec = "local.build_nil@v1", source = "{self.lua_path(self.test_data)}/specs/build_nil.lua" }},
 }}
 """
         )
@@ -186,7 +186,7 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Check which packages were installed
-        assets_dir = self.cache_root / "assets"
+        assets_dir = self.cache_root / "packages"
         installed = (
             [d.name for d in assets_dir.glob("local.*")] if assets_dir.exists() else []
         )
@@ -212,8 +212,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "debug" }} }},
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "release" }} }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "debug" }} }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "release" }} }}
 }}
 """
         )
@@ -229,8 +229,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """
         )
@@ -245,7 +245,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.other@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.other@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """
         )
@@ -260,7 +260,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.programmatic@v1", source = "{self.lua_path(self.test_data)}/recipes/install_programmatic.lua" }}
+    {{ spec = "local.programmatic@v1", source = "{self.lua_path(self.test_data)}/specs/install_programmatic.lua" }}
 }}
 """
         )
@@ -275,7 +275,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.failing@v1", source = "{self.lua_path(self.test_data)}/recipes/build_error_nonzero_exit.lua" }}
+    {{ spec = "local.failing@v1", source = "{self.lua_path(self.test_data)}/specs/build_error_nonzero_exit.lua" }}
 }}
 """
         )
@@ -305,7 +305,7 @@ PACKAGES = {
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
 """
         )
@@ -322,10 +322,10 @@ PACKAGES = {{
         import os
 
         self.assertTrue(os.path.isabs(path), f"Should be absolute path: {path}")
-        # Path should end with asset directory (accept both / and \ separators)
+        # Path should end with pkg directory (accept both / and \ separators)
         self.assertTrue(
-            path.endswith("/asset") or path.endswith("\\asset"),
-            f"Should end with asset directory: {path}",
+            path.endswith("/pkg") or path.endswith("\\pkg"),
+            f"Should end with pkg directory: {path}",
         )
 
     def test_asset_stderr_only_on_error(self):
@@ -333,8 +333,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
-    {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }}
 }}
 """
         )
@@ -356,7 +356,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua", options = {{ mode = "debug" }} }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "debug" }} }}
 }}
 """
         )
@@ -393,7 +393,7 @@ end
         manifest_foo = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "foo" }} }}
+    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "foo" }} }}
 }}
 """,
             subdir="foo",
@@ -403,7 +403,7 @@ PACKAGES = {{
         manifest_bar = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "bar" }} }}
+    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "bar" }} }}
 }}
 """,
             subdir="bar",
@@ -441,7 +441,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
 }}
 """
         )
@@ -459,7 +459,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/recipes/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
 }}
 """
         )
@@ -513,8 +513,8 @@ end
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.test_product_provider@v1", source = "{self.lua_path(provider_path)}" }},
-    {{ recipe = "local.test_product_consumer@v1", source = "{self.lua_path(consumer_path)}" }}
+    {{ spec = "local.test_product_provider@v1", source = "{self.lua_path(provider_path)}" }},
+    {{ spec = "local.test_product_consumer@v1", source = "{self.lua_path(consumer_path)}" }}
 }}
 """
         )

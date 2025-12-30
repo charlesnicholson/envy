@@ -586,7 +586,7 @@ if (build_obj.is<std::string>()) {
 
 ### Test Recipe Migration
 
-- [x] Audit all recipes in `test_data/recipes/*.lua` - identify patterns
+- [x] Audit all recipes in `test_data/specs/*.lua` - identify patterns
 - [x] Create regex migration script `scripts/migrate_recipes.py` for common patterns
 - [x] Run migration script on test recipes
 - [x] Build envy and run functional tests - identify failures

@@ -73,8 +73,8 @@ class TestTUIRendering(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/recipes/build_function.lua" }},
-    {{ recipe = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/recipes/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
 }}
 """
         )
@@ -94,7 +94,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )
@@ -115,7 +115,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ recipe = "local.simple@v1", source = "{self.lua_path(self.test_data)}/recipes/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
 }}
 """
         )

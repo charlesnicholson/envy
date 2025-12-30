@@ -144,20 +144,20 @@ Resolved weak/ref-only dependencies must contribute to cache hash—different pr
 
 ### Functional Test Fixtures
 
-- [x] Create `test_data/recipes/product_provider.lua` with static products table
-- [x] Create `test_data/recipes/product_consumer_strong.lua` with strong product dependency
-- [x] Create `test_data/recipes/product_consumer_weak.lua` with weak product dependency
-- [x] Create `test_data/recipes/product_ref_only_consumer.lua` with ref-only product dependency
-- [x] Create `test_data/recipes/product_provider_b.lua` providing same product (for collision test)
-- [x] Create `test_data/recipes/product_transitive_root.lua` for transitive provision test
-- [x] Create `test_data/recipes/product_transitive_intermediate.lua` (middle of chain)
-- [x] Create `test_data/recipes/product_transitive_provider.lua` (actual provider at end of chain)
-- [x] Create `test_data/recipes/product_transitive_intermediate_no_provide.lua` (fallback without transitive provision)
-- [x] Create `test_data/recipes/product_transitive_root_fail.lua` (for failure case testing)
-- [x] Create `test_data/recipes/product_provider_programmatic.lua` (user-managed, no asset_path)
-- [x] Create `test_data/recipes/product_cycle_a.lua` and `product_cycle_b.lua` for cycle testing
-- [x] Create `test_data/recipes/product_provider_function.lua` (products as function taking options)
-- [x] Create `test_data/recipes/hash_consumer_weak.lua`, `hash_provider_a.lua`, `hash_provider_b.lua` for cache hash tests
+- [x] Create `test_data/specs/product_provider.lua` with static products table
+- [x] Create `test_data/specs/product_consumer_strong.lua` with strong product dependency
+- [x] Create `test_data/specs/product_consumer_weak.lua` with weak product dependency
+- [x] Create `test_data/specs/product_ref_only_consumer.lua` with ref-only product dependency
+- [x] Create `test_data/specs/product_provider_b.lua` providing same product (for collision test)
+- [x] Create `test_data/specs/product_transitive_root.lua` for transitive provision test
+- [x] Create `test_data/specs/product_transitive_intermediate.lua` (middle of chain)
+- [x] Create `test_data/specs/product_transitive_provider.lua` (actual provider at end of chain)
+- [x] Create `test_data/specs/product_transitive_intermediate_no_provide.lua` (fallback without transitive provision)
+- [x] Create `test_data/specs/product_transitive_root_fail.lua` (for failure case testing)
+- [x] Create `test_data/specs/product_provider_programmatic.lua` (user-managed, no asset_path)
+- [x] Create `test_data/specs/product_cycle_a.lua` and `product_cycle_b.lua` for cycle testing
+- [x] Create `test_data/specs/product_provider_function.lua` (products as function taking options)
+- [x] Create `test_data/specs/hash_consumer_weak.lua`, `hash_provider_a.lua`, `hash_provider_b.lua` for cache hash tests
 
 ### Functional Tests - Parsing
 

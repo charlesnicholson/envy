@@ -40,7 +40,7 @@ struct lua_ctx_copy_fixture {
     ctx.fetch_dir = tmp.path;
     ctx.run_dir = tmp.path;
     ctx.engine_ = nullptr;
-    ctx.recipe_ = nullptr;
+    ctx.pkg_ = nullptr;
 
     lua = envy::sol_util_make_lua_state();
     (*lua)["copy_fn"] = envy::make_ctx_copy(&ctx);

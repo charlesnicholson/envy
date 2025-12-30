@@ -40,7 +40,7 @@ class TestWeakDepHash(unittest.TestCase):
 
     def get_cache_variant_dirs(self, identity: str):
         """Return all variant subdirectories for a given identity."""
-        identity_dir = self.cache_root / "assets" / identity
+        identity_dir = self.cache_root / "packages" / identity
         if not identity_dir.exists():
             return []
         # Return variant subdirectories (platform-arch-blake3-HASH)
@@ -61,12 +61,12 @@ class TestWeakDepHash(unittest.TestCase):
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_a.lua",
+    spec = "local.hash_provider_a@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
   }},
   {{
-    recipe = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_weak.lua",
+    spec = "local.hash_consumer_weak@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
   }},
 }}
 """
@@ -89,12 +89,12 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
+    spec = "local.hash_provider_b@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
   }},
   {{
-    recipe = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_weak.lua",
+    spec = "local.hash_consumer_weak@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
   }},
 }}
 """
@@ -122,8 +122,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_weak.lua",
+    spec = "local.hash_consumer_weak@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
   }},
 }}
 """
@@ -145,12 +145,12 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
+    spec = "local.hash_provider_b@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
   }},
   {{
-    recipe = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_weak.lua",
+    spec = "local.hash_consumer_weak@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
   }},
 }}
 """
@@ -176,16 +176,16 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_zzz@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_zzz.lua",
+    spec = "local.hash_provider_zzz@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_zzz.lua",
   }},
   {{
-    recipe = "local.hash_provider_aaa@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_aaa.lua",
+    spec = "local.hash_provider_aaa@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_aaa.lua",
   }},
   {{
-    recipe = "local.hash_consumer_multi@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_multi_weak.lua",
+    spec = "local.hash_consumer_multi@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_multi_weak.lua",
   }},
 }}
 """
@@ -207,16 +207,16 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_aaa@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_aaa.lua",
+    spec = "local.hash_provider_aaa@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_aaa.lua",
   }},
   {{
-    recipe = "local.hash_provider_zzz@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_zzz.lua",
+    spec = "local.hash_provider_zzz@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_zzz.lua",
   }},
   {{
-    recipe = "local.hash_consumer_multi@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_consumer_multi_weak.lua",
+    spec = "local.hash_consumer_multi@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_multi_weak.lua",
   }},
 }}
 """
@@ -265,11 +265,11 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_a.lua",
+    spec = "local.hash_provider_a@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
   }},
   {{
-    recipe = "local.hash_consumer_refonly@v1",
+    spec = "local.hash_consumer_refonly@v1",
     source = "{self.lua_path(consumer_path)}",
   }},
 }}
@@ -292,11 +292,11 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_b.lua",
+    spec = "local.hash_provider_b@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
   }},
   {{
-    recipe = "local.hash_consumer_refonly@v1",
+    spec = "local.hash_consumer_refonly@v1",
     source = "{self.lua_path(consumer_path)}",
   }},
 }}
@@ -326,8 +326,8 @@ IDENTITY = "local.hash_consumer_strong@v1"
 DEPENDENCIES = {{
   {{
     product = "tool",
-    recipe = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/hash_provider_a.lua",
+    spec = "local.hash_provider_a@v1",
+    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
   }},
 }}
 
@@ -346,7 +346,7 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.hash_consumer_strong@v1",
+    spec = "local.hash_consumer_strong@v1",
     source = "{self.lua_path(consumer_path)}",
   }},
 }}

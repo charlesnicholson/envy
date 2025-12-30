@@ -6,8 +6,8 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
-#include "recipe.h"
-#include "recipe_spec.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
@@ -20,7 +20,7 @@
 
 namespace envy {
 
-bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
+bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
   std::string stdout_capture;
@@ -36,14 +36,14 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
     stderr_capture += line;
     stderr_capture += '\n';
   };
-  cfg.cwd = recipe_spec::compute_project_root(r->spec);
-  cfg.shell = shell_resolve_default(r ? r->default_shell_ptr : nullptr);
+  cfg.cwd = pkg_cfg::compute_project_root(p->cfg);
+  cfg.shell = shell_resolve_default(p ? p->default_shell_ptr : nullptr);
 
   shell_result result;
   try {
     result = shell_run(check_cmd, cfg);
   } catch (std::exception const &e) {
-    throw std::runtime_error("check command failed for " + r->spec->identity + ": " +
+    throw std::runtime_error("check command failed for " + p->cfg->identity + ": " +
                              e.what());
   }
 
@@ -51,7 +51,7 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
 
   if (!check_passed) {
     tui::error("check failed for %s (exit code %d)",
-               r->spec->identity.c_str(),
+               p->cfg->identity.c_str(),
                result.exit_code);
     tui::error("command: %s", std::string(check_cmd).c_str());
     if (!stdout_capture.empty()) { tui::error("stdout:\n%s", stdout_capture.c_str()); }
@@ -64,22 +64,22 @@ bool run_check_string(recipe *r, engine &eng, std::string_view check_cmd) {
   return check_passed;
 }
 
-bool run_check_function(recipe *r,
+bool run_check_function(pkg *p,
                         engine &eng,
                         sol::state_view lua,
                         sol::protected_function check_func) {
   tui::debug("phase check: executing function check");
 
-  std::filesystem::path const project_root{ recipe_spec::compute_project_root(r->spec) };
+  std::filesystem::path const project_root{ pkg_cfg::compute_project_root(p->cfg) };
 
   // Set up Lua registry context for envy.* functions (run_dir = project_root)
   // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
-  phase_context_guard ctx_guard{ nullptr, r, project_root };
+  phase_context_guard ctx_guard{ nullptr, p, project_root };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   // New signature: CHECK(project_root, options)
-  sol::object result_obj{ call_lua_function_with_enriched_errors(r, "CHECK", [&]() {
+  sol::object result_obj{ call_lua_function_with_enriched_errors(p, "CHECK", [&]() {
     return check_func(project_root.string(), opts);
   }) };
 
@@ -97,55 +97,55 @@ bool run_check_function(recipe *r,
     std::string const check_cmd{ result_obj.as<std::string>() };
     tui::debug("phase check: function check returned string, executing: %s",
                check_cmd.c_str());
-    return run_check_string(r, eng, check_cmd);
+    return run_check_string(p, eng, check_cmd);
   }
 
-  throw std::runtime_error("check function for " + r->spec->identity +
+  throw std::runtime_error("check function for " + p->cfg->identity +
                            " must return boolean or string, got " +
                            sol::type_name(lua.lua_state(), result_type));
 }
 
-bool run_check_verb(recipe *r, engine &eng, sol::state_view lua) {
+bool run_check_verb(pkg *p, engine &eng, sol::state_view lua) {
   sol::object check_obj{ lua["CHECK"] };
 
   if (check_obj.is<sol::protected_function>()) {
-    return run_check_function(r, eng, lua, check_obj.as<sol::protected_function>());
+    return run_check_function(p, eng, lua, check_obj.as<sol::protected_function>());
   } else if (check_obj.is<std::string>()) {
-    return run_check_string(r, eng, check_obj.as<std::string_view>());
+    return run_check_string(p, eng, check_obj.as<std::string_view>());
   }
 
   return false;
 }
 
-// Helper: Check if recipe has check verb
-bool recipe_has_check_verb(recipe *r, sol::state_view lua) {
+// Helper: Check if package has check verb
+bool pkg_has_check_verb(pkg *p, sol::state_view lua) {
   sol::object check_obj{ lua["CHECK"] };
   return check_obj.is<sol::protected_function>() || check_obj.is<std::string>();
 }
 
 // Helper: Compute hash and perform cache lookup (common to both user/cache-managed)
-cache::ensure_result compute_hash_and_lookup_cache(recipe *r, sol::state_view lua) {
+cache::ensure_result compute_hash_and_lookup_cache(pkg *p, sol::state_view lua) {
   // Compute hash including resolved weak/ref-only dependencies
-  std::string key_for_hash{ r->spec->format_key() };
-  if (!r->resolved_weak_dependency_keys.empty()) {
-    for (auto const &wk : r->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
+  std::string key_for_hash{ p->cfg->format_key() };
+  if (!p->resolved_weak_dependency_keys.empty()) {
+    for (auto const &wk : p->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
   }
 
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
-  r->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);
+  p->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);
   std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
 
   std::string const platform{ lua["envy"]["PLATFORM"].get<std::string>() };
   std::string const arch{ lua["envy"]["ARCH"].get<std::string>() };
 
-  return r->cache_ptr->ensure_asset(r->spec->identity, platform, arch, hash_prefix);
+  return p->cache_ptr->ensure_pkg(p->cfg->identity, platform, arch, hash_prefix);
 }
 
 // USER-MANAGED PACKAGE PATH: Double-check lock pattern
-void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
+void run_check_phase_user_managed(pkg *p, engine &eng, sol::state_view lua) {
   // First check (pre-lock): See if work is needed
   tui::debug("phase check: running user check (pre-lock)");
-  bool const check_passed_prelock{ run_check_verb(r, eng, lua) };
+  bool const check_passed_prelock{ run_check_verb(p, eng, lua) };
   tui::debug("phase check: user check returned %s",
              check_passed_prelock ? "true" : "false");
 
@@ -159,7 +159,7 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
   tui::debug(
       "phase check: check failed (pre-lock), acquiring lock for user-managed package");
 
-  auto cache_result{ compute_hash_and_lookup_cache(r, lua) };
+  auto cache_result{ compute_hash_and_lookup_cache(p, lua) };
 
   if (cache_result.lock) {
     // Got lock - mark as user-managed for proper cleanup
@@ -168,7 +168,7 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
 
     // Second check (post-lock): Detect races where another process completed work
     tui::debug("phase check: re-running user check (post-lock)");
-    bool const check_passed_postlock{ run_check_verb(r, eng, lua) };
+    bool const check_passed_postlock{ run_check_verb(p, eng, lua) };
     tui::debug("phase check: re-check returned %s",
                check_passed_postlock ? "true" : "false");
 
@@ -183,52 +183,52 @@ void run_check_phase_user_managed(recipe *r, engine &eng, sol::state_view lua) {
     }
 
     // Still needed - keep lock, phases will execute
-    r->lock = std::move(cache_result.lock);
+    p->lock = std::move(cache_result.lock);
     tui::debug("phase check: re-check failed, keeping lock, phases will execute");
   } else {
     // Cache hit for user-managed package indicates inconsistent state:
     // check verb returned false (work needed) but cache entry exists.
     // This may indicate a buggy/non-deterministic check verb or race condition.
-    r->asset_path = cache_result.asset_path;
+    p->pkg_path = cache_result.pkg_path;
     tui::warn(
         "phase check: unexpected cache hit for user-managed package at %s - "
         "check verb may be buggy or non-deterministic",
-        cache_result.asset_path.string().c_str());
+        cache_result.pkg_path.string().c_str());
   }
 }
 
 // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-void run_check_phase_cache_managed(recipe *r) {
-  std::string const key{ r->spec->format_key() };
-  sol::state_view lua{ *r->lua };
+void run_check_phase_cache_managed(pkg *p) {
+  std::string const key{ p->cfg->format_key() };
+  sol::state_view lua{ *p->lua };
 
-  auto cache_result{ compute_hash_and_lookup_cache(r, lua) };
+  auto cache_result{ compute_hash_and_lookup_cache(p, lua) };
 
   if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
-    r->lock = std::move(cache_result.lock);
+    p->lock = std::move(cache_result.lock);
     tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
-  } else {  // Cache hit - store asset_path, no lock means subsequent phases skip
-    r->asset_path = cache_result.asset_path;
+  } else {  // Cache hit - store pkg_path, no lock means subsequent phases skip
+    p->pkg_path = cache_result.pkg_path;
     tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
                key.c_str(),
-               cache_result.asset_path.string().c_str());
+               cache_result.pkg_path.string().c_str());
   }
 }
 
-void run_check_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::asset_check,
+void run_check_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_check,
                                        std::chrono::steady_clock::now() };
 
-  sol::state_view lua{ *r->lua };
+  sol::state_view lua{ *p->lua };
 
-  // Check if recipe has check verb (user-managed package indicator)
-  bool const has_check{ recipe_has_check_verb(r, lua) };
+  // Check if package has check verb (user-managed package indicator)
+  bool const has_check{ pkg_has_check_verb(p, lua) };
 
   if (has_check) {
-    run_check_phase_user_managed(r, eng, lua);
+    run_check_phase_user_managed(p, eng, lua);
   } else {
-    run_check_phase_cache_managed(r);
+    run_check_phase_cache_managed(p);
   }
 }
 

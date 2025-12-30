@@ -5,7 +5,7 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "shell.h"
 #include "trace.h"
 #include "tui.h"
@@ -25,17 +25,17 @@ void run_programmatic_build(sol::protected_function build_func,
                             std::filesystem::path const &tmp_dir,
                             std::string const &identity,
                             engine &eng,
-                            recipe *r) {
+                            pkg *p) {
   tui::debug("phase build: running programmatic build function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
-  phase_context_guard ctx_guard{ &eng, r, stage_dir };
+  phase_context_guard ctx_guard{ &eng, p, stage_dir };
 
   sol::state_view lua{ build_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   sol::protected_function_result build_result{ call_lua_function_with_enriched_errors(
-      r,
+      p,
       "BUILD",
       [&]() {
         return build_func(stage_dir.string(), fetch_dir.string(), tmp_dir.string(), opts);
@@ -57,7 +57,7 @@ void run_programmatic_build(sol::protected_function build_func,
                                    },
                                .cwd = stage_dir,
                                .env = std::move(env),
-                               .shell = shell_resolve_default(r->default_shell_ptr) };
+                               .shell = shell_resolve_default(p->default_shell_ptr) };
 
       shell_result const result{ shell_run(script, cfg) };
       if (result.exit_code != 0) {
@@ -71,7 +71,7 @@ void run_programmatic_build(sol::protected_function build_func,
 void run_shell_build(std::string_view script,
                      std::filesystem::path const &stage_dir,
                      std::string const &identity,
-                     recipe *r) {
+                     pkg *p) {
   tui::debug("phase build: running shell script");
 
   shell_env_t env{ shell_getenv() };
@@ -83,7 +83,7 @@ void run_shell_build(std::string_view script,
                                },
                            .cwd = stage_dir,
                            .env = std::move(env),
-                           .shell = shell_resolve_default(r->default_shell_ptr) };
+                           .shell = shell_resolve_default(p->default_shell_ptr) };
 
   shell_result const result{ shell_run(script, cfg) };
   if (result.exit_code != 0) {
@@ -94,34 +94,34 @@ void run_shell_build(std::string_view script,
 
 }  // namespace
 
-void run_build_phase(recipe *r, engine &eng) {
-  phase_trace_scope const phase_scope{ r->spec->identity,
-                                       recipe_phase::asset_build,
+void run_build_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_build,
                                        std::chrono::steady_clock::now() };
-  if (!r->lock) {
+  if (!p->lock) {
     tui::debug("phase build: no lock (cache hit), skipping");
     return;
   }
 
-  sol::state_view lua_view{ *r->lua };
+  sol::state_view lua_view{ *p->lua };
   sol::object build_obj{ lua_view["BUILD"] };
 
   if (!build_obj.valid()) {
     tui::debug("phase build: no build field, skipping");
   } else if (build_obj.is<std::string>()) {
     std::string const script{ build_obj.as<std::string>() };
-    run_shell_build(script, r->lock->stage_dir(), r->spec->identity, r);
+    run_shell_build(script, p->lock->stage_dir(), p->cfg->identity, p);
   } else if (build_obj.is<sol::protected_function>()) {
     run_programmatic_build(build_obj.as<sol::protected_function>(),
-                           r->lock->fetch_dir(),
-                           r->lock->stage_dir(),
-                           r->lock->tmp_dir(),
-                           r->spec->identity,
+                           p->lock->fetch_dir(),
+                           p->lock->stage_dir(),
+                           p->lock->tmp_dir(),
+                           p->cfg->identity,
                            eng,
-                           r);
+                           p);
   } else {
     throw std::runtime_error("BUILD field must be nil, string, or function for " +
-                             r->spec->identity);
+                             p->cfg->identity);
   }
 }
 

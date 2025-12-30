@@ -103,7 +103,7 @@ std::string cache_test_result::to_keyvalue() const {
   oss << "locked=" << (locked ? "true" : "false") << '\n';
   oss << "fast_path=" << (fast_path ? "true" : "false") << '\n';
   oss << "entry_path=" << entry_path.string() << '\n';
-  oss << "asset_path=" << asset_path.string() << '\n';
+  oss << "pkg_path=" << pkg_path.string() << '\n';
   oss << "install_path=" << install_path.string() << '\n';
   oss << "fetch_path=" << fetch_path.string() << '\n';
   oss << "stage_path=" << stage_path.string() << '\n';
@@ -138,14 +138,14 @@ void cmd_cache_ensure_asset::execute() {
 
   // Ensure asset
   auto result{
-    c->ensure_asset(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
+    c->ensure_pkg(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
   };
 
   // Construct lock file path for reporting
   std::string entry_name{ cfg_.identity + "." + cfg_.platform + "-" + cfg_.arch +
                           "-blake3-" + cfg_.hash_prefix };
   std::filesystem::path lock_file{ c->root() / "locks" /
-                                   ("assets." + entry_name + ".lock") };
+                                   ("packages." + entry_name + ".lock") };
 
   // Determine result state
   bool locked{ result.lock != nullptr };
@@ -167,7 +167,7 @@ void cmd_cache_ensure_asset::execute() {
     output.locked = locked;
     output.fast_path = fast_path;
     output.entry_path = result.entry_path;
-    output.asset_path = result.asset_path;
+    output.pkg_path = result.pkg_path;
     if (result.lock) {
       output.install_path = result.lock->install_dir();
       output.fetch_path = result.lock->fetch_dir();
@@ -187,7 +187,7 @@ void cmd_cache_ensure_asset::execute() {
   output.locked = locked;
   output.fast_path = fast_path;
   output.entry_path = result.entry_path;
-  output.asset_path = result.asset_path;
+  output.pkg_path = result.pkg_path;
   if (result.lock) {
     output.install_path = result.lock->install_dir();
     output.fetch_path = result.lock->fetch_dir();
@@ -222,7 +222,7 @@ void cmd_cache_ensure_recipe::execute() {
   barrier.wait(cfg_.barrier_wait);
 
   // Ensure recipe
-  auto result{ c->ensure_recipe(cfg_.identity) };
+  auto result{ c->ensure_spec(cfg_.identity) };
 
   // Construct lock file path for reporting
   std::filesystem::path lock_file{ c->root() / "locks" /
@@ -248,7 +248,7 @@ void cmd_cache_ensure_recipe::execute() {
     output.locked = locked;
     output.fast_path = fast_path;
     output.entry_path = result.entry_path;
-    output.asset_path = result.asset_path;
+    output.pkg_path = result.pkg_path;
     if (result.lock) {
       output.install_path = result.lock->install_dir();
       output.fetch_path = result.lock->fetch_dir();
@@ -268,7 +268,7 @@ void cmd_cache_ensure_recipe::execute() {
   output.locked = locked;
   output.fast_path = fast_path;
   output.entry_path = result.entry_path;
-  output.asset_path = result.asset_path;
+  output.pkg_path = result.pkg_path;
   if (result.lock) {
     output.install_path = result.lock->install_dir();
     output.fetch_path = result.lock->fetch_dir();

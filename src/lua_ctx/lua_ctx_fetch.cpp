@@ -2,7 +2,7 @@
 
 #include "fetch.h"
 #include "phases/phase_fetch.h"
-#include "recipe.h"
+#include "pkg.h"
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
@@ -125,10 +125,10 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
 
       fetch_request req{ url_to_fetch_request(item.url, dest, item.ref, "ctx.fetch") };
 
-      if (items.size() == 1 && ctx->recipe_ && ctx->recipe_->tui_section) {
+      if (items.size() == 1 && ctx->pkg_ && ctx->pkg_->tui_section) {
         trackers.push_back(std::make_unique<tui_actions::fetch_progress_tracker>(
-            ctx->recipe_->tui_section,
-            ctx->recipe_->spec->identity,
+            ctx->pkg_->tui_section,
+            ctx->pkg_->cfg->identity,
             item.url));
 
         std::visit([&](auto &r) { r.progress = std::ref(*trackers.back()); }, req);
@@ -150,7 +150,7 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
         trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
       }
       std::string const trace_dest{ urls.empty() ? "" : basenames[0] };
-      ENVY_TRACE_LUA_CTX_FETCH_START(ctx->recipe_->spec->identity, trace_url, trace_dest);
+      ENVY_TRACE_LUA_CTX_FETCH_START(ctx->pkg_->cfg->identity, trace_url, trace_dest);
     }
 
     auto const results{ fetch(requests) };
@@ -163,7 +163,7 @@ std::function<sol::object(sol::object, sol::this_state)> make_ctx_fetch(
       if (urls.size() > 1) {
         trace_url += " (+" + std::to_string(urls.size() - 1) + " more)";
       }
-      ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->recipe_->spec->identity,
+      ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(ctx->pkg_->cfg->identity,
                                         trace_url,
                                         0,
                                         static_cast<std::int64_t>(duration_ms));

@@ -63,7 +63,7 @@ FETCH = {
 PRODUCTS = {{ tool_b = "bin/tool_b" }}
 DEPENDENCIES = {{
   {{
-    recipe = "local.tool_c@v1",
+    spec = "local.tool_c@v1",
     source = "{self.lua_path(tool_c_path)}"
   }}
 }}
@@ -79,7 +79,7 @@ FETCH = {{
 PRODUCTS = {{ tool_a = "bin/tool_a" }}
 DEPENDENCIES = {{
   {{
-    recipe = "local.tool_b@v1",
+    spec = "local.tool_b@v1",
     source = "{self.lua_path(tool_b_path)}"
   }}
 }}
@@ -106,8 +106,8 @@ FETCH = {
         manifest = self.manifest(
             f"""
 PACKAGES = {{
-  {{ recipe = "local.tool_a@v1", source = "{self.lua_path(tool_a_path)}" }},
-  {{ recipe = "local.tool_d@v1", source = "{self.lua_path(tool_d_path)}" }}
+  {{ spec = "local.tool_a@v1", source = "{self.lua_path(tool_a_path)}" }},
+  {{ spec = "local.tool_d@v1", source = "{self.lua_path(tool_d_path)}" }}
 }}
 """
         )

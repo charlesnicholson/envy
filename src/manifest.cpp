@@ -188,7 +188,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   sol::table packages_table = packages_obj.as<sol::table>();
 
   for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
-    m->packages.push_back(recipe_spec::parse(packages_table[i], manifest_path));
+    m->packages.push_back(pkg_cfg::parse(packages_table[i], manifest_path));
   }
 
   return m;

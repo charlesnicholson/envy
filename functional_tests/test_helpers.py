@@ -41,7 +41,7 @@ class TestPathHelper:
         Returns:
             Absolute path to recipe
         """
-        return self.test_data / "recipes" / recipe_name
+        return self.test_data / "specs" / recipe_name
 
     def create_wrapper_recipe(
         self, recipe_name: str, wrapper_name: Optional[str] = None
@@ -53,7 +53,7 @@ class TestPathHelper:
         write to test_dir, not project root.
 
         Args:
-            recipe_name: Name of recipe in test_data/recipes/
+            recipe_name: Name of recipe in test_data/specs/
             wrapper_name: Optional custom name for wrapper (defaults to recipe_name)
 
         Returns:

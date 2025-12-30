@@ -1,6 +1,6 @@
 #pragma once
 
-#include "recipe_phase.h"
+#include "pkg_phase.h"
 
 #include <chrono>
 #include <cstdint>
@@ -14,42 +14,42 @@ namespace trace_events {
 
 struct phase_blocked {
   std::string recipe;
-  recipe_phase blocked_at_phase;
+  pkg_phase blocked_at_phase;
   std::string waiting_for;
-  recipe_phase target_phase;
+  pkg_phase target_phase;
 };
 
 struct phase_unblocked {
   std::string recipe;
-  recipe_phase unblocked_at_phase;
+  pkg_phase unblocked_at_phase;
   std::string dependency;
 };
 
 struct dependency_added {
   std::string parent;
   std::string dependency;
-  recipe_phase needed_by;
+  pkg_phase needed_by;
 };
 
 struct phase_start {
   std::string recipe;
-  recipe_phase phase;
+  pkg_phase phase;
 };
 
 struct phase_complete {
   std::string recipe;
-  recipe_phase phase;
+  pkg_phase phase;
   std::int64_t duration_ms;
 };
 
 struct thread_start {
   std::string recipe;
-  recipe_phase target_phase;
+  pkg_phase target_phase;
 };
 
 struct thread_complete {
   std::string recipe;
-  recipe_phase final_phase;
+  pkg_phase final_phase;
 };
 
 struct recipe_registered {
@@ -60,8 +60,8 @@ struct recipe_registered {
 
 struct target_extended {
   std::string recipe;
-  recipe_phase old_target;
-  recipe_phase new_target;
+  pkg_phase old_target;
+  pkg_phase new_target;
 };
 
 struct lua_ctx_run_start {
@@ -104,8 +104,8 @@ struct lua_ctx_extract_complete {
 struct lua_ctx_asset_access {
   std::string recipe;
   std::string target;
-  recipe_phase current_phase;
-  recipe_phase needed_by;
+  pkg_phase current_phase;
+  pkg_phase needed_by;
   bool allowed;
   std::string reason;
 };
@@ -114,8 +114,8 @@ struct lua_ctx_product_access {
   std::string recipe;
   std::string product;
   std::string provider;
-  recipe_phase current_phase;
-  recipe_phase needed_by;
+  pkg_phase current_phase;
+  pkg_phase needed_by;
   bool allowed;
   std::string reason;
 };
@@ -123,7 +123,7 @@ struct lua_ctx_product_access {
 struct cache_hit {
   std::string recipe;
   std::string cache_key;
-  std::string asset_path;
+  std::string pkg_path;
   bool fast_path;
 };
 
@@ -310,11 +310,11 @@ inline bool trace_enabled() { return g_trace_enabled; }
 
 struct phase_trace_scope {
   std::string recipe;
-  recipe_phase phase;
+  pkg_phase phase;
   std::chrono::steady_clock::time_point start;
 
   phase_trace_scope(std::string recipe_identity,
-                    recipe_phase phase_value,
+                    pkg_phase phase_value,
                     std::chrono::steady_clock::time_point start_time);
   ~phase_trace_scope();
 };
@@ -476,11 +476,11 @@ struct phase_trace_scope {
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, asset_path_value, fast_path_value) \
+#define ENVY_TRACE_CACHE_HIT(recipe_value, cache_key_value, pkg_path_value, fast_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_hit{ \
       .recipe = (recipe_value), \
       .cache_key = (cache_key_value), \
-      .asset_path = (asset_path_value), \
+      .pkg_path = (pkg_path_value), \
       .fast_path = (fast_path_value), \
   }))
 

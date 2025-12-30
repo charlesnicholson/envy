@@ -48,8 +48,8 @@ class TestProductTransitive(unittest.TestCase):
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_root.lua",
+    spec = "local.product_transitive_root@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
   }},
 }}
 """
@@ -59,12 +59,12 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify all three recipes were installed
-        root_dir = self.cache_root / "assets" / "local.product_transitive_root@v1"
+        root_dir = self.cache_root / "packages" / "local.product_transitive_root@v1"
         intermediate_dir = (
-            self.cache_root / "assets" / "local.product_transitive_intermediate@v1"
+            self.cache_root / "packages" / "local.product_transitive_intermediate@v1"
         )
         provider_dir = (
-            self.cache_root / "assets" / "local.product_transitive_provider@v1"
+            self.cache_root / "packages" / "local.product_transitive_provider@v1"
         )
 
         self.assertTrue(root_dir.exists(), f"missing {root_dir}")
@@ -80,8 +80,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_transitive_root_fail@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_root_fail.lua",
+    spec = "local.product_transitive_root_fail@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root_fail.lua",
   }},
 }}
 """
@@ -108,8 +108,8 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_root.lua",
+    spec = "local.product_transitive_root@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
   }},
 }}
 """
@@ -120,7 +120,7 @@ PACKAGES = {{
 
         # Verify provider was installed (intermediate doesn't provide, but its dep does)
         provider_dir = (
-            self.cache_root / "assets" / "local.product_transitive_provider@v1"
+            self.cache_root / "packages" / "local.product_transitive_provider@v1"
         )
         self.assertTrue(
             provider_dir.exists(),
@@ -135,12 +135,12 @@ PACKAGES = {{
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_provider.lua",
+    spec = "local.product_transitive_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
   }},
   {{
-    recipe = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_root.lua",
+    spec = "local.product_transitive_root@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
   }},
 }}
 """
@@ -151,9 +151,9 @@ PACKAGES = {{
 
         # Both provider and root should exist
         # Intermediate might not be installed since provider was found directly
-        root_dir = self.cache_root / "assets" / "local.product_transitive_root@v1"
+        root_dir = self.cache_root / "packages" / "local.product_transitive_root@v1"
         provider_dir = (
-            self.cache_root / "assets" / "local.product_transitive_provider@v1"
+            self.cache_root / "packages" / "local.product_transitive_provider@v1"
         )
 
         self.assertTrue(root_dir.exists(), f"missing {root_dir}")
@@ -167,8 +167,8 @@ IDENTITY = "local.transitive_mid2@v1"
 
 DEPENDENCIES = {{
   {{
-    recipe = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/recipes/product_transitive_provider.lua",
+    spec = "local.product_transitive_provider@v1",
+    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
   }}
 }}
 
@@ -188,7 +188,7 @@ IDENTITY = "local.transitive_mid1@v1"
 
 DEPENDENCIES = {{
   {{
-    recipe = "local.transitive_mid2@v1",
+    spec = "local.transitive_mid2@v1",
     source = "{self.lua_path(mid2_path)}",
   }}
 }}
@@ -211,7 +211,7 @@ DEPENDENCIES = {{
   {{
     product = "tool",
     weak = {{
-      recipe = "local.transitive_mid1@v1",
+      spec = "local.transitive_mid1@v1",
       source = "{self.lua_path(mid1_path)}",
     }}
   }}
@@ -232,7 +232,7 @@ end
             f"""
 PACKAGES = {{
   {{
-    recipe = "local.transitive_consumer@v1",
+    spec = "local.transitive_consumer@v1",
     source = "{self.lua_path(consumer_path)}",
   }},
 }}
@@ -248,7 +248,7 @@ PACKAGES = {{
 
         # Verify provider at the end was reached
         provider_dir = (
-            self.cache_root / "assets" / "local.product_transitive_provider@v1"
+            self.cache_root / "packages" / "local.product_transitive_provider@v1"
         )
         self.assertTrue(
             provider_dir.exists(), "Provider should be installed via deep chain"

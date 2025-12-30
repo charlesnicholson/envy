@@ -4,9 +4,9 @@
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
-#include "recipe.h"
-#include "recipe_key.h"
-#include "recipe_spec.h"
+#include "pkg.h"
+#include "pkg_cfg.h"
+#include "pkg_key.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -16,11 +16,11 @@
 namespace envy {
 
 void cmd_asset::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
-  auto *sub{ app.add_subcommand("asset", "Query and install package, print asset path") };
+  auto *sub{ app.add_subcommand("asset", "Query and install package, print package path") };
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity",
                   cfg_ptr->identity,
-                  "Recipe identity (namespace.name@version)")
+                  "Spec identity (namespace.name@version)")
       ->required();
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
   sub->callback(
@@ -35,7 +35,7 @@ void cmd_asset::execute() {
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
-  std::vector<recipe_spec const *> matches;
+  std::vector<pkg_cfg const *> matches;
   for (auto const *pkg : m->packages) {
     if (pkg->identity == cfg_.identity) { matches.push_back(pkg); }
   }
@@ -43,11 +43,11 @@ void cmd_asset::execute() {
   if (matches.empty()) { throw std::runtime_error("asset: identity not found"); }
 
   if (matches.size() > 1) {
-    std::string first_key{ recipe_spec::format_key(matches[0]->identity,
-                                                   matches[0]->serialized_options) };
+    std::string first_key{ pkg_cfg::format_key(matches[0]->identity,
+                                               matches[0]->serialized_options) };
     for (size_t i{ 1 }; i < matches.size(); ++i) {
-      std::string key{ recipe_spec::format_key(matches[i]->identity,
-                                               matches[i]->serialized_options) };
+      std::string key{ pkg_cfg::format_key(matches[i]->identity,
+                                           matches[i]->serialized_options) };
       if (key != first_key) {
         throw std::runtime_error("asset: identity '" + cfg_.identity +
                                  "' appears multiple times with different options");
@@ -57,23 +57,23 @@ void cmd_asset::execute() {
 
   engine eng{ *c, m->get_default_shell(nullptr) };
 
-  std::vector<recipe_spec const *> roots;
+  std::vector<pkg_cfg const *> roots;
   roots.reserve(m->packages.size());
   for (auto *pkg : m->packages) { roots.push_back(pkg); }
 
   eng.resolve_graph(roots);
 
-  recipe_key const target_key{ *matches[0] };
-  recipe *r{ eng.find_exact(target_key) };
-  if (!r) { throw std::runtime_error("asset: recipe not found in graph"); }
+  pkg_key const target_key{ *matches[0] };
+  pkg *p{ eng.find_exact(target_key) };
+  if (!p) { throw std::runtime_error("asset: spec not found in graph"); }
 
-  eng.ensure_recipe_at_phase(r->key, recipe_phase::completion);
+  eng.ensure_pkg_at_phase(p->key, pkg_phase::completion);
 
-  if (r->type != recipe_type::CACHE_MANAGED) {
-    throw std::runtime_error("asset: recipe is not cache-managed");
+  if (p->type != pkg_type::CACHE_MANAGED) {
+    throw std::runtime_error("asset: package is not cache-managed");
   }
 
-  tui::print_stdout("%s\n", r->asset_path.string().c_str());
+  tui::print_stdout("%s\n", p->pkg_path.string().c_str());
 }
 
 }  // namespace envy
