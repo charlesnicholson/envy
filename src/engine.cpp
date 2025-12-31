@@ -822,16 +822,15 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
           if (i) { oss << "\n"; }
           oss << resolution.missing_without_fallback[i];
         }
-        oss << "\nWeak dependency resolution made no progress at iteration " << iteration
+        oss << "\nDependency resolution made no progress at iteration " << iteration
             << " with " << unresolved << " unresolved references";
         throw std::runtime_error(oss.str());
       }
       if (unresolved > 0) {
         fail_all_contexts();
-        throw std::runtime_error(
-            "Weak dependency resolution made no progress at iteration " +
-            std::to_string(iteration) + " with " + std::to_string(unresolved) +
-            " unresolved references");
+        throw std::runtime_error("Dependency resolution made no progress at iteration " +
+                                 std::to_string(iteration) + " with " +
+                                 std::to_string(unresolved) + " unresolved references");
       }
       break;
     }
