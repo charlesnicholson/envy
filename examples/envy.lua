@@ -1,8 +1,7 @@
 -- @envy version "0.0.0"
 
 PACKAGES = {
-  { spec = "local.uv@r0", source = "local.uv@r0.lua",
-    options = { version = "0.9.21" } },
+  { spec = "local.uv@r0", source = "local.uv@r0.lua", options = { version = "0.9.21" } },
 
   { spec = "local.armgcc@r0", source = "local.armgcc@r0.lua",
     options = { version = "14.3.rel1" } },
@@ -17,7 +16,10 @@ PACKAGES = {
     options = { version = "v1.13.2" } },
 
   { spec = "local.gn@r0", source = "local.gn@r0.lua",
-    options = { ref = "5964f499767097d81dbe034e8b541c3988168073" }},
+    options = { ref = "5964f499767097d81dbe034e8b541c3988168073" } },
+
+  { spec = "local.cmake@r0", source = "local.cmake@r0.lua",
+    options = { version = "4.2.1" } },
 }
 
 if envy.PLATFORM ~= "windows" then
@@ -25,17 +27,20 @@ if envy.PLATFORM ~= "windows" then
 end
 
 if envy.PLATFORM == "darwin" then
-  envy.extend(PACKAGES, { {
-    spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
-    options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } }
-  } })
+  envy.extend(PACKAGES, {
+    { spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
+      options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } } },
 
+    { spec = "local.clang-tools@r0", source = "local.clang-tools@r0.lua",
+      options = { version = "21.1.0" } },
+  })
 end
 
 if envy.PLATFORM == "linux" then
-  envy.extend(PACKAGES, { {
-    spec = "local.apt@r0", source = "local.apt@r0.lua",
-    options = { packages = {
-      "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" } }
-} })
+  envy.extend(PACKAGES, {
+    { spec = "local.apt@r0", source = "local.apt@r0.lua",
+      options = {
+        packages = {
+          "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" }
+      } } })
 end
