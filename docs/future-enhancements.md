@@ -2,13 +2,13 @@
 
 Potential enhancements not currently prioritized.
 
-## Built-in Recipes
+## Built-in Specs
 
-Embed recipes in the envy binary itself (e.g., `envy.*` namespace), extracted to cache on first run. Useful for bootstrapping common toolchains without external dependencies, but adds binary size and complexity. Needs clear use case before implementation.
+Embed specs in the envy binary itself (e.g., `envy.*` namespace), extracted to cache on first run. Useful for bootstrapping common toolchains without external dependencies, but adds binary size and complexity. Needs clear use case before implementation.
 
-## Recipe Source Overrides
+## Spec Source Overrides
 
-Allow manifests to override recipe sources globally. Useful for pointing to mirrors, local forks, or air-gapped environments.
+Allow manifests to override spec sources globally. Useful for pointing to mirrors, local forks, or air-gapped environments.
 
 ```lua
 -- project/envy.lua
@@ -20,16 +20,16 @@ overrides = {
     sha256 = "abc123...",
   },
   ["local.wrapper@v1"] = {
-    file = "./envy/recipes/wrapper.lua",  -- local override
+    file = "./envy/specs/wrapper.lua",  -- local override
   },
 }
 ```
 
 **Semantics:**
-- Overrides apply to all recipe references (manifest packages + transitive dependencies)
+- Overrides apply to all spec references (manifest packages + transitive dependencies)
 - Override specifies alternate source (url+sha256 or file); options remain from original cfg
-- Applied before fetching/loading, affects cache key for remote recipes
-- Non-local recipes cannot override to local sources (security boundary)
+- Applied before fetching/loading, affects cache key for remote specs
+- Non-local specs cannot override to local sources (security boundary)
 
 **Implementation notes:**
 - `manifest` struct gains `std::unordered_map<std::string, recipe_override>` member
@@ -39,18 +39,18 @@ overrides = {
 
 ## Manifest Transform Hooks
 
-Beyond declarative overrides, allow manifests to programmatically transform recipe specifications. Provides maximum flexibility for complex scenarios.
+Beyond declarative overrides, allow manifests to programmatically transform spec specifications. Provides maximum flexibility for complex scenarios.
 
 ```lua
 -- project/envy.lua
 function transform_recipe(spec)
-  -- Redirect all recipes to internal mirror
+  -- Redirect all specs to internal mirror
   if spec.url and spec.url:match("^https://example.com/") then
     spec.url = spec.url:gsub("^https://example.com/", "https://internal-mirror.company/")
   end
 
   -- Force specific version for security
-  if spec.recipe == "openssl.lib@v3" then
+  if spec.spec == "openssl.lib@v3" then
     spec.options = spec.options or {}
     spec.options.version = "3.0.12"  -- Known secure version
   end
@@ -61,35 +61,35 @@ end
 PACKAGES = { "openssl.lib@v3", "curl.tool@v2" }
 ```
 
-**Considerations:** Hook executes during manifest validation. Applied to all recipe specs (packages + transitive dependencies) before override resolution. Must be pure function (no side effects). Ordering: transform → override → validation.
+**Considerations:** Hook executes during manifest validation. Applied to all spec specs (packages + transitive dependencies) before override resolution. Must be pure function (no side effects). Ordering: transform → override → validation.
 
-## Recipe Version Ranges
+## Spec Version Ranges
 
-Support semver ranges for recipe dependencies to reduce churn when recipe bugs are fixed. Recipe versions must be semver-compliant to enable ranges.
-
-```lua
-depends = { "vendor.library@^2.0.0" }  -- Any 2.x recipe version
-```
-
-## Multi-File Recipes from Git Repositories
-
-Fetch multi-file recipes directly from Git repos instead of requiring pre-packaged archives. Requires Git runtime dependency.
+Support semver ranges for spec dependencies to reduce churn when spec bugs are fixed. Spec versions must be semver-compliant to enable ranges.
 
 ```lua
-{ recipe = "vendor.gcc@v2", git = "https://github.com/vendor/recipes.git", ref = "v2.0" }
+depends = { "vendor.library@^2.0.0" }  -- Any 2.x spec version
 ```
 
-## Recipe Mirroring and Offline Support
+## Multi-File Specs from Git Repositories
+
+Fetch multi-file specs directly from Git repos instead of requiring pre-packaged archives. Requires Git runtime dependency.
+
+```lua
+{ spec = "vendor.gcc@v2", git = "https://github.com/vendor/specs.git", ref = "v2.0" }
+```
+
+## Spec Mirroring and Offline Support
 
 Configure alternate download locations for air-gapped environments. Similar to npm registry mirrors or Go module proxies.
 
 ```lua
-recipe_mirrors = { ["https://public.com/recipes/"] = "https://internal.corp/recipes/" }
+recipe_mirrors = { ["https://public.com/specs/"] = "https://internal.corp/specs/" }
 ```
 
-## Recipe Deprecation Metadata
+## Spec Deprecation Metadata
 
-Mark recipes as deprecated with migration guidance. Envy warns users and suggests replacement.
+Mark specs as deprecated with migration guidance. Envy warns users and suggests replacement.
 
 ```lua
 deprecated = { message = "Use arm.gcc@v2 instead", replacement = "arm.gcc@v2" }
@@ -97,7 +97,7 @@ deprecated = { message = "Use arm.gcc@v2 instead", replacement = "arm.gcc@v2" }
 
 ## Declarative Build Systems
 
-Support declarative table form for common build systems (cmake, make, meson, ninja, cargo, etc.) to reduce boilerplate in recipes. Currently all builds use imperative functions or shell scripts.
+Support declarative table form for common build systems (cmake, make, meson, ninja, cargo, etc.) to reduce boilerplate in specs. Currently all builds use imperative functions or shell scripts.
 
 **Current approach (imperative):**
 ```lua
@@ -165,19 +165,19 @@ BUILD = {
 **Implementation considerations:**
 - Table form is syntactic sugar; translates to `ctx.run()` calls internally
 - Supports common patterns while still allowing `build = function(ctx)` for complex cases
-- Recipe validation checks for valid build system keys and required fields
+- Spec validation checks for valid build system keys and required fields
 - Each build system has sensible defaults (e.g., `make.jobs` defaults to available cores)
 - Build systems inject correct paths (install_dir, stage_dir) automatically
 - Mixed forms not allowed: choose either table or function, not both
 
 **Benefits:**
-- Reduces recipe boilerplate for standard build patterns
+- Reduces spec boilerplate for standard build patterns
 - Self-documenting: table keys make build configuration explicit
-- Easier to validate and lint recipes statically
-- Common patterns standardized across recipes
+- Easier to validate and lint specs statically
+- Common patterns standardized across specs
 
 **Trade-offs:**
-- Adds complexity to recipe parsing and validation
+- Adds complexity to spec parsing and validation
 - May not cover all edge cases (custom build systems, complex workflows)
 - Escape hatch via function form still required for advanced builds
 
@@ -294,10 +294,10 @@ stderr_reader.join();
 
 ## Dynamic Alias Computation
 
-Allow recipe files to compute aliases from options passed by manifest. String form is static; function form takes options table and returns alias string. Enables single recipe to generate descriptive aliases like `python3.13` or `gcc-arm-13.2` based on version option.
+Allow spec files to compute aliases from options passed by manifest. String form is static; function form takes options table and returns alias string. Enables single spec to generate descriptive aliases like `python3.13` or `gcc-arm-13.2` based on version option.
 
 ```lua
--- local.python@r4.lua (recipe file)
+-- local.python@r4.lua (spec file)
 IDENTITY = "local.python@r4"
 
 -- Static alias (current)
@@ -309,11 +309,11 @@ alias = function(options)
 end
 
 -- Manifest usage:
--- { recipe = "local.python@r4", source = "...", options = {version = "3.13"} }
+-- { spec = "local.python@r4", source = "...", options = {version = "3.13"} }
 -- Result: registered as alias "python3.13"
 ```
 
-**Implementation:** Function evaluated during recipe_fetch phase after loading recipe Lua. Takes `options` table from recipe_spec (not full ctx—aliases needed before asset phases). Cached per recipe instance. String result must be unique (enforced at registration time).
+**Implementation:** Function evaluated during recipe_fetch phase after loading spec Lua. Takes `options` table from recipe_spec (not full ctx—aliases needed before asset phases). Cached per spec instance. String result must be unique (enforced at registration time).
 
 ## `.luarc.json` Merge Logic
 
@@ -323,6 +323,6 @@ end
 { "workspace.library": ["/path/to/cache/envy/0.1.0/envy.lua"] }
 ```
 
-## Cross-Platform Recipe Variants
+## Cross-Platform Spec Variants
 
-Higher-level abstraction for platform-specific variants within a single recipe identity. Current Lua approach handles this programmatically.
+Higher-level abstraction for platform-specific variants within a single spec identity. Current Lua approach handles this programmatically.

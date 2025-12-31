@@ -39,7 +39,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         return result.stdout.strip()
 
     def test_recipe_with_one_dependency(self):
-        """Engine loads recipe and its dependency."""
+        """Engine loads spec and its dependency."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -86,7 +86,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         )
 
     def test_self_dependency_detection(self):
-        """Engine detects and rejects recipe depending on itself."""
+        """Engine detects and rejects spec depending on itself."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -130,7 +130,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 4, f"Expected 4 recipes (A,B,C,D once), got: {result.stdout}"
+            len(lines), 4, f"Expected 4 specs (A,B,C,D once), got: {result.stdout}"
         )
 
         # Verify all present - parse with better error reporting
@@ -171,7 +171,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertEqual(
             len(lines),
             2,
-            f"Expected 2 recipes (parent + helper), got: {result.stdout}",
+            f"Expected 2 specs (parent + helper), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)
@@ -205,7 +205,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("local.independent_right@v1", output)
 
     def test_options_differentiate_recipes(self):
-        """Same recipe identity with different options creates separate entries."""
+        """Same spec identity with different options creates separate entries."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -225,7 +225,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertEqual(
             len(lines),
             3,
-            f"Expected 3 recipes (parent + 2 variants), got: {result.stdout}",
+            f"Expected 3 specs (parent + 2 variants), got: {result.stdout}",
         )
 
         # Verify all present with options in keys (strings are quoted)
@@ -253,7 +253,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 5, f"Expected 5 recipes (A,B,C,D,E), got: {result.stdout}"
+            len(lines), 5, f"Expected 5 specs (A,B,C,D,E), got: {result.stdout}"
         )
 
         # Verify all present
@@ -293,7 +293,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("local.fanout_child4@v1", output)
 
     def test_nonlocal_cannot_depend_on_local(self):
-        """Engine rejects non-local recipe depending on local.*."""
+        """Engine rejects non-local spec depending on local.*."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -317,7 +317,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         )
 
     def test_remote_file_uri_no_dependencies(self):
-        """Remote recipe with file:// source and no dependencies succeeds."""
+        """Remote spec with file:// source and no dependencies succeeds."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -341,7 +341,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertGreater(len(value), 0)
 
     def test_remote_depends_on_remote(self):
-        """Remote recipe depending on another remote recipe succeeds."""
+        """Remote spec depending on another remote spec succeeds."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -365,7 +365,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("remote.child@v1", output)
 
     def test_local_depends_on_remote(self):
-        """Local recipe depending on remote recipe succeeds."""
+        """Local spec depending on remote spec succeeds."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -389,7 +389,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("remote.base@v1", output)
 
     def test_local_depends_on_local(self):
-        """Local recipe depending on another local recipe succeeds."""
+        """Local spec depending on another local spec succeeds."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -413,7 +413,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertIn("local.child@v1", output)
 
     def test_transitive_local_dependency_rejected(self):
-        """Remote recipe transitively depending on local.* fails."""
+        """Remote spec transitively depending on local.* fails."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -496,7 +496,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertEqual(
             len(lines),
             3,
-            f"Expected 3 recipes (parent + child + base), got: {result.stdout}",
+            f"Expected 3 specs (parent + child + base), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)
@@ -527,7 +527,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertEqual(
             len(lines),
             4,
-            f"Expected 4 recipes (A + B + C + base), got: {result.stdout}",
+            f"Expected 4 specs (A + B + C + base), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)
@@ -559,7 +559,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
         self.assertEqual(
             len(lines),
             4,
-            f"Expected 4 recipes (parent + child + base + helper), got: {result.stdout}",
+            f"Expected 4 specs (parent + child + base + helper), got: {result.stdout}",
         )
 
         output = dict(line.split(" -> ", 1) for line in lines)

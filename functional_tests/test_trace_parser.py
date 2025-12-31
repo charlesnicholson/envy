@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from .trace_parser import RecipePhase, TraceParser
+from .trace_parser import PkgPhase, TraceParser
 
 
 def create_trace_file(events: list[dict[str, Any]]) -> Path:
@@ -41,7 +41,7 @@ class TestTraceParser(unittest.TestCase):
                 {
                     "ts": "2025-01-15T10:30:00.123Z",
                     "event": "phase_start",
-                    "recipe": "test@v1",
+                    "spec": "test@v1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                 }
@@ -55,8 +55,8 @@ class TestTraceParser(unittest.TestCase):
         event = events[0]
         self.assertEqual(event.event, "phase_start")
         self.assertEqual(event.ts, "2025-01-15T10:30:00.123Z")
-        self.assertEqual(event.recipe, "test@v1")
-        self.assertEqual(event.phase, RecipePhase.RECIPE_FETCH)
+        self.assertEqual(event.spec, "test@v1")
+        self.assertEqual(event.phase, PkgPhase.SPEC_FETCH)
 
         trace_file.unlink()
 
@@ -66,8 +66,8 @@ class TestTraceParser(unittest.TestCase):
             [
                 {
                     "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "recipe_registered",
-                    "recipe": "parent@v1",
+                    "event": "spec_registered",
+                    "spec": "parent@v1",
                     "key": "parent@v1",
                     "has_dependencies": True,
                 },
@@ -82,7 +82,7 @@ class TestTraceParser(unittest.TestCase):
                 {
                     "ts": "2025-01-15T10:30:01.789Z",
                     "event": "cache_hit",
-                    "recipe": "child@v2",
+                    "spec": "child@v2",
                     "cache_key": "key123",
                     "pkg_path": "/cache/path",
                 },
@@ -92,7 +92,7 @@ class TestTraceParser(unittest.TestCase):
 
         events = parser.parse()
         self.assertEqual(len(events), 3)
-        self.assertEqual(events[0].event, "recipe_registered")
+        self.assertEqual(events[0].event, "spec_registered")
         self.assertEqual(events[1].event, "dependency_added")
         self.assertEqual(events[2].event, "cache_hit")
 
@@ -105,14 +105,14 @@ class TestTraceParser(unittest.TestCase):
                 {
                     "ts": "2025-01-15T10:30:00.123Z",
                     "event": "phase_start",
-                    "recipe": "r1",
+                    "spec": "r1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                 },
                 {
                     "ts": "2025-01-15T10:30:00.456Z",
                     "event": "phase_complete",
-                    "recipe": "r1",
+                    "spec": "r1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                     "duration_ms": 100,
@@ -120,7 +120,7 @@ class TestTraceParser(unittest.TestCase):
                 {
                     "ts": "2025-01-15T10:30:00.789Z",
                     "event": "phase_start",
-                    "recipe": "r1",
+                    "spec": "r1",
                     "phase": "check",
                     "phase_num": 1,
                 },
@@ -138,28 +138,28 @@ class TestTraceParser(unittest.TestCase):
 
         trace_file.unlink()
 
-    def test_filter_by_recipe(self):
-        """Test filtering events by recipe."""
+    def test_filter_by_spec(self):
+        """Test filtering events by spec."""
         trace_file = create_trace_file(
             [
                 {
                     "ts": "2025-01-15T10:30:00.123Z",
                     "event": "phase_start",
-                    "recipe": "recipe1@v1",
+                    "spec": "recipe1@v1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                 },
                 {
                     "ts": "2025-01-15T10:30:00.456Z",
                     "event": "phase_start",
-                    "recipe": "recipe2@v1",
+                    "spec": "recipe2@v1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                 },
                 {
                     "ts": "2025-01-15T10:30:00.789Z",
                     "event": "phase_complete",
-                    "recipe": "recipe1@v1",
+                    "spec": "recipe1@v1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                     "duration_ms": 100,
@@ -168,13 +168,13 @@ class TestTraceParser(unittest.TestCase):
         )
         parser = TraceParser(trace_file)
 
-        recipe1_events = parser.filter_by_recipe("recipe1@v1")
+        recipe1_events = parser.filter_by_spec("recipe1@v1")
         self.assertEqual(len(recipe1_events), 2)
-        self.assertTrue(all(e.recipe == "recipe1@v1" for e in recipe1_events))
+        self.assertTrue(all(e.spec == "recipe1@v1" for e in recipe1_events))
 
-        recipe2_events = parser.filter_by_recipe("recipe2@v1")
+        recipe2_events = parser.filter_by_spec("recipe2@v1")
         self.assertEqual(len(recipe2_events), 1)
-        self.assertEqual(recipe2_events[0].recipe, "recipe2@v1")
+        self.assertEqual(recipe2_events[0].spec, "recipe2@v1")
 
         trace_file.unlink()
 
@@ -185,21 +185,21 @@ class TestTraceParser(unittest.TestCase):
                 {
                     "ts": "2025-01-15T10:30:00.100Z",
                     "event": "phase_start",
-                    "recipe": "test@v1",
+                    "spec": "test@v1",
                     "phase": "recipe_fetch",
                     "phase_num": 0,
                 },
                 {
                     "ts": "2025-01-15T10:30:00.200Z",
                     "event": "phase_start",
-                    "recipe": "test@v1",
+                    "spec": "test@v1",
                     "phase": "check",
                     "phase_num": 1,
                 },
                 {
                     "ts": "2025-01-15T10:30:00.300Z",
                     "event": "phase_start",
-                    "recipe": "test@v1",
+                    "spec": "test@v1",
                     "phase": "fetch",
                     "phase_num": 2,
                 },
@@ -211,9 +211,9 @@ class TestTraceParser(unittest.TestCase):
         self.assertEqual(
             sequence,
             [
-                RecipePhase.RECIPE_FETCH,
-                RecipePhase.ASSET_CHECK,
-                RecipePhase.ASSET_FETCH,
+                PkgPhase.SPEC_FETCH,
+                PkgPhase.ASSET_CHECK,
+                PkgPhase.ASSET_FETCH,
             ],
         )
 
@@ -237,7 +237,7 @@ class TestTraceParser(unittest.TestCase):
 
         # Should not raise
         parser.assert_dependency_needed_by(
-            "parent@v1", "child@v1", RecipePhase.ASSET_FETCH
+            "parent@v1", "child@v1", PkgPhase.ASSET_FETCH
         )
 
         trace_file.unlink()
@@ -261,7 +261,7 @@ class TestTraceParser(unittest.TestCase):
         # Should raise AssertionError
         with self.assertRaises(AssertionError) as cm:
             parser.assert_dependency_needed_by(
-                "parent@v1", "child@v1", RecipePhase.ASSET_BUILD
+                "parent@v1", "child@v1", PkgPhase.ASSET_BUILD
             )
 
         self.assertIn("Wrong needed_by phase", str(cm.exception))

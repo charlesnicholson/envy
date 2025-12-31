@@ -1,5 +1,5 @@
 -- local.c@v1
--- Local recipe with no dependencies
+-- Local spec with no dependencies
 
 IDENTITY = "local.c@v1"
 

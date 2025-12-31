@@ -1,5 +1,5 @@
--- Test for unrelated recipe error
--- This recipe tries to access lib without declaring it
+-- Test for unrelated spec error
+-- This spec tries to access lib without declaring it
 IDENTITY = "local.dep_val_unrelated@v1"
 
 -- Intentionally NOT declaring any dependencies

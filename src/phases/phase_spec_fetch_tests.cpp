@@ -46,7 +46,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name) {
                                   ("envy_test_check_" + phase_name) };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "recipe.lua" };
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
   {
     std::ofstream ofs{ spec_file };
@@ -133,7 +133,7 @@ TEST_CASE("user-managed package with check verb and install phase succeeds") {
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_check_install_ok" };
   std::filesystem::create_directories(temp_dir);
-  std::filesystem::path spec_file{ temp_dir / "recipe.lua" };
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.check_install_ok@v1\"\n";

@@ -1,4 +1,4 @@
--- Recipe that uses needed_by="fetch" but tries to access undeclared dependency
+-- Spec that uses needed_by="fetch" but tries to access undeclared dependency
 IDENTITY = "local.dep_val_needed_by_undeclared@v1"
 
 DEPENDENCIES = {

@@ -64,8 +64,8 @@ class TestTUIRendering(unittest.TestCase):
         )
         return result
 
-    def test_parallel_recipes_complete_successfully(self):
-        """Multiple recipes complete successfully in parallel.
+    def test_parallel_specs_complete_successfully(self):
+        """Multiple specs complete successfully in parallel.
 
         Note: ANSI rendering verification requires a real TTY and is tested manually.
         When stderr is captured (as in automated tests), TUI uses fallback mode.

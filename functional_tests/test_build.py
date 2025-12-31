@@ -40,8 +40,8 @@ class TestBuildPhase(unittest.TestCase):
                 return subdir
         return None
 
-    def run_recipe(self, recipe_file, identity, should_succeed=True):
-        """Helper to run a recipe and return result."""
+    def run_spec(self, spec_file, identity, should_succeed=True):
+        """Helper to run a spec and return result."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -49,7 +49,7 @@ class TestBuildPhase(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 identity,
-                f"test_data/specs/{recipe_file}",
+                f"test_data/specs/{spec_file}",
             ],
             capture_output=True,
             text=True,
@@ -59,20 +59,20 @@ class TestBuildPhase(unittest.TestCase):
             self.assertEqual(
                 result.returncode,
                 0,
-                f"Recipe {recipe_file} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
+                f"Spec {spec_file} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
             )
         else:
             self.assertNotEqual(
                 result.returncode,
                 0,
-                f"Recipe {recipe_file} should have failed but succeeded",
+                f"Spec {spec_file} should have failed but succeeded",
             )
 
         return result
 
     def test_build_nil_skips_phase(self):
-        """Recipe with no build field should skip build phase."""
-        self.run_recipe("build_nil.lua", "local.build_nil@v1")
+        """Spec with no build field should skip build phase."""
+        self.run_spec("build_nil.lua", "local.build_nil@v1")
 
         # Files should still be present from stage
         asset_path = self.get_asset_path("local.build_nil@v1")
@@ -80,8 +80,8 @@ class TestBuildPhase(unittest.TestCase):
         self.assertTrue((asset_path / "file1.txt").exists())
 
     def test_build_string_executes_shell(self):
-        """Recipe with build = "string" executes shell script."""
-        self.run_recipe("build_string.lua", "local.build_string@v1")
+        """Spec with build = "string" executes shell script."""
+        self.run_spec("build_string.lua", "local.build_string@v1")
 
         # Verify build artifacts were created
         asset_path = self.get_asset_path("local.build_string@v1")
@@ -94,8 +94,8 @@ class TestBuildPhase(unittest.TestCase):
         self.assertEqual(content.strip(), "build_artifact")
 
     def test_build_function_with_ctx_run(self):
-        """Recipe with build = function(ctx) uses envy.run()."""
-        self.run_recipe("build_function.lua", "local.build_function@v1")
+        """Spec with build = function(ctx) uses envy.run()."""
+        self.run_spec("build_function.lua", "local.build_function@v1")
 
         # Verify build artifacts
         asset_path = self.get_asset_path("local.build_function@v1")
@@ -107,8 +107,8 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_with_asset_dependency(self):
         """Build phase can access dependencies via envy.asset()."""
-        # Build recipe with dependency (engine will build dependency automatically)
-        self.run_recipe("build_with_asset.lua", "local.build_with_asset@v1")
+        # Build spec with dependency (engine will build dependency automatically)
+        self.run_spec("build_with_asset.lua", "local.build_with_asset@v1")
 
         # Verify dependency was used
         asset_path = self.get_asset_path("local.build_with_asset@v1")
@@ -120,7 +120,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_with_copy_operations(self):
         """Build phase can copy files and directories with envy.copy()."""
-        self.run_recipe("build_with_copy.lua", "local.build_with_copy@v1")
+        self.run_spec("build_with_copy.lua", "local.build_with_copy@v1")
 
         # Verify copies
         asset_path = self.get_asset_path("local.build_with_copy@v1")
@@ -138,7 +138,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_with_move_operations(self):
         """Build phase can move files and directories with envy.move()."""
-        self.run_recipe("build_with_move.lua", "local.build_with_move@v1")
+        self.run_spec("build_with_move.lua", "local.build_with_move@v1")
 
         # Verify moves
         asset_path = self.get_asset_path("local.build_with_move@v1")
@@ -155,7 +155,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_with_extract(self):
         """Build phase can extract archives with envy.extract()."""
-        self.run_recipe("build_with_extract.lua", "local.build_with_extract@v1")
+        self.run_spec("build_with_extract.lua", "local.build_with_extract@v1")
 
         # Verify extraction
         asset_path = self.get_asset_path("local.build_with_extract@v1")
@@ -165,7 +165,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_multiple_operations(self):
         """Build phase can chain multiple operations."""
-        self.run_recipe(
+        self.run_spec(
             "build_multiple_operations.lua", "local.build_multiple_operations@v1"
         )
 
@@ -188,12 +188,12 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_with_custom_env(self):
         """Build phase can set custom environment variables."""
-        self.run_recipe("build_with_env.lua", "local.build_with_env@v1")
-        # Success is verified by recipe not throwing an error
+        self.run_spec("build_with_env.lua", "local.build_with_env@v1")
+        # Success is verified by spec not throwing an error
 
     def test_build_with_custom_cwd(self):
         """Build phase can run commands in custom working directory."""
-        self.run_recipe("build_with_cwd.lua", "local.build_with_cwd@v1")
+        self.run_spec("build_with_cwd.lua", "local.build_with_cwd@v1")
 
         # Verify files were created in correct locations
         asset_path = self.get_asset_path("local.build_with_cwd@v1")
@@ -205,33 +205,33 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_error_nonzero_exit(self):
         """Build phase fails on non-zero exit code."""
-        self.run_recipe(
+        self.run_spec(
             "build_error_nonzero_exit.lua",
             "local.build_error_nonzero_exit@v1",
             should_succeed=False,
         )
-        # Recipe should fail with non-zero exit
+        # Spec should fail with non-zero exit
 
     def test_build_string_error(self):
         """Build phase fails when shell script returns non-zero."""
-        self.run_recipe(
+        self.run_spec(
             "build_string_error.lua",
             "local.build_string_error@v1",
             should_succeed=False,
         )
-        # Recipe should fail with non-zero exit
+        # Spec should fail with non-zero exit
 
     def test_build_access_directories(self):
         """Build phase has access to fetch_dir, stage_dir, install_dir."""
-        self.run_recipe("build_access_dirs.lua", "local.build_access_dirs@v1")
+        self.run_spec("build_access_dirs.lua", "local.build_access_dirs@v1")
 
         asset_path = self.get_asset_path("local.build_access_dirs@v1")
         self.assertIsNotNone(asset_path)
-        # Recipe validates directory access internally
+        # Spec validates directory access internally
 
     def test_build_nested_directory_structure(self):
         """Build phase can create and manipulate nested directories."""
-        self.run_recipe("build_nested_dirs.lua", "local.build_nested_dirs@v1")
+        self.run_spec("build_nested_dirs.lua", "local.build_nested_dirs@v1")
 
         # Verify nested structure
         asset_path = self.get_asset_path("local.build_nested_dirs@v1")
@@ -252,13 +252,14 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_build_output_capture(self):
         """Build phase captures stdout correctly."""
-        self.run_recipe("build_output_capture.lua", "local.build_output_capture@v1")
-        # Success is verified by recipe validating captured output
+        self.run_spec("build_output_capture.lua", "local.build_output_capture@v1")
+        # Success is verified by spec validating captured output
 
     def test_build_function_returns_string(self):
         """Build function can return a string that gets executed."""
-        self.run_recipe(
-            "build_function_returns_string.lua", "local.build_function_returns_string@v1"
+        self.run_spec(
+            "build_function_returns_string.lua",
+            "local.build_function_returns_string@v1",
         )
 
         # Verify setup directory was created by function body
@@ -279,14 +280,18 @@ class TestBuildPhase(unittest.TestCase):
 
     def test_cache_path_includes_platform_arch(self):
         """Verify cache variant directory includes platform-arch prefix, not empty."""
-        self.run_recipe("build_function.lua", "local.build_function@v1")
+        self.run_spec("build_function.lua", "local.build_function@v1")
 
         # Find the variant subdirectory under the identity
         identity_dir = self.cache_root / "packages" / "local.build_function@v1"
-        self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+        self.assertTrue(
+            identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
+        )
 
         variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]
-        self.assertEqual(len(variant_dirs), 1, "Should have exactly one variant directory")
+        self.assertEqual(
+            len(variant_dirs), 1, "Should have exactly one variant directory"
+        )
 
         variant_name = variant_dirs[0].name
         # Verify format is {platform}-{arch}-blake3-{hash}, not --blake3-{hash}
@@ -308,6 +313,34 @@ class TestBuildPhase(unittest.TestCase):
             "-blake3-",
             variant_name,
             f"Variant dir should contain '-blake3-': {variant_name}",
+        )
+
+    def test_build_failfast_stops_on_first_error(self):
+        """Multi-line BUILD string stops on first error (fail-fast behavior).
+
+        Tests that when a command fails in a multi-line shell script,
+        subsequent commands are NOT executed.
+        """
+        # Spec should fail because 'false' returns non-zero
+        self.run_spec(
+            "build_failfast.lua",
+            "local.build_failfast@v1",
+            should_succeed=False,
+        )
+
+        # Verify that the marker file was NOT created.
+        # If fail-fast works correctly, the third command never runs.
+        identity_dir = self.cache_root / "packages" / "local.build_failfast@v1"
+        marker_found = False
+        if identity_dir.exists():
+            for root, dirs, files in os.walk(identity_dir):
+                if "failfast_marker.txt" in files:
+                    marker_found = True
+                    break
+
+        self.assertFalse(
+            marker_found,
+            "failfast_marker.txt should NOT exist - fail-fast should have stopped execution",
         )
 
 

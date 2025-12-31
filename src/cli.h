@@ -35,7 +35,7 @@ struct cli_args {
 #ifdef ENVY_FUNCTIONAL_TESTER
                                  ,
                                  cmd_cache_ensure_asset::cfg,
-                                 cmd_cache_ensure_recipe::cfg,
+                                 cmd_cache_ensure_spec::cfg,
                                  cmd_engine_functional_test::cfg
 #endif
                                  >;

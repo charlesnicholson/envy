@@ -58,7 +58,7 @@ PACKAGES = {{
         result = self.run_envy(["sync", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify all three recipes were installed
+        # Verify all three specs were installed
         root_dir = self.cache_root / "packages" / "local.product_transitive_root@v1"
         intermediate_dir = (
             self.cache_root / "packages" / "local.product_transitive_intermediate@v1"

@@ -152,14 +152,14 @@ TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
   CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
 
   envy::tui::trace(envy::trace_events::phase_start{
-      .recipe = "demo.recipe@v1",
+      .spec = "demo.spec@v1",
       .phase = envy::pkg_phase::spec_fetch,
   });
 
   CHECK_NOTHROW(envy::tui::shutdown());
   REQUIRE_FALSE(messages.empty());
   CHECK(messages[0].find("phase_start") != std::string::npos);
-  CHECK(messages[0].find("recipe=demo.recipe@v1") != std::string::npos);
+  CHECK(messages[0].find("spec=demo.spec@v1") != std::string::npos);
 
   envy::tui::configure_trace_outputs({});
 }
@@ -167,12 +167,12 @@ TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
 TEST_CASE("trace_event_to_json serializes all event types") {
   expect_json_tokens(
       envy::trace_events::phase_blocked{
-          .recipe = "r1",
+          .spec = "r1",
           .blocked_at_phase = envy::pkg_phase::pkg_check,
           .waiting_for = "dep",
           .target_phase = envy::pkg_phase::completion,
       },
-      { "\"recipe\":\"r1\"",
+      { "\"spec\":\"r1\"",
         phase_token("blocked_at_phase", envy::pkg_phase::pkg_check),
         phase_num_token("blocked_at_phase", envy::pkg_phase::pkg_check),
         "\"waiting_for\":\"dep\"",
@@ -181,11 +181,11 @@ TEST_CASE("trace_event_to_json serializes all event types") {
 
   expect_json_tokens(
       envy::trace_events::phase_unblocked{
-          .recipe = "r1",
+          .spec = "r1",
           .unblocked_at_phase = envy::pkg_phase::pkg_check,
           .dependency = "dep",
       },
-      { "\"recipe\":\"r1\"",
+      { "\"spec\":\"r1\"",
         phase_token("unblocked_at_phase", envy::pkg_phase::pkg_check),
         phase_num_token("unblocked_at_phase", envy::pkg_phase::pkg_check),
         "\"dependency\":\"dep\"" });
@@ -203,57 +203,57 @@ TEST_CASE("trace_event_to_json serializes all event types") {
 
   expect_json_tokens(
       envy::trace_events::phase_start{
-          .recipe = "r2",
+          .spec = "r2",
           .phase = envy::pkg_phase::pkg_stage,
       },
-      { "\"recipe\":\"r2\"",
+      { "\"spec\":\"r2\"",
         phase_token("phase", envy::pkg_phase::pkg_stage),
         phase_num_token("phase", envy::pkg_phase::pkg_stage) });
 
   expect_json_tokens(
       envy::trace_events::phase_complete{
-          .recipe = "r2",
+          .spec = "r2",
           .phase = envy::pkg_phase::pkg_stage,
           .duration_ms = 55,
       },
-      { "\"recipe\":\"r2\"",
+      { "\"spec\":\"r2\"",
         phase_token("phase", envy::pkg_phase::pkg_stage),
         phase_num_token("phase", envy::pkg_phase::pkg_stage),
         "\"duration_ms\":55" });
 
   expect_json_tokens(
       envy::trace_events::thread_start{
-          .recipe = "r3",
+          .spec = "r3",
           .target_phase = envy::pkg_phase::completion,
       },
-      { "\"recipe\":\"r3\"",
+      { "\"spec\":\"r3\"",
         phase_token("target_phase", envy::pkg_phase::completion),
         phase_num_token("target_phase", envy::pkg_phase::completion) });
 
   expect_json_tokens(
       envy::trace_events::thread_complete{
-          .recipe = "r3",
+          .spec = "r3",
           .final_phase = envy::pkg_phase::pkg_install,
       },
-      { "\"recipe\":\"r3\"",
+      { "\"spec\":\"r3\"",
         phase_token("final_phase", envy::pkg_phase::pkg_install),
         phase_num_token("final_phase", envy::pkg_phase::pkg_install) });
 
   expect_json_tokens(
-      envy::trace_events::recipe_registered{
-          .recipe = "r4",
+      envy::trace_events::spec_registered{
+          .spec = "r4",
           .key = "k1",
           .has_dependencies = true,
       },
-      { "\"recipe\":\"r4\"", "\"key\":\"k1\"", "\"has_dependencies\":true" });
+      { "\"spec\":\"r4\"", "\"key\":\"k1\"", "\"has_dependencies\":true" });
 
   expect_json_tokens(
       envy::trace_events::target_extended{
-          .recipe = "r4",
+          .spec = "r4",
           .old_target = envy::pkg_phase::pkg_fetch,
           .new_target = envy::pkg_phase::completion,
       },
-      { "\"recipe\":\"r4\"",
+      { "\"spec\":\"r4\"",
         phase_token("old_target", envy::pkg_phase::pkg_fetch),
         phase_num_token("old_target", envy::pkg_phase::pkg_fetch),
         phase_token("new_target", envy::pkg_phase::completion),
@@ -261,110 +261,110 @@ TEST_CASE("trace_event_to_json serializes all event types") {
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_run_start{
-          .recipe = "r5",
+          .spec = "r5",
           .command = "echo \"hi\"\n",
           .cwd = "/tmp",
       },
-      { "\"recipe\":\"r5\"", "\"command\":\"echo \\\"hi\\\"\\n\"", "\"cwd\":\"/tmp\"" });
+      { "\"spec\":\"r5\"", "\"command\":\"echo \\\"hi\\\"\\n\"", "\"cwd\":\"/tmp\"" });
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_run_complete{
-          .recipe = "r5",
+          .spec = "r5",
           .exit_code = 7,
           .duration_ms = 10,
       },
-      { "\"recipe\":\"r5\"", "\"exit_code\":7", "\"duration_ms\":10" });
+      { "\"spec\":\"r5\"", "\"exit_code\":7", "\"duration_ms\":10" });
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_fetch_start{
-          .recipe = "r6",
+          .spec = "r6",
           .url = "https://example.com",
           .destination = "/cache/r6/file",
       },
-      { "\"recipe\":\"r6\"",
+      { "\"spec\":\"r6\"",
         "\"url\":\"https://example.com\"",
         "\"destination\":\"/cache/r6/file\"" });
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_fetch_complete{
-          .recipe = "r6",
+          .spec = "r6",
           .url = "https://example.com",
           .bytes_downloaded = 1234,
           .duration_ms = 42,
       },
-      { "\"recipe\":\"r6\"",
+      { "\"spec\":\"r6\"",
         "\"url\":\"https://example.com\"",
         "\"bytes_downloaded\":1234",
         "\"duration_ms\":42" });
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_extract_start{
-          .recipe = "r7",
+          .spec = "r7",
           .archive_path = "/tmp/archive.tgz",
           .destination = "/tmp/out",
       },
-      { "\"recipe\":\"r7\"",
+      { "\"spec\":\"r7\"",
         "\"archive_path\":\"/tmp/archive.tgz\"",
         "\"destination\":\"/tmp/out\"" });
 
   expect_json_tokens(
       envy::trace_events::lua_ctx_extract_complete{
-          .recipe = "r7",
+          .spec = "r7",
           .files_extracted = 99,
           .duration_ms = 5,
       },
-      { "\"recipe\":\"r7\"", "\"files_extracted\":99", "\"duration_ms\":5" });
+      { "\"spec\":\"r7\"", "\"files_extracted\":99", "\"duration_ms\":5" });
 
   expect_json_tokens(
       envy::trace_events::cache_hit{
-          .recipe = "r8",
+          .spec = "r8",
           .cache_key = "ck",
           .pkg_path = "/tmp/a",
       },
-      { "\"recipe\":\"r8\"", "\"cache_key\":\"ck\"", "\"pkg_path\":\"/tmp/a\"" });
+      { "\"spec\":\"r8\"", "\"cache_key\":\"ck\"", "\"pkg_path\":\"/tmp/a\"" });
 
   expect_json_tokens(
       envy::trace_events::cache_miss{
-          .recipe = "r8",
+          .spec = "r8",
           .cache_key = "ck",
       },
-      { "\"recipe\":\"r8\"", "\"cache_key\":\"ck\"" });
+      { "\"spec\":\"r8\"", "\"cache_key\":\"ck\"" });
 
   expect_json_tokens(
       envy::trace_events::lock_acquired{
-          .recipe = "r9",
+          .spec = "r9",
           .lock_path = "/tmp/l",
           .wait_duration_ms = 3,
       },
-      { "\"recipe\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"wait_duration_ms\":3" });
+      { "\"spec\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"wait_duration_ms\":3" });
 
   expect_json_tokens(
       envy::trace_events::lock_released{
-          .recipe = "r9",
+          .spec = "r9",
           .lock_path = "/tmp/l",
           .hold_duration_ms = 15,
       },
-      { "\"recipe\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"hold_duration_ms\":15" });
+      { "\"spec\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"hold_duration_ms\":15" });
 
   expect_json_tokens(
       envy::trace_events::fetch_file_start{
-          .recipe = "r10",
+          .spec = "r10",
           .url = "https://example.com/file",
           .destination = "/tmp/dst",
       },
-      { "\"recipe\":\"r10\"",
+      { "\"spec\":\"r10\"",
         "\"url\":\"https://example.com/file\"",
         "\"destination\":\"/tmp/dst\"" });
 
   expect_json_tokens(
       envy::trace_events::fetch_file_complete{
-          .recipe = "r10",
+          .spec = "r10",
           .url = "https://example.com/file",
           .bytes_downloaded = 321,
           .duration_ms = 8,
           .from_cache = false,
       },
-      { "\"recipe\":\"r10\"",
+      { "\"spec\":\"r10\"",
         "\"url\":\"https://example.com/file\"",
         "\"bytes_downloaded\":321",
         "\"duration_ms\":8",
@@ -374,7 +374,7 @@ TEST_CASE("trace_event_to_json serializes all event types") {
 TEST_CASE("trace_event_to_json escapes special characters") {
   // Test backslash escaping
   auto json{ envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\\back",
+      .spec = "r\\back",
       .cache_key = "key",
       .pkg_path = "path",
   }) };
@@ -382,7 +382,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test quote escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\"quote",
+      .spec = "r\"quote",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -390,7 +390,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test newline escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\nline",
+      .spec = "r\nline",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -398,7 +398,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test tab escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\ttab",
+      .spec = "r\ttab",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -406,7 +406,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test carriage return escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\rreturn",
+      .spec = "r\rreturn",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -414,7 +414,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test form feed escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\fform",
+      .spec = "r\fform",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -422,7 +422,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test backspace escaping
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = "r\bback",
+      .spec = "r\bback",
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -430,7 +430,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
   // Test control character escaping (control character \x01 represented as \u0001)
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .recipe = std::string("r\x01"
+      .spec = std::string("r\x01"
                             "ctrl",
                             6),
       .cache_key = "key",
@@ -443,7 +443,7 @@ TEST_CASE("trace_event_to_json escapes special characters") {
 
 TEST_CASE("trace_event_to_json produces valid ISO8601 timestamps") {
   auto const json{ envy::trace_event_to_json(envy::trace_events::phase_start{
-      .recipe = "test",
+      .spec = "test",
       .phase = envy::pkg_phase::spec_fetch,
   }) };
 
@@ -511,13 +511,13 @@ TEST_CASE("g_trace_enabled controls trace event processing") {
 TEST_CASE("trace_event_to_string formats human-readable output") {
   // Test phase_blocked - phase names are shortened (build not asset_build)
   auto output{ envy::trace_event_to_string(envy::trace_events::phase_blocked{
-      .recipe = "parent@v1",
+      .spec = "parent@v1",
       .blocked_at_phase = envy::pkg_phase::pkg_build,
       .waiting_for = "dep@v2",
       .target_phase = envy::pkg_phase::completion,
   }) };
   CHECK(output.find("phase_blocked") != std::string::npos);
-  CHECK(output.find("recipe=parent@v1") != std::string::npos);
+  CHECK(output.find("spec=parent@v1") != std::string::npos);
   CHECK(output.find("blocked_at=build") != std::string::npos);
   CHECK(output.find("waiting_for=dep@v2") != std::string::npos);
   CHECK(output.find("target_phase=completion") != std::string::npos);
@@ -535,23 +535,23 @@ TEST_CASE("trace_event_to_string formats human-readable output") {
 
   // Test cache_hit
   output = envy::trace_event_to_string(envy::trace_events::cache_hit{
-      .recipe = "r@v1",
+      .spec = "r@v1",
       .cache_key = "key123",
       .pkg_path = "/cache/path",
   });
   CHECK(output.find("cache_hit") != std::string::npos);
-  CHECK(output.find("recipe=r@v1") != std::string::npos);
+  CHECK(output.find("spec=r@v1") != std::string::npos);
   CHECK(output.find("cache_key=key123") != std::string::npos);
   CHECK(output.find("pkg_path=/cache/path") != std::string::npos);
 
   // Test lock_acquired
   output = envy::trace_event_to_string(envy::trace_events::lock_acquired{
-      .recipe = "r@v1",
+      .spec = "r@v1",
       .lock_path = "/locks/entry",
       .wait_duration_ms = 150,
   });
   CHECK(output.find("lock_acquired") != std::string::npos);
-  CHECK(output.find("recipe=r@v1") != std::string::npos);
+  CHECK(output.find("spec=r@v1") != std::string::npos);
   CHECK(output.find("lock_path=/locks/entry") != std::string::npos);
   CHECK(output.find("wait_ms=150") != std::string::npos);
 }
@@ -596,7 +596,7 @@ TEST_CASE("trace file output writes JSONL format") {
 
   // Emit various trace events
   envy::tui::trace(envy::trace_events::phase_start{
-      .recipe = "test@v1",
+      .spec = "test@v1",
       .phase = envy::pkg_phase::spec_fetch,
   });
 
@@ -607,7 +607,7 @@ TEST_CASE("trace file output writes JSONL format") {
   });
 
   envy::tui::trace(envy::trace_events::cache_hit{
-      .recipe = "test@v1",
+      .spec = "test@v1",
       .cache_key = "test-key",
       .pkg_path = "/cache/test",
   });
@@ -645,7 +645,7 @@ TEST_CASE("trace file output writes JSONL format") {
 
   for (auto const &json_line : lines) {
     if (json_line.find("\"event\":\"phase_start\"") != std::string::npos &&
-        json_line.find("\"recipe\":\"test@v1\"") != std::string::npos) {
+        json_line.find("\"spec\":\"test@v1\"") != std::string::npos) {
       found_phase_start = true;
     }
     if (json_line.find("\"event\":\"dependency_added\"") != std::string::npos &&
@@ -685,7 +685,7 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
 
   // Emit trace event
   envy::tui::trace(envy::trace_events::phase_complete{
-      .recipe = "multi@v1",
+      .spec = "multi@v1",
       .phase = envy::pkg_phase::pkg_build,
       .duration_ms = 123,
   });
@@ -697,7 +697,7 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
   bool found_stderr{ false };
   for (auto const &msg : messages) {
     if (msg.find("phase_complete") != std::string::npos &&
-        msg.find("recipe=multi@v1") != std::string::npos) {
+        msg.find("spec=multi@v1") != std::string::npos) {
       found_stderr = true;
       break;
     }
@@ -714,7 +714,7 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
   std::string line;
   while (std::getline(file, line)) {
     if (line.find("\"event\":\"phase_complete\"") != std::string::npos &&
-        line.find("\"recipe\":\"multi@v1\"") != std::string::npos &&
+        line.find("\"spec\":\"multi@v1\"") != std::string::npos &&
         line.find("\"duration_ms\":123") != std::string::npos) {
       found_file = true;
       break;

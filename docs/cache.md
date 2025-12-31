@@ -1,9 +1,9 @@
 # Cache Design
 
 ## Overview
-- Single cache root (default `~/.cache/envy/`) holds recipes and assets; entries become immutable once marked complete so readers never lock.
+- Single cache root (default `~/.cache/envy/`) holds specs and assets; entries become immutable once marked complete so readers never lock.
 - Scene-aware locking: exclusive while building, lock-free after `envy-complete` appears; install directories live beside final paths for atomic rename.
-- Project-local (`local.*`) recipes stay in the repo tree and bypass the shared cache.
+- Project-local (`local.*`) specs stay in the repo tree and bypass the shared cache.
 
 ## Layout
 ```
@@ -12,7 +12,7 @@
 │   └── {version}/
 │       ├── envy                  # Binary (or envy.exe on Windows)
 │       └── envy.lua              # lua_ls type definitions
-├── recipes/                      # Lua sources (declarative and custom fetch)
+├── specs/                      # Lua sources (declarative and custom fetch)
 │   ├── envy.cmake@v1.lua         # Single-file declarative recipe
 │   ├── arm.gcc@v2.lua
 │   └── corporate.toolchain@v3/   # Multi-file (custom fetch or archive)
@@ -50,7 +50,7 @@ The `envy/` directory stores envy binaries and their lua_ls type definitions. Bo
 This uses the same locking strategy as recipe/asset installation (see Locking & Workspace Lifecycle below). Multiple concurrent envy instances (parallel CI, multiple terminals) safely coordinate without corruption or duplicate work. Each version is self-contained; deleting `envy/1.2.3/` removes that version completely.
 
 ## Keys
-- **Recipe**: `{namespace}.{name}@{version}.lua` for single-file declarative sources, `{namespace}.{name}@{version}/` for multi-file (custom fetch, archives, git repos). Custom fetch recipes always use directory layout with `recipe.lua` entry point.
+- **Recipe**: `{namespace}.{name}@{version}.lua` for single-file declarative sources, `{namespace}.{name}@{version}/` for multi-file (custom fetch, archives, git repos). Custom fetch specs always use directory layout with `recipe.lua` entry point.
 - **Asset**: `{identity}.{platform}-{arch}-sha256-{hash}` where `hash` is the leading 16 hex chars of the archive SHA256; deterministic before download so locks can be acquired early.
 
 ## Locking & Workspace Lifecycle
@@ -66,7 +66,7 @@ This uses the same locking strategy as recipe/asset installation (see Locking & 
 - Acquisition ensures `assets/{entry}/install/` and `assets/{entry}/work/` exist.
 - Workspace separates `fetch/` (durable, persists across failures) and `work/` (ephemeral, wiped each attempt).
 - Per-file caching: `fetch/` persists across failed attempts. On subsequent runs, each file is verified by SHA256 before re-downloading. Only missing or corrupted files trigger new downloads. Files without SHA256 are always re-downloaded (no cache trust without verification).
-- Recipes call `mark_fetch_complete()` once all fetches succeed; this drops `envy-complete` sentinel inside `fetch/`.
+- Specs call `mark_fetch_complete()` once all fetches succeed; this drops `envy-complete` sentinel inside `fetch/`.
 - On success (INSTALL returns successfully):
   - Envy auto-marks complete internally
   - Lock destructor atomically renames `install/` → `asset/`
@@ -79,7 +79,7 @@ This uses the same locking strategy as recipe/asset installation (see Locking & 
 - Identified by presence of check verb in recipe
 - Lock calls `mark_user_managed()` to signal ephemeral workspace
 - Workspace created same as cache-managed: `install/`, `fetch/`, `work/` directories
-- Recipe can use all phases (fetch/stage/build/install) for workspace operations
+- Spec can use all phases (fetch/stage/build/install) for workspace operations
 - Install phase modifies system; workspace never persists to cache
 - On completion (lock destructor detects `user_managed_` flag):
   - Entire `entry_dir` deleted (no `asset/` rename)
@@ -103,31 +103,31 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 ## Integrity & Verification
 
-**Recipes:**
+**Specs:**
 - **Declarative sources (URL):** Manifest supplies SHA256; Envy downloads to temp, verifies hash, moves to cache on match. Mismatch = hard failure.
 - **Declarative sources (git):** Manifest supplies `ref` (commit SHA or committish); Envy clones repo, checks out ref, verifies git tree integrity. No separate SHA256 needed (git hash is fingerprint).
 - **Custom fetch functions:** API-enforced per-file verification. `ctx:fetch(url, sha256)` and `ctx:import_file(src, dest, sha256)` verify before writing to cache. Custom fetch cannot bypass (no direct cache directory access).
 - **Verification timing:** SHA256 computed at fetch time only; never re-verified from cache (`envy-complete` marker signals immutable entry).
 
 **Assets:**
-- Recipes declare expected hashes for downloads; verification happens before extraction and during per-file cache reuse.
+- Specs declare expected hashes for downloads; verification happens before extraction and during per-file cache reuse.
 - Per-file caching: declarative fetch arrays with SHA256 verification enable cache reuse across partial failures. On each attempt, existing files in `fetch/` are verified by SHA256 before re-downloading. Cache hits skip download; cache misses (corruption, missing files) trigger re-download.
-- Trust chain: once recipe passes integrity, its declared downloads inherit trust. Files without SHA256 cannot be cached (always re-downloaded).
+- Trust chain: once spec passes integrity, its declared downloads inherit trust. Files without SHA256 cannot be cached (always re-downloaded).
 - BLAKE3 fingerprint file captures every asset payload (mmap-friendly header, entry table, string blob) so verification tools compare without locks.
 
 ## Operational Scenarios
 
-### Recipe Fetch
+### Spec Fetch
 
-1. **Declarative single-file (first fetch):** miss → lock → download URL to temp → verify SHA256 → move to `recipes/{identity}.lua` → touch `envy-complete` (in parent dir logic) → release.
+1. **Declarative single-file (first fetch):** miss → lock → download URL to temp → verify SHA256 → move to `specs/{identity}.lua` → touch `envy-complete` (in parent dir logic) → release.
 
-2. **Declarative git (first fetch):** miss → lock → clone repo to temp → checkout `ref` → extract tree to `recipes/{identity}/` → record git ref in `envy-git-ref` → touch `recipes/{identity}/envy-complete` → release.
+2. **Declarative git (first fetch):** miss → lock → clone repo to temp → checkout `ref` → extract tree to `specs/{identity}/` → record git ref in `envy-git-ref` → touch `specs/{identity}/envy-complete` → release.
 
-3. **Custom fetch (first fetch):** miss → lock → create `recipes/{identity}/fetch/` → create temp workspace → call fetch function (ctx.tmp_dir, ctx.fetch, ctx.commit_fetch) → verify each import via SHA256 → copy verified files to `recipes/{identity}/` → touch `recipes/{identity}/fetch/envy-complete` → touch `recipes/{identity}/envy-complete` → release.
+3. **Custom fetch (first fetch):** miss → lock → create `specs/{identity}/fetch/` → create temp workspace → call fetch function (ctx.tmp_dir, ctx.fetch, ctx.commit_fetch) → verify each import via SHA256 → copy verified files to `specs/{identity}/` → touch `specs/{identity}/fetch/envy-complete` → touch `specs/{identity}/envy-complete` → release.
 
-4. **Concurrent recipe fetch:** waiter blocks on lock; when creator finishes, waiter rechecks `envy-complete` and returns path without refetching.
+4. **Concurrent spec fetch:** waiter blocks on lock; when creator finishes, waiter rechecks `envy-complete` and returns path without refetching.
 
-5. **Recipe collision:** mismatched SHA256 triggers hard failure with instruction to bump recipe version.
+5. **Spec collision:** mismatched SHA256 triggers hard failure with instruction to bump spec version.
 
 ### Asset Install
 

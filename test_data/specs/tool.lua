@@ -1,4 +1,4 @@
--- Minimal tool recipe used as dependency
+-- Minimal tool spec used as dependency
 IDENTITY = "local.tool@v1"
 DEPENDENCIES = {}
 

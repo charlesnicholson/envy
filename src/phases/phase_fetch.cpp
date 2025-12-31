@@ -13,6 +13,7 @@
 #include "tui.h"
 #include "tui_actions.h"
 #include "uri.h"
+#include "util.h"
 
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "test_support.h"
@@ -117,7 +118,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   sol::protected_function_result result{ call_lua_function_with_enriched_errors(
       p,
       "FETCH",
-      [&]() { return fetch_func(tmp_dir.string(), opts); }) };
+      [&]() { return fetch_func(util_path_with_separator(tmp_dir), opts); }) };
 
   bool should_mark_complete{ true };
   sol::object return_value{ result };

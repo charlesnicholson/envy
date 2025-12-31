@@ -1,5 +1,5 @@
 -- local.child@v1
--- Local recipe with no dependencies
+-- Local spec with no dependencies
 
 IDENTITY = "local.child@v1"
 

@@ -330,7 +330,7 @@ PACKAGES = {{
         )
 
     def test_ref_only_product_dependency_unconstrained(self):
-        """Ref-only product dependencies (no recipe/source) should resolve to any provider."""
+        """Ref-only product dependencies (no spec/source) should resolve to any provider."""
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -472,7 +472,7 @@ PACKAGES = {{
 
     def test_product_listing_empty(self):
         """Product listing with no products should indicate empty result."""
-        # Create manifest with recipe that has no products
+        # Create manifest with spec that has no products
         lua_content = """
 IDENTITY = "local.no_products@v1"
 FETCH = {
@@ -504,12 +504,12 @@ PACKAGES = {{
         """Product command must resolve graph to find providers on clean cache.
 
         Regression test: product command should call resolve_graph() with all
-        manifest packages to find product providers, not just recipes directly
+        manifest packages to find product providers, not just specs directly
         requested. This ensures products can be queried even when the provider
         isn't explicitly the target.
         """
-        # Create product provider recipe
-        provider_recipe = """IDENTITY = "local.test_product_query_provider@v1"
+        # Create product provider spec
+        provider_spec = """IDENTITY = "local.test_product_query_provider@v1"
 
 FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
@@ -520,7 +520,7 @@ end
 PRODUCTS = { test_query_tool = "bin/query_tool" }
 """
         provider_path = self.test_dir / "test_product_query_provider.lua"
-        provider_path.write_text(provider_recipe, encoding="utf-8")
+        provider_path.write_text(provider_spec, encoding="utf-8")
 
         # Manifest with the provider
         manifest = self.manifest(

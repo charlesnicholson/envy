@@ -301,7 +301,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
                           int strip_components,
                           extract_progress_cb_t progress,
-                          std::string const &recipe_identity,
+                          std::string const &pkg_identity,
                           std::function<void(std::string const &)> on_file,
                           std::optional<extract_totals> totals_hint) {
   if (!std::filesystem::exists(fetch_dir)) {
@@ -350,7 +350,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     if (extract_is_archive_extension(path)) {
       auto const start{ std::chrono::steady_clock::now() };
 
-      ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_identity,
+      ENVY_TRACE_EXTRACT_ARCHIVE_START(pkg_identity,
                                        path.string(),
                                        dest_dir.string(),
                                        strip_components);
@@ -375,7 +375,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                                std::chrono::steady_clock::now() - start)
                                .count() };
 
-      ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_identity,
+      ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(pkg_identity,
                                           path.string(),
                                           static_cast<std::int64_t>(files),
                                           duration);

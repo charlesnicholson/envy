@@ -1,11 +1,11 @@
--- Test recipe with multiple parallel git fetches (declarative)
+-- Test spec with multiple parallel git fetches (declarative)
 IDENTITY = "local.fetch_git_parallel_declarative@v1"
 
 -- Declarative fetch with multiple repos triggers parallel fetch
 FETCH = {
   {
     source = "https://github.com/ninja-build/ninja.git",
-    ref = "v1.11.1"
+    ref = "v1.13.2"
   },
   {
     source = "https://github.com/google/re2.git",

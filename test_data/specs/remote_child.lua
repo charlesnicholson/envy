@@ -1,5 +1,5 @@
 -- remote.child@v1
--- Remote recipe with no dependencies
+-- Remote spec with no dependencies
 
 IDENTITY = "remote.child@v1"
 

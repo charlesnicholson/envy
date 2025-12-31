@@ -1,4 +1,4 @@
--- Minimal test recipe - no dependencies
+-- Minimal test spec - no dependencies
 IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 

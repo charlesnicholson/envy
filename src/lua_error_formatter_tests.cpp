@@ -69,14 +69,14 @@ struct formatter_test_fixture {
 // ============================================================================
 
 TEST_CASE("extract_line_number extracts line from standard Lua error") {
-  std::string error_msg = "/path/to/recipe.lua:42: assertion failed";
+  std::string error_msg = "/path/to/spec.lua:42: assertion failed";
   auto line_num = extract_line_number(error_msg);
   REQUIRE(line_num.has_value());
   CHECK(*line_num == 42);
 }
 
 TEST_CASE("extract_line_number handles multi-digit line numbers") {
-  std::string error_msg = "recipe.lua:1234: some error";
+  std::string error_msg = "spec.lua:1234: some error";
   auto line_num = extract_line_number(error_msg);
   REQUIRE(line_num.has_value());
   CHECK(*line_num == 1234);
@@ -89,19 +89,19 @@ TEST_CASE("extract_line_number returns nullopt when no .lua: pattern") {
 }
 
 TEST_CASE("extract_line_number returns nullopt when no colon after line number") {
-  std::string error_msg = "recipe.lua:42";
+  std::string error_msg = "spec.lua:42";
   auto line_num = extract_line_number(error_msg);
   CHECK_FALSE(line_num.has_value());
 }
 
 TEST_CASE("extract_line_number returns nullopt for non-numeric line number") {
-  std::string error_msg = "recipe.lua:abc: error";
+  std::string error_msg = "spec.lua:abc: error";
   auto line_num = extract_line_number(error_msg);
   CHECK_FALSE(line_num.has_value());
 }
 
 TEST_CASE("extract_line_number handles line number 1") {
-  std::string error_msg = "recipe.lua:1: error at top of file";
+  std::string error_msg = "spec.lua:1: error at top of file";
   auto line_num = extract_line_number(error_msg);
   REQUIRE(line_num.has_value());
   CHECK(*line_num == 1);
@@ -171,24 +171,24 @@ TEST_CASE("format_lua_error includes error message") {
 
 TEST_CASE("format_lua_error includes spec_file_path when present") {
   formatter_test_fixture f;
-  f.p->spec_file_path = std::filesystem::path("/home/user/.envy/recipes/test.lua");
+  f.p->spec_file_path = std::filesystem::path("/home/user/.envy/specs/test.lua");
 
   lua_error_context ctx{ .lua_error_message = "test error", .r = f.p.get(), .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Spec file: /home/user/.envy/recipes/test.lua") != std::string::npos);
+  CHECK(result.find("Spec file: /home/user/.envy/specs/test.lua") != std::string::npos);
 }
 
 TEST_CASE("format_lua_error includes line number when extractable") {
   formatter_test_fixture f;
-  f.p->spec_file_path = std::filesystem::path("/path/to/recipe.lua");
+  f.p->spec_file_path = std::filesystem::path("/path/to/spec.lua");
 
-  lua_error_context ctx{ .lua_error_message = "recipe.lua:42: assertion failed",
+  lua_error_context ctx{ .lua_error_message = "spec.lua:42: assertion failed",
                          .r = f.p.get(),
                          .phase = "" };
 
   std::string result = format_lua_error(ctx);
-  CHECK(result.find("Spec file: /path/to/recipe.lua:42") != std::string::npos);
+  CHECK(result.find("Spec file: /path/to/spec.lua:42") != std::string::npos);
 }
 
 TEST_CASE("format_lua_error omits spec_file_path when not present") {
@@ -288,10 +288,10 @@ TEST_CASE("format_lua_error full example with all context") {
   formatter_test_fixture child{ "test.ninja@r1.11.1",
                                 R"({"version":"1.11.1"})",
                                 std::filesystem::path(
-                                    "/home/user/.envy/recipes/python.lua"),
+                                    "/home/user/.envy/specs/python.lua"),
                                 parent.cfg };
 
-  child.p->spec_file_path = std::filesystem::path("/home/user/.envy/recipes/ninja.lua");
+  child.p->spec_file_path = std::filesystem::path("/home/user/.envy/specs/ninja.lua");
 
   lua_error_context ctx{ .lua_error_message =
                              "ninja.lua:42: assertion failed: version mismatch",
@@ -304,9 +304,9 @@ TEST_CASE("format_lua_error full example with all context") {
   CHECK(result.find("Lua error in test.ninja@r1.11.1") != std::string::npos);
   CHECK(result.find(R"({"version":"1.11.1"})") != std::string::npos);
   CHECK(result.find("assertion failed: version mismatch") != std::string::npos);
-  CHECK(result.find("Spec file: /home/user/.envy/recipes/ninja.lua:42") !=
+  CHECK(result.find("Spec file: /home/user/.envy/specs/ninja.lua:42") !=
         std::string::npos);
-  CHECK(result.find("Declared in: /home/user/.envy/recipes/python.lua") !=
+  CHECK(result.find("Declared in: /home/user/.envy/specs/python.lua") !=
         std::string::npos);
   CHECK(result.find("Phase: build") != std::string::npos);
   CHECK(result.find("Provenance chain:") != std::string::npos);

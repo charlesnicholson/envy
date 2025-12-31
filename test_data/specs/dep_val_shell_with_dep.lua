@@ -1,4 +1,4 @@
--- Recipe with default_shell function that calls envy.asset() on declared dependency
+-- Spec with default_shell function that calls envy.asset() on declared dependency
 IDENTITY = "local.dep_val_shell_with_dep@v1"
 
 DEPENDENCIES = {

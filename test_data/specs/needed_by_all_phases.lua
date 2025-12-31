@@ -1,4 +1,4 @@
--- Tests recipe with multiple dependencies using different needed_by phases
+-- Tests spec with multiple dependencies using different needed_by phases
 IDENTITY = "local.needed_by_all_phases@v1"
 
 DEPENDENCIES = {

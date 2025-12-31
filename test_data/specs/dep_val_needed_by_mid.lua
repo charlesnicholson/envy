@@ -1,4 +1,4 @@
--- Middle recipe for needed_by transitive testing
+-- Middle spec for needed_by transitive testing
 IDENTITY = "local.dep_val_needed_by_mid@v1"
 
 DEPENDENCIES = {

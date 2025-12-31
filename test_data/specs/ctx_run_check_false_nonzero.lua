@@ -28,11 +28,11 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 
   if envy.PLATFORM == "windows" then
     envy.run([[
-      Set-Content -Path continued_after_failure.txt -Value "Recipe continued after non-zero exit"
+      Set-Content -Path continued_after_failure.txt -Value "Spec continued after non-zero exit"
     ]], { shell = ENVY_SHELL.POWERSHELL })
   else
     envy.run([[
-      echo "Recipe continued after non-zero exit" > continued_after_failure.txt
+      echo "Spec continued after non-zero exit" > continued_after_failure.txt
     ]])
   end
 end

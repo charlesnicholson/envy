@@ -1,4 +1,4 @@
--- Test: default_shell function calls envy.asset(), recipe declares dep → succeeds
+-- Test: default_shell function calls envy.asset(), spec declares dep → succeeds
 IDENTITY = "local.default_shell_function_with_dep@v1"
 
 DEPENDENCIES = {

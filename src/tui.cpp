@@ -745,17 +745,41 @@ void worker_thread() {
       lock.unlock();
 
       int rendered_line_count{ 0 };
-      bool ansi{ false };
+      bool const ansi{ is_ansi_supported() };
       auto const now{ get_now() };
+      bool const has_messages{ !pending.empty() };
 
+      // Correct rendering order: messages scroll up (permanent), sections always at
+      // bottom.
+      // 1. If we have messages, clear the section area first (if any), then print messages
+      if (ansi && has_messages) {
+        if (last_line_count > 0) {
+          // Clear section area: go to column 0, move up if multi-line, clear to end
+          std::fprintf(stderr, "\r");
+          if (last_line_count > 1) {
+            std::fprintf(stderr, "\x1b[%dF", last_line_count - 1);
+          }
+          std::fprintf(stderr, "\x1b[0J");
+        } else {
+          // No tracked sections, but cursor might be at end of a line - ensure fresh line
+          std::fprintf(stderr, "\n");
+        }
+        std::fflush(stderr);
+      }
+
+      // 2. Flush messages - they appear above where sections will render
+      flush_messages(pending, s_tui.output_handler);
+
+      // 3. Render sections below messages (always at bottom)
       if (s_progress.enabled) {
         int const width{ get_terminal_width() };
-        ansi = is_ansi_supported();
 
         if (ansi) {
+          // After clearing, render fresh (last_line_count=0 since we cleared)
+          int const effective_last{ has_messages ? 0 : last_line_count };
           rendered_line_count = render_progress_sections_ansi(sections_snapshot,
                                                               max_label_width,
-                                                              last_line_count,
+                                                              effective_last,
                                                               width,
                                                               now);
         } else {
@@ -763,10 +787,9 @@ void worker_thread() {
         }
       }
 
-      flush_messages(pending, s_tui.output_handler);
-
       lock.lock();
 
+      // Track only section lines - messages are permanent and don't count
       if (ansi && s_progress.enabled) { s_progress.last_line_count = rendered_line_count; }
       s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
         return s_tui.stop_requested.load();
@@ -788,8 +811,21 @@ void worker_thread() {
   try {
     std::queue<log_entry> pending;
     pending.swap(s_tui.messages);
+    int const last_line_count{ s_progress.last_line_count };
 
     lock.unlock();
+
+    if (is_ansi_supported() && !pending.empty()) {
+      if (last_line_count > 0) {
+        std::fprintf(stderr, "\r");
+        if (last_line_count > 1) { std::fprintf(stderr, "\x1b[%dF", last_line_count - 1); }
+        std::fprintf(stderr, "\x1b[0J");
+      } else {
+        std::fprintf(stderr, "\n");
+      }
+      std::fflush(stderr);
+    }
+
     flush_messages(pending, s_tui.output_handler);
   } catch (std::exception const &e) {
     std::fprintf(stderr, "[TUI final flush exception: %s]\n", e.what());

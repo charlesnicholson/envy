@@ -59,10 +59,10 @@ class TestEngineFetchCaching(unittest.TestCase):
             empty_temp.write_text("")
             empty_hash = self.get_file_hash(empty_temp)
 
-            # Create recipe with computed hashes
+            # Create spec with computed hashes
             # Convert path to POSIX format (forward slashes) for Lua string compatibility
             temp_dir_posix = temp_dir.as_posix()
-            recipe_content = f"""-- Test per-file caching across partial failures
+            spec_content = f"""-- Test per-file caching across partial failures
 -- Two files succeed, one fails, then completion reuses cached files
 IDENTITY = "local.fetch_partial@v1"
 
@@ -82,8 +82,8 @@ FETCH = {{
   }}
 }}
 """
-            modified_recipe = shared_cache / "fetch_partial_modified.lua"
-            modified_recipe.write_text(recipe_content)
+            modified_spec = shared_cache / "fetch_partial_modified.lua"
+            modified_spec.write_text(spec_content)
 
             # Run 1: Partial failure (2 succeed, 1 fails - missing file doesn't exist yet)
             trace_file1 = shared_cache / "trace1.jsonl"
@@ -94,7 +94,7 @@ FETCH = {{
                     f"--trace=file:{trace_file1}",
                     "engine-test",
                     "local.fetch_partial@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                 ],
                 capture_output=True,
                 text=True,
@@ -106,7 +106,7 @@ FETCH = {{
                 f"Expected fetch failure: {result1.stderr}",
             )
 
-            # Verify fetch_dir has the 2 successful files (in asset cache, not recipe cache)
+            # Verify fetch_dir has the 2 successful files (in asset cache, not spec cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "packages" / "local.fetch_partial@v1"
             self.assertTrue(
@@ -137,7 +137,7 @@ FETCH = {{
                     f"--trace=file:{trace_file2}",
                     "engine-test",
                     "local.fetch_partial@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                 ],
                 capture_output=True,
                 text=True,
@@ -176,8 +176,8 @@ FETCH = {{
             simple_hash = self.get_file_hash("test_data/lua/simple.lua")
             print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
 
-            # Create recipe with computed hashes
-            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+            # Create spec with computed hashes
+            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
 IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
@@ -196,8 +196,8 @@ FETCH = {{
   }}
 }}
 """
-            modified_recipe = shared_cache / "fetch_array.lua"
-            modified_recipe.write_text(recipe_content)
+            modified_spec = shared_cache / "fetch_array.lua"
+            modified_spec.write_text(spec_content)
 
             # Run 1: Download 2 files then fail
             result1 = subprocess.run(
@@ -207,7 +207,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",  # Has 3 files
-                    str(modified_recipe),
+                    str(modified_spec),
                     "--fail-after-fetch-count=2",
                 ],
                 capture_output=True,
@@ -223,7 +223,7 @@ FETCH = {{
                 f"Expected fail_after_fetch_count error: {result1.stderr}",
             )
 
-            # Verify fetch_dir has the first 2 files cached (in asset cache, not recipe cache)
+            # Verify fetch_dir has the first 2 files cached (in asset cache, not spec cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
             self.assertTrue(
@@ -250,7 +250,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                 ],
                 capture_output=True,
                 text=True,
@@ -283,8 +283,8 @@ FETCH = {{
             simple_hash = self.get_file_hash("test_data/lua/simple.lua")
             print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
 
-            # Create recipe with computed hashes
-            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+            # Create spec with computed hashes
+            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
 IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
@@ -303,8 +303,8 @@ FETCH = {{
   }}
 }}
 """
-            modified_recipe = shared_cache / "fetch_array.lua"
-            modified_recipe.write_text(recipe_content)
+            modified_spec = shared_cache / "fetch_array.lua"
+            modified_spec.write_text(spec_content)
 
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
@@ -316,7 +316,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                     "--fail-after-fetch-count=1",  # Fail after 1 file
                 ],
                 capture_output=True,
@@ -346,7 +346,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                 ],
                 capture_output=True,
                 text=True,
@@ -388,8 +388,8 @@ FETCH = {{
             simple_hash = self.get_file_hash("test_data/lua/simple.lua")
             print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
 
-            # Create recipe with computed hashes
-            recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+            # Create spec with computed hashes
+            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
 IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
@@ -408,8 +408,8 @@ FETCH = {{
   }}
 }}
 """
-            modified_recipe = shared_cache / "fetch_array.lua"
-            modified_recipe.write_text(recipe_content)
+            modified_spec = shared_cache / "fetch_array.lua"
+            modified_spec.write_text(spec_content)
 
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
@@ -421,7 +421,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                     "--fail-after-fetch-count=1",
                 ],
                 capture_output=True,
@@ -457,7 +457,7 @@ FETCH = {{
                     "--trace",
                     "engine-test",
                     "local.fetch_array@v1",
-                    str(modified_recipe),
+                    str(modified_spec),
                 ],
                 capture_output=True,
                 text=True,

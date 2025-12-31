@@ -1,4 +1,4 @@
--- Base recipe for needed_by testing
+-- Base spec for needed_by testing
 IDENTITY = "local.dep_val_needed_by_base@v1"
 
 FETCH = {

@@ -4,8 +4,8 @@ IDENTITY = "local.user_managed_with_fetch@v1"
 
 -- Declarative fetch: download a small file for testing
 FETCH = {
-    source = "https://raw.githubusercontent.com/ninja-build/ninja/v1.11.1/README.md",
-    sha256 = "0db9d908de747f6097ee249764e2d5fab4a2be618b05743d6b962e3346867732"
+    source = "https://raw.githubusercontent.com/ninja-build/ninja/v1.13.2/README.md",
+    sha256 = "b31e9700c752fa214773c1b799d90efcbf3330c8062da9f45c6064e023b347b0"
 }
 
 -- No check verb - this is cache-managed

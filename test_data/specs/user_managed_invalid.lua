@@ -1,5 +1,5 @@
 -- INVALID: User-managed package that tries to use install_dir (which is nil)
--- This recipe demonstrates user-managed packages cannot access install_dir
+-- This spec demonstrates user-managed packages cannot access install_dir
 IDENTITY = "local.user_managed_invalid@v1"
 
 -- Has check verb (makes it user-managed)

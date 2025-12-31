@@ -1,4 +1,4 @@
--- Recipe with a dependency that has fetch prerequisites
+-- Spec with a dependency that has fetch prerequisites
 IDENTITY = "local.simple_fetch_dep_parent@v1"
 
 DEPENDENCIES = {
@@ -9,7 +9,7 @@ DEPENDENCIES = {
         { spec = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" }
       },
       fetch = function(tmp_dir, options)
-        -- Base recipe is guaranteed to be installed before this runs
+        -- Base spec is guaranteed to be installed before this runs
         -- Write the spec.lua for the child recipe
         local recipe_content = [[
 IDENTITY = "local.simple_fetch_dep_child@v1"
@@ -28,7 +28,7 @@ end
         f:write(recipe_content)
         f:close()
 
-        -- Commit the recipe file to the fetch_dir
+        -- Commit the spec file to the fetch_dir
         envy.commit_fetch("spec.lua")
       end
     }

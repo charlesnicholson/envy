@@ -34,7 +34,7 @@ end
         f:write(recipe_content)
         f:close()
 
-        -- Commit the recipe file
+        -- Commit the spec file
         envy.commit_fetch("spec.lua")
       end
     }

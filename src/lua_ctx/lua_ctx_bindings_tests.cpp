@@ -21,11 +21,11 @@ struct test_graph_state {
 
   test_graph_state() : cache_(std::nullopt) {}  // , state{ graph, cache_, nullptr } {}
 
-  // Add a recipe with given identity and dependencies
-  void add_recipe(std::string const &identity,
+  // Add a spec with given identity and dependencies
+  void add_pkg(std::string const &identity,
                   std::vector<std::string> const &dependencies = {}) {
-    typename decltype(state.recipes)::accessor acc;
-    if (state.recipes.insert(acc, identity)) {
+    typename decltype(state.specs)::accessor acc;
+    if (state.specs.insert(acc, identity)) {
       acc->second.identity = identity;
       acc->second.declared_dependencies = dependencies;
     }
@@ -36,8 +36,8 @@ struct test_graph_state {
 
 TEST_CASE("is_transitive_dependency - direct dependency") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", {});
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", {});
 
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "B") == true);
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "C") == false);
@@ -45,16 +45,16 @@ TEST_CASE("is_transitive_dependency - direct dependency") {
 
 TEST_CASE("is_transitive_dependency - self reference") {
   test_graph_state tgs;
-  tgs.add_recipe("A", {});
+  tgs.add_pkg("A", {});
 
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "A") == true);
 }
 
 TEST_CASE("is_transitive_dependency - transitive 2 levels") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", { "C" });
-  tgs.add_recipe("C", {});
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", { "C" });
+  tgs.add_pkg("C", {});
 
   // A → B → C: A can access C transitively
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "C") == true);
@@ -64,10 +64,10 @@ TEST_CASE("is_transitive_dependency - transitive 2 levels") {
 
 TEST_CASE("is_transitive_dependency - transitive 3 levels") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", { "C" });
-  tgs.add_recipe("C", { "D" });
-  tgs.add_recipe("D", {});
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", { "C" });
+  tgs.add_pkg("C", { "D" });
+  tgs.add_pkg("D", {});
 
   // A → B → C → D: A can access D transitively
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "D") == true);
@@ -78,10 +78,10 @@ TEST_CASE("is_transitive_dependency - transitive 3 levels") {
 
 TEST_CASE("is_transitive_dependency - diamond dependency") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B", "C" });
-  tgs.add_recipe("B", { "D" });
-  tgs.add_recipe("C", { "D" });
-  tgs.add_recipe("D", {});
+  tgs.add_pkg("A", { "B", "C" });
+  tgs.add_pkg("B", { "D" });
+  tgs.add_pkg("C", { "D" });
+  tgs.add_pkg("D", {});
 
   // A → B → D and A → C → D: A can access D via both paths
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "D") == true);
@@ -91,9 +91,9 @@ TEST_CASE("is_transitive_dependency - diamond dependency") {
 
 TEST_CASE("is_transitive_dependency - non-dependency") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", {});
-  tgs.add_recipe("C", {});
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", {});
+  tgs.add_pkg("C", {});
 
   // A → B, C is unrelated
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "C") == false);
@@ -103,9 +103,9 @@ TEST_CASE("is_transitive_dependency - non-dependency") {
 
 TEST_CASE("is_transitive_dependency - circular dependencies") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", { "C" });
-  tgs.add_recipe("C", { "A" });
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", { "C" });
+  tgs.add_pkg("C", { "A" });
 
   // A → B → C → A (cycle)
   // Each can access the others transitively
@@ -117,25 +117,25 @@ TEST_CASE("is_transitive_dependency - circular dependencies") {
   CHECK(envy::is_transitive_dependency(&tgs.state, "C", "B") == true);
 
   // But none can access unrelated D
-  tgs.add_recipe("D", {});
+  tgs.add_pkg("D", {});
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "D") == false);
 }
 
-TEST_CASE("is_transitive_dependency - missing intermediate recipe") {
+TEST_CASE("is_transitive_dependency - missing intermediate pkg") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
+  tgs.add_pkg("A", { "B" });
   // B not added to graph
-  tgs.add_recipe("C", {});
+  tgs.add_pkg("C", {});
 
   // A → B → C, but B doesn't exist yet
   // Should return false (can't traverse through missing node)
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "C") == false);
 }
 
-TEST_CASE("is_transitive_dependency - missing target recipe") {
+TEST_CASE("is_transitive_dependency - missing target pkg") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B" });
-  tgs.add_recipe("B", {});
+  tgs.add_pkg("A", { "B" });
+  tgs.add_pkg("B", {});
   // C not added
 
   // A asks for C which doesn't exist in graph
@@ -144,8 +144,8 @@ TEST_CASE("is_transitive_dependency - missing target recipe") {
 
 TEST_CASE("is_transitive_dependency - empty dependency list") {
   test_graph_state tgs;
-  tgs.add_recipe("A", {});
-  tgs.add_recipe("B", {});
+  tgs.add_pkg("A", {});
+  tgs.add_pkg("B", {});
 
   // A has no deps, can't access B
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "B") == false);
@@ -153,10 +153,10 @@ TEST_CASE("is_transitive_dependency - empty dependency list") {
 
 TEST_CASE("is_transitive_dependency - multiple dependencies") {
   test_graph_state tgs;
-  tgs.add_recipe("A", { "B", "C", "D" });
-  tgs.add_recipe("B", {});
-  tgs.add_recipe("C", {});
-  tgs.add_recipe("D", {});
+  tgs.add_pkg("A", { "B", "C", "D" });
+  tgs.add_pkg("B", {});
+  tgs.add_pkg("C", {});
+  tgs.add_pkg("D", {});
 
   // A directly depends on B, C, D
   CHECK(envy::is_transitive_dependency(&tgs.state, "A", "B") == true);

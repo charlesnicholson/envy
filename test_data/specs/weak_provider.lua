@@ -1,4 +1,4 @@
--- Provides a concrete recipe for weak/reference consumers
+-- Provides a concrete spec for weak/reference consumers
 IDENTITY = "local.weak_provider@v1"
 DEPENDENCIES = {}
 

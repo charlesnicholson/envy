@@ -1,4 +1,4 @@
--- Base recipe that will be a fetch dependency for another recipe
+-- Base spec that will be a fetch dependency for another recipe
 IDENTITY = "local.simple_fetch_dep_base@v1"
 
 FETCH = {

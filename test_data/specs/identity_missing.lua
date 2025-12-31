@@ -1,4 +1,4 @@
--- Recipe missing identity declaration (invalid)
+-- Spec missing identity declaration (invalid)
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

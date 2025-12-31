@@ -1,4 +1,4 @@
--- Root recipe with a dependency that uses custom fetch and a weak fetch prerequisite
+-- Root spec with a dependency that uses custom fetch and a weak fetch prerequisite
 IDENTITY = "local.weak_custom_fetch_root@v1"
 
 DEPENDENCIES = {

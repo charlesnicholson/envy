@@ -21,7 +21,7 @@ This script:
 2. Creates archives from the `source/` directory
 3. Generates all supported archive formats
 
-**Important**: After regenerating archives, you must update the SHA256 hashes in all recipe files that reference `test.tar.gz`:
+**Important**: After regenerating archives, you must update the SHA256 hashes in all spec files that reference `test.tar.gz`:
 - `test_data/specs/stage_default.lua`
 - `test_data/specs/stage_declarative_strip.lua`
 - `test_data/specs/stage_imperative.lua`

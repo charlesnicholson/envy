@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Functional tests for engine recipe loading and validation.
+"""Functional tests for engine spec loading and validation.
 
-Tests the recipe fetch phase: loading recipes, validating identity field,
-verifying recipe SHA256, and checking basic structure requirements.
+Tests the spec fetch phase: loading recipes, validating identity field,
+verifying spec SHA256, and checking basic structure requirements.
 """
 
 import hashlib
@@ -16,8 +16,8 @@ import unittest
 from . import test_config
 
 
-class TestEngineRecipeLoading(unittest.TestCase):
-    """Tests for recipe loading and validation phase."""
+class TestEngineSpecLoading(unittest.TestCase):
+    """Tests for spec loading and validation phase."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
@@ -39,8 +39,8 @@ class TestEngineRecipeLoading(unittest.TestCase):
         )
         return result.stdout.strip()
 
-    def test_single_local_recipe_no_deps(self):
-        """Engine loads single local recipe with no dependencies."""
+    def test_single_local_spec_no_deps(self):
+        """Engine loads single local spec with no dependencies."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -65,7 +65,7 @@ class TestEngineRecipeLoading(unittest.TestCase):
         self.assertGreater(len(value), 0)
 
     def test_validation_no_phases(self):
-        """Engine rejects recipe with no phases."""
+        """Engine rejects spec with no phases."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -92,15 +92,15 @@ class TestEngineRecipeLoading(unittest.TestCase):
         )
 
     def test_sha256_verification_success(self):
-        """Recipe with correct SHA256 succeeds."""
+        """Spec with correct SHA256 succeeds."""
         # Compute actual SHA256 of remote_child.lua
-        child_recipe_path = (
+        child_spec_path = (
             Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
         )
-        with open(child_recipe_path, "rb") as f:
+        with open(child_spec_path, "rb") as f:
             actual_sha256 = hashlib.sha256(f.read()).hexdigest()
 
-        # Create a temporary recipe that depends on remote_child with correct SHA256
+        # Create a temporary spec that depends on remote_child with correct SHA256
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write(f"""
 -- test.sha256_ok@v1
@@ -108,7 +108,7 @@ IDENTITY = "test.sha256_ok@v1"
 DEPENDENCIES = {{
   {{
     spec = "remote.child@v1",
-    source = "{child_recipe_path.as_posix()}",
+    source = "{child_spec_path.as_posix()}",
     sha256 = "{actual_sha256}"
   }}
 }}
@@ -144,15 +144,15 @@ end
             Path(tmp_path).unlink()
 
     def test_sha256_verification_failure(self):
-        """Recipe with incorrect SHA256 fails."""
-        child_recipe_path = (
+        """Spec with incorrect SHA256 fails."""
+        child_spec_path = (
             Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
         )
         wrong_sha256 = (
             "0000000000000000000000000000000000000000000000000000000000000000"
         )
 
-        # Create a temporary recipe that depends on remote_child with wrong SHA256
+        # Create a temporary spec that depends on remote_child with wrong SHA256
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write(f"""
 -- test.sha256_fail@v1
@@ -160,7 +160,7 @@ IDENTITY = "test.sha256_fail@v1"
 DEPENDENCIES = {{
   {{
     spec = "remote.child@v1",
-    source = "{child_recipe_path.as_posix()}",
+    source = "{child_spec_path.as_posix()}",
     sha256 = "{wrong_sha256}"
   }}
 }}
@@ -206,7 +206,7 @@ end
             Path(tmp_path).unlink()
 
     def test_identity_validation_correct(self):
-        """Recipe with correct identity declaration succeeds."""
+        """Spec with correct identity declaration succeeds."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -226,7 +226,7 @@ end
         self.assertIn("local.identity_correct@v1", result.stdout)
 
     def test_identity_validation_missing(self):
-        """Recipe missing identity field fails with clear error."""
+        """Spec missing identity field fails with clear error."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -251,11 +251,11 @@ end
         self.assertIn(
             "local.identity_missing@v1",
             result.stderr,
-            f"Expected recipe identity in error, got: {result.stderr}",
+            f"Expected spec identity in error, got: {result.stderr}",
         )
 
     def test_identity_validation_mismatch(self):
-        """Recipe with wrong identity fails with clear error."""
+        """Spec with wrong identity fails with clear error."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -289,7 +289,7 @@ end
         )
 
     def test_identity_validation_wrong_type(self):
-        """Recipe with identity as wrong type fails with clear error."""
+        """Spec with identity as wrong type fails with clear error."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -314,15 +314,15 @@ end
         self.assertIn(
             "local.identity_wrong_type@v1",
             result.stderr,
-            f"Expected recipe identity in error, got: {result.stderr}",
+            f"Expected spec identity in error, got: {result.stderr}",
         )
 
-    def test_identity_validation_local_recipe(self):
-        """Local recipes also require identity validation (no exemption)."""
-        # Create temp local recipe without identity
+    def test_identity_validation_local_spec(self):
+        """Local specs also require identity validation (no exemption)."""
+        # Create temp local spec without identity
         with tempfile.NamedTemporaryFile(mode="w", suffix=".lua", delete=False) as tmp:
             tmp.write("""
--- Missing identity in local recipe
+-- Missing identity in local spec
 DEPENDENCIES = {}
 function CHECK(project_root, options) return false end
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
@@ -344,12 +344,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
             )
 
             self.assertNotEqual(
-                result.returncode, 0, "Expected local recipe without identity to fail"
+                result.returncode, 0, "Expected local spec without identity to fail"
             )
             self.assertIn(
                 "must define 'identity' global as a string",
                 result.stderr.lower(),
-                f"Expected identity field error for local recipe, got: {result.stderr}",
+                f"Expected identity field error for local spec, got: {result.stderr}",
             )
         finally:
             Path(tmp_path).unlink()
@@ -454,6 +454,55 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("boom", result.stderr)
+
+    def test_spec_source_not_found_in_manifest(self):
+        """Missing spec source from manifest entry gives clear error."""
+        # Create manifest referencing non-existent source
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".lua", delete=False, dir=self.cache_root
+        ) as tmp:
+            tmp.write("""
+-- @envy version "0.0.0"
+PACKAGES = {
+  { spec = "local.missing@v1", source = "nonexistent_source.lua" }
+}
+""")
+            manifest_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                [
+                    str(self.envy),
+                    f"--cache-root={self.cache_root}",
+                    *self.trace_flag,
+                    "sync",
+                    "--manifest",
+                    manifest_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(
+                result.returncode, 0, "Expected missing source file to cause failure"
+            )
+            self.assertIn(
+                "Spec source not found",
+                result.stderr,
+                f"Expected 'Spec source not found' error, got: {result.stderr}",
+            )
+            self.assertIn(
+                "nonexistent_source.lua",
+                result.stderr,
+                f"Expected source path in error, got: {result.stderr}",
+            )
+            self.assertIn(
+                "local.missing@v1",
+                result.stderr,
+                f"Expected spec identity in error, got: {result.stderr}",
+            )
+        finally:
+            Path(manifest_path).unlink()
 
 
 if __name__ == "__main__":

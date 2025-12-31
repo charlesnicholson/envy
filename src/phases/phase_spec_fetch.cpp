@@ -531,6 +531,11 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     }
   }() };
 
+  if (!std::filesystem::exists(spec_path)) {
+    throw std::runtime_error("Spec source not found: " + spec_path.string() +
+                             " (for spec '" + cfg.identity + "')");
+  }
+
   // Load and validate spec script
   auto lua{ create_lua_state() };
   load_spec_script(*lua, spec_path, cfg.identity);
@@ -578,7 +583,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
 
   p->products = parse_products_table(cfg, *lua, p);
   for (auto const &[name, value] : p->products) {
-    ENVY_TRACE_EMIT((trace_events::product_parsed{ .recipe = cfg.identity,
+    ENVY_TRACE_EMIT((trace_events::product_parsed{ .spec = cfg.identity,
                                                    .product_name = name,
                                                    .product_value = value }));
   }

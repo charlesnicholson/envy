@@ -41,7 +41,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
                           int strip_components,
                           extract_progress_cb_t progress = nullptr,
-                          std::string const &recipe_identity = "",
+                          std::string const &pkg_identity = "",
                           std::function<void(std::string const &)> on_file = nullptr,
                           std::optional<extract_totals> totals_hint = std::nullopt);
 

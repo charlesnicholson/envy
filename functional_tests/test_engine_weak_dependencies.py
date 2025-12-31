@@ -22,7 +22,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
-    def run_engine(self, identity, recipe_path):
+    def run_engine(self, identity, spec_path):
         return subprocess.run(
             [
                 str(self.envy_test),
@@ -30,7 +30,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 identity,
-                recipe_path,
+                spec_path,
             ],
             capture_output=True,
             text=True,

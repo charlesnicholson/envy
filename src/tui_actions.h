@@ -20,7 +20,7 @@ namespace envy::tui_actions {
 class run_progress {
  public:
   run_progress(tui::section_handle section,
-               std::string const &recipe_identity,
+               std::string const &pkg_identity,
                std::filesystem::path const &cache_root,
                product_map_t products = {});
 
@@ -42,7 +42,7 @@ class run_progress {
 class extract_progress_tracker {
  public:
   extract_progress_tracker(tui::section_handle section,
-                           std::string const &recipe_identity,
+                           std::string const &pkg_identity,
                            std::string const &filename);
 
   bool operator()(extract_progress const &prog);
@@ -59,7 +59,7 @@ class extract_progress_tracker {
 class extract_all_progress_tracker {
  public:
   extract_all_progress_tracker(tui::section_handle section,
-                               std::string const &recipe_identity,
+                               std::string const &pkg_identity,
                                std::vector<std::string> const &filenames,
                                extract_totals const &totals);
 
@@ -85,7 +85,7 @@ class extract_all_progress_tracker {
 class fetch_progress_tracker {
  public:
   fetch_progress_tracker(tui::section_handle section,
-                         std::string const &recipe_identity,
+                         std::string const &pkg_identity,
                          std::string const &url);
 
   bool operator()(fetch_progress_t const &prog);
@@ -102,7 +102,7 @@ class fetch_progress_tracker {
 class fetch_all_progress_tracker {
  public:
   fetch_all_progress_tracker(tui::section_handle section,
-                             std::string const &recipe_identity,
+                             std::string const &pkg_identity,
                              std::vector<std::string> const &labels);
 
   fetch_progress_cb_t make_callback(std::size_t slot);

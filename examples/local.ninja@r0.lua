@@ -22,14 +22,14 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
 ./ninja_test
   ]], {
     python = envy.product("python3"),
-    googletest = stage_dir .. "/googletest.git"
+    googletest = stage_dir .. "googletest.git"
   })
 
-  envy.run(cmd, { cwd = stage_dir .. "/ninja.git" })
+  envy.run(cmd, { cwd = stage_dir .. "ninja.git" })
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.move(stage_dir .. "/ninja.git/ninja" .. envy.EXE_EXT, install_dir)
+  envy.move(stage_dir .. "ninja.git/ninja" .. envy.EXE_EXT, install_dir)
 end
 
 PRODUCTS = { ninja = "ninja" .. envy.EXE_EXT }

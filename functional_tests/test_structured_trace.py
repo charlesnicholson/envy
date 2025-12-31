@@ -159,7 +159,7 @@ class TestStructuredTrace(unittest.TestCase):
 
         # Should have at least these core event types
         expected_types = {
-            "recipe_registered",
+            "spec_registered",
             "phase_start",
             "phase_complete",
         }

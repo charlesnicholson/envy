@@ -1,4 +1,4 @@
--- Recipe A in a cycle: A -> B
+-- Spec A in a cycle: A -> B
 IDENTITY = "local.cycle_a@v1"
 DEPENDENCIES = {
   { spec = "local.cycle_b@v1", source = "cycle_b.lua" }

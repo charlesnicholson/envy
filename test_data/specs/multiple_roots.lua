@@ -1,4 +1,4 @@
--- Recipe with two independent dependencies
+-- Spec with two independent dependencies
 IDENTITY = "local.multiple_roots@v1"
 DEPENDENCIES = {
   { spec = "local.independent_left@v1", source = "independent_left.lua" },

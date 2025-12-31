@@ -43,7 +43,7 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
 
     def test_fetch_single_string(self):
         """envy.fetch(\"url\") returns scalar string basename."""
-        recipe_content = """IDENTITY = "local.prog_fetch_single@v1"
+        spec_content = """IDENTITY = "local.prog_fetch_single@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
@@ -56,8 +56,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_fetch_single.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_fetch_single.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -66,7 +66,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_single@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -77,7 +77,7 @@ end
 
     def test_fetch_string_array(self):
         """envy.fetch({\"url1\", \"url2\"}) returns array of basenames."""
-        recipe_content = """IDENTITY = "local.prog_fetch_array@v1"
+        spec_content = """IDENTITY = "local.prog_fetch_array@v1"
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({
@@ -96,8 +96,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(files)
 end
 """
-        recipe_path = self.cache_root / "prog_fetch_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_fetch_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -106,7 +106,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -116,7 +116,7 @@ end
 
     def test_fetch_single_table(self):
         """envy.fetch({url=\"...\"}) returns scalar basename."""
-        recipe_content = """IDENTITY = "local.prog_fetch_table@v1"
+        spec_content = """IDENTITY = "local.prog_fetch_table@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch({source = "test_data/lua/simple.lua"}, {dest = tmp_dir})
@@ -129,8 +129,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_fetch_table.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_fetch_table.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -139,7 +139,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_table@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -149,7 +149,7 @@ end
 
     def test_fetch_table_array(self):
         """envy.fetch({{url=\"...\"}, {...}}) returns array."""
-        recipe_content = """IDENTITY = "local.prog_fetch_table_array@v1"
+        spec_content = """IDENTITY = "local.prog_fetch_table_array@v1"
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({
@@ -165,8 +165,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(files)
 end
 """
-        recipe_path = self.cache_root / "prog_fetch_table_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_fetch_table_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -175,7 +175,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_fetch_table_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -185,7 +185,7 @@ end
 
     def test_commit_fetch_scalar_string(self):
         """envy.commit_fetch(\"file.tar.gz\") moves file to fetch_dir."""
-        recipe_content = """IDENTITY = "local.prog_commit_scalar@v1"
+        spec_content = """IDENTITY = "local.prog_commit_scalar@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
@@ -201,8 +201,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_commit_scalar.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_commit_scalar.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -211,7 +211,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_scalar@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -225,7 +225,7 @@ end
         test_file = Path("test_data/lua/simple.lua")
         file_hash = self.get_file_hash(test_file)
 
-        recipe_content = f"""IDENTITY = "local.prog_commit_sha256@v1"
+        spec_content = f"""IDENTITY = "local.prog_commit_sha256@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch("test_data/lua/simple.lua", {{dest = tmp_dir}})
@@ -237,8 +237,8 @@ function FETCH(tmp_dir, options)
   }})
 end
 """
-        recipe_path = self.cache_root / "prog_commit_sha256.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_commit_sha256.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -247,7 +247,7 @@ end
                 "--trace",
                 "engine-test",
                 "local.prog_commit_sha256@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -259,7 +259,7 @@ end
 
     def test_commit_fetch_sha256_mismatch(self):
         """Wrong SHA256 in commit_fetch causes verification error."""
-        recipe_content = """IDENTITY = "local.prog_commit_bad_sha256@v1"
+        spec_content = """IDENTITY = "local.prog_commit_bad_sha256@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
@@ -271,8 +271,8 @@ function FETCH(tmp_dir, options)
   })
 end
 """
-        recipe_path = self.cache_root / "prog_commit_bad_sha256.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_commit_bad_sha256.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -281,7 +281,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_bad_sha256@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -292,7 +292,7 @@ end
 
     def test_commit_fetch_array(self):
         """envy.commit_fetch({\"file1\", \"file2\"}) commits multiple files."""
-        recipe_content = """IDENTITY = "local.prog_commit_array@v1"
+        spec_content = """IDENTITY = "local.prog_commit_array@v1"
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({
@@ -303,8 +303,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(files)
 end
 """
-        recipe_path = self.cache_root / "prog_commit_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_commit_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -313,7 +313,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -323,15 +323,15 @@ end
 
     def test_commit_fetch_missing_file(self):
         """Trying to commit file not in tmp_dir fails with clear error."""
-        recipe_content = """IDENTITY = "local.prog_commit_missing@v1"
+        spec_content = """IDENTITY = "local.prog_commit_missing@v1"
 
 function FETCH(tmp_dir, options)
   -- Try to commit file that was never fetched
   envy.commit_fetch("nonexistent.tar.gz")
 end
 """
-        recipe_path = self.cache_root / "prog_commit_missing.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_commit_missing.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -340,7 +340,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_commit_missing@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -355,7 +355,7 @@ end
 
     def test_selective_commit(self):
         """Fetch 3 files, commit 2, verify tmp cleanup removes uncommitted."""
-        recipe_content = """IDENTITY = "local.prog_selective_commit@v1"
+        spec_content = """IDENTITY = "local.prog_selective_commit@v1"
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({
@@ -370,8 +370,8 @@ function FETCH(tmp_dir, options)
   -- Third file should still be in tmp here but will be cleaned up
 end
 """
-        recipe_path = self.cache_root / "prog_selective_commit.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_selective_commit.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -380,7 +380,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_selective_commit@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -389,8 +389,8 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_ctx_identity(self):
-        """IDENTITY contains recipe identity."""
-        recipe_content = """IDENTITY = "local.prog_ctx_identity@v1"
+        """IDENTITY contains spec identity."""
+        spec_content = """IDENTITY = "local.prog_ctx_identity@v1"
 
 function FETCH(tmp_dir, options)
   if IDENTITY ~= "local.prog_ctx_identity@v1" then
@@ -402,8 +402,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_ctx_identity.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_ctx_identity.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -412,7 +412,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_identity@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -422,7 +422,7 @@ end
 
     def test_ctx_options(self):
         """opts is accessible as a table (empty when no options passed)."""
-        recipe_content = """IDENTITY = "local.prog_ctx_options@v1"
+        spec_content = """IDENTITY = "local.prog_ctx_options@v1"
 
 function FETCH(tmp_dir, options)
   -- Verify options exists and is a table
@@ -434,8 +434,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_ctx_options.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_ctx_options.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -444,7 +444,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_options@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -454,7 +454,7 @@ end
 
     def test_ctx_options_empty(self):
         """opts exists as empty table when no options specified."""
-        recipe_content = """IDENTITY = "local.prog_ctx_options_empty@v1"
+        spec_content = """IDENTITY = "local.prog_ctx_options_empty@v1"
 
 function FETCH(tmp_dir, options)
   if type(options) ~= "table" then
@@ -475,8 +475,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(file)
 end
 """
-        recipe_path = self.cache_root / "prog_ctx_options_empty.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_ctx_options_empty.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -485,7 +485,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_ctx_options_empty@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -495,7 +495,7 @@ end
 
     def test_multiple_serial_fetches(self):
         """Multiple envy.fetch() calls execute serially, files accumulate."""
-        recipe_content = """IDENTITY = "local.prog_serial_fetches@v1"
+        spec_content = """IDENTITY = "local.prog_serial_fetches@v1"
 
 function FETCH(tmp_dir, options)
   -- First fetch
@@ -525,8 +525,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch({file1, file2, file3})
 end
 """
-        recipe_path = self.cache_root / "prog_serial_fetches.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_serial_fetches.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -535,7 +535,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_serial_fetches@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -544,15 +544,15 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_function_error_propagation(self):
-        """Lua errors in fetch function propagate with recipe identity."""
-        recipe_content = """IDENTITY = "local.prog_error_prop@v1"
+        """Lua errors in fetch function propagate with spec identity."""
+        spec_content = """IDENTITY = "local.prog_error_prop@v1"
 
 function FETCH(tmp_dir, options)
   error("Intentional test error")
 end
 """
-        recipe_path = self.cache_root / "prog_error_prop.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_error_prop.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -561,27 +561,27 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_error_prop@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertNotEqual(result.returncode, 0, "Expected error to cause failure")
-        # Verify error mentions recipe identity
+        # Verify error mentions spec identity
         self.assertIn("local.prog_error_prop@v1", result.stderr)
         self.assertIn("Intentional test error", result.stderr)
 
     def test_fetch_function_returns_string(self):
         """FETCH = function(ctx) return \"url\" end (declarative string shorthand)."""
-        recipe_content = """IDENTITY = "local.prog_return_string@v1"
+        spec_content = """IDENTITY = "local.prog_return_string@v1"
 
 FETCH = function(ctx)
   return "test_data/lua/simple.lua"
 end
 """
-        recipe_path = self.cache_root / "prog_return_string.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_string.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -590,7 +590,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_string@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -611,14 +611,14 @@ end
         )
         file_hash = hash_result.stdout.split()[0]
 
-        recipe_content = f"""IDENTITY = "local.prog_return_table@v1"
+        spec_content = f"""IDENTITY = "local.prog_return_table@v1"
 
 FETCH = function(ctx)
   return {{source = "test_data/lua/simple.lua", sha256 = "{file_hash}"}}
 end
 """
-        recipe_path = self.cache_root / "prog_return_table.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_table.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -627,7 +627,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_table@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -637,7 +637,7 @@ end
 
     def test_fetch_function_returns_table_array(self):
         """FETCH = function(ctx) return {{source=\"...\"}, {source=\"...\"}} end."""
-        recipe_content = """IDENTITY = "local.prog_return_array@v1"
+        spec_content = """IDENTITY = "local.prog_return_array@v1"
 
 FETCH = function(ctx)
   return {
@@ -646,8 +646,8 @@ FETCH = function(ctx)
   }
 end
 """
-        recipe_path = self.cache_root / "prog_return_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -656,7 +656,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -666,7 +666,7 @@ end
 
     def test_fetch_function_returns_string_array(self):
         """FETCH = function(ctx) return {\"url1\", \"url2\"} end."""
-        recipe_content = """IDENTITY = "local.prog_return_str_array@v1"
+        spec_content = """IDENTITY = "local.prog_return_str_array@v1"
 
 FETCH = function(ctx)
   return {
@@ -675,8 +675,8 @@ FETCH = function(ctx)
   }
 end
 """
-        recipe_path = self.cache_root / "prog_return_str_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_str_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -685,7 +685,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_str_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -697,7 +697,7 @@ end
         """FETCH = function(ctx, opts) return with opts templating."""
         # Note: engine-test doesn't support passing options, so we use default behavior
         # Real-world usage would pass options via manifest
-        recipe_content = """IDENTITY = "local.prog_options_template@v1"
+        spec_content = """IDENTITY = "local.prog_options_template@v1"
 
 function FETCH(tmp_dir, options)
   local opts = options or {}
@@ -705,8 +705,8 @@ function FETCH(tmp_dir, options)
   return "test_data/lua/" .. filename
 end
 """
-        recipe_path = self.cache_root / "prog_options_template.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_options_template.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -715,7 +715,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_options_template@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -725,7 +725,7 @@ end
 
     def test_fetch_function_mixed_imperative_and_declarative(self):
         """FETCH = function(ctx) calls envy.fetch() and returns table (mixed mode)."""
-        recipe_content = """IDENTITY = "local.prog_mixed_mode@v1"
+        spec_content = """IDENTITY = "local.prog_mixed_mode@v1"
 
 function FETCH(tmp_dir, options)
   -- Imperative: fetch and commit one file
@@ -739,8 +739,8 @@ function FETCH(tmp_dir, options)
   }
 end
 """
-        recipe_path = self.cache_root / "prog_mixed_mode.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_mixed_mode.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -749,7 +749,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_mixed_mode@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -759,7 +759,7 @@ end
 
     def test_fetch_function_returns_nil(self):
         """FETCH = function(ctx) with explicit return nil (imperative mode)."""
-        recipe_content = """IDENTITY = "local.prog_return_nil@v1"
+        spec_content = """IDENTITY = "local.prog_return_nil@v1"
 
 function FETCH(tmp_dir, options)
   local file = envy.fetch("test_data/lua/simple.lua", {dest = tmp_dir})
@@ -767,8 +767,8 @@ function FETCH(tmp_dir, options)
   return nil
 end
 """
-        recipe_path = self.cache_root / "prog_return_nil.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_nil.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -777,7 +777,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_nil@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -787,14 +787,14 @@ end
 
     def test_fetch_function_returns_invalid_type(self):
         """FETCH = function(ctx) returns number (error)."""
-        recipe_content = """IDENTITY = "local.prog_return_invalid@v1"
+        spec_content = """IDENTITY = "local.prog_return_invalid@v1"
 
 FETCH = function(ctx)
   return 42
 end
 """
-        recipe_path = self.cache_root / "prog_return_invalid.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "prog_return_invalid.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -803,7 +803,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.prog_return_invalid@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

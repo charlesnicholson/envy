@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
-from .trace_parser import TraceParser, RecipePhase
+from .trace_parser import TraceParser, PkgPhase
 
 
 class TestProductParallelism(unittest.TestCase):
@@ -39,17 +39,17 @@ class TestProductParallelism(unittest.TestCase):
         Regression test: product command should call extend_dependencies_to_completion()
         to set target_phase=completion for provider and all transitive dependencies
         BEFORE waiting for the provider to complete. This enables full parallelism
-        instead of serial chain reaction where each recipe waits for its dependencies.
+        instead of serial chain reaction where each spec waits for its dependencies.
 
         Test verifies via trace that:
         1. target_extended events for closure happen before thread execution
-        2. Only recipes in provider's closure have targets extended
-        3. Unrelated recipes remain at recipe_fetch
+        2. Only specs in provider's closure have targets extended
+        3. Unrelated specs remain at recipe_fetch
         """
         # Create dependency chain: tool_c (leaf) <- tool_b <- tool_a (provider)
         # Plus unrelated tool_d
 
-        tool_c_recipe = """IDENTITY = "local.tool_c@v1"
+        tool_c_spec = """IDENTITY = "local.tool_c@v1"
 PRODUCTS = { tool_c = "bin/tool_c" }
 FETCH = {
   source = "test_data/archives/test.tar.gz",
@@ -57,9 +57,9 @@ FETCH = {
 }
 """
         tool_c_path = self.test_dir / "tool_c.lua"
-        tool_c_path.write_text(tool_c_recipe, encoding="utf-8")
+        tool_c_path.write_text(tool_c_spec, encoding="utf-8")
 
-        tool_b_recipe = f"""IDENTITY = "local.tool_b@v1"
+        tool_b_spec = f"""IDENTITY = "local.tool_b@v1"
 PRODUCTS = {{ tool_b = "bin/tool_b" }}
 DEPENDENCIES = {{
   {{
@@ -73,9 +73,9 @@ FETCH = {{
 }}
 """
         tool_b_path = self.test_dir / "tool_b.lua"
-        tool_b_path.write_text(tool_b_recipe, encoding="utf-8")
+        tool_b_path.write_text(tool_b_spec, encoding="utf-8")
 
-        tool_a_recipe = f"""IDENTITY = "local.tool_a@v1"
+        tool_a_spec = f"""IDENTITY = "local.tool_a@v1"
 PRODUCTS = {{ tool_a = "bin/tool_a" }}
 DEPENDENCIES = {{
   {{
@@ -89,10 +89,10 @@ FETCH = {{
 }}
 """
         tool_a_path = self.test_dir / "tool_a.lua"
-        tool_a_path.write_text(tool_a_recipe, encoding="utf-8")
+        tool_a_path.write_text(tool_a_spec, encoding="utf-8")
 
-        # Unrelated recipe (not in tool_a's dependency closure)
-        tool_d_recipe = """IDENTITY = "local.tool_d@v1"
+        # Unrelated spec (not in tool_a's dependency closure)
+        tool_d_spec = """IDENTITY = "local.tool_d@v1"
 PRODUCTS = { tool_d = "bin/tool_d" }
 FETCH = {
   source = "test_data/archives/test.tar.gz",
@@ -100,7 +100,7 @@ FETCH = {
 }
 """
         tool_d_path = self.test_dir / "tool_d.lua"
-        tool_d_path.write_text(tool_d_recipe, encoding="utf-8")
+        tool_d_path.write_text(tool_d_spec, encoding="utf-8")
 
         # Manifest with all recipes
         manifest = self.manifest(
@@ -139,13 +139,13 @@ PACKAGES = {{
         # Find all target_extended events
         target_extended_events = [e for e in events if e.event == "target_extended"]
 
-        # Extract recipes that had targets extended to completion (phase 7)
+        # Extract specs that had targets extended to completion (phase 7)
         extended_to_completion = set()
         for event in target_extended_events:
-            recipe = event.raw.get("recipe")
+            spec = event.raw.get("spec")
             new_target = event.raw.get("new_target_num")  # Field is new_target_num, not new_target_phase_num
-            if recipe and new_target == RecipePhase.COMPLETION:
-                extended_to_completion.add(recipe)
+            if spec and new_target == PkgPhase.COMPLETION:
+                extended_to_completion.add(spec)
 
         # Verify tool_a, tool_b, tool_c had targets extended to completion
         expected_closure = {
@@ -156,7 +156,7 @@ PACKAGES = {{
 
         self.assertTrue(
             expected_closure.issubset(extended_to_completion),
-            f"Expected all recipes in closure to have targets extended: "
+            f"Expected all specs in closure to have targets extended: "
             f"expected {expected_closure}, got {extended_to_completion}"
         )
 
@@ -164,7 +164,7 @@ PACKAGES = {{
         self.assertNotIn(
             "local.tool_d@v1",
             extended_to_completion,
-            "Unrelated recipe should not have target extended to completion"
+            "Unrelated spec should not have target extended to completion"
         )
 
 

@@ -44,7 +44,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
         return result.stdout.strip()
 
     def test_declarative_fetch_string(self):
-        """Recipe with declarative fetch (string format) downloads file."""
+        """Spec with declarative fetch (string format) downloads file."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -70,12 +70,12 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
         )
 
     def test_declarative_fetch_single_table(self):
-        """Recipe with declarative fetch (single table with sha256) downloads and verifies."""
+        """Spec with declarative fetch (single table with sha256) downloads and verifies."""
         # Compute hash dynamically
         simple_hash = self.get_file_hash("test_data/lua/simple.lua")
 
-        # Create recipe with computed hash
-        recipe_content = f"""-- Test declarative fetch with single table format and SHA256 verification
+        # Create spec with computed hash
+        spec_content = f"""-- Test declarative fetch with single table format and SHA256 verification
 IDENTITY = "local.fetch_single@v1"
 
 -- Single table format with optional sha256
@@ -84,8 +84,8 @@ FETCH = {{
   sha256 = "{simple_hash}"
 }}
 """
-        modified_recipe = self.cache_root / "fetch_single.lua"
-        modified_recipe.write_text(recipe_content)
+        modified_spec = self.cache_root / "fetch_single.lua"
+        modified_spec.write_text(spec_content)
 
         result = subprocess.run(
             [
@@ -94,7 +94,7 @@ FETCH = {{
                 "--trace",
                 "engine-test",
                 "local.fetch_single@v1",
-                str(modified_recipe),
+                str(modified_spec),
             ],
             capture_output=True,
             text=True,
@@ -112,13 +112,13 @@ FETCH = {{
         )
 
     def test_declarative_fetch_array(self):
-        """Recipe with declarative fetch (array format) downloads multiple files concurrently."""
+        """Spec with declarative fetch (array format) downloads multiple files concurrently."""
         # Compute hashes dynamically
         simple_hash = self.get_file_hash("test_data/lua/simple.lua")
         print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
 
-        # Create recipe with computed hashes
-        recipe_content = f"""-- Test declarative fetch with array format (concurrent downloads)
+        # Create spec with computed hashes
+        spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
 IDENTITY = "local.fetch_array@v1"
 
 -- Array format: multiple files with optional sha256
@@ -137,8 +137,8 @@ FETCH = {{
   }}
 }}
 """
-        modified_recipe = self.cache_root / "fetch_array.lua"
-        modified_recipe.write_text(recipe_content)
+        modified_spec = self.cache_root / "fetch_array.lua"
+        modified_spec.write_text(spec_content)
 
         result = subprocess.run(
             [
@@ -147,7 +147,7 @@ FETCH = {{
                 "--trace",
                 "engine-test",
                 "local.fetch_array@v1",
-                str(modified_recipe),
+                str(modified_spec),
             ],
             capture_output=True,
             text=True,
@@ -170,7 +170,7 @@ FETCH = {{
         )
 
     def test_declarative_fetch_collision(self):
-        """Recipe with duplicate filenames fails with collision error."""
+        """Spec with duplicate filenames fails with collision error."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -199,7 +199,7 @@ FETCH = {{
         )
 
     def test_declarative_fetch_bad_sha256(self):
-        """Recipe with wrong SHA256 fails verification."""
+        """Spec with wrong SHA256 fails verification."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -223,9 +223,9 @@ FETCH = {{
         )
 
     def test_declarative_fetch_string_array(self):
-        """Recipe with FETCH = {\"url1\", \"url2\", \"url3\"} downloads all files."""
-        # Create recipe with array of strings (no SHA256)
-        recipe_content = """-- Test declarative fetch with string array
+        """Spec with FETCH = {\"url1\", \"url2\", \"url3\"} downloads all files."""
+        # Create spec with array of strings (no SHA256)
+        spec_content = """-- Test declarative fetch with string array
 IDENTITY = "local.fetch_string_array@v1"
 
 -- Array of strings (no SHA256 verification)
@@ -235,8 +235,8 @@ FETCH = {
   "test_data/lua/print_multiple.lua"
 }
 """
-        recipe_path = self.cache_root / "fetch_string_array.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "fetch_string_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -245,7 +245,7 @@ FETCH = {
                 "--trace",
                 "engine-test",
                 "local.fetch_string_array@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -266,13 +266,13 @@ FETCH = {
         )
 
     def test_declarative_fetch_git(self):
-        """Recipe with git fetch downloads repository."""
-        recipe_content = """-- Test declarative fetch with git repository
+        """Spec with git fetch downloads repository."""
+        spec_content = """-- Test declarative fetch with git repository
 IDENTITY = "local.fetch_git_test@v1"
 
 FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
-    ref = "v1.11.1"
+    ref = "v1.13.2"
 }
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
@@ -294,8 +294,8 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     g:close()
 end
 """
-        recipe_path = self.cache_root / "fetch_git_test.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "fetch_git_test.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -304,7 +304,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_test@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -316,12 +316,12 @@ end
     def test_declarative_git_in_stage_not_fetch(self):
         """Git repos must be cloned to stage_dir, NOT fetch_dir."""
         # This is a cache-managed package (no check verb) that verifies git placement
-        recipe_content = """-- Test that git repos go to stage_dir
+        spec_content = """-- Test that git repos go to stage_dir
 IDENTITY = "local.git_location_test@v1"
 
 FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
-    ref = "v1.11.1"
+    ref = "v1.13.2"
 }
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
@@ -343,8 +343,8 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 
 end
 """
-        recipe_path = self.cache_root / "git_location_test.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "git_location_test.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -353,7 +353,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.git_location_test@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -364,12 +364,12 @@ end
     def test_declarative_git_no_fetch_complete_marker(self):
         """Git fetches should NOT create fetch completion marker (not cacheable)."""
         # This is a cache-managed package (no check verb) that verifies fetch marker behavior
-        recipe_content = """-- Test git fetch completion marker
+        spec_content = """-- Test git fetch completion marker
 IDENTITY = "local.git_no_cache@v1"
 
 FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
-    ref = "v1.11.1"
+    ref = "v1.13.2"
 }
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
@@ -381,8 +381,8 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     f:close()
 end
 """
-        recipe_path = self.cache_root / "git_no_cache.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "git_no_cache.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -391,7 +391,7 @@ end
                 "--trace",
                 "engine-test",
                 "local.git_no_cache@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

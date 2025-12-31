@@ -1,4 +1,4 @@
--- User recipe 1 for parallel validation testing
+-- User spec 1 for parallel validation testing
 IDENTITY = "local.dep_val_parallel_user1@v1"
 
 DEPENDENCIES = {

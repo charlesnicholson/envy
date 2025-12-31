@@ -2,7 +2,7 @@
 
 PACKAGES = {
   { spec = "local.uv@r0", source = "local.uv@r0.lua",
-    options = { version = "0.9.16" } },
+    options = { version = "0.9.21" } },
 
   { spec = "local.armgcc@r0", source = "local.armgcc@r0.lua",
     options = { version = "14.3.rel1" } },
@@ -19,6 +19,10 @@ PACKAGES = {
   { spec = "local.gn@r0", source = "local.gn@r0.lua",
     options = { ref = "5964f499767097d81dbe034e8b541c3988168073" }},
 }
+
+if envy.PLATFORM ~= "windows" then
+  envy.extend(PACKAGES, { { spec = "local.ragel@r0", source = "local.ragel@r0.lua" } })
+end
 
 if envy.PLATFORM == "darwin" then
   envy.extend(PACKAGES, { {

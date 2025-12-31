@@ -1,7 +1,7 @@
 # Products Feature Implementation
 
 ## Overview
-Recipes can declare products (name→value map) and depend on products instead of explicit recipe identities. Products enable recipes to advertise entry points—for cached recipes, values are relative paths concatenated with asset_path; for user-managed recipes, values are raw strings (often shell commands). The `envy product <name>` command queries product values from the resolved graph.
+Specs can declare products (name→value map) and depend on products instead of explicit spec identities. Products enable specs to advertise entry points—for cached specs, values are relative paths concatenated with asset_path; for user-managed specs, values are raw strings (often shell commands). The `envy product <name>` command queries product values from the resolved graph.
 
 ## Test Coverage Summary
 
@@ -26,7 +26,7 @@ Recipes can declare products (name→value map) and depend on products instead o
 - [x] Add `std::optional<std::string> product` field to `recipe_spec` struct in `src/recipe_spec.h`
 - [x] Add `bool is_product` flag to `recipe::weak_reference` struct in `src/recipe.h`
 - [x] Add `std::string constraint_identity` to `recipe::weak_reference` struct in `src/recipe.h`
-- [x] Add `std::unordered_map<std::string, recipe *> product_registry_` to `engine` class in `src/engine.h` (private)
+- [x] Add `std::unordered_map<std::string, spec *> product_registry_` to `engine` class in `src/engine.h` (private)
 - [x] Add `std::vector<std::string> resolved_weak_dependency_keys` to `recipe` struct for cache hash computation
 
 ### Parsing - Products Table
@@ -36,7 +36,7 @@ Recipes can declare products (name→value map) and depend on products instead o
 - [x] Validate all keys and values are strings
 - [x] Validate keys and values are non-empty
 - [x] Store parsed products in `recipe::products` map
-- [x] Add appropriate error messages with recipe identity context
+- [x] Add appropriate error messages with spec identity context
 - [x] Support products as function taking options, returning table (dynamic product names)
 
 ### Parsing - Product Dependencies
@@ -51,14 +51,14 @@ Recipes can declare products (name→value map) and depend on products instead o
 
 ### Dependency Wiring Semantics
 
-- [x] Treat product deps like recipe deps for scheduling: strong product deps (have source) spawn immediately, run `recipe_fetch`, and wire `dependencies` with `needed_by`
+- [x] Treat product deps like spec deps for scheduling: strong product deps (have source) spawn immediately, run `recipe_fetch`, and wire `dependencies` with `needed_by`
 - [x] Ref-only or weak product deps become `weak_reference` entries with `is_product=true`, `query=product`, `constraint_identity=dep_spec->identity` when present, `needed_by` propagated, and fallback pointer set
 - [x] Ensure declared_dependencies records the resolved provider identity for ctx.asset validation
 
 ### Product Registry and Collision Detection
 
 - [x] Add `void engine::update_product_registry()` method in `src/engine.cpp`
-- [x] Iterate all recipes beyond recipe_fetch phase (check `current_phase > recipe_fetch`) after each `wait_for_resolution_phase()` iteration
+- [x] Iterate all specs beyond recipe_fetch phase (check `current_phase > recipe_fetch`) after each `wait_for_resolution_phase()` iteration
 - [x] Build collision map: `product_name → vector<recipe*>`
 - [x] For products with multiple providers, collect error messages with all provider identities
 - [x] For products with single provider, register in `product_registry_`
@@ -68,24 +68,24 @@ Recipes can declare products (name→value map) and depend on products instead o
 ### Product Dependency Resolution
 
 - [x] Add product resolution branch to `engine::resolve_weak_references()` (~line 117)
-- [x] Check `if (wr->is_product)` before existing identity resolution logic; all cycle checks mirror recipe deps
+- [x] Check `if (wr->is_product)` before existing identity resolution logic; all cycle checks mirror spec deps
 - [x] Lookup product in `product_registry_` (with mutex protection)
 - [x] If found: validate `constraint_identity` matches provider if non-empty
 - [x] If found: check for cycles using `has_dependency_path(provider, r)`
 - [x] If found: wire dependency (add to `dependencies` map, `declared_dependencies` list)
 - [x] If found: mark resolved, increment `result.resolved`
-- [x] If not found and has fallback: instantiate fallback recipe (reuse weak fallback logic) and wire with `needed_by`
+- [x] If not found and has fallback: instantiate fallback spec (reuse weak fallback logic) and wire with `needed_by`
 - [x] If not found and no fallback: collect in `result.missing_without_fallback`
 
 ### Transitive Product Validation
 
 - [x] Add `void engine::validate_product_fallbacks()` method in `src/engine.cpp`
-- [x] Iterate all recipes with product weak_references that have fallback and are resolved
+- [x] Iterate all specs with product weak_references that have fallback and are resolved
 - [x] Call `recipe_provides_product_transitively()` helper to validate
 - [x] Collect validation errors for fallbacks that don't provide the required product
 - [x] Throw aggregated error if any validation failures
 - [x] Call `validate_product_fallbacks()` in `engine::resolve_graph()` after weak resolution converges
-- [x] Add `bool engine::recipe_provides_product_transitively(recipe *r, std::string const &product_name)` helper method
+- [x] Add `bool engine::recipe_provides_product_transitively(spec *r, std::string const &product_name)` helper method
 - [x] Implement DFS with visited set checking `recipe::products` at each node
 - [x] Recurse through `dependencies` map entries
 
@@ -97,7 +97,7 @@ Resolved weak/ref-only dependencies must contribute to cache hash—different pr
 - [x] Sort resolved keys for deterministic ordering
 - [x] Modify `src/phases/phase_check.cpp` to include resolved weak dependency keys in hash computation
 - [x] Read pre-computed `resolved_weak_dependency_keys` field (thread-safe, no race condition)
-- [x] Skip programmatic recipes (only cache-managed recipes need hash)
+- [x] Skip programmatic specs (only cache-managed specs need hash)
 
 ### CLI Command Structure
 
@@ -110,7 +110,7 @@ Resolved weak/ref-only dependencies must contribute to cache hash—different pr
 - [x] In `execute()`: call `engine::find_product_provider(product_name)`
 - [x] In `execute()`: validate provider exists and products map contains key
 - [x] In `execute()`: implement output logic—if programmatic or empty asset_path, return raw value; else concatenate asset_path with value
-- [x] Add `recipe *engine::find_product_provider(std::string const &product_name)` public method to `src/engine.h`
+- [x] Add `spec *engine::find_product_provider(std::string const &product_name)` public method to `src/engine.h`
 - [x] Implement `find_product_provider()` in `src/engine.cpp` (simple registry lookup with mutex)
 - [x] Share manifest/cache-root resolution helpers (no duplication)
 
@@ -124,10 +124,10 @@ Resolved weak/ref-only dependencies must contribute to cache hash—different pr
 - [x] Add optional `--cache-root` flag
 - [x] Set callback to assign `cmd_cfg = product_cfg`
 
-### Unit Tests - Recipe Spec Parsing
+### Unit Tests - Spec Spec Parsing
 
 - [x] Add test for parsing `product` field in dependency table (`src/recipe_spec_tests.cpp`)
-- [x] Add test for strong product dep: `{ product = "python3", recipe = "...", source = "..." }`
+- [x] Add test for strong product dep: `{ product = "python3", spec = "...", source = "..." }`
 - [x] Add test for weak product dep: `{ product = "python3", weak = {...} }`
 - [x] Add test for ref-only product dep: `{ product = "python3" }`
 - [x] Add test rejecting non-string product field
@@ -212,8 +212,8 @@ Resolved weak/ref-only dependencies must contribute to cache hash—different pr
 ### Functional Tests - CLI Command
 
 - [x] Tests in `functional_tests/test_products.py`
-- [x] Add test for querying cached recipe product (returns concatenated path) (test_product_command_cached_provider)
-- [x] Add test for querying programmatic recipe product (returns raw value) (test_product_command_programmatic_provider_returns_raw_value)
+- [x] Add test for querying cached spec product (returns concatenated path) (test_product_command_cached_provider)
+- [x] Add test for querying programmatic spec product (returns raw value) (test_product_command_programmatic_provider_returns_raw_value)
 - [ ] Add test for querying non-existent product (error) (no dedicated test)
 - [ ] Add test with `--manifest` flag (flag used in all tests, no dedicated flag test)
 - [ ] Add test with `--cache-root` flag (flag used in all tests, no dedicated flag test)
@@ -254,12 +254,12 @@ The following tests were added during implementation but weren't in the original
 
 ### Product Listing (envy product with no args)
 
-The `envy product` command with no arguments lists all products from the resolved dependency graph. Output modes: aligned columns to stderr (human-readable) or JSON array to stdout (machine-readable via `--json`). The `engine::collect_all_products()` API iterates resolved recipes, extracts product name/value pairs with provider identity, programmatic flag, and asset_path. Results sorted alphabetically by product name. For programmatic recipes, asset_path is empty; for cached recipes, asset_path contains the cache directory.
+The `envy product` command with no arguments lists all products from the resolved dependency graph. Output modes: aligned columns to stderr (human-readable) or JSON array to stdout (machine-readable via `--json`). The `engine::collect_all_products()` API iterates resolved specs, extracts product name/value pairs with provider identity, programmatic flag, and asset_path. Results sorted alphabetically by product name. For programmatic specs, asset_path is empty; for cached specs, asset_path contains the cache directory.
 
 - [x] Make `product_name` CLI argument optional in `src/cli.cpp`
 - [x] Add `--json` flag to `cmd_product::cfg` for JSON output mode
 - [x] Add `std::vector<product_info> engine::collect_all_products()` public method in `src/engine.h`
-- [x] Implement `collect_all_products()` in `src/engine.cpp`: iterate recipes, extract products, include canonical identity, programmatic flag, asset_path
+- [x] Implement `collect_all_products()` in `src/engine.cpp`: iterate specs, extract products, include canonical identity, programmatic flag, asset_path
 - [x] Sort results by product name alphabetically
 - [x] Implement `list_all_products()` in `src/cmds/cmd_product.cpp` for human-readable aligned columns (stderr)
 - [x] Format: `product_name  value  provider_canonical  (programmatic)` with column alignment, no dividers/headers

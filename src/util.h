@@ -67,6 +67,10 @@ std::string util_format_bytes(std::uint64_t bytes);
 // cmd2; cmd3"
 std::string util_flatten_script_with_semicolons(std::string_view script);
 
+// Convert filesystem path to string with trailing separator.
+// Ensures Lua expressions like `dir .. "filename"` produce correct paths.
+std::string util_path_with_separator(std::filesystem::path const &path);
+
 // Product mapping: pairs of (product_name, relative_path)
 // Example: {"cmake", "bin/cmake.exe"} or {"python", "bin/python3"}
 using product_map_t = std::vector<std::pair<std::string, std::string>>;

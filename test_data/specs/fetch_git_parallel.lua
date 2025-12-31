@@ -1,10 +1,10 @@
--- Test recipe with multiple parallel git fetches (programmatic)
+-- Test spec with multiple parallel git fetches (programmatic)
 IDENTITY = "local.fetch_git_parallel@v1"
 
 function FETCH(tmp_dir, options)
     -- Programmatic fetch with multiple git repos (should parallelize)
     envy.fetch({
-        {source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1"},
+        {source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.2"},
         {source = "https://github.com/google/re2.git", ref = "2024-07-02"}
     }, {dest = tmp_dir})
     envy.commit_fetch({"ninja.git", "re2.git"})

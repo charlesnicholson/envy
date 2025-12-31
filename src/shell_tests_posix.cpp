@@ -170,3 +170,58 @@ TEST_CASE("shell_run callback is required") {
   auto const result{ envy::shell_run("echo test", inv) };
   CHECK(result.exit_code == 0);
 }
+
+TEST_CASE("shell_run bash exits on first error (fail-fast)") {
+  std::vector<std::string> lines;
+  envy::shell_run_cfg inv{ .on_output_line =
+                               [&](std::string_view line) { lines.emplace_back(line); },
+                           .env = envy::shell_getenv(),
+                           .shell = envy::shell_choice::bash };
+  // First command fails (false returns 1), second command should NOT run
+  auto const result{ envy::shell_run("echo before\nfalse\necho after", inv) };
+  CHECK(result.exit_code == 1);
+  REQUIRE(lines.size() == 1);
+  CHECK(lines[0] == "before");
+}
+
+TEST_CASE("shell_run sh exits on first error (fail-fast)") {
+  std::vector<std::string> lines;
+  envy::shell_run_cfg inv{ .on_output_line =
+                               [&](std::string_view line) { lines.emplace_back(line); },
+                           .env = envy::shell_getenv(),
+                           .shell = envy::shell_choice::sh };
+  // First command fails (false returns 1), second command should NOT run
+  auto const result{ envy::shell_run("echo before\nfalse\necho after", inv) };
+  CHECK(result.exit_code == 1);
+  REQUIRE(lines.size() == 1);
+  CHECK(lines[0] == "before");
+}
+
+TEST_CASE("shell_run bash fails on command not found") {
+  std::vector<std::string> lines;
+  envy::shell_run_cfg inv{ .on_output_line =
+                               [&](std::string_view line) { lines.emplace_back(line); },
+                           .env = envy::shell_getenv(),
+                           .shell = envy::shell_choice::bash };
+  // Nonexistent command should fail, subsequent command should NOT run
+  auto const result{
+    envy::shell_run("echo before\nnonexistent_command_xyz_12345\necho after", inv)
+  };
+  CHECK(result.exit_code != 0);
+  CHECK(lines.size() >= 1);
+  CHECK(lines[0] == "before");
+  // "after" should NOT appear because fail-fast should stop execution
+  for (auto const &line : lines) { CHECK(line != "after"); }
+}
+
+TEST_CASE("shell_run bash fails on exit 1 mid-script") {
+  std::vector<std::string> lines;
+  envy::shell_run_cfg inv{ .on_output_line =
+                               [&](std::string_view line) { lines.emplace_back(line); },
+                           .env = envy::shell_getenv(),
+                           .shell = envy::shell_choice::bash };
+  auto const result{ envy::shell_run("echo line1\nexit 42\necho line2", inv) };
+  CHECK(result.exit_code == 42);
+  REQUIRE(lines.size() == 1);
+  CHECK(lines[0] == "line1");
+}

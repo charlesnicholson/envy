@@ -1,9 +1,9 @@
--- Test recipe with declarative git fetch
+-- Test spec with declarative git fetch
 IDENTITY = "local.fetch_git@v1"
 
 FETCH = {
     source = "https://github.com/ninja-build/ninja.git",
-    ref = "v1.11.1"
+    ref = "v1.13.2"
 }
 
 function CHECK(project_root, options)

@@ -1,7 +1,7 @@
 # ctx.product Plan
 
 ## Summary
-Expose `ctx.product(name)` to recipes for product lookups with the same safety gates as `ctx.asset`: dependency validation, phase gating, and clear diagnostics. Share provider lookup logic with `cmd_product` so there is exactly one source of truth for product retrieval and readiness checks.
+Expose `ctx.product(name)` to specs for product lookups with the same safety gates as `ctx.asset`: dependency validation, phase gating, and clear diagnostics. Share provider lookup logic with `cmd_product` so there is exactly one source of truth for product retrieval and readiness checks.
 
 ## Implementation Strategy
 - Add a shared helper that resolves products (provider, value, asset_path handling, user-managed passthrough) and enforces phase/decl dependency rules; call it from both `cmd_product` and `ctx.product`.
@@ -19,7 +19,7 @@ Expose `ctx.product(name)` to recipes for product lookups with the same safety g
 - [x] Product enforcement: direct declared product dep lookup; `needed_by` gate; cache-managed returns joined path; user-managed returns raw value.
 - [x] Tracing: add trace events for asset/product access attempts with phase, target, dependency edge used, allow/deny, reason.
 - [x] Tests: unit tests for ctx.product/ctx.asset validation (phase too early, missing dep, user-managed provider, weak-only path, multiple strong paths choose earliest). 
-- [ ] Functional tests: JSON trace ordering and an example recipe using ctx.product to replace manual asset+path concat (e.g., local.gn).
+- [ ] Functional tests: JSON trace ordering and an example spec using ctx.product to replace manual asset+path concat (e.g., local.gn).
 - [x] Ensure no locks taken in hot path; use read-only snapshots of engine state.
 - [x] Update CLI product command to reuse shared resolver; keep behavior identical.
 - [x] Wire manifest-declared product deps into product_dependency metadata so ctx.product works for top-level packages.
