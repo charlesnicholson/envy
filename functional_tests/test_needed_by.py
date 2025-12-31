@@ -2,7 +2,7 @@
 """Functional tests for needed_by phase dependencies.
 
 Tests that needed_by annotation enables fine-grained parallelism by allowing
-recipes to specify which phase they actually need a dependency for. For example,
+specs to specify which phase they actually need a dependency for. For example,
 A depends on B with needed_by="build" means A's fetch/stage can run in parallel
 with B's pipeline, blocking only when A needs to build.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
-from .trace_parser import RecipePhase, TraceParser
+from .trace_parser import PkgPhase, TraceParser
 
 
 class TestNeededBy(unittest.TestCase):
@@ -29,7 +29,7 @@ class TestNeededBy(unittest.TestCase):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
     def test_needed_by_fetch_allows_parallelism(self):
-        """Recipe A depends on B with needed_by='fetch' - A's early phases run in parallel."""
+        """Spec A depends on B with needed_by='fetch' - A's early phases run in parallel."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -53,11 +53,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_fetch_parent@v1",
             "local.needed_by_fetch_dep@v1",
-            RecipePhase.ASSET_FETCH,
+            PkgPhase.ASSET_FETCH,
         )
 
     def test_needed_by_build(self):
-        """Recipe A depends on B with needed_by='build' - fetch/stage parallel, build waits."""
+        """Spec A depends on B with needed_by='build' - fetch/stage parallel, build waits."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -80,11 +80,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_build_parent@v1",
             "local.needed_by_build_dep@v1",
-            RecipePhase.ASSET_BUILD,
+            PkgPhase.ASSET_BUILD,
         )
 
     def test_needed_by_stage(self):
-        """Recipe A depends on B with needed_by='stage' - fetch parallel, stage waits."""
+        """Spec A depends on B with needed_by='stage' - fetch parallel, stage waits."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -107,11 +107,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_stage_parent@v1",
             "local.needed_by_stage_dep@v1",
-            RecipePhase.ASSET_STAGE,
+            PkgPhase.ASSET_STAGE,
         )
 
     def test_needed_by_install(self):
-        """Recipe A depends on B with needed_by='install' - fetch/stage/build parallel, install waits."""
+        """Spec A depends on B with needed_by='install' - fetch/stage/build parallel, install waits."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -134,11 +134,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_install_parent@v1",
             "local.needed_by_install_dep@v1",
-            RecipePhase.ASSET_INSTALL,
+            PkgPhase.ASSET_INSTALL,
         )
 
     def test_needed_by_deploy(self):
-        """Recipe A depends on B with needed_by='deploy' - all phases parallel except deploy."""
+        """Spec A depends on B with needed_by='deploy' - all phases parallel except deploy."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -161,11 +161,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_deploy_parent@v1",
             "local.needed_by_deploy_dep@v1",
-            RecipePhase.ASSET_DEPLOY,
+            PkgPhase.ASSET_DEPLOY,
         )
 
     def test_needed_by_check(self):
-        """Recipe A depends on B with needed_by='check' - check waits, rest runs parallel."""
+        """Spec A depends on B with needed_by='check' - check waits, rest runs parallel."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -188,11 +188,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_check_parent@v1",
             "local.needed_by_check_dep@v1",
-            RecipePhase.ASSET_CHECK,
+            PkgPhase.ASSET_CHECK,
         )
 
     def test_needed_by_default_to_build(self):
-        """Recipe A depends on B without needed_by - defaults to build phase."""
+        """Spec A depends on B without needed_by - defaults to build phase."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -215,11 +215,11 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_default_parent@v1",
             "local.dep_val_lib@v1",
-            RecipePhase.ASSET_BUILD,
+            PkgPhase.ASSET_BUILD,
         )
 
     def test_needed_by_invalid_phase_name(self):
-        """Recipe with needed_by='nonexistent' fails during parsing."""
+        """Spec with needed_by='nonexistent' fails during parsing."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -257,16 +257,16 @@ class TestNeededBy(unittest.TestCase):
         self.assertIn("local.needed_by_chain_b@v1", result.stdout)
         self.assertIn("local.needed_by_chain_c@v1", result.stdout)
 
-        # Verify all three recipes completed successfully
+        # Verify all three specs completed successfully
         parser = TraceParser(trace_file)
-        for recipe in [
+        for spec in [
             "local.needed_by_chain_a@v1",
             "local.needed_by_chain_b@v1",
             "local.needed_by_chain_c@v1",
         ]:
-            completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
+            completes = parser.filter_by_spec_and_event(spec, "phase_complete")
             self.assertGreater(
-                len(completes), 0, f"Expected {recipe} to complete phases"
+                len(completes), 0, f"Expected {spec} to complete phases"
             )
 
     def test_needed_by_diamond(self):
@@ -290,16 +290,16 @@ class TestNeededBy(unittest.TestCase):
         self.assertIn("local.needed_by_diamond_b@v1", result.stdout)
         self.assertIn("local.needed_by_diamond_c@v1", result.stdout)
 
-        # Verify all three recipes completed
+        # Verify all three specs completed
         parser = TraceParser(trace_file)
-        for recipe in [
+        for spec in [
             "local.needed_by_diamond_a@v1",
             "local.needed_by_diamond_b@v1",
             "local.needed_by_diamond_c@v1",
         ]:
-            completes = parser.filter_by_recipe_and_event(recipe, "phase_complete")
+            completes = parser.filter_by_spec_and_event(spec, "phase_complete")
             self.assertGreater(
-                len(completes), 0, f"Expected {recipe} to complete phases"
+                len(completes), 0, f"Expected {spec} to complete phases"
             )
 
     def test_needed_by_race_condition(self):
@@ -328,13 +328,13 @@ class TestNeededBy(unittest.TestCase):
         self.assertIn("local.needed_by_race_parent@v1", result.stdout)
 
         parser = TraceParser(trace_file)
-        completes = parser.filter_by_recipe_and_event(
+        completes = parser.filter_by_spec_and_event(
             "local.needed_by_race_parent@v1", "phase_complete"
         )
         self.assertGreater(len(completes), 0, "Expected parent to complete phases")
 
     def test_needed_by_with_cache_hit(self):
-        """Recipe with needed_by where dependency is already cached."""
+        """Spec with needed_by where dependency is already cached."""
         trace_file1 = self.cache_root / "trace1.jsonl"
         result1 = subprocess.run(
             [
@@ -380,7 +380,7 @@ class TestNeededBy(unittest.TestCase):
         self.assertGreater(len(cache_hits), 0, "Expected cache hits on second run")
 
     def test_needed_by_all_phases(self):
-        """Recipe with multiple dependencies using different needed_by phases."""
+        """Spec with multiple dependencies using different needed_by phases."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -398,7 +398,7 @@ class TestNeededBy(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("local.needed_by_all_phases@v1", result.stdout)
 
-        # Verify recipe completed and has multiple dependencies
+        # Verify spec completed and has multiple dependencies
         parser = TraceParser(trace_file)
         deps = parser.get_dependency_added_events("local.needed_by_all_phases@v1")
         self.assertGreater(len(deps), 1, "Expected multiple dependencies")

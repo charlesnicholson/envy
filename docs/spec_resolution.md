@@ -2,12 +2,12 @@
 
 ## Core Model
 
-**Single flow::graph:** Recipe fetching and asset building unified in one graph. No separation between "resolution" and "installation" phases—operations interleave as `needed_by` dependencies require.
+**Single flow::graph:** Spec fetching and asset building unified in one graph. No separation between "resolution" and "installation" phases—operations interleave as `needed_by` dependencies require.
 
 **Node identity:** `(recipe_identity, options)` uniquely describes a graph node. Memoization key is canonical string `"identity{key1=val1,key2=val2}"` with options sorted lexicographically. Empty options omit braces. String keys enable trivial hashing, debuggability, and future serialization.
 
 **Node phases:** Up to seven `flow::continue_node` instances per recipe:
-- `recipe_fetch` — Load recipe Lua file(s) into cache; discover dependencies; add child nodes to graph
+- `recipe_fetch` — Load spec Lua file(s) into cache; discover dependencies; add child nodes to graph
 - `check` — Test if asset already satisfied
 - `fetch` — Download/acquire source materials
 - `stage` — Prepare staging area
@@ -17,24 +17,24 @@
 
 **Phase dependencies:** Intra-node linear chain (`recipe_fetch` → `check` → `fetch` → ... → `deploy`). Inter-node via `needed_by` annotation in `dependencies` field. Only declared/inferred phases create nodes (node count optimization).
 
-**Dependencies field:** Recipe may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to plain Lua table before graph expansion continues. Entries can be:
+**Dependencies field:** Spec may define `dependencies = { ... }` (static table) or `dependencies = function(ctx) ... end` (dynamic). Both forms normalize to plain Lua table before graph expansion continues. Entries can be:
 - **Strong**: full spec (manifest-sourced or explicit `source`) → instantiated immediately.
 - **Weak**: partial `recipe` plus `weak = { ... }` fallback spec → resolved iteratively; fallback spawned only if no match exists.
 - **Reference-only**: partial `recipe` with no `source`/`weak` → must resolve to some other provider; error after convergence if missing.
 - **Nested fetch prerequisites**: inside `source.dependencies` for custom fetch; may also be weak/reference-only and must complete before parent `recipe_fetch`.
 Each dependency entry may include `needed_by` (default: `"fetch"`); weak fallbacks must not carry `needed_by`.
 
-**Recipe object:** DAG node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each recipe owns its Lua state; verbs query this state at execution time.
+**Spec object:** DAG node carrying `recipe::cfg` (identity, source, options), `lua_state_ptr` (for verb execution), and dependency pointers. Each spec owns its Lua state; verbs query this state at execution time.
 
 ## Graph Construction
 
 **Seed:** Manifest packages create initial `recipe_fetch` nodes. Broadcast kickoff node triggers parallel execution.
 
 **Dynamic expansion:** `recipe_fetch` node body:
-1. Fetch recipe file(s) (declarative `source` or custom `fetch` function)
+1. Fetch spec file(s) (declarative `source` or custom `fetch` function)
 2. Verify integrity (SHA256 for URLs if provided, git commit SHA, or API-enforced per-file verification)
 3. Load Lua chunk, create `lua_state` sandbox
-4. **Validate identity:** Recipe must declare `identity = "..."` matching referrer
+4. **Validate identity:** Spec must declare `identity = "..."` matching referrer
 5. Evaluate `dependencies` field → plain table (static copy or function return value)
 6. For each dependency:
    - Strong deps: ensure node exists (canonical key lookup), add edges based on `needed_by`, start toward target phase
@@ -42,14 +42,14 @@ Each dependency entry may include `needed_by` (default: `"fetch"`); weak fallbac
 7. Nested fetch prerequisites (`source.dependencies`): treated as dependencies with `needed_by = recipe_fetch`; they participate in weak resolution if partial and must complete before parent fetch executes.
 8. Complete `recipe_fetch` node, unblock dependent phases
 
-**Memoization:** Nodes keyed by canonical `(identity, options)` string; first creator wins, later users reuse. Prevents duplicate work when multiple recipes depend on the same config.
+**Memoization:** Nodes keyed by canonical `(identity, options)` string; first creator wins, later users reuse. Prevents duplicate work when multiple specs depend on the same config.
 
 **Concurrency:** Threads drive node phases with waits on `needed_by` edges; graph grows dynamically as `recipe_fetch` nodes add children, but topology remains acyclic (cycle detection enforced).
 
 ## Weak and Reference-Only Resolution
 
 - After strong deps are started, the engine iteratively resolves weak/ref-only entries:
-  1. Wait for all recipes targeting `recipe_fetch` to finish (including any newly spawned fallbacks).
+  1. Wait for all specs targeting `recipe_fetch` to finish (including any newly spawned fallbacks).
   2. Run weak resolution: match queries via engine-wide `match()`. Single match → wire dependency and mark resolved; ambiguity → aggregate and throw; no match + fallback → spawn fallback and mark resolved; no match + no fallback → remain unresolved.
   3. Loop while progress is made (resolved count > 0 or fallbacks started > 0). Progress check accounts for cases where unresolved totals stay flat but fallbacks were added.
 - Reference-only deps fail with a consolidated error if unresolved after convergence.
@@ -57,18 +57,18 @@ Each dependency entry may include `needed_by` (default: `"fetch"`); weak fallbac
 
 ## Phase Coupling via `needed_by`
 
-**Default coupling:** Recipe A depends on recipe B → A's `fetch` waits for B's last declared phase (typically `deploy`).
+**Default coupling:** Spec A depends on spec B → A's `fetch` waits for B's last declared phase (typically `deploy`).
 
 **Custom coupling:** Annotate dependency with `needed_by` field:
 ```lua
 DEPENDENCIES = {
-  { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+  { spec = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
 }
 ```
 
 **Semantics:** Dependency must complete its last declared phase before this node's specified phase starts. Example: `needed_by = "recipe_fetch"` → jfrog.cli's `deploy` phase completes before this recipe's `recipe_fetch` begins.
 
-**Valid phases:** `recipe_fetch`, `check`, `fetch`, `stage`, `build`, `install`, `deploy`. Phase must exist in dependent node (e.g., can't use `needed_by = "build"` if dependent recipe has no build verb).
+**Valid phases:** `recipe_fetch`, `check`, `fetch`, `stage`, `build`, `install`, `deploy`. Phase must exist in dependent node (e.g., can't use `needed_by = "build"` if dependent spec has no build verb).
 
 **Graph edges:** If `needed_by = "recipe_fetch"`, Envy creates edge `dependency.last_phase → this.recipe_fetch`. If `needed_by = "build"`, edge is `dependency.last_phase → this.build`.
 
@@ -76,16 +76,16 @@ DEPENDENCIES = {
 ```lua
 -- Manifest
 {
-  recipe = "corporate.toolchain@v1",
+  spec = "corporate.toolchain@v1",
   FETCH = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Requires jfrog CLI installed
     local tmp = ctx.tmp_dir
-    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+    ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "specs/toolchain.lua", tmp .. "/recipe.lua")
     ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
   end,
   DEPENDENCIES = {
     {
-      recipe = "jfrog.cli@v2",
+      spec = "jfrog.cli@v2",
       source = "https://public.com/jfrog-cli-recipe.lua",
       sha256 = "def456...",
       needed_by = "recipe_fetch"  -- Block corporate.toolchain recipe_fetch until jfrog.cli deployed
@@ -101,7 +101,7 @@ DEPENDENCIES = {
                                               [corporate.toolchain recipe_fetch] → [corporate.toolchain fetch] → ...
 ```
 
-jfrog.cli fully installs before corporate.toolchain recipe can be fetched. Recipe fetch function uses `ctx:asset("jfrog.cli@v2")` to access installed jfrog binary.
+jfrog.cli fully installs before corporate.toolchain spec can be fetched. Spec fetch function uses `ctx:asset("jfrog.cli@v2")` to access installed jfrog binary.
 
 ## Cycle Detection
 
@@ -111,42 +111,42 @@ jfrog.cli fully installs before corporate.toolchain recipe can be fetched. Recip
 
 **Illegal cycle example:**
 ```lua
--- Recipe A
-{ recipe = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
-  DEPENDENCIES = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
+-- Spec A
+{ spec = "A@v1", fetch = function(ctx) ctx:asset("B@v1") end,
+  DEPENDENCIES = { { spec = "B@v1", needed_by = "recipe_fetch" } } }
 
--- Recipe B (inside A's dependency tree somewhere)
-{ recipe = "B@v1", dependencies = { { recipe = "A@v1", needed_by = "recipe_fetch" } } }
+-- Spec B (inside A's dependency tree somewhere)
+{ spec = "B@v1", dependencies = { { spec = "A@v1", needed_by = "recipe_fetch" } } }
 ```
 
 Both need each other for `recipe_fetch` → deadlock. Envy detects when B's `recipe_fetch` node tries to add A as child: A is already ancestor of B in graph.
 
 **Error message:** "Cycle detected: A@v1.recipe_fetch → B@v1.recipe_fetch → A@v1.recipe_fetch"
 
-**Phase-agnostic cycles:** Standard recipe-to-recipe cycles also detected (A depends on B depends on A, regardless of `needed_by`). Thread-local stack tracks active `recipe_fetch` operations; encountering unfinished entry signals cycle.
+**Phase-agnostic cycles:** Standard recipe-to-spec cycles also detected (A depends on B depends on A, regardless of `needed_by`). Thread-local stack tracks active `recipe_fetch` operations; encountering unfinished entry signals cycle.
 
-## Recipe Fetching
+## Spec Fetching
 
 ### Identity Declaration
 
-**Requirement:** ALL recipes must declare their identity at the top of the recipe file:
+**Requirement:** ALL specs must declare their identity at the top of the spec file:
 ```lua
--- vendor.lib@v1 recipe file
+-- vendor.lib@v1 spec file
 IDENTITY = "vendor.lib@v1"
 
--- local.wrapper@v1 recipe file
+-- local.wrapper@v1 spec file
 IDENTITY = "local.wrapper@v1"
 
 -- Rest of recipe...
 ```
 
 **Validation:** When Envy loads a recipe, it verifies the declared identity matches the requested identity. This prevents:
-- Accidental recipe substitution (wrong URL, typo in manifest)
+- Accidental spec substitution (wrong URL, typo in manifest)
 - Copy-paste errors (forgot to update identity after copying recipe)
-- Stale references (manifest not updated after recipe rename)
-- Malicious substitution (compromised server for remote recipes)
+- Stale references (manifest not updated after spec rename)
+- Malicious substitution (compromised server for remote specs)
 
-**No exemptions:** Even `local.*` recipes require identity declaration. This is a correctness check orthogonal to SHA256 verification (which is about network trust). Identity validation catches errors in ALL recipes, regardless of namespace.
+**No exemptions:** Even `local.*` specs require identity declaration. This is a correctness check orthogonal to SHA256 verification (which is about network trust). Identity validation catches errors in ALL specs, regardless of namespace.
 
 ### Declarative Fetch Sources
 
@@ -168,7 +168,7 @@ FETCH = {
 }
 ```
 
-**Trust model:** SHA256 is **optional** (permissive by default). If provided, Envy verifies after download. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
+**Trust model:** SHA256 is **optional** (permissive by default). If provided, Envy verifies after download. Future "strict mode" will require SHA256 for all non-`local.*` specs.
 
 **Git sources:**
 ```lua
@@ -178,12 +178,12 @@ FETCH = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 
 ### Custom Fetch Functions
 
-**Use case:** Authenticated sources, custom tools (JFrog, Artifactory), dynamic recipe generation, templating with `ctx.options`.
+**Use case:** Authenticated sources, custom tools (JFrog, Artifactory), dynamic spec generation, templating with `ctx.options`.
 
 **Imperative mode** (calls `ctx.fetch()` + `ctx.commit_fetch()`):
 ```lua
 {
-  recipe = "corporate.toolchain@v1",
+  spec = "corporate.toolchain@v1",
   FETCH = function(ctx)
     local jfrog = ctx:asset("jfrog.cli@v2")  -- Access installed dependency
 
@@ -195,7 +195,7 @@ FETCH = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
     ctx.commit_fetch({"toolchain.tar.gz", "helpers.lua"})
   end,
   DEPENDENCIES = {
-    { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+    { spec = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
 ```
@@ -203,7 +203,7 @@ FETCH = {url = "git://github.com/vendor/lib.git", ref = "a1b2c3d4..."}
 **Declarative return mode** (returns declarative spec):
 ```lua
 {
-  recipe = "vendor.gcc@v2",
+  spec = "vendor.gcc@v2",
   FETCH = function(ctx)
     -- Template URL with options
     local version = ctx.options.version or "13.2.0"
@@ -242,12 +242,12 @@ end
 
 ### Fetch Phase Context API
 
-**Available to `function fetch(ctx)` in recipes:**
+**Available to `function fetch(ctx)` in specs:**
 ```lua
 ctx = {
   -- Identity & configuration
-  IDENTITY = string,                                -- Recipe identity ("vendor.lib@v1") - recipes only, not manifests
-  options = table,                                  -- Recipe options (always present, may be empty)
+  IDENTITY = string,                                -- Spec identity ("vendor.lib@v1") - specs only, not manifests
+  options = table,                                  -- Spec options (always present, may be empty)
 
   -- Directories (read-only paths)
   tmp_dir = string,                                 -- Ephemeral temp directory for ctx.fetch() downloads
@@ -301,11 +301,11 @@ end
 
 ### Cache Layout
 
-**Recipe cache** (custom fetch produces multi-file directory):
+**Spec cache** (custom fetch produces multi-file directory):
 ```
-~/.cache/envy/recipes/
+~/.cache/envy/specs/
 └── corporate.toolchain@v1/
-    ├── envy-complete         # Marker: recipe fetch complete
+    ├── envy-complete         # Marker: spec fetch complete
     ├── recipe.lua            # Entry point (required)
     ├── helpers.lua           # Additional files from ctx.fetch()
     ├── fetch/                # Downloaded files moved here after verification
@@ -316,11 +316,11 @@ end
 
 ## Dependency Function Semantics
 
-**Dynamic dependencies** (recipe file):
+**Dynamic dependencies** (spec file):
 ```lua
 DEPENDENCIES = function(ctx)
   if ctx.options.enable_ssl then
-    return { { recipe = "openssl.lib@v3", source = "...", sha256 = "..." } }
+    return { { spec = "openssl.lib@v3", source = "...", sha256 = "..." } }
   end
   return {}
 end
@@ -330,11 +330,11 @@ end
 
 **Determinism:** Returned tables must be deterministic for given `(identity, options)`. Envy copies table before spawning child tasks to prevent accidental mutation.
 
-**Option rewriting:** Parent recipes may transform child options:
+**Option rewriting:** Parent specs may transform child options:
 ```lua
 DEPENDENCIES = function(ctx)
   return {
-    { recipe = "vendor.lib@v1", options = { version = ctx.options.lib_version or "2.0" } }
+    { spec = "vendor.lib@v1", options = { version = ctx.options.lib_version or "2.0" } }
   }
 end
 ```
@@ -343,17 +343,17 @@ Enables batteries-included bundles without manifest involvement.
 
 ## Policy Enforcement
 
-**Security boundary:** Non-local recipes cannot depend on `local.*` recipes. Envy enforces after dependency evaluation—errors immediately if violation detected.
+**Security boundary:** Non-local specs cannot depend on `local.*` specs. Envy enforces after dependency evaluation—errors immediately if violation detected.
 
 **Duplicate dependencies:** Same `(recipe, options, source)` in dependency list collapses to single node (deep comparison). Conflicting sources (same recipe/options, different source/sha256) surface as hard error.
 
-**Local recipes:** Cannot use `fetch` function (parse-time error). Must use `file` path. Never cached.
+**Local specs:** Cannot use `fetch` function (parse-time error). Must use `file` path. Never cached.
 
 ## Error Propagation
 
 **Graph construction errors:** Cycle detection, security violations, conflicting sources → immediate error with diagnostic (identity, cycle path, conflicting fields).
 
-**Execution errors:** Recipe fetch failures, SHA256 mismatches, Lua errors, verb failures → node marks failed, propagates to dependents. Graph continues executing independent branches; final status reports all failures.
+**Execution errors:** Spec fetch failures, SHA256 mismatches, Lua errors, verb failures → node marks failed, propagates to dependents. Graph continues executing independent branches; final status reports all failures.
 
 **Diagnostics:** Record identity, phase, error message. Higher layers map into TUI progress bars and CLI summary.
 
@@ -364,22 +364,22 @@ Enables batteries-included bundles without manifest involvement.
 -- project/envy.lua
 PACKAGES = {
   {
-    recipe = "corporate.toolchain@v1",
+    spec = "corporate.toolchain@v1",
     FETCH = function(ctx)
       local jfrog = ctx:asset("jfrog.cli@v2")
       local tmp = ctx.tmp_dir
-      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "recipes/toolchain.lua", tmp .. "/recipe.lua")
+      ctx:run(jfrog .. "/bin/jfrog", "rt", "download", "specs/toolchain.lua", tmp .. "/recipe.lua")
       ctx:commit_fetch({filename = "recipe.lua", sha256 = "abc123..."})
     end,
     DEPENDENCIES = {
-      { recipe = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }
+      { spec = "jfrog.cli@v2", source = "https://public.com/jfrog.lua", sha256 = "def456...", needed_by = "recipe_fetch" }
     }
   },
   "vendor.library@v1"  -- Shorthand, no custom fetch
 }
 ```
 
-### Recipe Files
+### Spec Files
 
 **jfrog.cli@v2 (simple declarative recipe):**
 ```lua
@@ -396,8 +396,8 @@ end
 -- Fetched via custom function using jfrog CLI
 DEPENDENCIES = function(ctx)
   return {
-    { recipe = "vendor.compiler@v3", source = "...", sha256 = "..." },
-    { recipe = "vendor.linker@v2", source = "...", sha256 = "..." }
+    { spec = "vendor.compiler@v3", source = "...", sha256 = "..." },
+    { spec = "vendor.linker@v2", source = "...", sha256 = "..." }
   }
 end
 
@@ -419,7 +419,7 @@ end
 
 ### Execution Timeline
 
-**Initial state:** Cache empty, no recipes or assets installed.
+**Initial state:** Cache empty, no specs or assets installed.
 
 **Graph construction:**
 1. Command seeds graph with `corporate.toolchain@v1` and `vendor.library@v1` recipe_fetch nodes
@@ -429,7 +429,7 @@ end
 3. `jfrog.cli@v2.recipe_fetch` executes (no dependencies, starts immediately)
    - Download https://public.com/jfrog.lua
    - Verify SHA256 "def456..."
-   - Cache at `~/.cache/envy/recipes/jfrog.cli@v2.lua`
+   - Cache at `~/.cache/envy/specs/jfrog.cli@v2.lua`
    - Load Lua, discover no dependencies
    - Complete `recipe_fetch`, unblock `fetch` phase
 4. `jfrog.cli@v2.fetch` executes
@@ -449,14 +449,14 @@ end
    - Call fetch function: `ctx:asset("jfrog.cli@v2")` returns `/cache/assets/jfrog.cli@v2/.../asset`
    - Run jfrog CLI: download toolchain.lua to workspace
    - `ctx:import_file(workspace/toolchain.lua, recipe.lua, "abc123...")` verifies SHA256, copies to cache
-   - Load Lua from `~/.cache/envy/recipes/corporate.toolchain@v1/recipe.lua`
+   - Load Lua from `~/.cache/envy/specs/corporate.toolchain@v1/recipe.lua`
    - Evaluate `dependencies` function → returns compiler, linker
    - Add `vendor.compiler@v3` and `vendor.linker@v2` nodes to graph with edges
    - Complete `recipe_fetch`
 
 **Phase 3: Compiler/linker (parallel, new nodes added during step 7):**
 8. `vendor.compiler@v3.recipe_fetch`, `vendor.linker@v2.recipe_fetch` execute in parallel
-   - Fetch recipes from URLs, verify, cache, load Lua
+   - Fetch specs from URLs, verify, cache, load Lua
 9. `vendor.compiler@v3` fetch/install phases execute
 10. `vendor.linker@v2` fetch/install phases execute
 
@@ -534,10 +534,10 @@ class unified_dag {
 
 ## Future Enhancements
 
-**Offline DAG caching:** Memoization keys enable serializing resolved graph to disk. Subsequent runs skip recipe fetching if cache valid (check recipe SHA256s). Load graph from cache, execute asset phases only.
+**Offline DAG caching:** Memoization keys enable serializing resolved graph to disk. Subsequent runs skip spec fetching if cache valid (check spec SHA256s). Load graph from cache, execute asset phases only.
 
 **Progress tracking:** Each phase node reports progress (0-100%) via TUI handle. User sees: "Fetching jfrog.cli@v2 [=====> ] 45%", "Building corporate.toolchain@v1 [========>] 80%".
 
 **Partial execution:** Skip phases for already-installed assets (`envy-complete` marker present). Graph prunes completed nodes before execution. Supports incremental updates.
 
-**Speculative fetching:** Recipe fetch can preemptively download common dependencies before Lua evaluation completes. Reduces critical path latency for well-known recipes.
+**Speculative fetching:** Spec fetch can preemptively download common dependencies before Lua evaluation completes. Reduces critical path latency for well-known specs.

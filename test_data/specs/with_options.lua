@@ -1,4 +1,4 @@
--- Recipe that supports options
+-- Spec that supports options
 IDENTITY = "local.with_options@v1"
 DEPENDENCIES = {}
 

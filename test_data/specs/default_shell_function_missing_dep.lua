@@ -1,4 +1,4 @@
--- Test: default_shell function calls envy.asset(), recipe missing dep → fails with error
+-- Test: default_shell function calls envy.asset(), spec missing dep → fails with error
 IDENTITY = "local.default_shell_function_missing_dep@v1"
 
 -- Intentionally NOT declaring dependency on default_shell_dep_tool

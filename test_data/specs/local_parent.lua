@@ -1,5 +1,5 @@
 -- local.parent@v1
--- Local recipe depending on another local recipe
+-- Local spec depending on another local recipe
 
 IDENTITY = "local.parent@v1"
 DEPENDENCIES = {

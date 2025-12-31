@@ -1,5 +1,5 @@
 -- Simple user-managed package: check verb + install, ephemeral workspace
--- This recipe simulates a system package wrapper (like brew install python)
+-- This spec simulates a system package wrapper (like brew install python)
 IDENTITY = "local.user_managed_simple@v1"
 
 -- Check if "package" is already installed (simulated by marker file)

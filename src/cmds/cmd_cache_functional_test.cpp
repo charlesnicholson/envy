@@ -45,11 +45,11 @@ void cmd_cache_ensure_asset::register_cli(CLI::App &parent,
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
 
-void cmd_cache_ensure_recipe::register_cli(CLI::App &parent,
+void cmd_cache_ensure_spec::register_cli(CLI::App &parent,
                                            std::function<void(cfg)> on_selected) {
-  auto *sub{ parent.add_subcommand("ensure-recipe", "Test recipe cache entry") };
+  auto *sub{ parent.add_subcommand("ensure-spec", "Test spec cache entry") };
   auto cfg_ptr{ std::make_shared<cfg>() };
-  sub->add_option("identity", cfg_ptr->identity, "Recipe identity")->required();
+  sub->add_option("identity", cfg_ptr->identity, "Spec identity")->required();
   sub->add_option("--test-id", cfg_ptr->test_id, "Test ID for barrier isolation");
   sub->add_option("--barrier-dir", cfg_ptr->barrier_dir, "Barrier directory");
   sub->add_option("--barrier-signal",
@@ -198,13 +198,13 @@ void cmd_cache_ensure_asset::execute() {
   tui::print_stdout("%s", kv.c_str());
 }
 
-// cmd_cache_ensure_recipe implementation
-cmd_cache_ensure_recipe::cmd_cache_ensure_recipe(
+// cmd_cache_ensure_spec implementation
+cmd_cache_ensure_spec::cmd_cache_ensure_spec(
     cfg const &config,
     std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
-void cmd_cache_ensure_recipe::execute() {
+void cmd_cache_ensure_spec::execute() {
   auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
 
   tui::print_stdout("locked=false\nfast_path=false\n");
@@ -221,12 +221,12 @@ void cmd_cache_ensure_recipe::execute() {
   // Wait for barrier if requested (before attempting lock)
   barrier.wait(cfg_.barrier_wait);
 
-  // Ensure recipe
+  // Ensure spec
   auto result{ c->ensure_spec(cfg_.identity) };
 
   // Construct lock file path for reporting
   std::filesystem::path lock_file{ c->root() / "locks" /
-                                   ("recipe." + cfg_.identity + ".lock") };
+                                   ("spec." + cfg_.identity + ".lock") };
 
   // Determine result state
   bool locked{ result.lock != nullptr };

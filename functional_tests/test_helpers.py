@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Helper utilities for functional tests to prevent writes to project root.
 
-Provides safe path resolution and recipe wrapping to ensure all test operations
+Provides safe path resolution and spec wrapping to ensure all test operations
 happen in temporary directories, never in the envy project root.
 """
 
@@ -32,41 +32,41 @@ class TestPathHelper:
         """Convert path to Lua-safe string with forward slashes."""
         return path.as_posix()
 
-    def get_test_data_recipe(self, recipe_name: str) -> Path:
-        """Get absolute path to recipe in test_data.
+    def get_test_data_spec(self, spec_name: str) -> Path:
+        """Get absolute path to spec in test_data.
 
         Args:
-            recipe_name: Name of recipe file (e.g., "simple.lua")
+            spec_name: Name of spec file (e.g., "simple.lua")
 
         Returns:
-            Absolute path to recipe
+            Absolute path to spec
         """
-        return self.test_data / "specs" / recipe_name
+        return self.test_data / "specs" / spec_name
 
-    def create_wrapper_recipe(
-        self, recipe_name: str, wrapper_name: Optional[str] = None
+    def create_wrapper_spec(
+        self, spec_name: str, wrapper_name: Optional[str] = None
     ) -> Path:
-        """Create wrapper recipe in test_dir that loads actual recipe.
+        """Create wrapper spec in test_dir that loads actual recipe.
 
         This allows tests to run with cwd=test_dir (temp directory) while
-        still accessing recipes from test_data. User-managed recipes will
+        still accessing specs from test_data. User-managed specs will
         write to test_dir, not project root.
 
         Args:
-            recipe_name: Name of recipe in test_data/specs/
-            wrapper_name: Optional custom name for wrapper (defaults to recipe_name)
+            spec_name: Name of spec in test_data/specs/
+            wrapper_name: Optional custom name for wrapper (defaults to spec_name)
 
         Returns:
-            Path to wrapper recipe in test_dir
+            Path to wrapper spec in test_dir
         """
-        wrapper_name = wrapper_name or recipe_name
+        wrapper_name = wrapper_name or spec_name
         wrapper_path = self.test_dir / wrapper_name
-        source_recipe = self.get_test_data_recipe(recipe_name)
+        source_spec = self.get_test_data_spec(spec_name)
 
-        # Create wrapper that dofile's the actual recipe with absolute path
-        wrapper_content = f"""-- Wrapper recipe (auto-generated for testing)
--- Loads actual recipe from: {source_recipe}
-dofile("{self.lua_path(source_recipe)}")
+        # Create wrapper that dofile's the actual spec with absolute path
+        wrapper_content = f"""-- Wrapper spec (auto-generated for testing)
+-- Loads actual spec from: {source_spec}
+dofile("{self.lua_path(source_spec)}")
 """
         wrapper_path.write_text(wrapper_content, encoding="utf-8")
         return wrapper_path

@@ -1,4 +1,4 @@
--- Recipe A with weak reference that creates cycle after resolution
+-- Spec A with weak reference that creates cycle after resolution
 IDENTITY = "local.weak_cycle_a@v1"
 DEPENDENCIES = {
   { spec = "foo" },  -- Weak ref-only, will match weak_cycle_b

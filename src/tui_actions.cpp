@@ -10,11 +10,11 @@ namespace envy::tui_actions {
 // ==== run_progress ====
 
 run_progress::run_progress(tui::section_handle section,
-                           std::string const &recipe_identity,
+                           std::string const &pkg_identity,
                            std::filesystem::path const &cache_root,
                            product_map_t products)
     : section_{ section },
-      label_{ "[" + recipe_identity + "]" },
+      label_{ "[" + pkg_identity + "]" },
       cache_root_{ cache_root },
       products_{ std::move(products) },
       start_time_{ std::chrono::steady_clock::now() },
@@ -50,10 +50,10 @@ void run_progress::on_output_line(std::string_view line) {
 // ==== extract_progress_tracker ====
 
 extract_progress_tracker::extract_progress_tracker(tui::section_handle section,
-                                                   std::string const &recipe_identity,
+                                                   std::string const &pkg_identity,
                                                    std::string const &filename)
     : section_{ section },
-      label_{ "[" + recipe_identity + "]" },
+      label_{ "[" + pkg_identity + "]" },
       filename_{ filename },
       start_time_{ std::chrono::steady_clock::now() } {
   // Show initial spinner
@@ -100,11 +100,11 @@ bool extract_progress_tracker::operator()(extract_progress const &prog) {
 
 extract_all_progress_tracker::extract_all_progress_tracker(
     tui::section_handle section,
-    std::string const &recipe_identity,
+    std::string const &pkg_identity,
     std::vector<std::string> const &filenames,
     extract_totals const &totals)
     : section_{ section },
-      label_{ "[" + recipe_identity + "]" },
+      label_{ "[" + pkg_identity + "]" },
       start_time_{ std::chrono::steady_clock::now() },
       mutex_{},
       children_{},
@@ -203,10 +203,10 @@ auto extract_all_progress_tracker::make_callbacks()
 // ==== fetch_progress_tracker ====
 
 fetch_progress_tracker::fetch_progress_tracker(tui::section_handle section,
-                                               std::string const &recipe_identity,
+                                               std::string const &pkg_identity,
                                                std::string const &url)
     : section_{ section },
-      label_{ "[" + recipe_identity + "]" },
+      label_{ "[" + pkg_identity + "]" },
       url_{ url },
       start_time_{ std::chrono::steady_clock::now() } {
   // Show initial spinner
@@ -272,10 +272,10 @@ bool fetch_progress_tracker::operator()(fetch_progress_t const &prog) {
 
 fetch_all_progress_tracker::fetch_all_progress_tracker(
     tui::section_handle section,
-    std::string const &recipe_identity,
+    std::string const &pkg_identity,
     std::vector<std::string> const &labels)
     : section_{ section },
-      label_{ "[" + recipe_identity + "]" },
+      label_{ "[" + pkg_identity + "]" },
       mutex_{},
       children_{},
       git_states_(labels.size()),

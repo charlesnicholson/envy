@@ -1,5 +1,5 @@
 -- remote.b@v1
--- Remote recipe that depends on local.* (transitively violates security)
+-- Remote spec that depends on local.* (transitively violates security)
 
 IDENTITY = "remote.b@v1"
 DEPENDENCIES = {

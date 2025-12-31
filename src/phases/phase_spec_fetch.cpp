@@ -583,7 +583,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
 
   p->products = parse_products_table(cfg, *lua, p);
   for (auto const &[name, value] : p->products) {
-    ENVY_TRACE_EMIT((trace_events::product_parsed{ .recipe = cfg.identity,
+    ENVY_TRACE_EMIT((trace_events::product_parsed{ .spec = cfg.identity,
                                                    .product_name = name,
                                                    .product_value = value }));
   }

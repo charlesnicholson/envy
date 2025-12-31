@@ -154,8 +154,8 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         else:
             self.assertEqual(result_b["fast_path"], "false")
 
-    def test_ensure_recipe_vs_ensure_asset_different_locks(self):
-        """Verify recipe and asset locks don't conflict."""
+    def test_ensure_spec_vs_ensure_asset_different_locks(self):
+        """Verify spec and asset locks don't conflict."""
         # Start asset lock in background
         proc_asset = self.run_cache_cmd(
             "ensure-asset",
@@ -167,9 +167,9 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
             barrier_wait="recipe_checked",
         )
 
-        # Wait for asset lock, then try recipe lock
-        proc_recipe = self.run_cache_cmd(
-            "ensure-recipe",
+        # Wait for asset lock, then try spec lock
+        proc_spec = self.run_cache_cmd(
+            "ensure-spec",
             "envy.cmake@v1",
             barrier_wait="asset_locked",
             barrier_signal="recipe_checked",
@@ -177,9 +177,9 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
 
         # Both should succeed without blocking each other
         proc_asset.communicate()
-        proc_recipe.communicate()
+        proc_spec.communicate()
         self.assertEqual(proc_asset.returncode, 0)
-        self.assertEqual(proc_recipe.returncode, 0)
+        self.assertEqual(proc_spec.returncode, 0)
 
 
 class TestStagingAndCommit(CacheTestBase):
@@ -425,13 +425,13 @@ class TestLockFileLifecycle(CacheTestBase):
         expected_lock = "packages.gcc.darwin-arm64-blake3-abc123.lock"
         self.assertIn(expected_lock, result.get("lock_file", ""))
 
-    def test_lock_file_naming_recipe(self):
-        """Verify recipe lock path matches recipe.{identity}.lock."""
-        proc = self.run_cache_cmd("ensure-recipe", "envy.cmake@v1")
+    def test_lock_file_naming_spec(self):
+        """Verify spec lock path matches spec.{identity}.lock."""
+        proc = self.run_cache_cmd("ensure-spec", "envy.cmake@v1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
-        expected_lock = "recipe.envy.cmake@v1.lock"
+        expected_lock = "spec.envy.cmake@v1.lock"
         self.assertIn(expected_lock, result.get("lock_file", ""))
 
 
@@ -459,45 +459,45 @@ class TestEntryPathsAndStructure(CacheTestBase):
         )
         self.assertEqual(result["entry_path"], str(expected_path))
 
-    def test_recipe_entry_path_structure(self):
-        """Verify recipe path is recipes/{identity}/."""
-        proc = self.run_cache_cmd("ensure-recipe", "envy.cmake@v1")
+    def test_spec_entry_path_structure(self):
+        """Verify spec path is recipes/{identity}/."""
+        proc = self.run_cache_cmd("ensure-spec", "envy.cmake@v1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         expected_path = self.cache_root / "specs" / "envy.cmake@v1"
         self.assertEqual(result["entry_path"], str(expected_path))
 
-    def test_recipe_directory_structure(self):
-        """Verify recipe entry is a directory with expected structure."""
-        proc = self.run_cache_cmd("ensure-recipe", "envy.test@v2")
+    def test_spec_directory_structure(self):
+        """Verify spec entry is a directory with expected structure."""
+        proc = self.run_cache_cmd("ensure-spec", "envy.test@v2")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         entry_path = Path(result["entry_path"])
         asset_path = Path(result["pkg_path"])
 
-        self.assertTrue(entry_path.is_dir(), "Recipe entry should be a directory")
+        self.assertTrue(entry_path.is_dir(), "Spec entry should be a directory")
         self.assertEqual(
             entry_path / "pkg",
             asset_path,
-            "Recipe asset_path should be entry_path/asset",
+            "Spec asset_path should be entry_path/asset",
         )
         self.assertTrue(
             (entry_path / "envy-complete").exists(),
-            "Recipe should have envy-complete marker",
+            "Spec should have envy-complete marker",
         )
 
-    def test_recipe_asset_path_structure(self):
-        """Verify recipe uses asset subdirectory like other cache entries."""
-        proc = self.run_cache_cmd("ensure-recipe", "envy.simple@v1")
+    def test_spec_asset_path_structure(self):
+        """Verify spec uses asset subdirectory like other cache entries."""
+        proc = self.run_cache_cmd("ensure-spec", "envy.simple@v1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         entry_path = Path(result["entry_path"])
         asset_path = Path(result["pkg_path"])
 
-        # Recipes use uniform cache structure with pkg/ subdirectory
+        # Specs use uniform cache structure with pkg/ subdirectory
         self.assertEqual(entry_path / "pkg", asset_path)
 
     def test_cache_directory_creation(self):

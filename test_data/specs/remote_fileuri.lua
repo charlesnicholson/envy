@@ -1,5 +1,5 @@
 -- remote.fileuri@v1
--- Remote recipe with no dependencies
+-- Remote spec with no dependencies
 
 IDENTITY = "remote.fileuri@v1"
 

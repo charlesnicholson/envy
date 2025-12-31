@@ -1,6 +1,6 @@
 # envy.* Lua API Reference
 
-Complete reference for the `envy.*` namespace available to recipe scripts.
+Complete reference for the `envy.*` namespace available to spec scripts.
 
 ## Platform Constants
 
@@ -220,7 +220,7 @@ end
 Get named product value from provider dependency.
 
 ```lua
--- Recipe declares: NEEDS_PRODUCTS = { python_path = { needed_by = "build" } }
+-- Spec declares: NEEDS_PRODUCTS = { python_path = { needed_by = "build" } }
 BUILD = function(...)
   local python = envy.product("python_path")
   envy.run(python .. " setup.py build")
@@ -278,7 +278,7 @@ phase_context_guard ctx_guard{ &engine, recipe, run_dir };
 ```
 
 Context provides:
-- Current recipe pointer (for `envy.asset` dependency validation)
+- Current spec pointer (for `envy.asset` dependency validation)
 - Engine pointer (for TUI progress tracking)
 - Run directory (default cwd for `envy.run` and file operations)
 

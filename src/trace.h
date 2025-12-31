@@ -13,14 +13,14 @@ namespace envy {
 namespace trace_events {
 
 struct phase_blocked {
-  std::string recipe;
+  std::string spec;
   pkg_phase blocked_at_phase;
   std::string waiting_for;
   pkg_phase target_phase;
 };
 
 struct phase_unblocked {
-  std::string recipe;
+  std::string spec;
   pkg_phase unblocked_at_phase;
   std::string dependency;
 };
@@ -32,77 +32,77 @@ struct dependency_added {
 };
 
 struct phase_start {
-  std::string recipe;
+  std::string spec;
   pkg_phase phase;
 };
 
 struct phase_complete {
-  std::string recipe;
+  std::string spec;
   pkg_phase phase;
   std::int64_t duration_ms;
 };
 
 struct thread_start {
-  std::string recipe;
+  std::string spec;
   pkg_phase target_phase;
 };
 
 struct thread_complete {
-  std::string recipe;
+  std::string spec;
   pkg_phase final_phase;
 };
 
-struct recipe_registered {
-  std::string recipe;
+struct spec_registered {
+  std::string spec;
   std::string key;
   bool has_dependencies;
 };
 
 struct target_extended {
-  std::string recipe;
+  std::string spec;
   pkg_phase old_target;
   pkg_phase new_target;
 };
 
 struct lua_ctx_run_start {
-  std::string recipe;
+  std::string spec;
   std::string command;
   std::string cwd;
 };
 
 struct lua_ctx_run_complete {
-  std::string recipe;
+  std::string spec;
   int exit_code;
   std::int64_t duration_ms;
 };
 
 struct lua_ctx_fetch_start {
-  std::string recipe;
+  std::string spec;
   std::string url;
   std::string destination;
 };
 
 struct lua_ctx_fetch_complete {
-  std::string recipe;
+  std::string spec;
   std::string url;
   std::int64_t bytes_downloaded;
   std::int64_t duration_ms;
 };
 
 struct lua_ctx_extract_start {
-  std::string recipe;
+  std::string spec;
   std::string archive_path;
   std::string destination;
 };
 
 struct lua_ctx_extract_complete {
-  std::string recipe;
+  std::string spec;
   std::int64_t files_extracted;
   std::int64_t duration_ms;
 };
 
 struct lua_ctx_asset_access {
-  std::string recipe;
+  std::string spec;
   std::string target;
   pkg_phase current_phase;
   pkg_phase needed_by;
@@ -111,7 +111,7 @@ struct lua_ctx_asset_access {
 };
 
 struct lua_ctx_product_access {
-  std::string recipe;
+  std::string spec;
   std::string product;
   std::string provider;
   pkg_phase current_phase;
@@ -121,136 +121,136 @@ struct lua_ctx_product_access {
 };
 
 struct cache_hit {
-  std::string recipe;
+  std::string spec;
   std::string cache_key;
   std::string pkg_path;
   bool fast_path;
 };
 
 struct cache_miss {
-  std::string recipe;
+  std::string spec;
   std::string cache_key;
 };
 
 struct lock_acquired {
-  std::string recipe;
+  std::string spec;
   std::string lock_path;
   std::int64_t wait_duration_ms;
 };
 
 struct lock_released {
-  std::string recipe;
+  std::string spec;
   std::string lock_path;
   std::int64_t hold_duration_ms;
 };
 
 struct fetch_file_start {
-  std::string recipe;
+  std::string spec;
   std::string url;
   std::string destination;
 };
 
 struct fetch_file_complete {
-  std::string recipe;
+  std::string spec;
   std::string url;
   std::int64_t bytes_downloaded;
   std::int64_t duration_ms;
   bool from_cache;
 };
 
-struct recipe_fetch_counter_inc {
-  std::string recipe;
+struct spec_fetch_counter_inc {
+  std::string spec;
   int new_value;
 };
 
-struct recipe_fetch_counter_dec {
-  std::string recipe;
+struct spec_fetch_counter_dec {
+  std::string spec;
   int new_value;
   bool was_completed;
 };
 
 struct execute_downloads_start {
-  std::string recipe;
+  std::string spec;
   std::size_t thread_id;
   std::size_t num_files;
 };
 
 struct execute_downloads_complete {
-  std::string recipe;
+  std::string spec;
   std::size_t thread_id;
   std::size_t num_files;
   std::int64_t duration_ms;
 };
 
 struct debug_marker {
-  std::string recipe;
+  std::string spec;
   int marker_id;
 };
 
 struct cache_check_entry {
-  std::string recipe;
+  std::string spec;
   std::string entry_dir;
   std::string check_location;  // "before_lock" or "after_lock"
 };
 
 struct cache_check_result {
-  std::string recipe;
+  std::string spec;
   std::string entry_dir;
   bool is_complete;
   std::string check_location;  // "before_lock" or "after_lock"
 };
 
 struct directory_flushed {
-  std::string recipe;
+  std::string spec;
   std::string dir_path;
 };
 
 struct file_touched {
-  std::string recipe;
+  std::string spec;
   std::string file_path;
 };
 
 struct file_exists_check {
-  std::string recipe;
+  std::string spec;
   std::string file_path;
   bool exists;
 };
 
 struct directory_flush_failed {
-  std::string recipe;
+  std::string spec;
   std::string dir_path;
   std::string reason;
 };
 
 struct extract_archive_start {
-  std::string recipe;
+  std::string spec;
   std::string archive_path;
   std::string destination;
   int strip_components;
 };
 
 struct extract_archive_complete {
-  std::string recipe;
+  std::string spec;
   std::string archive_path;
   std::int64_t files_extracted;
   std::int64_t duration_ms;
 };
 
 struct product_transitive_check {
-  std::string recipe;
+  std::string spec;
   std::string product;
   bool has_product_directly;
   std::size_t dependency_count;
 };
 
 struct product_transitive_check_dep {
-  std::string recipe;
+  std::string spec;
   std::string product;
   std::string checking_dependency;
 };
 
 struct product_parsed {
-  std::string recipe;
+  std::string spec;
   std::string product_name;
   std::string product_value;
 };
@@ -264,7 +264,7 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::phase_complete,
                                    trace_events::thread_start,
                                    trace_events::thread_complete,
-                                   trace_events::recipe_registered,
+                                   trace_events::spec_registered,
                                    trace_events::target_extended,
                                    trace_events::lua_ctx_run_start,
                                    trace_events::lua_ctx_run_complete,
@@ -280,8 +280,8 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::lock_released,
                                    trace_events::fetch_file_start,
                                    trace_events::fetch_file_complete,
-                                   trace_events::recipe_fetch_counter_inc,
-                                   trace_events::recipe_fetch_counter_dec,
+                                   trace_events::spec_fetch_counter_inc,
+                                   trace_events::spec_fetch_counter_dec,
                                    trace_events::execute_downloads_start,
                                    trace_events::execute_downloads_complete,
                                    trace_events::debug_marker,
@@ -309,11 +309,11 @@ inline bool trace_enabled() { return g_trace_enabled; }
 }  // namespace tui
 
 struct phase_trace_scope {
-  std::string recipe;
+  std::string spec;
   pkg_phase phase;
   std::chrono::steady_clock::time_point start;
 
-  phase_trace_scope(std::string recipe_identity,
+  phase_trace_scope(std::string pkg_identity,
                     pkg_phase phase_value,
                     std::chrono::steady_clock::time_point start_time);
   ~phase_trace_scope();
@@ -330,20 +330,20 @@ struct phase_trace_scope {
       } \
   } while (0)
 
-#define ENVY_TRACE_PHASE_BLOCKED(recipe_value, \
+#define ENVY_TRACE_PHASE_BLOCKED(spec_value, \
                                  blocked_phase_value, \
                                  waiting_value, \
                                  target_phase_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::phase_blocked{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .blocked_at_phase = (blocked_phase_value), \
       .waiting_for = (waiting_value), \
       .target_phase = (target_phase_value), \
   }))
 
-#define ENVY_TRACE_PHASE_UNBLOCKED(recipe_value, unblocked_phase_value, dependency_value) \
+#define ENVY_TRACE_PHASE_UNBLOCKED(spec_value, unblocked_phase_value, dependency_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::phase_unblocked{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .unblocked_at_phase = (unblocked_phase_value), \
       .dependency = (dependency_value), \
   }))
@@ -355,103 +355,103 @@ struct phase_trace_scope {
       .needed_by = (needed_by_value), \
   }))
 
-#define ENVY_TRACE_PHASE_START(recipe_value, phase_value) \
+#define ENVY_TRACE_PHASE_START(spec_value, phase_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::phase_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .phase = (phase_value), \
   }))
 
-#define ENVY_TRACE_PHASE_COMPLETE(recipe_value, phase_value, duration_value) \
+#define ENVY_TRACE_PHASE_COMPLETE(spec_value, phase_value, duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::phase_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .phase = (phase_value), \
       .duration_ms = (duration_value), \
   }))
 
-#define ENVY_TRACE_THREAD_START(recipe_value, target_phase_value) \
+#define ENVY_TRACE_THREAD_START(spec_value, target_phase_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::thread_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .target_phase = (target_phase_value), \
   }))
 
-#define ENVY_TRACE_THREAD_COMPLETE(recipe_value, final_phase_value) \
+#define ENVY_TRACE_THREAD_COMPLETE(spec_value, final_phase_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::thread_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .final_phase = (final_phase_value), \
   }))
 
-#define ENVY_TRACE_RECIPE_REGISTERED(recipe_value, key_value, has_dependencies_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::recipe_registered{ \
-      .recipe = (recipe_value), \
+#define ENVY_TRACE_RECIPE_REGISTERED(spec_value, key_value, has_dependencies_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::spec_registered{ \
+      .spec = (spec_value), \
       .key = (key_value), \
       .has_dependencies = (has_dependencies_value), \
   }))
 
-#define ENVY_TRACE_TARGET_EXTENDED(recipe_value, old_target_value, new_target_value) \
+#define ENVY_TRACE_TARGET_EXTENDED(spec_value, old_target_value, new_target_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::target_extended{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .old_target = (old_target_value), \
       .new_target = (new_target_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_RUN_START(recipe_value, command_value, cwd_value) \
+#define ENVY_TRACE_LUA_CTX_RUN_START(spec_value, command_value, cwd_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_run_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .command = (command_value), \
       .cwd = (cwd_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_RUN_COMPLETE(recipe_value, exit_code_value, duration_value) \
+#define ENVY_TRACE_LUA_CTX_RUN_COMPLETE(spec_value, exit_code_value, duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_run_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .exit_code = (exit_code_value), \
       .duration_ms = (duration_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_FETCH_START(recipe_value, url_value, destination_value) \
+#define ENVY_TRACE_LUA_CTX_FETCH_START(spec_value, url_value, destination_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_fetch_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .url = (url_value), \
       .destination = (destination_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(recipe_value, \
+#define ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(spec_value, \
                                           url_value, \
                                           bytes_downloaded_value, \
                                           duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_fetch_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .url = (url_value), \
       .bytes_downloaded = (bytes_downloaded_value), \
       .duration_ms = (duration_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_EXTRACT_START(recipe_value, \
+#define ENVY_TRACE_LUA_CTX_EXTRACT_START(spec_value, \
                                          archive_path_value, \
                                          destination_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_extract_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .archive_path = (archive_path_value), \
       .destination = (destination_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(recipe_value, \
+#define ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(spec_value, \
                                             files_extracted_value, \
                                             duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_extract_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .files_extracted = (files_extracted_value), \
       .duration_ms = (duration_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_ASSET_ACCESS(recipe_value, \
+#define ENVY_TRACE_LUA_CTX_ASSET_ACCESS(spec_value, \
                                         target_value, \
                                         current_phase_value, \
                                         needed_by_value, \
                                         allowed_value, \
                                         reason_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_asset_access{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .target = (target_value), \
       .current_phase = (current_phase_value), \
       .needed_by = (needed_by_value), \
@@ -459,7 +459,7 @@ struct phase_trace_scope {
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(recipe_value, \
+#define ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(spec_value, \
                                           product_value, \
                                           provider_value, \
                                           current_phase_value, \
@@ -467,7 +467,7 @@ struct phase_trace_scope {
                                           allowed_value, \
                                           reason_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_product_access{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .product = (product_value), \
       .provider = (provider_value), \
       .current_phase = (current_phase_value), \
@@ -476,157 +476,155 @@ struct phase_trace_scope {
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_CACHE_HIT(recipe_value, \
+#define ENVY_TRACE_CACHE_HIT(spec_value, \
                              cache_key_value, \
                              pkg_path_value, \
                              fast_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_hit{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .cache_key = (cache_key_value), \
       .pkg_path = (pkg_path_value), \
       .fast_path = (fast_path_value), \
   }))
 
-#define ENVY_TRACE_CACHE_MISS(recipe_value, cache_key_value) \
+#define ENVY_TRACE_CACHE_MISS(spec_value, cache_key_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_miss{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .cache_key = (cache_key_value), \
   }))
 
-#define ENVY_TRACE_LOCK_ACQUIRED(recipe_value, lock_path_value, wait_duration_value) \
+#define ENVY_TRACE_LOCK_ACQUIRED(spec_value, lock_path_value, wait_duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lock_acquired{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .lock_path = (lock_path_value), \
       .wait_duration_ms = (wait_duration_value), \
   }))
 
-#define ENVY_TRACE_LOCK_RELEASED(recipe_value, lock_path_value, hold_duration_value) \
+#define ENVY_TRACE_LOCK_RELEASED(spec_value, lock_path_value, hold_duration_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::lock_released{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .lock_path = (lock_path_value), \
       .hold_duration_ms = (hold_duration_value), \
   }))
 
-#define ENVY_TRACE_FETCH_FILE_START(recipe_value, url_value, destination_value) \
+#define ENVY_TRACE_FETCH_FILE_START(spec_value, url_value, destination_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::fetch_file_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .url = (url_value), \
       .destination = (destination_value), \
   }))
 
-#define ENVY_TRACE_FETCH_FILE_COMPLETE(recipe_value, \
+#define ENVY_TRACE_FETCH_FILE_COMPLETE(spec_value, \
                                        url_value, \
                                        bytes_downloaded_value, \
                                        duration_value, \
                                        from_cache_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::fetch_file_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .url = (url_value), \
       .bytes_downloaded = (bytes_downloaded_value), \
       .duration_ms = (duration_value), \
       .from_cache = (from_cache_value), \
   }))
 
-#define ENVY_TRACE_RECIPE_FETCH_COUNTER_INC(recipe_value, new_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::recipe_fetch_counter_inc{ \
-      .recipe = (recipe_value), \
+#define ENVY_TRACE_SPEC_FETCH_COUNTER_INC(spec_value, new_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::spec_fetch_counter_inc{ \
+      .spec = (spec_value), \
       .new_value = (new_value), \
   }))
 
-#define ENVY_TRACE_RECIPE_FETCH_COUNTER_DEC(recipe_value, new_value, was_completed_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::recipe_fetch_counter_dec{ \
-      .recipe = (recipe_value), \
+#define ENVY_TRACE_SPEC_FETCH_COUNTER_DEC(spec_value, new_value, was_completed_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::spec_fetch_counter_dec{ \
+      .spec = (spec_value), \
       .new_value = (new_value), \
       .was_completed = (was_completed_value), \
   }))
 
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(recipe_value, \
-                                           thread_id_value, \
-                                           num_files_value) \
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(spec_value, thread_id_value, num_files_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .thread_id = (thread_id_value), \
       .num_files = (num_files_value), \
   }))
 
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(recipe_value, \
+#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(spec_value, \
                                               thread_id_value, \
                                               num_files_value, \
                                               duration_ms_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .thread_id = (thread_id_value), \
       .num_files = (num_files_value), \
       .duration_ms = (duration_ms_value), \
   }))
 
-#define ENVY_TRACE_DEBUG_MARKER(recipe_value, marker_id_value) \
+#define ENVY_TRACE_DEBUG_MARKER(spec_value, marker_id_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::debug_marker{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .marker_id = (marker_id_value), \
   }))
 
-#define ENVY_TRACE_CACHE_CHECK_ENTRY(recipe_value, entry_dir_value, check_location_value) \
+#define ENVY_TRACE_CACHE_CHECK_ENTRY(spec_value, entry_dir_value, check_location_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_check_entry{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .entry_dir = (entry_dir_value), \
       .check_location = (check_location_value), \
   }))
 
-#define ENVY_TRACE_CACHE_CHECK_RESULT(recipe_value, \
+#define ENVY_TRACE_CACHE_CHECK_RESULT(spec_value, \
                                       entry_dir_value, \
                                       is_complete_value, \
                                       check_location_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_check_result{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .entry_dir = (entry_dir_value), \
       .is_complete = (is_complete_value), \
       .check_location = (check_location_value), \
   }))
 
-#define ENVY_TRACE_DIRECTORY_FLUSHED(recipe_value, dir_path_value) \
+#define ENVY_TRACE_DIRECTORY_FLUSHED(spec_value, dir_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::directory_flushed{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .dir_path = (dir_path_value), \
   }))
 
-#define ENVY_TRACE_FILE_TOUCHED(recipe_value, file_path_value) \
+#define ENVY_TRACE_FILE_TOUCHED(spec_value, file_path_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::file_touched{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .file_path = (file_path_value), \
   }))
 
-#define ENVY_TRACE_FILE_EXISTS_CHECK(recipe_value, file_path_value, exists_value) \
+#define ENVY_TRACE_FILE_EXISTS_CHECK(spec_value, file_path_value, exists_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::file_exists_check{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .file_path = (file_path_value), \
       .exists = (exists_value), \
   }))
 
-#define ENVY_TRACE_DIRECTORY_FLUSH_FAILED(recipe_value, dir_path_value, reason_value) \
+#define ENVY_TRACE_DIRECTORY_FLUSH_FAILED(spec_value, dir_path_value, reason_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::directory_flush_failed{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .dir_path = (dir_path_value), \
       .reason = (reason_value), \
   }))
 
-#define ENVY_TRACE_EXTRACT_ARCHIVE_START(recipe_value, \
+#define ENVY_TRACE_EXTRACT_ARCHIVE_START(spec_value, \
                                          archive_path_value, \
                                          destination_value, \
                                          strip_components_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_start{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .archive_path = (archive_path_value), \
       .destination = (destination_value), \
       .strip_components = (strip_components_value), \
   }))
 
-#define ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(recipe_value, \
+#define ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(spec_value, \
                                             archive_path_value, \
                                             files_extracted_value, \
                                             duration_ms_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_complete{ \
-      .recipe = (recipe_value), \
+      .spec = (spec_value), \
       .archive_path = (archive_path_value), \
       .files_extracted = (files_extracted_value), \
       .duration_ms = (duration_ms_value), \

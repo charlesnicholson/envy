@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import List, Literal, Optional
 
 
-class RecipePhase(IntEnum):
-    """Recipe phase enum (matches src/recipe_phase.h)"""
+class PkgPhase(IntEnum):
+    """Spec phase enum (matches src/pkg_phase.h)"""
 
-    RECIPE_FETCH = 0
+    SPEC_FETCH = 0
     ASSET_CHECK = 1
     ASSET_FETCH = 2
     ASSET_STAGE = 3
@@ -33,7 +33,7 @@ EventType = Literal[
     "phase_complete",
     "thread_start",
     "thread_complete",
-    "recipe_registered",
+    "spec_registered",
     "target_extended",
     "lua_ctx_run_start",
     "lua_ctx_run_complete",
@@ -59,21 +59,21 @@ class TraceEvent:
     raw: dict  # Full JSON for accessing event-specific fields
 
     @property
-    def recipe(self) -> Optional[str]:
-        """Get recipe identity from event (if present)."""
-        return self.raw.get("recipe") or self.raw.get("parent")
+    def spec(self) -> Optional[str]:
+        """Get spec identity from event (if present)."""
+        return self.raw.get("spec") or self.raw.get("parent")
 
     @property
-    def phase(self) -> Optional[RecipePhase]:
+    def phase(self) -> Optional[PkgPhase]:
         """Get phase from event (if present), returns enum value."""
         if "phase_num" in self.raw:
-            return RecipePhase(self.raw["phase_num"])
+            return PkgPhase(self.raw["phase_num"])
         if "blocked_at_phase_num" in self.raw:
-            return RecipePhase(self.raw["blocked_at_phase_num"])
+            return PkgPhase(self.raw["blocked_at_phase_num"])
         if "needed_by_num" in self.raw:
-            return RecipePhase(self.raw["needed_by_num"])
+            return PkgPhase(self.raw["needed_by_num"])
         if "target_phase_num" in self.raw:
-            return RecipePhase(self.raw["target_phase_num"])
+            return PkgPhase(self.raw["target_phase_num"])
         return None
 
 
@@ -115,40 +115,40 @@ class TraceParser:
         """Filter events by type."""
         return [e for e in self.parse() if e.event == event_type]
 
-    def filter_by_recipe(self, recipe: str) -> List[TraceEvent]:
-        """Filter events by recipe identity."""
-        return [e for e in self.parse() if e.recipe == recipe]
+    def filter_by_spec(self, spec: str) -> List[TraceEvent]:
+        """Filter events by spec identity."""
+        return [e for e in self.parse() if e.spec == spec]
 
-    def filter_by_recipe_and_event(
-        self, recipe: str, event_type: EventType
+    def filter_by_spec_and_event(
+        self, spec: str, event_type: EventType
     ) -> List[TraceEvent]:
-        """Filter events by recipe and event type."""
-        return [e for e in self.parse() if e.recipe == recipe and e.event == event_type]
+        """Filter events by spec and event type."""
+        return [e for e in self.parse() if e.spec == spec and e.event == event_type]
 
     def get_dependency_added_events(self, parent: str) -> List[TraceEvent]:
-        """Get all dependency_added events for a given parent recipe."""
+        """Get all dependency_added events for a given parent spec."""
         return [
             e
             for e in self.filter_by_event("dependency_added")
             if e.raw.get("parent") == parent
         ]
 
-    def get_phase_sequence(self, recipe: str) -> List[RecipePhase]:
-        """Get the sequence of phases executed for a recipe."""
-        phase_starts = self.filter_by_recipe_and_event(recipe, "phase_start")
-        return [RecipePhase(e.raw["phase_num"]) for e in phase_starts]
+    def get_phase_sequence(self, spec: str) -> List[PkgPhase]:
+        """Get the sequence of phases executed for a spec."""
+        phase_starts = self.filter_by_spec_and_event(spec, "phase_start")
+        return [PkgPhase(e.raw["phase_num"]) for e in phase_starts]
 
-    def assert_phase_sequence(self, recipe: str, expected: List[RecipePhase]) -> None:
-        """Assert that a recipe executed phases in expected order."""
-        actual = self.get_phase_sequence(recipe)
+    def assert_phase_sequence(self, spec: str, expected: List[PkgPhase]) -> None:
+        """Assert that a spec executed phases in expected order."""
+        actual = self.get_phase_sequence(spec)
         assert actual == expected, (
-            f"Phase sequence mismatch for {recipe}:\n"
+            f"Phase sequence mismatch for {spec}:\n"
             f"  Expected: {[p.name for p in expected]}\n"
             f"  Actual:   {[p.name for p in actual]}"
         )
 
     def assert_dependency_needed_by(
-        self, parent: str, dependency: str, expected_phase: RecipePhase
+        self, parent: str, dependency: str, expected_phase: PkgPhase
     ) -> None:
         """Assert that a dependency has the expected needed_by phase."""
         deps = self.get_dependency_added_events(parent)
@@ -157,7 +157,7 @@ class TraceParser:
         assert matching, f"No dependency_added event found for {parent} -> {dependency}"
 
         event = matching[0]
-        actual_phase = RecipePhase(event.raw["needed_by_num"])
+        actual_phase = PkgPhase(event.raw["needed_by_num"])
 
         assert actual_phase == expected_phase, (
             f"Wrong needed_by phase for {parent} -> {dependency}:\n"

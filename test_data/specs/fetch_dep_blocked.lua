@@ -1,4 +1,4 @@
--- Parent recipe whose recipe_fetch depends on a helper finishing all phases.
+-- Parent spec whose recipe_fetch depends on a helper finishing all phases.
 IDENTITY = "local.fetch_dep_blocked@v1"
 
 DEPENDENCIES = {

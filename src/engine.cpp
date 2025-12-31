@@ -200,7 +200,7 @@ bool pkg_provides_product_transitively_impl(pkg *p,
   if (!visited.insert(p).second) { return false; }
 
   ENVY_TRACE_EMIT((trace_events::product_transitive_check{
-      .recipe = p->cfg->identity,
+      .spec = p->cfg->identity,
       .product = product_name,
       .has_product_directly = p->products.contains(product_name),
       .dependency_count = p->dependencies.size() }));
@@ -209,7 +209,7 @@ bool pkg_provides_product_transitively_impl(pkg *p,
 
   for (auto const &[dep_id, dep_info] : p->dependencies) {
     ENVY_TRACE_EMIT(
-        (trace_events::product_transitive_check_dep{ .recipe = p->cfg->identity,
+        (trace_events::product_transitive_check_dep{ .spec = p->cfg->identity,
                                                      .product = product_name,
                                                      .checking_dependency = dep_id }));
     if (pkg_provides_product_transitively_impl(dep_info.p, product_name, visited)) {
@@ -511,12 +511,12 @@ void engine::notify_phase_complete() { notify_all_global_locked(); }
 
 void engine::on_spec_fetch_start() {
   int const new_value{ pending_spec_fetches_.fetch_add(1) + 1 };
-  ENVY_TRACE_RECIPE_FETCH_COUNTER_INC("engine", new_value);
+  ENVY_TRACE_SPEC_FETCH_COUNTER_INC("engine", new_value);
 }
 
 void engine::on_spec_fetch_complete(std::string const &pkg_identity) {
   int const new_value{ pending_spec_fetches_.fetch_sub(1) - 1 };
-  ENVY_TRACE_RECIPE_FETCH_COUNTER_DEC(pkg_identity, new_value, true);
+  ENVY_TRACE_SPEC_FETCH_COUNTER_DEC(pkg_identity, new_value, true);
   if (new_value == 0) { notify_all_global_locked(); }
 }
 

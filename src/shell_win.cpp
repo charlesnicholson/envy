@@ -271,7 +271,8 @@ std::string build_cmd_script_contents(std::string_view script) {
 
     // Skip empty lines, labels (:label), comments (REM/::), and @echo off
     bool const is_empty{ trimmed.empty() };
-    bool const is_label{ !trimmed.empty() && trimmed.front() == ':' };
+    bool const is_label{ !trimmed.empty() && trimmed.front() == ':' &&
+                         (trimmed.size() == 1 || trimmed[1] != ':') };
     bool const is_rem{ trimmed.size() >= 3 &&
                        (trimmed.substr(0, 3) == "rem" || trimmed.substr(0, 3) == "REM" ||
                         trimmed.substr(0, 3) == "Rem") &&

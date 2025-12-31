@@ -1,5 +1,5 @@
 -- remote.a@v1
--- Remote recipe that transitively depends on local.* through remote.b
+-- Remote spec that transitively depends on local.* through remote.b
 
 IDENTITY = "remote.a@v1"
 DEPENDENCIES = {

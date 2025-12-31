@@ -1,5 +1,5 @@
 -- remote.badrecipe@v1
--- Security test: non-local recipe trying to depend on local.* recipe
+-- Security test: non-local spec trying to depend on local.* recipe
 
 IDENTITY = "remote.badrecipe@v1"
 DEPENDENCIES = {

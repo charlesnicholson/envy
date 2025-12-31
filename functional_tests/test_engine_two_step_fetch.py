@@ -48,7 +48,7 @@ class TestEngineTwoStepFetch(unittest.TestCase):
         test_file = Path("test_data/lua/simple.lua").resolve()
         expected_hash = self.get_file_hash(test_file)
 
-        recipe_content = f"""IDENTITY = "local.two_step_sha256@v1"
+        spec_content = f"""IDENTITY = "local.two_step_sha256@v1"
 
 function FETCH(tmp_dir, options)
   -- Step 1: Download to tmp (ungated)
@@ -66,8 +66,8 @@ function FETCH(tmp_dir, options)
   -- Now file is in fetch_dir with verified SHA256
 end
 """
-        recipe_path = self.cache_root / "two_step_sha256.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "two_step_sha256.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -76,7 +76,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.two_step_sha256@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -99,7 +99,7 @@ end
         (manifest_dir / "file1.txt").write_text("content1", encoding="utf-8")
         (manifest_dir / "file2.txt").write_text("content2", encoding="utf-8")
 
-        recipe_content = f"""IDENTITY = "local.manifest_workflow@v1"
+        spec_content = f"""IDENTITY = "local.manifest_workflow@v1"
 
 function FETCH(tmp_dir, options)
   -- Step 1: Fetch manifest
@@ -128,8 +128,8 @@ function FETCH(tmp_dir, options)
   envy.commit_fetch(files)
 end
 """
-        recipe_path = self.cache_root / "manifest_workflow.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.cache_root / "manifest_workflow.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         result = subprocess.run(
             [
@@ -138,7 +138,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.manifest_workflow@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

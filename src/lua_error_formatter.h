@@ -22,7 +22,7 @@ std::string format_lua_error(lua_error_context const &ctx);
 
 // Call a Lua function with enriched error handling
 // Usage:
-//   call_lua_function_with_enriched_errors(recipe, "build", [&]() {
+//   call_lua_function_with_enriched_errors(pkg, "build", [&]() {
 //     return build_func(ctx_table, opts);
 //   });
 template <typename Callable>

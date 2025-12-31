@@ -4,7 +4,7 @@ IDENTITY = "local.ref_only_consumer@v1"
 DEPENDENCIES = {
   {
     product = "tool",
-    -- No recipe, no source - resolves to ANY provider of "tool"
+    -- No spec, no source - resolves to ANY provider of "tool"
   },
 }
 

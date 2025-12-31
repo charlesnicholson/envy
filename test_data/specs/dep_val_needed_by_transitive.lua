@@ -1,4 +1,4 @@
--- Recipe that uses needed_by="fetch" and accesses transitive dependency in fetch phase
+-- Spec that uses needed_by="fetch" and accesses transitive dependency in fetch phase
 IDENTITY = "local.dep_val_needed_by_transitive@v1"
 
 DEPENDENCIES = {

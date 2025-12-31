@@ -68,7 +68,7 @@ cli_args cli_parse(int argc, char **argv) {
 
 #ifdef ENVY_FUNCTIONAL_TESTER
   auto *cache{ app.add_subcommand("cache", "Cache testing commands") };
-  register_cmds.operator()<cmd_cache_ensure_asset, cmd_cache_ensure_recipe>(*cache);
+  register_cmds.operator()<cmd_cache_ensure_asset, cmd_cache_ensure_spec>(*cache);
 #endif
 
   cli_args args{};

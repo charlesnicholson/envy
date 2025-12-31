@@ -52,9 +52,9 @@ class cmd_cache_ensure_asset : public cmd {
   std::optional<std::filesystem::path> cli_cache_root_;
 };
 
-class cmd_cache_ensure_recipe : public cmd {
+class cmd_cache_ensure_spec : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_cache_ensure_recipe> {
+  struct cfg : cmd_cfg<cmd_cache_ensure_spec> {
     std::string identity;
     std::string test_id;
     std::filesystem::path barrier_dir;  // empty = use default
@@ -68,7 +68,7 @@ class cmd_cache_ensure_recipe : public cmd {
 
   static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
 
-  cmd_cache_ensure_recipe(cfg const &config,
+  cmd_cache_ensure_spec(cfg const &config,
                           std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
 

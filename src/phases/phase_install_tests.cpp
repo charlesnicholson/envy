@@ -132,7 +132,7 @@ struct install_test_fixture {
 
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install phase provides nil install_dir for user-managed packages") {
-  // Recipe with check verb (user-managed)
+  // Spec with check verb (user-managed)
   set_check_verb("echo test");
 
   // Install function that verifies install_dir is nil for user-managed packages
@@ -159,7 +159,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 TEST_CASE_FIXTURE(
     install_test_fixture,
     "install phase allows user-managed package without mark_install_complete") {
-  // Recipe with check verb (user-managed)
+  // Spec with check verb (user-managed)
   set_check_verb("echo test");
 
   // Install function with new signature (install_dir is nil for user-managed)

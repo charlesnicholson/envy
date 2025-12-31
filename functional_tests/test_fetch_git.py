@@ -45,7 +45,7 @@ class TestFetchGit(unittest.TestCase):
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
                     "--ref",
-                    "v1.11.1",
+                    "v1.13.2",
                 ],
                 capture_output=True,
                 text=True,
@@ -130,7 +130,7 @@ class TestFetchGit(unittest.TestCase):
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
                     "--ref",
-                    "v1.11.1",
+                    "v1.13.2",
                 ],
                 capture_output=True,
                 text=True,
@@ -237,7 +237,7 @@ class TestFetchGit(unittest.TestCase):
                     "https://github.com/ninja-build/ninja.git",
                     str(dest),
                     "--ref",
-                    "v1.11.1",
+                    "v1.13.2",
                 ],
                 capture_output=True,
                 text=True,
@@ -249,15 +249,15 @@ class TestFetchGit(unittest.TestCase):
             self.assertTrue((dest / "README.md").exists())
 
     # ========================================================================
-    # Integration with Recipe System
+    # Integration with Spec System
     # ========================================================================
 
-    def test_recipe_with_git_source(self):
-        """Recipe manifest with git source + ref loads correctly."""
-        recipe_content = """-- Test recipe with git source
+    def test_spec_with_git_source(self):
+        """Spec manifest with git source + ref loads correctly."""
+        spec_content = """-- Test spec with git source
 IDENTITY = "test.ninja@v1"
 
-FETCH = { source = "https://github.com/ninja-build/ninja.git", ref = "v1.11.1" }
+FETCH = { source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.2" }
 
 function CHECK(project_root, options)
     return false
@@ -267,8 +267,8 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     -- Nothing needed - source is already fetched by git
 end
 """
-        recipe_path = self.cache_root / "ninja_recipe.lua"
-        recipe_path.write_text(recipe_content)
+        spec_path = self.cache_root / "ninja_recipe.lua"
+        spec_path.write_text(spec_content)
 
         result = subprocess.run(
             [
@@ -277,7 +277,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "test.ninja@v1",
-                str(recipe_path),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -291,7 +291,7 @@ end
     # ========================================================================
 
     def test_parallel_git_fetch(self):
-        """Recipe with multiple git sources fetches concurrently (programmatic)."""
+        """Spec with multiple git sources fetches concurrently (programmatic)."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -309,7 +309,7 @@ end
         self.assertIn("local.fetch_git_parallel@v1", result.stdout)
 
     def test_parallel_git_fetch_declarative(self):
-        """Recipe with multiple git sources fetches concurrently (declarative)."""
+        """Spec with multiple git sources fetches concurrently (declarative)."""
         result = subprocess.run(
             [
                 str(self.envy_test),

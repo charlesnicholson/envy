@@ -7,7 +7,7 @@
 namespace envy {
 
 // Extract line number from Lua error message (for unit testing)
-// Example: "recipe.lua:42: assertion failed" -> 42
+// Example: "spec.lua:42: assertion failed" -> 42
 std::optional<int> extract_line_number(std::string const &error_msg) {
   // Look for pattern ":line_number:"
   size_t pos{ error_msg.find(".lua:") };

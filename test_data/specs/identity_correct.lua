@@ -1,4 +1,4 @@
--- Recipe with correct identity declaration (valid)
+-- Spec with correct identity declaration (valid)
 IDENTITY = "local.identity_correct@v1"
 DEPENDENCIES = {}
 

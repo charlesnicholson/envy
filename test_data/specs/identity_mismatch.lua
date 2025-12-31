@@ -1,4 +1,4 @@
--- Recipe with wrong identity declaration (mismatch)
+-- Spec with wrong identity declaration (mismatch)
 IDENTITY = "local.wrong_identity@v1"
 DEPENDENCIES = {}
 

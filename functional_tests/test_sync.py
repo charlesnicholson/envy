@@ -218,7 +218,7 @@ PACKAGES = {{
         parser2 = TraceParser(trace_file2)
 
         # On second run, verify execution completed successfully via trace events
-        # Note: sync may still show cache_miss for recipe loading even if assets are cached
+        # Note: sync may still show cache_miss for spec loading even if assets are cached
         # The key test is that the second run succeeds and completes
         completes2 = parser2.filter_by_event("phase_complete")
         self.assertGreater(

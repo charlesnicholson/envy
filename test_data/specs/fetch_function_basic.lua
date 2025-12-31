@@ -1,4 +1,4 @@
--- Test recipe with basic fetch function
+-- Test spec with basic fetch function
 IDENTITY = "local.fetcher@v1"
 DEPENDENCIES = {}
 

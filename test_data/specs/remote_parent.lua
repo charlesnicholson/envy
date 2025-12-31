@@ -1,5 +1,5 @@
 -- remote.parent@v1
--- Remote recipe depending on another remote recipe
+-- Remote spec depending on another remote recipe
 
 IDENTITY = "remote.parent@v1"
 DEPENDENCIES = {

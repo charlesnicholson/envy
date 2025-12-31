@@ -1,4 +1,4 @@
--- Recipe with identity as wrong type (table instead of string)
+-- Spec with identity as wrong type (table instead of string)
 IDENTITY = { name = "wrong" }
 DEPENDENCIES = {}
 

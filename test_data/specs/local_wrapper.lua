@@ -1,5 +1,5 @@
 -- local.wrapper@v1
--- Local recipe depending on remote recipe
+-- Local spec depending on remote recipe
 
 IDENTITY = "local.wrapper@v1"
 DEPENDENCIES = {

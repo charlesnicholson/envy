@@ -13,7 +13,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
-from .trace_parser import RecipePhase, TraceParser
+from .trace_parser import PkgPhase, TraceParser
 
 
 class TestEnginePhases(unittest.TestCase):
@@ -58,11 +58,11 @@ class TestEnginePhases(unittest.TestCase):
         # Verify phase execution via structured trace
         parser = TraceParser(trace_file)
         phase_sequence = parser.get_phase_sequence("local.simple@v1")
-        self.assertIn(RecipePhase.ASSET_CHECK, phase_sequence)
-        self.assertIn(RecipePhase.ASSET_INSTALL, phase_sequence)
+        self.assertIn(PkgPhase.ASSET_CHECK, phase_sequence)
+        self.assertIn(PkgPhase.ASSET_INSTALL, phase_sequence)
 
     def test_fetch_function_basic(self):
-        """Engine executes fetch() phase for recipes with fetch function."""
+        """Engine executes fetch() phase for specs with fetch function."""
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(
             [
@@ -82,7 +82,7 @@ class TestEnginePhases(unittest.TestCase):
         # Verify fetch phase execution via structured trace
         parser = TraceParser(trace_file)
         phase_sequence = parser.get_phase_sequence("local.fetcher@v1")
-        self.assertIn(RecipePhase.ASSET_FETCH, phase_sequence)
+        self.assertIn(PkgPhase.ASSET_FETCH, phase_sequence)
 
         # Verify output contains asset hash
         lines = [line for line in result.stdout.strip().split("\n") if line]
@@ -109,7 +109,7 @@ class TestEnginePhases(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify both recipes executed
+        # Verify both specs executed
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(len(lines), 2)
 
@@ -117,7 +117,7 @@ class TestEnginePhases(unittest.TestCase):
         dep_lines = [l for l in lines if "local.tool@v1" in l]
         self.assertEqual(len(dep_lines), 1)
 
-        # Verify main recipe executed
+        # Verify main spec executed
         main_lines = [l for l in lines if "local.fetcher_with_dep@v1" in l]
         self.assertEqual(len(main_lines), 1)
 

@@ -91,7 +91,7 @@ TEST_CASE("pkg_cfg::parse parses table with remote source") {
 TEST_CASE("pkg_cfg::parse parses table with local source") {
   sol::state lua;
   auto lua_val{
-    lua_eval("result = { spec = 'local.tool@v1', source = './recipes/tool.lua' }", lua)
+    lua_eval("result = { spec = 'local.tool@v1', source = './specs/tool.lua' }", lua)
   };
 
   auto const *cfg{ envy::pkg_cfg::parse(lua_val, fs::path("/project/envy.lua")) };
@@ -100,7 +100,7 @@ TEST_CASE("pkg_cfg::parse parses table with local source") {
 
   auto const *local{ std::get_if<envy::pkg_cfg::local_source>(&cfg->source) };
   REQUIRE(local != nullptr);
-  CHECK(local->file_path == fs::path("/project/recipes/tool.lua"));
+  CHECK(local->file_path == fs::path("/project/specs/tool.lua"));
 }
 
 TEST_CASE("pkg_cfg::parse resolves relative file paths") {
@@ -204,7 +204,7 @@ TEST_CASE("pkg_cfg::parse parses product dependency fields") {
 
   SUBCASE("ref-only product dependency unconstrained") {
     sol::state lua;
-    auto lua_val{ lua_eval("result = { product = 'tool' }",  // No recipe field
+    auto lua_val{ lua_eval("result = { product = 'tool' }",  // No spec field
                            lua) };
 
     auto const *cfg{ envy::pkg_cfg::parse(lua_val, fs::path("/fake"), true) };

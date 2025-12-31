@@ -1,4 +1,4 @@
--- Manifest recipe that depends on all 10 parallel users
+-- Manifest spec that depends on all 10 parallel users
 IDENTITY = "local.dep_val_parallel_manifest@v1"
 
 DEPENDENCIES = {

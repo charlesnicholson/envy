@@ -1,4 +1,4 @@
--- Recipe with a dependency
+-- Spec with a dependency
 IDENTITY = "local.withdep@v1"
 DEPENDENCIES = {
   { spec = "local.simple@v1", source = "simple.lua" }

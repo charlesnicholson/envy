@@ -199,7 +199,7 @@ TEST_CASE("manifest::load parses table package with local source") {
     PACKAGES = {
       {
         spec = "local.wrapper@v1",
-        source = "./recipes/wrapper.lua"
+        source = "./specs/wrapper.lua"
       }
     }
   )" };
@@ -211,7 +211,7 @@ TEST_CASE("manifest::load parses table package with local source") {
 
   auto const *local{ std::get_if<envy::pkg_cfg::local_source>(&m->packages[0]->source) };
   REQUIRE(local != nullptr);
-  CHECK(local->file_path == fs::path("/project/recipes/wrapper.lua"));
+  CHECK(local->file_path == fs::path("/project/specs/wrapper.lua"));
 }
 
 TEST_CASE("manifest::load parses table package with options") {
@@ -364,7 +364,7 @@ TEST_CASE("manifest::load errors on non-string spec field") {
                        std::runtime_error);
 }
 
-TEST_CASE("manifest::load errors on invalid recipe identity format") {
+TEST_CASE("manifest::load errors on invalid spec identity format") {
   char const *script{ R"(
     PACKAGES = { { spec = "invalid-no-at-sign", source = "/fake/r.lua" } }
   )" };
@@ -526,7 +526,7 @@ TEST_CASE("manifest::load allows duplicate packages") {
     }
   )" };
 
-  // Should not throw - duplicates are allowed, resolved during recipe resolution
+  // Should not throw - duplicates are allowed, resolved during spec resolution
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
   REQUIRE(m->packages.size() == 2);
 }

@@ -1,4 +1,4 @@
--- Fallback recipe used when no provider is found
+-- Fallback spec used when no provider is found
 IDENTITY = "local.weak_fallback@v1"
 DEPENDENCIES = {}
 

@@ -1,4 +1,4 @@
--- Root recipe where the custom fetch dependency has a weak fetch prerequisite,
+-- Root spec where the custom fetch dependency has a weak fetch prerequisite,
 -- but a strong helper already exists in the graph.
 IDENTITY = "local.weak_custom_fetch_root_with_helper@v1"
 

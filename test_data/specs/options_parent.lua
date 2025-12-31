@@ -1,4 +1,4 @@
--- Recipe with same dependency but different options
+-- Spec with same dependency but different options
 IDENTITY = "local.options_parent@v1"
 DEPENDENCIES = {
   { spec = "local.with_options@v1", source = "with_options.lua", options = { variant = "foo" } },

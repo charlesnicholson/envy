@@ -136,7 +136,7 @@ envy.commit_fetch(files)
   -- Only callable from FETCH phase; fetch_dir never directly exposed
 envy.verify_hash(file_path, expected_sha256) → boolean
 
--- Dependency access (uses thread-local engine/recipe context)
+-- Dependency access (uses thread-local engine/spec context)
 envy.asset(identity) → path_string
 envy.product(name) → path_or_value_string
 
@@ -154,7 +154,7 @@ envy.PLATFORM_ARCH → "darwin-arm64" | etc.
 
 ### Identity Access
 
-Recipes already declare `IDENTITY` as global variable—no need to pass as parameter:
+Specs already declare `IDENTITY` as global variable—no need to pass as parameter:
 
 ```lua
 IDENTITY = "mylib@v1"
@@ -173,7 +173,7 @@ Provide `.envy/types/envy.lua` with complete API annotations:
 ```lua
 ---@meta
 
----Global recipe identity (required in all recipe files)
+---Global spec identity (required in all spec files)
 ---@type string
 IDENTITY = ""
 
@@ -253,15 +253,15 @@ lua_ls will accept any form but cannot validate function signatures when user wr
 
 ## Thread-Local Context Analysis
 
-`envy.asset()` and `envy.product()` require access to current engine and recipe pointers for dependency validation. Current ctx design passes these explicitly; new design uses thread-local storage.
+`envy.asset()` and `envy.product()` require access to current engine and spec pointers for dependency validation. Current ctx design passes these explicitly; new design uses thread-local storage.
 
 ### Thread Safety Analysis
 
 **Current architecture:**
-- Each recipe executes on its own std::thread (one thread per recipe)
-- Multiple recipes execute in parallel on different threads
+- Each spec executes on its own std::thread (one thread per recipe)
+- Multiple specs execute in parallel on different threads
 - Single recipe's phase execution is sequential (no coroutines, no async callbacks)
-- Each recipe has isolated lua_state (no shared Lua state between recipes)
+- Each spec has isolated lua_state (no shared Lua state between specs)
 
 **Thread-local approach:**
 ```cpp
@@ -269,17 +269,17 @@ lua_ls will accept any form but cannot validate function signatures when user wr
 namespace envy {
   // Thread-local storage
   thread_local engine* g_current_engine = nullptr;
-  thread_local recipe* g_current_recipe = nullptr;
+  thread_local recipe* g_current_spec = nullptr;
 
   // RAII guard sets context for current thread
   struct phase_context_guard {
     phase_context_guard(engine* eng, recipe* r) {
       g_current_engine = eng;
-      g_current_recipe = r;
+      g_current_spec = r;
     }
     ~phase_context_guard() {
       g_current_engine = nullptr;
-      g_current_recipe = nullptr;
+      g_current_spec = nullptr;
     }
   };
 
@@ -297,14 +297,14 @@ namespace envy {
 **Safety properties:**
 1. **Thread isolation**: Each worker thread has separate thread-local storage—no cross-thread interference
 2. **RAII cleanup**: Guard destructor clears context even on exception—no stale state
-3. **Sequential execution**: Recipe phases execute sequentially on single thread—no re-entrancy
+3. **Sequential execution**: Spec phases execute sequentially on single thread—no re-entrancy
 4. **No async callbacks**: All envy.* functions are synchronous (envy.run() blocks until complete)—thread-local always valid during Lua execution
 
 **Potential race conditions (all safe):**
-- **Scenario A**: Recipe A on thread 1, recipe B on thread 2 execute concurrently
+- **Scenario A**: Spec A on thread 1, spec B on thread 2 execute concurrently
   - **Analysis**: Each thread has separate thread-local storage—no shared state, no race
-- **Scenario B**: Recipe A calls envy.asset() which triggers recipe B's execution on different thread
-  - **Analysis**: Recipe B gets its own phase_context_guard on its thread—isolated contexts, no race
+- **Scenario B**: Spec A calls envy.asset() which triggers spec B's execution on different thread
+  - **Analysis**: Spec B gets its own phase_context_guard on its thread—isolated contexts, no race
 - **Scenario C**: Exception during phase execution
   - **Analysis**: RAII destructor runs during stack unwinding—context always cleared
 
@@ -435,7 +435,7 @@ if (build_obj.is<std::string>()) {
 - Exports: `lua_envy_deps_install(sol::table& envy_table)`
 
 **`src/lua_ctx/lua_phase_context.{h,cpp}`** - Thread-local context
-- RAII guard + getters for engine/recipe pointers
+- RAII guard + getters for engine/spec pointers
 - Used by asset/product for dependency validation
 
 ## Implementation Tasks
@@ -470,7 +470,7 @@ if (build_obj.is<std::string>()) {
 - [x] Update `src/lua_envy.cpp` - Move `ENVY_ARCH` from `lua["ENVY_ARCH"]` to `envy_table["ARCH"]`
 - [x] Update `src/lua_envy.cpp` - Move `ENVY_PLATFORM_ARCH` from `lua["ENVY_PLATFORM_ARCH"]` to `envy_table["PLATFORM_ARCH"]`
 - [x] Update `src/lua_envy.cpp` - Move `ENVY_EXE_EXT` from `lua["ENVY_EXE_EXT"]` to `envy_table["EXE_EXT"]`
-- [x] Update all test recipes using old root-level global names (ENVY_PLATFORM → envy.PLATFORM, etc.)
+- [x] Update all test specs using old root-level global names (ENVY_PLATFORM → envy.PLATFORM, etc.)
 
 ### File Operations Migration
 
@@ -584,15 +584,15 @@ if (build_obj.is<std::string>()) {
 - [x] Keep `src/lua_ctx/lua_ctx_common` struct (still needed for DEFAULT_SHELL function ctx:asset() calls in manifest.cpp)
 - [x] Clean up unused includes and forward declarations from phase files
 
-### Test Recipe Migration
+### Test Spec Migration
 
-- [x] Audit all recipes in `test_data/specs/*.lua` - identify patterns
-- [x] Create regex migration script `scripts/migrate_recipes.py` for common patterns
-- [x] Run migration script on test recipes
+- [x] Audit all specs in `test_data/specs/*.lua` - identify patterns
+- [x] Create regex migration script `scripts/migrate_specs.py` for common patterns
+- [x] Run migration script on test specs
 - [x] Build envy and run functional tests - identify failures
-- [x] Manually fix recipes that script couldn't handle
+- [x] Manually fix specs that script couldn't handle
 - [x] Verify all functional tests pass
-- [x] Review migrated recipes for clarity and best practices
+- [x] Review migrated specs for clarity and best practices
 
 ### lua_ls Type Definitions
 
@@ -613,14 +613,14 @@ if (build_obj.is<std::string>()) {
 
 ### Documentation Updates
 
-- [x] Update `docs/architecture.md` - Rewrite "Recipes" section with new API
+- [x] Update `docs/architecture.md` - Rewrite "Specs" section with new API
 - [x] Update `docs/architecture.md` - Remove ctx table documentation
 - [x] Create `docs/lua_api.md` - Complete envy.* namespace reference
 - [ ] Create `docs/lua_ls_setup.md` - IDE integration guide for users (lua_ls related)
 - [ ] Update `README.md` - Add section on IDE support with lua_ls (lua_ls related)
 - [x] Document declarative form behavior and C++ expansion strategy (see "Declarative Expansion Strategy" section above)
 - [x] Document thread-local context approach and safety analysis (see "Thread-Local Context Analysis" section above)
-- [x] Add migration guide for existing recipes (see `docs/lua_api.md` migration table)
+- [x] Add migration guide for existing specs (see `docs/lua_api.md` migration table)
 
 ### Final Validation
 

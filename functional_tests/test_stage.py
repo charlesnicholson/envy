@@ -30,7 +30,7 @@ class TestStagePhase(unittest.TestCase):
         """Find asset directory for given identity in cache.
 
         Args:
-            identity: Recipe identity (e.g., "local.stage_default@v1")
+            identity: Spec identity (e.g., "local.stage_default@v1")
         """
         assets_dir = self.cache_root / "packages" / identity
         if not assets_dir.exists():
@@ -46,7 +46,7 @@ class TestStagePhase(unittest.TestCase):
         return None
 
     def test_default_stage_extracts_to_install_dir(self):
-        """Recipe with no stage field auto-extracts archives."""
+        """Spec with no stage field auto-extracts archives."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -75,7 +75,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertTrue((asset_path / "root" / "subdir1" / "file3.txt").exists())
 
     def test_declarative_strip_removes_top_level(self):
-        """Recipe with stage = {strip=1} removes top-level directory."""
+        """Spec with stage = {strip=1} removes top-level directory."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -103,7 +103,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertTrue((asset_path / "subdir1" / "file3.txt").exists())
 
     def test_imperative_extract_all(self):
-        """Recipe with stage function using ctx:extract_all works."""
+        """Spec with stage function using ctx:extract_all works."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -130,7 +130,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertTrue((asset_path / "subdir1" / "file3.txt").exists())
 
     def test_imperative_extract_single(self):
-        """Recipe with stage function using ctx:extract for single file works."""
+        """Spec with stage function using ctx:extract for single file works."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -156,7 +156,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertTrue((asset_path / "file1.txt").exists())
 
     def test_shell_script_basic(self):
-        """Recipe with shell script stage extracts and creates marker file."""
+        """Spec with shell script stage extracts and creates marker file."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -192,7 +192,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertTrue((asset_path / "file2.txt").exists())
 
     def test_shell_script_failure(self):
-        """Recipe with failing shell script should fail stage phase."""
+        """Spec with failing shell script should fail stage phase."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -219,7 +219,7 @@ class TestStagePhase(unittest.TestCase):
         )
 
     def test_shell_script_complex_operations(self):
-        """Recipe with complex shell operations creates custom directory structure."""
+        """Spec with complex shell operations creates custom directory structure."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -266,7 +266,7 @@ class TestStagePhase(unittest.TestCase):
         self.assertIn("Files reorganized", metadata_content)
 
     def test_shell_script_environment_access(self):
-        """Recipe with shell script can access environment variables."""
+        """Spec with shell script can access environment variables."""
         result = subprocess.run(
             [
                 str(self.envy_test),

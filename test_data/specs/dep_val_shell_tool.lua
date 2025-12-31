@@ -1,4 +1,4 @@
--- Tool recipe that provides shell configuration
+-- Tool spec that provides shell configuration
 IDENTITY = "local.dep_val_shell_tool@v1"
 
 FETCH = {

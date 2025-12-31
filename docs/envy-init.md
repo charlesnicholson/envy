@@ -107,8 +107,8 @@ The parsing logic is intentionally simple (regex on first 20 lines) so both bash
 PACKAGES = {
     "local.python@v1",
     {
-        recipe = "arm.gcc@v2",
-        source = "https://recipes.example.com/gcc.lua",
+        spec = "arm.gcc@v2",
+        source = "https://specs.example.com/gcc.lua",
         options = { version = "13.2.0" },
     },
 }
@@ -153,8 +153,8 @@ $CACHE_ROOT/
 │   └── 1.4.0/
 │       ├── envy
 │       └── envy.lua
-├── recipes/
-│   └── ...                         # cached recipe files (existing)
+├── specs/
+│   └── ...                         # cached spec files (existing)
 └── assets/
     └── ...                         # cached package artifacts (existing)
 ```

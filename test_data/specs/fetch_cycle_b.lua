@@ -1,4 +1,4 @@
--- Recipe B in a fetch dependency cycle: B fetch needs A
+-- Spec B in a fetch dependency cycle: B fetch needs A
 IDENTITY = "local.fetch_cycle_b@v1"
 DEPENDENCIES = {
   {

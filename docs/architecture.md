@@ -2,9 +2,9 @@
 
 ## Project Manifests
 
-All script-global variables are uppercase: manifests export `PACKAGES`; recipes declare `IDENTITY`, `FETCH`, `CHECK`, `STAGE`, `BUILD`, `INSTALL`, `DEPENDENCIES`, and `PRODUCTS`.
+All script-global variables are uppercase: manifests export `PACKAGES`; specs declare `IDENTITY`, `FETCH`, `CHECK`, `STAGE`, `BUILD`, `INSTALL`, `DEPENDENCIES`, and `PRODUCTS`.
 
-**Syntax:** Shorthand `"namespace.name@version"` expands to `{ recipe = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`.
+**Syntax:** Shorthand `"namespace.name@version"` expands to `{ spec = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`.
 
 **Platform-specific packages:** Manifests are Lua scripts—use conditionals and `envy.join()` to combine common and OS-specific package lists.
 
@@ -12,31 +12,31 @@ All script-global variables are uppercase: manifests export `PACKAGES`; recipes 
 -- project/envy.lua
 local common = {
     {  -- Declarative remote with verification and options
-        recipe = "arm.gcc@v2",
-        source = "https://github.com/arm/recipes/gcc-v2.lua",
+        spec = "arm.gcc@v2",
+        source = "https://github.com/arm/specs/gcc-v2.lua",
         sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         options = { version = "13.2.0", target = "arm-none-eabi" },
     },
     {  -- Git repository
-        recipe = "vendor.openocd@v3",
+        spec = "vendor.openocd@v3",
         source = "git://github.com/vendor/openocd-recipe.git",
         ref = "a1b2c3d4e5f6...",  -- Commit SHA
         options = { target = "arm" },
     },
     {  -- Custom fetch (JFrog example)
-        recipe = "corporate.toolchain@v1",
+        spec = "corporate.toolchain@v1",
         FETCH = function(tmp_dir, options)
             local jfrog = envy.asset("jfrog.cli@v2")
-            envy.run(jfrog .. "/bin/jfrog rt download recipes/toolchain.lua " .. tmp_dir .. "/recipe.lua")
+            envy.run(jfrog .. "/bin/jfrog rt download specs/toolchain.lua " .. tmp_dir .. "/recipe.lua")
             envy.commit_fetch({filename = "recipe.lua", sha256 = "sha256_here..."})
         end,
         DEPENDENCIES = {
-            { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+            { spec = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
         }
     },
     {  -- Project-local (development)
-        recipe = "local.wrapper@v1",
-        file = "./envy/recipes/wrapper.lua",
+        spec = "local.wrapper@v1",
+        file = "./envy/specs/wrapper.lua",
         options = { base = "arm.gcc@v2" },
     },
 }
@@ -55,26 +55,26 @@ PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 ```
 
 **Field semantics:**
-- `identity` — Recipe identity declaration (**required in all recipe files**, no exemptions)
+- `identity` — Spec identity declaration (**required in all spec files**, no exemptions)
 - `source` — URL (http/https/s3/git/file) or Git repo for declarative fetch
 - `ref` — Git commit SHA or committish (required for git sources)
 - `sha256` — Expected hash for verification (**optional**, permissive by default; future strict mode will require for non-`local.*`)
 - `fetch` — Custom Lua function for exotic sources (JFrog, authenticated APIs); mutually exclusive with `source`
-- `file` — Project-local recipe path (never cached; `local.*` namespace only)
-- `subdir` — Subdirectory within archive or git repo containing recipe entry point
+- `file` — Project-local spec path (never cached; `local.*` namespace only)
+- `subdir` — Subdirectory within archive or git repo containing spec entry point
 - `options` — Recipe-specific configuration (passed to phase functions as `options` parameter)
-- `dependencies` — Transitive dependencies (recipes this recipe needs)
-  - **Strong:** full recipe spec with `source` (or manifest-provided source)
+- `dependencies` — Transitive dependencies (specs this spec needs)
+  - **Strong:** full spec spec with `source` (or manifest-provided source)
   - **Weak:** partial `recipe` plus `weak = { ... }` fallback spec
   - **Reference-only:** partial `recipe` with no `source`/`weak` (must be satisfied by some other provider)
   - **Nested fetch prerequisites:** inside `source.dependencies`, may also be weak/reference-only
 - `needed_by` — Phase dependency annotation (default: `"fetch"`, custom: `"recipe_fetch"`, `"build"`, etc.)
 
-**Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ recipe = "foo@v1" }`). Same recipe with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
+**Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ spec = "foo@v1" }`). Same spec with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
 ## Shell Configuration
 
-Manifests can specify a `DEFAULT_SHELL` global to control how `envy.run()` executes scripts across all recipes. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
+Manifests can specify a `DEFAULT_SHELL` global to control how `envy.run()` executes scripts across all specs. This enables portable build scripts in custom languages without requiring pre-installed interpreters.
 
 **Built-in shells (constants):**
 - `ENVY_SHELL.BASH` — POSIX bash (default on macOS/Linux)
@@ -94,31 +94,31 @@ Manifests can specify a `DEFAULT_SHELL` global to control how `envy.run()` execu
 DEFAULT_SHELL = function(ctx)
   -- Query deployed assets to use as interpreter
   -- Note: ctx:asset() used here (not envy.asset()) because DEFAULT_SHELL
-  -- runs in manifest context before recipe phases execute
+  -- runs in manifest context before spec phases execute
   local python = ctx:asset("python@v3.11")
   return {inline = {python .. "/bin/python3", "-c"}}
 end
 ```
 
-**Use case:** Express all build scripts in a custom language (Python, Tcl, Ruby) without assuming it's pre-installed. The function can query `ctx:asset()` to locate envy-deployed interpreters. Bootstrap recipes (Python itself) must use built-in shells.
+**Use case:** Express all build scripts in a custom language (Python, Tcl, Ruby) without assuming it's pre-installed. The function can query `ctx:asset()` to locate envy-deployed interpreters. Bootstrap specs (Python itself) must use built-in shells.
 
 **Implementation notes:**
 - Functions evaluated lazily during engine execution (after dependency graph built)
 - Result cached per manifest
 - DEFAULT_SHELL functions use `ctx:asset()` (not `envy.asset()`) because they run in manifest context
-- **Future work:** Dependency analysis—extract `ctx:asset()` calls from function to add implicit dependencies, ensuring interpreter deploys before dependent recipes run
+- **Future work:** Dependency analysis—extract `ctx:asset()` calls from function to add implicit dependencies, ensuring interpreter deploys before dependent specs run
 
-## Recipes
+## Specs
 
 ### Organization
 
-**Identity:** Recipes are namespaced with version: `arm.gcc@v2`, `gnu.binutils@v3`. The `@` symbol denotes **recipe version**, not asset version. Asset versions come from `options` in manifest. Multiple recipe versions coexist; `local.*` namespace reserved for project-local recipes.
+**Identity:** Specs are namespaced with version: `arm.gcc@v2`, `gnu.binutils@v3`. The `@` symbol denotes **spec version**, not asset version. Asset versions come from `options` in manifest. Multiple spec versions coexist; `local.*` namespace reserved for project-local specs.
 
 **Sources:**
 - **Declarative:** `source` field with URL (http/https/s3/file) or git repo; verified via `sha256` (URL) or `ref` (git); cached
 - **Custom fetch:** `fetch` function with verification enforced at API boundary (`envy.fetch`, `envy.commit_fetch`); cached
 - **Project-local:** `file` path in project tree; never cached; `local.*` namespace only
-- **Fetch prerequisites (nested):** `source.dependencies` declares recipes that must reach completion before this recipe’s fetch runs. These can be strong, weak, or reference-only.
+- **Fetch prerequisites (nested):** `source.dependencies` declares specs that must reach completion before this recipe’s fetch runs. These can be strong, weak, or reference-only.
 
 **Formats:**
 - **Single-file:** `.lua` file (declarative sources only)
@@ -126,8 +126,8 @@ end
 
 **Integrity:** Two orthogonal checks:
 
-1. **Identity validation** (ALL recipes, always required):
-   - Recipe must declare `identity = "..."` matching referrer's expectation
+1. **Identity validation** (ALL specs, always required):
+   - Spec must declare `identity = "..."` matching referrer's expectation
    - Catches typos, stale references, copy-paste errors
    - No namespace exemptions
 
@@ -136,21 +136,21 @@ end
   - Custom fetch accepts SHA256 per-file via `envy.fetch()` API
   - If SHA256 provided, verification happens at fetch time; mismatch causes hard failure
   - Never re-verified from cache
-  - **Permissive by default**: SHA256 optional for all recipes
-  - **Namespace rule**: `local.*` recipes never require SHA256 (files are local/trusted)
-  - **Future strict mode**: Will require SHA256 for all non-`local.*` recipes
+  - **Permissive by default**: SHA256 optional for all specs
+  - **Namespace rule**: `local.*` specs never require SHA256 (files are local/trusted)
+  - **Future strict mode**: Will require SHA256 for all non-`local.*` specs
 
 ### Dependency Semantics (strong, weak, reference-only)
 
 - **Strong dependencies** provide a complete spec (manifest or explicit `source`). They are instantiated immediately and run toward their target phase.
-- **Weak dependencies** specify a query (`recipe = "name"` or partial identity) plus a fallback spec in `weak = { ... }`. The engine tries to satisfy the query from existing/manifest/other strong nodes; if no match, it spawns the fallback. Ambiguities raise errors with all candidates listed.
-- **Reference-only dependencies** provide only a query (no `source`/`weak`). They must be satisfied by some other recipe in the graph; otherwise resolution fails after convergence.
+- **Weak dependencies** specify a query (`spec = "name"` or partial identity) plus a fallback spec in `weak = { ... }`. The engine tries to satisfy the query from existing/manifest/other strong nodes; if no match, it spawns the fallback. Ambiguities raise errors with all candidates listed.
+- **Reference-only dependencies** provide only a query (no `source`/`weak`). They must be satisfied by some other spec in the graph; otherwise resolution fails after convergence.
 - **Nested fetch prerequisites** live in `source.dependencies` and follow the same rules. They must complete (typically to `completion`) before the parent’s `recipe_fetch` runs.
-- Resolution is iterative: the engine waits for all active recipes to reach their target phases, runs weak-resolution passes (matching or spawning fallbacks), and repeats while progress is made. Progress accounts for newly spawned fallbacks even when unresolved counts stay flat.
+- Resolution is iterative: the engine waits for all active specs to reach their target phases, runs weak-resolution passes (matching or spawning fallbacks), and repeats while progress is made. Progress accounts for newly spawned fallbacks even when unresolved counts stay flat.
 
 ### Verbs
 
-Recipes define verbs describing how to acquire, validate, and install packages:
+Specs define verbs describing how to acquire, validate, and install packages:
 
 - **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
 - **`fetch`** — Acquire source materials. Can be:
@@ -160,7 +160,7 @@ Recipes define verbs describing how to acquire, validate, and install packages:
   - Custom function: `FETCH = function(tmp_dir, options) envy.fetch(...) end` (imperative with `envy.fetch()` API)
   - Function returning declarative: `FETCH = function(tmp_dir, options) return "https://..." end` (enables templating with options; return value can be any declarative form: string, table, array; can mix with imperative `envy.fetch()` calls)
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
-- **`build`** — Compile or process staged content. Recipes access staging directory, dependency artifacts, and install directory.
+- **`build`** — Compile or process staged content. Specs access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
 
 ### User-Managed vs Cache-Managed Packages
@@ -240,14 +240,14 @@ end
 
 ### Dependencies
 
-Recipes declare dependencies; transitive resolution is automatic. Manifest authors specify only direct needs.
+Specs declare dependencies; transitive resolution is automatic. Manifest authors specify only direct needs.
 
 ```lua
 -- vendor.openocd@v3
 DEPENDENCIES = {
   {
-    recipe = "arm.gcc@v2",
-    url = "https://github.com/arm/recipes/gcc-v2.lua",
+    spec = "arm.gcc@v2",
+    url = "https://github.com/arm/specs/gcc-v2.lua",
     sha256 = "a1b2c3d4...",
     options = { version = "13.2.0" },
   },
@@ -264,21 +264,21 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 ```
 
-**Resolution:** Topological sort ensures dependencies deploy before dependents. Cycles error (must be DAG). Dependencies specify exact recipe versions—same recipe version always uses same deps (reproducible builds).
+**Resolution:** Topological sort ensures dependencies deploy before dependents. Cycles error (must be DAG). Dependencies specify exact spec versions—same spec version always uses same deps (reproducible builds).
 
-**Security:** Non-local recipes cannot depend on `local.*` recipes. Envy enforces at load time.
+**Security:** Non-local specs cannot depend on `local.*` specs. Envy enforces at load time.
 
 ## Unified DAG Execution Model
 
 ### Overview
 
-Envy builds a single `tbb::flow::graph` containing all recipe and package operations. No separation between "resolution" and "installation"—recipe fetching and asset building interleave as dependencies require. Graph expands dynamically: `recipe_fetch` nodes discover dependencies and add new nodes during execution.
+Envy builds a single `tbb::flow::graph` containing all spec and package operations. No separation between "resolution" and "installation"—spec fetching and asset building interleave as dependencies require. Graph expands dynamically: `recipe_fetch` nodes discover dependencies and add new nodes during execution.
 
 ### Phase Model
 
 Each DAG node represents `(recipe_identity, options)` with up to seven verb phases:
 
-- **`recipe_fetch`** — Load recipe Lua file(s) into cache; discover dependencies; add child nodes to graph
+- **`recipe_fetch`** — Load spec Lua file(s) into cache; discover dependencies; add child nodes to graph
 - **`check`** — Test if asset already satisfied (skip remaining phases if true)
 - **`fetch`** — Download/acquire source materials into `fetch/`
 - **`stage`** — Prepare build staging area from fetched content
@@ -286,23 +286,23 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 - **`install`** — Write final artifacts to install directory
 - **`deploy`** — Post-install actions (env setup, capability registration)
 
-**Node optimization:** Only declared/inferred phases create nodes. Minimal recipes (just `source` field) infer `recipe_fetch` → `fetch` → `stage`, skip `build`/`install`/`deploy`. Recipe without `build` verb omits build node. Zero-verb overhead for simple cases.
+**Node optimization:** Only declared/inferred phases create nodes. Minimal specs (just `source` field) infer `recipe_fetch` → `fetch` → `stage`, skip `build`/`install`/`deploy`. Spec without `build` verb omits build node. Zero-verb overhead for simple cases.
 
 **Phase execution:** Each phase is a `flow::continue_node`. Intra-node dependencies: `recipe_fetch` → `check` → `fetch` → `stage` → `build` → `install` → `deploy` (linear chain). Inter-node dependencies declared via `needed_by` annotation (see below).
 
-### Recipe Fetching (Custom and Declarative)
+### Spec Fetching (Custom and Declarative)
 
-**Identity requirement:** ALL recipes must declare their identity:
+**Identity requirement:** ALL specs must declare their identity:
 ```lua
--- vendor.lib@v1 recipe file
+-- vendor.lib@v1 spec file
 IDENTITY = "vendor.lib@v1"
 
--- local.wrapper@v1 recipe file
+-- local.wrapper@v1 spec file
 IDENTITY = "local.wrapper@v1"
 
 -- Rest of recipe...
 ```
-Envy validates declared identity matches requested identity. This prevents typos, stale references, copy-paste errors, and malicious substitution. No namespace exemptions—all recipes require identity declaration.
+Envy validates declared identity matches requested identity. This prevents typos, stale references, copy-paste errors, and malicious substitution. No namespace exemptions—all specs require identity declaration.
 
 **Declarative sources** (common case):
 ```lua
@@ -328,7 +328,7 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 **Custom fetch functions** (exotic cases—JFrog, authenticated APIs, custom tools):
 ```lua
 {
-  recipe = "corporate.toolchain@v1",
+  spec = "corporate.toolchain@v1",
   FETCH = function(tmp_dir, options)
     local jfrog = envy.asset("jfrog.cli@v2")  -- Access installed dependency
 
@@ -340,7 +340,7 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
     envy.commit_fetch({"recipe.lua", "helpers.lua"})
   end,
   DEPENDENCIES = {
-    { recipe = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
+    { spec = "jfrog.cli@v2", source = "...", sha256 = "...", needed_by = "recipe_fetch" }
   }
 }
 ```
@@ -353,11 +353,11 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 - **Atomic**: All files downloaded and verified before ANY committed to fetch_dir (all-or-nothing)
 - **SHA256 optional**: If provided, verified after download; if absent, permissive
 
-**Verification:** SHA256 is **optional**. If `sha256` field present, Envy verifies after download. If absent, download proceeds without verification (permissive mode). Custom fetch functions cannot bypass—all downloads go through `envy.fetch()` API. Future "strict mode" will require SHA256 for all non-`local.*` recipes.
+**Verification:** SHA256 is **optional**. If `sha256` field present, Envy verifies after download. If absent, download proceeds without verification (permissive mode). Custom fetch functions cannot bypass—all downloads go through `envy.fetch()` API. Future "strict mode" will require SHA256 for all non-`local.*` specs.
 
 **Cache layout:** Custom fetch → multi-file cache directory with `recipe.lua` entry point:
 ```
-~/.cache/envy/recipes/
+~/.cache/envy/specs/
 └── corporate.toolchain@v1/
     ├── envy-complete
     ├── recipe.lua           # Entry point (required)
@@ -370,30 +370,30 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 
 ### Phase Dependencies via `needed_by`
 
-**Default behavior:** Recipe A depends on recipe B → A's `fetch` phase waits for B's last declared phase (usually `deploy`).
+**Default behavior:** Spec A depends on spec B → A's `fetch` phase waits for B's last declared phase (usually `deploy`).
 
 **Custom phase dependencies:** Use `needed_by` annotation to couple specific phases:
 ```lua
 DEPENDENCIES = {
-  { recipe = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
+  { spec = "jfrog.cli@v2", url = "...", sha256 = "...", needed_by = "recipe_fetch" }
 }
 ```
 
-**Semantics:** Dependency must complete its last declared phase before this node's specified phase starts. If `needed_by = "recipe_fetch"`, jfrog.cli's `deploy` completes before this recipe's `recipe_fetch` begins (recipe cannot be fetched until tool is installed).
+**Semantics:** Dependency must complete its last declared phase before this node's specified phase starts. If `needed_by = "recipe_fetch"`, jfrog.cli's `deploy` completes before this recipe's `recipe_fetch` begins (spec cannot be fetched until tool is installed).
 
 **Concrete example (corporate JFrog workflow):**
 ```lua
 -- Manifest packages
 {
   {
-    recipe = "corporate.toolchain@v1",
+    spec = "corporate.toolchain@v1",
     FETCH = function(tmp_dir, options)
       local jfrog = envy.asset("jfrog.cli@v2")  -- Tool must be installed first
       -- ... fetch using jfrog CLI ...
     end,
     DEPENDENCIES = {
       {
-        recipe = "jfrog.cli@v2",
+        spec = "jfrog.cli@v2",
         source = "https://public.com/jfrog-cli-recipe.lua",
         sha256 = "...",
         needed_by = "recipe_fetch"  -- Block corporate.toolchain recipe_fetch until jfrog.cli deployed
@@ -418,7 +418,7 @@ DEPENDENCIES = {
 
 **Expansion process:**
 1. Manifest roots seed graph with initial `recipe_fetch` nodes
-2. `recipe_fetch` node executes: fetch recipe file(s), load Lua, evaluate `dependencies` field
+2. `recipe_fetch` node executes: fetch spec file(s), load Lua, evaluate `dependencies` field
 3. For each dependency: ensure memoized node exists, add edges based on `needed_by`
 4. Child `recipe_fetch` nodes execute, discover their dependencies, add more nodes
 5. Graph grows until all transitive dependencies discovered
@@ -426,14 +426,14 @@ DEPENDENCIES = {
 
 **Cycle detection:** Must catch cycles during graph construction. Example illegal cycle:
 ```lua
--- Recipe A
-{ recipe = "A@v1", FETCH = function(tmp_dir, opts) envy.asset("B@v1") end,
-  DEPENDENCIES = { { recipe = "B@v1", needed_by = "recipe_fetch" } } }
+-- Spec A
+{ spec = "A@v1", FETCH = function(tmp_dir, opts) envy.asset("B@v1") end,
+  DEPENDENCIES = { { spec = "B@v1", needed_by = "recipe_fetch" } } }
 
--- Recipe B
-{ recipe = "B@v1", dependencies = { { recipe = "A@v1", needed_by = "recipe_fetch" } } }
+-- Spec B
+{ spec = "B@v1", dependencies = { { spec = "A@v1", needed_by = "recipe_fetch" } } }
 ```
-Both recipes need each other for `recipe_fetch` → deadlock. Envy detects via reachability check before adding edges; errors with cycle path.
+Both specs need each other for `recipe_fetch` → deadlock. Envy detects via reachability check before adding edges; errors with cycle path.
 
 ### Command Execution Model
 
@@ -461,9 +461,9 @@ bool cmd_install::execute() {
 
 Cache layout, locking, verification, and recovery live in `docs/cache.md`.
 
-## Platform-Specific Recipes
+## Platform-Specific Specs
 
-Recipes run only on host platform—no cross-deployment. Single recipe file adapts via platform variables envy provides. Authors structure platform logic however they want.
+Specs run only on host platform—no cross-deployment. Single spec file adapts via platform variables envy provides. Authors structure platform logic however they want.
 
 **Envy-provided globals:**
 - `ENVY_PLATFORM` — `"darwin"`, `"linux"`, `"windows"`
@@ -549,9 +549,9 @@ assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
 - `spinner_data`: text, start_time, frame_duration → animated `|/-\` computed from elapsed time
 - `static_text_data`: text → `[label] text`
 
-**Interactive mode:** Global mutex serializes recipes needing terminal control (sudo, installers). Acquire locks, pauses rendering; release unlocks, resumes. RAII guard available.
+**Interactive mode:** Global mutex serializes specs needing terminal control (sudo, installers). Acquire locks, pauses rendering; release unlocks, resumes. RAII guard available.
 
-**Integration:** Phases delegate TUI management to `tui_actions` helpers (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`)—single-responsibility, consistent formatting, testable in isolation. `envy.run()` auto-creates `run_progress` when recipe has `tui_section`; Lua code gets TUI integration automatically.
+**Integration:** Phases delegate TUI management to `tui_actions` helpers (`run_progress`, `fetch_progress_tracker`, `extract_progress_tracker`)—single-responsibility, consistent formatting, testable in isolation. `envy.run()` auto-creates `run_progress` when spec has `tui_section`; Lua code gets TUI integration automatically.
 
 **Test API:** `#ifdef ENVY_UNIT_TEST` exposes `g_terminal_width`, `g_isatty`, `g_now` globals and `test::render_section_frame()` for pure rendering tests without TUI thread.
 
@@ -560,7 +560,7 @@ assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
 **Plain mode** (`init(std::nullopt)`): Clean output, no timestamps/severity prefixes. Threshold = info.
 ```
 Fetching gcc-13.2.0.tar.xz...
-Warning: Recipe deprecated
+Warning: Spec deprecated
 Error: SHA256 mismatch
 ```
 
@@ -568,7 +568,7 @@ Error: SHA256 mismatch
 ```
 [2024-10-19 12:34:56.123] [DEBUG] Cache miss for arm.gcc@v2
 [2024-10-19 12:34:56.234] [INFO] Fetching gcc-13.2.0.tar.xz...
-[2024-10-19 12:34:56.789] [WARN] Recipe deprecated
+[2024-10-19 12:34:56.789] [WARN] Spec deprecated
 ```
 
 ### Thread Model
@@ -617,7 +617,7 @@ namespace envy::tui {
 
 **REPL mode** (`envy lua`): TUI runs in interactive mode—logs bypass queue, go straight to stderr via `fprintf`. No render loop, no progress bars.
 
-**Recipe process execution:** Three modes via `ctx` API:
+**Spec process execution:** Three modes via `ctx` API:
 
 - **`run_capture(cmd, args)`** — Stdout/stderr piped to string, returned to Lua. Stdin closed. No TUI interaction (silent checks like `brew list | grep foo`).
 - **`run(cmd, args)`** — Stdout/stderr piped line-by-line to `tui::info()`. Stdin closed. No TUI pause (build output appears as logs).
@@ -635,8 +635,8 @@ Side-by-side with source: `src/cache/lock.cpp` + `src/cache/lock_test.cpp`. Doct
 
 Python 3.13+ stdlib only (`unittest`—no third-party deps). Located in `functional_tests/` flat (no subdirs). Parallel execution; each test uses isolated cache directory via `ENVY_TEST_ID` environment variable. Per-test cleanup via fixtures (context managers).
 
-**Cache testing:** Uses `envy_functional_tester` binary—production `envy` with additional testing commands conditionally compiled via `ENVY_FUNCTIONAL_TESTER=1` define. Same `main.cpp`, same CLI11 parsing, same TBB async execution. Tests invoke cache C++ API directly via CLI without requiring Lua recipes/manifests. Barrier synchronization (`--barrier-signal`, `--barrier-wait`) enables deterministic concurrency testing via filesystem coordination. Key-value output format (`locked=true\npath=/foo/bar\n...`) provides observability without JSON library dependency. Commands: `envy_functional_tester cache ensure-asset <identity> <platform> <arch> <hash>`, `envy_functional_tester cache ensure-recipe <identity>`. Flags: `--cache-root`, `--test-id`, `--barrier-signal`, `--barrier-wait`, `--crash-after`, `--fail-before-complete`.
+**Cache testing:** Uses `envy_functional_tester` binary—production `envy` with additional testing commands conditionally compiled via `ENVY_FUNCTIONAL_TESTER=1` define. Same `main.cpp`, same CLI11 parsing, same TBB async execution. Tests invoke cache C++ API directly via CLI without requiring Lua specs/manifests. Barrier synchronization (`--barrier-signal`, `--barrier-wait`) enables deterministic concurrency testing via filesystem coordination. Key-value output format (`locked=true\npath=/foo/bar\n...`) provides observability without JSON library dependency. Commands: `envy_functional_tester cache ensure-asset <identity> <platform> <arch> <hash>`, `envy_functional_tester cache ensure-spec <identity>`. Flags: `--cache-root`, `--test-id`, `--barrier-signal`, `--barrier-wait`, `--crash-after`, `--fail-before-complete`.
 
-**Recipe testing (future):** Test recipes embedded as string literals, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Recipes use filesystem `fetch` for speed; HTTP tests spawn local servers separately.
+**Spec testing (future):** Test specs embedded as string literals, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Specs use filesystem `fetch` for speed; HTTP tests spawn local servers separately.
 
 **CI:** GitHub Actions on Darwin/Linux/Windows × x64/arm64.

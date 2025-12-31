@@ -50,7 +50,7 @@ class TestAssetCommand(unittest.TestCase):
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
 
-        # Run from project root so relative paths in recipes work
+        # Run from project root so relative paths in specs work
         result = subprocess.run(
             cmd,
             cwd=cwd or self.project_root,
@@ -89,7 +89,7 @@ PACKAGES = {{
     def test_asset_with_dependencies(self):
         """Query asset for package with dependencies, verify both installed."""
         # NOTE: diamond_a is a programmatic package, so this test currently expects failure
-        # TODO: Create test recipes with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -129,10 +129,10 @@ PACKAGES = {{
 
     def test_asset_auto_discover_manifest(self):
         """Auto-discover manifest from parent directory."""
-        # NOTE: This test is currently disabled because recipes have relative fetch paths
+        # NOTE: This test is currently disabled because specs have relative fetch paths
         # that don't work when running from arbitrary directories
-        # TODO: Either use recipes with absolute fetch paths or fix path resolution
-        self.skipTest("Auto-discover with relative recipe paths not yet supported")
+        # TODO: Either use specs with absolute fetch paths or fix path resolution
+        self.skipTest("Auto-discover with relative spec paths not yet supported")
 
     def test_asset_explicit_manifest_path(self):
         """Use explicit --manifest flag to specify manifest location."""
@@ -351,7 +351,7 @@ PACKAGES = {{
             result_fail.stderr.strip(), "Should have error message in stderr"
         )
 
-    def test_asset_with_recipe_options(self):
+    def test_asset_with_spec_options(self):
         """Install package with options in manifest."""
         manifest = self.create_manifest(
             f"""
@@ -371,11 +371,11 @@ PACKAGES = {{
 
     def test_asset_different_options_separate_cache_entries(self):
         """Different options produce separate cache entries with distinct content."""
-        # Create recipe that writes option value to a file
+        # Create spec that writes option value to a file
         # This is a cache-managed package (no check verb) that writes artifacts to cache
-        recipe_content = """IDENTITY = "local.test_options_cache@v1"
+        spec_content = """IDENTITY = "local.test_options_cache@v1"
 
--- Empty fetch - recipe generates content directly in install phase
+-- Empty fetch - spec generates content directly in install phase
 function FETCH(tmp_dir, options)
     -- Nothing to fetch
 end
@@ -386,14 +386,14 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
     f:close()
 end
 """
-        recipe_path = self.test_dir / "test_options_cache.lua"
-        recipe_path.write_text(recipe_content, encoding="utf-8")
+        spec_path = self.test_dir / "test_options_cache.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
 
         # Manifest with variant=foo
         manifest_foo = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "foo" }} }}
+    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(spec_path)}", options = {{ variant = "foo" }} }}
 }}
 """,
             subdir="foo",
@@ -403,7 +403,7 @@ PACKAGES = {{
         manifest_bar = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(recipe_path)}", options = {{ variant = "bar" }} }}
+    {{ spec = "local.test_options_cache@v1", source = "{self.lua_path(spec_path)}", options = {{ variant = "bar" }} }}
 }}
 """,
             subdir="bar",
@@ -437,7 +437,7 @@ PACKAGES = {{
     def test_asset_transitive_dependency_chain(self):
         """Install package with transitive dependencies (diamond structure)."""
         # NOTE: diamond_a is programmatic, test expects failure
-        # TODO: Create test recipes with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -455,7 +455,7 @@ PACKAGES = {{
     def test_asset_diamond_dependency(self):
         """Install package with diamond dependency: A → B,C → D."""
         # NOTE: diamond_a is programmatic, test expects failure
-        # TODO: Create test recipes with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached assets
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -474,11 +474,11 @@ PACKAGES = {{
         """Asset command must resolve graph to find product providers.
 
         Regression test: asset command should call resolve_graph() to find
-        recipes that provide products needed by dependencies. Without this,
+        specs that provide products needed by dependencies. Without this,
         product dependencies fail on clean cache.
         """
-        # Create product provider recipe
-        provider_recipe = """IDENTITY = "local.test_product_provider@v1"
+        # Create product provider spec
+        provider_spec = """IDENTITY = "local.test_product_provider@v1"
 
 FETCH = { source = "test_data/archives/test.tar.gz",
           sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
@@ -489,10 +489,10 @@ end
 PRODUCTS = { test_tool = "bin/tool" }
 """
         provider_path = self.test_dir / "test_product_provider.lua"
-        provider_path.write_text(provider_recipe, encoding="utf-8")
+        provider_path.write_text(provider_spec, encoding="utf-8")
 
-        # Create consumer recipe that depends on the product
-        consumer_recipe = f"""IDENTITY = "local.test_product_consumer@v1"
+        # Create consumer spec that depends on the product
+        consumer_spec = f"""IDENTITY = "local.test_product_consumer@v1"
 
 DEPENDENCIES = {{
     {{ product = "test_tool" }}
@@ -507,7 +507,7 @@ INSTALL = function(ctx)
 end
 """
         consumer_path = self.test_dir / "test_product_consumer.lua"
-        consumer_path.write_text(consumer_recipe, encoding="utf-8")
+        consumer_path.write_text(consumer_spec, encoding="utf-8")
 
         # Manifest with both recipes
         manifest = self.create_manifest(
