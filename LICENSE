@@ -2,7 +2,11 @@ envy - A freeform package manager
 
 SPDX-License-Identifier: 0BSD OR Unlicense
 
-This software is dual-licensed under your choice of:
+This license applies ONLY to the envy source code (files in this repository
+authored by the envy project). Third-party libraries linked into the envy
+binary are subject to their own licenses.
+
+The envy source code is dual-licensed under your choice of:
 
 1. The Zero-Clause BSD License (0BSD)
 2. The Unlicense
