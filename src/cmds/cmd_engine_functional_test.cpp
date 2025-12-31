@@ -55,7 +55,7 @@ void cmd_engine_functional_test::execute() {
       std::filesystem::path{}) };
 
   // Create minimal manifest for engine (no DEFAULT_SHELL for tests)
-  auto m{ manifest::load("PACKAGES = {}", cfg_.spec_path) };
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}", cfg_.spec_path) };
 
   // Run engine
   engine eng{ *c, m->get_default_shell(nullptr) };

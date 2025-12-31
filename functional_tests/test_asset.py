@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import test_config
+from .test_config import make_manifest
 
 
 class TestAssetCommand(unittest.TestCase):
@@ -39,7 +40,7 @@ class TestAssetCommand(unittest.TestCase):
         manifest_dir = self.test_dir / subdir if subdir else self.test_dir
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
     def run_asset(
@@ -141,11 +142,13 @@ PACKAGES = {{
         try:
             manifest = other_dir / "custom.lua"
             manifest.write_text(
-                f"""
+                make_manifest(
+                    f"""
 PACKAGES = {{
     {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
-""",
+"""
+                ),
                 encoding="utf-8",
             )
 
@@ -287,6 +290,7 @@ PACKAGES = {{
 
     def test_asset_invalid_manifest_syntax(self):
         """Error when manifest has Lua syntax error."""
+        # Note: create_manifest adds bin-dir header; the syntax error is in the body
         manifest = self.create_manifest(
             """
 PACKAGES = {

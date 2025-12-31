@@ -56,7 +56,7 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
   fs::path const cache_root{ fs::temp_directory_path() / "envy-extend-deps-test-1" };
 
   cache c{ cache_root };
-  auto m{ manifest::load("PACKAGES = {}",
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
   engine eng{ c, m->get_default_shell(nullptr) };
 
@@ -115,7 +115,7 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   fs::path const cache_root{ fs::temp_directory_path() / "envy-extend-deps-test-2" };
 
   cache c{ cache_root };
-  auto m{ manifest::load("PACKAGES = {}",
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
   engine eng{ c, m->get_default_shell(nullptr) };
 

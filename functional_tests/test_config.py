@@ -5,6 +5,21 @@ import sys
 import threading
 from pathlib import Path
 
+# Required manifest header for all manifests (bin-dir is mandatory)
+MANIFEST_HEADER = '-- @envy bin-dir "envy-bin"\n'
+
+
+def make_manifest(packages_content: str) -> str:
+    """Create a manifest string with required headers.
+
+    Args:
+        packages_content: The PACKAGES table content (should start with 'PACKAGES = {')
+
+    Returns:
+        Complete manifest string with required bin-dir directive.
+    """
+    return MANIFEST_HEADER + packages_content
+
 # Thread-local state for which sanitizer variant to use
 _thread_local = threading.local()
 

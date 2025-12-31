@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .test_config import make_manifest
 
 
 class TestCacheDirective(unittest.TestCase):
@@ -30,7 +31,7 @@ class TestCacheDirective(unittest.TestCase):
     def create_manifest(self, content: str) -> Path:
         """Create manifest file with given content."""
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
     def run_sync(
