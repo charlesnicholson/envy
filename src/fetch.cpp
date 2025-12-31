@@ -110,32 +110,50 @@ int git_fetch_progress_callback(git_indexer_progress const *stats, void *payload
   return (*cb)(progress) ? 0 : -1;
 }
 
+// Attempt git clone with optional shallow depth. Returns nullptr on failure (no throw).
+git_repository *try_git_clone(std::string const &url,
+                              std::filesystem::path const &dest,
+                              fetch_progress_cb_t const &progress,
+                              int depth) {
+  git_clone_options clone_opts;
+  git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
+
+  if (depth > 0) { clone_opts.fetch_opts.depth = depth; }
+  clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
+  clone_opts.fetch_opts.callbacks.payload = const_cast<fetch_progress_cb_t *>(&progress);
+
+  git_repository *repo_raw{ nullptr };
+  if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
+    return nullptr;
+  }
+  return repo_raw;
+}
+
 fetch_result fetch_git_repo(std::string const &url,
                             std::string const &ref,
                             std::filesystem::path const &destination,
                             fetch_progress_cb_t const &progress) {
   auto const dest{ prepare_destination(destination) };
 
+  // Try shallow clone first; fall back to full clone if shallow fails.
+  // Some servers (e.g., googlesource.com) have libgit2 shallow clone issues.
+  git_repository *repo_raw{ try_git_clone(url, dest, progress, 1) };
+  if (!repo_raw) {
+    std::error_code ec;
+    std::filesystem::remove_all(dest, ec);
+    std::filesystem::create_directories(dest, ec);
+
+    repo_raw = try_git_clone(url, dest, progress, 0);
+    if (!repo_raw) {
+      git_error const *git_err{ git_error_last() };
+      std::string msg{ "fetch_git: clone failed: " };
+      if (git_err) { msg += git_err->message; }
+      throw std::runtime_error(msg);
+    }
+  }
+
   std::unique_ptr<git_repository, decltype(&git_repository_free)> repo{
-    [&]() -> git_repository * {
-      git_clone_options clone_opts;
-      git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
-
-      clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
-      clone_opts.fetch_opts.callbacks.payload =
-          const_cast<fetch_progress_cb_t *>(&progress);
-
-      git_repository *repo_raw{ nullptr };
-
-      if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
-        git_error const *git_err{ git_error_last() };
-        std::string msg{ "fetch_git: clone failed: " };
-        if (git_err) { msg += git_err->message; }
-        throw std::runtime_error(msg);
-      }
-
-      return repo_raw;
-    }(),
+    repo_raw,
     git_repository_free
   };
 

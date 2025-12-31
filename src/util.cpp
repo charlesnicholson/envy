@@ -137,6 +137,18 @@ std::string util_format_bytes(std::uint64_t bytes) {
   return oss.str();
 }
 
+std::string util_path_with_separator(std::filesystem::path const &path) {
+  std::string result{ path.string() };
+  if (result.empty()) { return result; }
+
+  char const sep{ static_cast<char>(std::filesystem::path::preferred_separator) };
+  if (result.back() != sep && result.back() != '/' && result.back() != '\\') {
+    result += sep;
+  }
+
+  return result;
+}
+
 std::string util_flatten_script_with_semicolons(std::string_view script) {
   if (script.empty()) { return {}; }
 

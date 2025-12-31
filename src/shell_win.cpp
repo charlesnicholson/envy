@@ -174,23 +174,124 @@ std::wstring normalize_newlines(std::wstring_view input) {
   return result;
 }
 
-// Build script contents for PowerShell only (wide). For cmd we emit narrow text later.
-std::wstring build_powershell_script_contents(std::string_view script) {
-  std::wstring user_script{ normalize_newlines(utf8_to_wstring(script)) };
+// Split script into lines, preserving line content but normalizing line endings.
+std::vector<std::wstring> split_script_lines(std::wstring_view script) {
+  std::vector<std::wstring> lines;
+  std::wstring current_line;
 
-  // Execute user script, check for errors, preserve stdout/stderr and exit code
+  for (size_t i{ 0 }; i < script.size(); ++i) {
+    wchar_t const ch{ script[i] };
+    if (ch == L'\r') {
+      lines.push_back(std::move(current_line));
+      current_line.clear();
+      if (i + 1 < script.size() && script[i + 1] == L'\n') { ++i; }
+    } else if (ch == L'\n') {
+      lines.push_back(std::move(current_line));
+      current_line.clear();
+    } else {
+      current_line.push_back(ch);
+    }
+  }
+  if (!current_line.empty()) { lines.push_back(std::move(current_line)); }
+  return lines;
+}
+
+bool is_powershell_line_empty_or_comment(std::wstring_view line) {
+  for (wchar_t const ch : line) {
+    if (ch == L' ' || ch == L'\t') { continue; }
+    if (ch == L'#') { return true; }
+    return false;
+  }
+  return true;
+}
+
+// Build script contents for PowerShell with fail-fast behavior.
+// Wraps each line with $LASTEXITCODE check to exit immediately on native command failure.
+std::wstring build_powershell_script_contents(std::string_view script) {
+  std::wstring user_script{ utf8_to_wstring(script) };
+  auto lines{ split_script_lines(user_script) };
+
   std::wstring wrapper;
-  wrapper.reserve(user_script.size() + 128);
-  wrapper.append(L"$ErrorActionPreference = 'Continue'\r\n");
-  wrapper.append(L"$Error.Clear()\r\n");  // Clear previous errors
-  wrapper.append(user_script);
-  // Only add newline if script doesn't already end with one
-  if (!user_script.empty() && user_script.back() != L'\n') { wrapper.append(L"\r\n"); }
-  // Exit with external command exit code if set, else 1 if error occurred, else 0
-  wrapper.append(L"if ($LASTEXITCODE) { exit $LASTEXITCODE }\r\n");
+  wrapper.reserve(user_script.size() * 2 + 256);
+
+  // Stop on PowerShell cmdlet errors immediately
+  wrapper.append(L"$ErrorActionPreference = 'Stop'\r\n");
+  wrapper.append(L"$Error.Clear()\r\n");
+
+  // For PowerShell 7.3+, native commands also respect ErrorActionPreference
+  wrapper.append(
+      L"if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor "
+      L"-ge "
+      L"3) {\r\n");
+  wrapper.append(L"  $PSNativeCommandUseErrorActionPreference = $true\r\n");
+  wrapper.append(L"}\r\n");
+
+  // Emit each line followed by exit-code check for native commands
+  for (auto const &line : lines) {
+    if (is_powershell_line_empty_or_comment(line)) {
+      wrapper.append(line);
+      wrapper.append(L"\r\n");
+    } else {
+      wrapper.append(line);
+      wrapper.append(L"\r\n");
+      // Check $LASTEXITCODE after each non-empty line for native command failures.
+      // $LASTEXITCODE is only set by native commands, not by PowerShell cmdlets.
+      wrapper.append(
+          L"if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE "
+          L"}\r\n");
+    }
+  }
+
+  // Final error check for any accumulated PowerShell errors
   wrapper.append(L"if ($Error.Count -gt 0) { exit 1 }\r\n");
   wrapper.append(L"exit 0\r\n");
   return wrapper;
+}
+
+// Build script contents for cmd.exe with fail-fast behavior.
+// Appends "|| exit /b %errorlevel%" after each command line.
+std::string build_cmd_script_contents(std::string_view script) {
+  std::wstring wide_script{ utf8_to_wstring(script) };
+  auto lines{ split_script_lines(wide_script) };
+
+  std::string result;
+  result.reserve(script.size() * 2 + 64);
+
+  // Disable command echo for cleaner output
+  result.append("@echo off\r\n");
+
+  for (auto const &wide_line : lines) {
+    std::string line{ wstring_to_utf8(wide_line) };
+
+    // Trim leading whitespace to check for empty/special lines
+    std::string_view trimmed{ line };
+    while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) {
+      trimmed.remove_prefix(1);
+    }
+
+    // Skip empty lines, labels (:label), comments (REM/::), and @echo off
+    bool const is_empty{ trimmed.empty() };
+    bool const is_label{ !trimmed.empty() && trimmed.front() == ':' };
+    bool const is_rem{ trimmed.size() >= 3 &&
+                       (trimmed.substr(0, 3) == "rem" || trimmed.substr(0, 3) == "REM" ||
+                        trimmed.substr(0, 3) == "Rem") &&
+                       (trimmed.size() == 3 || trimmed[3] == ' ' || trimmed[3] == '\t') };
+    bool const is_comment{ trimmed.size() >= 2 && trimmed.substr(0, 2) == "::" };
+    bool const is_echo_off{ trimmed.size() >= 9 && (trimmed.substr(0, 9) == "@echo off" ||
+                                                    trimmed.substr(0, 9) == "@ECHO OFF" ||
+                                                    trimmed.substr(0, 9) == "@Echo Off") };
+
+    if (is_empty || is_label || is_rem || is_comment || is_echo_off) {
+      result.append(line);
+      result.append("\r\n");
+    } else {
+      // Append fail-fast suffix: exit immediately if command fails
+      result.append(line);
+      result.append(" || exit /b %errorlevel%\r\n");
+    }
+  }
+
+  return result;
 }
 
 std::filesystem::path create_temp_script(std::string_view script,
@@ -282,35 +383,11 @@ std::filesystem::path create_temp_script(std::string_view script,
               // natively. Older versions use system codepage (CP1252, CP932, etc.) which
               // breaks non-ASCII. This implementation requires Windows 10+; non-ASCII on
               // older versions will fail.
-              std::string narrow{ script };
-              std::string normalized{};
-              normalized.reserve(narrow.size() + 8);
-              for (size_t i = 0; i < narrow.size(); ++i) {
-                char ch = narrow[i];
-                if (ch == '\r') {
-                  normalized.push_back('\r');
-                  if (i + 1 < narrow.size() && narrow[i + 1] == '\n') {
-                    normalized.push_back('\n');
-                    ++i;
-                  } else {
-                    normalized.push_back('\n');
-                  }
-                } else if (ch == '\n') {
-                  normalized.push_back('\r');
-                  normalized.push_back('\n');
-                } else {
-                  normalized.push_back(ch);
-                }
-              }
-              if (!normalized.empty() &&
-                  (normalized.size() < 2 ||
-                   normalized.substr(normalized.size() - 2) != "\r\n")) {
-                normalized.append("\r\n");
-              }
-              if (!normalized.empty()) {
-                DWORD const byte_count{ static_cast<DWORD>(normalized.size()) };
+              std::string const content{ build_cmd_script_contents(script) };
+              if (!content.empty()) {
+                DWORD const byte_count{ static_cast<DWORD>(content.size()) };
                 if (!::WriteFile(file_guard.get(),
-                                 normalized.data(),
+                                 content.data(),
                                  byte_count,
                                  &written,
                                  nullptr) ||

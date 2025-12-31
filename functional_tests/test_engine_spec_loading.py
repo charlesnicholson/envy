@@ -455,6 +455,55 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("boom", result.stderr)
 
+    def test_spec_source_not_found_in_manifest(self):
+        """Missing spec source from manifest entry gives clear error."""
+        # Create manifest referencing non-existent source
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".lua", delete=False, dir=self.cache_root
+        ) as tmp:
+            tmp.write("""
+-- @envy version "0.0.0"
+PACKAGES = {
+  { spec = "local.missing@v1", source = "nonexistent_source.lua" }
+}
+""")
+            manifest_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                [
+                    str(self.envy),
+                    f"--cache-root={self.cache_root}",
+                    *self.trace_flag,
+                    "sync",
+                    "--manifest",
+                    manifest_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(
+                result.returncode, 0, "Expected missing source file to cause failure"
+            )
+            self.assertIn(
+                "Spec source not found",
+                result.stderr,
+                f"Expected 'Spec source not found' error, got: {result.stderr}",
+            )
+            self.assertIn(
+                "nonexistent_source.lua",
+                result.stderr,
+                f"Expected source path in error, got: {result.stderr}",
+            )
+            self.assertIn(
+                "local.missing@v1",
+                result.stderr,
+                f"Expected spec identity in error, got: {result.stderr}",
+            )
+        finally:
+            Path(manifest_path).unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

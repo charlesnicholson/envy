@@ -12,6 +12,7 @@
 #include "trace.h"
 #include "tui.h"
 #include "tui_actions.h"
+#include "util.h"
 
 #include <chrono>
 #include <filesystem>
@@ -115,7 +116,10 @@ void run_programmatic_stage(sol::protected_function stage_func,
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
   call_lua_function_with_enriched_errors(p, "STAGE", [&]() {
-    return stage_func(fetch_dir.string(), stage_dir.string(), tmp_dir.string(), opts);
+    return stage_func(util_path_with_separator(fetch_dir),
+                      util_path_with_separator(stage_dir),
+                      util_path_with_separator(tmp_dir),
+                      opts);
   });
 }
 

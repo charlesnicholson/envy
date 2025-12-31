@@ -82,9 +82,11 @@ class fd_cleanup {
 std::vector<std::string> get_shell_argv(shell_choice choice) {
   switch (choice) {
     case shell_choice::bash:
-      if (char const *bash_env{ ::getenv("BASH") }) { return { bash_env }; }
-      return { "/usr/bin/env", "bash" };
-    case shell_choice::sh: return { "/bin/sh" };
+      if (char const *bash_env{ ::getenv("BASH") }) { return { bash_env, "-e" }; }
+      return { "/usr/bin/env", "bash", "-e" };
+
+    case shell_choice::sh: return { "/bin/sh", "-e" };
+
     default: throw std::invalid_argument("shell_run: unsupported shell choice on POSIX");
   }
 }

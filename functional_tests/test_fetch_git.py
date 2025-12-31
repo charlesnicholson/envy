@@ -87,6 +87,37 @@ class TestFetchGit(unittest.TestCase):
                 (dest / ".git").exists(), ".git directory should be present"
             )
 
+    def test_clone_googlesource_shallow_fallback(self):
+        """Clone from googlesource.com which requires full clone fallback.
+
+        googlesource.com servers have compatibility issues with libgit2's
+        shallow clone. This test verifies the automatic fallback to full clone.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dest = Path(temp_dir) / "gn"
+
+            result = subprocess.run(
+                [
+                    str(self.envy),
+                    "fetch",
+                    "https://gn.googlesource.com/gn.git",
+                    str(dest),
+                    "--ref",
+                    "main",
+                ],
+                capture_output=True,
+                text=True,
+                env={**os.environ, "ENVY_CACHE_DIR": str(self.cache_root)},
+            )
+
+            self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+            self.assertTrue(dest.exists(), f"Destination {dest} should exist")
+            self.assertTrue((dest / "README.md").exists(), "README.md should exist")
+            self.assertTrue((dest / "src").is_dir(), "src directory should exist")
+            self.assertTrue(
+                (dest / ".git").exists(), ".git directory should be present"
+            )
+
     def test_verify_file_contents_correct(self):
         """Verify that cloned repository has correct file contents."""
         with tempfile.TemporaryDirectory() as temp_dir:

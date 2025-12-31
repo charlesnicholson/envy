@@ -531,6 +531,11 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     }
   }() };
 
+  if (!std::filesystem::exists(spec_path)) {
+    throw std::runtime_error("Spec source not found: " + spec_path.string() +
+                             " (for spec '" + cfg.identity + "')");
+  }
+
   // Load and validate spec script
   auto lua{ create_lua_state() };
   load_spec_script(*lua, spec_path, cfg.identity);

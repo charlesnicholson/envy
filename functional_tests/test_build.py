@@ -258,7 +258,8 @@ class TestBuildPhase(unittest.TestCase):
     def test_build_function_returns_string(self):
         """Build function can return a string that gets executed."""
         self.run_recipe(
-            "build_function_returns_string.lua", "local.build_function_returns_string@v1"
+            "build_function_returns_string.lua",
+            "local.build_function_returns_string@v1",
         )
 
         # Verify setup directory was created by function body
@@ -283,10 +284,14 @@ class TestBuildPhase(unittest.TestCase):
 
         # Find the variant subdirectory under the identity
         identity_dir = self.cache_root / "packages" / "local.build_function@v1"
-        self.assertTrue(identity_dir.exists(), f"Identity dir should exist: {identity_dir}")
+        self.assertTrue(
+            identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
+        )
 
         variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]
-        self.assertEqual(len(variant_dirs), 1, "Should have exactly one variant directory")
+        self.assertEqual(
+            len(variant_dirs), 1, "Should have exactly one variant directory"
+        )
 
         variant_name = variant_dirs[0].name
         # Verify format is {platform}-{arch}-blake3-{hash}, not --blake3-{hash}
@@ -308,6 +313,34 @@ class TestBuildPhase(unittest.TestCase):
             "-blake3-",
             variant_name,
             f"Variant dir should contain '-blake3-': {variant_name}",
+        )
+
+    def test_build_failfast_stops_on_first_error(self):
+        """Multi-line BUILD string stops on first error (fail-fast behavior).
+
+        Tests that when a command fails in a multi-line shell script,
+        subsequent commands are NOT executed.
+        """
+        # Recipe should fail because 'false' returns non-zero
+        result = self.run_recipe(
+            "build_failfast.lua",
+            "local.build_failfast@v1",
+            should_succeed=False,
+        )
+
+        # Verify that the marker file was NOT created.
+        # If fail-fast works correctly, the third command never runs.
+        identity_dir = self.cache_root / "packages" / "local.build_failfast@v1"
+        marker_found = False
+        if identity_dir.exists():
+            for root, dirs, files in os.walk(identity_dir):
+                if "failfast_marker.txt" in files:
+                    marker_found = True
+                    break
+
+        self.assertFalse(
+            marker_found,
+            "failfast_marker.txt should NOT exist - fail-fast should have stopped execution",
         )
 
 

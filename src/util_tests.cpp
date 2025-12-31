@@ -678,3 +678,68 @@ TEST_CASE("util_simplify_cache_paths real-world ninja configure example") {
   CHECK(envy::util_simplify_cache_paths(cmd, cache_root, products) ==
         "python3 configure.py --bootstrap --gtest-source-dir=gtest");
 }
+
+// util_path_with_separator tests
+
+TEST_CASE("util_path_with_separator handles empty path") {
+  CHECK(envy::util_path_with_separator(std::filesystem::path{}) == "");
+}
+
+TEST_CASE("util_path_with_separator adds separator to path without one") {
+  std::filesystem::path const p{ "/path/to/dir" };
+  std::string const result{ envy::util_path_with_separator(p) };
+  CHECK(!result.empty());
+  // Result should end with preferred separator
+  char const sep{ static_cast<char>(std::filesystem::path::preferred_separator) };
+  CHECK(result.back() == sep);
+  // Verify the path content is preserved
+  CHECK(result.substr(0, result.size() - 1) == p.string());
+}
+
+TEST_CASE("util_path_with_separator preserves path already ending with forward slash") {
+  std::filesystem::path const p{ "/path/to/dir/" };
+  std::string const result{ envy::util_path_with_separator(p) };
+  // Should not add another separator
+  CHECK(result.size() == p.string().size());
+  CHECK(result.back() == '/');
+}
+
+#ifdef _WIN32
+TEST_CASE("util_path_with_separator preserves path already ending with backslash") {
+  std::filesystem::path const p{ "C:\\path\\to\\dir\\" };
+  std::string const result{ envy::util_path_with_separator(p) };
+  CHECK(result.back() == '\\');
+}
+
+TEST_CASE("util_path_with_separator adds backslash on Windows") {
+  std::filesystem::path const p{ "C:\\path\\to\\dir" };
+  std::string const result{ envy::util_path_with_separator(p) };
+  CHECK(result.back() == '\\');
+  CHECK(result == "C:\\path\\to\\dir\\");
+}
+#else
+TEST_CASE("util_path_with_separator adds forward slash on POSIX") {
+  std::filesystem::path const p{ "/path/to/dir" };
+  std::string const result{ envy::util_path_with_separator(p) };
+  CHECK(result.back() == '/');
+  CHECK(result == "/path/to/dir/");
+}
+#endif
+
+TEST_CASE("util_path_with_separator enables correct Lua concatenation") {
+  // This test verifies the primary use case: Lua's `dir .. "filename"` produces correct
+  // paths
+  std::filesystem::path const fetch_dir{ "/some/fetch/dir" };
+  std::string const fetch_dir_str{ envy::util_path_with_separator(fetch_dir) };
+  std::string const filename{ "test.tar.gz" };
+
+  // Simulating Lua's .. operator
+  std::string const full_path{ fetch_dir_str + filename };
+
+  // The result should be a valid path with separator between dir and filename
+  CHECK(full_path.find("dirtest") == std::string::npos);  // No missing separator
+  // Should have either /test.tar.gz or \test.tar.gz (platform-dependent)
+  bool const has_forward_slash{ full_path.find("/test.tar.gz") != std::string::npos };
+  bool const has_backslash{ full_path.find("\\test.tar.gz") != std::string::npos };
+  CHECK((has_forward_slash || has_backslash));
+}

@@ -33,11 +33,11 @@ out/gn_unittests
   local shell = envy.PLATFORM == "windows" and ENVY_SHELL.CMD or ENVY_SHELL.BASH
   envy.run(envy.template(cmd,
       { python = envy.product("python3"), ninja = envy.product("ninja") }),
-    { cwd = stage_dir .. "/gn.git", check = true, shell = shell })
+    { cwd = stage_dir .. "gn.git", check = true, shell = shell })
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.move(stage_dir .. "/gn.git/out/gn" .. envy.EXE_EXT, install_dir)
+  envy.move(stage_dir .. "gn.git/out/gn" .. envy.EXE_EXT, install_dir)
 end
 
 PRODUCTS = { gn = "gn" .. envy.EXE_EXT }
