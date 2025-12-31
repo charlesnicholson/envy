@@ -810,7 +810,7 @@ Added a static `ensure()` method to the `cache` class, following the existing `e
 | Command | Needs Cache | Needs Manifest | Action |
 |---------|-------------|----------------|--------|
 | `sync` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
-| `asset` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
+| `package` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
 | `product` | Yes | Yes | `cache::ensure(cli_root, m->meta.cache)` |
 | `init` | Yes | No | `cache::ensure(cli_root, std::nullopt)` |
 | `fetch` | No | No | — |
@@ -873,7 +873,7 @@ Bootstrap path expansion is tested via the existing functional tests which exerc
 3. [x] Update command configs to store `cache_root` (remove `cache &` from constructors)
 4. [x] Update `cmd::create()` factory to pass `cache_root` instead of `cache &`
 5. [x] Refactor `main.cpp`: remove central cache construction and self-deploy
-6. [x] Update manifest-aware commands (`sync`, `asset`, `product`) to use `cache::ensure()`
+6. [x] Update manifest-aware commands (`sync`, `package`, `product`) to use `cache::ensure()`
 7. [x] Update cache-only command (`init`) to use `cache::ensure()`
 8. [x] Fix bootstrap script path expansion (Unix) — tilde + $VAR
 9. [x] Fix bootstrap script path expansion (Windows) — tilde

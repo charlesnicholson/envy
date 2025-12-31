@@ -237,7 +237,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
     };
 
     sol::table ctx_table{ lua_->create_table() };
-    ctx_table["asset"] = make_ctx_asset(const_cast<lua_ctx_common *>(ctx));
+    ctx_table["package"] = make_ctx_package(const_cast<lua_ctx_common *>(ctx));
 
     sol::protected_function_result result{ default_shell_func(ctx_table) };
     if (!result.valid()) {

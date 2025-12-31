@@ -1,16 +1,12 @@
-IDENTITY = "local.ctx_asset_user_consumer@v1"
+IDENTITY = "local.ctx_package_missing_dep@v1"
 
 FETCH = {
   source = "test_data/archives/test.tar.gz",
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }
 
-DEPENDENCIES = {
-  { spec = "local.ctx_asset_user_provider@v1", source = "ctx_asset_user_provider.lua", needed_by = "stage" },
-}
-
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
-  envy.asset("local.ctx_asset_user_provider@v1")
+  envy.package("local.nonexistent_dep@v1")
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)

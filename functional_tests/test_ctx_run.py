@@ -37,16 +37,16 @@ class TestCtxRun(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
-    def get_asset_path(self, identity):
-        """Find asset directory for given identity in cache."""
-        assets_dir = self.cache_root / "packages" / identity
-        if not assets_dir.exists():
+    def get_pkg_path(self, identity):
+        """Find package directory for given identity in cache."""
+        pkgs_dir = self.cache_root / "packages" / identity
+        if not pkgs_dir.exists():
             return None
-        for subdir in assets_dir.iterdir():
+        for subdir in pkgs_dir.iterdir():
             if subdir.is_dir():
-                asset_dir = subdir / "pkg"
-                if asset_dir.exists():
-                    return asset_dir
+                pkg_dir = subdir / "pkg"
+                if pkg_dir.exists():
+                    return pkg_dir
                 return subdir
         return None
 
@@ -88,9 +88,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_basic@v1",
             "test_data/specs/ctx_run_basic.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_basic@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "run_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_basic@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "run_marker.txt").exists())
 
     def test_multiple_commands(self):
         """envy.run() executes multiple commands in sequence."""
@@ -98,9 +98,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_multiple_cmds@v1",
             "test_data/specs/ctx_run_multiple_cmds.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_multiple_cmds@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "all_cmds.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_multiple_cmds@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "all_cmds.txt").exists())
 
     def test_file_operations(self):
         """envy.run() can perform file operations."""
@@ -108,9 +108,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_file_ops@v1",
             "test_data/specs/ctx_run_file_ops.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_file_ops@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "ops_result.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_file_ops@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "ops_result.txt").exists())
 
     def test_runs_in_stage_dir(self):
         """envy.run() executes in stage directory by default."""
@@ -118,9 +118,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_in_stage_dir@v1",
             "test_data/specs/ctx_run_in_stage_dir.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_in_stage_dir@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "stage_verification.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_in_stage_dir@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "stage_verification.txt").exists())
 
     def test_with_pipes(self):
         """envy.run() supports shell pipes and redirection."""
@@ -128,9 +128,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_with_pipes@v1",
             "test_data/specs/ctx_run_with_pipes.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_with_pipes@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "grepped.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_with_pipes@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "grepped.txt").exists())
 
     # ===== Error Handling Tests =====
 
@@ -182,9 +182,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_shell_sh@v1",
             "test_data/specs/ctx_run_shell_sh.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_shell_sh@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "shell_sh_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_shell_sh@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "shell_sh_marker.txt").exists())
 
     @unittest.skipUnless(os.name == "nt", "requires Windows CMD")
     def test_shell_cmd(self):
@@ -193,9 +193,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_shell_cmd@v1",
             "test_data/specs/ctx_run_shell_cmd.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_shell_cmd@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "shell_cmd_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_shell_cmd@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "shell_cmd_marker.txt").exists())
 
     # ===== CWD Tests =====
 
@@ -205,9 +205,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_cwd_relative@v1",
             "test_data/specs/ctx_run_cwd_relative.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_cwd_relative@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "custom" / "subdir" / "marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_cwd_relative@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "custom" / "subdir" / "marker.txt").exists())
 
     def test_cwd_absolute(self):
         """envy.run() supports absolute cwd paths."""
@@ -228,9 +228,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_cwd_parent@v1",
             "test_data/specs/ctx_run_cwd_parent.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_cwd_parent@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "deep" / "parent_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_cwd_parent@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "deep" / "parent_marker.txt").exists())
 
     def test_cwd_nested(self):
         """envy.run() handles deeply nested relative cwd."""
@@ -238,11 +238,11 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_cwd_nested@v1",
             "test_data/specs/ctx_run_cwd_nested.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_cwd_nested@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.ctx_run_cwd_nested@v1")
+        assert pkg_path
         self.assertTrue(
             (
-                asset_path
+                pkg_path
                 / "level1"
                 / "level2"
                 / "level3"
@@ -259,9 +259,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_continue_after_failure@v1",
             "test_data/specs/ctx_run_continue_after_failure.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_continue_after_failure@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "continued.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_continue_after_failure@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "continued.txt").exists())
 
     def test_check_undefined_variable(self):
         """envy.run() check mode catches undefined variables."""
@@ -285,9 +285,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_check_false_nonzero@v1",
             "test_data/specs/ctx_run_check_false_nonzero.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_check_false_nonzero@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "continued_after_failure.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_check_false_nonzero@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "continued_after_failure.txt").exists())
 
     def test_check_false_capture(self):
         """envy.run() with check=false and capture returns exit_code and output."""
@@ -295,9 +295,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_check_false_capture@v1",
             "test_data/specs/ctx_run_check_false_capture.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_check_false_capture@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "capture_success.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_check_false_capture@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "capture_success.txt").exists())
 
     # ===== Environment Tests =====
 
@@ -307,10 +307,10 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_env_custom@v1",
             "test_data/specs/ctx_run_env_custom.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_env_custom@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "env_output.txt").exists())
-        content = (asset_path / "env_output.txt").read_text()
+        pkg_path = self.get_pkg_path("local.ctx_run_env_custom@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "env_output.txt").exists())
+        content = (pkg_path / "env_output.txt").read_text()
         self.assertIn("MY_VAR=test_value", content)
         self.assertIn("MY_NUM=42", content)
 
@@ -320,9 +320,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_env_inherit@v1",
             "test_data/specs/ctx_run_env_inherit.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_env_inherit@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "path_verification.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_env_inherit@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "path_verification.txt").exists())
 
     def test_env_override(self):
         """envy.run() can override inherited environment variables."""
@@ -330,9 +330,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_env_override@v1",
             "test_data/specs/ctx_run_env_override.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_env_override@v1")
-        assert asset_path
-        content = (asset_path / "overridden_user.txt").read_text()
+        pkg_path = self.get_pkg_path("local.ctx_run_env_override@v1")
+        assert pkg_path
+        content = (pkg_path / "overridden_user.txt").read_text()
         self.assertIn("USER=test_override_user", content)
 
     def test_env_empty(self):
@@ -341,9 +341,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_env_empty@v1",
             "test_data/specs/ctx_run_env_empty.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_env_empty@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "empty_env.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_env_empty@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "empty_env.txt").exists())
 
     def test_env_complex(self):
         """envy.run() handles complex environment values."""
@@ -351,9 +351,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_env_complex@v1",
             "test_data/specs/ctx_run_env_complex.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_env_complex@v1")
-        assert asset_path
-        content = (asset_path / "env_complex.txt").read_text()
+        pkg_path = self.get_pkg_path("local.ctx_run_env_complex@v1")
+        assert pkg_path
+        content = (pkg_path / "env_complex.txt").read_text()
         self.assertIn("STRING=hello_world", content)
         self.assertIn("NUMBER=12345", content)
         self.assertIn("WITH_SPACE=value with spaces", content)
@@ -366,9 +366,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_with_extract@v1",
             "test_data/specs/ctx_run_with_extract.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_with_extract@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "verify_extract.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_with_extract@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "verify_extract.txt").exists())
 
     def test_with_rename(self):
         """envy.run() works with ctx.rename()."""
@@ -376,9 +376,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_with_rename@v1",
             "test_data/specs/ctx_run_with_rename.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_with_rename@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "rename_check.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_with_rename@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "rename_check.txt").exists())
 
     def test_with_template(self):
         """envy.run() works with envy.template()."""
@@ -386,9 +386,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_with_template@v1",
             "test_data/specs/ctx_run_with_template.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_with_template@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "template_check.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_with_template@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "template_check.txt").exists())
 
     def test_multiple_calls(self):
         """Multiple envy.run() calls work in sequence."""
@@ -396,9 +396,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_multiple_calls@v1",
             "test_data/specs/ctx_run_multiple_calls.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_multiple_calls@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "all_calls.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_multiple_calls@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "all_calls.txt").exists())
 
     def test_interleaved(self):
         """envy.run() interleaves with other operations."""
@@ -406,9 +406,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_interleaved@v1",
             "test_data/specs/ctx_run_interleaved.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_interleaved@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "step_count.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_interleaved@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "step_count.txt").exists())
 
     # ===== Phase-Specific Tests =====
 
@@ -418,9 +418,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_build_prep@v1",
             "test_data/specs/ctx_run_stage_build_prep.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_build_prep@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "build" / "config.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_build_prep@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "build" / "config.txt").exists())
 
     def test_stage_patch(self):
         """envy.run() in stage for patching."""
@@ -428,9 +428,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_patch@v1",
             "test_data/specs/ctx_run_stage_patch.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_patch@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "patch_log.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_patch@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "patch_log.txt").exists())
 
     def test_stage_permissions(self):
         """envy.run() in stage for setting permissions."""
@@ -438,9 +438,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_permissions@v1",
             "test_data/specs/ctx_run_stage_permissions.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_permissions@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "permissions.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_permissions@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "permissions.txt").exists())
 
     def test_stage_verification(self):
         """envy.run() in stage for verification checks."""
@@ -448,9 +448,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_verification@v1",
             "test_data/specs/ctx_run_stage_verification.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_verification@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "verification.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_verification@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "verification.txt").exists())
 
     def test_stage_generation(self):
         """envy.run() in stage for code generation."""
@@ -458,10 +458,10 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_generation@v1",
             "test_data/specs/ctx_run_stage_generation.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_generation@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "generated.h").exists())
-        self.assertTrue((asset_path / "generated.sh").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_generation@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "generated.h").exists())
+        self.assertTrue((pkg_path / "generated.sh").exists())
 
     def test_stage_cleanup(self):
         """envy.run() in stage for cleanup operations."""
@@ -469,9 +469,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_cleanup@v1",
             "test_data/specs/ctx_run_stage_cleanup.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_cleanup@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "cleanup_log.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_cleanup@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "cleanup_log.txt").exists())
 
     def test_stage_compilation(self):
         """envy.run() in stage for compilation."""
@@ -479,9 +479,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_compilation@v1",
             "test_data/specs/ctx_run_stage_compilation.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_compilation@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "compile_log.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_compilation@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "compile_log.txt").exists())
 
     def test_stage_archiving(self):
         """envy.run() in stage for creating archives."""
@@ -489,9 +489,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_stage_archiving@v1",
             "test_data/specs/ctx_run_stage_archiving.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_stage_archiving@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "archive_log.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_stage_archiving@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "archive_log.txt").exists())
 
     # ===== Output/Logging Tests =====
 
@@ -501,9 +501,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_output_stdout@v1",
             "test_data/specs/ctx_run_output_stdout.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_output_stdout@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "stdout_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_output_stdout@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "stdout_marker.txt").exists())
 
     def test_output_stderr(self):
         """envy.run() captures stderr output."""
@@ -512,9 +512,9 @@ class TestCtxRun(unittest.TestCase):
             "test_data/specs/ctx_run_output_stderr.lua",
         )
         # Stderr should be captured in logs
-        asset_path = self.get_asset_path("local.ctx_run_output_stderr@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "stderr_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_output_stderr@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "stderr_marker.txt").exists())
 
     def test_output_large(self):
         """envy.run() handles large output."""
@@ -522,9 +522,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_output_large@v1",
             "test_data/specs/ctx_run_output_large.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_output_large@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "large_output_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_output_large@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "large_output_marker.txt").exists())
 
     def test_output_multiline(self):
         """envy.run() handles multi-line output."""
@@ -532,9 +532,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_output_multiline@v1",
             "test_data/specs/ctx_run_output_multiline.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_output_multiline@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "multiline_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_output_multiline@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "multiline_marker.txt").exists())
 
     # ===== Complex Scenario Tests =====
 
@@ -544,9 +544,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_complex_workflow@v1",
             "test_data/specs/ctx_run_complex_workflow.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_complex_workflow@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "workflow_complete.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_complex_workflow@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "workflow_complete.txt").exists())
 
     def test_complex_env_manipulation(self):
         """envy.run() handles complex environment manipulation."""
@@ -554,11 +554,11 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_complex_env_manip@v1",
             "test_data/specs/ctx_run_complex_env_manip.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_complex_env_manip@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "env_step1.txt").exists())
-        self.assertTrue((asset_path / "env_step2.txt").exists())
-        self.assertTrue((asset_path / "env_step3.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_complex_env_manip@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "env_step1.txt").exists())
+        self.assertTrue((pkg_path / "env_step2.txt").exists())
+        self.assertTrue((pkg_path / "env_step3.txt").exists())
 
     def test_complex_conditional(self):
         """envy.run() handles conditional operations."""
@@ -566,10 +566,10 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_complex_conditional@v1",
             "test_data/specs/ctx_run_complex_conditional.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_complex_conditional@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "os_info.txt").exists())
-        self.assertTrue((asset_path / "test_info.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_complex_conditional@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "os_info.txt").exists())
+        self.assertTrue((pkg_path / "test_info.txt").exists())
 
     def test_complex_loops(self):
         """envy.run() handles loops and iterations."""
@@ -577,9 +577,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_complex_loops@v1",
             "test_data/specs/ctx_run_complex_loops.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_complex_loops@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "loop_output.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_complex_loops@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "loop_output.txt").exists())
 
     def test_complex_nested(self):
         """envy.run() handles nested operations."""
@@ -587,9 +587,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_complex_nested@v1",
             "test_data/specs/ctx_run_complex_nested.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_complex_nested@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "summary.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_complex_nested@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "summary.txt").exists())
 
     # ===== Edge Case Tests =====
 
@@ -599,9 +599,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_empty@v1",
             "test_data/specs/ctx_run_edge_empty.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_empty@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "after_empty.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_empty@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "after_empty.txt").exists())
 
     def test_edge_whitespace(self):
         """envy.run() handles whitespace-only script."""
@@ -609,9 +609,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_whitespace@v1",
             "test_data/specs/ctx_run_edge_whitespace.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_whitespace@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "after_whitespace.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_whitespace@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "after_whitespace.txt").exists())
 
     def test_edge_long_line(self):
         """envy.run() handles very long lines."""
@@ -619,9 +619,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_long_line@v1",
             "test_data/specs/ctx_run_edge_long_line.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_long_line@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "long_line.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_long_line@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "long_line.txt").exists())
 
     def test_edge_special_chars(self):
         """envy.run() handles special characters."""
@@ -629,9 +629,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_special_chars@v1",
             "test_data/specs/ctx_run_edge_special_chars.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_special_chars@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "special_chars.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_special_chars@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "special_chars.txt").exists())
 
     def test_edge_unicode(self):
         """envy.run() handles Unicode characters."""
@@ -639,9 +639,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_unicode@v1",
             "test_data/specs/ctx_run_edge_unicode.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_unicode@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "unicode.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_unicode@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "unicode.txt").exists())
 
     def test_edge_many_files(self):
         """envy.run() handles creating many files."""
@@ -649,9 +649,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_many_files@v1",
             "test_data/specs/ctx_run_edge_many_files.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_many_files@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "many_files_marker.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_many_files@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "many_files_marker.txt").exists())
 
     def test_edge_slow_command(self):
         """envy.run() waits for slow commands."""
@@ -659,9 +659,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_edge_slow_command@v1",
             "test_data/specs/ctx_run_edge_slow_command.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_edge_slow_command@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "slow_verify.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_edge_slow_command@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "slow_verify.txt").exists())
 
     # ===== Lua Error Integration Tests =====
 
@@ -705,9 +705,9 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_all_options@v1",
             "test_data/specs/ctx_run_all_options.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_all_options@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "subdir" / "all_opts_continued.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_all_options@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "subdir" / "all_opts_continued.txt").exists())
 
     def test_option_combinations(self):
         """envy.run() with various option combinations."""
@@ -715,11 +715,11 @@ class TestCtxRun(unittest.TestCase):
             "local.ctx_run_option_combinations@v1",
             "test_data/specs/ctx_run_option_combinations.lua",
         )
-        asset_path = self.get_asset_path("local.ctx_run_option_combinations@v1")
-        assert asset_path
-        self.assertTrue((asset_path / "dir1" / "combo1_env.txt").exists())
-        self.assertTrue((asset_path / "dir2" / "combo2_continued.txt").exists())
-        self.assertTrue((asset_path / "combo3_env.txt").exists())
+        pkg_path = self.get_pkg_path("local.ctx_run_option_combinations@v1")
+        assert pkg_path
+        self.assertTrue((pkg_path / "dir1" / "combo1_env.txt").exists())
+        self.assertTrue((pkg_path / "dir2" / "combo2_continued.txt").exists())
+        self.assertTrue((pkg_path / "combo3_env.txt").exists())
 
 
 if __name__ == "__main__":

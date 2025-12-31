@@ -1,4 +1,4 @@
--- Test: default_shell function calls envy.asset(), spec declares dep → succeeds
+-- Test: default_shell function calls envy.package(), spec declares dep → succeeds
 IDENTITY = "local.default_shell_function_with_dep@v1"
 
 DEPENDENCIES = {
@@ -18,7 +18,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
   -- This should use shell returned by manifest default_shell function
-  -- The function calls envy.asset("local.default_shell_dep_tool@v1") which should succeed
+  -- The function calls envy.package("local.default_shell_dep_tool@v1") which should succeed
   -- because we declared it in dependencies
   envy.run([[
     set -eu

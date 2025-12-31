@@ -70,11 +70,11 @@ class TestUserManagedPackages(unittest.TestCase):
         )
 
         # Verify cache entry was purged (user-managed = ephemeral)
-        asset_dir = self.cache_root / "packages" / "local.user_managed_simple@v1"
-        if asset_dir.exists():
+        pkg_dir = self.cache_root / "packages" / "local.user_managed_simple@v1"
+        if pkg_dir.exists():
             # Should be empty or minimal (no pkg/ directory)
             self.assertFalse(
-                any(asset_dir.glob("*/pkg")),
+                any(pkg_dir.glob("*/pkg")),
                 "User-managed packages should not leave pkg/ in cache",
             )
 
@@ -159,7 +159,7 @@ class TestUserManagedPackages(unittest.TestCase):
     # ========================================================================
 
     def test_user_managed_with_fetch_purges_all_dirs(self):
-        """Cache-managed with fetch verb: fetch_dir populated, asset persists after."""
+        """Cache-managed with fetch verb: fetch_dir populated, package persists after."""
         spec_path = self.spec_dir / "user_managed_with_fetch.lua"
         env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
@@ -173,15 +173,15 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertTrue(self.marker_with_fetch.exists())
 
         # Verify cache entry persists with pkg/ directory (cache-managed behavior)
-        asset_dir = self.cache_root / "packages" / "local.user_managed_with_fetch@v1"
+        pkg_dir = self.cache_root / "packages" / "local.user_managed_with_fetch@v1"
         self.assertTrue(
-            asset_dir.exists(), "Cache-managed packages should persist in cache"
+            pkg_dir.exists(), "Cache-managed packages should persist in cache"
         )
 
-        # Verify asset directory exists
-        asset_subdirs = list(asset_dir.glob("*/pkg"))
+        # Verify package directory exists
+        pkg_subdirs = list(pkg_dir.glob("*/pkg"))
         self.assertGreater(
-            len(asset_subdirs),
+            len(pkg_subdirs),
             0,
             "Cache-managed packages should have pkg/ directory in cache",
         )
@@ -285,7 +285,7 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_allowed_apis(self):
-        """User-managed packages can access allowed APIs (run, asset, product, identity)."""
+        """User-managed packages can access allowed APIs (run, package, product, identity)."""
         spec_path = self.spec_dir / "user_managed_ctx_isolation_allowed.lua"
         result = self.run_envy(
             "local.user_managed_ctx_isolation_allowed@v1", spec_path

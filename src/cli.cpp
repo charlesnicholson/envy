@@ -53,7 +53,7 @@ cli_args cli_parse(int argc, char **argv) {
 
   register_cmds.operator()<cmd_version,
                            cmd_init,
-                           cmd_asset,
+                           cmd_package,
                            cmd_product,
                            cmd_sync,
                            cmd_extract,
@@ -68,7 +68,7 @@ cli_args cli_parse(int argc, char **argv) {
 
 #ifdef ENVY_FUNCTIONAL_TESTER
   auto *cache{ app.add_subcommand("cache", "Cache testing commands") };
-  register_cmds.operator()<cmd_cache_ensure_asset, cmd_cache_ensure_spec>(*cache);
+  register_cmds.operator()<cmd_cache_ensure_package, cmd_cache_ensure_spec>(*cache);
 #endif
 
   cli_args args{};

@@ -59,14 +59,14 @@ bool strong_reachable(pkg *from,
 
 }  // namespace
 
-std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *ctx) {
+std::function<std::string(std::string const &)> make_ctx_package(lua_ctx_common *ctx) {
   return [ctx](std::string const &identity) -> std::string {
-    if (!ctx->pkg_) { throw std::runtime_error("ctx.asset: missing pkg context"); }
+    if (!ctx->pkg_) { throw std::runtime_error("ctx.package: missing pkg context"); }
 
     pkg *consumer{ ctx->pkg_ };
     pkg_execution_ctx *exec_ctx{ consumer->exec_ctx };
     if (!exec_ctx) {
-      throw std::runtime_error("ctx.asset: missing execution context for pkg '" +
+      throw std::runtime_error("ctx.package: missing execution context for pkg '" +
                                consumer->cfg->identity + "'");
     }
 
@@ -74,25 +74,25 @@ std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *c
 
     auto const trace_access{
       [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
-        ENVY_TRACE_LUA_CTX_ASSET_ACCESS(consumer->cfg->identity,
-                                        identity,
-                                        current_phase,
-                                        needed_by,
-                                        allowed,
-                                        reason);
+        ENVY_TRACE_LUA_CTX_PACKAGE_ACCESS(consumer->cfg->identity,
+                                          identity,
+                                          current_phase,
+                                          needed_by,
+                                          allowed,
+                                          reason);
       }
     };
 
     pkg_phase first_needed_by{ pkg_phase::completion };
     if (!strong_reachable(consumer, identity, first_needed_by)) {
-      std::string const msg{ "ctx.asset: pkg '" + consumer->cfg->identity +
+      std::string const msg{ "ctx.package: pkg '" + consumer->cfg->identity +
                              "' has no strong dependency on '" + identity + "'" };
       trace_access(false, pkg_phase::none, msg);
       throw std::runtime_error(msg);
     }
 
     if (current_phase < first_needed_by) {
-      std::string const msg{ "ctx.asset: dependency '" + identity + "' needed_by '" +
+      std::string const msg{ "ctx.package: dependency '" + identity + "' needed_by '" +
                              phase_name_str(first_needed_by) + "' but accessed during '" +
                              phase_name_str(current_phase) + "'" };
       trace_access(false, first_needed_by, msg);
@@ -102,7 +102,7 @@ std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *c
     pkg const *dep{ [&] {  // Look up dependency in pkg's dependency map
       auto it{ consumer->dependencies.find(identity) };
       if (it == consumer->dependencies.end()) {
-        std::string const msg{ "ctx.asset: dependency not found in map: " + identity };
+        std::string const msg{ "ctx.package: dependency not found in map: " + identity };
         trace_access(false, first_needed_by, msg);
         throw std::runtime_error(msg);
       }
@@ -110,20 +110,20 @@ std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *c
     }() };
 
     if (!dep) {
-      std::string const msg{ "ctx.asset: null dependency pointer: " + identity };
+      std::string const msg{ "ctx.package: null dependency pointer: " + identity };
       trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
     if (dep->type == pkg_type::USER_MANAGED) {
-      std::string const msg{ "ctx.asset: dependency '" + identity +
+      std::string const msg{ "ctx.package: dependency '" + identity +
                              "' is user-managed and has no pkg path" };
       trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
     if (dep->pkg_path.empty()) {
-      std::string const msg{ "ctx.asset: dependency '" + identity +
+      std::string const msg{ "ctx.package: dependency '" + identity +
                              "' has no pkg path (phase ordering issue?)" };
       trace_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);

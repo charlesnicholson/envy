@@ -1,4 +1,4 @@
-IDENTITY = "local.ctx_asset_user_provider@v1"
+IDENTITY = "local.ctx_package_user_provider@v1"
 
 function CHECK(project_root, options)
   return true

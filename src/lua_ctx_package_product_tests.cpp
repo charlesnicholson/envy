@@ -44,10 +44,10 @@ std::unique_ptr<pkg> make_pkg(std::string identity, pkg_type type) {
 }  // namespace
 
 // =====================
-// ctx.asset() tests
+// ctx.package() tests
 // =====================
 
-TEST_CASE("ctx.asset succeeds when dependency reachable and ready") {
+TEST_CASE("ctx.package succeeds when dependency reachable and ready") {
   auto dep{ make_pkg("local.dep@v1", pkg_type::CACHE_MANAGED) };
   dep->pkg_path = std::filesystem::path("/tmp/dep");
 
@@ -60,12 +60,12 @@ TEST_CASE("ctx.asset succeeds when dependency reachable and ready") {
                       .run_dir = {},
                       .engine_ = nullptr,
                       .pkg_ = consumer.get() };
-  auto asset_fn{ make_ctx_asset(&ctx) };
+  auto package_fn{ make_ctx_package(&ctx) };
 
-  CHECK(asset_fn("local.dep@v1") == "/tmp/dep");
+  CHECK(package_fn("local.dep@v1") == "/tmp/dep");
 }
 
-TEST_CASE("ctx.asset rejects access before needed_by phase") {
+TEST_CASE("ctx.package rejects access before needed_by phase") {
   auto dep{ make_pkg("local.dep@v1", pkg_type::CACHE_MANAGED) };
   dep->pkg_path = std::filesystem::path("/tmp/dep");
 
@@ -78,14 +78,14 @@ TEST_CASE("ctx.asset rejects access before needed_by phase") {
                       .run_dir = {},
                       .engine_ = nullptr,
                       .pkg_ = consumer.get() };
-  auto asset_fn{ make_ctx_asset(&ctx) };
+  auto package_fn{ make_ctx_package(&ctx) };
 
-  CHECK_THROWS_WITH(asset_fn("local.dep@v1"),
-                    "ctx.asset: dependency 'local.dep@v1' needed_by 'stage' but accessed "
+  CHECK_THROWS_WITH(package_fn("local.dep@v1"),
+                    "ctx.package: dependency 'local.dep@v1' needed_by 'stage' but accessed "
                     "during 'fetch'");
 }
 
-TEST_CASE("ctx.asset rejects user-managed dependencies") {
+TEST_CASE("ctx.package rejects user-managed dependencies") {
   auto dep{ make_pkg("local.dep@v1", pkg_type::USER_MANAGED) };
 
   auto consumer{ make_pkg("local.consumer@v1", pkg_type::CACHE_MANAGED) };
@@ -97,14 +97,14 @@ TEST_CASE("ctx.asset rejects user-managed dependencies") {
                       .run_dir = {},
                       .engine_ = nullptr,
                       .pkg_ = consumer.get() };
-  auto asset_fn{ make_ctx_asset(&ctx) };
+  auto package_fn{ make_ctx_package(&ctx) };
 
   CHECK_THROWS_WITH(
-      asset_fn("local.dep@v1"),
-      "ctx.asset: dependency 'local.dep@v1' is user-managed and has no pkg path");
+      package_fn("local.dep@v1"),
+      "ctx.package: dependency 'local.dep@v1' is user-managed and has no pkg path");
 }
 
-TEST_CASE("ctx.asset rejects when no strong dependency path exists") {
+TEST_CASE("ctx.package rejects when no strong dependency path exists") {
   auto consumer{ make_pkg("local.consumer@v1", pkg_type::CACHE_MANAGED) };
   pkg_execution_ctx exec{ .current_phase = pkg_phase::pkg_stage };
   consumer->exec_ctx = &exec;
@@ -113,14 +113,14 @@ TEST_CASE("ctx.asset rejects when no strong dependency path exists") {
                       .run_dir = {},
                       .engine_ = nullptr,
                       .pkg_ = consumer.get() };
-  auto asset_fn{ make_ctx_asset(&ctx) };
+  auto package_fn{ make_ctx_package(&ctx) };
 
-  CHECK_THROWS_WITH(asset_fn("local.missing@v1"),
-                    "ctx.asset: pkg 'local.consumer@v1' has no strong dependency on "
+  CHECK_THROWS_WITH(package_fn("local.missing@v1"),
+                    "ctx.package: pkg 'local.consumer@v1' has no strong dependency on "
                     "'local.missing@v1'");
 }
 
-TEST_CASE("ctx.asset picks earliest needed_by among multiple strong paths") {
+TEST_CASE("ctx.package picks earliest needed_by among multiple strong paths") {
   auto target{ make_pkg("local.target@v1", pkg_type::CACHE_MANAGED) };
   target->pkg_path = std::filesystem::path("/tmp/target");
 
@@ -137,11 +137,11 @@ TEST_CASE("ctx.asset picks earliest needed_by among multiple strong paths") {
                       .run_dir = {},
                       .engine_ = nullptr,
                       .pkg_ = consumer.get() };
-  auto asset_fn{ make_ctx_asset(&ctx) };
+  auto package_fn{ make_ctx_package(&ctx) };
 
   // Even though the direct edge needs target by install, the mid edge needs it by fetch,
   // so access during stage should succeed.
-  CHECK(asset_fn("local.target@v1") == "/tmp/target");
+  CHECK(package_fn("local.target@v1") == "/tmp/target");
 }
 
 // =====================

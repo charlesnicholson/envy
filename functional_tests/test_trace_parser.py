@@ -212,8 +212,8 @@ class TestTraceParser(unittest.TestCase):
             sequence,
             [
                 PkgPhase.SPEC_FETCH,
-                PkgPhase.ASSET_CHECK,
-                PkgPhase.ASSET_FETCH,
+                PkgPhase.PKG_CHECK,
+                PkgPhase.PKG_FETCH,
             ],
         )
 
@@ -237,7 +237,7 @@ class TestTraceParser(unittest.TestCase):
 
         # Should not raise
         parser.assert_dependency_needed_by(
-            "parent@v1", "child@v1", PkgPhase.ASSET_FETCH
+            "parent@v1", "child@v1", PkgPhase.PKG_FETCH
         )
 
         trace_file.unlink()
@@ -261,7 +261,7 @@ class TestTraceParser(unittest.TestCase):
         # Should raise AssertionError
         with self.assertRaises(AssertionError) as cm:
             parser.assert_dependency_needed_by(
-                "parent@v1", "child@v1", PkgPhase.ASSET_BUILD
+                "parent@v1", "child@v1", PkgPhase.PKG_BUILD
             )
 
         self.assertIn("Wrong needed_by phase", str(cm.exception))

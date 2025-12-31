@@ -24,9 +24,9 @@ struct cache_test_result {
   std::string to_keyvalue() const;
 };
 
-class cmd_cache_ensure_asset : public cmd {
+class cmd_cache_ensure_package : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_cache_ensure_asset> {
+  struct cfg : cmd_cfg<cmd_cache_ensure_package> {
     std::string identity;
     std::string platform;
     std::string arch;
@@ -43,8 +43,8 @@ class cmd_cache_ensure_asset : public cmd {
 
   static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
 
-  cmd_cache_ensure_asset(cfg const &config,
-                         std::optional<std::filesystem::path> const &cli_cache_root);
+  cmd_cache_ensure_package(cfg const &config,
+                           std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
 
  private:

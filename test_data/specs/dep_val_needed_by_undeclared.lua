@@ -7,7 +7,7 @@ DEPENDENCIES = {
 
 FETCH = function(tmp_dir, options)
   -- Try to access lib which is NOT declared as dependency - should fail
-  envy.asset("local.dep_val_lib@v1")
+  envy.package("local.dep_val_lib@v1")
   return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 end
 

@@ -16,6 +16,6 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Access our direct dependency - should work
-  local lib_path = envy.asset("local.dep_val_lib@v1")
+  local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "tool built with lib" > tool.txt]])
 end

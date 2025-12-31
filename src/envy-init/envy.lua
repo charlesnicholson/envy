@@ -202,10 +202,10 @@ function envy.verify_hash(file_path, expected_sha256) end
 -- Dependency Access
 --------------------------------------------------------------------------------
 
----Get installed asset path for a dependency
+---Get installed package path for a dependency
 ---@param identity string Dependency identity (e.g., "namespace.name@version")
----@return string asset_path Absolute path to dependency's installed assets
-function envy.asset(identity) end
+---@return string pkg_path Absolute path to dependency's installed package
+function envy.package(identity) end
 
 ---Get product value from a dependency
 ---@param name string Product name declared in provider's PRODUCTS
@@ -285,7 +285,7 @@ CHECK = nil
 PACKAGES = {}
 
 ---Default shell configuration for all phases
----@type integer|envy.shell_config|fun(ctx: { asset: fun(identity: string): string }): integer|envy.shell_config
+---@type integer|envy.shell_config|fun(ctx: { package: fun(identity: string): string }): integer|envy.shell_config
 DEFAULT_SHELL = nil
 
 --------------------------------------------------------------------------------

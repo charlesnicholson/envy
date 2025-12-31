@@ -277,7 +277,7 @@ FETCH = {{
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }}
 INSTALL = function(ctx)
-  local tool_path = envy.asset("local.provider_a@v1")
+  local tool_path = envy.package("local.provider_a@v1")
   if not tool_path:match("provider_a") then
     error("Expected provider_a but got: " .. tool_path)
   end

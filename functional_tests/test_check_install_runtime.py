@@ -301,12 +301,12 @@ class TestCheckInstallRuntime(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
 
         # Verify no artifacts left in cache
-        asset_dir = self.cache_root / "packages" / "local.user_cleanup@v1"
-        if asset_dir.exists():
+        pkg_dir = self.cache_root / "packages" / "local.user_cleanup@v1"
+        if pkg_dir.exists():
             # Should have no pkg/ subdirectories
-            asset_subdirs = list(asset_dir.glob("*/pkg"))
+            pkg_subdirs = list(pkg_dir.glob("*/pkg"))
             self.assertEqual(
-                len(asset_subdirs),
+                len(pkg_subdirs),
                 0,
                 "User-managed packages should not leave pkg/ in cache",
             )

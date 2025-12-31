@@ -13,5 +13,5 @@ FETCH = {
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
   -- Can access dependency in stage phase
-  envy.asset("local.needed_by_stage_dep@v1")
+  envy.package("local.needed_by_stage_dep@v1")
 end

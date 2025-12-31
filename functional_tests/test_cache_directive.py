@@ -91,10 +91,10 @@ PACKAGES = {{
                 f"Cache should exist at {expected_cache}. stderr: {result.stderr}",
             )
             # Verify the package was installed in the custom cache
-            asset_path = expected_cache / "packages" / "local.build_dependency@v1"
+            pkg_path = expected_cache / "packages" / "local.build_dependency@v1"
             self.assertTrue(
-                asset_path.exists(),
-                f"Asset should exist at {asset_path}",
+                pkg_path.exists(),
+                f"Package should exist at {pkg_path}",
             )
         finally:
             # Clean up the custom cache
@@ -251,10 +251,10 @@ PACKAGES = {{
             f"Cache should exist at {custom_cache}",
         )
         # Verify the package was installed
-        asset_path = custom_cache / "packages" / "local.build_dependency@v1"
+        pkg_path = custom_cache / "packages" / "local.build_dependency@v1"
         self.assertTrue(
-            asset_path.exists(),
-            f"Asset should exist at {asset_path}",
+            pkg_path.exists(),
+            f"Package should exist at {pkg_path}",
         )
 
 

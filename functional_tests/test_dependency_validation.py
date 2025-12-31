@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Functional tests for envy.asset() dependency validation.
+"""Functional tests for envy.package() dependency validation.
 
 Tests that specs must explicitly declare dependencies (direct or transitive)
-before calling envy.asset() to access them. This ensures build graph integrity
+before calling envy.package() to access them. This ensures build graph integrity
 and enables better dependency analysis.
 """
 
@@ -17,7 +17,7 @@ from . import test_config
 
 
 class TestDependencyValidation(unittest.TestCase):
-    """Tests for envy.asset() dependency validation."""
+    """Tests for envy.package() dependency validation."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-depval-test-"))
@@ -28,7 +28,7 @@ class TestDependencyValidation(unittest.TestCase):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
     def test_direct_dependency_declared(self):
-        """Spec calls envy.asset() on declared direct dependency - should succeed."""
+        """Spec calls envy.package() on declared direct dependency - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -49,7 +49,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_direct@v1", result.stdout)
 
     def test_missing_dependency_declaration(self):
-        """Spec calls envy.asset() without declaring dependency - should fail."""
+        """Spec calls envy.package() without declaring dependency - should fail."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -70,7 +70,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_missing@v1", result.stderr)
 
     def test_transitive_dependency(self):
-        """Spec calls envy.asset() on transitive dependency - should succeed."""
+        """Spec calls envy.package() on transitive dependency - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -91,7 +91,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_transitive@v1", result.stdout)
 
     def test_transitive_3_levels(self):
-        """Spec calls envy.asset() on transitive dependency 3 levels deep - should succeed."""
+        """Spec calls envy.package() on transitive dependency 3 levels deep - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -131,7 +131,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_diamond_top@v1", result.stdout)
 
     def test_deep_chain_5_levels(self):
-        """Spec calls envy.asset() on dependency 5 levels deep - should succeed."""
+        """Spec calls envy.package() on dependency 5 levels deep - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -151,7 +151,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_chain5_e@v1", result.stdout)
 
     def test_unrelated_recipe_error(self):
-        """Spec calls envy.asset() on unrelated spec - should fail."""
+        """Spec calls envy.package() on unrelated spec - should fail."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -173,7 +173,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_lib@v1", result.stderr)
 
     def test_needed_by_direct(self):
-        """Spec with needed_by="recipe_fetch" calls envy.asset() on direct dep in fetch phase - should succeed."""
+        """Spec with needed_by="recipe_fetch" calls envy.package() on direct dep in fetch phase - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -193,7 +193,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_needed_by_direct@v1", result.stdout)
 
     def test_needed_by_transitive(self):
-        """Spec with needed_by="recipe_fetch" calls envy.asset() on transitive dep in fetch phase - should succeed."""
+        """Spec with needed_by="recipe_fetch" calls envy.package() on transitive dep in fetch phase - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -213,7 +213,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_needed_by_transitive@v1", result.stdout)
 
     def test_needed_by_undeclared(self):
-        """Spec with needed_by="recipe_fetch" calls envy.asset() on undeclared dep - should fail."""
+        """Spec with needed_by="recipe_fetch" calls envy.package() on undeclared dep - should fail."""
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -260,7 +260,7 @@ class TestDependencyValidation(unittest.TestCase):
         self.assertIn("local.dep_val_parallel_manifest@v1", result.stdout)
 
     def test_default_shell_with_dependency(self):
-        """default_shell function calls envy.asset(), spec declares dependency - should succeed."""
+        """default_shell function calls envy.package(), spec declares dependency - should succeed."""
         result = subprocess.run(
             [
                 str(self.envy_test),

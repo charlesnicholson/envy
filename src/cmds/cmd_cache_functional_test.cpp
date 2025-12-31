@@ -14,11 +14,11 @@
 
 namespace envy {
 
-void cmd_cache_ensure_asset::register_cli(CLI::App &parent,
-                                          std::function<void(cfg)> on_selected) {
-  auto *sub{ parent.add_subcommand("ensure-asset", "Test asset cache entry") };
+void cmd_cache_ensure_package::register_cli(CLI::App &parent,
+                                            std::function<void(cfg)> on_selected) {
+  auto *sub{ parent.add_subcommand("ensure-package", "Test package cache entry") };
   auto cfg_ptr{ std::make_shared<cfg>() };
-  sub->add_option("identity", cfg_ptr->identity, "Asset identity")->required();
+  sub->add_option("identity", cfg_ptr->identity, "Package identity")->required();
   sub->add_option("platform", cfg_ptr->platform, "Platform (darwin/linux/windows)")
       ->required();
   sub->add_option("arch", cfg_ptr->arch, "Architecture (arm64/x86_64)")->required();
@@ -111,13 +111,13 @@ std::string cache_test_result::to_keyvalue() const {
   return oss.str();
 }
 
-// cmd_cache_ensure_asset implementation
-cmd_cache_ensure_asset::cmd_cache_ensure_asset(
+// cmd_cache_ensure_package implementation
+cmd_cache_ensure_package::cmd_cache_ensure_package(
     cfg const &config,
     std::optional<std::filesystem::path> const &cli_cache_root)
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
-void cmd_cache_ensure_asset::execute() {
+void cmd_cache_ensure_package::execute() {
   auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
 
   // Emit initial state so tests always have locked key even if we crash before output
@@ -136,7 +136,7 @@ void cmd_cache_ensure_asset::execute() {
   // Wait for barrier if requested (before attempting lock)
   barrier.wait(cfg_.barrier_wait);
 
-  // Ensure asset
+  // Ensure pkg
   auto result{
     c->ensure_pkg(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
   };

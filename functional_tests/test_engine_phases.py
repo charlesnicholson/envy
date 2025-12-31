@@ -58,8 +58,8 @@ class TestEnginePhases(unittest.TestCase):
         # Verify phase execution via structured trace
         parser = TraceParser(trace_file)
         phase_sequence = parser.get_phase_sequence("local.simple@v1")
-        self.assertIn(PkgPhase.ASSET_CHECK, phase_sequence)
-        self.assertIn(PkgPhase.ASSET_INSTALL, phase_sequence)
+        self.assertIn(PkgPhase.PKG_CHECK, phase_sequence)
+        self.assertIn(PkgPhase.PKG_INSTALL, phase_sequence)
 
     def test_fetch_function_basic(self):
         """Engine executes fetch() phase for specs with fetch function."""
@@ -82,9 +82,9 @@ class TestEnginePhases(unittest.TestCase):
         # Verify fetch phase execution via structured trace
         parser = TraceParser(trace_file)
         phase_sequence = parser.get_phase_sequence("local.fetcher@v1")
-        self.assertIn(PkgPhase.ASSET_FETCH, phase_sequence)
+        self.assertIn(PkgPhase.PKG_FETCH, phase_sequence)
 
-        # Verify output contains asset hash
+        # Verify output contains package hash
         lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(len(lines), 1)
         key, value = lines[0].split(" -> ", 1)

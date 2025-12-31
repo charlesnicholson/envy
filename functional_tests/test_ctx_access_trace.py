@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Functional test to validate ctx.asset/ctx.product trace emission and ordering."""
+"""Functional test to validate ctx.package/ctx.product trace emission and ordering."""
 
 import json
 import subprocess
@@ -50,26 +50,41 @@ class TestCtxAccessTrace(unittest.TestCase):
         self.assertTrue(trace_file.exists(), "Trace file not created")
 
         events = self.load_trace(trace_file)
-        asset_events = [e for e in events if e.get("event") == "lua_ctx_asset_access"]
-        product_events = [e for e in events if e.get("event") == "lua_ctx_product_access"]
+        package_events = [
+            e for e in events if e.get("event") == "lua_ctx_package_access"
+        ]
+        product_events = [
+            e for e in events if e.get("event") == "lua_ctx_product_access"
+        ]
 
-        self.assertGreaterEqual(len(asset_events), 2, "expected allowed+denied asset events")
-        self.assertGreaterEqual(len(product_events), 2, "expected allowed+denied product events")
+        self.assertGreaterEqual(
+            len(package_events), 2, "expected allowed+denied package events"
+        )
+        self.assertGreaterEqual(
+            len(product_events), 2, "expected allowed+denied product events"
+        )
 
         # Check allow/deny flags and phases
-        allowed_assets = [e for e in asset_events if e.get("allowed") is True]
-        denied_assets = [e for e in asset_events if e.get("allowed") is False]
-        self.assertTrue(any("dep_val_lib" in e.get("target", "") for e in allowed_assets))
-        self.assertTrue(any("missing" in e.get("target", "") for e in denied_assets))
+        allowed_packages = [e for e in package_events if e.get("allowed") is True]
+        denied_packages = [e for e in package_events if e.get("allowed") is False]
+        self.assertTrue(
+            any("dep_val_lib" in e.get("target", "") for e in allowed_packages)
+        )
+        self.assertTrue(any("missing" in e.get("target", "") for e in denied_packages))
 
         allowed_products = [e for e in product_events if e.get("allowed") is True]
         denied_products = [e for e in product_events if e.get("allowed") is False]
         self.assertTrue(any(e.get("product") == "tool" for e in allowed_products))
-        self.assertTrue(any(e.get("product") == "missing_prod" for e in denied_products))
+        self.assertTrue(
+            any(e.get("product") == "missing_prod" for e in denied_products)
+        )
 
-        # Verify chronological ordering: allowed asset should appear before denied asset (same phase)
-        asset_indices = {e["target"]: i for i, e in enumerate(asset_events)}
-        self.assertLess(asset_indices.get("local.dep_val_lib@v1", 9999), asset_indices.get("local.missing@v1", 9999))
+        # Verify chronological ordering: allowed package should appear before denied package (same phase)
+        package_indices = {e["target"]: i for i, e in enumerate(package_events)}
+        self.assertLess(
+            package_indices.get("local.dep_val_lib@v1", 9999),
+            package_indices.get("local.missing@v1", 9999),
+        )
 
 
 if __name__ == "__main__":

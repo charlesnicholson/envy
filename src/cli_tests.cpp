@@ -1,9 +1,9 @@
 #include "cli.h"
-#include "cmds/cmd_asset.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_version.h"
 
@@ -261,15 +261,15 @@ TEST_CASE("cli_parse: cmd_lua") {
 
 // TEST_CASE removed: cmd_playground has been deleted
 
-TEST_CASE("cli_parse: cmd_asset") {
+TEST_CASE("cli_parse: cmd_package") {
   SUBCASE("identity only") {
-    std::vector<std::string> args{ "envy", "asset", "vendor.gcc@v2" };
+    std::vector<std::string> args{ "envy", "package", "vendor.gcc@v2" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_asset::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_package::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK(cfg->identity == "vendor.gcc@v2");
     CHECK_FALSE(cfg->manifest_path.has_value());
@@ -277,7 +277,7 @@ TEST_CASE("cli_parse: cmd_asset") {
 
   SUBCASE("with manifest") {
     std::vector<std::string> args{ "envy",
-                                   "asset",
+                                   "package",
                                    "vendor.gcc@v2",
                                    "--manifest",
                                    "/path/to/envy.lua" };
@@ -286,7 +286,7 @@ TEST_CASE("cli_parse: cmd_asset") {
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_asset::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_package::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK(cfg->identity == "vendor.gcc@v2");
     REQUIRE(cfg->manifest_path.has_value());

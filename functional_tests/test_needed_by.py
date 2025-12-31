@@ -53,7 +53,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_fetch_parent@v1",
             "local.needed_by_fetch_dep@v1",
-            PkgPhase.ASSET_FETCH,
+            PkgPhase.PKG_FETCH,
         )
 
     def test_needed_by_build(self):
@@ -80,7 +80,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_build_parent@v1",
             "local.needed_by_build_dep@v1",
-            PkgPhase.ASSET_BUILD,
+            PkgPhase.PKG_BUILD,
         )
 
     def test_needed_by_stage(self):
@@ -107,7 +107,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_stage_parent@v1",
             "local.needed_by_stage_dep@v1",
-            PkgPhase.ASSET_STAGE,
+            PkgPhase.PKG_STAGE,
         )
 
     def test_needed_by_install(self):
@@ -134,7 +134,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_install_parent@v1",
             "local.needed_by_install_dep@v1",
-            PkgPhase.ASSET_INSTALL,
+            PkgPhase.PKG_INSTALL,
         )
 
     def test_needed_by_deploy(self):
@@ -161,7 +161,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_deploy_parent@v1",
             "local.needed_by_deploy_dep@v1",
-            PkgPhase.ASSET_DEPLOY,
+            PkgPhase.PKG_DEPLOY,
         )
 
     def test_needed_by_check(self):
@@ -188,7 +188,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_check_parent@v1",
             "local.needed_by_check_dep@v1",
-            PkgPhase.ASSET_CHECK,
+            PkgPhase.PKG_CHECK,
         )
 
     def test_needed_by_default_to_build(self):
@@ -215,7 +215,7 @@ class TestNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.needed_by_default_parent@v1",
             "local.dep_val_lib@v1",
-            PkgPhase.ASSET_BUILD,
+            PkgPhase.PKG_BUILD,
         )
 
     def test_needed_by_invalid_phase_name(self):

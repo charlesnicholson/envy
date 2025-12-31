@@ -16,7 +16,7 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 
 ### Package Management
 
-**`envy asset <identity> [--manifest=...]`** — Query and install package, print asset path. Loads manifest (auto-discovered or via `--manifest`), finds matching spec spec, installs only that package plus transitive dependencies if not cached, prints absolute path to asset directory to stdout. Other manifest packages are not processed. Errors if identity ambiguous (multiple option variants) or programmatic package (no cached artifacts). Exits 0 with path on success, exits 1 with "not found" on failure.
+**`envy package <identity> [--manifest=...]`** — Query and install package, print package path. Loads manifest (auto-discovered or via `--manifest`), finds matching spec, installs only that package plus transitive dependencies if not cached, prints absolute path to package directory to stdout. Other manifest packages are not processed. Errors if identity ambiguous (multiple option variants) or programmatic package (no cached artifacts). Exits 0 with path on success, exits 1 with "not found" on failure.
 
 ### Utilities
 

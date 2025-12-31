@@ -73,19 +73,19 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         )
 
     def test_ensure_asset_first_time(self):
-        """Acquire lock for new asset, returns staging path with lock."""
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "a1b2c3d4")
+        """Acquire lock for new package, returns staging path with lock."""
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "a1b2c3d4")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         self.assertEqual(result["locked"], "true")
         install_path = Path(result["install_path"])
         stage_path = Path(result["stage_path"])
-        asset_path = Path(result["pkg_path"])
+        pkg_path = Path(result["pkg_path"])
         self.assertEqual(install_path.name, "install")
         self.assertEqual(stage_path.name, "stage")
         self.assertEqual(stage_path.parent.name, "work")
-        self.assertEqual(asset_path.name, "pkg")
+        self.assertEqual(pkg_path.name, "pkg")
         self.assertFalse(install_path.exists())
         self.assertFalse(stage_path.exists())
         self.assertEqual(proc.returncode, 0)
@@ -98,13 +98,13 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         self.assertTrue((entry / "pkg").exists())
 
     def test_ensure_asset_already_complete(self):
-        """Request complete asset, returns final path immediately without lock."""
+        """Request complete package, returns final path immediately without lock."""
         # Pre-populate cache
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-complete1"
         entry.mkdir(parents=True)
         (entry / "envy-complete").touch()
 
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "complete1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "complete1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -115,10 +115,10 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         self.assertEqual(result["install_path"], "")
 
     def test_concurrent_ensure_same_asset(self):
-        """Two processes request same asset—one stages, other blocks then finds complete."""
+        """Two processes request same package—one stages, other blocks then finds complete."""
         # Process A: signal immediately, then do work (no wait - completes freely)
         proc_a = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -128,7 +128,7 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
 
         # Process B: wait for A to be ready, then attempt (will find A's completed entry)
         proc_b = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -155,23 +155,23 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
             self.assertEqual(result_b["fast_path"], "false")
 
     def test_ensure_spec_vs_ensure_asset_different_locks(self):
-        """Verify spec and asset locks don't conflict."""
-        # Start asset lock in background
+        """Verify spec and package locks don't conflict."""
+        # Start package lock in background
         proc_asset = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
             "locktest",
-            barrier_signal="asset_locked",
+            barrier_signal="package_locked",
             barrier_wait="recipe_checked",
         )
 
-        # Wait for asset lock, then try spec lock
+        # Wait for package lock, then try spec lock
         proc_spec = self.run_cache_cmd(
             "ensure-spec",
             "envy.cmake@v1",
-            barrier_wait="asset_locked",
+            barrier_wait="package_locked",
             barrier_signal="recipe_checked",
         )
 
@@ -205,7 +205,7 @@ class TestStagingAndCommit(CacheTestBase):
     def test_staging_auto_created(self):
         """Lock returned, staging directory created and then renamed on completion."""
         # Run command that will create staging and complete
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "staging1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "staging1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -228,7 +228,7 @@ class TestStagingAndCommit(CacheTestBase):
 
     def test_mark_complete_commits_on_exit(self):
         """Call mark_complete(), verify staging renamed and marker written."""
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "commit1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "commit1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -251,7 +251,7 @@ class TestStagingAndCommit(CacheTestBase):
     def test_no_mark_complete_abandons_staging(self):
         """Lock destructs without mark_complete(), staging abandoned."""
         proc = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -265,7 +265,7 @@ class TestStagingAndCommit(CacheTestBase):
         self.assertFalse((entry / "envy-complete").exists())
 
     def test_staging_atomic_rename(self):
-        """Large multi-file asset staged—other process never sees partial final directory."""
+        """Large multi-file package staged—other process never sees partial final directory."""
         # TODO: This test requires a poll-entry command that doesn't exist yet
         # Skipping for now
         self.skipTest("poll-entry command not implemented yet")
@@ -294,7 +294,7 @@ class TestCrashRecovery(CacheTestBase):
         """Kill process mid-staging, next ensure removes stale .install."""
         # Process A crashes after acquiring lock
         proc_a = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -319,7 +319,7 @@ class TestCrashRecovery(CacheTestBase):
 
         # Process B cleans up and succeeds
         proc_b = self.run_cache_cmd(
-            "ensure-asset", "gcc", "darwin", "arm64", "crash1", barrier_wait="locked"
+            "ensure-package", "gcc", "darwin", "arm64", "crash1", barrier_wait="locked"
         )
         stdout_b, _ = proc_b.communicate()
         result_b = parse_keyvalue(stdout_b)
@@ -334,7 +334,7 @@ class TestCrashRecovery(CacheTestBase):
         """Process crashes holding lock, OS releases lock, next process acquires."""
         # Process A crashes while holding lock
         proc_a = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -345,7 +345,7 @@ class TestCrashRecovery(CacheTestBase):
 
         # Process B waits for A to get lock, then tries after crash
         proc_b = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -389,7 +389,7 @@ class TestLockFileLifecycle(CacheTestBase):
         """Lock acquired, verify lock file exists in locks/, then deleted on release."""
         # Process holds lock, signals AFTER acquiring lock
         proc = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -417,8 +417,8 @@ class TestLockFileLifecycle(CacheTestBase):
         self.assertFalse(lock_file.exists())
 
     def test_lock_file_naming_asset(self):
-        """Verify asset lock path matches assets.{identity}.{platform}-{arch}-blake3-{hash}.lock."""
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "abc123")
+        """Verify package lock path matches assets.{identity}.{platform}-{arch}-blake3-{hash}.lock."""
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "abc123")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -449,8 +449,8 @@ class TestEntryPathsAndStructure(CacheTestBase):
         )
 
     def test_asset_entry_path_structure(self):
-        """Verify asset path is assets/{identity}.{platform}-{arch}-blake3-{hash}/."""
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "linux", "x86_64", "deadbeef")
+        """Verify package path is assets/{identity}.{platform}-{arch}-blake3-{hash}/."""
+        proc = self.run_cache_cmd("ensure-package", "gcc", "linux", "x86_64", "deadbeef")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -475,56 +475,56 @@ class TestEntryPathsAndStructure(CacheTestBase):
         result = parse_keyvalue(stdout)
 
         entry_path = Path(result["entry_path"])
-        asset_path = Path(result["pkg_path"])
+        pkg_path = Path(result["pkg_path"])
 
         self.assertTrue(entry_path.is_dir(), "Spec entry should be a directory")
         self.assertEqual(
             entry_path / "pkg",
-            asset_path,
-            "Spec asset_path should be entry_path/asset",
+            pkg_path,
+            "Spec pkg_path should be entry_path/pkg",
         )
         self.assertTrue(
             (entry_path / "envy-complete").exists(),
             "Spec should have envy-complete marker",
         )
 
-    def test_spec_asset_path_structure(self):
-        """Verify spec uses asset subdirectory like other cache entries."""
+    def test_spec_pkg_path_structure(self):
+        """Verify spec uses package subdirectory like other cache entries."""
         proc = self.run_cache_cmd("ensure-spec", "envy.simple@v1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         entry_path = Path(result["entry_path"])
-        asset_path = Path(result["pkg_path"])
+        pkg_path = Path(result["pkg_path"])
 
         # Specs use uniform cache structure with pkg/ subdirectory
-        self.assertEqual(entry_path / "pkg", asset_path)
+        self.assertEqual(entry_path / "pkg", pkg_path)
 
     def test_cache_directory_creation(self):
         """Call ensure_*, verify locks/ directory auto-created if missing."""
         locks_dir = self.cache_root / "locks"
         self.assertFalse(locks_dir.exists())
 
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "auto1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "auto1")
         proc.communicate()
 
         self.assertTrue(locks_dir.exists())
 
-    def test_asset_path_on_fast_path(self):
-        """Fast-path ensure returns asset_path pointing at payload directory."""
+    def test_pkg_path_on_fast_path(self):
+        """Fast-path ensure returns pkg_path pointing at payload directory."""
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-fast1"
-        asset_dir = entry / "pkg"
-        asset_dir.mkdir(parents=True, exist_ok=True)
-        sentinel = asset_dir / "payload.bin"
+        pkg_dir = entry / "pkg"
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+        sentinel = pkg_dir / "payload.bin"
         sentinel.write_text("cached")
         (entry / "envy-complete").touch()
 
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "fast1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "fast1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         self.assertEqual(result["locked"], "false")
-        self.assertEqual(Path(result["pkg_path"]).resolve(), asset_dir.resolve())
+        self.assertEqual(Path(result["pkg_path"]).resolve(), pkg_dir.resolve())
         self.assertEqual(result["install_path"], "")
         self.assertEqual(result["fetch_path"], "")
         self.assertEqual(result["stage_path"], "")
@@ -556,7 +556,7 @@ class TestEdgeCases(CacheTestBase):
         """Process B waits on lock, A completes while waiting, B rechecks and finds complete."""
         # Process A: signal after acquiring lock, complete freely
         proc_a = self.run_cache_cmd(
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -566,7 +566,7 @@ class TestEdgeCases(CacheTestBase):
 
         # Process B: wait for A to acquire lock, then attempt (will find complete)
         proc_b = self.run_cache_cmd(
-            "ensure-asset", "gcc", "darwin", "arm64", "recheck1", barrier_wait="a_ready"
+            "ensure-package", "gcc", "darwin", "arm64", "recheck1", barrier_wait="a_ready"
         )
 
         stdout_a, _ = proc_a.communicate()
@@ -585,11 +585,11 @@ class TestEdgeCases(CacheTestBase):
         self.assertEqual(result_b["locked"], "false")
 
     def test_asset_without_marker_requires_lock(self):
-        """Existing asset directory without marker still forces staging."""
+        """Existing package directory without marker still forces staging."""
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-raw1"
         (entry / "pkg").mkdir(parents=True, exist_ok=True)
 
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "raw1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "raw1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -598,7 +598,7 @@ class TestEdgeCases(CacheTestBase):
     def test_empty_staging_committed(self):
         """Create staging but write nothing, call mark_complete()—verify commit happens."""
         # Default behavior commits even if staging empty
-        proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "empty1")
+        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "empty1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -611,10 +611,10 @@ class TestEdgeCases(CacheTestBase):
     def test_multiple_assets_same_identity_different_platforms(self):
         """Same identity but different platform/arch/hash → different cache entries."""
         proc_darwin = self.run_cache_cmd(
-            "ensure-asset", "gcc", "darwin", "arm64", "multi1"
+            "ensure-package", "gcc", "darwin", "arm64", "multi1"
         )
         proc_linux = self.run_cache_cmd(
-            "ensure-asset", "gcc", "linux", "x86_64", "multi1"
+            "ensure-package", "gcc", "linux", "x86_64", "multi1"
         )
 
         stdout_darwin, _ = proc_darwin.communicate()
@@ -640,7 +640,7 @@ class TestEdgeCases(CacheTestBase):
                 str(self.envy_test),
                 f"--cache-root={custom_root}",
                 "cache",
-                "ensure-asset",
+                "ensure-package",
                 "gcc",
                 "darwin",
                 "arm64",
@@ -672,11 +672,11 @@ class TestSubprocessConcurrency(CacheTestBase):
         )
 
     def test_subprocess_concurrent_ensure(self):
-        """Spawn multiple envy subprocesses requesting same asset—one stages, others wait."""
+        """Spawn multiple envy subprocesses requesting same package—one stages, others wait."""
         # Spawn 5 processes simultaneously
         procs = []
         for _ in range(5):
-            proc = self.run_cache_cmd("ensure-asset", "gcc", "darwin", "arm64", "many1")
+            proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "many1")
             procs.append(proc)
 
         results = []
@@ -689,7 +689,7 @@ class TestSubprocessConcurrency(CacheTestBase):
         fast_path_count = sum(1 for r in results if r.get("fast_path") == "true")
         cache_hit_count = sum(1 for r in results if r["locked"] == "false")
 
-        # Critical invariant: exactly one process stages the asset
+        # Critical invariant: exactly one process stages the package
         self.assertEqual(locked_count, 1)
         # The other 4 processes should all get cache hits
         self.assertEqual(cache_hit_count, 4)
@@ -703,7 +703,7 @@ class TestSubprocessConcurrency(CacheTestBase):
         # Same as test_stale_inprogress_cleaned but explicit SIGKILL
         proc_a = self.run_cache_cmd(
             "cache",
-            "ensure-asset",
+            "ensure-package",
             "gcc",
             "darwin",
             "arm64",
@@ -726,7 +726,7 @@ class TestSubprocessConcurrency(CacheTestBase):
 
         # Recovery
         proc_b = self.run_cache_cmd(
-            "ensure-asset", "gcc", "darwin", "arm64", "sigkill1"
+            "ensure-package", "gcc", "darwin", "arm64", "sigkill1"
         )
         stdout_b, _ = proc_b.communicate()
         result_b = parse_keyvalue(stdout_b)

@@ -15,12 +15,12 @@ class PkgPhase(IntEnum):
     """Spec phase enum (matches src/pkg_phase.h)"""
 
     SPEC_FETCH = 0
-    ASSET_CHECK = 1
-    ASSET_FETCH = 2
-    ASSET_STAGE = 3
-    ASSET_BUILD = 4
-    ASSET_INSTALL = 5
-    ASSET_DEPLOY = 6
+    PKG_CHECK = 1
+    PKG_FETCH = 2
+    PKG_STAGE = 3
+    PKG_BUILD = 4
+    PKG_INSTALL = 5
+    PKG_DEPLOY = 6
     COMPLETION = 7
 
 

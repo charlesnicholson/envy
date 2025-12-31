@@ -277,7 +277,7 @@ TEST_CASE_FIXTURE(
   // String installs should succeed for user-managed, but not mark complete
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
-  // Verify asset_path was NOT set (not marked complete for user-managed)
+  // Verify pkg_path was NOT set (not marked complete for user-managed)
   CHECK(p->pkg_path.empty());
 }
 
@@ -295,7 +295,7 @@ TEST_CASE_FIXTURE(
   // String installs should succeed and mark complete for cache-managed
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
-  // Verify asset_path was set (marked complete for cache-managed)
+  // Verify pkg_path was set (marked complete for cache-managed)
   CHECK(!p->pkg_path.empty());
 }
 
@@ -513,7 +513,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   // Should execute returned string and mark complete
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
-  // Verify asset_path was set (indicates marked complete)
+  // Verify pkg_path was set (indicates marked complete)
   CHECK(!p->pkg_path.empty());
 }
 
@@ -534,7 +534,7 @@ TEST_CASE_FIXTURE(
   // Should not throw - user-managed packages can return strings
   run_install_phase(p.get(), eng);
 
-  // Verify asset_path was NOT set (user-managed packages don't mark complete)
+  // Verify pkg_path was NOT set (user-managed packages don't mark complete)
   CHECK(p->pkg_path.empty());
 }
 

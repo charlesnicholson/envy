@@ -17,5 +17,5 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Dependency should be available by build phase
-  envy.asset("local.dep_val_lib@v1")
+  envy.package("local.dep_val_lib@v1")
 end

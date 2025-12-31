@@ -17,5 +17,5 @@ FETCH = {
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
   -- Access diamond base through both left and right paths
-  envy.asset("local.dep_val_diamond_base@v1")
+  envy.package("local.dep_val_diamond_base@v1")
 end

@@ -522,7 +522,7 @@ TEST_CASE("trace_event_to_string formats human-readable output") {
   CHECK(output.find("waiting_for=dep@v2") != std::string::npos);
   CHECK(output.find("target_phase=completion") != std::string::npos);
 
-  // Test dependency_added - phase name is "fetch" not "asset_fetch"
+  // Test dependency_added
   output = envy::trace_event_to_string(envy::trace_events::dependency_added{
       .parent = "p@v1",
       .dependency = "d@v2",

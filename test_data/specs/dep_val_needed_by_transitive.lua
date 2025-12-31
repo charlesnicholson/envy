@@ -9,7 +9,7 @@ DEPENDENCIES = {
 
 FETCH = function(tmp_dir, options)
   -- Access transitive dependency (mid→base) in fetch phase
-  envy.asset("local.dep_val_needed_by_base@v1")
+  envy.package("local.dep_val_needed_by_base@v1")
   return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 end
 

@@ -7,7 +7,7 @@ DEPENDENCIES = {
 
 FETCH = function(tmp_dir, options)
   -- Can access dependency in fetch phase
-  local dep_path = envy.asset("local.needed_by_fetch_dep@v1")
+  local dep_path = envy.package("local.needed_by_fetch_dep@v1")
   return "test_data/archives/test.tar.gz", "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
 end
 

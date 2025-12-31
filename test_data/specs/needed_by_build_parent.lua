@@ -16,6 +16,6 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Can access dependency in build phase
-  envy.asset("local.needed_by_build_dep@v1")
+  envy.package("local.needed_by_build_dep@v1")
   envy.run("echo 'build complete' > build.txt")
 end

@@ -15,7 +15,7 @@ FETCH = {
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
   -- Can access chain_b in stage phase
-  envy.asset("local.needed_by_chain_b@v1")
+  envy.package("local.needed_by_chain_b@v1")
   -- Can access chain_c (transitively available)
-  envy.asset("local.needed_by_chain_c@v1")
+  envy.package("local.needed_by_chain_c@v1")
 end

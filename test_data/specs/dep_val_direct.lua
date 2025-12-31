@@ -16,6 +16,6 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Access direct dependency - SHOULD WORK
-  local lib_path = envy.asset("local.dep_val_lib@v1")
+  local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "direct access worked" > direct.txt]])
 end
