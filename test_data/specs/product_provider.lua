@@ -1,4 +1,4 @@
--- Product provider with cached asset
+-- Product provider with cached package
 IDENTITY = "local.product_provider@v1"
 PRODUCTS = { tool = "bin/tool" }
 
@@ -8,5 +8,5 @@ FETCH = {
 }
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No real payload needed; just mark complete to populate asset_path
+  -- No real payload needed; just mark complete to populate pkg_path
 end

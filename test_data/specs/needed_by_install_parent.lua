@@ -16,5 +16,5 @@ end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Can access dependency in install phase
-  envy.asset("local.needed_by_install_dep@v1")
+  envy.package("local.needed_by_install_dep@v1")
 end

@@ -101,6 +101,16 @@ void write_file(fs::path const &path, std::string_view content) {
   if (!out.good()) { throw std::runtime_error("init: failed to write " + path.string()); }
 }
 
+std::string stamp_manifest_placeholders(std::string_view content,
+                                        std::string_view download_url,
+                                        std::string_view bin_dir) {
+  std::string result{ content };
+  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
+  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
+  replace_all(result, "@@BIN_DIR@@", bin_dir);
+  return result;
+}
+
 std::string stamp_placeholders(std::string_view content, std::string_view download_url) {
   std::string result{ content };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
@@ -158,7 +168,7 @@ void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &
   tui::info("Created %s", script_path.string().c_str());
 }
 
-void write_manifest(fs::path const &project_dir) {
+void write_manifest(fs::path const &project_dir, fs::path const &bin_dir) {
   fs::path const manifest_path{ project_dir / "envy.lua" };
 
   if (fs::exists(manifest_path)) {
@@ -166,8 +176,14 @@ void write_manifest(fs::path const &project_dir) {
     return;
   }
 
-  std::string const content{ stamp_placeholders(get_manifest_template(),
-                                                kEnvyDownloadUrl) };
+  // Compute relative path from project_dir to bin_dir
+  auto const abs_project{ fs::absolute(project_dir) };
+  auto const abs_bin{ fs::absolute(bin_dir) };
+  auto const relative_bin{ fs::relative(abs_bin, abs_project) };
+
+  std::string const content{ stamp_manifest_placeholders(get_manifest_template(),
+                                                         kEnvyDownloadUrl,
+                                                         relative_bin.string()) };
   write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());
@@ -222,7 +238,7 @@ void cmd_init::execute() {
   }
 
   write_bootstrap(cfg_.bin_dir, cfg_.mirror);
-  write_manifest(cfg_.project_dir);
+  write_manifest(cfg_.project_dir, cfg_.bin_dir);
   write_luarc(cfg_.project_dir, extract_lua_ls_types());
 
   tui::info("");

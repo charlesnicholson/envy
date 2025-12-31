@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Functional tests for engine declarative fetch per-file caching.
 
-Tests asset cache management: per-file caching across partial failures,
+Tests package cache management: per-file caching across partial failures,
 corruption detection/recovery, and SHA256-based revalidation.
 """
 
@@ -17,7 +17,7 @@ from .trace_parser import TraceParser
 
 
 class TestEngineFetchCaching(unittest.TestCase):
-    """Tests for per-file asset caching and recovery."""
+    """Tests for per-file package caching and recovery."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
@@ -106,7 +106,7 @@ FETCH = {{
                 f"Expected fetch failure: {result1.stderr}",
             )
 
-            # Verify fetch_dir has the 2 successful files (in asset cache, not spec cache)
+            # Verify fetch_dir has the 2 successful files (in package cache, not spec cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "packages" / "local.fetch_partial@v1"
             self.assertTrue(
@@ -223,7 +223,7 @@ FETCH = {{
                 f"Expected fail_after_fetch_count error: {result1.stderr}",
             )
 
-            # Verify fetch_dir has the first 2 files cached (in asset cache, not spec cache)
+            # Verify fetch_dir has the first 2 files cached (in package cache, not spec cache)
             # With hierarchical structure, find variant dirs under identity dir
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
             self.assertTrue(
@@ -362,18 +362,18 @@ FETCH = {{
                 f"Expected cache mismatch detection: {result.stderr}",
             )
 
-            # Verify asset completed successfully (entry-level marker exists)
-            # Note: fetch/ is deleted after successful asset completion
+            # Verify package completed successfully (entry-level marker exists)
+            # Note: fetch/ is deleted after successful package completion
             entry_complete = variant_dirs[0] / "envy-complete"
             self.assertTrue(
                 entry_complete.exists(),
-                "Entry-level completion marker should exist after successful asset install",
+                "Entry-level completion marker should exist after successful package install",
             )
 
-            # Verify asset directory exists with installed files
-            asset_dir = variant_dirs[0] / "pkg"
+            # Verify package directory exists with installed files
+            pkg_dir = variant_dirs[0] / "pkg"
             self.assertTrue(
-                asset_dir.exists(), "Asset directory should exist after completion"
+                pkg_dir.exists(), "Package directory should exist after completion"
             )
 
         finally:
@@ -481,12 +481,12 @@ FETCH = {{
                 f"Expected download for file without SHA256: {result.stderr}",
             )
 
-            # Verify asset completed successfully (entry-level marker exists)
-            # Note: fetch/ and its marker are deleted after successful asset completion
+            # Verify package completed successfully (entry-level marker exists)
+            # Note: fetch/ and its marker are deleted after successful package completion
             entry_complete = variant_dirs[0] / "envy-complete"
             self.assertTrue(
                 entry_complete.exists(),
-                "Entry-level completion marker should exist after successful asset install",
+                "Entry-level completion marker should exist after successful package install",
             )
 
         finally:

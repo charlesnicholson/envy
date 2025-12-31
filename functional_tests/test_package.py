@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Functional tests for 'envy asset' command.
+"""Functional tests for 'envy package' command.
 
-Tests asset path querying, manifest discovery, dependency installation,
+Tests package path querying, manifest discovery, dependency installation,
 ambiguity detection, and error handling.
 """
 
@@ -13,14 +13,15 @@ from pathlib import Path
 from typing import Optional
 
 from . import test_config
+from .test_config import make_manifest
 
 
-class TestAssetCommand(unittest.TestCase):
-    """Tests for 'envy asset' command."""
+class TestPackageCommand(unittest.TestCase):
+    """Tests for 'envy package' command."""
 
     def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-asset-test-"))
-        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-asset-manifest-"))
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-package-test-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-package-manifest-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
         self.test_data = self.project_root / "test_data"
@@ -39,14 +40,20 @@ class TestAssetCommand(unittest.TestCase):
         manifest_dir = self.test_dir / subdir if subdir else self.test_dir
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
-    def run_asset(
+    def run_package(
         self, identity: str, manifest: Optional[Path] = None, cwd: Optional[Path] = None
     ):
-        """Run 'envy asset' command and return result."""
-        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "asset", identity]
+        """Run 'envy package' command and return result."""
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "package",
+            identity,
+        ]
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
 
@@ -59,8 +66,8 @@ class TestAssetCommand(unittest.TestCase):
         )
         return result
 
-    def test_asset_simple_package(self):
-        """Query asset path for simple package with no dependencies."""
+    def test_package_simple_package(self):
+        """Query package path for simple package with no dependencies."""
         # Note: build_dependency.lua has relative fetch source, so we run from project root
         manifest = self.create_manifest(
             f"""
@@ -70,26 +77,28 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(result.stdout.strip(), "Expected path in stdout")
 
-        asset_path = Path(result.stdout.strip())
+        package_path = Path(result.stdout.strip())
         self.assertTrue(
-            asset_path.is_absolute(), f"Expected absolute path: {asset_path}"
+            package_path.is_absolute(), f"Expected absolute path: {package_path}"
         )
-        self.assertTrue(asset_path.exists(), f"Asset path should exist: {asset_path}")
+        self.assertTrue(
+            package_path.exists(), f"Package path should exist: {package_path}"
+        )
         # Check path ends with pkg directory (accept both / and \ separators)
         self.assertTrue(
-            str(asset_path).endswith("/pkg") or str(asset_path).endswith("\\pkg"),
-            f"Path should end with pkg directory: {asset_path}",
+            str(package_path).endswith("/pkg") or str(package_path).endswith("\\pkg"),
+            f"Path should end with pkg directory: {package_path}",
         )
 
-    def test_asset_with_dependencies(self):
-        """Query asset for package with dependencies, verify both installed."""
+    def test_package_with_dependencies(self):
+        """Query package for package with dependencies, verify both installed."""
         # NOTE: diamond_a is a programmatic package, so this test currently expects failure
-        # TODO: Create test specs with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached packages
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -98,14 +107,14 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.diamond_a@v1", manifest)
+        result = self.run_package("local.diamond_a@v1", manifest)
 
         # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
         self.assertIn("not cache-managed", result.stderr)
 
-    def test_asset_already_cached(self):
-        """Query asset that's already installed, should return immediately."""
+    def test_package_already_cached(self):
+        """Query package that's already installed, should return immediately."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -115,60 +124,62 @@ PACKAGES = {{
         )
 
         # First installation
-        result1 = self.run_asset("local.build_dependency@v1", manifest)
+        result1 = self.run_package("local.build_dependency@v1", manifest)
         self.assertEqual(result1.returncode, 0)
         path1 = result1.stdout.strip()
 
         # Second query (should be cached)
-        result2 = self.run_asset("local.build_dependency@v1", manifest)
+        result2 = self.run_package("local.build_dependency@v1", manifest)
         self.assertEqual(result2.returncode, 0)
         path2 = result2.stdout.strip()
 
         # Same path returned
-        self.assertEqual(path1, path2, "Should return same path for cached asset")
+        self.assertEqual(path1, path2, "Should return same path for cached package")
 
-    def test_asset_auto_discover_manifest(self):
+    def test_package_auto_discover_manifest(self):
         """Auto-discover manifest from parent directory."""
         # NOTE: This test is currently disabled because specs have relative fetch paths
         # that don't work when running from arbitrary directories
         # TODO: Either use specs with absolute fetch paths or fix path resolution
         self.skipTest("Auto-discover with relative spec paths not yet supported")
 
-    def test_asset_explicit_manifest_path(self):
+    def test_package_explicit_manifest_path(self):
         """Use explicit --manifest flag to specify manifest location."""
         # Create manifest in non-standard location
         other_dir = Path(tempfile.mkdtemp(prefix="envy-other-"))
         try:
             manifest = other_dir / "custom.lua"
             manifest.write_text(
-                f"""
+                make_manifest(
+                    f"""
 PACKAGES = {{
     {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
 }}
-""",
+"""
+                ),
                 encoding="utf-8",
             )
 
-            result = self.run_asset("local.build_dependency@v1", manifest=manifest)
+            result = self.run_package("local.build_dependency@v1", manifest=manifest)
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
             self.assertTrue(result.stdout.strip())
         finally:
             shutil.rmtree(other_dir, ignore_errors=True)
 
-    def test_asset_no_manifest_found(self):
+    def test_package_no_manifest_found(self):
         """Error when no manifest can be found."""
         # Use directory with no manifest
         empty_dir = Path(tempfile.mkdtemp(prefix="envy-empty-"))
         try:
-            result = self.run_asset("local.simple@v1", manifest=None, cwd=empty_dir)
+            result = self.run_package("local.simple@v1", manifest=None, cwd=empty_dir)
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("not found", result.stderr.lower())
         finally:
             shutil.rmtree(empty_dir, ignore_errors=True)
 
-    def test_asset_selective_installation(self):
+    def test_package_selective_installation(self):
         """Only requested package and dependencies installed, not entire manifest."""
         manifest = self.create_manifest(
             f"""
@@ -181,14 +192,16 @@ PACKAGES = {{
         )
 
         # Request only build_dependency (which has no dependencies)
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Check which packages were installed
-        assets_dir = self.cache_root / "packages"
+        packages_dir = self.cache_root / "packages"
         installed = (
-            [d.name for d in assets_dir.glob("local.*")] if assets_dir.exists() else []
+            [d.name for d in packages_dir.glob("local.*")]
+            if packages_dir.exists()
+            else []
         )
 
         # Should have build_dependency but NOT build_function or build_nil
@@ -207,7 +220,7 @@ PACKAGES = {{
         )
         # This demonstrates selective installation - only 1 of 3 packages installed
 
-    def test_asset_ambiguous_different_options(self):
+    def test_package_ambiguous_different_options(self):
         """Error when same identity appears with different options."""
         manifest = self.create_manifest(
             f"""
@@ -218,13 +231,13 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("multiple times", result.stderr.lower())
         self.assertIn("different options", result.stderr.lower())
 
-    def test_asset_duplicate_same_options_ok(self):
+    def test_package_duplicate_same_options_ok(self):
         """Duplicate identity with same options should succeed."""
         manifest = self.create_manifest(
             f"""
@@ -235,12 +248,12 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(result.stdout.strip())
 
-    def test_asset_identity_not_in_manifest(self):
+    def test_package_identity_not_in_manifest(self):
         """Error when requested identity not in manifest."""
         manifest = self.create_manifest(
             f"""
@@ -250,12 +263,12 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.nonexistent@v1", manifest)
+        result = self.run_package("local.nonexistent@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("not found", result.stderr.lower())
 
-    def test_asset_programmatic_package(self):
+    def test_package_programmatic_package(self):
         """Error for programmatic packages (no cached artifacts)."""
         manifest = self.create_manifest(
             f"""
@@ -265,12 +278,12 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.programmatic@v1", manifest)
+        result = self.run_package("local.programmatic@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
         self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
-    def test_asset_build_failure(self):
+    def test_package_build_failure(self):
         """Error when build phase fails."""
         manifest = self.create_manifest(
             f"""
@@ -280,13 +293,14 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.failing@v1", manifest)
+        result = self.run_package("local.failing@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
         self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
-    def test_asset_invalid_manifest_syntax(self):
+    def test_package_invalid_manifest_syntax(self):
         """Error when manifest has Lua syntax error."""
+        # Note: create_manifest adds bin-dir header; the syntax error is in the body
         manifest = self.create_manifest(
             """
 PACKAGES = {
@@ -295,12 +309,12 @@ PACKAGES = {
 """
         )
 
-        result = self.run_asset("local.simple@v1", manifest)
+        result = self.run_package("local.simple@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
         self.assertTrue(result.stderr.strip(), "Should have error message in stderr")
 
-    def test_asset_stdout_format(self):
+    def test_package_stdout_format(self):
         """Verify stdout contains exactly one line with absolute path."""
         manifest = self.create_manifest(
             f"""
@@ -310,7 +324,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 0)
 
@@ -328,7 +342,7 @@ PACKAGES = {{
             f"Should end with pkg directory: {path}",
         )
 
-    def test_asset_stderr_only_on_error(self):
+    def test_package_stderr_only_on_error(self):
         """Success should have no stderr output, failure should."""
         manifest = self.create_manifest(
             f"""
@@ -340,18 +354,18 @@ PACKAGES = {{
         )
 
         # Success case - note: might have trace/debug logs, so we check it doesn't have errors
-        result_ok = self.run_asset("local.build_dependency@v1", manifest)
+        result_ok = self.run_package("local.build_dependency@v1", manifest)
         self.assertEqual(result_ok.returncode, 0)
         # Just verify no error messages (trace logs are okay)
 
         # Failure case
-        result_fail = self.run_asset("local.nonexistent@v1", manifest)
+        result_fail = self.run_package("local.nonexistent@v1", manifest)
         self.assertEqual(result_fail.returncode, 1)
         self.assertTrue(
             result_fail.stderr.strip(), "Should have error message in stderr"
         )
 
-    def test_asset_with_spec_options(self):
+    def test_package_with_spec_options(self):
         """Install package with options in manifest."""
         manifest = self.create_manifest(
             f"""
@@ -361,15 +375,15 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.build_dependency@v1", manifest)
+        result = self.run_package("local.build_dependency@v1", manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        asset_path = Path(result.stdout.strip())
-        self.assertTrue(asset_path.exists())
+        package_path = Path(result.stdout.strip())
+        self.assertTrue(package_path.exists())
         # The canonical key will include options, affecting the hash in the path
 
-    def test_asset_different_options_separate_cache_entries(self):
+    def test_package_different_options_separate_cache_entries(self):
         """Different options produce separate cache entries with distinct content."""
         # Create spec that writes option value to a file
         # This is a cache-managed package (no check verb) that writes artifacts to cache
@@ -410,13 +424,13 @@ PACKAGES = {{
         )
 
         # Install foo variant
-        result_foo = self.run_asset("local.test_options_cache@v1", manifest_foo)
+        result_foo = self.run_package("local.test_options_cache@v1", manifest_foo)
         self.assertEqual(result_foo.returncode, 0, f"stderr: {result_foo.stderr}")
         path_foo = Path(result_foo.stdout.strip())
         self.assertTrue(path_foo.exists())
 
         # Install bar variant
-        result_bar = self.run_asset("local.test_options_cache@v1", manifest_bar)
+        result_bar = self.run_package("local.test_options_cache@v1", manifest_bar)
         self.assertEqual(result_bar.returncode, 0, f"stderr: {result_bar.stderr}")
         path_bar = Path(result_bar.stdout.strip())
         self.assertTrue(path_bar.exists())
@@ -434,10 +448,10 @@ PACKAGES = {{
         self.assertEqual(variant_foo, "foo", "Foo variant should contain 'foo'")
         self.assertEqual(variant_bar, "bar", "Bar variant should contain 'bar'")
 
-    def test_asset_transitive_dependency_chain(self):
+    def test_package_transitive_dependency_chain(self):
         """Install package with transitive dependencies (diamond structure)."""
         # NOTE: diamond_a is programmatic, test expects failure
-        # TODO: Create test specs with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached packages
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -446,16 +460,16 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.diamond_a@v1", manifest)
+        result = self.run_package("local.diamond_a@v1", manifest)
 
         # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
         self.assertIn("not cache-managed", result.stderr)
 
-    def test_asset_diamond_dependency(self):
+    def test_package_diamond_dependency(self):
         """Install package with diamond dependency: A → B,C → D."""
         # NOTE: diamond_a is programmatic, test expects failure
-        # TODO: Create test specs with dependencies that produce actual cached assets
+        # TODO: Create test specs with dependencies that produce actual cached packages
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -464,16 +478,16 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_asset("local.diamond_a@v1", manifest)
+        result = self.run_package("local.diamond_a@v1", manifest)
 
         # Currently fails because diamond_a is programmatic (user-managed)
         self.assertEqual(result.returncode, 1)
         self.assertIn("not cache-managed", result.stderr)
 
-    def test_asset_with_product_dependency_clean_cache(self):
-        """Asset command must resolve graph to find product providers.
+    def test_package_with_product_dependency_clean_cache(self):
+        """Package command must resolve graph to find product providers.
 
-        Regression test: asset command should call resolve_graph() to find
+        Regression test: package command should call resolve_graph() to find
         specs that provide products needed by dependencies. Without this,
         product dependencies fail on clean cache.
         """
@@ -519,15 +533,17 @@ PACKAGES = {{
 """
         )
 
-        # Run asset on consumer with clean cache
-        result = self.run_asset("local.test_product_consumer@v1", manifest)
+        # Run package on consumer with clean cache
+        result = self.run_package("local.test_product_consumer@v1", manifest)
 
-        # Should succeed - asset command must resolve graph to find product provider
+        # Should succeed - package command must resolve graph to find product provider
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertTrue(result.stdout.strip(), "Expected asset path in stdout")
+        self.assertTrue(result.stdout.strip(), "Expected package path in stdout")
 
-        asset_path = Path(result.stdout.strip())
-        self.assertTrue(asset_path.exists(), f"Asset path should exist: {asset_path}")
+        package_path = Path(result.stdout.strip())
+        self.assertTrue(
+            package_path.exists(), f"Package path should exist: {package_path}"
+        )
 
 
 if __name__ == "__main__":

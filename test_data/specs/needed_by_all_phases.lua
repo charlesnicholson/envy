@@ -20,12 +20,12 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Access all dependencies
-  envy.asset("local.needed_by_fetch_dep@v1")
-  envy.asset("local.needed_by_check_dep@v1")
-  envy.asset("local.needed_by_stage_dep@v1")
-  envy.asset("local.needed_by_build_dep@v1")
+  envy.package("local.needed_by_fetch_dep@v1")
+  envy.package("local.needed_by_check_dep@v1")
+  envy.package("local.needed_by_stage_dep@v1")
+  envy.package("local.needed_by_build_dep@v1")
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.asset("local.needed_by_install_dep@v1")
+  envy.package("local.needed_by_install_dep@v1")
 end

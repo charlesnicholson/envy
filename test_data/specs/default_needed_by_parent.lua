@@ -16,5 +16,5 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Dependency should be available here by default
-  local dep_path = envy.asset("local.dep_val_lib@v1")
+  local dep_path = envy.package("local.dep_val_lib@v1")
 end

@@ -1,4 +1,4 @@
--- Test: default_shell as function (no ctx.asset) works
+-- Test: default_shell as function (no ctx.package) works
 IDENTITY = "local.default_shell_function_simple@v1"
 
 FETCH = {

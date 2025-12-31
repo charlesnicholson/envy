@@ -137,7 +137,7 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(lua_ctx_fetch_complete),
           TRACE_NAME(lua_ctx_extract_start),
           TRACE_NAME(lua_ctx_extract_complete),
-          TRACE_NAME(lua_ctx_asset_access),
+          TRACE_NAME(lua_ctx_package_access),
           TRACE_NAME(lua_ctx_product_access),
           TRACE_NAME(cache_hit),
           TRACE_NAME(cache_miss),
@@ -269,9 +269,10 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " duration_ms=" << value.duration_ms;
             return oss.str();
           },
-          [](trace_events::lua_ctx_asset_access const &value) {
+          [](trace_events::lua_ctx_package_access const &value) {
             std::ostringstream oss;
-            oss << "lua_ctx_asset_access spec=" << value.spec << " target=" << value.target
+            oss << "lua_ctx_package_access spec=" << value.spec
+                << " target=" << value.target
                 << " current_phase=" << pkg_phase_name(value.current_phase)
                 << " needed_by=" << pkg_phase_name(value.needed_by)
                 << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
@@ -496,7 +497,7 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "files_extracted", value.files_extracted);
             append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
-          [&](trace_events::lua_ctx_asset_access const &value) {
+          [&](trace_events::lua_ctx_package_access const &value) {
             append_spec(value.spec);
             append_kv(output, "target", value.target);
             append_phase(output, "current_phase", value.current_phase);

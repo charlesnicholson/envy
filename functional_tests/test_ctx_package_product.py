@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Functional coverage for envy.asset() and envy.product() enforcement."""
+"""Functional coverage for envy.package() and envy.product() enforcement."""
 
 import shutil
 import subprocess
@@ -8,12 +8,13 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .test_config import make_manifest
 
 
-class TestCtxAssetProduct(unittest.TestCase):
+class TestCtxPackageProduct(unittest.TestCase):
     def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-ctx-asset-product-cache-"))
-        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-ctx-asset-product-manifest-"))
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-ctx-package-product-cache-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-ctx-package-product-manifest-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
         self.test_data = self.project_root / "test_data"
@@ -24,7 +25,7 @@ class TestCtxAssetProduct(unittest.TestCase):
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
     def run_envy(self, args):
@@ -36,19 +37,19 @@ class TestCtxAssetProduct(unittest.TestCase):
     def lua_path(self, rel: str) -> str:
         return (self.test_data / "specs" / rel).as_posix()
 
-    # ===== ctx.asset =====
+    # ===== ctx.package =====
 
-    def test_ctx_asset_success(self):
+    def test_ctx_package_success(self):
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
-    spec = "local.ctx_asset_provider@v1",
-    source = "{self.lua_path("ctx_asset_provider.lua")}",
+    spec = "local.ctx_package_provider@v1",
+    source = "{self.lua_path("ctx_package_provider.lua")}",
   }},
   {{
-    spec = "local.ctx_asset_consumer_ok@v1",
-    source = "{self.lua_path("ctx_asset_consumer_ok.lua")}",
+    spec = "local.ctx_package_consumer_ok@v1",
+    source = "{self.lua_path("ctx_package_consumer_ok.lua")}",
   }},
 }}
 """
@@ -57,17 +58,17 @@ PACKAGES = {{
         result = self.run_envy(["sync", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_ctx_asset_needed_by_violation(self):
+    def test_ctx_package_needed_by_violation(self):
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
-    spec = "local.ctx_asset_provider@v1",
-    source = "{self.lua_path("ctx_asset_provider.lua")}",
+    spec = "local.ctx_package_provider@v1",
+    source = "{self.lua_path("ctx_package_provider.lua")}",
   }},
   {{
-    spec = "local.ctx_asset_needed_by_violation@v1",
-    source = "{self.lua_path("ctx_asset_needed_by_violation.lua")}",
+    spec = "local.ctx_package_needed_by_violation@v1",
+    source = "{self.lua_path("ctx_package_needed_by_violation.lua")}",
   }},
 }}
 """
@@ -77,33 +78,33 @@ PACKAGES = {{
         self.assertNotEqual(result.returncode, 0, "expected needed_by violation to fail")
         self.assertIn("needed_by 'install' but accessed during 'stage'", result.stderr)
 
-    def test_ctx_asset_user_managed_fails(self):
+    def test_ctx_package_user_managed_fails(self):
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
-    spec = "local.ctx_asset_user_provider@v1",
-    source = "{self.lua_path("ctx_asset_user_provider.lua")}",
+    spec = "local.ctx_package_user_provider@v1",
+    source = "{self.lua_path("ctx_package_user_provider.lua")}",
   }},
   {{
-    spec = "local.ctx_asset_user_consumer@v1",
-    source = "{self.lua_path("ctx_asset_user_consumer.lua")}",
+    spec = "local.ctx_package_user_consumer@v1",
+    source = "{self.lua_path("ctx_package_user_consumer.lua")}",
   }},
 }}
 """
         )
 
         result = self.run_envy(["sync", "--manifest", str(manifest)])
-        self.assertNotEqual(result.returncode, 0, "expected user-managed asset access to fail")
+        self.assertNotEqual(result.returncode, 0, "expected user-managed package access to fail")
         self.assertIn("is user-managed and has no pkg path", result.stderr)
 
-    def test_ctx_asset_missing_dependency(self):
+    def test_ctx_package_missing_dependency(self):
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
-    spec = "local.ctx_asset_missing_dep@v1",
-    source = "{self.lua_path("ctx_asset_missing_dep.lua")}",
+    spec = "local.ctx_package_missing_dep@v1",
+    source = "{self.lua_path("ctx_package_missing_dep.lua")}",
   }},
 }}
 """
@@ -173,4 +174,3 @@ PACKAGES = {{
 
 if __name__ == "__main__":
     unittest.main()
-

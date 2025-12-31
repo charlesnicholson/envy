@@ -11,16 +11,16 @@ namespace CLI { class App; }
 
 namespace envy {
 
-class cmd_asset : public cmd {
+class cmd_package : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_asset> {
+  struct cfg : cmd_cfg<cmd_package> {
     std::string identity;  // Required: "namespace.name@version"
     std::optional<std::filesystem::path> manifest_path;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
 
-  cmd_asset(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
+  cmd_package(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
   cfg const &get_cfg() const { return cfg_; }

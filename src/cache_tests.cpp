@@ -88,9 +88,8 @@ TEST_CASE("scoped_entry_lock is unmovable") {
   CHECK_FALSE(std::is_copy_assignable_v<envy::cache::scoped_entry_lock>);
 }
 
-TEST_CASE_FIXTURE(
-    temp_cache_fixture,
-    "ensure_asset returns lock for cold entry and publishes asset directory") {
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "ensure_pkg returns lock for cold entry and publishes pkg directory") {
   auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock != nullptr);
   CHECK_FALSE(result.pkg_path.empty());
@@ -109,16 +108,16 @@ TEST_CASE_FIXTURE(
   CHECK_FALSE(std::filesystem::exists(result.entry_path / "work"));
 }
 
-TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_asset fast path when marker present") {
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_pkg fast path when marker present") {
   auto entry_dir = temp_root / "packages" / "foo" / "darwin-arm64-blake3-deadbeef";
-  auto asset_dir = entry_dir / "pkg";
-  std::filesystem::create_directories(asset_dir);
-  std::ofstream{ asset_dir / "existing.txt" } << "cached";
+  auto pkg_dir = entry_dir / "pkg";
+  std::filesystem::create_directories(pkg_dir);
+  std::ofstream{ pkg_dir / "existing.txt" } << "cached";
   envy::platform::touch_file(entry_dir / "envy-complete");
 
   auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   CHECK(result.lock == nullptr);
-  CHECK(result.pkg_path == asset_dir);
+  CHECK(result.pkg_path == pkg_dir);
   CHECK(std::filesystem::exists(result.pkg_path / "existing.txt"));
 }
 
@@ -203,7 +202,7 @@ TEST_CASE_FIXTURE(
   // Lock destructor should purge entire cache entry
 
   // Verify cache entry directories were cleaned up
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "asset"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "pkg"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
@@ -235,7 +234,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "programmatic package with fetch_dir prese
   CHECK(content == "large payload");
 
   // Verify other directories cleaned up
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "asset"));
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "pkg"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
 }
 
@@ -455,9 +454,9 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 
 TEST_CASE_FIXTURE(
     temp_cache_fixture,
-    "cache-managed success: entry_dir preserved with asset, temp dirs cleaned") {
+    "cache-managed success: entry_dir preserved with pkg, temp dirs cleaned") {
   std::filesystem::path entry_dir;
-  std::filesystem::path asset_dir;
+  std::filesystem::path pkg_dir;
   std::filesystem::path lock_path;
 
   {
@@ -465,7 +464,7 @@ TEST_CASE_FIXTURE(
     REQUIRE(result.lock != nullptr);
 
     entry_dir = result.entry_path;
-    asset_dir = result.pkg_path;
+    pkg_dir = result.pkg_path;
     lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
 
     // Verify entry_dir and lock file exist while lock is held
@@ -481,16 +480,16 @@ TEST_CASE_FIXTURE(
     // Mark as successfully installed (NOT user-managed)
     result.lock->mark_install_complete();
   }
-  // scoped_entry_lock destructor runs success path: rename install -> asset
+  // scoped_entry_lock destructor runs success path: rename install -> pkg
   // Then file_lock destructor runs: deletes lock file
 
   // Verify entry_dir is preserved
   CHECK(std::filesystem::exists(entry_dir));
 
-  // Verify asset/ dir exists with installed files
-  CHECK(std::filesystem::exists(asset_dir));
-  CHECK(std::filesystem::exists(asset_dir / "binary.so"));
-  CHECK(std::filesystem::exists(asset_dir / "library.a"));
+  // Verify pkg/ dir exists with installed files
+  CHECK(std::filesystem::exists(pkg_dir));
+  CHECK(std::filesystem::exists(pkg_dir / "binary.so"));
+  CHECK(std::filesystem::exists(pkg_dir / "library.a"));
 
   // Verify envy-complete marker created
   CHECK(std::filesystem::exists(entry_dir / "envy-complete"));

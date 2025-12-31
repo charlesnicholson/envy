@@ -18,6 +18,6 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Can access both B and C in build phase
-  envy.asset("local.needed_by_diamond_b@v1")
-  envy.asset("local.needed_by_diamond_c@v1")
+  envy.package("local.needed_by_diamond_b@v1")
+  envy.package("local.needed_by_diamond_c@v1")
 end

@@ -1,4 +1,4 @@
-IDENTITY = "local.ctx_asset_consumer_ok@v1"
+IDENTITY = "local.ctx_package_needed_by_violation@v1"
 
 FETCH = {
   source = "test_data/archives/test.tar.gz",
@@ -6,12 +6,12 @@ FETCH = {
 }
 
 DEPENDENCIES = {
-  { spec = "local.ctx_asset_provider@v1", source = "ctx_asset_provider.lua", needed_by = "stage" },
+  { spec = "local.ctx_package_provider@v1", source = "ctx_package_provider.lua", needed_by = "install" },
 }
 
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
-  local path = envy.asset("local.ctx_asset_provider@v1")
-  assert(path:match("ctx_asset_provider"), "asset path should include provider identity")
+  -- needed_by is install, so this should fail when enforced
+  envy.package("local.ctx_package_provider@v1")
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)

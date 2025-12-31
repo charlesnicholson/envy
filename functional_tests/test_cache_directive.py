@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .test_config import make_manifest
 
 
 class TestCacheDirective(unittest.TestCase):
@@ -30,7 +31,7 @@ class TestCacheDirective(unittest.TestCase):
     def create_manifest(self, content: str) -> Path:
         """Create manifest file with given content."""
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
     def run_sync(
@@ -90,10 +91,10 @@ PACKAGES = {{
                 f"Cache should exist at {expected_cache}. stderr: {result.stderr}",
             )
             # Verify the package was installed in the custom cache
-            asset_path = expected_cache / "packages" / "local.build_dependency@v1"
+            pkg_path = expected_cache / "packages" / "local.build_dependency@v1"
             self.assertTrue(
-                asset_path.exists(),
-                f"Asset should exist at {asset_path}",
+                pkg_path.exists(),
+                f"Package should exist at {pkg_path}",
             )
         finally:
             # Clean up the custom cache
@@ -250,10 +251,10 @@ PACKAGES = {{
             f"Cache should exist at {custom_cache}",
         )
         # Verify the package was installed
-        asset_path = custom_cache / "packages" / "local.build_dependency@v1"
+        pkg_path = custom_cache / "packages" / "local.build_dependency@v1"
         self.assertTrue(
-            asset_path.exists(),
-            f"Asset should exist at {asset_path}",
+            pkg_path.exists(),
+            f"Package should exist at {pkg_path}",
         )
 
 

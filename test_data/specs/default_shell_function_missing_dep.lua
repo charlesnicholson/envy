@@ -1,4 +1,4 @@
--- Test: default_shell function calls envy.asset(), spec missing dep → fails with error
+-- Test: default_shell function calls envy.package(), spec missing dep → fails with error
 IDENTITY = "local.default_shell_function_missing_dep@v1"
 
 -- Intentionally NOT declaring dependency on default_shell_dep_tool
@@ -15,7 +15,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
 
-  -- This should FAIL because default_shell function calls envy.asset("local.default_shell_dep_tool@v1")
+  -- This should FAIL because default_shell function calls envy.package("local.default_shell_dep_tool@v1")
   -- but we didn't declare it in dependencies
   envy.run([[
     set -eu

@@ -7,7 +7,7 @@
 namespace envy {
 
 // Check if target_identity is a declared dependency of current pkg
-// Used for ctx.asset() validation. Exposed for testing.
+// Used for ctx.package() validation. Exposed for testing.
 bool is_declared_dependency(pkg *p, std::string const &target_identity) {
   for (std::string const &dep_identity : p->declared_dependencies) {
     if (dep_identity == target_identity) { return true; }
@@ -20,7 +20,7 @@ void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx) {
   ctx_table["move"] = make_ctx_move(ctx);
   ctx_table["extract"] = make_ctx_extract(ctx);
   ctx_table["extract_all"] = make_ctx_extract_all(ctx);
-  ctx_table["asset"] = make_ctx_asset(ctx);
+  ctx_table["package"] = make_ctx_package(ctx);
   ctx_table["product"] = make_ctx_product(ctx);
   ctx_table["ls"] = make_ctx_ls(ctx);
   ctx_table["run"] = make_ctx_run(ctx);

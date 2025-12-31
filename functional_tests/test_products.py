@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .test_config import make_manifest
 
 
 class TestProducts(unittest.TestCase):
@@ -29,7 +30,7 @@ class TestProducts(unittest.TestCase):
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(content, encoding="utf-8")
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
     def run_envy(self, args):
@@ -276,7 +277,7 @@ FETCH = {{
   sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
 }}
 INSTALL = function(ctx)
-  local tool_path = envy.asset("local.provider_a@v1")
+  local tool_path = envy.package("local.provider_a@v1")
   if not tool_path:match("provider_a") then
     error("Expected provider_a but got: " .. tool_path)
   end

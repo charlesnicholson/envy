@@ -1,11 +1,11 @@
 #pragma once
 
-#include "cmds/cmd_asset.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_init.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
@@ -23,7 +23,7 @@
 namespace envy {
 
 struct cli_args {
-  using cmd_cfg_t = std::variant<cmd_asset::cfg,
+  using cmd_cfg_t = std::variant<cmd_package::cfg,
                                  cmd_extract::cfg,
                                  cmd_fetch::cfg,
                                  cmd_hash::cfg,
@@ -34,7 +34,7 @@ struct cli_args {
                                  cmd_version::cfg
 #ifdef ENVY_FUNCTIONAL_TESTER
                                  ,
-                                 cmd_cache_ensure_asset::cfg,
+                                 cmd_cache_ensure_package::cfg,
                                  cmd_cache_ensure_spec::cfg,
                                  cmd_engine_functional_test::cfg
 #endif

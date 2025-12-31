@@ -101,7 +101,7 @@ struct lua_ctx_extract_complete {
   std::int64_t duration_ms;
 };
 
-struct lua_ctx_asset_access {
+struct lua_ctx_package_access {
   std::string spec;
   std::string target;
   pkg_phase current_phase;
@@ -272,7 +272,7 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::lua_ctx_fetch_complete,
                                    trace_events::lua_ctx_extract_start,
                                    trace_events::lua_ctx_extract_complete,
-                                   trace_events::lua_ctx_asset_access,
+                                   trace_events::lua_ctx_package_access,
                                    trace_events::lua_ctx_product_access,
                                    trace_events::cache_hit,
                                    trace_events::cache_miss,
@@ -444,13 +444,13 @@ struct phase_trace_scope {
       .duration_ms = (duration_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_ASSET_ACCESS(spec_value, \
-                                        target_value, \
-                                        current_phase_value, \
-                                        needed_by_value, \
-                                        allowed_value, \
-                                        reason_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_asset_access{ \
+#define ENVY_TRACE_LUA_CTX_PACKAGE_ACCESS(spec_value, \
+                                          target_value, \
+                                          current_phase_value, \
+                                          needed_by_value, \
+                                          allowed_value, \
+                                          reason_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_package_access{ \
       .spec = (spec_value), \
       .target = (target_value), \
       .current_phase = (current_phase_value), \

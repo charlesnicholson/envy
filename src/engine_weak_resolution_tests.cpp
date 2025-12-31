@@ -21,7 +21,8 @@ static pkg_result_map_t run_pkg_from_file(std::string const &identity,
                              ("envy-weak-unit-" + std::to_string(++counter)) };
 
   cache c{ cache_root };
-  auto manifest_ptr{ manifest::load("PACKAGES = {}", spec_path) };
+  auto manifest_ptr{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
+                                    spec_path) };
   engine eng{ c, manifest_ptr->get_default_shell(nullptr) };
 
   pkg_cfg *cfg_ptr{ pkg_cfg::pool()->emplace(

@@ -22,8 +22,8 @@ size_t skip_whitespace(std::string_view s, size_t pos) {
 
 std::string_view parse_identifier(std::string_view s, size_t &pos) {
   size_t const start{ pos };
-  while (pos < s.size() &&
-         (std::isalnum(static_cast<unsigned char>(s[pos])) || s[pos] == '_')) {
+  while ((pos < s.size()) && (std::isalnum(static_cast<unsigned char>(s[pos])) ||
+                              s[pos] == '_' || s[pos] == '-')) {
     ++pos;
   }
   return s.substr(start, pos - start);
@@ -60,9 +60,13 @@ std::optional<std::pair<std::string, std::string>> parse_directive_line(
     std::string_view line) {
   size_t pos{ 0 };
 
+  pos = skip_whitespace(line, pos);
+
   // Must start with "--"
-  if (line.size() < 2 || line[0] != '-' || line[1] != '-') { return std::nullopt; }
-  pos = 2;
+  if (pos + 2 > line.size() || line[pos] != '-' || line[pos + 1] != '-') {
+    return std::nullopt;
+  }
+  pos += 2;
 
   pos = skip_whitespace(line, pos);
 
@@ -107,6 +111,8 @@ envy_meta parse_envy_meta(std::string_view content) {
         result.cache = value;
       } else if (key == "mirror") {
         result.mirror = value;
+      } else if (key == "bin-dir") {
+        result.bin_dir = value;
       }
     }
 
@@ -163,6 +169,12 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
                             content.size() };
 
   auto meta{ parse_envy_meta(script) };
+
+  if (!meta.bin_dir) {
+    throw std::runtime_error(
+        "Manifest missing required '@envy bin-dir' directive.\n"
+        "Add to manifest header, e.g.: -- @envy bin-dir \"tools\"");
+  }
 
   auto state{ sol_util_make_lua_state() };
   lua_envy_install(*state);
@@ -225,7 +237,7 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
     };
 
     sol::table ctx_table{ lua_->create_table() };
-    ctx_table["asset"] = make_ctx_asset(const_cast<lua_ctx_common *>(ctx));
+    ctx_table["package"] = make_ctx_package(const_cast<lua_ctx_common *>(ctx));
 
     sol::protected_function_result result{ default_shell_func(ctx_table) };
     if (!result.valid()) {

@@ -35,7 +35,7 @@ struct fetch_phase_ctx : lua_ctx_common {
 };
 
 // Add common Lua context bindings to a Sol2 table.
-// Adds: copy, move, extract, extract_all, asset, ls, run
+// Adds: copy, move, extract, extract_all, package, ls, run
 // All phases should call this to get the standard context functions.
 void lua_ctx_add_common_bindings(sol::table &ctx_table, lua_ctx_common *ctx);
 
@@ -58,8 +58,8 @@ std::function<int(std::string const &, sol::optional<sol::table>)> make_ctx_extr
 // ctx.extract_all(opts?) - extract all archives in fetch_dir
 std::function<void(sol::optional<sol::table>)> make_ctx_extract_all(lua_ctx_common *ctx);
 
-// ctx.asset(identity) -> path - look up dependency asset path
-std::function<std::string(std::string const &)> make_ctx_asset(lua_ctx_common *ctx);
+// ctx.package(identity) -> path - look up dependency package path
+std::function<std::string(std::string const &)> make_ctx_package(lua_ctx_common *ctx);
 
 // ctx.product(name) -> path or value - look up product from declared product dependency
 std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common *ctx);
@@ -93,7 +93,7 @@ sol::table build_fetch_phase_ctx_table(sol::state_view lua,
                                        fetch_phase_ctx *ctx);
 
 // Check if target_identity is a declared dependency of current package
-// Used for ctx.asset() validation. Exposed for testing.
+// Used for ctx.package() validation. Exposed for testing.
 bool is_declared_dependency(pkg *p, std::string const &target_identity);
 
 }  // namespace envy

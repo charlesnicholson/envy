@@ -31,12 +31,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
         error("envy.run stdout missing 'test': " .. result.stdout)
     end
 
-    -- Verify envy.asset is accessible (even if we don't have dependencies)
-    if not envy.asset then
-        error("envy.asset should be accessible")
+    -- Verify envy.package is accessible (even if we don't have dependencies)
+    if not envy.package then
+        error("envy.package should be accessible")
     end
-    if type(envy.asset) ~= "function" then
-        error("envy.asset should be a function")
+    if type(envy.package) ~= "function" then
+        error("envy.package should be a function")
     end
 
     -- Verify envy.product is accessible

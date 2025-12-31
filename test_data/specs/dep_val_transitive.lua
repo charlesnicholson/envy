@@ -19,10 +19,10 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Access tool (direct dependency) - should work
-  local tool_path = envy.asset("local.dep_val_tool@v1")
+  local tool_path = envy.package("local.dep_val_tool@v1")
 
   -- Access lib (transitive dependency: us → tool → lib) - SHOULD WORK
-  local lib_path = envy.asset("local.dep_val_lib@v1")
+  local lib_path = envy.package("local.dep_val_lib@v1")
 
   envy.run([[echo "transitive access worked" > transitive.txt]])
 end

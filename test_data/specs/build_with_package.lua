@@ -1,5 +1,5 @@
--- Test build phase: envy.asset() for dependency access
-IDENTITY = "local.build_with_asset@v1"
+-- Test build phase: envy.package() for dependency access
+IDENTITY = "local.build_with_package@v1"
 
 DEPENDENCIES = {
   { spec = "local.build_dependency@v1", source = "build_dependency.lua" }
@@ -13,9 +13,9 @@ FETCH = {
 STAGE = {strip = 1}
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
-  print("Accessing dependency via envy.asset()")
+  print("Accessing dependency via envy.package()")
 
-  local dep_path = envy.asset("local.build_dependency@v1")
+  local dep_path = envy.package("local.build_dependency@v1")
   print("Dependency path: " .. dep_path)
 
   -- Copy dependency file

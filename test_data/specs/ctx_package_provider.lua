@@ -1,4 +1,4 @@
-IDENTITY = "local.ctx_asset_provider@v1"
+IDENTITY = "local.ctx_package_provider@v1"
 
 FETCH = {
   source = "test_data/archives/test.tar.gz",

@@ -1,4 +1,4 @@
--- Exercises ctx.asset and ctx.product access traces (allowed + denied)
+-- Exercises ctx.package and ctx.product access traces (allowed + denied)
 IDENTITY = "local.trace_ctx_access@v1"
 
 DEPENDENCIES = {
@@ -14,12 +14,12 @@ FETCH = {
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all({ strip = 1 })
 
-  -- Allowed asset access
-  envy.asset("local.dep_val_lib@v1")
+  -- Allowed package access
+  envy.package("local.dep_val_lib@v1")
 
-  -- Denied asset access (undeclared)
-  local ok, err = pcall(function() envy.asset("local.missing@v1") end)
-  assert(not ok, "expected missing asset access to fail")
+  -- Denied package access (undeclared)
+  local ok, err = pcall(function() envy.package("local.missing@v1") end)
+  assert(not ok, "expected missing package access to fail")
 
   -- Allowed product access
   envy.product("tool")

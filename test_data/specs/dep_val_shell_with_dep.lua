@@ -1,4 +1,4 @@
--- Spec with default_shell function that calls envy.asset() on declared dependency
+-- Spec with default_shell function that calls envy.package() on declared dependency
 IDENTITY = "local.dep_val_shell_with_dep@v1"
 
 DEPENDENCIES = {
@@ -7,7 +7,7 @@ DEPENDENCIES = {
 
 DEFAULT_SHELL = function(ctx, opts)
   -- Access declared dependency in default_shell
-  envy.asset("local.dep_val_shell_tool@v1")
+  envy.package("local.dep_val_shell_tool@v1")
   return ENVY_SHELL.BASH
 end
 

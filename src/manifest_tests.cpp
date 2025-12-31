@@ -144,6 +144,7 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
 
 TEST_CASE("manifest::load parses simple string package") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = { { spec = "arm.gcc@v2", source = "/fake/r.lua" } }
   )" };
 
@@ -157,6 +158,7 @@ TEST_CASE("manifest::load parses simple string package") {
 
 TEST_CASE("manifest::load parses multiple string packages") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { spec = "arm.gcc@v2", source = "/fake/r.lua" },
       { spec = "gnu.binutils@v3", source = "/fake/r.lua" },
@@ -174,6 +176,7 @@ TEST_CASE("manifest::load parses multiple string packages") {
 
 TEST_CASE("manifest::load parses table package with remote source") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2",
@@ -196,6 +199,7 @@ TEST_CASE("manifest::load parses table package with remote source") {
 
 TEST_CASE("manifest::load parses table package with local source") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "local.wrapper@v1",
@@ -216,6 +220,7 @@ TEST_CASE("manifest::load parses table package with local source") {
 
 TEST_CASE("manifest::load parses table package with options") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2", source = "/fake/r.lua",
@@ -243,6 +248,7 @@ TEST_CASE("manifest::load parses table package with options") {
 
 TEST_CASE("manifest::load parses mixed string and table packages") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { spec = "envy.homebrew@v4", source = "/fake/r.lua" },
       {
@@ -265,6 +271,7 @@ TEST_CASE("manifest::load parses mixed string and table packages") {
 
 TEST_CASE("manifest::load allows platform conditionals") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {}
     if envy.PLATFORM == "darwin" then
       PACKAGES = { { spec = "envy.homebrew@v4", source = "/fake/r.lua" } }
@@ -289,7 +296,7 @@ TEST_CASE("manifest::load allows platform conditionals") {
 }
 
 TEST_CASE("manifest::load stores manifest path") {
-  char const *script{ "PACKAGES = {}" };
+  char const *script{ "-- @envy bin-dir \"tools\"\nPACKAGES = {}" };
 
   auto m{ envy::manifest::load(script, fs::path("/some/project/envy.lua")) };
 
@@ -298,6 +305,7 @@ TEST_CASE("manifest::load stores manifest path") {
 
 TEST_CASE("manifest::load resolves relative file paths") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "local.tool@v1",
@@ -317,7 +325,7 @@ TEST_CASE("manifest::load resolves relative file paths") {
 // Error cases ------------------------------------------------------------
 
 TEST_CASE("manifest::load errors on missing packages global") {
-  char const *script{ "-- no packages" };
+  char const *script{ "-- @envy bin-dir \"tools\"\n-- no packages" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
                        "Manifest must define 'PACKAGES' global as a table",
@@ -325,7 +333,7 @@ TEST_CASE("manifest::load errors on missing packages global") {
 }
 
 TEST_CASE("manifest::load errors on non-table packages") {
-  char const *script{ "PACKAGES = 'not a table'" };
+  char const *script{ "-- @envy bin-dir \"tools\"\nPACKAGES = 'not a table'" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
                        "Manifest must define 'PACKAGES' global as a table",
@@ -333,7 +341,7 @@ TEST_CASE("manifest::load errors on non-table packages") {
 }
 
 TEST_CASE("manifest::load errors on invalid package entry type") {
-  char const *script{ "PACKAGES = { 123 }" };
+  char const *script{ "-- @envy bin-dir \"tools\"\nPACKAGES = { 123 }" };
 
   CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
                        "Spec entry must be string or table",
@@ -342,6 +350,7 @@ TEST_CASE("manifest::load errors on invalid package entry type") {
 
 TEST_CASE("manifest::load errors on missing spec field") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { source = "https://example.com/foo.lua" }
     }
@@ -354,6 +363,7 @@ TEST_CASE("manifest::load errors on missing spec field") {
 
 TEST_CASE("manifest::load errors on non-string spec field") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { spec = 123 }
     }
@@ -366,6 +376,7 @@ TEST_CASE("manifest::load errors on non-string spec field") {
 
 TEST_CASE("manifest::load errors on invalid spec identity format") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = { { spec = "invalid-no-at-sign", source = "/fake/r.lua" } }
   )" };
 
@@ -376,6 +387,7 @@ TEST_CASE("manifest::load errors on invalid spec identity format") {
 
 TEST_CASE("manifest::load errors on identity missing namespace") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = { { spec = "gcc@v2", source = "/fake/r.lua" } }
   )" };
 
@@ -386,6 +398,7 @@ TEST_CASE("manifest::load errors on identity missing namespace") {
 
 TEST_CASE("manifest::load errors on identity missing version") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = { { spec = "arm.gcc@", source = "/fake/r.lua" } }
   )" };
 
@@ -398,6 +411,7 @@ TEST_CASE("manifest::load errors on identity missing version") {
 
 TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2",
@@ -418,6 +432,7 @@ TEST_CASE("manifest::load allows url without sha256 (permissive mode)") {
 
 TEST_CASE("manifest::load errors on non-string source") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2",
@@ -434,6 +449,7 @@ TEST_CASE("manifest::load errors on non-string source") {
 
 TEST_CASE("manifest::load errors on non-string sha256") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2",
@@ -450,6 +466,7 @@ TEST_CASE("manifest::load errors on non-string sha256") {
 
 TEST_CASE("manifest::load errors on non-string source (local)") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "local.tool@v1",
@@ -465,6 +482,7 @@ TEST_CASE("manifest::load errors on non-string source (local)") {
 
 TEST_CASE("manifest::load errors on non-table options") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2",
@@ -481,6 +499,7 @@ TEST_CASE("manifest::load errors on non-table options") {
 
 TEST_CASE("manifest::load accepts non-string option values") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       {
         spec = "arm.gcc@v2", source = "/fake/r.lua",
@@ -507,6 +526,7 @@ TEST_CASE("manifest::load accepts non-string option values") {
 
 TEST_CASE("manifest::load allows same identity with different options") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { spec = "arm.gcc@v2", source = "/fake/r.lua", options = { version = "13.2.0" } },
       { spec = "arm.gcc@v2", source = "/fake/r.lua", options = { version = "12.0.0" } }
@@ -520,6 +540,7 @@ TEST_CASE("manifest::load allows same identity with different options") {
 
 TEST_CASE("manifest::load allows duplicate packages") {
   char const *script{ R"(
+    -- @envy bin-dir "tools"
     PACKAGES = {
       { spec = "arm.gcc@v2", source = "/fake/r.lua" },
       { spec = "arm.gcc@v2", source = "/fake/r.lua" }
@@ -532,14 +553,18 @@ TEST_CASE("manifest::load allows duplicate packages") {
 }
 
 TEST_CASE("manifest::load errors on Lua syntax error") {
-  CHECK_THROWS_AS(envy::manifest::load("PACKAGES = { this is not valid lua }",
+  // Note: Lua syntax errors occur before bin-dir validation, so no bin-dir needed
+  CHECK_THROWS_AS(envy::manifest::load("-- @envy bin-dir \"tools\"\n"
+                                       "PACKAGES = { this is not valid lua }",
                                        fs::path("/fake/envy.lua")),
                   std::runtime_error);
 }
 
 TEST_CASE("manifest::load errors on Lua runtime error") {
+  // Note: Lua runtime errors occur after Lua execution, so bin-dir is needed
   CHECK_THROWS_AS(
-      envy::manifest::load("error('intentional error')", fs::path("/fake/envy.lua")),
+      envy::manifest::load("-- @envy bin-dir \"tools\"\nerror('intentional error')",
+                           fs::path("/fake/envy.lua")),
       std::runtime_error);
 }
 
@@ -654,6 +679,7 @@ PACKAGES = {}
 TEST_CASE("manifest::load populates directives field") {
   char const *script{ R"(
 -- @envy version "1.2.3"
+-- @envy bin-dir "tools"
 -- @envy cache "/custom/cache"
 PACKAGES = {}
 )" };
@@ -662,7 +688,42 @@ PACKAGES = {}
 
   REQUIRE(m->meta.version.has_value());
   CHECK(*m->meta.version == "1.2.3");
+  REQUIRE(m->meta.bin_dir.has_value());
+  CHECK(*m->meta.bin_dir == "tools");
   REQUIRE(m->meta.cache.has_value());
   CHECK(*m->meta.cache == "/custom/cache");
   CHECK_FALSE(m->meta.mirror.has_value());
+}
+
+TEST_CASE("parse_envy_meta extracts bin-dir") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin-dir "tools/bin"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.bin_dir.has_value());
+  CHECK(*directives.bin_dir == "tools/bin");
+}
+
+TEST_CASE("parse_envy_meta extracts bin-dir with path separators") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin-dir "../sibling/tools"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.bin_dir.has_value());
+  CHECK(*directives.bin_dir == "../sibling/tools");
+}
+
+TEST_CASE("manifest::load errors on missing bin-dir directive") {
+  char const *script{ R"(
+-- @envy version "1.0.0"
+PACKAGES = {}
+)" };
+
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(script, fs::path("/fake/envy.lua")),
+      "Manifest missing required '@envy bin-dir' directive.\n"
+      "Add to manifest header, e.g.: -- @envy bin-dir \"tools\"",
+      std::runtime_error);
 }

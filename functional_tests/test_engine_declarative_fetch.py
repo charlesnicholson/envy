@@ -16,7 +16,7 @@ from . import test_config
 
 
 class TestEngineDeclarativeFetch(unittest.TestCase):
-    """Tests for declarative fetch phase (asset fetching)."""
+    """Tests for declarative fetch phase (package fetching)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
@@ -403,8 +403,8 @@ end
         self.assertIn("skipping fetch completion marker", result.stderr.lower())
 
         # Verify fetch completion marker does NOT exist
-        asset_dir = self.cache_root / "packages" / "local.git_no_cache@v1"
-        fetch_complete_files = list(asset_dir.rglob("fetch/envy-complete"))
+        pkg_dir = self.cache_root / "packages" / "local.git_no_cache@v1"
+        fetch_complete_files = list(pkg_dir.rglob("fetch/envy-complete"))
         self.assertEqual(
             len(fetch_complete_files),
             0,

@@ -26,22 +26,22 @@ class TestStagePhase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
 
-    def get_asset_path(self, identity):
-        """Find asset directory for given identity in cache.
+    def get_pkg_path(self, identity):
+        """Find package directory for given identity in cache.
 
         Args:
             identity: Spec identity (e.g., "local.stage_default@v1")
         """
-        assets_dir = self.cache_root / "packages" / identity
-        if not assets_dir.exists():
+        pkgs_dir = self.cache_root / "packages" / identity
+        if not pkgs_dir.exists():
             return None
-        # Find the platform-specific asset subdirectory
-        for subdir in assets_dir.iterdir():
+        # Find the platform-specific package subdirectory
+        for subdir in pkgs_dir.iterdir():
             if subdir.is_dir():
                 # Files are in the pkg/ subdirectory
-                asset_dir = subdir / "pkg"
-                if asset_dir.exists():
-                    return asset_dir
+                pkg_dir = subdir / "pkg"
+                if pkg_dir.exists():
+                    return pkg_dir
                 return subdir
         return None
 
@@ -65,14 +65,14 @@ class TestStagePhase(unittest.TestCase):
         )
 
         # Check that files were extracted (should be in install_dir since no custom phases)
-        asset_path = self.get_asset_path("local.stage_default@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_default@v1")
+        assert pkg_path
 
         # Default extraction keeps root/ directory
-        self.assertTrue((asset_path / "root").exists(), "root/ directory not found")
-        self.assertTrue((asset_path / "root" / "file1.txt").exists())
-        self.assertTrue((asset_path / "root" / "file2.txt").exists())
-        self.assertTrue((asset_path / "root" / "subdir1" / "file3.txt").exists())
+        self.assertTrue((pkg_path / "root").exists(), "root/ directory not found")
+        self.assertTrue((pkg_path / "root" / "file1.txt").exists())
+        self.assertTrue((pkg_path / "root" / "file2.txt").exists())
+        self.assertTrue((pkg_path / "root" / "subdir1" / "file3.txt").exists())
 
     def test_declarative_strip_removes_top_level(self):
         """Spec with stage = {strip=1} removes top-level directory."""
@@ -93,14 +93,14 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_declarative_strip@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_declarative_strip@v1")
+        assert pkg_path
 
         # With strip=1, root/ should be removed
-        self.assertFalse((asset_path / "root").exists(), "root/ should be stripped")
-        self.assertTrue((asset_path / "file1.txt").exists())
-        self.assertTrue((asset_path / "file2.txt").exists())
-        self.assertTrue((asset_path / "subdir1" / "file3.txt").exists())
+        self.assertFalse((pkg_path / "root").exists(), "root/ should be stripped")
+        self.assertTrue((pkg_path / "file1.txt").exists())
+        self.assertTrue((pkg_path / "file2.txt").exists())
+        self.assertTrue((pkg_path / "subdir1" / "file3.txt").exists())
 
     def test_imperative_extract_all(self):
         """Spec with stage function using ctx:extract_all works."""
@@ -121,13 +121,13 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_imperative@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_imperative@v1")
+        assert pkg_path
 
         # Custom function used strip=1
-        self.assertFalse((asset_path / "root").exists())
-        self.assertTrue((asset_path / "file1.txt").exists())
-        self.assertTrue((asset_path / "subdir1" / "file3.txt").exists())
+        self.assertFalse((pkg_path / "root").exists())
+        self.assertTrue((pkg_path / "file1.txt").exists())
+        self.assertTrue((pkg_path / "subdir1" / "file3.txt").exists())
 
     def test_imperative_extract_single(self):
         """Spec with stage function using ctx:extract for single file works."""
@@ -148,12 +148,12 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_extract_single@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_extract_single@v1")
+        assert pkg_path
 
         # ctx:extract with strip=1
-        self.assertFalse((asset_path / "root").exists())
-        self.assertTrue((asset_path / "file1.txt").exists())
+        self.assertFalse((pkg_path / "root").exists())
+        self.assertTrue((pkg_path / "file1.txt").exists())
 
     def test_shell_script_basic(self):
         """Spec with shell script stage extracts and creates marker file."""
@@ -174,22 +174,22 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_shell_basic@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_shell_basic@v1")
+        assert pkg_path
 
         # Check that shell script executed
         self.assertTrue(
-            (asset_path / "STAGE_MARKER.txt").exists(), "STAGE_MARKER.txt not found"
+            (pkg_path / "STAGE_MARKER.txt").exists(), "STAGE_MARKER.txt not found"
         )
 
         # Verify marker content
-        marker_content = (asset_path / "STAGE_MARKER.txt").read_text()
+        marker_content = (pkg_path / "STAGE_MARKER.txt").read_text()
         self.assertIn("stage script executed", marker_content)
 
         # Check that files were extracted with strip=1
-        self.assertFalse((asset_path / "root").exists())
-        self.assertTrue((asset_path / "file1.txt").exists())
-        self.assertTrue((asset_path / "file2.txt").exists())
+        self.assertFalse((pkg_path / "root").exists())
+        self.assertTrue((pkg_path / "file1.txt").exists())
+        self.assertTrue((pkg_path / "file2.txt").exists())
 
     def test_shell_script_failure(self):
         """Spec with failing shell script should fail stage phase."""
@@ -237,27 +237,27 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_shell_complex@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_shell_complex@v1")
+        assert pkg_path
 
         # Check custom directory structure was created
-        self.assertTrue((asset_path / "custom").exists())
-        self.assertTrue((asset_path / "custom" / "bin").exists())
-        self.assertTrue((asset_path / "custom" / "lib").exists())
-        self.assertTrue((asset_path / "custom" / "share").exists())
+        self.assertTrue((pkg_path / "custom").exists())
+        self.assertTrue((pkg_path / "custom" / "bin").exists())
+        self.assertTrue((pkg_path / "custom" / "lib").exists())
+        self.assertTrue((pkg_path / "custom" / "share").exists())
 
         # Check files were moved to custom locations
         self.assertTrue(
-            (asset_path / "custom" / "bin" / "file1.txt").exists(),
+            (pkg_path / "custom" / "bin" / "file1.txt").exists(),
             "file1.txt not in custom/bin/",
         )
         self.assertTrue(
-            (asset_path / "custom" / "lib" / "file2.txt").exists(),
+            (pkg_path / "custom" / "lib" / "file2.txt").exists(),
             "file2.txt not in custom/lib/",
         )
 
         # Check metadata file was created
-        metadata_path = asset_path / "custom" / "share" / "metadata.txt"
+        metadata_path = pkg_path / "custom" / "share" / "metadata.txt"
         self.assertTrue(metadata_path.exists(), "metadata.txt not found")
 
         # Verify metadata content
@@ -284,11 +284,11 @@ class TestStagePhase(unittest.TestCase):
             result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        asset_path = self.get_asset_path("local.stage_shell_env@v1")
-        assert asset_path
+        pkg_path = self.get_pkg_path("local.stage_shell_env@v1")
+        assert pkg_path
 
         # Check environment info file was created
-        env_info_path = asset_path / "env_info.txt"
+        env_info_path = pkg_path / "env_info.txt"
         self.assertTrue(env_info_path.exists(), "env_info.txt not found")
 
         # Verify environment variables were accessible

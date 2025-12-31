@@ -1,4 +1,4 @@
--- Dependency validation test: NEGATIVE - calls ctx.asset without declaring dependency
+-- Dependency validation test: NEGATIVE - calls envy.package without declaring dependency
 IDENTITY = "local.dep_val_missing@v1"
 
 -- Note: NO dependencies declared, but we try to access dep_val_lib below
@@ -14,6 +14,6 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Try to access lib without declaring it - SHOULD FAIL
-  local lib_path = envy.asset("local.dep_val_lib@v1")
+  local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "should not get here" > bad.txt]])
 end

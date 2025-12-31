@@ -16,5 +16,5 @@ end
 
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   -- Can access chain_c in build phase
-  envy.asset("local.needed_by_chain_c@v1")
+  envy.package("local.needed_by_chain_c@v1")
 end

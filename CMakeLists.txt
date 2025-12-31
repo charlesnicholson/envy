@@ -209,7 +209,7 @@ set(ENVY_BASE_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
-    src/cmds/cmd_asset.cpp
+    src/cmds/cmd_package.cpp
     src/cmds/cmd_common.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
@@ -223,7 +223,7 @@ set(ENVY_BASE_SOURCES
     src/pkg_phase.cpp
     src/pkg_key.cpp
     src/lua_ctx/lua_ctx_bindings.cpp
-    src/lua_ctx/lua_ctx_asset.cpp
+    src/lua_ctx/lua_ctx_package.cpp
     src/lua_ctx/lua_ctx_commit_fetch.cpp
     src/lua_ctx/lua_ctx_copy.cpp
     src/lua_ctx/lua_ctx_extract.cpp
@@ -444,7 +444,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_ctx/lua_ctx_copy_tests.cpp
     src/lua_ctx/lua_ctx_fetch_tests.cpp
     src/lua_ctx/lua_ctx_run_tests.cpp
-    src/lua_ctx_asset_product_tests.cpp
+    src/lua_ctx_package_product_tests.cpp
     src/lua_ctx/lua_ctx_move_tests.cpp
     src/lua_envy_tests.cpp
     src/platform_tests.cpp

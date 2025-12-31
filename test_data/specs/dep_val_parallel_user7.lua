@@ -13,5 +13,5 @@ FETCH = {
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {strip = 1})
   -- Access shared base library
-  envy.asset("local.dep_val_parallel_base@v1")
+  envy.package("local.dep_val_parallel_base@v1")
 end

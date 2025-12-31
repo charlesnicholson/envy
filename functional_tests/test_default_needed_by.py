@@ -47,13 +47,13 @@ class TestDefaultNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.default_needed_by_parent@v1",
             "local.dep_val_lib@v1",
-            PkgPhase.ASSET_BUILD,
+            PkgPhase.PKG_BUILD,
         )
 
         # Verify phase sequence - parent should execute through build phase
         parent_sequence = parser.get_phase_sequence("local.default_needed_by_parent@v1")
         self.assertIn(
-            PkgPhase.ASSET_BUILD,
+            PkgPhase.PKG_BUILD,
             parent_sequence,
             "Parent should reach build phase where dependency is needed",
         )
@@ -84,7 +84,7 @@ class TestDefaultNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.explicit_check_parent@v1",
             "local.dep_val_lib@v1",
-            PkgPhase.ASSET_CHECK,
+            PkgPhase.PKG_CHECK,
         )
 
     def test_explicit_needed_by_fetch_works(self):
@@ -113,7 +113,7 @@ class TestDefaultNeededBy(unittest.TestCase):
         parser.assert_dependency_needed_by(
             "local.explicit_fetch_parent@v1",
             "local.dep_val_lib@v1",
-            PkgPhase.ASSET_FETCH,
+            PkgPhase.PKG_FETCH,
         )
 
 
