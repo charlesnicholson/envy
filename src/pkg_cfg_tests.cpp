@@ -18,7 +18,7 @@ sol::object lua_eval(char const *script, sol::state &lua) {
     throw std::runtime_error("Lua script failed: " + std::string(err.what()));
   }
 
-  sol::object result_obj{ lua["result"] };
+  sol::object result_obj = lua["result"];
   if (!result_obj.valid()) { throw std::runtime_error("No 'result' global found"); }
 
   return result_obj;

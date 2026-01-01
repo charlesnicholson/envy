@@ -76,7 +76,7 @@ envy::pkg_cfg *create_spec_with_custom_fetch(
     throw std::runtime_error("Lua error: " + std::string{ err.what() });
   }
 
-  sol::object spec_val{ result };
+  sol::object spec_val = result;
   return envy::pkg_cfg::parse(spec_val, fs::current_path());
 }
 
@@ -92,12 +92,12 @@ std::string call_custom_fetch(sol::state &lua, envy::pkg_cfg const *cfg) {
 
   // Find the matching dependency
   for (size_t i{ 1 };; ++i) {
-    sol::object dep_entry{ deps[i] };
+    sol::object dep_entry = deps[i];
     if (!dep_entry.valid()) { break; }
 
     if (dep_entry.is<sol::table>()) {
       sol::table dep_table{ dep_entry.as<sol::table>() };
-      sol::object spec_obj{ dep_table["spec"] };
+      sol::object spec_obj = dep_table["spec"];
       if (spec_obj.valid() && spec_obj.is<std::string>() &&
           spec_obj.as<std::string>() == cfg->identity) {
         sol::table source_table = dep_table["source"];
@@ -166,9 +166,9 @@ TEST_CASE("pkg_cfg - multiple specs have correct functions") {
 
   // Parse each spec (they'll all use the same dependencies global)
   sol::table deps_table = lua["DEPENDENCIES"];
-  sol::object val_foo{ deps_table[1] };
-  sol::object val_bar{ deps_table[2] };
-  sol::object val_baz{ deps_table[3] };
+  sol::object val_foo = deps_table[1];
+  sol::object val_bar = deps_table[2];
+  sol::object val_baz = deps_table[3];
 
   envy::pkg_cfg *cfg_foo{ envy::pkg_cfg::parse(val_foo, fs::current_path()) };
   envy::pkg_cfg *cfg_bar{ envy::pkg_cfg::parse(val_bar, fs::current_path()) };
@@ -233,7 +233,7 @@ TEST_CASE("pkg_cfg - error on dependencies without fetch") {
   CHECK_THROWS_WITH(
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-        sol::object val{ result };
+        sol::object val = result;
         envy::pkg_cfg::parse(val, fs::current_path());
       }(),
       "source.dependencies requires source.fetch function");
@@ -258,7 +258,7 @@ TEST_CASE("pkg_cfg - error on fetch not a function") {
   CHECK_THROWS_WITH(
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-        sol::object val{ result };
+        sol::object val = result;
         envy::pkg_cfg::parse(val, fs::current_path());
       }(),
       "source.fetch must be a function");
@@ -281,7 +281,7 @@ TEST_CASE("pkg_cfg - error on dependencies not array") {
   CHECK_THROWS_WITH(
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-        sol::object val{ result };
+        sol::object val = result;
         envy::pkg_cfg::parse(val, fs::current_path());
       }(),
       "source.dependencies must be array (table)");
@@ -301,7 +301,7 @@ TEST_CASE("pkg_cfg - error on empty source table") {
   CHECK_THROWS_WITH(
       [&]() {
         auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-        sol::object val{ result };
+        sol::object val = result;
         envy::pkg_cfg::parse(val, fs::current_path());
       }(),
       "source table must have either URL string or dependencies+fetch function");
@@ -321,7 +321,7 @@ TEST_CASE("pkg_cfg - error on parse without lua_State") {
   )" };
 
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-  sol::object val{ result };
+  sol::object val = result;
 
   // Verify parsing with lua_State works for custom source.fetch
   CHECK_NOTHROW(envy::pkg_cfg::parse(val, fs::current_path()));
@@ -339,7 +339,7 @@ TEST_CASE("pkg_cfg - no function without source table") {
   )" };
 
   auto result{ lua.safe_script(lua_code, sol::script_pass_on_error) };
-  sol::object val{ result };
+  sol::object val = result;
   envy::pkg_cfg *cfg{ envy::pkg_cfg::parse(val, fs::current_path()) };
 
   CHECK(cfg->identity == "local.normal@v1");

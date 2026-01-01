@@ -160,7 +160,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   shell_tbl["file"] = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
   shell_tbl["ext"] = ".ps1";
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   auto result{ envy::parse_shell_config_from_lua(shell_obj, "test") };
 
   CHECK(std::holds_alternative<envy::custom_shell_file>(result));
@@ -175,7 +175,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell file-based") {
   shell_tbl["file"] = "/bin/sh";
   shell_tbl["ext"] = ".sh";
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   auto result{ envy::parse_shell_config_from_lua(shell_obj, "test") };
 
   CHECK(std::holds_alternative<envy::custom_shell_file>(result));
@@ -198,7 +198,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell inline") {
   sol::table shell_tbl{ lua->create_table() };
   shell_tbl["inline"] = inline_arr;
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   auto result{ envy::parse_shell_config_from_lua(shell_obj, "test") };
 
   CHECK(std::holds_alternative<envy::custom_shell_inline>(result));
@@ -215,7 +215,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell inline") {
   sol::table shell_tbl{ lua->create_table() };
   shell_tbl["inline"] = inline_arr;
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   auto result{ envy::parse_shell_config_from_lua(shell_obj, "test") };
 
   CHECK(std::holds_alternative<envy::custom_shell_inline>(result));
@@ -233,7 +233,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell missing fields") {
   sol::table shell_tbl{ lua->create_table() };
   shell_tbl["file"] = "/bin/zsh";
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   CHECK_THROWS_WITH_AS(
       envy::parse_shell_config_from_lua(shell_obj, "test_ctx"),
       "test_ctx: file mode requires 'ext' field (e.g., \".sh\", \".tcl\")",
@@ -247,7 +247,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell wrong type for inline") {
   sol::table shell_tbl{ lua->create_table() };
   shell_tbl["inline"] = "/bin/sh";
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   CHECK_THROWS_WITH_AS(envy::parse_shell_config_from_lua(shell_obj, "test_ctx"),
                        "test_ctx: 'inline' key must be an array of strings",
                        std::runtime_error);
@@ -265,7 +265,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell both inline and file") {
   shell_tbl["file"] = "/bin/bash";
   shell_tbl["ext"] = ".sh";
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   CHECK_THROWS_WITH_AS(
       envy::parse_shell_config_from_lua(shell_obj, "test_ctx"),
       "test_ctx: custom shell table cannot have both 'file' and 'inline' keys",
@@ -278,7 +278,7 @@ TEST_CASE("parse_shell_config_from_lua - custom shell empty table") {
   // Create empty table
   sol::table shell_tbl{ lua->create_table() };
 
-  sol::object shell_obj{ shell_tbl };
+  sol::object shell_obj = shell_tbl;
   CHECK_THROWS_WITH_AS(
       envy::parse_shell_config_from_lua(shell_obj, "test_ctx"),
       "test_ctx: custom shell table must have either 'file' or 'inline' key",
