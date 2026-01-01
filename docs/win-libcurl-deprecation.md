@@ -167,6 +167,14 @@ Relevant status codes:
 
 For total size: query `Content-Length` header via `HttpQueryInfo` after `InternetOpenUrl`.
 
+## Custom CA Certificates
+
+Corporate environments often deploy internal CA certificates for MITM proxies or internal services.
+
+**Windows (WinINet):** Uses Windows Certificate Store automatically. Corporate CAs deployed via Group Policy to "Trusted Root Certification Authorities" work with no app configuration—an improvement over libcurl.
+
+**POSIX (libcurl+mbedTLS):** mbedTLS doesn't auto-discover system CA stores. Stock HTTPS works (libcurl finds default CA bundle), but custom corporate CA chains are untested. May require `CURLOPT_CAINFO` or respecting `SSL_CERT_FILE` / `CURL_CA_BUNDLE` env vars. Needs investigation if enterprise POSIX support becomes a requirement.
+
 ## References
 
 - [WinINet Functions](https://learn.microsoft.com/en-us/windows/win32/wininet/wininet-functions)
