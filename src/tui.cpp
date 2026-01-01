@@ -78,7 +78,7 @@ struct tui_progress_state {
 
 bool envy::tui::g_trace_enabled{ false };
 
-#ifdef ENVY_UNIT_TEST
+#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
 namespace envy::tui::test {
 int g_terminal_width{ 0 };
 bool g_isatty{ true };
@@ -89,7 +89,7 @@ std::chrono::steady_clock::time_point g_now{};
 namespace {
 
 int get_terminal_width() {
-#ifdef ENVY_UNIT_TEST
+#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
   if (envy::tui::test::g_terminal_width > 0) { return envy::tui::test::g_terminal_width; }
 #endif
 
@@ -107,7 +107,7 @@ int get_terminal_width() {
 }
 
 bool is_ansi_supported() {
-#ifdef ENVY_UNIT_TEST
+#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
   return envy::tui::test::g_isatty;
 #endif
 
@@ -128,7 +128,7 @@ bool is_ansi_supported() {
 }
 
 std::chrono::steady_clock::time_point get_now() {
-#ifdef ENVY_UNIT_TEST
+#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
   if (envy::tui::test::g_now.time_since_epoch().count() > 0) {
     return envy::tui::test::g_now;
   }
@@ -1161,7 +1161,7 @@ scope::~scope() {
   }
 }
 
-#ifdef ENVY_UNIT_TEST
+#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
 namespace test {
 std::string render_section_frame(section_frame const &frame) {
   int const width{ g_terminal_width > 0 ? g_terminal_width : 80 };

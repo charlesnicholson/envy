@@ -11,6 +11,7 @@ int main(int argc, char **argv) {
 
   envy::tui::init();
   envy::tui::set_output_handler([](std::string_view) {});
+  envy::tui::test::g_isatty = false;
 
   return context.run();
 }
