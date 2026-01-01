@@ -11,6 +11,9 @@
 int main(int argc, char *argv[]) {
   envy::termination_handler_install();
   envy::tui::init();
+#ifdef ENVY_FUNCTIONAL_TESTER
+  envy::tui::test::g_isatty = false;  // Disable ANSI output during functional tests
+#endif
   envy::shell_init();
 
   auto args{ envy::cli_parse(argc, argv) };
