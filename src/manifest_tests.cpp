@@ -241,7 +241,7 @@ TEST_CASE("manifest::load parses table package with options") {
   sol::state lua;
   auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts{ opts_result };
+  sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
   CHECK(sol::object(opts["target"]).as<std::string>() == "arm-none-eabi");
 }
@@ -516,7 +516,7 @@ TEST_CASE("manifest::load accepts non-string option values") {
   sol::state lua;
   auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
   REQUIRE(opts_result.valid());
-  sol::table opts{ opts_result };
+  sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).is<lua_Integer>());
   CHECK(sol::object(opts["version"]).as<int64_t>() == 123);
   CHECK(sol::object(opts["debug"]).is<bool>());

@@ -206,7 +206,7 @@ TEST_CASE("run_check_function returns true when function returns true") {
       "return function(project_root) return true end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -224,7 +224,7 @@ TEST_CASE("run_check_function returns false when function returns false") {
       "return function(project_root) return false end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -242,7 +242,7 @@ TEST_CASE("run_check_function throws when function returns nil") {
       "return function(project_root) return nil end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   CHECK_THROWS_AS(
       run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func),
@@ -259,7 +259,7 @@ TEST_CASE("run_check_function throws when function returns number") {
       "return function(project_root) return 42 end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   CHECK_THROWS_AS(
       run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func),
@@ -276,7 +276,7 @@ TEST_CASE("run_check_function executes string return as shell command") {
       "return function(project_root) return 'exit 0' end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -304,7 +304,7 @@ TEST_CASE("run_check_function receives project_root as directory path") {
   sol::protected_function_result res{ f.p->lua->safe_script(lua_script,
                                                             sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -322,7 +322,7 @@ TEST_CASE("run_check_function throws when function has Lua error") {
       "return function(project_root) error('test error') end",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   CHECK_THROWS_AS(
       run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func),
@@ -344,7 +344,7 @@ TEST_CASE("run_check_function receives project_root as string") {
       )",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -455,7 +455,7 @@ TEST_CASE("run_check_function propagates Lua error with context") {
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
 
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   try {
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func);
@@ -490,7 +490,7 @@ TEST_CASE("run_check_function receives options parameter") {
       )",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   bool result{
     run_check_function(f.p.get(), eng, sol::state_view{ *f.p->lua }, check_func)
@@ -517,7 +517,7 @@ TEST_CASE("run_check_function returns string with options interpolation") {
       )",
       sol::script_pass_on_error) };
   REQUIRE(res.valid());
-  sol::protected_function check_func{ res };
+  sol::protected_function check_func = res;
 
   // This should execute "exit 0" as a shell command (cross-platform)
   bool result{
