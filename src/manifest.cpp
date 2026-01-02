@@ -29,6 +29,12 @@ std::string_view parse_identifier(std::string_view s, size_t &pos) {
   return s.substr(start, pos - start);
 }
 
+std::optional<bool> parse_bool_value(std::string_view value) {
+  if (value == "true") { return true; }
+  if (value == "false") { return false; }
+  return std::nullopt;
+}
+
 // Expects pos to be at opening quote, advances pos past closing quote
 std::optional<std::string> parse_quoted_value(std::string_view s, size_t &pos) {
   if (pos >= s.size() || s[pos] != '"') { return std::nullopt; }
@@ -111,8 +117,12 @@ envy_meta parse_envy_meta(std::string_view content) {
         result.cache = value;
       } else if (key == "mirror") {
         result.mirror = value;
-      } else if (key == "bin-dir") {
-        result.bin_dir = value;
+      } else if (key == "bin" || key == "bin-dir") {
+        result.bin = value;
+      } else if (key == "deploy") {
+        result.deploy = parse_bool_value(value);
+      } else if (key == "root") {
+        result.root = parse_bool_value(value);
       }
     }
 
@@ -126,17 +136,38 @@ envy_meta parse_envy_meta(std::string_view content) {
 std::optional<std::filesystem::path> manifest::discover() {
   namespace fs = std::filesystem;
 
+  std::vector<fs::path> candidates;  // non-root manifests encountered during search
   auto cur{ fs::current_path() };
 
   for (;;) {
     auto const manifest_path{ cur / "envy.lua" };
-    if (fs::exists(manifest_path)) { return manifest_path; }
+    if (fs::exists(manifest_path)) {
+      // Parse meta to check root directive
+      auto content{ util_load_file(manifest_path) };
+      auto meta{ parse_envy_meta(
+          { reinterpret_cast<char const *>(content.data()), content.size() }) };
+
+      // Default root=true (stops search); root=false continues upward
+      bool const is_root{ !meta.root.has_value() || *meta.root };
+
+      if (is_root) { return manifest_path; }
+      // Non-root manifest: remember and continue searching
+      candidates.push_back(manifest_path);
+    }
 
     auto const git_path{ cur / ".git" };
-    if (fs::exists(git_path) && fs::is_directory(git_path)) { return std::nullopt; }
+    if (fs::exists(git_path) && fs::is_directory(git_path)) {
+      // Hit .git boundary; use closest-to-root candidate if any
+      return candidates.empty() ? std::nullopt
+                                : std::optional<fs::path>{ candidates.back() };
+    }
 
     auto const parent{ cur.parent_path() };
-    if (parent == cur) { return std::nullopt; }
+    if (parent == cur) {
+      // Hit filesystem root; use closest-to-root candidate if any
+      return candidates.empty() ? std::nullopt
+                                : std::optional<fs::path>{ candidates.back() };
+    }
 
     cur = parent;
   }
@@ -170,10 +201,10 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
   auto meta{ parse_envy_meta(script) };
 
-  if (!meta.bin_dir) {
+  if (!meta.bin) {
     throw std::runtime_error(
-        "Manifest missing required '@envy bin-dir' directive.\n"
-        "Add to manifest header, e.g.: -- @envy bin-dir \"tools\"");
+        "Manifest missing required '@envy bin' directive.\n"
+        "Add to manifest header, e.g.: -- @envy bin \"tools\"");
   }
 
   auto state{ sol_util_make_lua_state() };

@@ -213,15 +213,15 @@ void cmd_sync::execute() {
   auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
 
-  if (!m->meta.bin_dir) {
+  if (!m->meta.bin) {
     throw std::runtime_error(
-        "sync: manifest missing '@envy bin-dir' directive (required for product scripts)");
+        "sync: manifest missing '@envy bin' directive (required for sync)");
   }
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
   fs::path const manifest_dir{ m->manifest_path.parent_path() };
-  fs::path const bin_dir{ manifest_dir / *m->meta.bin_dir };
+  fs::path const bin_dir{ manifest_dir / *m->meta.bin };
 
   if (!fs::exists(bin_dir)) {
     std::error_code ec;
@@ -290,7 +290,18 @@ void cmd_sync::execute() {
   }
 
   auto const products{ eng.collect_all_products() };
-  deploy_product_scripts(eng, bin_dir, products);
+
+  // Check deploy directive: absent or false means deployment disabled
+  bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
+
+  if (deploy_enabled) {
+    deploy_product_scripts(eng, bin_dir, products);
+  } else if (!cfg_.install_all) {
+    // Naked sync with deploy disabled: warn user
+    tui::warn("sync was requested but deployment is disabled in %s",
+              m->manifest_path.string().c_str());
+    tui::info("Add '-- @envy deploy \"true\"' to enable product script deployment");
+  }
 }
 
 }  // namespace envy

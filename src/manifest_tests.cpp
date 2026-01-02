@@ -688,42 +688,361 @@ PACKAGES = {}
 
   REQUIRE(m->meta.version.has_value());
   CHECK(*m->meta.version == "1.2.3");
-  REQUIRE(m->meta.bin_dir.has_value());
-  CHECK(*m->meta.bin_dir == "tools");
+  REQUIRE(m->meta.bin.has_value());
+  CHECK(*m->meta.bin == "tools");
   REQUIRE(m->meta.cache.has_value());
   CHECK(*m->meta.cache == "/custom/cache");
   CHECK_FALSE(m->meta.mirror.has_value());
 }
 
-TEST_CASE("parse_envy_meta extracts bin-dir") {
+TEST_CASE("parse_envy_meta extracts bin") {
   auto directives{ envy::parse_envy_meta(R"(
--- @envy bin-dir "tools/bin"
+-- @envy bin "tools/bin"
 PACKAGES = {}
 )") };
 
-  REQUIRE(directives.bin_dir.has_value());
-  CHECK(*directives.bin_dir == "tools/bin");
+  REQUIRE(directives.bin.has_value());
+  CHECK(*directives.bin == "tools/bin");
 }
 
-TEST_CASE("parse_envy_meta extracts bin-dir with path separators") {
+TEST_CASE("parse_envy_meta extracts bin-dir as legacy alias") {
   auto directives{ envy::parse_envy_meta(R"(
--- @envy bin-dir "../sibling/tools"
+-- @envy bin-dir "legacy/path"
 PACKAGES = {}
 )") };
 
-  REQUIRE(directives.bin_dir.has_value());
-  CHECK(*directives.bin_dir == "../sibling/tools");
+  REQUIRE(directives.bin.has_value());
+  CHECK(*directives.bin == "legacy/path");
 }
 
-TEST_CASE("manifest::load errors on missing bin-dir directive") {
+TEST_CASE("parse_envy_meta extracts bin with path separators") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "../sibling/tools"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.bin.has_value());
+  CHECK(*directives.bin == "../sibling/tools");
+}
+
+TEST_CASE("manifest::load errors on missing bin directive") {
   char const *script{ R"(
 -- @envy version "1.0.0"
 PACKAGES = {}
 )" };
 
-  CHECK_THROWS_WITH_AS(
-      envy::manifest::load(script, fs::path("/fake/envy.lua")),
-      "Manifest missing required '@envy bin-dir' directive.\n"
-      "Add to manifest header, e.g.: -- @envy bin-dir \"tools\"",
-      std::runtime_error);
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Manifest missing required '@envy bin' directive.\n"
+                       "Add to manifest header, e.g.: -- @envy bin \"tools\"",
+                       std::runtime_error);
+}
+
+// ============================================================================
+// @envy deploy directive tests
+// ============================================================================
+
+TEST_CASE("parse_envy_meta extracts deploy true") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy deploy "true"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.deploy.has_value());
+  CHECK(*directives.deploy == true);
+}
+
+TEST_CASE("parse_envy_meta extracts deploy false") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy deploy "false"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.deploy.has_value());
+  CHECK(*directives.deploy == false);
+}
+
+TEST_CASE("parse_envy_meta deploy absent yields nullopt") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  CHECK_FALSE(directives.deploy.has_value());
+}
+
+TEST_CASE("parse_envy_meta ignores invalid deploy value") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy deploy "invalid"
+PACKAGES = {}
+)") };
+
+  // Invalid boolean strings result in nullopt
+  CHECK_FALSE(directives.deploy.has_value());
+}
+
+// ============================================================================
+// @envy root directive tests
+// ============================================================================
+
+TEST_CASE("parse_envy_meta extracts root true") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy root "true"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.root.has_value());
+  CHECK(*directives.root == true);
+}
+
+TEST_CASE("parse_envy_meta extracts root false") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy root "false"
+PACKAGES = {}
+)") };
+
+  REQUIRE(directives.root.has_value());
+  CHECK(*directives.root == false);
+}
+
+TEST_CASE("parse_envy_meta root absent yields nullopt") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  CHECK_FALSE(directives.root.has_value());
+}
+
+TEST_CASE("parse_envy_meta ignores invalid root value") {
+  auto directives{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy root "maybe"
+PACKAGES = {}
+)") };
+
+  // Invalid boolean strings result in nullopt
+  CHECK_FALSE(directives.root.has_value());
+}
+
+// ============================================================================
+// manifest::discover() with root directive tests
+// ============================================================================
+
+TEST_CASE("manifest::discover with root=false continues search upward") {
+  // Create temp structure: parent/child where child has root=false
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) / "envy-test-root-false" };
+  auto parent_dir{ temp_root / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  // Parent manifest: root=true (default, stops search)
+  std::ofstream parent_manifest{ parent_dir / "envy.lua" };
+  parent_manifest << "-- @envy bin \"tools\"\nPACKAGES = {}\n";
+  parent_manifest.close();
+
+  // Child manifest: root=false (continues search)
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should find parent (root=true) instead of child (root=false)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == parent_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover with root=true stops immediately") {
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) / "envy-test-root-true" };
+  auto parent_dir{ temp_root / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  // Parent manifest
+  std::ofstream parent_manifest{ parent_dir / "envy.lua" };
+  parent_manifest << "-- @envy bin \"tools\"\nPACKAGES = {}\n";
+  parent_manifest.close();
+
+  // Child manifest: root=true (default)
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"true\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should stop at child (root=true)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == child_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover with all root=false uses closest to filesystem root") {
+  // Create 3-level structure: grandparent/parent/child, all root=false
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) / "envy-test-all-root-false" };
+  auto grandparent_dir{ temp_root / "grandparent" };
+  auto parent_dir{ grandparent_dir / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  // All manifests have root=false
+  std::ofstream grandparent_manifest{ grandparent_dir / "envy.lua" };
+  grandparent_manifest
+      << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  grandparent_manifest.close();
+
+  std::ofstream parent_manifest{ parent_dir / "envy.lua" };
+  parent_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  parent_manifest.close();
+
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should use grandparent (closest to filesystem root among non-roots)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == grandparent_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover F-T-F uses middle (root=true) manifest") {
+  // 3-level: grandparent(F) -> parent(T) -> child(F)
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) / "envy-test-ftf" };
+  auto grandparent_dir{ temp_root / "grandparent" };
+  auto parent_dir{ grandparent_dir / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  std::ofstream grandparent_manifest{ grandparent_dir / "envy.lua" };
+  grandparent_manifest
+      << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  grandparent_manifest.close();
+
+  std::ofstream parent_manifest{ parent_dir / "envy.lua" };
+  parent_manifest << "-- @envy bin \"tools\"\n-- @envy root \"true\"\nPACKAGES = {}\n";
+  parent_manifest.close();
+
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should stop at parent (root=true)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == parent_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover F-F with no grandparent uses parent") {
+  // 2-level: parent(F) -> child(F), no grandparent manifest
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) /
+                  "envy-test-ff-no-grandparent" };
+  auto parent_dir{ temp_root / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  std::ofstream parent_manifest{ parent_dir / "envy.lua" };
+  parent_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  parent_manifest.close();
+
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should use parent (closest to root among non-roots, no grandparent manifest exists)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == parent_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover F with no parent skips to grandparent") {
+  // 3-level: grandparent(F) -> parent(no manifest) -> child(F)
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) /
+                  "envy-test-f-skip-grandparent" };
+  auto grandparent_dir{ temp_root / "grandparent" };
+  auto parent_dir{ grandparent_dir / "parent" };
+  auto child_dir{ parent_dir / "child" };
+
+  fs::create_directories(child_dir);
+
+  std::ofstream grandparent_manifest{ grandparent_dir / "envy.lua" };
+  grandparent_manifest
+      << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  grandparent_manifest.close();
+
+  // No manifest in parent_dir
+
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should use grandparent (closest to root, skipping parent which has no manifest)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == grandparent_dir);
+  }
+
+  fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover with only child manifest (root=false) uses child") {
+  // Single manifest with root=false, no parents
+  auto temp_root{ fs::canonical(fs::temp_directory_path()) /
+                  "envy-test-single-root-false" };
+  auto child_dir{ temp_root / "child" };
+
+  fs::create_directories(child_dir);
+
+  std::ofstream child_manifest{ child_dir / "envy.lua" };
+  child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
+  child_manifest.close();
+
+  {
+    scoped_chdir cd{ child_dir };
+    auto result{ envy::manifest::discover() };
+
+    // Should use child even though root=false (only manifest in tree)
+    REQUIRE(result.has_value());
+    CHECK(result->parent_path() == child_dir);
+  }
+
+  fs::remove_all(temp_root);
 }

@@ -48,6 +48,10 @@ class TestEnvyInit(unittest.TestCase):
 
         if "mirror" in kwargs:
             cmd.append(f"--mirror={kwargs['mirror']}")
+        if "deploy" in kwargs:
+            cmd.append(f"--deploy={kwargs['deploy']}")
+        if "root" in kwargs:
+            cmd.append(f"--root={kwargs['root']}")
 
         env = get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
@@ -200,6 +204,70 @@ class TestEnvyInit(unittest.TestCase):
         content = types_file.read_text()
         self.assertIn("---@meta", content)
         self.assertIn("envy", content)
+
+    def test_init_deploy_true_stamps_directive(self) -> None:
+        """--deploy=true stamps deploy directive into manifest."""
+        result = self._run_init(deploy="true")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy deploy "true"', content)
+
+    def test_init_deploy_false_stamps_directive(self) -> None:
+        """--deploy=false stamps deploy directive into manifest."""
+        result = self._run_init(deploy="false")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy deploy "false"', content)
+
+    def test_init_default_deploy_is_true(self) -> None:
+        """Without --deploy, manifest has deploy=true by default."""
+        result = self._run_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy deploy "true"', content)
+
+    def test_init_root_true_stamps_directive(self) -> None:
+        """--root=true stamps root directive into manifest."""
+        result = self._run_init(root="true")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy root "true"', content)
+
+    def test_init_root_false_stamps_directive(self) -> None:
+        """--root=false stamps root directive into manifest."""
+        result = self._run_init(root="false")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy root "false"', content)
+
+    def test_init_default_root_is_true(self) -> None:
+        """Without --root, manifest has root=true by default."""
+        result = self._run_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy root "true"', content)
+
+    def test_init_both_deploy_and_root_stamps_both(self) -> None:
+        """--deploy and --root together stamp both directives."""
+        result = self._run_init(deploy="true", root="false")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = self._project_dir / "envy.lua"
+        content = manifest.read_text()
+        self.assertIn('@envy deploy "true"', content)
+        self.assertIn('@envy root "false"', content)
 
 
 class TestSelfDeployment(unittest.TestCase):

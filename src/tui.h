@@ -94,10 +94,6 @@ std::size_t measure_label_width(section_frame const &frame);
 section_handle section_create();
 void section_set_content(section_handle h, section_frame const &frame);
 bool section_has_content(section_handle h);
-void section_release(section_handle h);
-
-// Final render - forces one final render cycle of all sections before program exit
-void flush_final_render();
 
 // Interactive mode API
 void acquire_interactive_mode();
