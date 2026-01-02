@@ -331,6 +331,20 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
     if (key_str.empty()) {
       throw std::runtime_error("PRODUCTS key cannot be empty in spec '" + id + "'");
     }
+
+    // Validate product name contains only safe characters for shell script generation
+    for (char c : key_str) {
+      bool const safe{ (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                       (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' };
+      if (!safe) {
+        throw std::runtime_error(
+            "PRODUCTS key '" + key_str +
+            "' contains invalid character (must be alphanumeric, underscore, hyphen, or "
+            "period) in spec '" +
+            id + "'");
+      }
+    }
+
     if (val_str.empty()) {
       throw std::runtime_error("PRODUCTS value cannot be empty in spec '" + id + "'");
     }

@@ -35,7 +35,7 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
   sub->add_flag("--install-all",
                 cfg_ptr->install_all,
-                "Install all packages (not just deploy product scripts)");
+                "Install all packages (not just create product scripts)");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -191,6 +191,12 @@ void deploy_product_scripts(engine &eng,
     }
   }
 
+  if (ec) {
+    tui::warn("Failed to iterate bin directory %s: %s",
+              bin_dir.string().c_str(),
+              ec.message().c_str());
+  }
+
   tui::info(
       "sync: %zu product script(s) (%zu created, %zu updated, %zu unchanged, %zu removed)",
       products.size(),
@@ -205,12 +211,6 @@ void deploy_product_scripts(engine &eng,
 void cmd_sync::execute() {
   auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
-
-  if (!m->meta.bin_dir) {
-    throw std::runtime_error(
-        "sync: manifest missing '@envy bin-dir' directive.\n"
-        "Add to manifest header, e.g.: -- @envy bin-dir \"tools\"");
-  }
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
