@@ -75,8 +75,8 @@ class BootstrapIntegrationTest(unittest.TestCase):
         else:
             cls._envy_binary = cls._build_dir / "envy"
 
-        cls._bootstrap_unix = cls._project_root / "src/envy-init/envy"
-        cls._bootstrap_windows = cls._project_root / "src/envy-init/envy.bat"
+        cls._bootstrap_unix = cls._project_root / "src/resources/envy"
+        cls._bootstrap_windows = cls._project_root / "src/resources/envy.bat"
         cls._fixtures_dir = cls._project_root / "test_data/bootstrap/fixtures"
 
     def setUp(self) -> None:

@@ -49,6 +49,7 @@ class TestTUIRendering(unittest.TestCase):
             "--cache-root",
             str(self.cache_root),
             "sync",
+            "--install-all",
             "--manifest",
             str(manifest),
         ]
@@ -88,7 +89,7 @@ PACKAGES = {{
         stderr = result.stderr.decode()
         self.assertIn("local.build_function@v1", stderr)
         self.assertIn("local.build_dependency@v1", stderr)
-        self.assertIn("sync complete", stderr.lower())
+        self.assertIn("installed", stderr.lower())
 
     def test_fallback_mode_with_term_dumb(self):
         """No ANSI codes when TERM=dumb."""
@@ -126,6 +127,7 @@ PACKAGES = {{
             "--cache-root",
             str(self.cache_root),
             "sync",
+            "--install-all",
             "--manifest",
             str(manifest),
         ]

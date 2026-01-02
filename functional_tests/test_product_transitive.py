@@ -56,7 +56,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify all three specs were installed
@@ -88,7 +88,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(
             result.returncode, 0, "Expected failure for non-transitive fallback"
         )
@@ -116,7 +116,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify provider was installed (intermediate doesn't provide, but its dep does)
@@ -147,7 +147,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Both provider and root should exist
@@ -240,7 +240,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(
             result.returncode,
             0,

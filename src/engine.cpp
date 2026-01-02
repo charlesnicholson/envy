@@ -3,7 +3,6 @@
 #include "phases/phase_build.h"
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
-#include "phases/phase_deploy.h"
 #include "phases/phase_fetch.h"
 #include "phases/phase_install.h"
 #include "phases/phase_spec_fetch.h"
@@ -32,7 +31,6 @@ constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_stage_phase,       // pkg_phase::pkg_stage
   run_build_phase,       // pkg_phase::pkg_build
   run_install_phase,     // pkg_phase::pkg_install
-  run_deploy_phase,      // pkg_phase::pkg_deploy
   run_completion_phase,  // pkg_phase::completion
 };
 

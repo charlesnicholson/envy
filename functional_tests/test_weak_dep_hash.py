@@ -73,7 +73,7 @@ PACKAGES = {{
 """
         )
 
-        result1 = self.run_envy(["sync", "--manifest", str(manifest1)])
+        result1 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest1)])
         self.assertEqual(result1.returncode, 0, result1.stderr)
 
         # Get hash for consumer with provider_a
@@ -101,7 +101,7 @@ PACKAGES = {{
 """
         )
 
-        result2 = self.run_envy(["sync", "--manifest", str(manifest2)])
+        result2 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest2)])
         self.assertEqual(result2.returncode, 0, result2.stderr)
 
         # Get hash for consumer with provider_b
@@ -130,7 +130,7 @@ PACKAGES = {{
 """
         )
 
-        result1 = self.run_envy(["sync", "--manifest", str(manifest1)])
+        result1 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest1)])
         self.assertEqual(result1.returncode, 0, result1.stderr)
 
         variant_dirs_1 = self.get_cache_variant_dirs("local.hash_consumer_weak@v1")
@@ -157,7 +157,7 @@ PACKAGES = {{
 """
         )
 
-        result2 = self.run_envy(["sync", "--manifest", str(manifest2)])
+        result2 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest2)])
         self.assertEqual(result2.returncode, 0, result2.stderr)
 
         variant_dirs_2 = self.get_cache_variant_dirs("local.hash_consumer_weak@v1")
@@ -192,7 +192,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         # Run twice with providers in different manifest order
@@ -223,7 +223,7 @@ PACKAGES = {{
 """
         )
 
-        result2 = self.run_envy(["sync", "--manifest", str(manifest2)])
+        result2 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest2)])
         self.assertEqual(result2.returncode, 0, result2.stderr)
 
         variant_dirs_2 = self.get_cache_variant_dirs("local.hash_consumer_multi@v1")
@@ -277,7 +277,7 @@ PACKAGES = {{
 """
         )
 
-        result1 = self.run_envy(["sync", "--manifest", str(manifest1)])
+        result1 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest1)])
         self.assertEqual(result1.returncode, 0, result1.stderr)
 
         variant_dirs_1 = self.get_cache_variant_dirs("local.hash_consumer_refonly@v1")
@@ -304,7 +304,7 @@ PACKAGES = {{
 """
         )
 
-        result2 = self.run_envy(["sync", "--manifest", str(manifest2)])
+        result2 = self.run_envy(["sync", "--install-all", "--manifest", str(manifest2)])
         self.assertEqual(result2.returncode, 0, result2.stderr)
 
         variant_dirs_2 = self.get_cache_variant_dirs("local.hash_consumer_refonly@v1")
@@ -354,7 +354,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         cache_dirs = self.get_cache_variant_dirs("local.hash_consumer_strong@v1")

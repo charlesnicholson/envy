@@ -13,11 +13,10 @@ enum class pkg_phase : int {
   pkg_stage = 3,
   pkg_build = 4,
   pkg_install = 5,
-  pkg_deploy = 6,
-  completion = 7,  // All phases complete
+  completion = 6,  // All phases complete
 };
 
-constexpr int pkg_phase_count = 9;  // none through completion
+constexpr int pkg_phase_count = 8;  // none through completion
 
 std::string_view pkg_phase_name(pkg_phase p);
 std::optional<pkg_phase> pkg_phase_parse(std::string_view name);

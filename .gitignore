@@ -34,6 +34,9 @@ build/
 # Temporary files created by dependency builds
 libssh2.pc.in
 
+examples/bin
+examples/.luarc.json
+
 # Misc
 *.o
 *.obj

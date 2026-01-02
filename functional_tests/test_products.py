@@ -51,7 +51,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         provider_dir = self.cache_root / "packages" / "local.product_provider@v1"
@@ -71,7 +71,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         provider_dir = self.cache_root / "packages" / "local.product_provider@v1"
@@ -89,7 +89,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(
             result.returncode, 0, "expected failure for missing product"
         )
@@ -200,7 +200,7 @@ PACKAGES = {{{{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("absolute", result.stderr.lower())
 
@@ -228,7 +228,7 @@ PACKAGES = {{{{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("traversal", result.stderr.lower())
 
@@ -302,7 +302,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         # Verify consumer used provider_a (from strong dep), not provider_b (from registry)
@@ -322,7 +322,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0)
         # Should detect cycle through products
         self.assertTrue(
@@ -347,7 +347,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
         # Both provider and consumer should exist
@@ -369,7 +369,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0)
         # Should report missing product
         self.assertTrue(

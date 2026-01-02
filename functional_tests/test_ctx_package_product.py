@@ -55,7 +55,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_ctx_package_needed_by_violation(self):
@@ -74,7 +74,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected needed_by violation to fail")
         self.assertIn("needed_by 'install' but accessed during 'stage'", result.stderr)
 
@@ -94,7 +94,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected user-managed package access to fail")
         self.assertIn("is user-managed and has no pkg path", result.stderr)
 
@@ -110,7 +110,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected missing dependency to fail")
         self.assertIn("has no strong dependency", result.stderr)
 
@@ -132,7 +132,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_ctx_product_needed_by_violation(self):
@@ -151,7 +151,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected product needed_by violation to fail")
         self.assertIn("needed_by 'install' but accessed during 'stage'", result.stderr)
 
@@ -167,7 +167,7 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_envy(["sync", "--manifest", str(manifest)])
+        result = self.run_envy(["sync", "--install-all", "--manifest", str(manifest)])
         self.assertNotEqual(result.returncode, 0, "expected missing product dependency to fail")
         self.assertIn("does not declare product dependency", result.stderr)
 

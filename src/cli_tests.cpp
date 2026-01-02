@@ -481,3 +481,62 @@ TEST_CASE("cli_parse: global cache-root flag") {
     REQUIRE(cfg != nullptr);
   }
 }
+
+TEST_CASE("cli_parse: cmd_sync flags") {
+  SUBCASE("default (no --install-all)") {
+    std::vector<std::string> args{ "envy", "sync" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->install_all);
+  }
+
+  SUBCASE("--install-all flag") {
+    std::vector<std::string> args{ "envy", "sync", "--install-all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->install_all);
+  }
+
+  SUBCASE("with identities and --install-all") {
+    std::vector<std::string> args{ "envy", "sync", "--install-all", "pkg1", "pkg2" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->install_all);
+    REQUIRE(cfg->identities.size() == 2);
+    CHECK(cfg->identities[0] == "pkg1");
+    CHECK(cfg->identities[1] == "pkg2");
+  }
+
+  SUBCASE("--manifest with --install-all") {
+    std::vector<std::string> args{ "envy",
+                                   "sync",
+                                   "--manifest",
+                                   "/path/to/envy.lua",
+                                   "--install-all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->install_all);
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+}
