@@ -195,6 +195,7 @@ void deploy_product_scripts(engine &eng,
     tui::warn("Failed to iterate bin directory %s: %s",
               bin_dir.string().c_str(),
               ec.message().c_str());
+    return;
   }
 
   tui::info(
@@ -211,6 +212,11 @@ void deploy_product_scripts(engine &eng,
 void cmd_sync::execute() {
   auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
+
+  if (!m->meta.bin_dir) {
+    throw std::runtime_error(
+        "sync: manifest missing '@envy bin-dir' directive (required for product scripts)");
+  }
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
