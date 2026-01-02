@@ -34,20 +34,31 @@ using envy::tui::level;
 constexpr std::size_t kSeverityLabelWidth{ 3 };
 constexpr std::chrono::milliseconds kRefreshIntervalMs{ 33 };  // 30fps
 
+constexpr char const *kAnsiClearToEol{ "\x1b[K" };    // Clear from cursor to end of line
+constexpr char const *kAnsiClearToEos{ "\x1b[0J" };   // Clear from cursor to end of screen
+constexpr char const *kAnsiEnableWrap{ "\x1b[?7h" };  // Enable auto-wrap mode
+constexpr char const *kAnsiDisableWrap{ "\x1b[?7l" };  // Disable auto-wrap mode
+constexpr char const *kAnsiShowCursor{ "\x1b[?25h" };  // Show cursor
+constexpr char const *kAnsiHideCursor{ "\x1b[?25l" };  // Hide cursor
+constexpr char const *kAnsiCursorUpFmt{ "\x1b[%dF" };  // Move cursor up N lines
+
 struct log_event {
   std::chrono::system_clock::time_point timestamp;
   envy::tui::level severity;
   std::string message;
 };
 
-using log_entry = std::variant<log_event, envy::trace_event_t>;
+struct stdout_event {
+  std::string message;
+};
+
+using log_entry = std::variant<log_event, stdout_event, envy::trace_event_t>;
 
 struct tui {
   std::queue<log_entry> messages;
   std::function<void(std::string_view)> output_handler;
   std::thread worker;
-  std::mutex mutex;         // protects messages queue and cv
-  std::mutex stdout_mutex;  // protects raw stdout writes in print_stdout()
+  std::mutex mutex;  // protects messages queue and cv
   std::condition_variable cv;
   std::atomic_bool stop_requested{ false };
   std::optional<envy::tui::level> level_threshold;
@@ -543,9 +554,11 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
     }
   }
 
+  std::fprintf(stderr, "%s", kAnsiDisableWrap);
+
   // Ensure column 0, then move up to start position
   std::fprintf(stderr, "\r");
-  if (last_line_count > 1) { std::fprintf(stderr, "\x1b[%dF", last_line_count - 1); }
+  if (last_line_count > 1) { std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1); }
 
   // Render each line with per-line clear
   int cur_frame_line_count{ 0 };
@@ -553,16 +566,17 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
     if (cur_frame_line_count > 0) {  // Print \n before all lines except first
       std::fprintf(stderr, "\n");
     }
-    std::fprintf(stderr, "%s\x1b[K", line.c_str());
+    std::fprintf(stderr, "%s%s", line.c_str(), kAnsiClearToEol);
     ++cur_frame_line_count;
   }
 
   // Clear remaining old lines if shrinking
   if (cur_frame_line_count < last_line_count) {
-    std::fprintf(stderr, "\n\x1b[0J");
+    std::fprintf(stderr, "\n%s", kAnsiClearToEos);
     ++cur_frame_line_count;  // Account for the newline we just printed
   }
 
+  std::fprintf(stderr, "%s", kAnsiEnableWrap);
   std::fflush(stderr);
 
   return cur_frame_line_count;
@@ -686,6 +700,11 @@ void flush_messages(std::queue<log_entry> &pending,
         if (!output.empty()) { std::fwrite(output.data(), 1, output.size(), stderr); }
         wrote_to_stderr = true;
       }
+    } else if (auto *stdout_ptr{ std::get_if<stdout_event>(&entry) }) {
+      if (!stdout_ptr->message.empty()) {
+        std::fwrite(stdout_ptr->message.data(), 1, stdout_ptr->message.size(), stdout);
+        std::fflush(stdout);
+      }
     } else if (auto *trace_ptr{ std::get_if<envy::trace_event_t>(&entry) }) {
       if (s_tui.trace_stderr) {
         std::string output;
@@ -749,25 +768,19 @@ void worker_thread() {
       auto const now{ get_now() };
       bool const has_messages{ !pending.empty() };
 
-      // Correct rendering order: messages scroll up (permanent), sections always at
-      // bottom.
+      // Rendering order: messages scroll up (permanent), sections always at bottom.
       // 1. If we have messages, clear the section area first (if any), then print messages
-      if (ansi && has_messages) {
-        if (last_line_count > 0) {
-          // Clear section area: go to column 0, move up if multi-line, clear to end
-          std::fprintf(stderr, "\r");
-          if (last_line_count > 1) {
-            std::fprintf(stderr, "\x1b[%dF", last_line_count - 1);
-          }
-          std::fprintf(stderr, "\x1b[0J");
-        } else {
-          // No tracked sections, but cursor might be at end of a line - ensure fresh line
-          std::fprintf(stderr, "\n");
+      if (ansi && has_messages && last_line_count > 0) {
+        // Clear section area: go to column 0, move up if multi-line, clear to end
+        std::fprintf(stderr, "\r");
+        if (last_line_count > 1) {
+          std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1);
         }
+        std::fprintf(stderr, "%s", kAnsiClearToEos);
         std::fflush(stderr);
       }
 
-      // 2. Flush messages - they appear above where sections will render
+      // 2. Flush messages (auto-wrap is ON by default, so messages wrap naturally)
       flush_messages(pending, s_tui.output_handler);
 
       // 3. Render sections below messages (always at bottom)
@@ -815,14 +828,12 @@ void worker_thread() {
 
     lock.unlock();
 
-    if (is_ansi_supported() && !pending.empty()) {
-      if (last_line_count > 0) {
-        std::fprintf(stderr, "\r");
-        if (last_line_count > 1) { std::fprintf(stderr, "\x1b[%dF", last_line_count - 1); }
-        std::fprintf(stderr, "\x1b[0J");
-      } else {
-        std::fprintf(stderr, "\n");
+    if (is_ansi_supported() && !pending.empty() && last_line_count > 0) {
+      std::fprintf(stderr, "\r");
+      if (last_line_count > 1) {
+        std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1);
       }
+      std::fprintf(stderr, "%s", kAnsiClearToEos);
       std::fflush(stderr);
     }
 
@@ -994,23 +1005,43 @@ void error(char const *fmt, ...) {
 }
 
 void print_stdout(char const *fmt, ...) {
-  if (!fmt) { return; }
+  if (!s_tui.initialized || !fmt) { return; }
 
-  std::lock_guard<std::mutex> lock{ s_tui.stdout_mutex };
+  std::string buffer(1024, '\0');
 
   va_list args;
   va_start(args, fmt);
-  int const written{ std::vprintf(fmt, args) };
+  va_list args_copy;
+  va_copy(args_copy, args);
+  int written{ std::vsnprintf(buffer.data(), buffer.size(), fmt, args) };
   va_end(args);
 
-  if (written > 0) { std::fflush(stdout); }
+  if (written <= 0) {
+    va_end(args_copy);
+    return;
+  }
+
+  if (static_cast<std::size_t>(written) >= buffer.size()) {
+    buffer.resize(static_cast<std::size_t>(written) + 1);
+    written = std::vsnprintf(buffer.data(), buffer.size(), fmt, args_copy);
+  }
+  va_end(args_copy);
+
+  if (written <= 0) { return; }
+  buffer.resize(static_cast<std::size_t>(written));
+
+  {
+    std::lock_guard<std::mutex> lock{ s_tui.mutex };
+    s_tui.messages.push(log_entry{ stdout_event{ .message = std::move(buffer) } });
+  }
+  s_tui.cv.notify_one();
 }
 
 void pause_rendering() {
   std::lock_guard lock{ s_tui.mutex };
   if (is_ansi_supported() && s_progress.last_line_count > 0) {
-    std::fprintf(stderr, "\x1b[%dF\x1b[0J", s_progress.last_line_count);
-    std::fprintf(stderr, "\x1b[?7h\x1b[?25h");  // Re-enable auto-wrap and show cursor
+    std::fprintf(stderr, kAnsiCursorUpFmt, s_progress.last_line_count);
+    std::fprintf(stderr, "%s%s", kAnsiClearToEos, kAnsiShowCursor);
     s_progress.last_line_count = 0;
     std::fflush(stderr);
   }
@@ -1019,9 +1050,8 @@ void pause_rendering() {
 void resume_rendering() {
   // No mutex needed: only writes to stderr without accessing shared state
   // pause_rendering() needs mutex because it reads/modifies s_progress.last_line_count
-  // Disable auto-wrap and hide cursor again after interactive command completes
   if (is_ansi_supported()) {
-    std::fprintf(stderr, "\x1b[?25l\x1b[?7l");
+    std::fprintf(stderr, "%s", kAnsiHideCursor);
     std::fflush(stderr);
   }
   // Next render cycle will redraw
@@ -1140,9 +1170,9 @@ scope::scope(std::optional<level> threshold, bool decorated_logging) {
   run(std::move(threshold), decorated_logging);
   active = true;
 
-  // Hide cursor and disable auto-wrap for the entire TUI session
+  // Hide cursor during TUI session (auto-wrap managed per-render in sections)
   if (is_ansi_supported()) {
-    std::fprintf(stderr, "\x1b[?25l\x1b[?7l");
+    std::fprintf(stderr, "%s", kAnsiHideCursor);
     std::fflush(stderr);
   }
 }
@@ -1151,9 +1181,9 @@ scope::~scope() {
   if (active) {
     flush_final_render();
 
-    // Re-enable auto-wrap and show cursor after final render
+    // Show cursor after TUI session ends
     if (is_ansi_supported()) {
-      std::fprintf(stderr, "\x1b[?7h\x1b[?25h");
+      std::fprintf(stderr, "%s", kAnsiShowCursor);
       std::fflush(stderr);
     }
 
