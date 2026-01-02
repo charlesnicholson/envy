@@ -71,7 +71,6 @@ struct tui {
 struct section_state {
   unsigned handle;
   envy::tui::section_frame cached_frame;
-  bool active;
   bool has_content{ false };  // True after first set_content call
 
   std::string last_fallback_output;
@@ -541,7 +540,7 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
 
   // Render each section and split into individual lines
   for (auto const &sec : sections) {
-    if (!sec.active || !sec.has_content) { continue; }
+    if (!sec.has_content) { continue; }
     std::string frame{
       render_section_frame(sec.cached_frame, max_label_width, width, true, now)
     };
@@ -594,7 +593,7 @@ void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
   std::vector<update_info> updates;
 
   for (auto const &sec : sections) {
-    if (!sec.active || !sec.has_content) { continue; }
+    if (!sec.has_content) { continue; }
 
     std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
 
@@ -743,6 +742,46 @@ void flush_messages(std::queue<log_entry> &pending,
   if (!handler && wrote_to_stderr) { std::fflush(stderr); }
 }
 
+// Single render cycle: clear section area if needed, flush messages, render sections.
+// Returns the number of section lines rendered.
+int render_cycle(std::queue<log_entry> &pending,
+                 std::vector<section_state> const &sections,
+                 std::size_t max_label_width,
+                 int last_line_count) {
+  int rendered_line_count{ 0 };
+  bool const ansi{ is_ansi_supported() };
+  auto const now{ get_now() };
+  bool const has_messages{ !pending.empty() };
+
+  if (ansi && has_messages && last_line_count > 0) {
+    std::fprintf(stderr, "\r");
+    if (last_line_count > 1) {
+      std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1);
+    }
+    std::fprintf(stderr, "%s", kAnsiClearToEos);
+    std::fflush(stderr);
+  }
+
+  flush_messages(pending, s_tui.output_handler);
+
+  if (s_progress.enabled) {
+    int const width{ get_terminal_width() };
+
+    if (ansi) {
+      int const effective_last{ has_messages ? 0 : last_line_count };
+      rendered_line_count = render_progress_sections_ansi(sections,
+                                                          max_label_width,
+                                                          effective_last,
+                                                          width,
+                                                          now);
+    } else {
+      render_fallback_frame_unlocked(sections, now);
+    }
+  }
+
+  return rendered_line_count;
+}
+
 void worker_thread() {
   std::unique_lock<std::mutex> lock{ s_tui.mutex };
 
@@ -763,86 +802,59 @@ void worker_thread() {
 
       lock.unlock();
 
-      int rendered_line_count{ 0 };
-      bool const ansi{ is_ansi_supported() };
-      auto const now{ get_now() };
-      bool const has_messages{ !pending.empty() };
-
-      // Rendering order: messages scroll up (permanent), sections always at bottom.
-      // 1. If we have messages, clear the section area first (if any), then print messages
-      if (ansi && has_messages && last_line_count > 0) {
-        // Clear section area: go to column 0, move up if multi-line, clear to end
-        std::fprintf(stderr, "\r");
-        if (last_line_count > 1) {
-          std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1);
-        }
-        std::fprintf(stderr, "%s", kAnsiClearToEos);
-        std::fflush(stderr);
-      }
-
-      // 2. Flush messages (auto-wrap is ON by default, so messages wrap naturally)
-      flush_messages(pending, s_tui.output_handler);
-
-      // 3. Render sections below messages (always at bottom)
-      if (s_progress.enabled) {
-        int const width{ get_terminal_width() };
-
-        if (ansi) {
-          // After clearing, render fresh (last_line_count=0 since we cleared)
-          int const effective_last{ has_messages ? 0 : last_line_count };
-          rendered_line_count = render_progress_sections_ansi(sections_snapshot,
-                                                              max_label_width,
-                                                              effective_last,
-                                                              width,
-                                                              now);
-        } else {
-          render_fallback_frame_unlocked(sections_snapshot, now);
-        }
-      }
+      int const rendered_line_count{
+        render_cycle(pending, sections_snapshot, max_label_width, last_line_count)
+      };
 
       lock.lock();
 
-      // Track only section lines - messages are permanent and don't count
-      if (ansi && s_progress.enabled) { s_progress.last_line_count = rendered_line_count; }
+      if (is_ansi_supported() && s_progress.enabled) {
+        s_progress.last_line_count = rendered_line_count;
+      }
       s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
         return s_tui.stop_requested.load();
       });
     } catch (std::exception const &e) {
-      // Ensure lock is reacquired if exception occurred while unlocked
       if (!lock.owns_lock()) { lock.lock(); }
       std::fprintf(stderr, "[TUI worker thread exception: %s]\n", e.what());
       std::fflush(stderr);
     } catch (...) {
-      // Ensure lock is reacquired if exception occurred while unlocked
       if (!lock.owns_lock()) { lock.lock(); }
       std::fprintf(stderr, "[TUI worker thread exception: unknown]\n");
       std::fflush(stderr);
     }
   }
 
-  // Final flush on shutdown
+  // Final render: same as regular render, plus trailing newline if sections rendered
   try {
     std::queue<log_entry> pending;
     pending.swap(s_tui.messages);
-    int const last_line_count{ s_progress.last_line_count };
+
+    std::vector<section_state> sections_snapshot;
+    std::size_t max_label_width{ 0 };
+    int last_line_count{ 0 };
+
+    if (s_progress.enabled) {
+      sections_snapshot = s_progress.sections;
+      max_label_width = s_progress.max_label_width;
+      last_line_count = s_progress.last_line_count;
+    }
 
     lock.unlock();
 
-    if (is_ansi_supported() && !pending.empty() && last_line_count > 0) {
-      std::fprintf(stderr, "\r");
-      if (last_line_count > 1) {
-        std::fprintf(stderr, kAnsiCursorUpFmt, last_line_count - 1);
-      }
-      std::fprintf(stderr, "%s", kAnsiClearToEos);
+    int const rendered_line_count{
+      render_cycle(pending, sections_snapshot, max_label_width, last_line_count)
+    };
+
+    if (rendered_line_count > 0) {
+      std::fprintf(stderr, "\n");
       std::fflush(stderr);
     }
-
-    flush_messages(pending, s_tui.output_handler);
   } catch (std::exception const &e) {
-    std::fprintf(stderr, "[TUI final flush exception: %s]\n", e.what());
+    std::fprintf(stderr, "[TUI final render exception: %s]\n", e.what());
     std::fflush(stderr);
   } catch (...) {
-    std::fprintf(stderr, "[TUI final flush exception: unknown]\n");
+    std::fprintf(stderr, "[TUI final render exception: unknown]\n");
     std::fflush(stderr);
   }
 }
@@ -1065,7 +1077,6 @@ section_handle section_create() {
   unsigned const handle{ s_progress.next_handle++ };
   s_progress.sections.push_back(section_state{ .handle = handle,
                                                .cached_frame = {},
-                                               .active = true,
                                                .last_fallback_output = {} });
 
   return handle;
@@ -1078,7 +1089,7 @@ void section_set_content(section_handle h, section_frame const &frame) {
 
   if (auto it{ std::ranges::find_if(
           s_progress.sections,
-          [h](auto const &sec) { return sec.handle == h && sec.active; }) };
+          [h](auto const &sec) { return sec.handle == h; }) };
       it != s_progress.sections.end()) {
     it->cached_frame = frame;
     it->has_content = true;
@@ -1095,47 +1106,6 @@ bool section_has_content(section_handle h) {
   auto it{ std::ranges::find_if(s_progress.sections,
                                 [h](auto const &sec) { return sec.handle == h; }) };
   return it != s_progress.sections.end() && it->has_content;
-}
-
-void section_release(section_handle h) {
-  if (h == 0 || !s_progress.enabled) { return; }
-
-  std::lock_guard lock{ s_tui.mutex };
-
-  if (auto it{ std::ranges::find_if(s_progress.sections,
-                                    [h](auto &sec) { return sec.handle == h; }) };
-      it != s_progress.sections.end()) {
-    it->active = false;
-  }
-}
-
-void flush_final_render() {
-  if (!s_progress.enabled) { return; }
-
-  auto const [sections_snapshot, max_label_width, last_line_count] = [&] {
-    std::lock_guard lock{ s_tui.mutex };
-    return std::tuple{ s_progress.sections,
-                       s_progress.max_label_width,
-                       s_progress.last_line_count };
-  }();
-
-  auto const now{ get_now() };
-  int const width{ get_terminal_width() };
-
-  if (is_ansi_supported()) {
-    render_progress_sections_ansi(sections_snapshot,
-                                  max_label_width,
-                                  last_line_count,
-                                  width,
-                                  now);
-  } else {  // Fallback mode: render all sections without throttling (final render)
-    for (auto const &sec : sections_snapshot) {
-      if (!sec.active || !sec.has_content) { continue; }
-      std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
-      std::fprintf(stderr, "%s", output.c_str());
-    }
-    std::fflush(stderr);
-  }
 }
 
 void acquire_interactive_mode() {
@@ -1179,15 +1149,12 @@ scope::scope(std::optional<level> threshold, bool decorated_logging) {
 
 scope::~scope() {
   if (active) {
-    flush_final_render();
+    shutdown();
 
-    // Re-enable auto-wrap and show cursor after TUI session ends
     if (is_ansi_supported()) {
       std::fprintf(stderr, "%s%s", kAnsiEnableWrap, kAnsiShowCursor);
       std::fflush(stderr);
     }
-
-    shutdown();
   }
 }
 

@@ -812,25 +812,6 @@ TEST_CASE("grouped render fallback") {
   CHECK(output.find("  ninja.git") != std::string::npos);
 }
 
-TEST_CASE("inactive sections do not render") {
-  auto const h1{ envy::tui::section_create() };
-  auto const h2{ envy::tui::section_create() };
-
-  envy::tui::section_frame const frame{ .label = "pkg@v1",
-                                        .content = envy::tui::static_text_data{
-                                            .text = "test" } };
-
-  envy::tui::section_set_content(h1, frame);
-  envy::tui::section_set_content(h2, frame);
-
-  // Release h1 - it should not render
-  envy::tui::section_release(h1);
-
-  // Can't directly test render output without exposing internals,
-  // but we can verify the section was marked inactive
-  // (This is a structural test - render functions check active flag)
-}
-
 TEST_CASE("interactive_mode_guard RAII") {
   {
     envy::tui::interactive_mode_guard guard;
