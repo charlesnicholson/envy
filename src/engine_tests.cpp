@@ -162,4 +162,30 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   fs::remove_all(cache_root);
 }
 
+TEST_CASE("resolve_graph: spec_fetch failures are propagated") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-resolve-fail-test" };
+
+  cache c{ cache_root };
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
+                         fs::path("test_data/specs/simple_python.lua")) };
+  engine eng{ c, m->get_default_shell(nullptr) };
+
+  pkg_cfg *bad_cfg = pkg_cfg::pool()->emplace(
+      "local.nonexistent@v1",
+      pkg_cfg::local_source{ .file_path = fs::path("test_data/specs/DOES_NOT_EXIST.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      fs::path{});
+
+  std::vector<pkg_cfg const *> roots{ bad_cfg };
+  CHECK_THROWS_WITH(eng.resolve_graph(roots), doctest::Contains("Spec source not found"));
+
+  fs::remove_all(cache_root);
+}
+
 }  // namespace envy
