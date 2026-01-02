@@ -60,6 +60,8 @@ void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_option("bin-dir", cfg_ptr->bin_dir, "Directory for bootstrap scripts")
       ->required();
   sub->add_option("--mirror", cfg_ptr->mirror, "Override download mirror URL");
+  sub->add_option("--deploy", cfg_ptr->deploy, "Set @envy deploy directive (true/false)");
+  sub->add_option("--root", cfg_ptr->root, "Set @envy root directive (true/false)");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -103,11 +105,32 @@ void write_file(fs::path const &path, std::string_view content) {
 
 std::string stamp_manifest_placeholders(std::string_view content,
                                         std::string_view download_url,
-                                        std::string_view bin_dir) {
+                                        std::string_view bin_dir,
+                                        std::optional<bool> deploy,
+                                        std::optional<bool> root) {
   std::string result{ content };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@DOWNLOAD_URL@@", download_url);
   replace_all(result, "@@BIN_DIR@@", bin_dir);
+
+  // Add deploy directive if specified
+  if (deploy.has_value()) {
+    replace_all(result,
+                "@@DEPLOY_DIRECTIVE@@",
+                *deploy ? "-- @envy deploy \"true\"\n" : "-- @envy deploy \"false\"\n");
+  } else {
+    replace_all(result, "@@DEPLOY_DIRECTIVE@@", "");
+  }
+
+  // Add root directive if specified
+  if (root.has_value()) {
+    replace_all(result,
+                "@@ROOT_DIRECTIVE@@",
+                *root ? "-- @envy root \"true\"\n" : "-- @envy root \"false\"\n");
+  } else {
+    replace_all(result, "@@ROOT_DIRECTIVE@@", "");
+  }
+
   return result;
 }
 
@@ -168,7 +191,10 @@ void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &
   tui::info("Created %s", script_path.string().c_str());
 }
 
-void write_manifest(fs::path const &project_dir, fs::path const &bin_dir) {
+void write_manifest(fs::path const &project_dir,
+                    fs::path const &bin_dir,
+                    std::optional<bool> deploy,
+                    std::optional<bool> root) {
   fs::path const manifest_path{ project_dir / "envy.lua" };
 
   if (fs::exists(manifest_path)) {
@@ -183,7 +209,9 @@ void write_manifest(fs::path const &project_dir, fs::path const &bin_dir) {
 
   std::string const content{ stamp_manifest_placeholders(get_manifest_template(),
                                                          kEnvyDownloadUrl,
-                                                         relative_bin.string()) };
+                                                         relative_bin.string(),
+                                                         deploy,
+                                                         root) };
   write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());
@@ -238,7 +266,7 @@ void cmd_init::execute() {
   }
 
   write_bootstrap(cfg_.bin_dir, cfg_.mirror);
-  write_manifest(cfg_.project_dir, cfg_.bin_dir);
+  write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.deploy, cfg_.root);
   write_luarc(cfg_.project_dir, extract_lua_ls_types());
 
   tui::info("");

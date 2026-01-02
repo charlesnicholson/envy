@@ -99,7 +99,9 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_sync(identities=["local.simple@v1"], manifest=manifest, install_all=True)
+        result = self.run_sync(
+            identities=["local.simple@v1"], manifest=manifest, install_all=True
+        )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -325,9 +327,11 @@ class TestSyncProductScripts(unittest.TestCase):
     def lua_path(path: Path) -> str:
         return path.as_posix()
 
-    def create_manifest(self, content: str) -> Path:
+    def create_manifest(self, content: str, deploy: bool = True) -> Path:
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(make_manifest(content), encoding="utf-8")
+        manifest_path.write_text(
+            make_manifest(content, deploy=deploy), encoding="utf-8"
+        )
         return manifest_path
 
     def run_sync(self, manifest: Path, identities: Optional[List[str]] = None):
@@ -524,6 +528,114 @@ PACKAGES = {{
         mtime2 = stat2.st_mtime
 
         self.assertEqual(mtime1, mtime2, "File timestamp should be unchanged")
+
+
+class TestSyncDeployDirective(unittest.TestCase):
+    """Tests for @envy deploy directive behavior in 'envy sync'."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-deploy-directive-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-deploy-manifest-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+        self.test_data = self.project_root / "test_data"
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    @staticmethod
+    def lua_path(path: Path) -> str:
+        return path.as_posix()
+
+    def create_manifest(self, content: str, deploy: Optional[str] = None) -> Path:
+        """Create manifest with optional deploy directive."""
+        manifest_path = self.test_dir / "envy.lua"
+        header = '-- @envy bin "envy-bin"\n'
+        if deploy is not None:
+            header += f'-- @envy deploy "{deploy}"\n'
+        manifest_path.write_text(header + content, encoding="utf-8")
+        return manifest_path
+
+    def run_sync(self, manifest: Path, install_all: bool = False):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if install_all:
+            cmd.append("--install-all")
+        cmd.extend(["--manifest", str(manifest)])
+        return subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def test_sync_deploy_true_creates_scripts(self):
+        """Sync with deploy=true creates product scripts."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+""",
+            deploy="true",
+        )
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists(), f"Expected product script: {script_path}")
+
+    def test_sync_deploy_false_no_scripts(self):
+        """Sync with deploy=false does not create product scripts."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+""",
+            deploy="false",
+        )
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertFalse(
+            script_path.exists(), "Expected no product script when deploy=false"
+        )
+        self.assertIn("deployment is disabled", result.stderr)
+
+    def test_sync_deploy_absent_warns(self):
+        """Naked sync with deploy absent warns user."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+}}
+"""
+        )  # No deploy directive
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("deployment is disabled", result.stderr)
+        self.assertIn("@envy deploy", result.stderr)
+
+    def test_sync_install_all_no_deploy_warning(self):
+        """Sync --install-all does not warn about deploy directive."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+}}
+"""
+        )  # No deploy directive
+
+        result = self.run_sync(manifest=manifest, install_all=True)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        # Should NOT warn about deployment when --install-all is used
+        self.assertNotIn("deployment is disabled", result.stderr)
 
 
 if __name__ == "__main__":

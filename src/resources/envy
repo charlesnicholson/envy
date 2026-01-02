@@ -6,10 +6,23 @@ FALLBACK_VERSION="@@ENVY_VERSION@@"
 
 find_manifest() {
     local d="$PWD"
+    local candidates=()
     while [[ "$d" != / ]]; do
-        [[ -f "$d/envy.lua" ]] && echo "$d/envy.lua" && return
+        if [[ -f "$d/envy.lua" ]]; then
+            local is_root="true"
+            if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'; then
+                is_root="false"
+            fi
+            if [[ "$is_root" == "true" ]]; then
+                echo "$d/envy.lua" && return
+            else
+                candidates+=("$d/envy.lua")
+            fi
+        fi
         d="${d%/*}"; d="${d:-/}"
-    done; return 1
+    done
+    [[ ${#candidates[@]} -gt 0 ]] && echo "${candidates[${#candidates[@]}-1]}" && return
+    return 1
 }
 
 MANIFEST=$(find_manifest) || { echo "ERROR: envy.lua not found" >&2; exit 1; }

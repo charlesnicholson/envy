@@ -5,20 +5,26 @@ import sys
 import threading
 from pathlib import Path
 
-# Required manifest header for all manifests (bin-dir is mandatory)
-MANIFEST_HEADER = '-- @envy bin-dir "envy-bin"\n'
+# Required manifest header for all manifests (bin is mandatory)
+MANIFEST_HEADER = '-- @envy bin "envy-bin"\n'
+
+# Manifest header with deployment enabled (for sync tests)
+MANIFEST_HEADER_DEPLOY = '-- @envy bin "envy-bin"\n-- @envy deploy "true"\n'
 
 
-def make_manifest(packages_content: str) -> str:
+def make_manifest(packages_content: str, deploy: bool = False) -> str:
     """Create a manifest string with required headers.
 
     Args:
         packages_content: The PACKAGES table content (should start with 'PACKAGES = {')
+        deploy: If True, include deploy directive for product script creation
 
     Returns:
-        Complete manifest string with required bin-dir directive.
+        Complete manifest string with required bin directive.
     """
-    return MANIFEST_HEADER + packages_content
+    header = MANIFEST_HEADER_DEPLOY if deploy else MANIFEST_HEADER
+    return header + packages_content
+
 
 # Thread-local state for which sanitizer variant to use
 _thread_local = threading.local()

@@ -5,11 +5,32 @@ set "ENVY_MIRROR=@@DOWNLOAD_URL@@"
 set "FALLBACK_VERSION=@@ENVY_VERSION@@"
 
 set "MANIFEST="
+set "CANDIDATE="
 set "DIR=%CD%"
 :findloop
-if exist "%DIR%\envy.lua" (set "MANIFEST=%DIR%\envy.lua" & goto :found)
+if exist "%DIR%\envy.lua" (
+    set "IS_ROOT=true"
+    for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("%DIR%\envy.lua") do (
+        if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
+            set "VAL=%%d"
+            if "!VAL!"=="""false""" set "IS_ROOT=false"
+        )
+    )
+    if "!IS_ROOT!"=="true" (
+        set "MANIFEST=%DIR%\envy.lua"
+        goto :found
+    ) else (
+        set "CANDIDATE=%DIR%\envy.lua"
+    )
+)
 for %%I in ("%DIR%\..") do set "PARENT=%%~fI"
-if "%PARENT%"=="%DIR%" (echo ERROR: envy.lua not found >&2 & exit /b 1)
+if "%PARENT%"=="%DIR%" (
+    if defined CANDIDATE (
+        set "MANIFEST=!CANDIDATE!"
+        goto :found
+    )
+    echo ERROR: envy.lua not found >&2 & exit /b 1
+)
 set "DIR=%PARENT%"
 goto :findloop
 :found

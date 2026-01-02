@@ -20,7 +20,9 @@ struct envy_meta {
   std::optional<std::string> version;  // @envy version "x.y.z"
   std::optional<std::string> cache;    // @envy cache "/path"
   std::optional<std::string> mirror;   // @envy mirror "https://..."
-  std::optional<std::string> bin_dir;  // @envy bin-dir "relative/path/to/bin"
+  std::optional<std::string> bin;      // @envy bin "relative/path/to/bin"
+  std::optional<bool> deploy;          // @envy deploy "true"/"false"
+  std::optional<bool> root;            // @envy root "true"/"false"
 };
 
 // Parse @envy metadata from manifest content
