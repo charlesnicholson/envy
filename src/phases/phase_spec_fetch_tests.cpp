@@ -332,132 +332,82 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
   CHECK(threw);
 }
 
-// ============================================================================
-// Product name validation tests
-// ============================================================================
+TEST_CASE("product name validation") {
+  auto expect_valid{ [](std::string const &product_name) {
+    cache c;
+    engine eng{ c, std::nullopt };
 
-TEST_CASE("valid product name with alphanumeric, hyphen, underscore, period succeeds") {
-  cache c;
-  engine eng{ c, std::nullopt };
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_product_valid" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
-  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_product_valid" };
-  std::filesystem::create_directories(temp_dir);
-  temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "product_valid.lua" };
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.product@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { [\"" << product_name << "\"] = \"/usr/bin/tool\" }\n";
+    ofs.close();
 
-  std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.product_valid@v1\"\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
-  ofs << "PRODUCTS = { [\"python3.14\"] = \"/usr/bin/python\", [\"my-tool_v2\"] = "
-         "\"/usr/bin/tool\" }\n";
-  ofs.close();
+    auto *cfg{ make_local_cfg("test.product@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
 
-  auto *cfg{ make_local_cfg("test.product_valid@v1", spec_file) };
-  pkg *p{ eng.ensure_pkg(cfg) };
+    CAPTURE(product_name);
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count(product_name) == 1);
+  } };
 
-  CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
-  CHECK(p->products.size() == 2);
-  CHECK(p->products.count("python3.14") == 1);
-  CHECK(p->products.count("my-tool_v2") == 1);
-}
+  auto expect_rejected{ [](std::string const &lua_escaped_name) {
+    cache c;
+    engine eng{ c, std::nullopt };
 
-TEST_CASE("product name with space rejected") {
-  cache c;
-  engine eng{ c, std::nullopt };
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_product_reject" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
-  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_product_space" };
-  std::filesystem::create_directories(temp_dir);
-  temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "product_space.lua" };
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.product@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { [\"" << lua_escaped_name << "\"] = \"/usr/bin/tool\" }\n";
+    ofs.close();
 
-  std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.product_space@v1\"\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
-  ofs << "PRODUCTS = { [\"my tool\"] = \"/usr/bin/tool\" }\n";
-  ofs.close();
+    auto *cfg{ make_local_cfg("test.product@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
 
-  auto *cfg{ make_local_cfg("test.product_space@v1", spec_file) };
-  pkg *p{ eng.ensure_pkg(cfg) };
+    CAPTURE(lua_escaped_name);
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng), doctest::Contains("shell-unsafe"));
+  } };
 
-  bool threw{ false };
-  try {
-    run_spec_fetch_phase(p, eng);
-  } catch (std::runtime_error const &e) {
-    threw = true;
-    std::string const msg{ e.what() };
-    INFO(msg);
-    CHECK(msg.find("invalid character") != std::string::npos);
-    CHECK(msg.find("my tool") != std::string::npos);
+  SUBCASE("valid") {
+    expect_valid("tool");
+    expect_valid("Tool123");
+    expect_valid("my-tool");
+    expect_valid("my_tool");
+    expect_valid("arm-none-eabi-gcc");
+    expect_valid("python3.14");
+    expect_valid("g++");
+    expect_valid("arm-none-eabi-c++");
+    expect_valid("tool@v1");
+    expect_valid("tool:variant");
+    expect_valid("tool#tag");
+    expect_valid("tool~beta");
+    expect_valid("tool[0]");
   }
-  CHECK(threw);
-}
 
-TEST_CASE("product name with shell metacharacter rejected") {
-  cache c;
-  engine eng{ c, std::nullopt };
-
-  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_product_meta" };
-  std::filesystem::create_directories(temp_dir);
-  temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "product_meta.lua" };
-
-  std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.product_meta@v1\"\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
-  ofs << "PRODUCTS = { [\"tool$var\"] = \"/usr/bin/tool\" }\n";
-  ofs.close();
-
-  auto *cfg{ make_local_cfg("test.product_meta@v1", spec_file) };
-  pkg *p{ eng.ensure_pkg(cfg) };
-
-  bool threw{ false };
-  try {
-    run_spec_fetch_phase(p, eng);
-  } catch (std::runtime_error const &e) {
-    threw = true;
-    std::string const msg{ e.what() };
-    INFO(msg);
-    CHECK(msg.find("invalid character") != std::string::npos);
+  SUBCASE("invalid") {
+    expect_rejected("my tool");
+    expect_rejected("tool$var");
+    expect_rejected("tool`cmd`");
+    expect_rejected("tool\\\"name");
+    expect_rejected("tool'name");
+    expect_rejected("tool%var%");
+    expect_rejected("tool\\\\path");
+    expect_rejected("tool!");
   }
-  CHECK(threw);
-}
-
-TEST_CASE("product name with quotes rejected") {
-  cache c;
-  engine eng{ c, std::nullopt };
-
-  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_product_quote" };
-  std::filesystem::create_directories(temp_dir);
-  temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "product_quote.lua" };
-
-  std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.product_quote@v1\"\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
-  ofs << "PRODUCTS = { ['tool\"name'] = \"/usr/bin/tool\" }\n";
-  ofs.close();
-
-  auto *cfg{ make_local_cfg("test.product_quote@v1", spec_file) };
-  pkg *p{ eng.ensure_pkg(cfg) };
-
-  bool threw{ false };
-  try {
-    run_spec_fetch_phase(p, eng);
-  } catch (std::runtime_error const &e) {
-    threw = true;
-    std::string const msg{ e.what() };
-    INFO(msg);
-    CHECK(msg.find("invalid character") != std::string::npos);
-  }
-  CHECK(threw);
 }
 
 }  // namespace envy

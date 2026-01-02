@@ -804,10 +804,34 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
     return count;
   } };
 
+  auto const collect_failed_packages{ [this]() {
+    std::vector<std::string> errors;
+    std::lock_guard const lock(mutex_);
+    for (auto const &[key, ctx] : execution_ctxs_) {
+      if (ctx->failed) {
+        std::lock_guard const ctx_lock(ctx->mutex);
+        errors.push_back(ctx->error_message.empty() ? "Package failed: " + key.canonical()
+                                                    : ctx->error_message);
+      }
+    }
+    return errors;
+  } };
+
   size_t iteration{ 0 };
   while (true) {
     ++iteration;
-    wait_for_resolution_phase();  // Wait for all current spec_fetch targets to finish
+    wait_for_resolution_phase();
+
+    if (auto const errors{ collect_failed_packages() }; !errors.empty()) {
+      fail_all_contexts();
+      std::ostringstream oss;
+      for (size_t i{ 0 }; i < errors.size(); ++i) {
+        if (i) { oss << "\n"; }
+        oss << errors[i];
+      }
+      throw std::runtime_error(oss.str());
+    }
+
     update_product_registry();
     weak_resolution_result const resolution{ resolve_weak_references() };
 
