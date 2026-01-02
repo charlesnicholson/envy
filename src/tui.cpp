@@ -1041,7 +1041,7 @@ void pause_rendering() {
   std::lock_guard lock{ s_tui.mutex };
   if (is_ansi_supported() && s_progress.last_line_count > 0) {
     std::fprintf(stderr, kAnsiCursorUpFmt, s_progress.last_line_count);
-    std::fprintf(stderr, "%s%s", kAnsiClearToEos, kAnsiShowCursor);
+    std::fprintf(stderr, "%s%s%s", kAnsiClearToEos, kAnsiEnableWrap, kAnsiShowCursor);
     s_progress.last_line_count = 0;
     std::fflush(stderr);
   }
@@ -1181,9 +1181,9 @@ scope::~scope() {
   if (active) {
     flush_final_render();
 
-    // Show cursor after TUI session ends
+    // Re-enable auto-wrap and show cursor after TUI session ends
     if (is_ansi_supported()) {
-      std::fprintf(stderr, "%s", kAnsiShowCursor);
+      std::fprintf(stderr, "%s%s", kAnsiEnableWrap, kAnsiShowCursor);
       std::fflush(stderr);
     }
 
