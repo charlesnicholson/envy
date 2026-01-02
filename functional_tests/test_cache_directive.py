@@ -44,7 +44,7 @@ class TestCacheDirective(unittest.TestCase):
         cmd = [str(self.envy)]
         if cache_root:
             cmd.extend(["--cache-root", cache_root])
-        cmd.extend(["sync", "--manifest", str(manifest)])
+        cmd.extend(["sync", "--install-all", "--manifest", str(manifest)])
 
         env = env_override if env_override else test_config.get_test_env()
 

@@ -7,7 +7,9 @@ and transitive dependencies.
 
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Optional, List
@@ -43,10 +45,15 @@ class TestSyncCommand(unittest.TestCase):
         return manifest_path
 
     def run_sync(
-        self, identities: Optional[List[str]] = None, manifest: Optional[Path] = None
+        self,
+        identities: Optional[List[str]] = None,
+        manifest: Optional[Path] = None,
+        install_all: bool = False,
     ):
         """Run 'envy sync' command and return result."""
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if install_all:
+            cmd.append("--install-all")
         if identities:
             cmd.extend(identities)
         if manifest:
@@ -60,8 +67,8 @@ class TestSyncCommand(unittest.TestCase):
         )
         return result
 
-    def test_sync_no_args_installs_all(self):
-        """Sync with no args installs entire manifest."""
+    def test_sync_install_all_installs_packages(self):
+        """Sync --install-all installs entire manifest."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -71,19 +78,18 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_sync(manifest=manifest)
+        result = self.run_sync(manifest=manifest, install_all=True)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("sync complete", result.stderr.lower())
+        self.assertIn("installed", result.stderr.lower())
 
-        # Verify both packages were installed
         build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
         simple_path = self.cache_root / "packages" / "local.simple@v1"
         self.assertTrue(build_dep_path.exists(), f"Expected {build_dep_path} to exist")
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
 
-    def test_sync_single_identity(self):
-        """Sync single identity installs only that package and its dependencies."""
+    def test_sync_install_all_single_identity(self):
+        """Sync --install-all with single identity installs only that package."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -93,21 +99,19 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_sync(identities=["local.simple@v1"], manifest=manifest)
+        result = self.run_sync(identities=["local.simple@v1"], manifest=manifest, install_all=True)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify only simple was installed
         simple_path = self.cache_root / "packages" / "local.simple@v1"
         build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
-        # build_dependency should NOT exist (not a dependency of simple, not requested)
         self.assertFalse(
             build_dep_path.exists(), f"Expected {build_dep_path} NOT to exist"
         )
 
-    def test_sync_multiple_identities(self):
-        """Sync multiple identities installs all specified packages."""
+    def test_sync_install_all_multiple_identities(self):
+        """Sync --install-all with multiple identities installs all specified packages."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -120,11 +124,11 @@ PACKAGES = {{
         result = self.run_sync(
             identities=["local.simple@v1", "local.build_dependency@v1"],
             manifest=manifest,
+            install_all=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify both were installed
         simple_path = self.cache_root / "packages" / "local.simple@v1"
         build_dep_path = self.cache_root / "packages" / "local.build_dependency@v1"
         self.assertTrue(simple_path.exists(), f"Expected {simple_path} to exist")
@@ -167,8 +171,8 @@ PACKAGES = {{
         simple_path = self.cache_root / "packages" / "local.simple@v1"
         self.assertFalse(simple_path.exists(), f"Expected nothing installed on error")
 
-    def test_sync_second_run_is_noop(self):
-        """Second sync run is a no-op (cache hits)."""
+    def test_sync_install_all_second_run_is_noop(self):
+        """Second sync --install-all run is a no-op (cache hits)."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -185,6 +189,7 @@ PACKAGES = {{
             str(self.cache_root),
             f"--trace=file:{trace_file1}",
             "sync",
+            "--install-all",
             "local.simple@v1",
             "--manifest",
             str(manifest),
@@ -206,6 +211,7 @@ PACKAGES = {{
             str(self.cache_root),
             f"--trace=file:{trace_file2}",
             "sync",
+            "--install-all",
             "local.simple@v1",
             "--manifest",
             str(manifest),
@@ -214,7 +220,6 @@ PACKAGES = {{
             cmd2, cwd=self.project_root, capture_output=True, text=True
         )
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
-        self.assertIn("sync complete", result2.stderr.lower())
 
         parser2 = TraceParser(trace_file2)
 
@@ -241,8 +246,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertEqual(result.stdout, "", "Expected no stdout output from sync")
 
-    def test_sync_respects_cache_root(self):
-        """Sync respects --cache-root flag."""
+    def test_sync_install_all_respects_cache_root(self):
+        """Sync --install-all respects --cache-root flag."""
         custom_cache = Path(tempfile.mkdtemp(prefix="envy-sync-custom-cache-"))
         try:
             manifest = self.create_manifest(
@@ -253,12 +258,12 @@ PACKAGES = {{
 """
             )
 
-            # Use custom cache root
             cmd = [
                 str(self.envy),
                 "--cache-root",
                 str(custom_cache),
                 "sync",
+                "--install-all",
                 "--manifest",
                 str(manifest),
             ]
@@ -268,7 +273,6 @@ PACKAGES = {{
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-            # Verify package installed to custom cache
             simple_path = custom_cache / "packages" / "local.simple@v1"
             self.assertTrue(
                 simple_path.exists(), f"Expected package in custom cache: {simple_path}"
@@ -285,9 +289,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("nothing to sync", result.stderr.lower())
 
-    def test_sync_transitive_dependencies(self):
-        """Sync installs transitive dependencies."""
-        # diamond_c depends on diamond_b, which depends on diamond_a
+    def test_sync_install_all_transitive_dependencies(self):
+        """Sync --install-all installs transitive dependencies."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -296,12 +299,231 @@ PACKAGES = {{
 """
         )
 
-        result = self.run_sync(identities=["local.diamond_c@v1"], manifest=manifest)
+        result = self.run_sync(
+            identities=["local.diamond_c@v1"], manifest=manifest, install_all=True
+        )
 
-        # All three should be installed (transitive dependencies)
-        # Note: These are programmatic packages, so they succeed but don't leave cache artifacts
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("sync complete", result.stderr.lower())
+        self.assertIn("installed", result.stderr.lower())
+
+
+class TestSyncProductScripts(unittest.TestCase):
+    """Tests for product script deployment via 'envy sync'."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-sync-deploy-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-sync-deploy-manifest-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+        self.test_data = self.project_root / "test_data"
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    @staticmethod
+    def lua_path(path: Path) -> str:
+        return path.as_posix()
+
+    def create_manifest(self, content: str) -> Path:
+        manifest_path = self.test_dir / "envy.lua"
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
+        return manifest_path
+
+    def run_sync(self, manifest: Path, identities: Optional[List[str]] = None):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if identities:
+            cmd.extend(identities)
+        cmd.extend(["--manifest", str(manifest)])
+        return subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def test_sync_creates_product_scripts(self):
+        """Default sync creates product scripts in bin directory."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+"""
+        )
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue(bin_dir.exists(), "Expected bin directory to exist")
+
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists(), f"Expected product script: {script_path}")
+
+        content = script_path.read_text()
+        self.assertIn("envy-managed", content)
+        self.assertIn("product", content)
+
+    def test_sync_updates_envy_managed_scripts(self):
+        """Sync updates existing envy-managed scripts."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+"""
+        )
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        script_path.write_text("# envy-managed OLD_VERSION\nold content\n")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        content = script_path.read_text()
+        self.assertNotIn("OLD_VERSION", content)
+        self.assertIn("envy-managed", content)
+
+    def test_sync_errors_on_non_envy_file_conflict(self):
+        """Sync errors if non-envy-managed file conflicts with product name."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+"""
+        )
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        script_path.write_text("#!/bin/bash\necho 'user script'\n")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertNotEqual(result.returncode, 0, "Expected non-zero exit code")
+        self.assertIn("not envy-managed", result.stderr.lower())
+
+    def test_sync_removes_obsolete_scripts(self):
+        """Sync removes obsolete envy-managed scripts."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+}}
+"""
+        )
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        obsolete_name = "old_tool.bat" if sys.platform == "win32" else "old_tool"
+        obsolete_path = bin_dir / obsolete_name
+        obsolete_path.write_text("# envy-managed v1.0.0\nold content\n")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertFalse(
+            obsolete_path.exists(), f"Expected obsolete script to be removed"
+        )
+
+    def test_sync_preserves_envy_executable(self):
+        """Sync does not remove or modify the envy executable itself."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+}}
+"""
+        )
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        envy_name = "envy.bat" if sys.platform == "win32" else "envy"
+        envy_path = bin_dir / envy_name
+        envy_content = "# envy bootstrap\n"
+        envy_path.write_text(envy_content)
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(envy_path.exists(), "envy executable should not be removed")
+        self.assertEqual(
+            envy_path.read_text(), envy_content, "envy content should be unchanged"
+        )
+
+    def test_sync_install_all_does_full_install(self):
+        """Sync --install-all installs packages then deploys scripts."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+"""
+        )
+
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "sync",
+            "--install-all",
+            "--manifest",
+            str(manifest),
+        ]
+        result = subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("installed", result.stderr.lower())
+
+        pkg_path = self.cache_root / "packages" / "local.product_provider@v1"
+        self.assertTrue(pkg_path.exists(), f"Expected package at {pkg_path}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists(), f"Expected product script: {script_path}")
+
+    def test_sync_timestamp_preserved_when_content_unchanged(self):
+        """Sync preserves file timestamps when content is unchanged."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+}}
+"""
+        )
+
+        result1 = self.run_sync(manifest=manifest)
+        self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+
+        stat1 = script_path.stat()
+        mtime1 = stat1.st_mtime
+
+        time.sleep(0.1)
+
+        result2 = self.run_sync(manifest=manifest)
+        self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
+
+        stat2 = script_path.stat()
+        mtime2 = stat2.st_mtime
+
+        self.assertEqual(mtime1, mtime2, "File timestamp should be unchanged")
 
 
 if __name__ == "__main__":

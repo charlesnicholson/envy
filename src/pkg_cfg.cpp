@@ -279,12 +279,10 @@ pkg_cfg *pkg_cfg::parse(sol::object const &lua_val,
       needed_by = pkg_phase::pkg_build;
     } else if (nb == "install") {
       needed_by = pkg_phase::pkg_install;
-    } else if (nb == "deploy") {
-      needed_by = pkg_phase::pkg_deploy;
     } else {
       throw std::runtime_error(
           "Spec 'needed_by' must be one of: check, fetch, stage, "
-          "build, install, deploy (got: " +
+          "build, install (got: " +
           nb + ")");
     }
   }

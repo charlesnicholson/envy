@@ -477,6 +477,7 @@ PACKAGES = {
                     f"--cache-root={self.cache_root}",
                     *self.trace_flag,
                     "sync",
+                    "--install-all",
                     "--manifest",
                     manifest_path,
                 ],

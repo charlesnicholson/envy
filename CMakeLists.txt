@@ -144,24 +144,26 @@ endif()
 include(cmake/Dependencies.cmake)
 include(cmake/EmbedResource.cmake)
 
-# Generate embedded resource header for cmd_init (platform-specific bootstrap)
+# Generate embedded resource header (platform-specific)
 if(WIN32)
     embed_resources(envy_embedded_resources
         OUTPUT embedded_init_resources.h
         RESOURCES
-            bootstrap=src/envy-init/envy.bat
-            manifest_template=src/envy-init/manifest_template.lua
-            type_definitions=src/envy-init/envy.lua
-            luarc_template=src/envy-init/luarc_template.json
+            bootstrap=src/resources/envy.bat
+            manifest_template=src/resources/manifest_template.lua
+            type_definitions=src/resources/envy.lua
+            luarc_template=src/resources/luarc_template.json
+            product_script=src/resources/product_script.bat
     )
 else()
     embed_resources(envy_embedded_resources
         OUTPUT embedded_init_resources.h
         RESOURCES
-            bootstrap=src/envy-init/envy
-            manifest_template=src/envy-init/manifest_template.lua
-            type_definitions=src/envy-init/envy.lua
-            luarc_template=src/envy-init/luarc_template.json
+            bootstrap=src/resources/envy
+            manifest_template=src/resources/manifest_template.lua
+            type_definitions=src/resources/envy.lua
+            luarc_template=src/resources/luarc_template.json
+            product_script=src/resources/product_script
     )
 endif()
 
@@ -244,7 +246,6 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
-    src/phases/phase_deploy.cpp
     src/phases/phase_fetch.cpp
     src/phases/phase_install.cpp
     src/phases/phase_spec_fetch.cpp

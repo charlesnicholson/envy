@@ -17,6 +17,7 @@ class cmd_sync : public cmd {
   struct cfg : cmd_cfg<cmd_sync> {
     std::vector<std::string> identities;  // Optional: if empty, sync all manifest packages
     std::optional<std::filesystem::path> manifest_path;
+    bool install_all = false;  // If true, install packages; otherwise only deploy scripts
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

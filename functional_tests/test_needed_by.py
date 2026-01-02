@@ -137,33 +137,6 @@ class TestNeededBy(unittest.TestCase):
             PkgPhase.PKG_INSTALL,
         )
 
-    def test_needed_by_deploy(self):
-        """Spec A depends on B with needed_by='deploy' - all phases parallel except deploy."""
-        trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_deploy_parent@v1",
-                "test_data/specs/needed_by_deploy_parent.lua",
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_deploy_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_deploy_dep@v1", result.stdout)
-
-        parser = TraceParser(trace_file)
-        parser.assert_dependency_needed_by(
-            "local.needed_by_deploy_parent@v1",
-            "local.needed_by_deploy_dep@v1",
-            PkgPhase.PKG_DEPLOY,
-        )
-
     def test_needed_by_check(self):
         """Spec A depends on B with needed_by='check' - check waits, rest runs parallel."""
         trace_file = self.cache_root / "trace.jsonl"

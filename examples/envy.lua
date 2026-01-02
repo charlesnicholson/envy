@@ -1,4 +1,5 @@
 -- @envy version "0.0.0"
+-- @envy bin-dir "bin"
 
 PACKAGES = {
   { spec = "local.uv@r0", source = "local.uv@r0.lua", options = { version = "0.9.21" } },
