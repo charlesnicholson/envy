@@ -322,6 +322,12 @@ bool pkg_cfg::is_weak_reference() const {
   return std::holds_alternative<weak_ref>(source);
 }
 
+bool pkg_cfg::is_bundle_source() const {
+  return std::holds_alternative<bundle_source>(source);
+}
+
+bool pkg_cfg::is_from_bundle() const { return bundle_identity.has_value(); }
+
 std::string pkg_cfg::serialize_option_table(sol::object const &val) {
   sol::type const type{ val.get_type() };
 

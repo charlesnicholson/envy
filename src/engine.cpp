@@ -474,6 +474,31 @@ void engine::extend_dependencies_to_completion(pkg *p) {
 
 std::filesystem::path const &engine::cache_root() const { return cache_.root(); }
 
+bundle *engine::register_bundle(std::string const &identity,
+                                std::unordered_map<std::string, std::string> specs,
+                                std::filesystem::path cache_path) {
+  std::lock_guard const lock{ mutex_ };
+
+  // Check if already registered
+  auto it{ bundle_registry_.find(identity) };
+  if (it != bundle_registry_.end()) { return it->second.get(); }
+
+  // Create new bundle and register
+  auto b{ std::make_unique<bundle>() };
+  b->identity = identity;
+  b->specs = std::move(specs);
+  b->cache_path = std::move(cache_path);
+
+  auto [insert_it, inserted]{ bundle_registry_.emplace(identity, std::move(b)) };
+  return insert_it->second.get();
+}
+
+bundle *engine::find_bundle(std::string const &identity) const {
+  std::lock_guard const lock{ mutex_ };
+  auto it{ bundle_registry_.find(identity) };
+  return it != bundle_registry_.end() ? it->second.get() : nullptr;
+}
+
 void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited) {
   if (!visited.insert(p->key).second) { return; }  // Already visited (cycle detection)
 

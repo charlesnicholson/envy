@@ -323,6 +323,27 @@ end
 { "workspace.library": ["/path/to/cache/envy/0.1.0/envy.lua"] }
 ```
 
+## SHA256-Based Spec Cache Directories
+
+Incorporate content hash (SHA256) into spec/bundle cache directory names for stronger cache invalidation. Currently specs are keyed only by identity (`specs/<identity>/`). Content changes without revision bumps are caught at runtime but require user intervention.
+
+```
+# Current
+specs/vendor.gcc@v2/
+
+# Proposed
+specs/vendor.gcc@v2-abc123def.../
+```
+
+**Trade-offs:**
+- Pro: Automatic invalidation when content changes (no stale cache issues)
+- Pro: Multiple versions of same identity can coexist during transition
+- Con: SHA256 optional in envy (local specs, git refs without sha256 field)
+- Con: Directory names become unwieldy; tooling/debugging harder
+- Con: Cache bloat if content changes frequently without revision bumps
+
+**Implementation note:** Would require computing content hash during fetch and incorporating into cache path. For git sources, could use commit SHA. For local sources, would need to hash file content.
+
 ## Cross-Platform Spec Variants
 
 Higher-level abstraction for platform-specific variants within a single spec identity. Current Lua approach handles this programmatically.

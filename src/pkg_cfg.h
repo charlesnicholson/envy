@@ -47,8 +47,19 @@ struct pkg_cfg : unmovable {
 
   struct weak_ref {};  // Reference-only or weak dependency (no source)
 
-  using source_t =
-      std::variant<remote_source, local_source, git_source, fetch_function, weak_ref>;
+  // Bundle source: spec comes from within a bundle
+  struct bundle_source {
+    std::string bundle_identity;  // The bundle's identity
+    // The underlying fetch source for the bundle itself
+    std::variant<remote_source, local_source, git_source> fetch_source;
+  };
+
+  using source_t = std::variant<remote_source,
+                                local_source,
+                                git_source,
+                                fetch_function,
+                                weak_ref,
+                                bundle_source>;
 
   pkg_cfg(ctor_tag,
           std::string identity,
@@ -77,6 +88,10 @@ struct pkg_cfg : unmovable {
   // Provenance: manifest or parent spec file that declared this cfg
   std::filesystem::path declaring_file_path;
 
+  // Bundle-related fields (for specs that come from bundles)
+  std::optional<std::string> bundle_identity;  // Which bundle contains this spec
+  std::optional<std::string> bundle_path;      // Relative path within bundle to spec file
+
   // Parse pkg_cfg from Sol2 object (allocates via pool)
   static pkg_cfg *parse(sol::object const &lua_val,
                         std::filesystem::path const &base_path,
@@ -103,6 +118,8 @@ struct pkg_cfg : unmovable {
   bool is_git() const;
   bool has_fetch_function() const;
   bool is_weak_reference() const;
+  bool is_bundle_source() const;
+  bool is_from_bundle() const;  // True if this spec comes from within a bundle
 
   // Look up source.fetch function for a dependency from Lua state's dependencies global
   // Pushes the function onto the stack if found, returns true
@@ -140,5 +157,6 @@ class pkg_cfg_pool {
 bool operator==(pkg_cfg::remote_source const &lhs, pkg_cfg::remote_source const &rhs);
 bool operator==(pkg_cfg::local_source const &lhs, pkg_cfg::local_source const &rhs);
 bool operator==(pkg_cfg::git_source const &lhs, pkg_cfg::git_source const &rhs);
+bool operator==(pkg_cfg::bundle_source const &lhs, pkg_cfg::bundle_source const &rhs);
 
 }  // namespace envy

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bundle.h"
 #include "cache.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
@@ -104,6 +105,14 @@ class engine : unmovable {
   // Get cache root path
   std::filesystem::path const &cache_root() const;
 
+  // Bundle registry management
+  // Register a fetched bundle; returns existing if already registered
+  bundle *register_bundle(std::string const &identity,
+                          std::unordered_map<std::string, std::string> specs,
+                          std::filesystem::path cache_path);
+  // Look up registered bundle by identity; returns nullptr if not found
+  bundle *find_bundle(std::string const &identity) const;
+
 #ifdef ENVY_UNIT_TEST
   pkg_phase get_pkg_target_phase(pkg_key const &key) const;
 #endif
@@ -132,6 +141,9 @@ class engine : unmovable {
 
   // Product registry: maps product name → provider package (built during resolution)
   std::unordered_map<std::string, pkg *> product_registry_;
+
+  // Bundle registry: maps bundle identity → bundle (populated during fetch)
+  std::unordered_map<std::string, std::unique_ptr<bundle>> bundle_registry_;
 };
 
 // Validate that adding candidate_identity as a dependency doesn't create a cycle

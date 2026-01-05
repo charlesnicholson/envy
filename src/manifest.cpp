@@ -1,5 +1,6 @@
 #include "manifest.h"
 
+#include "bundle.h"
 #include "engine.h"
 #include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
@@ -7,6 +8,7 @@
 #include "shell.h"
 #include "sol_util.h"
 #include "tui.h"
+#include "uri.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -95,6 +97,109 @@ std::optional<std::pair<std::string, std::string>> parse_directive_line(
   if (!value) { return std::nullopt; }
 
   return std::make_pair(std::string{ key }, *value);
+}
+
+using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>;
+
+// Parse a single package entry that may reference a bundle
+pkg_cfg *parse_package_entry(sol::object const &entry,
+                             std::filesystem::path const &manifest_path,
+                             bundle_alias_map const &bundles) {
+  // For non-table entries (strings) or tables without bundle field, use standard parsing
+  if (!entry.is<sol::table>()) { return pkg_cfg::parse(entry, manifest_path); }
+
+  sol::table table{ entry.as<sol::table>() };
+
+  // Check for bundle field
+  sol::object bundle_obj{ table["bundle"] };
+  if (!bundle_obj.valid() || bundle_obj.get_type() == sol::type::lua_nil) {
+    // No bundle field - use standard pkg_cfg::parse
+    return pkg_cfg::parse(entry, manifest_path);
+  }
+
+  // Has bundle field - need to handle bundle reference
+  std::string const spec_identity{ [&] {
+    auto opt{ sol_util_get_optional<std::string>(table, "spec", "Package") };
+    if (!opt.has_value() || opt->empty()) {
+      throw std::runtime_error("Package with 'bundle' field requires 'spec' field");
+    }
+    return std::move(*opt);
+  }() };
+
+  // Check for source field - can't have both source and bundle
+  if (sol::object source_obj{ table["source"] };
+      source_obj.valid() && source_obj.get_type() != sol::type::lua_nil) {
+    throw std::runtime_error("Package cannot specify both 'source' and 'bundle' fields");
+  }
+
+  pkg_cfg::bundle_source const bundle_src{ [&]() -> pkg_cfg::bundle_source {
+    if (bundle_obj.is<std::string>()) {
+      std::string const &alias{ bundle_obj.as<std::string>() };
+      auto it{ bundles.find(alias) };
+      if (it == bundles.end()) {
+        throw std::runtime_error("Bundle alias '" + alias +
+                                 "' not found in BUNDLES table for spec '" + spec_identity +
+                                 "'");
+      }
+      return it->second;
+    }
+    if (bundle_obj.is<sol::table>()) {
+      return bundle::parse_inline(bundle_obj.as<sol::table>(), manifest_path);
+    }
+    throw std::runtime_error("Package 'bundle' field must be string (alias) or table");
+  }() };
+
+  // Parse optional fields
+  std::string serialized_options{ "{}" };
+  sol::object options_obj{ table["options"] };
+  if (options_obj.valid() && options_obj.get_type() == sol::type::table) {
+    serialized_options = pkg_cfg::serialize_option_table(options_obj);
+  }
+
+  std::optional<pkg_phase> needed_by;
+  auto needed_by_str{ sol_util_get_optional<std::string>(table, "needed_by", "Package") };
+  if (needed_by_str.has_value()) {
+    std::string const &nb{ *needed_by_str };
+    if (nb == "check") {
+      needed_by = pkg_phase::pkg_check;
+    } else if (nb == "fetch") {
+      needed_by = pkg_phase::pkg_fetch;
+    } else if (nb == "stage") {
+      needed_by = pkg_phase::pkg_stage;
+    } else if (nb == "build") {
+      needed_by = pkg_phase::pkg_build;
+    } else if (nb == "install") {
+      needed_by = pkg_phase::pkg_install;
+    } else {
+      throw std::runtime_error(
+          "Package 'needed_by' must be one of: check, fetch, stage, build, install "
+          "(got: " +
+          nb + ")");
+    }
+  }
+
+  std::optional<std::string> product{
+    sol_util_get_optional<std::string>(table, "product", "Package")
+  };
+
+  std::string const bundle_identity{ bundle_src.bundle_identity };
+
+  // Create pkg_cfg with bundle source
+  pkg_cfg *cfg{ pkg_cfg::pool()->emplace(spec_identity,
+                                         std::move(bundle_src),
+                                         std::move(serialized_options),
+                                         needed_by,
+                                         nullptr,  // parent
+                                         nullptr,  // weak
+                                         std::vector<pkg_cfg *>{},
+                                         std::move(product),
+                                         manifest_path) };
+
+  // Set bundle-related fields
+  cfg->bundle_identity = bundle_identity;
+  // bundle_path will be resolved later when the bundle is fetched and parsed
+
+  return cfg;
 }
 
 }  // namespace
@@ -223,6 +328,8 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   m->meta = std::move(meta);
   m->lua_ = std::move(state);  // Keep lua state alive for DEFAULT_SHELL access
 
+  auto const bundles{ bundle::parse_aliases((*m->lua_)["BUNDLES"], manifest_path) };
+
   sol::object packages_obj = (*m->lua_)["PACKAGES"];
   if (!packages_obj.valid() || packages_obj.get_type() != sol::type::table) {
     throw std::runtime_error("Manifest must define 'PACKAGES' global as a table");
@@ -231,7 +338,7 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   sol::table packages_table = packages_obj.as<sol::table>();
 
   for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
-    m->packages.push_back(pkg_cfg::parse(packages_table[i], manifest_path));
+    m->packages.push_back(parse_package_entry(packages_table[i], manifest_path, bundles));
   }
 
   return m;

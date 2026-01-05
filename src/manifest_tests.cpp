@@ -1046,3 +1046,145 @@ TEST_CASE("manifest::discover with only child manifest (root=false) uses child")
 
   fs::remove_all(temp_root);
 }
+
+// ============================================================================
+// BUNDLES table tests
+// ============================================================================
+
+TEST_CASE("manifest::load parses package with bundle alias") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {
+      toolchain = {
+        identity = "acme.toolchain@v1",
+        source = "https://example.com/toolchain.tar.gz"
+      }
+    }
+    PACKAGES = {
+      {
+        spec = "arm.gcc@v2",
+        bundle = "toolchain"
+      }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->is_bundle_source());
+  CHECK(m->packages[0]->bundle_identity.has_value());
+  CHECK(*m->packages[0]->bundle_identity == "acme.toolchain@v1");
+
+  auto const *bundle_src{ std::get_if<envy::pkg_cfg::bundle_source>(
+      &m->packages[0]->source) };
+  REQUIRE(bundle_src);
+  CHECK(bundle_src->bundle_identity == "acme.toolchain@v1");
+}
+
+TEST_CASE("manifest::load parses package with inline bundle") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      {
+        spec = "arm.gcc@v2",
+        bundle = {
+          identity = "inline.bundle@v1",
+          source = "https://example.com/inline.tar.gz"
+        }
+      }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->is_bundle_source());
+  CHECK(*m->packages[0]->bundle_identity == "inline.bundle@v1");
+}
+
+TEST_CASE("manifest::load errors on unknown bundle alias") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {}
+    PACKAGES = {
+      {
+        spec = "arm.gcc@v2",
+        bundle = "nonexistent"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Bundle alias 'nonexistent' not found in BUNDLES table for spec "
+                       "'arm.gcc@v2'",
+                       std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on package with both source and bundle") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {
+      tc = { identity = "acme.tc@v1", source = "https://example.com/tc.tar.gz" }
+    }
+    PACKAGES = {
+      {
+        spec = "arm.gcc@v2",
+        source = "https://example.com/gcc.lua",
+        bundle = "tc"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package cannot specify both 'source' and 'bundle' fields",
+                       std::runtime_error);
+}
+
+TEST_CASE("manifest::load errors on bundle package without spec") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {
+      tc = { identity = "acme.tc@v1", source = "https://example.com/tc.tar.gz" }
+    }
+    PACKAGES = {
+      {
+        bundle = "tc"
+      }
+    }
+  )" };
+
+  CHECK_THROWS_WITH_AS(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                       "Package with 'bundle' field requires 'spec' field",
+                       std::runtime_error);
+}
+
+TEST_CASE("manifest::load parses package with bundle and options") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {
+      tc = { identity = "acme.tc@v1", source = "https://example.com/tc.tar.gz" }
+    }
+    PACKAGES = {
+      {
+        spec = "arm.gcc@v2",
+        bundle = "tc",
+        options = { version = "13.2.0" }
+      }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  CHECK(m->packages[0]->is_bundle_source());
+
+  // Check options are preserved
+  sol::state lua;
+  auto opts_result{ lua.safe_script("return " + m->packages[0]->serialized_options) };
+  REQUIRE(opts_result.valid());
+  sol::table opts = opts_result;
+  CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
+}

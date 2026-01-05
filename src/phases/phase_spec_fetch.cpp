@@ -1,6 +1,8 @@
 #include "phase_spec_fetch.h"
 
+#include "bundle.h"
 #include "engine.h"
+#include "extract.h"
 #include "fetch.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
@@ -180,6 +182,134 @@ std::filesystem::path fetch_git_source(pkg_cfg const &cfg, pkg *p) {
   }
 
   return cache_result.pkg_path / "spec.lua";
+}
+
+std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
+                                                    pkg *p,
+                                                    engine &eng) {
+  auto const *bundle_src{ std::get_if<pkg_cfg::bundle_source>(&cfg.source) };
+  std::string const &bundle_id{ bundle_src->bundle_identity };
+
+  // Check if bundle is already registered
+  if (bundle * existing{ eng.find_bundle(bundle_id) }) {
+    std::filesystem::path spec_path{ existing->resolve_spec_path(cfg.identity) };
+    if (spec_path.empty()) {
+      throw std::runtime_error("Spec '" + cfg.identity + "' not found in bundle '" +
+                               bundle_id + "'");
+    }
+    return spec_path;
+  }
+
+  // Bundle needs to be fetched - use bundle cache directory
+  auto cache_result{ p->cache_ptr->ensure_spec(bundle_id) };
+
+  if (cache_result.lock) {
+    tui::debug("fetch bundle %s for spec %s", bundle_id.c_str(), cfg.identity.c_str());
+    std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
+
+    // Fetch based on underlying source type
+    std::visit(
+        match{
+            [&](pkg_cfg::remote_source const &remote) {  // remote file
+              std::filesystem::path fetch_dest{ cache_result.lock->fetch_dir() /
+                                                uri_extract_filename(remote.url) };
+
+              auto const info{ uri_classify(remote.url) };
+              fetch_request req;
+              switch (info.scheme) {
+                case uri_scheme::HTTP:
+                  req = fetch_request_http{ .source = remote.url,
+                                            .destination = fetch_dest };
+                  break;
+                case uri_scheme::HTTPS:
+                  req = fetch_request_https{ .source = remote.url,
+                                             .destination = fetch_dest };
+                  break;
+                case uri_scheme::FTP:
+                  req =
+                      fetch_request_ftp{ .source = remote.url, .destination = fetch_dest };
+                  break;
+                case uri_scheme::FTPS:
+                  req = fetch_request_ftps{ .source = remote.url,
+                                            .destination = fetch_dest };
+                  break;
+                case uri_scheme::S3:
+                  req =
+                      fetch_request_s3{ .source = remote.url, .destination = fetch_dest };
+                  break;
+                default:
+                  throw std::runtime_error("Unsupported URL scheme for bundle fetch: " +
+                                           remote.url);
+              }
+
+              auto const results{ fetch({ req }) };
+              if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+                throw std::runtime_error(
+                    "Failed to fetch bundle: " +
+                    (results.empty() ? "no results" : std::get<std::string>(results[0])));
+              }
+
+              if (!remote.sha256.empty()) {
+                sha256_verify(remote.sha256, sha256(fetch_dest));
+              }
+
+              // Extract bundle archive into install_dir
+              extract(fetch_dest, install_dir);
+            },
+
+            [&](pkg_cfg::local_source const &local) {  // local source
+              // Local source - copy directory or extract archive
+              if (std::filesystem::is_directory(local.file_path)) {
+                std::filesystem::copy(
+                    local.file_path,
+                    install_dir,
+                    std::filesystem::copy_options::recursive |
+                        std::filesystem::copy_options::overwrite_existing);
+              } else {
+                extract(local.file_path, install_dir);
+              }
+            },
+
+            [&](pkg_cfg::git_source const &git) {  // git source
+              auto const results{ fetch({ fetch_request_git{ .source = git.url,
+                                                             .destination = install_dir,
+                                                             .ref = git.ref } }) };
+              if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+                throw std::runtime_error(
+                    "Failed to fetch git bundle: " +
+                    (results.empty() ? "no results" : std::get<std::string>(results[0])));
+              }
+            },
+        },
+        bundle_src->fetch_source);
+
+    cache_result.lock->mark_install_complete();
+    cache_result.lock.reset();
+  }
+
+  // Parse bundle manifest and validate
+  bundle parsed{ bundle::from_path(cache_result.pkg_path) };
+
+  if (parsed.identity != bundle_id) {
+    throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
+                             "' but manifest declares '" + parsed.identity + "'");
+  }
+
+  parsed.validate_integrity();
+
+  // Register the bundle
+  bundle *b{
+    eng.register_bundle(bundle_id, std::move(parsed.specs), cache_result.pkg_path)
+  };
+
+  // Resolve spec path within bundle
+  std::filesystem::path spec_path{ b->resolve_spec_path(cfg.identity) };
+  if (spec_path.empty()) {
+    throw std::runtime_error("Spec '" + cfg.identity + "' not found in bundle '" +
+                             bundle_id + "'");
+  }
+
+  return spec_path;
 }
 
 std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &eng) {
@@ -533,6 +663,8 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
       return fetch_git_source(cfg, p);
     } else if (cfg.has_fetch_function()) {
       return fetch_custom_function(cfg, p, eng);
+    } else if (std::holds_alternative<pkg_cfg::bundle_source>(cfg.source)) {
+      return fetch_bundle_and_resolve_spec(cfg, p, eng);
     } else {
       throw std::runtime_error("Unsupported source type: " + cfg.identity);
     }
