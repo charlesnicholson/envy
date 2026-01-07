@@ -294,21 +294,52 @@ TEST_CASE("bundle::resolve_spec_path returns empty for unknown spec") {
   CHECK(path.empty());
 }
 
-// bundle::validate_integrity tests
+// bundle::validate tests
 
-TEST_CASE("bundle::validate_integrity succeeds for valid bundle") {
+TEST_CASE("bundle::validate succeeds for valid bundle") {
   auto b{ envy::bundle::from_path(fs::path("test_data/bundles/simple-bundle")) };
 
-  CHECK_NOTHROW(b.validate_integrity());
+  CHECK_NOTHROW(b.validate());
 }
 
-TEST_CASE("bundle::validate_integrity errors on missing spec file") {
+TEST_CASE("bundle::validate errors on missing spec file") {
   envy::bundle b;
   b.identity = "test.bundle@v1";
   b.cache_path = fs::path("test_data/bundles/simple-bundle");
   b.specs["nonexistent.spec@v1"] = "specs/does-not-exist.lua";
 
-  CHECK_THROWS_WITH_AS(b.validate_integrity(),
+  CHECK_THROWS_WITH_AS(b.validate(),
                        doctest::Contains("file not found"),
                        std::runtime_error);
+}
+
+TEST_CASE("bundle::validate errors on IDENTITY mismatch") {
+  envy::bundle b;
+  b.identity = "test.bundle@v1";
+  b.cache_path = fs::path("test_data/bundles/simple-bundle");
+  // spec_a.lua has IDENTITY = "test.spec_a@v1", not "wrong.identity@v1"
+  b.specs["wrong.identity@v1"] = "specs/spec_a.lua";
+
+  CHECK_THROWS_WITH_AS(b.validate(),
+                       doctest::Contains("IDENTITY mismatch"),
+                       std::runtime_error);
+}
+
+TEST_CASE("bundle::validate errors on spec with syntax error") {
+  envy::bundle b;
+  b.identity = "test.bundle@v1";
+  b.cache_path = fs::path("test_data/spec_util");
+  b.specs["test.syntax@v1"] = "syntax_error.lua";
+
+  CHECK_THROWS_WITH_AS(b.validate(),
+                       doctest::Contains("failed to execute spec"),
+                       std::runtime_error);
+}
+
+TEST_CASE("bundle::validate validates all specs in parallel") {
+  // Use a bundle with multiple specs - validation should be threaded
+  auto b{ envy::bundle::from_path(fs::path("test_data/bundles/simple-bundle")) };
+  REQUIRE(b.specs.size() == 2);
+
+  CHECK_NOTHROW(b.validate());
 }

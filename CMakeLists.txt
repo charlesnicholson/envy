@@ -263,6 +263,7 @@ set(ENVY_BASE_SOURCES
     src/manifest.cpp
     src/pkg_cfg.cpp
     src/bundle.cpp
+    src/spec_util.cpp
     $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
@@ -434,6 +435,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
     src/bundle_tests.cpp
+    src/spec_util_tests.cpp
     src/extract_tests.cpp
     src/engine_tests.cpp
     src/engine_weak_resolution_tests.cpp

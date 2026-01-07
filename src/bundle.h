@@ -24,11 +24,12 @@ struct bundle {
   // Throws on parse error or validation failure
   static bundle from_path(std::filesystem::path const &cache_path);
 
-  // Validate bundle integrity:
+  // Validate bundle (threaded):
   // - All spec files exist at declared paths
-  // - All spec files have IDENTITY matching the key
+  // - All spec files execute successfully in Lua
+  // - All spec files have IDENTITY matching the SPECS table key
   // Throws with detailed error message on failure
-  void validate_integrity() const;
+  void validate() const;
 
   // Parse BUNDLES table from manifest into alias -> fetch config map
   // Returns empty map if bundles_obj is nil or missing

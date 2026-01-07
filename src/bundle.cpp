@@ -1,11 +1,15 @@
 #include "bundle.h"
 
 #include "sol_util.h"
+#include "spec_util.h"
 #include "uri.h"
 #include "util.h"
 
+#include <optional>
 #include <stdexcept>
+#include <thread>
 #include <variant>
+#include <vector>
 
 namespace envy {
 
@@ -192,13 +196,44 @@ void bundle::configure_package_path(sol::state &lua) const {
       bundle_root + "/?.lua;" + bundle_root + "/?/init.lua;" + current_path;
 }
 
-void bundle::validate_integrity() const {
-  for (auto const &[spec_identity, relative_path] : specs) {
-    std::filesystem::path const spec_path{ cache_path / relative_path };
-    if (!std::filesystem::exists(spec_path)) {
-      throw std::runtime_error("Bundle '" + identity + "' declares spec '" +
-                               spec_identity + "' at '" + relative_path +
-                               "' but file not found: " + spec_path.string());
+void bundle::validate() const {
+  struct validation_result {
+    std::string spec_key;
+    std::optional<std::string> error;
+  };
+
+  std::vector<validation_result> results(specs.size());
+  std::vector<std::thread> threads;
+  threads.reserve(specs.size());
+
+  size_t i{ 0 };
+  for (auto const &[expected_id, relative_path] : specs) {
+    results[i].spec_key = expected_id;
+    threads.emplace_back([this, expected_id, relative_path, &r = results[i]] {
+      std::filesystem::path const spec_path{ cache_path / relative_path };
+
+      if (!std::filesystem::exists(spec_path)) {
+        r.error = "file not found: " + spec_path.string();
+        return;
+      }
+
+      try {  // Execute spec and verify IDENTITY matches key
+        std::string const actual_id{ extract_spec_identity(spec_path, cache_path) };
+        if (actual_id != expected_id) {
+          r.error =
+              "IDENTITY mismatch: expected '" + expected_id + "', got '" + actual_id + "'";
+        }
+      } catch (std::exception const &e) { r.error = e.what(); }
+    });
+    ++i;
+  }
+
+  for (auto &t : threads) { t.join(); }
+
+  for (auto const &r : results) {
+    if (r.error) {
+      throw std::runtime_error("bundle '" + identity + "' spec '" + r.spec_key +
+                               "': " + *r.error);
     }
   }
 }

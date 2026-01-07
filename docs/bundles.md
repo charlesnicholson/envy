@@ -414,7 +414,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 `src/bundle.h`, `src/bundle.cpp`:
 - [x] Create `bundle` struct: simple struct with `identity`, `specs` map, `cache_path`
 - [x] Add `bundle::from_path()` static factory to load and validate `envy-bundle.lua`
-- [x] Add `bundle::validate_integrity()` to verify all spec files exist (renamed to `validate_specs()` in Phase 6)
+- [x] Add `bundle::validate()` to verify all spec files exist and IDENTITY matches keys (threaded)
 - [x] Add `bundle::parse_aliases()` to parse BUNDLES table → `unordered_map<alias, bundle_source>`
 - [x] Add `bundle::parse_inline()` to parse inline bundle declarations
 - [x] Add `bundle::configure_package_path()` to configure existing lua state's package.path
@@ -440,7 +440,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - [x] Unit tests for error cases (missing identity, missing source, git without ref)
 - [x] Unit tests for `bundle::from_path()` (valid bundle, missing manifest, missing BUNDLE field)
 - [x] Unit tests for `bundle::resolve_spec_path()` (found, not found)
-- [x] Unit tests for `bundle::validate_integrity()` (valid, missing file) - extended in Phase 6
+- [x] Unit tests for `bundle::validate()` (valid, missing file, IDENTITY mismatch, syntax error, parallel)
 
 `test_data/bundles/`:
 - [x] Create `simple-bundle/` with envy-bundle.lua and 2 specs
@@ -458,7 +458,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - [x] Detect `bundle_source` variant and fetch bundle (git clone, zip download, or local copy)
 - [x] After fetch, call `bundle::from_path()` to load and validate `envy-bundle.lua`
 - [x] Validate BUNDLE identity matches expected identity from pkg_cfg
-- [x] Call `bundle::validate_integrity()` to verify all specs
+- [x] Call `bundle::validate()` to verify all specs
 - [x] For specs-from-bundles: resolve spec path using bundle's SPECS map
 
 `src/engine.h`, `src/engine.cpp`:
@@ -647,28 +647,27 @@ Mark complete (skip validate/fetch/build/install/deploy)
 **Implementation:**
 
 `src/spec_util.h`, `src/spec_util.cpp`:
-- [ ] Add `extract_spec_identity()` helper: returns IDENTITY or throws
-- [ ] Throws on: parse error, missing IDENTITY, empty IDENTITY
-- [ ] Accepts optional `package_path_root` for bundle-local requires
+- [x] Add `extract_spec_identity()` helper: returns IDENTITY or throws
+- [x] Throws on: parse error, missing IDENTITY, empty IDENTITY
+- [x] Accepts optional `package_path_root` for bundle-local requires
 
 `src/spec_util_tests.cpp`:
-- [ ] Test valid spec returns IDENTITY
-- [ ] Test missing IDENTITY throws
-- [ ] Test empty IDENTITY throws
-- [ ] Test parse error throws
-- [ ] Test bundle-local require works (package_path_root set)
+- [x] Test valid spec returns IDENTITY
+- [x] Test missing IDENTITY throws
+- [x] Test empty IDENTITY throws
+- [x] Test parse error throws
+- [x] Test bundle-local require works (package_path_root set)
 
 `src/bundle.h`, `src/bundle.cpp`:
-- [ ] Rename `validate_integrity()` → `validate_specs()`
-- [ ] Implement threaded validation: one `std::thread` per spec
-- [ ] Use `extract_spec_identity()` helper for each spec
-- [ ] Validate all bundles on every load (local and cached)
+- [x] Rename `validate_integrity()` → `validate()`
+- [x] Implement threaded validation: one `std::thread` per spec
+- [x] Use `extract_spec_identity()` helper for each spec
+- [x] Validate all bundles on every load (local and cached)
 
 `src/bundle_tests.cpp`:
-- [ ] Update test names for `validate_specs()`
-- [ ] Add IDENTITY mismatch detection test
-- [ ] Add missing IDENTITY test
-- [ ] Add spec parse error test
+- [x] Update test names for `validate()`
+- [x] Add IDENTITY mismatch detection test
+- [x] Add spec parse error test
 
 `src/pkg_cfg.h`, `src/pkg_cfg.cpp`:
 - [ ] Extend `bundle_source` to support `source = { fetch = ..., dependencies = ... }`
@@ -685,11 +684,11 @@ Mark complete (skip validate/fetch/build/install/deploy)
 `src/phases/phase_spec_fetch.cpp`:
 - [ ] `fetch_bundle_only()` handles custom fetch with phase context
 - [ ] Support `envy.commit_fetch()` for bundle custom fetch
-- [ ] Rename `validate_integrity()` → `validate_specs()` at 4 call sites
+- [x] Rename `validate_integrity()` → `validate()` at 4 call sites
 
 `CMakeLists.txt`:
-- [ ] Add `src/spec_util.cpp` to envy sources
-- [ ] Add `src/spec_util_tests.cpp` to unit test sources
+- [x] Add `src/spec_util.cpp` to envy sources
+- [x] Add `src/spec_util_tests.cpp` to unit test sources
 
 **Tests:**
 

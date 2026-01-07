@@ -214,7 +214,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
         throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
                                  "' but manifest declares '" + parsed.identity + "'");
       }
-      parsed.validate_integrity();
+      parsed.validate();
 
       bundle *b{
         eng.register_bundle(bundle_id, std::move(parsed.specs), local_src->file_path)
@@ -325,7 +325,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
                              "' but manifest declares '" + parsed.identity + "'");
   }
 
-  parsed.validate_integrity();
+  parsed.validate();
 
   bundle *b{
     eng.register_bundle(bundle_id, std::move(parsed.specs), cache_result.pkg_path)
@@ -964,7 +964,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
         throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
                                  "' but manifest declares '" + parsed.identity + "'");
       }
-      parsed.validate_integrity();
+      parsed.validate();
       eng.register_bundle(bundle_id, std::move(parsed.specs), local_src->file_path);
       return;
     }
@@ -1061,7 +1061,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                              "' but manifest declares '" + parsed.identity + "'");
   }
 
-  parsed.validate_integrity();
+  parsed.validate();
 
   // Register the bundle for envy.loadenv_spec() access
   eng.register_bundle(bundle_id, std::move(parsed.specs), cache_result.pkg_path);
