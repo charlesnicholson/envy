@@ -272,7 +272,7 @@ end
 
 ### Overview
 
-Envy builds a single `tbb::flow::graph` containing all spec and package operations. No separation between "resolution" and "installation"—spec fetching and asset building interleave as dependencies require. Graph expands dynamically: `recipe_fetch` nodes discover dependencies and add new nodes during execution.
+Envy builds a dependency graph and executes packages in parallel via worker threads. No separation between "resolution" and "installation"—spec fetching and asset building interleave as dependencies require. Graph expands dynamically: spec_fetch discovers dependencies and spawns new package threads during execution.
 
 ### Phase Model
 
@@ -349,7 +349,7 @@ FETCH = {url = "s3://bucket/lib.lua", sha256 = "ghi..."}
 
 **Fetch behavior:**
 - **Polymorphic API**: Single file `envy.fetch({source="..."})` or batch `envy.fetch({{source="..."}, ...})`
-- **Concurrent**: All downloads happen in parallel via TBB task_group
+- **Concurrent**: All downloads happen in parallel
 - **Atomic**: All files downloaded and verified before ANY committed to fetch_dir (all-or-nothing)
 - **SHA256 optional**: If provided, verified after download; if absent, permissive
 
@@ -437,25 +437,23 @@ Both specs need each other for `recipe_fetch` → deadlock. Envy detects via rea
 
 ### Command Execution Model
 
-Commands implement `bool execute()` with no oneTBB types in their interface. Main wraps execution inside `tbb::task_arena().execute()` establishing a shared thread pool for all parallel operations.
+Commands implement `bool execute()` returning success/failure.
 
-**Simple commands:** Ignore parallelism—just do synchronous work and return success/failure.
+**Simple commands:** Synchronous work, no parallelism needed.
 
-**Package commands:** Build unified `flow::graph`, seed with manifest roots, wait for completion:
+**Package commands:** Create engine, execute packages in parallel via worker threads:
 ```cpp
 bool cmd_install::execute() {
-  unified_dag dag{ cache_, manifest_->packages() };
-  dag.execute();  // Parallel internally (recipe_fetch + asset phases)
-  print_summary(dag.roots());
+  engine eng{ cache_, manifest_->packages() };
+  eng.execute();  // Spawns worker threads, waits for completion
+  print_summary(eng.roots());
   return true;
 }
 ```
 
-**Custom parallel commands:** Create local `flow::graph` or `task_group` when needed—all TBB operations share the arena's thread pool via work-stealing scheduler.
+**Parallelism:** Each package gets its own `std::thread` worker. Workers wait on dependencies via condition variables. No shared thread pool—simple fork-join model with mutex-protected shared state.
 
-**Nested execution:** Commands freely call blocking parallel helpers from any context—direct invocation, inside `task_group` tasks, or within `flow::graph` node lambdas. TBB's cooperative scheduler handles blocking without deadlock; when a task waits on inner parallel work, other threads steal pending tasks. This composition works naturally because all TBB primitives share the single task arena established by main.
-
-**Lifetime:** Stack-scoped TBB graphs in `execute()` naturally satisfy lifetime requirements—nodes complete before function returns, so no dangling references. Commands destroyed after `execute()` completes.
+**Lifetime:** Engine owns packages and execution contexts; destroyed after `execute()` returns.
 
 ## Filesystem Cache
 
@@ -573,7 +571,7 @@ Error: SHA256 mismatch
 
 ### Thread Model
 
-Main thread runs TUI render loop; TBB workers push to thread-safe queues. Uniform 16ms log refresh; progress refresh at 16ms (TTY) or 1024ms (non-TTY). Workers call `tui::is_tty()` to choose progress bar style (animated vs. periodic snapshots). Progress library handles ANSI clear/redraw; TUI owns timing and queue orchestration.
+Main thread runs TUI render loop; worker threads push to thread-safe queues. Uniform 16ms log refresh; progress refresh at 16ms (TTY) or 1024ms (non-TTY). Workers call `tui::is_tty()` to choose progress bar style (animated vs. periodic snapshots). Progress library handles ANSI clear/redraw; TUI owns timing and queue orchestration.
 
 ### API Surface
 
@@ -635,7 +633,7 @@ Side-by-side with source: `src/cache/lock.cpp` + `src/cache/lock_test.cpp`. Doct
 
 Python 3.13+ stdlib only (`unittest`—no third-party deps). Located in `functional_tests/` flat (no subdirs). Parallel execution; each test uses isolated cache directory via `ENVY_TEST_ID` environment variable. Per-test cleanup via fixtures (context managers).
 
-**Cache testing:** Uses `envy_functional_tester` binary—production `envy` with additional testing commands conditionally compiled via `ENVY_FUNCTIONAL_TESTER=1` define. Same `main.cpp`, same CLI11 parsing, same TBB async execution. Tests invoke cache C++ API directly via CLI without requiring Lua specs/manifests. Barrier synchronization (`--barrier-signal`, `--barrier-wait`) enables deterministic concurrency testing via filesystem coordination. Key-value output format (`locked=true\npath=/foo/bar\n...`) provides observability without JSON library dependency. Commands: `envy_functional_tester cache ensure-asset <identity> <platform> <arch> <hash>`, `envy_functional_tester cache ensure-spec <identity>`. Flags: `--cache-root`, `--test-id`, `--barrier-signal`, `--barrier-wait`, `--crash-after`, `--fail-before-complete`.
+**Cache testing:** Uses `envy_functional_tester` binary—production `envy` with additional testing commands conditionally compiled via `ENVY_FUNCTIONAL_TESTER=1` define. Same `main.cpp`, same CLI11 parsing, same async execution. Tests invoke cache C++ API directly via CLI without requiring Lua specs/manifests. Barrier synchronization (`--barrier-signal`, `--barrier-wait`) enables deterministic concurrency testing via filesystem coordination. Key-value output format (`locked=true\npath=/foo/bar\n...`) provides observability without JSON library dependency. Commands: `envy_functional_tester cache ensure-asset <identity> <platform> <arch> <hash>`, `envy_functional_tester cache ensure-spec <identity>`. Flags: `--cache-root`, `--test-id`, `--barrier-signal`, `--barrier-wait`, `--crash-after`, `--fail-before-complete`.
 
 **Spec testing (future):** Test specs embedded as string literals, written to temp dirs—namespace `functionaltest.*` (e.g., `functionaltest.gcc@v1`). Specs use filesystem `fetch` for speed; HTTP tests spawn local servers separately.
 
