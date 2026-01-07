@@ -414,9 +414,10 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 `src/bundle.h`, `src/bundle.cpp`:
 - [x] Create `bundle` struct: simple struct with `identity`, `specs` map, `cache_path`
 - [x] Add `bundle::from_path()` static factory to load and validate `envy-bundle.lua`
-- [x] Add `bundle::validate_integrity()` to verify all spec files exist with matching IDENTITY
+- [x] Add `bundle::validate_integrity()` to verify all spec files exist (renamed to `validate_specs()` in Phase 6)
 - [x] Add `bundle::parse_aliases()` to parse BUNDLES table → `unordered_map<alias, bundle_source>`
 - [x] Add `bundle::parse_inline()` to parse inline bundle declarations
+- [x] Add `bundle::configure_package_path()` to configure existing lua state's package.path
 - [x] Validation: BUNDLE field exists, SPECS table exists, all paths are relative
 
 `src/pkg_cfg.h`, `src/pkg_cfg.cpp`:
@@ -439,7 +440,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - [x] Unit tests for error cases (missing identity, missing source, git without ref)
 - [x] Unit tests for `bundle::from_path()` (valid bundle, missing manifest, missing BUNDLE field)
 - [x] Unit tests for `bundle::resolve_spec_path()` (found, not found)
-- [x] Unit tests for `bundle::validate_integrity()` (valid, identity mismatch)
+- [x] Unit tests for `bundle::validate_integrity()` (valid, missing file) - extended in Phase 6
 
 `test_data/bundles/`:
 - [x] Create `simple-bundle/` with envy-bundle.lua and 2 specs
@@ -477,47 +478,47 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - [x] Test unknown bundle alias error
 - [x] Test cannot have both source and bundle
 
-### Phase 3: Dependency Resolution
+### Phase 3: Dependency Resolution ✓
 
 **Implementation:**
 
 `src/engine.cpp`:
-- [ ] Handle bundle dependencies: bundles are fetched but don't produce installed packages
-- [ ] Bundle fetching is atomic (whole bundle fetched together)
-- [ ] Multiple specs from same bundle share one fetch (bundle registry lookup)
-- [ ] Pure bundle dependencies (`{bundle = "...", source = "..."}`) only make bundle available for `envy.loadenv_spec()`
-- [ ] Spec-from-bundle dependencies (`{spec = "...", bundle = "..."}`) trigger full spec execution
+- [x] Handle bundle dependencies: bundles are fetched but don't produce installed packages
+- [x] Bundle fetching is atomic (whole bundle fetched together)
+- [x] Multiple specs from same bundle share one fetch (bundle registry lookup)
+- [x] Pure bundle dependencies (`{bundle = "...", source = "..."}`) only make bundle available for `envy.loadenv_spec()`
+- [x] Spec-from-bundle dependencies (`{spec = "...", bundle = "..."}`) trigger full spec execution
 
 `src/phases/phase_spec_fetch.cpp`:
-- [ ] Parse spec's BUNDLES table (if present) into temporary map
-- [ ] Use shared `parse_bundles_table()` utility
-- [ ] Pass bundles map to `parse_dependencies_table()`
-- [ ] No BUNDLES storage in pkg struct (aliases resolved at parse time)
+- [x] Parse spec's BUNDLES table (if present) into temporary map
+- [x] Use shared `parse_bundles_table()` utility
+- [x] Pass bundles map to `parse_dependencies_table()`
+- [x] No BUNDLES storage in pkg struct (aliases resolved at parse time)
 
 `src/pkg_cfg.cpp`:
-- [ ] Parse `bundle` field in dependency declarations
-- [ ] Use shared `resolve_bundle_ref()` utility for resolution
-- [ ] Create pkg_cfg with appropriate fields: `bundle_identity`, `bundle_path` for spec-from-bundle
+- [x] Parse `bundle` field in dependency declarations
+- [x] Use shared `resolve_bundle_ref()` utility for resolution
+- [x] Create pkg_cfg with appropriate fields: `bundle_identity`, `bundle_path` for spec-from-bundle
 
 **Tests:**
 
 `functional_tests/test_bundle_deps.py`:
-- [ ] Test manifest with multiple specs from same bundle
-- [ ] Test spec depending on a bundle directly
-- [ ] Test spec depending on a spec-from-bundle
-- [ ] Test spec depending on both bundle and spec-from-bundle
-- [ ] Test needed_by with bundle dependencies
-- [ ] Test spec with BUNDLES table (alias resolution)
-- [ ] Test multiple files using different aliases for same bundle identity
-- [ ] Test alias not found error
-- [ ] Test identity not found error (when no BUNDLES table)
+- [x] Test manifest with multiple specs from same bundle
+- [x] Test spec depending on a bundle directly
+- [x] Test spec depending on a spec-from-bundle
+- [x] Test spec depending on both bundle and spec-from-bundle
+- [x] Test needed_by with bundle dependencies
+- [x] Test spec with BUNDLES table (alias resolution)
+- [x] Test multiple files using different aliases for same bundle identity
+- [x] Test alias not found error
+- [x] Test identity not found error (when no BUNDLES table)
 
-### Phase 4: Lua API
+### Phase 4: Lua API ✓
 
 **Implementation:**
 
 `src/lua_envy.cpp`:
-- [ ] Implement `envy.loadenv(path)` using Lua's `loadfile()` with custom `_ENV`:
+- [x] Implement `envy.loadenv(path)` using Lua's `loadfile()` with custom `_ENV`:
   ```cpp
   // Pseudocode:
   // 1. Create new table for _ENV
@@ -527,38 +528,38 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
   // 5. Execute chunk
   // 6. Return the _ENV table (now contains assigned globals)
   ```
-- [ ] Path resolution: relative to the currently-executing file's directory
+- [x] Path resolution: relative to the currently-executing file's directory
 
 `src/lua_ctx/lua_envy_deps.cpp`:
-- [ ] Implement `envy.loadenv_spec(identity, subpath)`
-- [ ] Reuse dependency validation from `envy.package()` (same identity matching logic)
-- [ ] Locate spec/bundle cache directory via cache API
-- [ ] Construct full path: `cache_dir/subpath.lua`
-- [ ] Execute using same `loadfile()` + custom `_ENV` pattern as `envy.loadenv()`
-- [ ] Return resulting table
-- [ ] **Runtime verify**: error if called at global scope (check phase context is active)
+- [x] Implement `envy.loadenv_spec(identity, subpath)`
+- [x] Reuse dependency validation from `envy.package()` (same identity matching logic)
+- [x] Locate spec/bundle cache directory via cache API
+- [x] Construct full path: `cache_dir/subpath.lua`
+- [x] Execute using same `loadfile()` + custom `_ENV` pattern as `envy.loadenv()`
+- [x] Return resulting table
+- [x] **Runtime verify**: error if called at global scope (check phase context is active)
 
-`src/lua_ctx/lua_phase_context.cpp`:
-- [ ] Add bundle root to `package.path` when executing spec within bundle
-- [ ] Prepend `bundle_root/?.lua;bundle_root/?/init.lua` to `package.path`
-- [ ] Ensure specs in bundles can `require()` sibling files
+`src/phases/phase_spec_fetch.cpp`, `src/bundle.cpp`:
+- [x] Add bundle root to `package.path` when executing spec within bundle
+- [x] Prepend `bundle_root/?.lua;bundle_root/?/init.lua` to `package.path`
+- [x] Ensure specs in bundles can `require()` sibling files
 
 **Tests:**
 
 `functional_tests/test_loadenv_spec.py`:
-- [ ] Test `envy.loadenv_spec()` within phase functions
-- [ ] Test `envy.loadenv_spec()` at global scope (error)
-- [ ] Test `envy.loadenv_spec()` phase validation (needed_by)
+- [x] Test `envy.loadenv_spec()` within phase functions
+- [x] Test `envy.loadenv_spec()` at global scope (error)
+- [x] Test `envy.loadenv_spec()` phase validation (needed_by)
 - [ ] Test fuzzy matching in `envy.loadenv_spec()` (matches `gcc` to `acme.gcc@v2`)
-- [ ] Test standard `require()` within bundle for local files
+- [x] Test standard `require()` within bundle for local files
 
 `functional_tests/test_loadenv.py`:
-- [ ] Test `envy.loadenv()` in manifest global scope
-- [ ] Test `envy.loadenv()` in spec global scope
-- [ ] Test `envy.loadenv()` in phase functions
-- [ ] Test `envy.loadenv()` sandboxing (globals captured in returned table)
-- [ ] Test `envy.loadenv()` path resolution (relative to current file)
-- [ ] Test `envy.extend()` with loaded manifest tables
+- [x] Test `envy.loadenv()` in manifest global scope
+- [x] Test `envy.loadenv()` in spec global scope
+- [x] Test `envy.loadenv()` in phase functions
+- [x] Test `envy.loadenv()` sandboxing (globals captured in returned table)
+- [x] Test `envy.loadenv()` path resolution (relative to current file)
+- [x] Test `envy.extend()` with loaded manifest tables
 
 ### Phase 5: Documentation
 
@@ -586,6 +587,118 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - Existing manifests continue to work (bundles are additive, not required)
 - `envy.package()` already exists—no rename needed
 - Replace "recipe" with "spec" in any remaining documentation
+
+---
+
+### Phase 6: Bundles as Packages (Unified Execution Model)
+
+Bundles are packages from the engine's perspective. They get their own `pkg` with execution context, can have custom fetch functions with dependencies, and follow a simplified lifecycle: `spec_fetch` → `complete`.
+
+```
+Regular package: spec_fetch → validate → fetch → build → install → deploy → complete
+Bundle package:  spec_fetch → complete
+```
+
+**Extended Manifest Syntax:**
+
+```lua
+BUNDLES = {
+  -- Simple case: remote/git/local source
+  ["tools"] = {
+    identity = "acme.tools@v1",
+    source = "https://example.com/tools.zip",
+    sha256 = "abc123..."
+  },
+
+  -- Custom fetch with dependencies
+  ["private-tools"] = {
+    identity = "acme.private@v1",
+    source = {
+      fetch = function(tmp_dir)
+        -- custom fetch using jfrog cli
+        envy.run(envy.product("jfrog") .. " rt dl ...")
+        envy.commit_fetch({"envy-bundle.lua", "specs"})
+      end,
+      dependencies = {
+        { spec = "jfrog.cli@v2", source = "jfrog.cli@v2.lua" }
+      }
+    }
+  }
+}
+```
+
+**Execution Flow:**
+
+```
+Bundle pkg created (with its own execution context)
+  ↓
+Dependencies resolve (e.g., jfrog.cli installs)
+  ↓
+spec_fetch phase runs:
+  - If custom fetch: execute fetch function with phase context
+  - Else: fetch via remote/git/local source
+  - Parse envy-bundle.lua
+  - Validate all specs (threaded)
+  - Register bundle in engine
+  ↓
+Mark complete (skip validate/fetch/build/install/deploy)
+```
+
+**Implementation:**
+
+`src/spec_util.h`, `src/spec_util.cpp`:
+- [ ] Add `extract_spec_identity()` helper: returns IDENTITY or throws
+- [ ] Throws on: parse error, missing IDENTITY, empty IDENTITY
+- [ ] Accepts optional `package_path_root` for bundle-local requires
+
+`src/spec_util_tests.cpp`:
+- [ ] Test valid spec returns IDENTITY
+- [ ] Test missing IDENTITY throws
+- [ ] Test empty IDENTITY throws
+- [ ] Test parse error throws
+- [ ] Test bundle-local require works (package_path_root set)
+
+`src/bundle.h`, `src/bundle.cpp`:
+- [ ] Rename `validate_integrity()` → `validate_specs()`
+- [ ] Implement threaded validation: one `std::thread` per spec
+- [ ] Use `extract_spec_identity()` helper for each spec
+- [ ] Validate all bundles on every load (local and cached)
+
+`src/bundle_tests.cpp`:
+- [ ] Update test names for `validate_specs()`
+- [ ] Add IDENTITY mismatch detection test
+- [ ] Add missing IDENTITY test
+- [ ] Add spec parse error test
+
+`src/pkg_cfg.h`, `src/pkg_cfg.cpp`:
+- [ ] Extend `bundle_source` to support `source = { fetch = ..., dependencies = ... }`
+- [ ] Parse custom fetch function + dependencies in BUNDLES table
+
+`src/manifest.cpp`:
+- [ ] Create `pkg_cfg` for bundles with custom fetch
+- [ ] Wire dependencies with `needed_by = pkg_phase::spec_fetch`
+
+`src/engine.cpp`:
+- [ ] Bundle packages get their own execution context when they have custom fetch
+- [ ] Ensure BUNDLE_ONLY packages jump to complete after spec_fetch
+
+`src/phases/phase_spec_fetch.cpp`:
+- [ ] `fetch_bundle_only()` handles custom fetch with phase context
+- [ ] Support `envy.commit_fetch()` for bundle custom fetch
+- [ ] Rename `validate_integrity()` → `validate_specs()` at 4 call sites
+
+`CMakeLists.txt`:
+- [ ] Add `src/spec_util.cpp` to envy sources
+- [ ] Add `src/spec_util_tests.cpp` to unit test sources
+
+**Tests:**
+
+`functional_tests/test_bundle_custom_fetch.py`:
+- [ ] Test bundle with custom fetch function
+- [ ] Test bundle with custom fetch + dependencies
+- [ ] Test dependency resolution before bundle fetch
+- [ ] Test `envy.commit_fetch()` in bundle fetch context
+- [ ] Test bundle validation after custom fetch
 
 ---
 

@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace envy {
@@ -200,7 +201,35 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
     return spec_path;
   }
 
-  // Bundle needs to be fetched - use bundle cache directory
+  // Local bundles (identity starts with "local.") use source directory in-situ
+  if (bundle_id.starts_with("local.")) {
+    auto const *local_src{ std::get_if<pkg_cfg::local_source>(&bundle_src->fetch_source) };
+    if (local_src && std::filesystem::is_directory(local_src->file_path)) {
+      tui::debug("using local bundle %s in-situ from %s",
+                 bundle_id.c_str(),
+                 local_src->file_path.c_str());
+
+      bundle parsed{ bundle::from_path(local_src->file_path) };
+      if (parsed.identity != bundle_id) {
+        throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
+                                 "' but manifest declares '" + parsed.identity + "'");
+      }
+      parsed.validate_integrity();
+
+      bundle *b{
+        eng.register_bundle(bundle_id, std::move(parsed.specs), local_src->file_path)
+      };
+
+      std::filesystem::path spec_path{ b->resolve_spec_path(cfg.identity) };
+      if (spec_path.empty()) {
+        throw std::runtime_error("Spec '" + cfg.identity + "' not found in bundle '" +
+                                 bundle_id + "'");
+      }
+      return spec_path;
+    }
+  }
+
+  // Non-local bundle: fetch to cache
   auto cache_result{ p->cache_ptr->ensure_spec(bundle_id) };
 
   if (cache_result.lock) {
@@ -257,8 +286,9 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
               extract(fetch_dest, install_dir);
             },
 
-            [&](pkg_cfg::local_source const &local) {  // local source
-              // Local source - copy directory or extract archive
+            [&](pkg_cfg::local_source const
+                    &local) {  // local source (non-local. identity)
+              // Copy directory or extract archive to cache
               if (std::filesystem::is_directory(local.file_path)) {
                 std::filesystem::copy(
                     local.file_path,
@@ -297,12 +327,10 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
 
   parsed.validate_integrity();
 
-  // Register the bundle
   bundle *b{
     eng.register_bundle(bundle_id, std::move(parsed.specs), cache_result.pkg_path)
   };
 
-  // Resolve spec path within bundle
   std::filesystem::path spec_path{ b->resolve_spec_path(cfg.identity) };
   if (spec_path.empty()) {
     throw std::runtime_error("Spec '" + cfg.identity + "' not found in bundle '" +
@@ -498,24 +526,272 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
   return parsed_products;
 }
 
+using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>;
+
+// Parse a pure bundle dependency: {bundle = "identity", source = "...", ref = "..."}
+// Returns bundle_source if this is a pure bundle dep, nullopt otherwise
+std::optional<pkg_cfg::bundle_source> try_parse_pure_bundle_dep(
+    sol::table const &table,
+    std::filesystem::path const &spec_path) {
+  sol::object bundle_obj{ table["bundle"] };
+  sol::object source_obj{ table["source"] };
+
+  // Pure bundle dep requires both bundle and source fields
+  if (!bundle_obj.valid() || bundle_obj.get_type() == sol::type::lua_nil) {
+    return std::nullopt;
+  }
+  if (!source_obj.valid() || source_obj.get_type() == sol::type::lua_nil) {
+    return std::nullopt;  // No source = not a pure bundle dep (might be spec-from-bundle)
+  }
+
+  // bundle field must be string (the bundle identity)
+  if (!bundle_obj.is<std::string>()) {
+    throw std::runtime_error(
+        "Pure bundle dependency 'bundle' field must be string (identity)");
+  }
+  std::string bundle_identity{ bundle_obj.as<std::string>() };
+  if (bundle_identity.empty()) {
+    throw std::runtime_error("Pure bundle dependency 'bundle' field cannot be empty");
+  }
+
+  // Parse source (similar to bundle::parse_inline but using 'bundle' for identity)
+  if (!source_obj.is<std::string>()) {
+    throw std::runtime_error("Pure bundle dependency 'source' field must be string");
+  }
+  std::string const source_uri{ source_obj.as<std::string>() };
+  auto const info{ uri_classify(source_uri) };
+
+  if (info.scheme == uri_scheme::GIT) {
+    auto ref_opt{ sol_util_get_optional<std::string>(table, "ref", "Bundle dependency") };
+    if (!ref_opt.has_value() || ref_opt->empty()) {
+      throw std::runtime_error("Bundle dependency with git source requires 'ref' field");
+    }
+    return pkg_cfg::bundle_source{ .bundle_identity = std::move(bundle_identity),
+                                   .fetch_source =
+                                       pkg_cfg::git_source{ .url = info.canonical,
+                                                            .ref = std::move(*ref_opt) } };
+  }
+
+  if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE ||
+      info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
+    std::filesystem::path resolved{ info.canonical };
+    if (info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+      resolved = (spec_path.parent_path() / resolved).lexically_normal();
+    }
+    return pkg_cfg::bundle_source{ .bundle_identity = std::move(bundle_identity),
+                                   .fetch_source = pkg_cfg::local_source{
+                                       .file_path = std::move(resolved) } };
+  }
+
+  // Remote source
+  auto sha256_opt{
+    sol_util_get_optional<std::string>(table, "sha256", "Bundle dependency")
+  };
+  return pkg_cfg::bundle_source{ .bundle_identity = std::move(bundle_identity),
+                                 .fetch_source = pkg_cfg::remote_source{
+                                     .url = info.canonical,
+                                     .sha256 = sha256_opt.value_or("") } };
+}
+
+// Parse a dependency entry that has a bundle field (spec-from-bundle)
+pkg_cfg *parse_spec_from_bundle_dep(sol::table const &table,
+                                    std::filesystem::path const &spec_path,
+                                    bundle_alias_map const &aliases,
+                                    bundle_alias_map const &declared_bundles) {
+  // Get spec identity (required for spec-from-bundle)
+  std::string const spec_identity{ [&] {
+    auto opt{ sol_util_get_optional<std::string>(table, "spec", "Dependency") };
+    if (!opt.has_value() || opt->empty()) {
+      throw std::runtime_error(
+          "Dependency with 'bundle' field (without 'source') requires 'spec' field");
+    }
+    return std::move(*opt);
+  }() };
+
+  sol::object bundle_obj{ table["bundle"] };
+
+  // Resolve bundle source
+  pkg_cfg::bundle_source const bundle_src{ [&]() -> pkg_cfg::bundle_source {
+    if (bundle_obj.is<std::string>()) {
+      std::string const &ref{ bundle_obj.as<std::string>() };
+
+      // First check BUNDLES aliases
+      if (auto it{ aliases.find(ref) }; it != aliases.end()) { return it->second; }
+
+      // Then check declared bundle dependencies (by identity)
+      if (auto it{ declared_bundles.find(ref) }; it != declared_bundles.end()) {
+        return it->second;
+      }
+
+      throw std::runtime_error(
+          "Bundle reference '" + ref +
+          "' not found in BUNDLES table or prior DEPENDENCIES for spec '" + spec_identity +
+          "'");
+    }
+
+    if (bundle_obj.is<sol::table>()) {
+      return bundle::parse_inline(bundle_obj.as<sol::table>(), spec_path);
+    }
+
+    throw std::runtime_error("Dependency 'bundle' field must be string or table");
+  }() };
+
+  // Parse optional fields
+  std::string serialized_options{ "{}" };
+  sol::object options_obj{ table["options"] };
+  if (options_obj.valid() && options_obj.get_type() == sol::type::table) {
+    serialized_options = pkg_cfg::serialize_option_table(options_obj);
+  }
+
+  std::optional<pkg_phase> needed_by;
+  auto needed_by_str{
+    sol_util_get_optional<std::string>(table, "needed_by", "Dependency")
+  };
+  if (needed_by_str.has_value()) {
+    std::string const &nb{ *needed_by_str };
+    if (nb == "check") {
+      needed_by = pkg_phase::pkg_check;
+    } else if (nb == "fetch") {
+      needed_by = pkg_phase::pkg_fetch;
+    } else if (nb == "stage") {
+      needed_by = pkg_phase::pkg_stage;
+    } else if (nb == "build") {
+      needed_by = pkg_phase::pkg_build;
+    } else if (nb == "install") {
+      needed_by = pkg_phase::pkg_install;
+    } else {
+      throw std::runtime_error(
+          "Dependency 'needed_by' must be one of: check, fetch, stage, build, install "
+          "(got: " +
+          nb + ")");
+    }
+  }
+
+  std::optional<std::string> product{
+    sol_util_get_optional<std::string>(table, "product", "Dependency")
+  };
+
+  std::string const bundle_identity{ bundle_src.bundle_identity };
+
+  pkg_cfg *cfg{ pkg_cfg::pool()->emplace(spec_identity,
+                                         pkg_cfg::bundle_source{ bundle_src },
+                                         std::move(serialized_options),
+                                         needed_by,
+                                         nullptr,
+                                         nullptr,
+                                         std::vector<pkg_cfg *>{},
+                                         std::move(product),
+                                         spec_path) };
+
+  cfg->bundle_identity = bundle_identity;
+  return cfg;
+}
+
 std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
                                                 std::filesystem::path const &spec_path,
                                                 pkg_cfg const &cfg) {
   std::vector<pkg_cfg *> parsed_deps;
-  sol::object deps_obj{ lua["DEPENDENCIES"] };
 
+  // Parse BUNDLES table (if present) for alias resolution
+  bundle_alias_map const aliases{ bundle::parse_aliases(lua["BUNDLES"], spec_path) };
+
+  // Track declared bundle dependencies (pure bundle deps) for identity-based resolution
+  bundle_alias_map declared_bundles;
+
+  sol::object deps_obj{ lua["DEPENDENCIES"] };
   if (!deps_obj.valid() || deps_obj.get_type() != sol::type::table) { return parsed_deps; }
 
   sol::table deps_table{ deps_obj.as<sol::table>() };
   for (size_t i{ 1 }; i <= deps_table.size(); ++i) {
-    pkg_cfg *dep_cfg{ pkg_cfg::parse(deps_table[i], spec_path, true) };
+    sol::object entry{ deps_table[i] };
 
+    if (!entry.is<sol::table>()) {
+      // Non-table entries use standard parsing
+      pkg_cfg *dep_cfg{ pkg_cfg::parse(entry, spec_path, true) };
+      if (!cfg.identity.starts_with("local.") && dep_cfg->identity.starts_with("local.")) {
+        throw std::runtime_error("non-local spec '" + cfg.identity +
+                                 "' cannot depend on local spec '" + dep_cfg->identity +
+                                 "'");
+      }
+      parsed_deps.push_back(dep_cfg);
+      continue;
+    }
+
+    sol::table table{ entry.as<sol::table>() };
+
+    // Check for pure bundle dependency: {bundle = "id", source = "..."}
+    if (auto pure_bundle{ try_parse_pure_bundle_dep(table, spec_path) }) {
+      std::string const bundle_id{ pure_bundle->bundle_identity };
+
+      // Register this bundle for identity-based lookups
+      declared_bundles[bundle_id] = *pure_bundle;
+
+      // Parse needed_by for pure bundle deps
+      std::optional<pkg_phase> needed_by;
+      auto needed_by_str{
+        sol_util_get_optional<std::string>(table, "needed_by", "Bundle dependency")
+      };
+      if (needed_by_str.has_value()) {
+        std::string const &nb{ *needed_by_str };
+        if (nb == "check") {
+          needed_by = pkg_phase::pkg_check;
+        } else if (nb == "fetch") {
+          needed_by = pkg_phase::pkg_fetch;
+        } else if (nb == "stage") {
+          needed_by = pkg_phase::pkg_stage;
+        } else if (nb == "build") {
+          needed_by = pkg_phase::pkg_build;
+        } else if (nb == "install") {
+          needed_by = pkg_phase::pkg_install;
+        } else {
+          throw std::runtime_error(
+              "Bundle dependency 'needed_by' must be one of: check, fetch, stage, build, "
+              "install (got: " +
+              nb + ")");
+        }
+      }
+
+      // Create a pkg_cfg for the bundle dependency
+      // Use bundle_identity as the pkg identity so it can be looked up and keyed properly
+      pkg_cfg *bundle_cfg{ pkg_cfg::pool()->emplace(
+          bundle_id,  // Use bundle identity as pkg identity
+          std::move(*pure_bundle),
+          "{}",
+          needed_by,
+          nullptr,
+          nullptr,
+          std::vector<pkg_cfg *>{},
+          std::nullopt,
+          spec_path) };
+
+      bundle_cfg->bundle_identity = bundle_id;
+      parsed_deps.push_back(bundle_cfg);
+      continue;
+    }
+
+    // Check for spec-from-bundle: {spec = "id", bundle = "ref"}
+    sol::object bundle_obj{ table["bundle"] };
+    if (bundle_obj.valid() && bundle_obj.get_type() != sol::type::lua_nil) {
+      pkg_cfg *dep_cfg{
+        parse_spec_from_bundle_dep(table, spec_path, aliases, declared_bundles)
+      };
+
+      if (!cfg.identity.starts_with("local.") && dep_cfg->identity.starts_with("local.")) {
+        throw std::runtime_error("non-local spec '" + cfg.identity +
+                                 "' cannot depend on local spec '" + dep_cfg->identity +
+                                 "'");
+      }
+      parsed_deps.push_back(dep_cfg);
+      continue;
+    }
+
+    // Standard dependency (no bundle field)
+    pkg_cfg *dep_cfg{ pkg_cfg::parse(entry, spec_path, true) };
     if (!cfg.identity.starts_with("local.") && dep_cfg->identity.starts_with("local.")) {
       throw std::runtime_error("non-local spec '" + cfg.identity +
                                "' cannot depend on local spec '" + dep_cfg->identity +
                                "'");
     }
-
     parsed_deps.push_back(dep_cfg);
   }
 
@@ -580,10 +856,17 @@ void wire_dependency_graph(pkg *p, engine &eng) {
   auto &ctx{ eng.get_execution_ctx(p) };
 
   for (auto *dep_cfg : p->owned_dependency_cfgs) {
-    engine_validate_dependency_cycle(dep_cfg->identity,
-                                     ctx.ancestor_chain,
-                                     p->cfg->identity,
-                                     "Dependency");
+    // Pure bundle dep: identity == bundle_identity (bundle fetched for
+    // envy.loadenv_spec()) Spec-from-bundle: identity != bundle_identity (spec resolved
+    // from bundle)
+    bool const is_pure_bundle_dep{ dep_cfg->bundle_identity.has_value() &&
+                                   dep_cfg->identity == *dep_cfg->bundle_identity };
+
+    engine_validate_dependency_cycle(
+        dep_cfg->identity,
+        ctx.ancestor_chain,
+        p->cfg->identity,
+        is_pure_bundle_dep ? "Bundle dependency" : "Dependency");
 
     pkg_phase const needed_by_phase{ dep_cfg->needed_by.has_value()
                                          ? static_cast<pkg_phase>(*dep_cfg->needed_by)
@@ -633,6 +916,19 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       continue;
     }
 
+    // Handle pure bundle dependencies specially
+    if (is_pure_bundle_dep) {
+      // Pure bundle deps fetch the bundle but don't execute spec phases
+      pkg *dep{ eng.ensure_pkg(dep_cfg) };
+      p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+      ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
+
+      std::vector<std::string> child_chain{ ctx.ancestor_chain };
+      child_chain.push_back(p->cfg->identity);
+      eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
+      continue;
+    }
+
     pkg *dep{ eng.ensure_pkg(dep_cfg) };
 
     // Store dependency info in parent's map for ctx.pkg() lookup and phase coordination
@@ -647,8 +943,149 @@ void wire_dependency_graph(pkg *p, engine &eng) {
 
 }  // namespace
 
+// Fetch a bundle without resolving a spec (pure bundle dependency)
+void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
+  auto const *bundle_src{ std::get_if<pkg_cfg::bundle_source>(&cfg.source) };
+  std::string const &bundle_id{ bundle_src->bundle_identity };
+
+  // Check if bundle is already registered
+  if (eng.find_bundle(bundle_id)) { return; }
+
+  // Local bundles (identity starts with "local.") use source directory in-situ
+  if (bundle_id.starts_with("local.")) {
+    auto const *local_src{ std::get_if<pkg_cfg::local_source>(&bundle_src->fetch_source) };
+    if (local_src && std::filesystem::is_directory(local_src->file_path)) {
+      tui::debug("using local bundle %s in-situ from %s (pure bundle dependency)",
+                 bundle_id.c_str(),
+                 local_src->file_path.c_str());
+
+      bundle parsed{ bundle::from_path(local_src->file_path) };
+      if (parsed.identity != bundle_id) {
+        throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
+                                 "' but manifest declares '" + parsed.identity + "'");
+      }
+      parsed.validate_integrity();
+      eng.register_bundle(bundle_id, std::move(parsed.specs), local_src->file_path);
+      return;
+    }
+  }
+
+  // Non-local bundle: fetch to cache
+  auto cache_result{ p->cache_ptr->ensure_spec(bundle_id) };
+
+  if (cache_result.lock) {
+    tui::debug("fetch bundle %s (pure bundle dependency)", bundle_id.c_str());
+    std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
+
+    // Fetch based on underlying source type
+    std::visit(
+        match{
+            [&](pkg_cfg::remote_source const &remote) {
+              std::filesystem::path fetch_dest{ cache_result.lock->fetch_dir() /
+                                                uri_extract_filename(remote.url) };
+
+              auto const info{ uri_classify(remote.url) };
+              fetch_request req;
+              switch (info.scheme) {
+                case uri_scheme::HTTP:
+                  req = fetch_request_http{ .source = remote.url,
+                                            .destination = fetch_dest };
+                  break;
+                case uri_scheme::HTTPS:
+                  req = fetch_request_https{ .source = remote.url,
+                                             .destination = fetch_dest };
+                  break;
+                case uri_scheme::FTP:
+                  req =
+                      fetch_request_ftp{ .source = remote.url, .destination = fetch_dest };
+                  break;
+                case uri_scheme::FTPS:
+                  req = fetch_request_ftps{ .source = remote.url,
+                                            .destination = fetch_dest };
+                  break;
+                case uri_scheme::S3:
+                  req =
+                      fetch_request_s3{ .source = remote.url, .destination = fetch_dest };
+                  break;
+                default:
+                  throw std::runtime_error("Unsupported URL scheme for bundle fetch: " +
+                                           remote.url);
+              }
+
+              auto const results{ fetch({ req }) };
+              if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+                throw std::runtime_error(
+                    "Failed to fetch bundle: " +
+                    (results.empty() ? "no results" : std::get<std::string>(results[0])));
+              }
+
+              if (!remote.sha256.empty()) {
+                sha256_verify(remote.sha256, sha256(fetch_dest));
+              }
+
+              extract(fetch_dest, install_dir);
+            },
+            [&](pkg_cfg::local_source const &local) {  // non-local. identity
+              if (std::filesystem::is_directory(local.file_path)) {
+                std::filesystem::copy(
+                    local.file_path,
+                    install_dir,
+                    std::filesystem::copy_options::recursive |
+                        std::filesystem::copy_options::overwrite_existing);
+              } else {
+                extract(local.file_path, install_dir);
+              }
+            },
+            [&](pkg_cfg::git_source const &git) {
+              auto const results{ fetch({ fetch_request_git{ .source = git.url,
+                                                             .destination = install_dir,
+                                                             .ref = git.ref } }) };
+              if (results.empty() || std::holds_alternative<std::string>(results[0])) {
+                throw std::runtime_error(
+                    "Failed to fetch git bundle: " +
+                    (results.empty() ? "no results" : std::get<std::string>(results[0])));
+              }
+            },
+        },
+        bundle_src->fetch_source);
+
+    cache_result.lock->mark_install_complete();
+    cache_result.lock.reset();
+  }
+
+  // Parse and validate bundle manifest
+  bundle parsed{ bundle::from_path(cache_result.pkg_path) };
+
+  if (parsed.identity != bundle_id) {
+    throw std::runtime_error("Bundle identity mismatch: expected '" + bundle_id +
+                             "' but manifest declares '" + parsed.identity + "'");
+  }
+
+  parsed.validate_integrity();
+
+  // Register the bundle for envy.loadenv_spec() access
+  eng.register_bundle(bundle_id, std::move(parsed.specs), cache_result.pkg_path);
+}
+
 void run_spec_fetch_phase(pkg *p, engine &eng) {
   pkg_cfg const &cfg{ *p->cfg };
+
+  // Handle pure bundle dependencies (identity == bundle_identity)
+  // These just fetch the bundle without loading a spec
+  bool const is_pure_bundle_dep{
+    cfg.bundle_identity.has_value() && cfg.identity == *cfg.bundle_identity &&
+    std::holds_alternative<pkg_cfg::bundle_source>(cfg.source)
+  };
+
+  if (is_pure_bundle_dep) {
+    phase_trace_scope const phase_scope{ cfg.identity,
+                                         pkg_phase::spec_fetch,
+                                         std::chrono::steady_clock::now() };
+    fetch_bundle_only(cfg, p, eng);
+    p->type = pkg_type::BUNDLE_ONLY;
+    return;  // No spec to load - bundle is now available for envy.loadenv_spec()
+  }
+
   phase_trace_scope const phase_scope{ cfg.identity,
                                        pkg_phase::spec_fetch,
                                        std::chrono::steady_clock::now() };
@@ -677,6 +1114,14 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
 
   // Load and validate spec script
   auto lua{ create_lua_state() };
+
+  // For specs from bundles, configure package.path for require() calls
+  if (cfg.bundle_identity.has_value()) {
+    if (bundle * b{ eng.find_bundle(*cfg.bundle_identity) }) {
+      b->configure_package_path(*lua);
+    }
+  }
+
   load_spec_script(*lua, spec_path, cfg.identity);
 
   // Store spec file path for error reporting

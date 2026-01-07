@@ -315,8 +315,10 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   auto state{ sol_util_make_lua_state() };
   lua_envy_install(*state);
 
+  // Use manifest path as chunk name so debug.getinfo can find it for envy.loadenv()
+  std::string const chunk_name{ "@" + manifest_path.string() };
   if (sol::protected_function_result const result{
-          state->safe_script(script, sol::script_pass_on_error) };
+          state->safe_script(script, sol::script_pass_on_error, chunk_name) };
       !result.valid()) {
     sol::error err = result;
     throw std::runtime_error(std::string("Failed to execute manifest script: ") +

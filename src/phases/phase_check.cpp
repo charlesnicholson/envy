@@ -74,7 +74,7 @@ bool run_check_function(pkg *p,
 
   // Set up Lua registry context for envy.* functions (run_dir = project_root)
   // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
-  phase_context_guard ctx_guard{ nullptr, p, project_root };
+  phase_context_guard ctx_guard{ &eng, p, project_root };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 

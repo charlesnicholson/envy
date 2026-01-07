@@ -46,6 +46,7 @@ void print_products_json(std::vector<product_info> const &products) {
       switch (products[i].type) {
         case pkg_type::CACHE_MANAGED: return "cache-managed";
         case pkg_type::USER_MANAGED: return "user-managed";
+        case pkg_type::BUNDLE_ONLY: return "bundle-only";
         case pkg_type::UNKNOWN: return "unknown";
       }
       return "unknown";

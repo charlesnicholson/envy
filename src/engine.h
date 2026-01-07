@@ -27,7 +27,8 @@ struct pkg;
 enum class pkg_type {
   UNKNOWN,        // Not yet determined or failed
   CACHE_MANAGED,  // Package produces cached artifacts (has fetch)
-  USER_MANAGED    // Package managed by user (has check/install, no cache artifacts)
+  USER_MANAGED,   // Package managed by user (has check/install, no cache artifacts)
+  BUNDLE_ONLY     // Pure bundle dependency (no spec, just bundle for envy.loadenv_spec())
 };
 
 struct pkg_execution_ctx {

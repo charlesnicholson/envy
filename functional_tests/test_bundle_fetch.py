@@ -405,5 +405,227 @@ PACKAGES = {{
         self.assertIn("bundle", result.stderr.lower())
 
 
+class TestLocalBundleInSitu(unittest.TestCase):
+    """Tests for local bundle in-situ behavior (no cache copy)."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-local-bundle-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-local-bundle-manifest-"))
+        self.bundle_dir = Path(tempfile.mkdtemp(prefix="envy-local-bundle-src-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.bundle_dir, ignore_errors=True)
+
+    @staticmethod
+    def lua_path(path: Path) -> str:
+        return path.as_posix()
+
+    def create_manifest(self, content: str) -> Path:
+        manifest_path = self.test_dir / "envy.lua"
+        manifest_path.write_text(make_manifest(content), encoding="utf-8")
+        return manifest_path
+
+    def create_local_bundle(self, bundle_identity: str, specs: dict[str, str]) -> Path:
+        """Create a bundle with local. prefix for in-situ use."""
+        specs_dir = self.bundle_dir / "specs"
+        specs_dir.mkdir(parents=True, exist_ok=True)
+
+        specs_lua = ",\n".join(
+            f'  ["{spec_id}"] = "{path}"' for spec_id, path in specs.items()
+        )
+        bundle_lua = f"""BUNDLE = "{bundle_identity}"
+SPECS = {{
+{specs_lua}
+}}
+"""
+        (self.bundle_dir / "envy-bundle.lua").write_text(bundle_lua)
+
+        for spec_id, path in specs.items():
+            spec_path = self.bundle_dir / path
+            spec_path.parent.mkdir(parents=True, exist_ok=True)
+            spec_lua = f"""IDENTITY = "{spec_id}"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+            spec_path.write_text(spec_lua)
+
+        return self.bundle_dir
+
+    def run_sync(self, manifest: Path):
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "sync",
+            "--install-all",
+            "--manifest",
+            str(manifest),
+        ]
+        return subprocess.run(
+            cmd,
+            cwd=self.project_root,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_local_bundle_not_copied_to_cache(self):
+        """Local bundles (local. prefix) are used in-situ, not copied to cache."""
+        bundle_path = self.create_local_bundle(
+            "local.helpers@v1", {"local.tool@v1": "specs/tool.lua"}
+        )
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{
+        spec = "local.tool@v1",
+        bundle = {{
+            identity = "local.helpers@v1",
+            source = "{self.lua_path(bundle_path)}",
+        }},
+    }},
+}}
+"""
+        )
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify bundle was NOT copied to cache
+        bundle_cache = self.cache_root / "specs" / "local.helpers@v1"
+        self.assertFalse(
+            bundle_cache.exists(),
+            f"Local bundle should not be cached at {bundle_cache}",
+        )
+
+    def test_local_bundle_spec_execution_works(self):
+        """Specs from local bundles execute correctly from source directory."""
+        # Create bundle with spec that logs to stderr (local specs are USER_MANAGED)
+        specs_dir = self.bundle_dir / "specs"
+        specs_dir.mkdir(parents=True, exist_ok=True)
+
+        bundle_lua = """BUNDLE = "local.test@v1"
+SPECS = {
+  ["local.marker@v1"] = "specs/marker.lua"
+}
+"""
+        (self.bundle_dir / "envy-bundle.lua").write_text(bundle_lua)
+
+        # local. specs are USER_MANAGED, so INSTALL gets (project_root, options)
+        spec_lua = """IDENTITY = "local.marker@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(project_root, options)
+  envy.info("local bundle spec executed successfully")
+end
+"""
+        (specs_dir / "marker.lua").write_text(spec_lua)
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{
+        spec = "local.marker@v1",
+        bundle = {{
+            identity = "local.test@v1",
+            source = "{self.lua_path(self.bundle_dir)}",
+        }},
+    }},
+}}
+"""
+        )
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local bundle spec executed successfully", result.stderr)
+
+    def test_local_bundle_only_dependency_in_situ(self):
+        """Pure local bundle dependency (no spec) uses in-situ."""
+        # Create bundle with helper file
+        lib_dir = self.bundle_dir / "lib"
+        lib_dir.mkdir(parents=True, exist_ok=True)
+        specs_dir = self.bundle_dir / "specs"
+        specs_dir.mkdir(parents=True, exist_ok=True)
+
+        bundle_lua = """BUNDLE = "local.helpers@v1"
+SPECS = {
+  ["local.dummy@v1"] = "specs/dummy.lua"
+}
+"""
+        (self.bundle_dir / "envy-bundle.lua").write_text(bundle_lua)
+
+        dummy_lua = """IDENTITY = "local.dummy@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        (specs_dir / "dummy.lua").write_text(dummy_lua)
+
+        helper_lua = """HELPER_VERSION = "1.0.0"
+"""
+        (lib_dir / "helper.lua").write_text(helper_lua)
+
+        # Create spec that depends on local bundle and uses loadenv_spec
+        consumer_spec = f"""IDENTITY = "local.consumer@v1"
+DEPENDENCIES = {{
+  {{
+    bundle = "local.helpers@v1",
+    source = "{self.lua_path(self.bundle_dir)}",
+    needed_by = "check",
+  }},
+}}
+
+function CHECK(project_root, options)
+  local helper = envy.loadenv_spec("local.helpers@v1", "lib/helper")
+  return helper.HELPER_VERSION == "1.0.0"
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        consumer_path = self.test_dir / "consumer.lua"
+        consumer_path.write_text(consumer_spec)
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.consumer@v1", source = "{self.lua_path(consumer_path)}" }},
+}}
+"""
+        )
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify bundle was NOT cached
+        bundle_cache = self.cache_root / "specs" / "local.helpers@v1"
+        self.assertFalse(
+            bundle_cache.exists(),
+            f"Local bundle dependency should not be cached at {bundle_cache}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

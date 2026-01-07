@@ -184,40 +184,21 @@ bundle bundle::from_path(std::filesystem::path const &cache_path) {
   return b;
 }
 
+void bundle::configure_package_path(sol::state &lua) const {
+  std::string const bundle_root{ cache_path.string() };
+  sol::table package_table{ lua["package"] };
+  std::string const current_path{ package_table["path"].get_or<std::string>("") };
+  package_table["path"] =
+      bundle_root + "/?.lua;" + bundle_root + "/?/init.lua;" + current_path;
+}
+
 void bundle::validate_integrity() const {
   for (auto const &[spec_identity, relative_path] : specs) {
     std::filesystem::path const spec_path{ cache_path / relative_path };
-
     if (!std::filesystem::exists(spec_path)) {
       throw std::runtime_error("Bundle '" + identity + "' declares spec '" +
                                spec_identity + "' at '" + relative_path +
-                               "' but file not found in bundle at: " + spec_path.string());
-    }
-
-    auto lua{ sol_util_make_lua_state() };
-    sol::protected_function_result result{
-      lua->safe_script_file(spec_path.string(), sol::script_pass_on_error)
-    };
-
-    if (!result.valid()) {
-      sol::error err = result;
-      throw std::runtime_error("Failed to parse spec '" + spec_identity + "' in bundle '" +
-                               identity + "' at " + spec_path.string() + ": " +
-                               err.what());
-    }
-
-    sol::object identity_obj{ (*lua)["IDENTITY"] };
-    if (!identity_obj.valid() || !identity_obj.is<std::string>()) {
-      throw std::runtime_error("Spec file missing IDENTITY in bundle '" + identity +
-                               "' at: " + spec_path.string());
-    }
-
-    std::string const declared_identity{ identity_obj.as<std::string>() };
-    if (declared_identity != spec_identity) {
-      throw std::runtime_error("Identity mismatch in bundle '" + identity +
-                               "': SPECS declares '" + spec_identity +
-                               "' but file declares IDENTITY = '" + declared_identity +
-                               "' at: " + spec_path.string());
+                               "' but file not found: " + spec_path.string());
     }
   }
 }

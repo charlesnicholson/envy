@@ -628,6 +628,12 @@ void engine::run_pkg_thread(pkg *p) {
       if (next == pkg_phase::spec_fetch) {
         ctx.spec_fetch_completed = true;
         on_spec_fetch_complete(p->cfg->identity);
+
+        // BUNDLE_ONLY packages stop after spec_fetch - no lua state to execute
+        if (p->type == pkg_type::BUNDLE_ONLY) {
+          ctx.current_phase = pkg_phase::completion;
+          break;
+        }
       }
       notify_phase_complete();
     }

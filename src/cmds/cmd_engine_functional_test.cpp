@@ -67,6 +67,7 @@ void cmd_engine_functional_test::execute() {
       switch (res.type) {
         case pkg_type::CACHE_MANAGED: return "cache-managed";
         case pkg_type::USER_MANAGED: return "user-managed";
+        case pkg_type::BUNDLE_ONLY: return "bundle-only";
         case pkg_type::UNKNOWN: return "unknown";
       }
       return "unknown";

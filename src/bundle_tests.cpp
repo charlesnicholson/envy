@@ -302,10 +302,13 @@ TEST_CASE("bundle::validate_integrity succeeds for valid bundle") {
   CHECK_NOTHROW(b.validate_integrity());
 }
 
-TEST_CASE("bundle::validate_integrity errors on identity mismatch") {
-  auto b{ envy::bundle::from_path(fs::path("test_data/bundles/mismatched-identity")) };
+TEST_CASE("bundle::validate_integrity errors on missing spec file") {
+  envy::bundle b;
+  b.identity = "test.bundle@v1";
+  b.cache_path = fs::path("test_data/bundles/simple-bundle");
+  b.specs["nonexistent.spec@v1"] = "specs/does-not-exist.lua";
 
   CHECK_THROWS_WITH_AS(b.validate_integrity(),
-                       doctest::Contains("Identity mismatch"),
+                       doctest::Contains("file not found"),
                        std::runtime_error);
 }

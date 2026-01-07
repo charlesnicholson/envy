@@ -41,6 +41,10 @@ struct bundle {
   // Throws on invalid format
   static pkg_cfg::bundle_source parse_inline(sol::table const &table,
                                              std::filesystem::path const &base_path);
+
+  // Configure an existing lua state's package.path to include this bundle's root.
+  // Call this before loading any spec files from the bundle.
+  void configure_package_path(sol::state &lua) const;
 };
 
 }  // namespace envy
