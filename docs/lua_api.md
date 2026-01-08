@@ -227,6 +227,72 @@ BUILD = function(...)
 end
 ```
 
+### envy.loadenv_spec(identity, module) → table
+
+Load Lua file from declared dependency into sandboxed environment.
+
+**Arguments:**
+- `identity` — dependency identity (supports fuzzy matching: `"helpers"` matches `"acme.helpers@v1"`)
+- `module` — module path using Lua dot syntax (e.g., `"lib.common"` → `lib/common.lua`)
+
+**Returns:** Table containing all globals defined in the loaded file.
+
+**Requirements:**
+- Must be called within phase function (not global scope)
+- Caller must have dependency on `identity` with appropriate `needed_by`
+- Access must occur at or after dependency's `needed_by` phase
+
+```lua
+DEPENDENCIES = {
+  {
+    bundle = "acme.toolchain@v1",
+    needed_by = "fetch",
+  },
+}
+
+FETCH = function(tmp_dir, options)
+  -- Fuzzy match: "toolchain" matches "acme.toolchain@v1"
+  local helpers = envy.loadenv_spec("toolchain", "lib.common")
+  local url = helpers.build_url(options.version)
+  return { source = url }
+end
+```
+
+**Error conditions:**
+- Called at global scope → error (must be in phase function)
+- Undeclared dependency → error
+- `needed_by` phase not reached → error
+- File not found → error
+- Lua parse/execution error → error
+
+### envy.loadenv(module) → table
+
+Load Lua file relative to current file into sandboxed environment.
+
+**Arguments:**
+- `module` — module path using Lua dot syntax (e.g., `"lib.utils"` → `lib/utils.lua`)
+
+**Returns:** Table containing all globals defined in the loaded file.
+
+**Differences from `require()`:**
+- Path is relative to current file (not cwd)
+- Returns globals table (not return value)
+- Always reloads (no caching)
+
+```lua
+-- helpers.lua (same directory as spec)
+local helpers = envy.loadenv("helpers")
+local version = helpers.DEFAULT_VERSION
+
+-- lib/utils.lua (subdirectory)
+local utils = envy.loadenv("lib.utils")
+```
+
+**When to use which:**
+- `envy.loadenv(module)` — Load helpers from same project/bundle (relative to current file)
+- `envy.loadenv_spec(identity, module)` — Load from declared dependency bundle (validates dependency graph)
+- `require(module)` — Standard Lua module loading (uses package.path, cwd-relative)
+
 ---
 
 ## Path Utilities

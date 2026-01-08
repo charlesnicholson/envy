@@ -120,6 +120,16 @@ struct lua_ctx_product_access {
   std::string reason;
 };
 
+struct lua_ctx_loadenv_spec_access {
+  std::string spec;
+  std::string target;
+  std::string subpath;
+  pkg_phase current_phase;
+  pkg_phase needed_by;
+  bool allowed;
+  std::string reason;
+};
+
 struct cache_hit {
   std::string spec;
   std::string cache_key;
@@ -274,6 +284,7 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::lua_ctx_extract_complete,
                                    trace_events::lua_ctx_package_access,
                                    trace_events::lua_ctx_product_access,
+                                   trace_events::lua_ctx_loadenv_spec_access,
                                    trace_events::cache_hit,
                                    trace_events::cache_miss,
                                    trace_events::lock_acquired,
@@ -470,6 +481,23 @@ struct phase_trace_scope {
       .spec = (spec_value), \
       .product = (product_value), \
       .provider = (provider_value), \
+      .current_phase = (current_phase_value), \
+      .needed_by = (needed_by_value), \
+      .allowed = (allowed_value), \
+      .reason = (reason_value), \
+  }))
+
+#define ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(spec_value, \
+                                               target_value, \
+                                               subpath_value, \
+                                               current_phase_value, \
+                                               needed_by_value, \
+                                               allowed_value, \
+                                               reason_value) \
+  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_loadenv_spec_access{ \
+      .spec = (spec_value), \
+      .target = (target_value), \
+      .subpath = (subpath_value), \
       .current_phase = (current_phase_value), \
       .needed_by = (needed_by_value), \
       .allowed = (allowed_value), \

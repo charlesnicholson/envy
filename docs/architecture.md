@@ -518,6 +518,84 @@ assert(SUPPORTED[ENVY_PLATFORM] and SUPPORTED[ENVY_PLATFORM][ENVY_ARCH],
        "Unsupported platform: " .. ENVY_PLATFORM_ARCH)
 ```
 
+## Bundles
+
+Bundles are collections of related specs distributed together. Single `envy-bundle.lua` manifest plus spec files, optionally with shared Lua helpers.
+
+**Bundle manifest format:**
+```lua
+-- envy-bundle.lua
+BUNDLE = "acme.toolchain@v1"
+SPECS = {
+  ["acme.gcc@v2"] = "specs/gcc.lua",
+  ["acme.binutils@v1"] = "specs/binutils.lua",
+  ["acme.helpers@v1"] = "specs/helpers.lua",
+}
+```
+
+**Cache layout:**
+```
+~/.cache/envy/bundles/
+└── acme.toolchain@v1/
+    ├── envy-bundle.lua
+    ├── specs/
+    │   ├── gcc.lua
+    │   ├── binutils.lua
+    │   └── helpers.lua
+    └── lib/
+        └── common.lua    # Shared helpers
+```
+
+**Referencing bundles from manifests:**
+```lua
+PACKAGES = {
+  -- Spec from bundle (inline)
+  {
+    spec = "acme.gcc@v2",
+    bundle = {
+      identity = "acme.toolchain@v1",
+      source = "https://example.com/toolchain-bundle.zip",
+      sha256 = "abc...",
+    },
+  },
+  -- Bundle alias (reusable)
+  { spec = "acme.binutils@v1", bundle = "toolchain" },
+}
+
+BUNDLES = {
+  ["toolchain"] = {
+    identity = "acme.toolchain@v1",
+    source = "https://example.com/toolchain-bundle.zip",
+  },
+}
+```
+
+**Inter-spec dependencies within bundles:**
+Specs use `envy.loadenv_spec(identity, module)` to load Lua code from declared bundle dependencies. Uses Lua dot syntax for module paths (e.g., `"lib.common"` → `lib/common.lua`). Requires `needed_by` annotation.
+
+```lua
+-- acme.gcc@v2 spec (within bundle)
+DEPENDENCIES = {
+  {
+    bundle = "acme.toolchain@v1",  -- Depend on own bundle for helpers
+    needed_by = "fetch",
+  },
+}
+
+FETCH = function(tmp_dir, options)
+  -- Load helper from bundle (fuzzy match: "toolchain" matches "acme.toolchain@v1")
+  local common = envy.loadenv_spec("toolchain", "lib.common")
+  local url = common.build_download_url("gcc", options.version)
+  return {source = url, sha256 = options.sha256}
+end
+```
+
+**`envy.loadenv()` vs `envy.loadenv_spec()`:**
+- `envy.loadenv(module)` — Load Lua file relative to current file. Works at global scope or in phases. Uses dot syntax (`"lib.utils"` → `lib/utils.lua`).
+- `envy.loadenv_spec(identity, module)` — Load from declared dependency. Phase context required; validates `needed_by`. Uses dot syntax.
+
+**Validation:** Bundle validation runs threaded—each spec's IDENTITY verified against SPECS table keys. All bundles validated on every load.
+
 ## TUI / Output
 
 ### Stream Semantics

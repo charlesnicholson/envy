@@ -109,14 +109,14 @@ PACKAGES = {
 | Function | Context | Purpose |
 |----------|---------|---------|
 | `envy.package(identity)` | Spec phases | Get installed package path (already exists) |
-| `envy.loadenv_spec(identity, subpath)` | Spec phases only | Load Lua from declared dependency into sandboxed table |
-| `envy.loadenv(path)` | Any context | Load local file into sandboxed table |
+| `envy.loadenv_spec(identity, module)` | Spec phases only | Load Lua from declared dependency into sandboxed table |
+| `envy.loadenv(module)` | Any context | Load local file into sandboxed table |
 
 **Context clarification:**
 
-- `envy.loadenv(path)`: Allowed in any context (manifest global scope, spec global scope, phase functions). Path is **always relative to the currently-executing Lua file** (uses `debug.getinfo` to determine caller's source file). Intended for loading local helper files in the same project or spec directory—NOT for loading other specs from the cache (users don't know cache paths).
+- `envy.loadenv(module)`: Allowed in any context (manifest global scope, spec global scope, phase functions). Uses Lua dot syntax (`"lib.utils"` → `lib/utils.lua`). Path is **always relative to the currently-executing Lua file** (uses `debug.getinfo` to determine caller's source file). Intended for loading local helper files in the same project or spec directory—NOT for loading other specs from the cache (users don't know cache paths).
 
-- `envy.loadenv_spec(identity, subpath)`: **Only callable from within phase functions**. Uses the `needed_by` dependency system and is runtime-verified. If called at global scope, envy throws an error because the phase context doesn't exist yet.
+- `envy.loadenv_spec(identity, module)`: **Only callable from within phase functions**. Uses Lua dot syntax (`"lib.common"` → `lib/common.lua`). Uses the `needed_by` dependency system and is runtime-verified. If called at global scope, envy throws an error because the phase context doesn't exist yet.
 
 ### Identity Fuzzy Matching
 
@@ -163,7 +163,7 @@ The subpath is relative to the spec/bundle root, without the `.lua` extension.
 For composing manifests from subprojects (monorepo patterns), use `envy.loadenv()` at manifest load time:
 
 ```lua
-local sub = envy.loadenv("libs/subproject/envy.lua")
+local sub = envy.loadenv("libs.subproject.envy")
 PACKAGES = envy.extend(sub.PACKAGES, {
   -- additional packages...
 })
@@ -550,7 +550,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 - [x] Test `envy.loadenv_spec()` within phase functions
 - [x] Test `envy.loadenv_spec()` at global scope (error)
 - [x] Test `envy.loadenv_spec()` phase validation (needed_by)
-- [ ] Test fuzzy matching in `envy.loadenv_spec()` (matches `gcc` to `acme.gcc@v2`)
+- [x] Test fuzzy matching in `envy.loadenv_spec()` (matches `gcc` to `acme.gcc@v2`)
 - [x] Test standard `require()` within bundle for local files
 
 `functional_tests/test_loadenv.py`:
@@ -566,19 +566,19 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 **Implementation:**
 
 `docs/architecture.md`:
-- [ ] Add Bundles section explaining concept and cache structure
-- [ ] Update manifest format documentation
-- [ ] Document bundle manifest format (`envy-bundle.lua`)
+- [x] Add Bundles section explaining concept and cache structure
+- [x] Update manifest format documentation
+- [x] Document bundle manifest format (`envy-bundle.lua`)
 
 `docs/lua_api.md`:
-- [ ] Document `envy.loadenv_spec()`
-- [ ] Document `envy.loadenv()`
-- [ ] Add manifest composition examples
-- [ ] Add spec dependency examples
+- [x] Document `envy.loadenv_spec()`
+- [x] Document `envy.loadenv()`
+- [x] Add manifest composition examples
+- [x] Add spec dependency examples
 
 `src/resources/envy.lua` (lua_ls types):
-- [ ] Add type definitions for `envy.loadenv_spec()`
-- [ ] Add type definitions for `envy.loadenv()`
+- [x] Add type definitions for `envy.loadenv_spec()`
+- [x] Add type definitions for `envy.loadenv()`
 
 ---
 

@@ -212,6 +212,20 @@ function envy.package(identity) end
 ---@return string value Product value (path or arbitrary string)
 function envy.product(name) end
 
+---Load Lua file from declared dependency into sandboxed environment
+---Supports fuzzy identity matching (e.g., "helpers" matches "acme.helpers@v1")
+---Must be called within phase function; validates dependency graph and needed_by
+---@param identity string Dependency identity (fuzzy match supported)
+---@param module string Module path using Lua dot syntax (e.g., "lib.common" → lib/common.lua)
+---@return table env Table containing globals defined in the loaded file
+function envy.loadenv_spec(identity, module) end
+
+---Load Lua file relative to current file into sandboxed environment
+---Path is resolved relative to the file calling loadenv, not cwd
+---@param module string Module path using Lua dot syntax (e.g., "lib.utils" → lib/utils.lua)
+---@return table env Table containing globals defined in the loaded file
+function envy.loadenv(module) end
+
 --------------------------------------------------------------------------------
 -- Shell Constants
 --------------------------------------------------------------------------------

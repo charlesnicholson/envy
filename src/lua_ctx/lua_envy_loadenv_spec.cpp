@@ -6,21 +6,38 @@
 #include "lua_phase_context.h"
 #include "pkg.h"
 #include "pkg_phase.h"
+#include "trace.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 
 namespace envy {
 
+namespace {
+
+// Convert Lua module path (dots) to filesystem path (slashes)
+std::string module_path_to_file_path(std::string const &module_path) {
+  std::string file_path{ module_path };
+  std::replace(file_path.begin(), file_path.end(), '.', '/');
+  return file_path;
+}
+
+}  // namespace
+
 void lua_envy_loadenv_spec_install(sol::table &envy_table) {
-  // envy.loadenv_spec(identity, subpath) -> table
+  // envy.loadenv_spec(identity, module_path) -> table
   // Load Lua code from a declared dependency into a sandboxed environment
+  // module_path uses Lua dot syntax (e.g., "lib.helpers" -> "lib/helpers.lua")
   envy_table["loadenv_spec"] = [](std::string const &identity,
-                                  std::string const &subpath,
+                                  std::string const &module_path,
                                   sol::this_state L) -> sol::table {
+    // Convert dots to slashes
+    std::string const subpath{ module_path_to_file_path(module_path) };
     // Verify we're in a phase context (not global scope)
     phase_context const *ctx{ lua_phase_context_get(L) };
     pkg *consumer{ ctx ? ctx->p : nullptr };
@@ -41,25 +58,44 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
 
     pkg_phase const current_phase{ exec_ctx->current_phase.load() };
 
-    // Look up dependency by identity
+    auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
+      ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(consumer->cfg->identity,
+                                              identity,
+                                              module_path,  // Log original dot syntax
+                                              current_phase,
+                                              needed_by,
+                                              allowed,
+                                              reason);
+    };
+
+    // Look up dependency by identity (with fuzzy matching)
     pkg_phase first_needed_by{ pkg_phase::completion };
-    if (!strong_reachable(consumer, identity, first_needed_by)) {
-      throw std::runtime_error("envy.loadenv_spec: pkg '" + consumer->cfg->identity +
-                               "' has no dependency on '" + identity + "'");
+    std::optional<std::string> matched_identity;
+    if (!strong_reachable(consumer, identity, first_needed_by, matched_identity)) {
+      std::string const msg{ "envy.loadenv_spec: pkg '" + consumer->cfg->identity +
+                             "' has no dependency on '" + identity + "'" };
+      emit_access(false, pkg_phase::none, msg);
+      throw std::runtime_error(msg);
     }
 
     if (current_phase < first_needed_by) {
-      throw std::runtime_error(
+      std::string const msg{
           "envy.loadenv_spec: dependency '" + identity + "' needed_by '" +
           std::string(pkg_phase_name(first_needed_by)) + "' but accessed during '" +
-          std::string(pkg_phase_name(current_phase)) + "'");
+          std::string(pkg_phase_name(current_phase)) + "'"
+      };
+      emit_access(false, first_needed_by, msg);
+      throw std::runtime_error(msg);
     }
 
+    // Use canonical identity from fuzzy match for lookup
+    std::string const &canonical_id{ matched_identity.value_or(identity) };
+
     // Find the dependency package
-    auto it{ consumer->dependencies.find(identity) };
+    auto it{ consumer->dependencies.find(canonical_id) };
     if (it == consumer->dependencies.end()) {
       throw std::runtime_error("envy.loadenv_spec: dependency not found in map: " +
-                               identity);
+                               canonical_id);
     }
 
     pkg const *dep{ it->second.p };
@@ -72,9 +108,9 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
 
     if (dep->type == pkg_type::BUNDLE_ONLY) {
       // Pure bundle dependency - use bundle's cache_path
-      bundle *b{ eng->find_bundle(identity) };
+      bundle *b{ eng->find_bundle(canonical_id) };
       if (!b) {
-        throw std::runtime_error("envy.loadenv_spec: bundle '" + identity +
+        throw std::runtime_error("envy.loadenv_spec: bundle '" + canonical_id +
                                  "' not found in registry");
       }
       load_root = b->cache_path;
@@ -143,6 +179,7 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
                                std::string(err.what()));
     }
 
+    emit_access(true, first_needed_by, full_path.string());
     return env;
   };
 }

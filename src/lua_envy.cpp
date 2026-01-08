@@ -21,10 +21,13 @@ namespace envy {
 namespace {
 
 constexpr char kEnvyLoadenvLua[] = R"lua(
-return function(path)
-  if type(path) ~= "string" then
+return function(module_path)
+  if type(module_path) ~= "string" then
     error("envy.loadenv: path must be a string", 2)
   end
+
+  -- Convert dots to slashes (Lua module syntax)
+  local file_path = module_path:gsub("%.", "/")
 
   -- Get caller's source file using debug.getinfo
   -- Level 2 = caller of loadenv (1 = loadenv itself)
@@ -43,8 +46,8 @@ return function(path)
   local dir = source:match("(.*/)")
   if not dir then dir = "./" end
 
-  -- Construct full path
-  local full_path = dir .. path
+  -- Construct full path (add .lua extension)
+  local full_path = dir .. file_path .. ".lua"
 
   -- Create sandboxed environment with access to stdlib
   local env = setmetatable({}, {__index = _G})

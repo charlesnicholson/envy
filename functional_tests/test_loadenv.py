@@ -69,7 +69,7 @@ class TestLoadenvBasic(unittest.TestCase):
 
         # Create manifest that loads helper
         manifest_content = f"""-- @envy bin-dir "tools"
-local helper = envy.loadenv("helper.lua")
+local helper = envy.loadenv("helper")
 PACKAGES = helper.PACKAGES or {{}}
 """
         manifest_path = self.test_dir / "envy.lua"
@@ -90,7 +90,7 @@ PACKAGES = helper.PACKAGES or {{}}
         spec_content = """IDENTITY = "local.loadenv-test@v1"
 DEPENDENCIES = {}
 
-local helper = envy.loadenv("helper.lua")
+local helper = envy.loadenv("helper")
 LOADED_VALUE = helper.HELPER_VALUE
 
 function CHECK(project_root, options)
@@ -127,7 +127,7 @@ PACKAGES = {{
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)
-  local ver = envy.loadenv("version.lua")
+  local ver = envy.loadenv("version")
   return ver.TOOL_VERSION == "1.2.3"
 end
 
@@ -162,7 +162,7 @@ BAZ = {nested = true}
         spec_content = """IDENTITY = "local.sandbox-test@v1"
 DEPENDENCIES = {}
 
-local env = envy.loadenv("globals.lua")
+local env = envy.loadenv("globals")
 
 -- Verify globals are in the returned table
 assert(env.FOO == "foo_value", "FOO not captured")
@@ -210,7 +210,7 @@ PACKAGES = {{
         spec_content = """IDENTITY = "local.relative-path@v1"
 DEPENDENCIES = {}
 
-local helper = envy.loadenv("subdir/helper.lua")
+local helper = envy.loadenv("subdir.helper")
 assert(helper.SUBDIR_VALUE == "in_subdir", "Failed to load from subdir")
 
 function CHECK(project_root, options)
@@ -246,7 +246,7 @@ PACKAGES = {{
 
         # Create manifest using loadenv and extend
         manifest_content = f"""-- @envy bin-dir "tools"
-local helper = envy.loadenv("packages.lua")
+local helper = envy.loadenv("packages")
 PACKAGES = envy.extend(helper.HELPER_PACKAGES or {{}}, {{
     -- Additional packages would go here
 }})
@@ -277,7 +277,7 @@ RESULTS = {
         spec_content = """IDENTITY = "local.stdlib-access@v1"
 DEPENDENCIES = {}
 
-local helper = envy.loadenv("stdlib_test.lua")
+local helper = envy.loadenv("stdlib_test")
 assert(helper.RESULTS.str == "value: 42", "string.format failed")
 assert(helper.RESULTS.math_val == 3, "math.floor failed")
 assert(helper.RESULTS.tbl == "a,b,c", "table.concat failed")
@@ -344,7 +344,7 @@ class TestLoadenvErrors(unittest.TestCase):
         spec_content = """IDENTITY = "local.missing-file@v1"
 DEPENDENCIES = {}
 
-local helper = envy.loadenv("nonexistent.lua")
+local helper = envy.loadenv("nonexistent")
 
 function CHECK(project_root, options)
   return false

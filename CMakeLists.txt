@@ -235,6 +235,7 @@ set(ENVY_BASE_SOURCES
     src/lua_ctx/lua_ctx_move.cpp
     src/lua_ctx/lua_ctx_run.cpp
     src/lua_ctx/lua_ctx_product.cpp
+    src/lua_ctx/lua_envy_dep_util.cpp
     src/lua_ctx/lua_envy_extract.cpp
     src/lua_ctx/lua_envy_fetch.cpp
     src/lua_ctx/lua_envy_file_ops.cpp
@@ -449,6 +450,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/pkg_key_tests.cpp
     src/lua_ctx/lua_ctx_bindings_tests.cpp
     src/lua_ctx/lua_ctx_copy_tests.cpp
+    src/lua_ctx/lua_envy_dep_util_tests.cpp
     src/lua_ctx/lua_ctx_fetch_tests.cpp
     src/lua_ctx/lua_ctx_run_tests.cpp
     src/lua_ctx_package_product_tests.cpp

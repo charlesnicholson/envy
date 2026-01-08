@@ -1,5 +1,6 @@
 #include "spec_util.h"
 
+#include "lua_envy.h"
 #include "sol_util.h"
 
 #include <stdexcept>
@@ -13,6 +14,7 @@ std::string extract_spec_identity(std::filesystem::path const &spec_path,
   }
 
   auto lua{ sol_util_make_lua_state() };
+  lua_envy_install(*lua);
 
   // Configure package.path for bundle-local requires if root provided
   if (!package_path_root.empty()) {

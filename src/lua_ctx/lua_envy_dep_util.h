@@ -3,52 +3,29 @@
 #include "pkg.h"
 #include "pkg_phase.h"
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 
 namespace envy {
 
-// Check if target_identity is reachable through transitive dependencies
-inline bool dependency_reachable(pkg *from,
-                                 std::string const &target_identity,
-                                 std::unordered_set<pkg *> &visited) {
-  if (!visited.insert(from).second) { return false; }
+// Check if query matches dep_id using fuzzy matching
+bool identity_matches(std::string const &dep_id, std::string const &query);
 
-  for (auto const &[dep_id, dep_info] : from->dependencies) {
-    pkg *child{ dep_info.p };
-    if (!child) { continue; }
-    if (dep_id == target_identity) { return true; }
-    if (dependency_reachable(child, target_identity, visited)) { return true; }
-  }
+// Check if target_identity is reachable through transitive dependencies (with fuzzy
+// matching)
+bool dependency_reachable(pkg *from,
+                          std::string const &query,
+                          std::unordered_set<pkg *> &visited);
 
-  return false;
-}
+// Check if target_identity is reachable (with fuzzy matching) and find earliest needed_by
+// phase. Returns the matched canonical identity via out parameter if found.
+bool strong_reachable(pkg *from,
+                      std::string const &query,
+                      pkg_phase &first_hop_needed_by,
+                      std::optional<std::string> &matched_identity);
 
-// Check if target_identity is reachable and find earliest needed_by phase
-inline bool strong_reachable(pkg *from,
-                             std::string const &target_identity,
-                             pkg_phase &first_hop_needed_by) {
-  bool found{ false };
-
-  for (auto const &[dep_id, dep_info] : from->dependencies) {
-    pkg *child{ dep_info.p };
-    if (!child) { continue; }
-
-    bool reachable{ dep_id == target_identity };
-    if (!reachable) {
-      std::unordered_set<pkg *> visited;
-      reachable = dependency_reachable(child, target_identity, visited);
-    }
-
-    if (!reachable) { continue; }
-
-    if (!found || dep_info.needed_by < first_hop_needed_by) {
-      first_hop_needed_by = dep_info.needed_by;
-    }
-    found = true;
-  }
-
-  return found;
-}
+// Overload without matched_identity output parameter
+bool strong_reachable(pkg *from, std::string const &query, pkg_phase &first_hop_needed_by);
 
 }  // namespace envy

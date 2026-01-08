@@ -80,3 +80,12 @@ TEST_CASE("extract_spec_identity works with existing bundle test data") {
   CHECK(identity_a == "test.spec_a@v1");
   CHECK(identity_b == "test.spec_b@v1");
 }
+
+TEST_CASE("extract_spec_identity provides envy globals at parse time") {
+  // Specs may use envy.EXE_EXT, envy.PLATFORM, etc. at global scope
+  // (e.g., PRODUCTS = { tool = "tool" .. envy.EXE_EXT })
+  auto identity{ envy::extract_spec_identity(
+      fs::path("test_data/spec_util/uses_envy_globals.lua")) };
+
+  CHECK(identity == "test.uses_envy_globals@v1");
+}

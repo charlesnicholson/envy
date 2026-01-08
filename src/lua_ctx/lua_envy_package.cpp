@@ -7,6 +7,7 @@
 #include "pkg_phase.h"
 #include "trace.h"
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -40,7 +41,8 @@ void lua_envy_package_install(sol::table &envy_table) {
     };
 
     pkg_phase first_needed_by{ pkg_phase::completion };
-    if (!strong_reachable(consumer, identity, first_needed_by)) {
+    std::optional<std::string> matched_identity;
+    if (!strong_reachable(consumer, identity, first_needed_by, matched_identity)) {
       std::string const msg{ "envy.package: pkg '" + consumer->cfg->identity +
                              "' has no strong dependency on '" + identity + "'" };
       emit_access(false, pkg_phase::none, msg);
@@ -57,10 +59,13 @@ void lua_envy_package_install(sol::table &envy_table) {
       throw std::runtime_error(msg);
     }
 
+    // Use canonical identity from fuzzy match for lookup
+    std::string const &canonical_id{ matched_identity.value_or(identity) };
+
     // Look up dependency in pkg's dependency map
-    auto it{ consumer->dependencies.find(identity) };
+    auto it{ consumer->dependencies.find(canonical_id) };
     if (it == consumer->dependencies.end()) {
-      std::string const msg{ "envy.package: dependency not found in map: " + identity };
+      std::string const msg{ "envy.package: dependency not found in map: " + canonical_id };
       emit_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }

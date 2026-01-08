@@ -135,7 +135,7 @@ DEPENDENCIES = {{
 }}
 
 function CHECK(project_root, options)
-  local helper = envy.loadenv_spec("test.helpers@v1", "lib/helper")
+  local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
   return helper.HELPER_VERSION == "1.0.0"
 end
 
@@ -177,7 +177,7 @@ DEPENDENCIES = {{
 }}
 
 -- This should ERROR - loadenv_spec at global scope
-local helper = envy.loadenv_spec("test.helpers@v1", "lib/helper")
+local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
 
 function CHECK(project_root, options)
   return false
@@ -214,7 +214,7 @@ DEPENDENCIES = {}
 
 function CHECK(project_root, options)
   -- Error: test.helpers@v1 not declared as dependency
-  local helper = envy.loadenv_spec("test.helpers@v1", "lib/helper")
+  local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
   return false
 end
 
@@ -240,6 +240,55 @@ PACKAGES = {{
             "dependency" in result.stderr.lower()
             or "not found" in result.stderr.lower(),
             f"Expected dependency error, got: {result.stderr}",
+        )
+
+    def test_loadenv_spec_fuzzy_matching(self):
+        """envy.loadenv_spec() supports fuzzy identity matching."""
+        # Create bundle with helper
+        bundle_path = self.create_bundle_with_helper(
+            "acme.toolchain-helpers@v2",
+            {"acme.dummy@v1": "specs/dummy.lua"},
+            "lib/helper.lua",
+            """HELPER_VERSION = "fuzzy-test"
+function get_message()
+  return "Fuzzy match worked"
+end
+""",
+        )
+
+        # Create spec that uses fuzzy matching (no version, no namespace)
+        spec_content = f"""IDENTITY = "local.fuzzy-consumer@v1"
+DEPENDENCIES = {{
+  {{
+    bundle = "acme.toolchain-helpers@v2",
+    source = "{self.lua_path(bundle_path)}",
+    needed_by = "check",
+  }},
+}}
+
+function CHECK(project_root, options)
+  -- Fuzzy match: "toolchain-helpers" matches "acme.toolchain-helpers@v2"
+  local helper = envy.loadenv_spec("toolchain-helpers", "lib.helper")
+  return helper.HELPER_VERSION == "fuzzy-test"
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        spec_path = self.create_spec("fuzzy_consumer", spec_content)
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.fuzzy-consumer@v1", source = "{self.lua_path(spec_path)}" }},
+}}
+"""
+        )
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(
+            result.returncode, 0, f"Fuzzy matching should work. stderr: {result.stderr}"
         )
 
 

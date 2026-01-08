@@ -597,7 +597,7 @@ DEPENDENCIES = {{
 }}
 
 function CHECK(project_root, options)
-  local helper = envy.loadenv_spec("local.helpers@v1", "lib/helper")
+  local helper = envy.loadenv_spec("local.helpers@v1", "lib.helper")
   return helper.HELPER_VERSION == "1.0.0"
 end
 
