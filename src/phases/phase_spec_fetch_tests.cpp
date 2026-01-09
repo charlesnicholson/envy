@@ -40,7 +40,7 @@ struct temp_dir_guard {
 
 void expect_user_managed_cache_phase_error(std::string const &phase_name) {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   ("envy_test_check_" + phase_name) };
@@ -78,7 +78,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name) {
 
 TEST_CASE("function check/install classified as user-managed") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   auto *cfg{ make_local_cfg("local.brew@r0", repo_path("examples/local.brew@r0.lua")) };
   pkg *p{ eng.ensure_pkg(cfg) };
@@ -89,7 +89,7 @@ TEST_CASE("function check/install classified as user-managed") {
 
 TEST_CASE("string check/install classified as user-managed") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   auto *cfg{ make_local_cfg("local.string_check_install@v1",
                             repo_path("test_data/specs/string_check_install.lua")) };
@@ -101,7 +101,7 @@ TEST_CASE("string check/install classified as user-managed") {
 
 TEST_CASE("string check without install errors") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   auto *cfg{ make_local_cfg("local.string_check_only@v1",
                             repo_path("test_data/specs/string_check_only.lua")) };
@@ -128,7 +128,7 @@ TEST_CASE("user-managed package with check verb and build phase throws parse err
 
 TEST_CASE("user-managed package with check verb and install phase succeeds") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_check_install_ok" };
@@ -152,7 +152,7 @@ TEST_CASE("user-managed package with check verb and install phase succeeds") {
 
 TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_ok" };
@@ -190,7 +190,7 @@ TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
 
 TEST_CASE("VALIDATE returns false fails") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_false" };
@@ -223,7 +223,7 @@ TEST_CASE("VALIDATE returns false fails") {
 
 TEST_CASE("VALIDATE returns string fails with message") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_string" };
@@ -255,7 +255,7 @@ TEST_CASE("VALIDATE returns string fails with message") {
 
 TEST_CASE("VALIDATE invalid return type errors") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_type" };
@@ -278,7 +278,7 @@ TEST_CASE("VALIDATE invalid return type errors") {
 
 TEST_CASE("VALIDATE set to non-function errors") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_nonfn" };
@@ -301,7 +301,7 @@ TEST_CASE("VALIDATE set to non-function errors") {
 
 TEST_CASE("VALIDATE runtime error bubbles with context") {
   cache c;
-  engine eng{ c, std::nullopt };
+  engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                   "envy_test_validate_error" };
@@ -335,7 +335,7 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
 TEST_CASE("product name validation") {
   auto expect_valid{ [](std::string const &product_name) {
     cache c;
-    engine eng{ c, std::nullopt };
+    engine eng{ c };
 
     std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                     "envy_test_product_valid" };
@@ -360,7 +360,7 @@ TEST_CASE("product name validation") {
 
   auto expect_rejected{ [](std::string const &lua_escaped_name) {
     cache c;
-    engine eng{ c, std::nullopt };
+    engine eng{ c };
 
     std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
                                     "envy_test_product_reject" };

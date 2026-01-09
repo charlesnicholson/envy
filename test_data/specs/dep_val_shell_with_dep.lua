@@ -5,7 +5,7 @@ DEPENDENCIES = {
   { spec = "local.dep_val_shell_tool@v1", source = "dep_val_shell_tool.lua" }
 }
 
-DEFAULT_SHELL = function(ctx, opts)
+DEFAULT_SHELL = function()
   -- Access declared dependency in default_shell
   envy.package("local.dep_val_shell_tool@v1")
   return ENVY_SHELL.BASH

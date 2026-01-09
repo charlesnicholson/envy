@@ -1,34 +1,33 @@
-#include "lua_ctx_bindings.h"
+#include "lua_envy_product.h"
 
 #include "engine.h"
+#include "lua_phase_context.h"
 #include "pkg.h"
 #include "pkg_phase.h"
 #include "product_util.h"
 #include "trace.h"
 
-#include <functional>
 #include <stdexcept>
 #include <string>
 
 namespace envy {
 
-namespace {
-
-std::string phase_name_str(pkg_phase p) { return std::string(pkg_phase_name(p)); }
-
-}  // namespace
-
-std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common *ctx) {
-  return [ctx](std::string const &product_name) -> std::string {
-    if (!ctx->pkg_) { throw std::runtime_error("ctx.product: missing pkg context"); }
+void lua_envy_product_install(sol::table &envy_table) {
+  // envy.product(name) -> path_or_value_string
+  envy_table["product"] = [](std::string const &product_name,
+                             sol::this_state L) -> std::string {
+    phase_context const *ctx{ lua_phase_context_get(L) };
+    pkg *consumer{ ctx ? ctx->p : nullptr };
+    if (!consumer) {
+      throw std::runtime_error("envy.product: not in phase context (missing pkg)");
+    }
     if (product_name.empty()) {
-      throw std::runtime_error("ctx.product: product name cannot be empty");
+      throw std::runtime_error("envy.product: product name cannot be empty");
     }
 
-    pkg *const consumer{ ctx->pkg_ };
     pkg_execution_ctx *exec_ctx{ consumer->exec_ctx };
     if (!exec_ctx) {
-      throw std::runtime_error("ctx.product: missing execution context for pkg '" +
+      throw std::runtime_error("envy.product: missing execution context for pkg '" +
                                consumer->cfg->identity + "'");
     }
 
@@ -36,7 +35,7 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
 
     auto const dep_it{ consumer->product_dependencies.find(product_name) };
     if (dep_it == consumer->product_dependencies.end()) {
-      std::string const msg{ "ctx.product: pkg '" + consumer->cfg->identity +
+      std::string const msg{ "envy.product: pkg '" + consumer->cfg->identity +
                              "' does not declare product dependency on '" + product_name +
                              "'" };
       ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(consumer->cfg->identity,
@@ -64,15 +63,17 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
     };
 
     if (current_phase < dep.needed_by) {
-      std::string const msg{ "ctx.product: product '" + product_name + "' needed_by '" +
-                             phase_name_str(dep.needed_by) + "' but accessed during '" +
-                             phase_name_str(current_phase) + "'" };
+      std::string const msg{
+        "envy.product: product '" + product_name + "' needed_by '" +
+        std::string(pkg_phase_name(dep.needed_by)) + "' but accessed during '" +
+        std::string(pkg_phase_name(current_phase)) + "'"
+      };
       emit_access(false, msg);
       throw std::runtime_error(msg);
     }
 
     if (!dep.provider) {
-      std::string const msg{ "ctx.product: product '" + product_name +
+      std::string const msg{ "envy.product: product '" + product_name +
                              "' provider not resolved for pkg '" +
                              consumer->cfg->identity + "'" };
       emit_access(false, msg);
@@ -81,7 +82,7 @@ std::function<std::string(std::string const &)> make_ctx_product(lua_ctx_common 
 
     if (!dep.constraint_identity.empty() &&
         dep.provider->cfg->identity != dep.constraint_identity) {
-      std::string const msg{ "ctx.product: product '" + product_name +
+      std::string const msg{ "envy.product: product '" + product_name +
                              "' must come from '" + dep.constraint_identity +
                              "', but provider is '" + dep.provider->cfg->identity + "'" };
       emit_access(false, msg);

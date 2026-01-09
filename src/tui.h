@@ -58,6 +58,7 @@ struct scope {  // raii helper
 
 // Section progress API
 using section_handle = unsigned;
+inline constexpr section_handle kInvalidSection = 0;
 
 struct progress_data {
   double percent;

@@ -139,6 +139,7 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(lua_ctx_extract_complete),
           TRACE_NAME(lua_ctx_package_access),
           TRACE_NAME(lua_ctx_product_access),
+          TRACE_NAME(lua_ctx_loadenv_spec_access),
           TRACE_NAME(cache_hit),
           TRACE_NAME(cache_miss),
           TRACE_NAME(lock_acquired),
@@ -282,6 +283,15 @@ std::string trace_event_to_string(trace_event_t const &event) {
             std::ostringstream oss;
             oss << "lua_ctx_product_access spec=" << value.spec
                 << " product=" << value.product << " provider=" << value.provider
+                << " current_phase=" << pkg_phase_name(value.current_phase)
+                << " needed_by=" << pkg_phase_name(value.needed_by)
+                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
+            return oss.str();
+          },
+          [](trace_events::lua_ctx_loadenv_spec_access const &value) {
+            std::ostringstream oss;
+            oss << "lua_ctx_loadenv_spec_access spec=" << value.spec
+                << " target=" << value.target << " subpath=" << value.subpath
                 << " current_phase=" << pkg_phase_name(value.current_phase)
                 << " needed_by=" << pkg_phase_name(value.needed_by)
                 << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
@@ -509,6 +519,15 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_spec(value.spec);
             append_kv(output, "product", value.product);
             append_kv(output, "provider", value.provider);
+            append_phase(output, "current_phase", value.current_phase);
+            append_phase(output, "needed_by", value.needed_by);
+            append_kv(output, "allowed", value.allowed);
+            append_kv(output, "reason", value.reason);
+          },
+          [&](trace_events::lua_ctx_loadenv_spec_access const &value) {
+            append_spec(value.spec);
+            append_kv(output, "target", value.target);
+            append_kv(output, "subpath", value.subpath);
             append_phase(output, "current_phase", value.current_phase);
             append_phase(output, "needed_by", value.needed_by);
             append_kv(output, "allowed", value.allowed);

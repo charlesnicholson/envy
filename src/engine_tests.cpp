@@ -58,7 +58,7 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m.get() };
 
   // Create cfgs for gn, ninja, python, uv
   std::vector<pkg_cfg const *> roots;
@@ -117,7 +117,7 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m.get() };
 
   std::vector<pkg_cfg const *> roots;
   pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
@@ -169,7 +169,7 @@ TEST_CASE("resolve_graph: spec_fetch failures are propagated") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/simple_python.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m.get() };
 
   pkg_cfg *bad_cfg = pkg_cfg::pool()->emplace(
       "local.nonexistent@v1",
@@ -184,6 +184,65 @@ TEST_CASE("resolve_graph: spec_fetch failures are propagated") {
 
   std::vector<pkg_cfg const *> roots{ bad_cfg };
   CHECK_THROWS_WITH(eng.resolve_graph(roots), doctest::Contains("Spec source not found"));
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("process_fetch_dependencies: manifest bundle parent stays null") {
+  // When a manifest-declared bundle (with custom fetch) is used as a source_dependency,
+  // its parent should remain nullptr because the fetch function is in the manifest,
+  // not in the parent spec's Lua state.
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-bundle-parent-test" };
+
+  cache c{ cache_root };
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
+                         fs::path("test_data/specs/simple_python.lua")) };
+  engine eng{ c, m.get() };
+
+  // Create a bundle pkg_cfg like manifest would create it (with parent = nullptr)
+  pkg_cfg *bundle_cfg = pkg_cfg::pool()->emplace(
+      "test.custom-bundle@v1",                                  // identity = bundle identity
+      pkg_cfg::bundle_source{ .bundle_identity = "test.custom-bundle@v1",
+                              .fetch_source = pkg_cfg::custom_fetch_source{} },
+      "{}",
+      std::nullopt,
+      nullptr,  // parent = nullptr (manifest-declared)
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      fs::path{});
+  bundle_cfg->bundle_identity = "test.custom-bundle@v1";  // Mark as bundle
+
+  // Create a spec that has the bundle as a source_dependency
+  pkg_cfg *spec_cfg = pkg_cfg::pool()->emplace(
+      "test.spec@v1",
+      pkg_cfg::local_source{ .file_path = fs::path("test_data/specs/simple_python.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{ bundle_cfg },  // bundle as source_dependency
+      std::nullopt,
+      fs::path{});
+
+  // Verify bundle parent is null before
+  CHECK(bundle_cfg->parent == nullptr);
+
+  // Run resolve_graph which will call process_fetch_dependencies
+  std::vector<pkg_cfg const *> roots{ spec_cfg };
+
+  // The resolve_graph will fail because the bundle can't actually be fetched,
+  // but we can verify the parent wasn't modified before the failure
+  try {
+    eng.resolve_graph(roots);
+  } catch (...) {
+    // Expected to fail
+  }
+
+  // Verify bundle parent is STILL null (not set to spec_cfg)
+  // This is the key assertion - manifest bundles keep nullptr parent
+  CHECK(bundle_cfg->parent == nullptr);
 
   fs::remove_all(cache_root);
 }

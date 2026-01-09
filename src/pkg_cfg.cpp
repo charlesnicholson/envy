@@ -322,6 +322,12 @@ bool pkg_cfg::is_weak_reference() const {
   return std::holds_alternative<weak_ref>(source);
 }
 
+bool pkg_cfg::is_bundle_source() const {
+  return std::holds_alternative<bundle_source>(source);
+}
+
+bool pkg_cfg::is_from_bundle() const { return bundle_identity.has_value(); }
+
 std::string pkg_cfg::serialize_option_table(sol::object const &val) {
   sol::type const type{ val.get_type() };
 
@@ -455,40 +461,62 @@ pkg_cfg *pkg_cfg::parse_from_stack(sol::state_view lua,
   return parse(cfg_val, base_path, allow_weak_without_source);
 }
 
-bool pkg_cfg::lookup_and_push_source_fetch(sol::state_view lua,
-                                           std::string const &dep_identity) {
-  // Look up the dependencies global array
+std::optional<sol::protected_function> pkg_cfg::get_source_fetch(
+    sol::state_view lua, std::string const &dep_identity) {
   sol::object deps_obj{ lua["DEPENDENCIES"] };
-  if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return false; }
+  if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return std::nullopt; }
 
   sol::table deps_table{ deps_obj.as<sol::table>() };
 
-  // Iterate through dependencies array to find matching identity
   for (size_t i{ 1 }, n{ deps_table.size() }; i <= n; ++i) {
     if (!deps_table[i].is<sol::table>()) { continue; }
     sol::table dep_table{ deps_table.get<sol::table>(i) };
 
-    // Check if this entry has matching spec identity
     sol::object spec_obj{ dep_table["spec"] };
     if (!spec_obj.valid() || !spec_obj.is<std::string>()) { continue; }
 
-    std::string const identity{ spec_obj.as<std::string>() };
-    if (identity == dep_identity) {
-      // Found matching dependency - get source.fetch
+    if (spec_obj.as<std::string>() == dep_identity) {
       sol::object source_obj{ dep_table["source"] };
-      if (!source_obj.valid() || !source_obj.is<sol::table>()) { return false; }
+      if (!source_obj.valid() || !source_obj.is<sol::table>()) { return std::nullopt; }
 
       sol::table source_table{ source_obj.as<sol::table>() };
       sol::object fetch_obj{ source_table["fetch"] };
-      if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { return false; }
+      if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { return std::nullopt; }
 
-      // Push the fetch function onto the stack
-      fetch_obj.push(lua.lua_state());
-      return true;
+      return fetch_obj.as<sol::protected_function>();
     }
   }
 
-  return false;
+  return std::nullopt;
+}
+
+std::optional<sol::protected_function> pkg_cfg::get_bundle_fetch(
+    sol::state_view lua, std::string const &bundle_identity) {
+  sol::object deps_obj{ lua["DEPENDENCIES"] };
+  if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return std::nullopt; }
+
+  sol::table deps_table{ deps_obj.as<sol::table>() };
+
+  for (size_t i{ 1 }, n{ deps_table.size() }; i <= n; ++i) {
+    if (!deps_table[i].is<sol::table>()) { continue; }
+    sol::table dep_table{ deps_table.get<sol::table>(i) };
+
+    sol::object bundle_obj{ dep_table["bundle"] };
+    if (!bundle_obj.valid() || !bundle_obj.is<std::string>()) { continue; }
+
+    if (bundle_obj.as<std::string>() == bundle_identity) {
+      sol::object source_obj{ dep_table["source"] };
+      if (!source_obj.valid() || !source_obj.is<sol::table>()) { return std::nullopt; }
+
+      sol::table source_table{ source_obj.as<sol::table>() };
+      sol::object fetch_obj{ source_table["fetch"] };
+      if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { return std::nullopt; }
+
+      return fetch_obj.as<sol::protected_function>();
+    }
+  }
+
+  return std::nullopt;
 }
 
 std::filesystem::path pkg_cfg::compute_project_root(pkg_cfg const *cfg) {

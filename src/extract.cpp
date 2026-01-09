@@ -1,4 +1,5 @@
 #include "extract.h"
+
 #include "trace.h"
 #include "tui.h"
 #include "util.h"
@@ -6,11 +7,13 @@
 #include "archive.h"
 #include "archive_entry.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -73,31 +76,143 @@ std::optional<std::string> strip_path_components(char const *path, int strip_cou
   char const *p{ path };
   int components_stripped{ 0 };
 
-  // Skip leading slashes
   while (*p == '/') { ++p; }
 
-  // Skip the specified number of path components
   while (components_stripped < strip_count) {
-    if (*p == '\0') {
-      // Path has fewer components than requested strip count
-      return std::nullopt;
-    }
+    if (*p == '\0') { return std::nullopt; }
     if (*p == '/') {
       ++components_stripped;
-      // Skip multiple consecutive slashes
       while (*p == '/') { ++p; }
     } else {
       ++p;
     }
   }
 
-  if (*p == '\0') {
-    // Nothing left after stripping
-    return std::nullopt;
-  }
-
+  if (*p == '\0') { return std::nullopt; }
   return std::string(p);
 }
+
+// Build list of files to extract from fetch_dir
+std::vector<std::string> collect_extract_items(std::filesystem::path const &fetch_dir) {
+  std::vector<std::string> items;
+  if (!std::filesystem::exists(fetch_dir)) { return items; }
+
+  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+    if (!entry.is_regular_file()) { continue; }
+    if (entry.path().filename() == "envy-complete") { continue; }
+    items.push_back(entry.path().filename().string());
+  }
+  return items;
+}
+
+// TUI progress state for extract_all_archives
+struct extract_tui_state {
+  tui::section_handle section;
+  std::string label;
+  std::vector<tui::section_frame> children;
+  bool grouped;
+  extract_totals totals;
+  std::uint64_t files_processed{ 0 };
+  std::uint64_t bytes_processed{ 0 };
+  std::filesystem::path last_file_seen;
+  std::optional<std::size_t> current_file_idx;
+
+  extract_tui_state(tui::section_handle s,
+                    std::string const &pkg_identity,
+                    std::vector<std::string> const &filenames,
+                    extract_totals const &t)
+      : section{ s },
+        label{ "[" + pkg_identity + "]" },
+        grouped{ filenames.size() > 1 },
+        totals{ t } {
+    children.reserve(filenames.size());
+    for (auto const &name : filenames) {
+      children.push_back(
+          tui::section_frame{ .label = name,
+                              .content = tui::static_text_data{ .text = "pending" } });
+    }
+  }
+
+  void set_spinner(std::string const &text) {
+    tui::section_set_content(
+        section,
+        tui::section_frame{ .label = label,
+                            .content = tui::spinner_data{
+                                .text = text,
+                                .start_time = std::chrono::steady_clock::now() } });
+  }
+
+  void update_progress() {
+    double percent{ 0.0 };
+    if (totals.files > 0) {
+      percent = (files_processed / static_cast<double>(totals.files)) * 100.0;
+    } else if (totals.bytes > 0) {
+      percent = (bytes_processed / static_cast<double>(totals.bytes)) * 100.0;
+    }
+    if (percent > 100.0) { percent = 100.0; }
+
+    std::ostringstream status;
+    status << files_processed;
+    if (totals.files > 0) { status << "/" << totals.files; }
+    status << " files";
+    if (totals.bytes > 0) {
+      status << " " << util_format_bytes(bytes_processed) << "/"
+             << util_format_bytes(totals.bytes);
+    } else if (bytes_processed > 0) {
+      status << " " << util_format_bytes(bytes_processed);
+    }
+
+    if (grouped) {
+      tui::section_set_content(
+          section,
+          tui::section_frame{ .label = label,
+                              .content = tui::progress_data{ .percent = percent,
+                                                             .status = status.str() },
+                              .children = children });
+    } else {
+      std::string item{ children.empty() ? "" : children.front().label };
+      tui::section_set_content(
+          section,
+          tui::section_frame{
+              .label = label,
+              .content = tui::progress_data{
+                  .percent = percent,
+                  .status = item.empty() ? status.str() : (status.str() + " " + item) } });
+    }
+  }
+
+  void on_file_start(std::string const &name) {
+    // Mark previous file as done
+    if (current_file_idx && *current_file_idx < children.size()) {
+      children[*current_file_idx].content = tui::static_text_data{ .text = "done" };
+    }
+
+    // Find and mark current file as in-progress
+    if (auto it{ std::find_if(children.begin(),
+                              children.end(),
+                              [&](auto const &c) { return c.label == name; }) };
+        it != children.end()) {
+      auto idx{ static_cast<std::size_t>(std::distance(children.begin(), it)) };
+      current_file_idx = idx;
+      children[idx].content =
+          tui::spinner_data{ .text = "extracting",
+                             .start_time = std::chrono::steady_clock::now() };
+    }
+    update_progress();
+  }
+
+  bool on_progress(std::uint64_t bytes,
+                   std::filesystem::path const &entry,
+                   bool is_regular_file) {
+    bytes_processed = bytes;
+    if (is_regular_file && entry != last_file_seen) {
+      ++files_processed;
+      last_file_seen = entry;
+    }
+    update_progress();
+    return true;
+  }
+};
 
 }  // namespace
 
@@ -131,14 +246,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
     bool const is_regular_file{ archive_entry_filetype(entry) == AE_IFREG };
 
-    // Apply strip-components if configured
     std::string stripped_path;
     if (options.strip_components > 0) {
       auto stripped{ strip_path_components(entry_path, options.strip_components) };
-      if (!stripped) {
-        // Skip this entry - it was stripped to nothing
-        continue;
-      }
+      if (!stripped) { continue; }
       stripped_path = *stripped;
       entry_path = stripped_path.c_str();
     }
@@ -153,13 +264,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
     if (char const *hardlink{ archive_entry_hardlink(entry) }) {
       std::string hardlink_str{ hardlink };
-
-      // Strip components from hardlink target too
       if (options.strip_components > 0) {
         auto stripped{ strip_path_components(hardlink, options.strip_components) };
         if (stripped) { hardlink_str = *stripped; }
       }
-
       std::string const hardlink_full{ (destination / hardlink_str).string() };
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());
     }
@@ -300,42 +408,43 @@ extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
 void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
                           int strip_components,
-                          extract_progress_cb_t progress,
                           std::string const &pkg_identity,
-                          std::function<void(std::string const &)> on_file,
-                          std::optional<extract_totals> totals_hint) {
+                          tui::section_handle section) {
   if (!std::filesystem::exists(fetch_dir)) {
     tui::debug("extract_all_archives: fetch_dir does not exist, nothing to extract");
     return;
   }
 
-  extract_totals const totals{ totals_hint.value_or(compute_extract_totals(fetch_dir)) };
+  // Collect items to extract
+  std::vector<std::string> const items{ collect_extract_items(fetch_dir) };
+  if (items.empty()) {
+    tui::debug("extract_all_archives: no files to extract");
+    return;
+  }
 
-  std::uint64_t files_processed{ 0 };
-  std::uint64_t processed_bytes{ 0 };
-  std::filesystem::path last_file_seen;
+  // Compute totals (with spinner if TUI enabled)
+  std::optional<extract_tui_state> tui_state;
+  if (section != tui::kInvalidSection) {
+    std::string const label{ "[" + pkg_identity + "]" };
+    tui::section_set_content(
+        section,
+        tui::section_frame{ .label = label,
+                            .content = tui::spinner_data{
+                                .text = "analyzing archive...",
+                                .start_time = std::chrono::steady_clock::now() } });
+  }
 
-  auto emit_progress = [&](std::uint64_t bytes,
-                           std::filesystem::path const &entry,
-                           bool is_regular_file) -> bool {
-    if (!progress) { return true; }
+  extract_totals const totals{ compute_extract_totals(fetch_dir) };
 
-    if (is_regular_file && entry != last_file_seen) {
-      ++files_processed;
-      last_file_seen = entry;
-    }
-
-    return progress(extract_progress{
-        .bytes_processed = bytes,
-        .total_bytes = totals.bytes > 0 ? std::make_optional(totals.bytes) : std::nullopt,
-        .files_processed = files_processed,
-        .total_files = totals.files > 0 ? std::make_optional(totals.files) : std::nullopt,
-        .current_entry = entry,
-        .is_regular_file = is_regular_file });
-  };
+  // Set up TUI state for extraction progress
+  if (section != tui::kInvalidSection) {
+    tui_state.emplace(section, pkg_identity, items, totals);
+    tui_state->update_progress();
+  }
 
   std::uint64_t total_files_extracted{ 0 };
   std::uint64_t total_files_copied{ 0 };
+  std::uint64_t processed_bytes{ 0 };
 
   for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
     if (!entry.is_regular_file()) { continue; }
@@ -345,7 +454,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
 
     if (filename == "envy-complete") { continue; }
 
-    if (on_file) { on_file(filename); }
+    if (tui_state && items.size() > 1) { tui_state->on_file_start(filename); }
 
     if (extract_is_archive_extension(path)) {
       auto const start{ std::chrono::steady_clock::now() };
@@ -358,16 +467,20 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
       auto const archive_base{ processed_bytes };
       std::uint64_t last_archive_bytes{ 0 };
 
-      extract_options opts{ .strip_components = strip_components,
-                            .progress = [&](extract_progress const &p) -> bool {
-                              last_archive_bytes = p.bytes_processed;
-                              return emit_progress(archive_base + p.bytes_processed,
-                                                   p.current_entry,
-                                                   p.is_regular_file);
-                            } };
+      extract_options opts{
+        .strip_components = strip_components,
+        .progress = [&](extract_progress const &p) -> bool {
+          last_archive_bytes = p.bytes_processed;
+          if (tui_state) {
+            return tui_state->on_progress(archive_base + p.bytes_processed,
+                                          p.current_entry,
+                                          p.is_regular_file);
+          }
+          return true;
+        }
+      };
 
       std::uint64_t const files{ extract(path, dest_dir, opts) };
-      // last_archive_bytes is already updated via the progress callback
       total_files_extracted += files;
       processed_bytes = archive_base + last_archive_bytes;
 
@@ -380,8 +493,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                                           static_cast<std::int64_t>(files),
                                           duration);
 
-      // Refresh progress with updated totals (no new file counted here)
-      emit_progress(processed_bytes, {}, false);
+      if (tui_state) { tui_state->on_progress(processed_bytes, {}, false); }
     } else {
       std::filesystem::path const dest_path{ dest_dir / filename };
       std::filesystem::copy_file(path,
@@ -396,7 +508,7 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
       }
 
       ++total_files_copied;
-      emit_progress(processed_bytes, dest_path, true);
+      if (tui_state) { tui_state->on_progress(processed_bytes, dest_path, true); }
     }
   }
 

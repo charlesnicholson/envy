@@ -224,22 +224,14 @@ set(ENVY_BASE_SOURCES
     src/engine.cpp
     src/pkg_phase.cpp
     src/pkg_key.cpp
-    src/lua_ctx/lua_ctx_bindings.cpp
-    src/lua_ctx/lua_ctx_package.cpp
-    src/lua_ctx/lua_ctx_commit_fetch.cpp
-    src/lua_ctx/lua_ctx_copy.cpp
-    src/lua_ctx/lua_ctx_extract.cpp
-    src/lua_ctx/lua_ctx_extract_all.cpp
-    src/lua_ctx/lua_ctx_fetch.cpp
-    src/lua_ctx/lua_ctx_ls.cpp
-    src/lua_ctx/lua_ctx_move.cpp
-    src/lua_ctx/lua_ctx_run.cpp
-    src/lua_ctx/lua_ctx_product.cpp
-    src/lua_ctx/lua_envy_deps.cpp
+    src/lua_ctx/lua_envy_dep_util.cpp
     src/lua_ctx/lua_envy_extract.cpp
     src/lua_ctx/lua_envy_fetch.cpp
     src/lua_ctx/lua_envy_file_ops.cpp
+    src/lua_ctx/lua_envy_loadenv_spec.cpp
+    src/lua_ctx/lua_envy_package.cpp
     src/lua_ctx/lua_envy_path.cpp
+    src/lua_ctx/lua_envy_product.cpp
     src/lua_ctx/lua_envy_run.cpp
     src/lua_ctx/lua_phase_context.cpp
     src/product_util.cpp
@@ -260,6 +252,8 @@ set(ENVY_BASE_SOURCES
     src/lua_error_formatter.cpp
     src/manifest.cpp
     src/pkg_cfg.cpp
+    src/bundle.cpp
+    src/spec_util.cpp
     $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     src/fetch.cpp
@@ -430,6 +424,8 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cmds/cmd_init_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
+    src/bundle_tests.cpp
+    src/spec_util_tests.cpp
     src/extract_tests.cpp
     src/engine_tests.cpp
     src/engine_weak_resolution_tests.cpp
@@ -441,12 +437,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/pkg_cfg_tests.cpp
     src/pkg_cfg_custom_source_tests.cpp
     src/pkg_key_tests.cpp
-    src/lua_ctx/lua_ctx_bindings_tests.cpp
-    src/lua_ctx/lua_ctx_copy_tests.cpp
-    src/lua_ctx/lua_ctx_fetch_tests.cpp
-    src/lua_ctx/lua_ctx_run_tests.cpp
-    src/lua_ctx_package_product_tests.cpp
-    src/lua_ctx/lua_ctx_move_tests.cpp
+    src/lua_ctx/lua_envy_dep_util_tests.cpp
     src/lua_envy_tests.cpp
     src/platform_tests.cpp
     src/product_util_tests.cpp

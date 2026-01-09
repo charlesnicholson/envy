@@ -47,8 +47,25 @@ struct pkg_cfg : unmovable {
 
   struct weak_ref {};  // Reference-only or weak dependency (no source)
 
-  using source_t =
-      std::variant<remote_source, local_source, git_source, fetch_function, weak_ref>;
+  // Custom fetch source for bundles: fetch function + dependencies
+  struct custom_fetch_source {
+    std::vector<pkg_cfg *> dependencies;  // Needed before fetch function can run
+  };
+
+  // Bundle source: spec comes from within a bundle
+  struct bundle_source {
+    std::string bundle_identity;  // The bundle's identity
+    // The underlying fetch source for the bundle itself
+    std::variant<remote_source, local_source, git_source, custom_fetch_source>
+        fetch_source;
+  };
+
+  using source_t = std::variant<remote_source,
+                                local_source,
+                                git_source,
+                                fetch_function,
+                                weak_ref,
+                                bundle_source>;
 
   pkg_cfg(ctor_tag,
           std::string identity,
@@ -77,6 +94,10 @@ struct pkg_cfg : unmovable {
   // Provenance: manifest or parent spec file that declared this cfg
   std::filesystem::path declaring_file_path;
 
+  // Bundle-related fields (for specs that come from bundles)
+  std::optional<std::string> bundle_identity;  // Which bundle contains this spec
+  std::optional<std::string> bundle_path;      // Relative path within bundle to spec file
+
   // Parse pkg_cfg from Sol2 object (allocates via pool)
   static pkg_cfg *parse(sol::object const &lua_val,
                         std::filesystem::path const &base_path,
@@ -103,12 +124,19 @@ struct pkg_cfg : unmovable {
   bool is_git() const;
   bool has_fetch_function() const;
   bool is_weak_reference() const;
+  bool is_bundle_source() const;
+  bool is_from_bundle() const;  // True if this spec comes from within a bundle
 
-  // Look up source.fetch function for a dependency from Lua state's dependencies global
-  // Pushes the function onto the stack if found, returns true
-  // Returns false if not found (leaves stack unchanged)
-  static bool lookup_and_push_source_fetch(sol::state_view lua,
-                                           std::string const &dep_identity);
+  // Look up source.fetch function for a dependency from Lua state's DEPENDENCIES global
+  // Returns the fetch function if found, nullopt otherwise
+  static std::optional<sol::protected_function> get_source_fetch(
+      sol::state_view lua, std::string const &dep_identity);
+
+  // Look up bundle source.fetch function for a bundle dependency from Lua state
+  // Searches DEPENDENCIES for entries with bundle=identity and source={fetch=...}
+  // Returns the fetch function if found, nullopt otherwise
+  static std::optional<sol::protected_function> get_bundle_fetch(
+      sol::state_view lua, std::string const &bundle_identity);
 
   static void set_pool(pkg_cfg_pool *pool);
   static pkg_cfg_pool *pool();
@@ -140,5 +168,6 @@ class pkg_cfg_pool {
 bool operator==(pkg_cfg::remote_source const &lhs, pkg_cfg::remote_source const &rhs);
 bool operator==(pkg_cfg::local_source const &lhs, pkg_cfg::local_source const &rhs);
 bool operator==(pkg_cfg::git_source const &lhs, pkg_cfg::git_source const &rhs);
+bool operator==(pkg_cfg::bundle_source const &lhs, pkg_cfg::bundle_source const &rhs);
 
 }  // namespace envy

@@ -137,7 +137,7 @@ TEST_CASE("run_check_string returns true when command exits 0") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_string(f.p.get(), eng, "exit 0");
   CHECK(result);
@@ -147,7 +147,7 @@ TEST_CASE("run_check_string returns false when command exits 1") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_string(f.p.get(), eng, "exit 1");
   CHECK_FALSE(result);
@@ -157,7 +157,7 @@ TEST_CASE("run_check_string returns false when command exits non-zero") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_string(f.p.get(), eng, "exit 42");
   CHECK_FALSE(result);
@@ -167,7 +167,7 @@ TEST_CASE("run_check_string returns true for successful command") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
 #ifdef _WIN32
   bool result = run_check_string(f.p.get(), eng, "Write-Output 'hello' | Out-Null");
@@ -181,7 +181,7 @@ TEST_CASE("run_check_string returns false for failing command") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
 #ifdef _WIN32
   // PowerShell: exit with non-zero code
@@ -200,7 +200,7 @@ TEST_CASE("run_check_function returns true when function returns true") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) return true end",
@@ -218,7 +218,7 @@ TEST_CASE("run_check_function returns false when function returns false") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) return false end",
@@ -236,7 +236,7 @@ TEST_CASE("run_check_function throws when function returns nil") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) return nil end",
@@ -253,7 +253,7 @@ TEST_CASE("run_check_function throws when function returns number") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) return 42 end",
@@ -270,7 +270,7 @@ TEST_CASE("run_check_function executes string return as shell command") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) return 'exit 0' end",
@@ -289,7 +289,7 @@ TEST_CASE("run_check_function receives project_root as directory path") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   fs::path project_dir{ fs::temp_directory_path() / "envy-check-cwd" };
   fs::create_directories(project_dir);
@@ -316,7 +316,7 @@ TEST_CASE("run_check_function throws when function has Lua error") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) error('test error') end",
@@ -333,7 +333,7 @@ TEST_CASE("run_check_function receives project_root as string") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   // New signature: CHECK(project_root, options) - project_root is a string
   sol::protected_function_result res{ f.p->lua->safe_script(
@@ -361,7 +361,7 @@ TEST_CASE("run_check_verb dispatches to string handler") {
   f.set_check_string("exit 0");
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_verb(f.p.get(), eng, sol::state_view{ *f.p->lua });
   CHECK(result);
@@ -372,7 +372,7 @@ TEST_CASE("run_check_verb dispatches to function handler") {
   f.set_check_function("function(project_root) return true end");
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_verb(f.p.get(), eng, sol::state_view{ *f.p->lua });
   CHECK(result);
@@ -383,7 +383,7 @@ TEST_CASE("run_check_verb returns false when no check verb") {
   // No check verb set
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   bool result = run_check_verb(f.p.get(), eng, sol::state_view{ *f.p->lua });
   CHECK_FALSE(result);
@@ -394,7 +394,7 @@ TEST_CASE("run_check_verb returns false for table check type") {
   (*f.p->lua)["CHECK"] = f.p->lua->create_table();
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   // Tables are not functions or strings, so check verb is not present
   bool result = run_check_verb(f.p.get(), eng, sol::state_view{ *f.p->lua });
@@ -405,7 +405,7 @@ TEST_CASE("run_check_verb string check respects exit code") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   SUBCASE("exit 0 returns true") {
     f.set_check_string("exit 0");
@@ -424,7 +424,7 @@ TEST_CASE("run_check_verb function check respects return value") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   SUBCASE("function returns true") {
     f.set_check_function("function(project_root) return true end");
@@ -448,7 +448,7 @@ TEST_CASE("run_check_function propagates Lua error with context") {
   f.cfg->identity = "my.package@v1";
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   sol::protected_function_result res{ f.p->lua->safe_script(
       "return function(project_root) error('something went wrong') end",
@@ -475,7 +475,7 @@ TEST_CASE("run_check_function receives options parameter") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   // Set options in registry
   sol::table opts{ f.p->lua->create_table() };
@@ -502,7 +502,7 @@ TEST_CASE("run_check_function returns string with options interpolation") {
   test_pkg_fixture f;
 
   cache test_cache;
-  engine eng{ test_cache, std::nullopt };
+  engine eng{ test_cache };
 
   // Set options in registry
   sol::table opts{ f.p->lua->create_table() };

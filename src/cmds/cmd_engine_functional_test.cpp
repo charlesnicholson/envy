@@ -58,7 +58,7 @@ void cmd_engine_functional_test::execute() {
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}", cfg_.spec_path) };
 
   // Run engine
-  engine eng{ *c, m->get_default_shell(nullptr) };
+  engine eng{ *c, m.get() };
   auto result{ eng.run_full({ spec_cfg }) };
 
   // Output results as key -> type (avoid = which appears in option keys)
@@ -67,6 +67,7 @@ void cmd_engine_functional_test::execute() {
       switch (res.type) {
         case pkg_type::CACHE_MANAGED: return "cache-managed";
         case pkg_type::USER_MANAGED: return "user-managed";
+        case pkg_type::BUNDLE_ONLY: return "bundle-only";
         case pkg_type::UNKNOWN: return "unknown";
       }
       return "unknown";

@@ -1075,9 +1075,8 @@ section_handle section_create() {
   std::lock_guard lock{ s_tui.mutex };
 
   unsigned const handle{ s_progress.next_handle++ };
-  s_progress.sections.push_back(section_state{ .handle = handle,
-                                               .cached_frame = {},
-                                               .last_fallback_output = {} });
+  s_progress.sections.push_back(
+      section_state{ .handle = handle, .cached_frame = {}, .last_fallback_output = {} });
 
   return handle;
 }
@@ -1087,9 +1086,8 @@ void section_set_content(section_handle h, section_frame const &frame) {
 
   std::lock_guard lock{ s_tui.mutex };
 
-  if (auto it{ std::ranges::find_if(
-          s_progress.sections,
-          [h](auto const &sec) { return sec.handle == h; }) };
+  if (auto it{ std::ranges::find_if(s_progress.sections,
+                                    [h](auto const &sec) { return sec.handle == h; }) };
       it != s_progress.sections.end()) {
     it->cached_frame = frame;
     it->has_content = true;

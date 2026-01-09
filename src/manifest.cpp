@@ -1,7 +1,7 @@
 #include "manifest.h"
 
+#include "bundle.h"
 #include "engine.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
 #include "lua_shell.h"
 #include "shell.h"
@@ -95,6 +95,118 @@ std::optional<std::pair<std::string, std::string>> parse_directive_line(
   if (!value) { return std::nullopt; }
 
   return std::make_pair(std::string{ key }, *value);
+}
+
+using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>;
+using bundle_pkg_map = std::unordered_map<std::string, pkg_cfg *>;
+
+// Parse a single package entry that may reference a bundle
+pkg_cfg *parse_package_entry(sol::object const &entry,
+                             std::filesystem::path const &manifest_path,
+                             bundle_alias_map const &bundles,
+                             bundle_pkg_map const &custom_fetch_bundle_pkgs) {
+  // For non-table entries (strings) or tables without bundle field, use standard parsing
+  if (!entry.is<sol::table>()) { return pkg_cfg::parse(entry, manifest_path); }
+
+  sol::table table{ entry.as<sol::table>() };
+
+  // Check for bundle field
+  sol::object bundle_obj{ table["bundle"] };
+  if (!bundle_obj.valid() || bundle_obj.get_type() == sol::type::lua_nil) {
+    // No bundle field - use standard pkg_cfg::parse
+    return pkg_cfg::parse(entry, manifest_path);
+  }
+
+  // Has bundle field - need to handle bundle reference
+  std::string const spec_identity{ [&] {
+    auto opt{ sol_util_get_optional<std::string>(table, "spec", "Package") };
+    if (!opt.has_value() || opt->empty()) {
+      throw std::runtime_error("Package with 'bundle' field requires 'spec' field");
+    }
+    return std::move(*opt);
+  }() };
+
+  // Check for source field - can't have both source and bundle
+  if (sol::object source_obj{ table["source"] };
+      source_obj.valid() && source_obj.get_type() != sol::type::lua_nil) {
+    throw std::runtime_error("Package cannot specify both 'source' and 'bundle' fields");
+  }
+
+  pkg_cfg::bundle_source const bundle_src{ [&]() -> pkg_cfg::bundle_source {
+    if (bundle_obj.is<std::string>()) {
+      std::string const &alias{ bundle_obj.as<std::string>() };
+      auto it{ bundles.find(alias) };
+      if (it == bundles.end()) {
+        throw std::runtime_error("Bundle alias '" + alias +
+                                 "' not found in BUNDLES table for spec '" +
+                                 spec_identity + "'");
+      }
+      return it->second;
+    }
+    if (bundle_obj.is<sol::table>()) {
+      return bundle::parse_inline(bundle_obj.as<sol::table>(), manifest_path);
+    }
+    throw std::runtime_error("Package 'bundle' field must be string (alias) or table");
+  }() };
+
+  // Parse optional fields
+  std::string serialized_options{ "{}" };
+  sol::object options_obj{ table["options"] };
+  if (options_obj.valid() && options_obj.get_type() == sol::type::table) {
+    serialized_options = pkg_cfg::serialize_option_table(options_obj);
+  }
+
+  std::optional<pkg_phase> needed_by;
+  auto needed_by_str{ sol_util_get_optional<std::string>(table, "needed_by", "Package") };
+  if (needed_by_str.has_value()) {
+    std::string const &nb{ *needed_by_str };
+    if (nb == "check") {
+      needed_by = pkg_phase::pkg_check;
+    } else if (nb == "fetch") {
+      needed_by = pkg_phase::pkg_fetch;
+    } else if (nb == "stage") {
+      needed_by = pkg_phase::pkg_stage;
+    } else if (nb == "build") {
+      needed_by = pkg_phase::pkg_build;
+    } else if (nb == "install") {
+      needed_by = pkg_phase::pkg_install;
+    } else {
+      throw std::runtime_error(
+          "Package 'needed_by' must be one of: check, fetch, stage, build, install "
+          "(got: " +
+          nb + ")");
+    }
+  }
+
+  std::optional<std::string> product{
+    sol_util_get_optional<std::string>(table, "product", "Package")
+  };
+
+  std::string const bundle_identity{ bundle_src.bundle_identity };
+
+  // Check if this bundle has custom fetch - if so, add implicit dependency on bundle pkg
+  std::vector<pkg_cfg *> source_deps;
+  if (auto it{ custom_fetch_bundle_pkgs.find(bundle_identity) };
+      it != custom_fetch_bundle_pkgs.end()) {
+    source_deps.push_back(it->second);
+  }
+
+  // Create pkg_cfg with bundle source
+  pkg_cfg *cfg{ pkg_cfg::pool()->emplace(spec_identity,
+                                         std::move(bundle_src),
+                                         std::move(serialized_options),
+                                         needed_by,
+                                         nullptr,  // parent
+                                         nullptr,  // weak
+                                         std::move(source_deps),
+                                         std::move(product),
+                                         manifest_path) };
+
+  // Set bundle-related fields
+  cfg->bundle_identity = bundle_identity;
+  // bundle_path will be resolved later when the bundle is fetched and parsed
+
+  return cfg;
 }
 
 }  // namespace
@@ -210,8 +322,10 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   auto state{ sol_util_make_lua_state() };
   lua_envy_install(*state);
 
+  // Use manifest path as chunk name so debug.getinfo can find it for envy.loadenv()
+  std::string const chunk_name{ "@" + manifest_path.string() };
   if (sol::protected_function_result const result{
-          state->safe_script(script, sol::script_pass_on_error) };
+          state->safe_script(script, sol::script_pass_on_error, chunk_name) };
       !result.valid()) {
     sol::error err = result;
     throw std::runtime_error(std::string("Failed to execute manifest script: ") +
@@ -223,6 +337,33 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   m->meta = std::move(meta);
   m->lua_ = std::move(state);  // Keep lua state alive for DEFAULT_SHELL access
 
+  auto const bundles{ bundle::parse_aliases((*m->lua_)["BUNDLES"], manifest_path) };
+
+  // Create pkg_cfg entries for bundles with custom fetch (they become BUNDLE_ONLY
+  // packages) Map of bundle_identity -> pkg_cfg* for packages to depend on
+  std::unordered_map<std::string, pkg_cfg *> custom_fetch_bundle_pkgs;
+  for (auto const &[alias, bundle_src] : bundles) {
+    auto const *custom_fetch{ std::get_if<pkg_cfg::custom_fetch_source>(
+        &bundle_src.fetch_source) };
+    if (!custom_fetch) { continue; }
+
+    // Create pkg_cfg for the bundle package
+    pkg_cfg *bundle_cfg{ pkg_cfg::pool()->emplace(
+        bundle_src.bundle_identity,  // identity = bundle identity
+        pkg_cfg::bundle_source{ bundle_src },
+        "{}",
+        std::nullopt,                // needed_by (root package)
+        nullptr,                     // parent
+        nullptr,                     // weak
+        custom_fetch->dependencies,  // source_dependencies
+        std::nullopt,                // product
+        manifest_path) };
+
+    bundle_cfg->bundle_identity = bundle_src.bundle_identity;
+    custom_fetch_bundle_pkgs[bundle_src.bundle_identity] = bundle_cfg;
+    m->packages.push_back(bundle_cfg);
+  }
+
   sol::object packages_obj = (*m->lua_)["PACKAGES"];
   if (!packages_obj.valid() || packages_obj.get_type() != sol::type::table) {
     throw std::runtime_error("Manifest must define 'PACKAGES' global as a table");
@@ -231,7 +372,10 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   sol::table packages_table = packages_obj.as<sol::table>();
 
   for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
-    m->packages.push_back(pkg_cfg::parse(packages_table[i], manifest_path));
+    m->packages.push_back(parse_package_entry(packages_table[i],
+                                              manifest_path,
+                                              bundles,
+                                              custom_fetch_bundle_pkgs));
   }
 
   return m;
@@ -244,7 +388,7 @@ std::unique_ptr<manifest> manifest::load(char const *script,
               manifest_path);
 }
 
-default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
+default_shell_cfg_t manifest::get_default_shell() const {
   if (!lua_) { return std::nullopt; }
 
   sol::object default_shell_obj{ (*lua_)["DEFAULT_SHELL"] };
@@ -267,10 +411,8 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
       default_shell_obj.as<sol::protected_function>()
     };
 
-    sol::table ctx_table{ lua_->create_table() };
-    ctx_table["package"] = make_ctx_package(const_cast<lua_ctx_common *>(ctx));
-
-    sol::protected_function_result result{ default_shell_func(ctx_table) };
+    // DEFAULT_SHELL functions can use envy.package() directly via phase context
+    sol::protected_function_result result{ default_shell_func() };
     if (!result.valid()) {
       sol::error err = result;
       throw std::runtime_error("DEFAULT_SHELL function failed: " +
@@ -282,6 +424,64 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
   }
 
   return convert_parsed(parse_shell_config_from_lua(default_shell_obj, "DEFAULT_SHELL"));
+}
+
+std::optional<std::string> manifest::run_bundle_fetch(
+    std::string const &bundle_identity,
+    void *phase_ctx,
+    std::filesystem::path const &tmp_dir) const {
+  std::lock_guard const lock(lua_mutex_);
+
+  if (!lua_) { return "manifest Lua state unavailable"; }
+
+  sol::object bundles_obj{ (*lua_)["BUNDLES"] };
+  if (!bundles_obj.valid() || !bundles_obj.is<sol::table>()) {
+    return "BUNDLES table not found";
+  }
+
+  sol::table bundles_table{ bundles_obj.as<sol::table>() };
+  sol::protected_function fetch_func;
+  bool found{ false };
+
+  for (auto const &[key, value] : bundles_table) {
+    if (!value.is<sol::table>()) { continue; }
+
+    sol::table bundle_entry{ value.as<sol::table>() };
+
+    sol::object identity_obj{ bundle_entry["identity"] };
+    if (!identity_obj.valid() || !identity_obj.is<std::string>()) { continue; }
+    if (identity_obj.as<std::string>() != bundle_identity) { continue; }
+
+    sol::object source_obj{ bundle_entry["source"] };
+    if (!source_obj.valid() || !source_obj.is<sol::table>()) { continue; }
+
+    sol::table source_table{ source_obj.as<sol::table>() };
+    sol::object fetch_obj{ source_table["fetch"] };
+    if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { continue; }
+
+    fetch_func = fetch_obj.as<sol::protected_function>();
+    found = true;
+    break;
+  }
+
+  if (!found) { return "bundle fetch function not found: " + bundle_identity; }
+
+  // RAII guard to clear registry on scope exit (including exceptions)
+  sol::state_view lua_view{ *lua_ };
+  struct registry_guard {
+    sol::state_view &lua;
+    ~registry_guard() { lua.registry()[ENVY_PHASE_CTX_RIDX] = sol::lua_nil; }
+  } guard{ lua_view };
+
+  lua_view.registry()[ENVY_PHASE_CTX_RIDX] = phase_ctx;
+
+  sol::protected_function_result result{ fetch_func(tmp_dir.string()) };
+  if (!result.valid()) {
+    sol::error err = result;
+    return std::string(err.what());
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace envy

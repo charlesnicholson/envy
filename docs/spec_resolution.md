@@ -274,7 +274,7 @@ ENVY_PLATFORM_ARCH  -- "darwin-arm64", etc.
 **Fetch function behavior:**
 - **Single file**: `ctx.fetch({url = "...", sha256 = "..."})` → returns basename string
 - **Multiple files**: `ctx.fetch({{url = "..."}, {url = "..."}})` → returns array of basenames
-- **Concurrent**: All downloads happen in parallel via TBB task_group
+- **Concurrent**: All downloads happen in parallel
 - **Atomic**: All files downloaded and verified before ANY are committed to fetch_dir
 - **Error handling**: If any download or verification fails, entire operation rolls back
 
@@ -486,47 +486,47 @@ end
 [vendor.library@v1 recipe_fetch] → [vendor.library@v1 fetch] → [vendor.library@v1 stage] → [vendor.library@v1 install]
 ```
 
-Nodes execute when predecessors complete. TBB scheduler maximizes parallelism within topological constraints.
+Nodes execute when predecessors complete. The scheduler maximizes parallelism within topological constraints.
 
 ## Command Integration
 
 **Single entry point:**
 ```cpp
 bool cmd_install::execute() {
-  unified_dag dag{ cache_, manifest_->packages() };
-  dag.execute();  // Builds graph, seeds with manifest roots, waits for completion
-  print_summary(dag.roots());
+  engine eng{ cache_, manifest_->packages() };
+  eng.execute();  // Resolves dependencies, executes phases, waits for completion
+  print_summary(eng.roots());
   return true;
 }
 ```
 
 **Implementation sketch:**
 ```cpp
-class unified_dag {
-  tbb::flow::graph g_;
+class engine {
   cache& cache_;
-  concurrent_hash_map<string, dag_node*> nodes_;  // Memoization
+  std::unordered_map<pkg_key, std::unique_ptr<pkg>> packages_;
+  std::mutex mutex_;
 
-  dag_node* ensure_node(recipe::cfg const& cfg) {
-    string key = canonical_key(cfg);
-    if (auto [it, inserted] = nodes_.insert({key, nullptr}); inserted) {
-      it->second = new dag_node{cfg, create_phase_nodes(g_, cfg)};
+  pkg* ensure_pkg(pkg_cfg const* cfg) {
+    std::lock_guard lock{mutex_};
+    auto key = pkg_key(*cfg);
+    if (auto it = packages_.find(key); it != packages_.end()) {
+      return it->second.get();
     }
-    return nodes_[key];
+    auto [it, _] = packages_.emplace(key, std::make_unique<pkg>(cfg));
+    return it->second.get();
   }
 
   void execute() {
-    // Seed graph with manifest roots
-    tbb::flow::broadcast_node<msg> kickoff{g_};
-    for (auto& pkg : manifest_packages_) {
-      dag_node* node = ensure_node(pkg);
-      tbb::flow::make_edge(kickoff, node->recipe_fetch);
+    // Create execution contexts, spawn worker threads
+    for (auto& [key, pkg] : packages_) {
+      pkg->exec_ctx->start(pkg.get(), this);
     }
 
-    // Execute (graph expands dynamically as recipe_fetch nodes discover deps)
-    kickoff.try_put(msg{});
-    g_.wait_for_all();
-  }
+    // Wait for all packages to complete
+    for (auto& [key, pkg] : packages_) {
+      pkg->exec_ctx->worker.join();
+    }
 };
 ```
 

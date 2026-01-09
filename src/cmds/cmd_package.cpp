@@ -55,7 +55,7 @@ void cmd_package::execute() {
     }
   }
 
-  engine eng{ *c, m->get_default_shell(nullptr) };
+  engine eng{ *c, m.get() };
 
   std::vector<pkg_cfg const *> roots;
   roots.reserve(m->packages.size());
