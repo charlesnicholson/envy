@@ -58,7 +58,7 @@ void cmd_engine_functional_test::execute() {
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}", cfg_.spec_path) };
 
   // Run engine
-  engine eng{ *c, m->get_default_shell(nullptr) };
+  engine eng{ *c, m->get_default_shell() };
   auto result{ eng.run_full({ spec_cfg }) };
 
   // Output results as key -> type (avoid = which appears in option keys)

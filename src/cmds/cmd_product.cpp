@@ -103,7 +103,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 void cmd_product::execute() {
   auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
-  engine eng{ *c, m->get_default_shell(nullptr) };
+  engine eng{ *c, m->get_default_shell() };
 
   std::vector<pkg_cfg const *> roots;
   roots.reserve(m->packages.size());

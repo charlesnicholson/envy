@@ -58,7 +58,7 @@ TEST_CASE("engine_extend_dependencies: extends full closure") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m->get_default_shell() };
 
   // Create cfgs for gn, ninja, python, uv
   std::vector<pkg_cfg const *> roots;
@@ -117,7 +117,7 @@ TEST_CASE("engine_extend_dependencies: leaf package only extends itself") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/dependency_chain_gn.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m->get_default_shell() };
 
   std::vector<pkg_cfg const *> roots;
   pkg_cfg *gn_cfg = pkg_cfg::pool()->emplace(
@@ -169,7 +169,7 @@ TEST_CASE("resolve_graph: spec_fetch failures are propagated") {
   cache c{ cache_root };
   auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                          fs::path("test_data/specs/simple_python.lua")) };
-  engine eng{ c, m->get_default_shell(nullptr) };
+  engine eng{ c, m->get_default_shell() };
 
   pkg_cfg *bad_cfg = pkg_cfg::pool()->emplace(
       "local.nonexistent@v1",

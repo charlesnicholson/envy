@@ -2,13 +2,11 @@
 
 #include "bundle.h"
 #include "engine.h"
-#include "lua_ctx/lua_ctx_bindings.h"
 #include "lua_envy.h"
 #include "lua_shell.h"
 #include "shell.h"
 #include "sol_util.h"
 #include "tui.h"
-#include "uri.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -138,8 +136,8 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
       auto it{ bundles.find(alias) };
       if (it == bundles.end()) {
         throw std::runtime_error("Bundle alias '" + alias +
-                                 "' not found in BUNDLES table for spec '" + spec_identity +
-                                 "'");
+                                 "' not found in BUNDLES table for spec '" +
+                                 spec_identity + "'");
       }
       return it->second;
     }
@@ -353,7 +351,7 @@ std::unique_ptr<manifest> manifest::load(char const *script,
               manifest_path);
 }
 
-default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const {
+default_shell_cfg_t manifest::get_default_shell() const {
   if (!lua_) { return std::nullopt; }
 
   sol::object default_shell_obj{ (*lua_)["DEFAULT_SHELL"] };
@@ -376,10 +374,8 @@ default_shell_cfg_t manifest::get_default_shell(lua_ctx_common const *ctx) const
       default_shell_obj.as<sol::protected_function>()
     };
 
-    sol::table ctx_table{ lua_->create_table() };
-    ctx_table["package"] = make_ctx_package(const_cast<lua_ctx_common *>(ctx));
-
-    sol::protected_function_result result{ default_shell_func(ctx_table) };
+    // DEFAULT_SHELL functions can use envy.package() directly via phase context
+    sol::protected_function_result result{ default_shell_func() };
     if (!result.valid()) {
       sol::error err = result;
       throw std::runtime_error("DEFAULT_SHELL function failed: " +

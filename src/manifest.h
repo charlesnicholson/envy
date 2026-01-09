@@ -13,8 +13,6 @@
 
 namespace envy {
 
-struct lua_ctx_common;
-
 // @envy metadata parsed from comment headers in manifest
 struct envy_meta {
   std::optional<std::string> version;  // @envy version "x.y.z"
@@ -50,7 +48,7 @@ struct manifest : unmovable {
 
   // Get DEFAULT_SHELL global type and value
   // Returns nullopt if no DEFAULT_SHELL specified
-  default_shell_cfg_t get_default_shell(lua_ctx_common const *ctx) const;
+  default_shell_cfg_t get_default_shell() const;
 
  private:
   sol_state_ptr lua_;
