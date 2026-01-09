@@ -14,7 +14,6 @@ import unittest
 from pathlib import Path
 
 from . import test_config
-from .test_config import make_manifest
 
 
 class TestLoadenvBasic(unittest.TestCase):

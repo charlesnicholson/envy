@@ -6,11 +6,9 @@ that have dependencies that must be installed before the fetch runs.
 """
 
 import os
-import shutil
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
 
 from . import test_config
 
