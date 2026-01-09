@@ -47,11 +47,17 @@ struct pkg_cfg : unmovable {
 
   struct weak_ref {};  // Reference-only or weak dependency (no source)
 
+  // Custom fetch source for bundles: fetch function + dependencies
+  struct custom_fetch_source {
+    std::vector<pkg_cfg *> dependencies;  // Needed before fetch function can run
+  };
+
   // Bundle source: spec comes from within a bundle
   struct bundle_source {
     std::string bundle_identity;  // The bundle's identity
     // The underlying fetch source for the bundle itself
-    std::variant<remote_source, local_source, git_source> fetch_source;
+    std::variant<remote_source, local_source, git_source, custom_fetch_source>
+        fetch_source;
   };
 
   using source_t = std::variant<remote_source,
@@ -121,11 +127,16 @@ struct pkg_cfg : unmovable {
   bool is_bundle_source() const;
   bool is_from_bundle() const;  // True if this spec comes from within a bundle
 
-  // Look up source.fetch function for a dependency from Lua state's dependencies global
-  // Pushes the function onto the stack if found, returns true
-  // Returns false if not found (leaves stack unchanged)
-  static bool lookup_and_push_source_fetch(sol::state_view lua,
-                                           std::string const &dep_identity);
+  // Look up source.fetch function for a dependency from Lua state's DEPENDENCIES global
+  // Returns the fetch function if found, nullopt otherwise
+  static std::optional<sol::protected_function> get_source_fetch(
+      sol::state_view lua, std::string const &dep_identity);
+
+  // Look up bundle source.fetch function for a bundle dependency from Lua state
+  // Searches DEPENDENCIES for entries with bundle=identity and source={fetch=...}
+  // Returns the fetch function if found, nullopt otherwise
+  static std::optional<sol::protected_function> get_bundle_fetch(
+      sol::state_view lua, std::string const &bundle_identity);
 
   static void set_pool(pkg_cfg_pool *pool);
   static pkg_cfg_pool *pool();

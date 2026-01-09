@@ -37,7 +37,7 @@ struct install_test_fixture {
                  std::filesystem::path("envy-install-test-" + suffix);
         }() },
         test_cache{ temp_root },
-        eng{ test_cache, std::nullopt } {
+        eng{ test_cache } {
     // Create temp cache directory
     std::filesystem::create_directories(temp_root);
 

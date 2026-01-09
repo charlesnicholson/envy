@@ -30,10 +30,40 @@ struct bundle_decl {
     std::string url;
     std::string ref;
   };
+  struct custom_fetch_source {
+    std::vector<pkg_cfg *> dependencies;  // Parsed dependencies
+  };
 
-  using source_t = std::variant<remote_source, local_source, git_source>;
+  using source_t =
+      std::variant<remote_source, local_source, git_source, custom_fetch_source>;
   source_t source;
 };
+
+// Parse source table for custom fetch: { fetch = function, dependencies = {...} }
+bundle_decl::source_t parse_source_table_for_bundle(
+    sol::table const &source_table,
+    std::filesystem::path const &base_path) {
+  sol::object fetch_obj{ source_table["fetch"] };
+  if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) {
+    throw std::runtime_error("Bundle source table requires 'fetch' function");
+  }
+
+  bundle_decl::custom_fetch_source result;
+
+  sol::object deps_obj{ source_table["dependencies"] };
+  if (deps_obj.valid() && deps_obj.get_type() != sol::type::lua_nil) {
+    if (!deps_obj.is<sol::table>()) {
+      throw std::runtime_error("Bundle source.dependencies must be array (table)");
+    }
+    sol::table deps_table{ deps_obj.as<sol::table>() };
+    for (size_t i{ 1 }, n{ deps_table.size() }; i <= n; ++i) {
+      pkg_cfg *dep_cfg{ pkg_cfg::parse(deps_table[i], base_path, true) };
+      result.dependencies.push_back(dep_cfg);
+    }
+  }
+
+  return result;
+}
 
 bundle_decl parse_decl(sol::table const &table, std::filesystem::path const &base_path) {
   bundle_decl decl;
@@ -45,13 +75,28 @@ bundle_decl parse_decl(sol::table const &table, std::filesystem::path const &bas
   }
   decl.identity = std::move(*identity_opt);
 
-  // Required: source (string)
-  auto source_opt{ sol_util_get_optional<std::string>(table, "source", "Bundle") };
-  if (!source_opt.has_value() || source_opt->empty()) {
+  // Required: source (string or table)
+  sol::object source_obj{ table["source"] };
+  if (!source_obj.valid() || source_obj.get_type() == sol::type::lua_nil) {
     throw std::runtime_error("Bundle declaration missing required 'source' field");
   }
 
-  std::string const &source_uri{ *source_opt };
+  // Handle source as table (custom fetch with dependencies)
+  if (source_obj.is<sol::table>()) {
+    decl.source = parse_source_table_for_bundle(source_obj.as<sol::table>(), base_path);
+    return decl;
+  }
+
+  // Handle source as string (URL/path)
+  if (!source_obj.is<std::string>()) {
+    throw std::runtime_error("Bundle 'source' must be string (URL/path) or table");
+  }
+
+  std::string const source_uri{ source_obj.as<std::string>() };
+  if (source_uri.empty()) {
+    throw std::runtime_error("Bundle 'source' string cannot be empty");
+  }
+
   auto const info{ uri_classify(source_uri) };
 
   if (info.scheme == uri_scheme::GIT) {
@@ -93,6 +138,11 @@ pkg_cfg::bundle_source decl_to_source(bundle_decl const &decl) {
           [&](bundle_decl::git_source const &s) -> pkg_cfg::bundle_source {
             return { .bundle_identity = decl.identity,
                      .fetch_source = pkg_cfg::git_source{ .url = s.url, .ref = s.ref } };
+          },
+          [&](bundle_decl::custom_fetch_source const &s) -> pkg_cfg::bundle_source {
+            return { .bundle_identity = decl.identity,
+                     .fetch_source =
+                         pkg_cfg::custom_fetch_source{ .dependencies = s.dependencies } };
           },
       },
       decl.source);

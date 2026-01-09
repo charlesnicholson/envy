@@ -590,7 +590,7 @@ Bundle and spec revisions are **immutable**. If a bundle at the same revision ha
 
 ---
 
-### Phase 6: Bundles as Packages (Unified Execution Model)
+### Phase 6: Bundles as Packages (Unified Execution Model) ✓
 
 Bundles are packages from the engine's perspective. They get their own `pkg` with execution context, can have custom fetch functions with dependencies, and follow a simplified lifecycle: `spec_fetch` → `complete`.
 
@@ -669,21 +669,31 @@ Mark complete (skip validate/fetch/build/install/deploy)
 - [x] Add IDENTITY mismatch detection test
 - [x] Add spec parse error test
 
+**Custom fetch bundles implementation:**
+
 `src/pkg_cfg.h`, `src/pkg_cfg.cpp`:
-- [ ] Extend `bundle_source` to support `source = { fetch = ..., dependencies = ... }`
-- [ ] Parse custom fetch function + dependencies in BUNDLES table
+- [x] Extend `bundle_source` to support `source = { fetch = ..., dependencies = ... }`
+- [x] Add `custom_fetch_source` struct with dependencies vector
 
-`src/manifest.cpp`:
-- [ ] Create `pkg_cfg` for bundles with custom fetch
-- [ ] Wire dependencies with `needed_by = pkg_phase::spec_fetch`
+`src/bundle.cpp`:
+- [x] Parse custom fetch function + dependencies in BUNDLES table
+- [x] `parse_source_table_for_bundle()` handles `source = { fetch = ..., dependencies = ... }`
+- [x] `decl_to_source()` converts custom_fetch_source to pkg_cfg variant
 
-`src/engine.cpp`:
-- [ ] Bundle packages get their own execution context when they have custom fetch
-- [ ] Ensure BUNDLE_ONLY packages jump to complete after spec_fetch
+`src/manifest.h`, `src/manifest.cpp`:
+- [x] Create `pkg_cfg` for bundles with custom fetch (added to packages list)
+- [x] Wire dependencies with `source_dependencies` (resolved before spec_fetch)
+- [x] Packages referencing custom fetch bundles get implicit dependency on bundle pkg
+- [x] Add `lookup_bundle_fetch()` to find fetch function in BUNDLES table
+
+`src/engine.h`, `src/engine.cpp`:
+- [x] Bundle packages get their own execution context when they have custom fetch
+- [x] Add optional manifest pointer for bundle fetch function lookup
+- [x] Update constructor to accept manifest pointer
 
 `src/phases/phase_spec_fetch.cpp`:
-- [ ] `fetch_bundle_only()` handles custom fetch with phase context
-- [ ] Support `envy.commit_fetch()` for bundle custom fetch
+- [x] `fetch_bundle_only()` handles custom fetch with phase context
+- [x] Support `envy.commit_fetch()` for bundle custom fetch
 - [x] Rename `validate_integrity()` → `validate()` at 4 call sites
 
 `CMakeLists.txt`:
@@ -693,11 +703,11 @@ Mark complete (skip validate/fetch/build/install/deploy)
 **Tests:**
 
 `functional_tests/test_bundle_custom_fetch.py`:
-- [ ] Test bundle with custom fetch function
-- [ ] Test bundle with custom fetch + dependencies
-- [ ] Test dependency resolution before bundle fetch
-- [ ] Test `envy.commit_fetch()` in bundle fetch context
-- [ ] Test bundle validation after custom fetch
+- [x] Test bundle with custom fetch function
+- [x] Test bundle with custom fetch + dependencies
+- [x] Test dependency resolution before bundle fetch
+- [x] Test `envy.commit_fetch()` in bundle fetch context
+- [x] Test bundle validation after custom fetch
 
 ---
 

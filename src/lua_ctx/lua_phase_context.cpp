@@ -1,18 +1,9 @@
 #include "lua_phase_context.h"
 
+#include "lua_envy.h"
 #include "pkg.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 namespace envy {
-namespace {
-
-// Single registry key for phase context pointer (100 = OPTIONS, so use 103)
-constexpr int ENVY_PHASE_CTX_RIDX = 103;
-
-}  // namespace
 
 phase_context const *lua_phase_context_get(sol::this_state ts) {
   sol::state_view lua{ ts.L };

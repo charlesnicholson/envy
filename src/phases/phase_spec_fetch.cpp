@@ -7,6 +7,7 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
+#include "manifest.h"
 #include "pkg.h"
 #include "sha256.h"
 #include "sol_util.h"
@@ -310,6 +311,14 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
                     (results.empty() ? "no results" : std::get<std::string>(results[0])));
               }
             },
+            [&](pkg_cfg::custom_fetch_source const &) {
+              // Custom fetch bundles are handled via BUNDLE_ONLY packages
+              // They should be registered before this point via dependencies
+              throw std::runtime_error(
+                  "Bundle with custom fetch should be registered before spec "
+                  "resolution: " +
+                  bundle_id);
+            },
         },
         bundle_src->fetch_source);
 
@@ -370,16 +379,11 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
     {
       sol::state_view parent_lua_view{ *parent->lua };
 
-      // Look up the fetch function from parent's dependencies
-      if (!pkg_cfg::lookup_and_push_source_fetch(parent_lua_view, cfg.identity)) {
+      auto fetch_func_opt{ pkg_cfg::get_source_fetch(parent_lua_view, cfg.identity) };
+      if (!fetch_func_opt) {
         throw std::runtime_error("Failed to lookup fetch function for: " + cfg.identity);
       }
 
-      // Stack: [function]
-      sol::protected_function fetch_func{ parent_lua_view,
-                                          sol::stack_reference(parent_lua_view.lua_state(),
-                                                               -1) };
-      lua_pop(parent_lua_view.lua_state(), 1);  // pop function
       sol::object options_obj{ parent_lua_view.registry()[ENVY_OPTIONS_RIDX] };
 
       // Set up phase context with lock so envy.commit_fetch can access paths.
@@ -387,8 +391,8 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
       // explicitly rather than through parent->lock.
       phase_context_guard ctx_guard{ &eng, parent, tmp_dir, cache_result.lock.get() };
 
-      sol::protected_function_result fetch_result{ fetch_func(tmp_dir.string(),
-                                                              options_obj) };
+      sol::protected_function_result fetch_result{ (*fetch_func_opt)(tmp_dir.string(),
+                                                                     options_obj) };
 
       if (!fetch_result.valid()) {
         sol::error err = fetch_result;
@@ -554,9 +558,35 @@ std::optional<pkg_cfg::bundle_source> try_parse_pure_bundle_dep(
     throw std::runtime_error("Pure bundle dependency 'bundle' field cannot be empty");
   }
 
-  // Parse source (similar to bundle::parse_inline but using 'bundle' for identity)
+  // Parse source: string (URL/path) or table { fetch = function, dependencies = {} }
+  if (source_obj.is<sol::table>()) {  // Table: custom fetch with optional dependencies
+    sol::table source_table{ source_obj.as<sol::table>() };
+    sol::object fetch_obj{ source_table["fetch"] };
+    if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) {
+      throw std::runtime_error("Bundle source table requires 'fetch' function");
+    }
+
+    pkg_cfg::custom_fetch_source custom;
+
+    sol::object deps_obj{ source_table["dependencies"] };
+    if (deps_obj.valid() && deps_obj.get_type() != sol::type::lua_nil) {
+      if (!deps_obj.is<sol::table>()) {
+        throw std::runtime_error("Bundle source.dependencies must be array (table)");
+      }
+      sol::table deps_table{ deps_obj.as<sol::table>() };
+      for (size_t i{ 1 }, n{ deps_table.size() }; i <= n; ++i) {
+        pkg_cfg *dep_cfg{ pkg_cfg::parse(deps_table[i], spec_path, true) };
+        custom.dependencies.push_back(dep_cfg);
+      }
+    }
+
+    return pkg_cfg::bundle_source{ .bundle_identity = std::move(bundle_identity),
+                                   .fetch_source = std::move(custom) };
+  }
+
   if (!source_obj.is<std::string>()) {
-    throw std::runtime_error("Pure bundle dependency 'source' field must be string");
+    throw std::runtime_error(
+        "Pure bundle dependency 'source' field must be string or table");
   }
   std::string const source_uri{ source_obj.as<std::string>() };
   auto const info{ uri_classify(source_uri) };
@@ -1044,6 +1074,84 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
                     (results.empty() ? "no results" : std::get<std::string>(results[0])));
+              }
+            },
+            [&](pkg_cfg::custom_fetch_source const &) {
+              // Custom fetch bundle - execute fetch function
+              // Function location depends on where bundle was declared:
+              // - If parent is set: fetch function is in parent spec's Lua state
+              // - If no parent: fetch function is in manifest's BUNDLES table
+
+              std::filesystem::path const tmp_dir{ cache_result.lock->work_dir() / "tmp" };
+              std::filesystem::create_directories(tmp_dir);
+
+              if (cfg.parent) {
+                // Bundle declared in a spec's DEPENDENCIES - use parent's Lua state
+                pkg *parent{ eng.find_exact(pkg_key(*cfg.parent)) };
+                if (!parent || !parent->lua) {
+                  throw std::runtime_error(
+                      "Bundle custom fetch: parent spec Lua state unavailable for " +
+                      bundle_id);
+                }
+
+                std::lock_guard const lock(parent->lua_mutex);
+                sol::state_view parent_lua{ *parent->lua };
+
+                auto fetch_func_opt{ pkg_cfg::get_bundle_fetch(parent_lua, bundle_id) };
+                if (!fetch_func_opt) {
+                  throw std::runtime_error(
+                      "Bundle custom fetch function not found in parent spec for: " +
+                      bundle_id);
+                }
+
+                // Set up phase context in parent's Lua state
+                phase_context_guard ctx_guard{ &eng,
+                                               parent,
+                                               tmp_dir,
+                                               cache_result.lock.get() };
+
+                tui::debug("executing custom fetch for bundle %s (from parent spec)",
+                           bundle_id.c_str());
+                sol::protected_function_result result{ (*fetch_func_opt)(
+                    tmp_dir.string()) };
+
+                if (!result.valid()) {
+                  sol::error err = result;
+                  throw std::runtime_error("Bundle custom fetch function failed for " +
+                                           bundle_id + ": " + err.what());
+                }
+              } else {
+                // Bundle declared in manifest's BUNDLES table
+                manifest const *m{ eng.get_manifest() };
+                if (!m) {
+                  throw std::runtime_error("Bundle custom fetch requires manifest: " +
+                                           bundle_id);
+                }
+
+                phase_context ctx{ &eng, p, tmp_dir, cache_result.lock.get() };
+                tui::debug("executing custom fetch for bundle %s", bundle_id.c_str());
+
+                auto err{ m->run_bundle_fetch(bundle_id, &ctx, tmp_dir) };
+                if (err) {
+                  throw std::runtime_error("Bundle custom fetch function failed for " +
+                                           bundle_id + ": " + *err);
+                }
+              }
+
+              // Custom fetch creates files in fetch_dir via envy.commit_fetch
+              // Move bundle files to install_dir
+              std::filesystem::path const fetch_dir{ cache_result.lock->fetch_dir() };
+              std::filesystem::path const bundle_manifest{ fetch_dir / "envy-bundle.lua" };
+
+              if (!std::filesystem::exists(bundle_manifest)) {
+                throw std::runtime_error(
+                    "Bundle custom fetch did not create envy-bundle.lua: " + bundle_id);
+              }
+
+              // Move all files from fetch_dir to install_dir
+              for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
+                std::filesystem::path const dest{ install_dir / entry.path().filename() };
+                std::filesystem::rename(entry.path(), dest);
               }
             },
         },

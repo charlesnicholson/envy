@@ -23,7 +23,7 @@ static pkg_result_map_t run_pkg_from_file(std::string const &identity,
   cache c{ cache_root };
   auto manifest_ptr{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
                                     spec_path) };
-  engine eng{ c, manifest_ptr->get_default_shell() };
+  engine eng{ c, manifest_ptr.get() };
 
   pkg_cfg *cfg_ptr{ pkg_cfg::pool()->emplace(
       identity,

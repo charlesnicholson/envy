@@ -17,7 +17,7 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
   local cmd = envy.template([[
   mkdir build
   cd build
-  {{cmake}} -G Ninja ../llvm -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"
+  {{cmake}} -G Ninja ../llvm -DCMAKE_MAKE_PROGRAM={{ninja}} -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"
   {{ninja}} clang-format clang-tidy
 ]], { cmake = envy.product("cmake"), ninja = envy.product("ninja") })
 

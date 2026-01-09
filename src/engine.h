@@ -66,7 +66,7 @@ struct product_info {
 
 class engine : unmovable {
  public:
-  engine(cache &cache, default_shell_cfg_t default_shell);
+  engine(cache &cache, manifest const *manifest = nullptr);
   ~engine();
 
   pkg *ensure_pkg(pkg_cfg const *cfg);
@@ -92,7 +92,9 @@ class engine : unmovable {
 
   // High-level execution
   pkg_result_map_t run_full(std::vector<pkg_cfg const *> const &roots);
+
   void resolve_graph(std::vector<pkg_cfg const *> const &roots);
+
   struct weak_resolution_result {
     size_t resolved{ 0 };
     size_t fallbacks_started{ 0 };
@@ -100,10 +102,8 @@ class engine : unmovable {
   };
   weak_resolution_result resolve_weak_references();
 
-  // Extend package and all transitive dependencies to completion target
   void extend_dependencies_to_completion(pkg *p);
 
-  // Get cache root path
   std::filesystem::path const &cache_root() const;
 
   // Bundle registry management
@@ -111,8 +111,10 @@ class engine : unmovable {
   bundle *register_bundle(std::string const &identity,
                           std::unordered_map<std::string, std::string> specs,
                           std::filesystem::path cache_path);
-  // Look up registered bundle by identity; returns nullptr if not found
+
   bundle *find_bundle(std::string const &identity) const;
+
+  manifest const *get_manifest() const { return manifest_; }
 
 #ifdef ENVY_UNIT_TEST
   pkg_phase get_pkg_target_phase(pkg_key const &key) const;
@@ -123,6 +125,7 @@ class engine : unmovable {
 
   cache &cache_;
   default_shell_cfg_t default_shell_;
+  manifest const *manifest_{ nullptr };  // For bundle fetch function lookup
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point

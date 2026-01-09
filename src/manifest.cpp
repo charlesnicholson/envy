@@ -98,11 +98,13 @@ std::optional<std::pair<std::string, std::string>> parse_directive_line(
 }
 
 using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>;
+using bundle_pkg_map = std::unordered_map<std::string, pkg_cfg *>;
 
 // Parse a single package entry that may reference a bundle
 pkg_cfg *parse_package_entry(sol::object const &entry,
                              std::filesystem::path const &manifest_path,
-                             bundle_alias_map const &bundles) {
+                             bundle_alias_map const &bundles,
+                             bundle_pkg_map const &custom_fetch_bundle_pkgs) {
   // For non-table entries (strings) or tables without bundle field, use standard parsing
   if (!entry.is<sol::table>()) { return pkg_cfg::parse(entry, manifest_path); }
 
@@ -182,6 +184,13 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
 
   std::string const bundle_identity{ bundle_src.bundle_identity };
 
+  // Check if this bundle has custom fetch - if so, add implicit dependency on bundle pkg
+  std::vector<pkg_cfg *> source_deps;
+  if (auto it{ custom_fetch_bundle_pkgs.find(bundle_identity) };
+      it != custom_fetch_bundle_pkgs.end()) {
+    source_deps.push_back(it->second);
+  }
+
   // Create pkg_cfg with bundle source
   pkg_cfg *cfg{ pkg_cfg::pool()->emplace(spec_identity,
                                          std::move(bundle_src),
@@ -189,7 +198,7 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
                                          needed_by,
                                          nullptr,  // parent
                                          nullptr,  // weak
-                                         std::vector<pkg_cfg *>{},
+                                         std::move(source_deps),
                                          std::move(product),
                                          manifest_path) };
 
@@ -330,6 +339,31 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
 
   auto const bundles{ bundle::parse_aliases((*m->lua_)["BUNDLES"], manifest_path) };
 
+  // Create pkg_cfg entries for bundles with custom fetch (they become BUNDLE_ONLY
+  // packages) Map of bundle_identity -> pkg_cfg* for packages to depend on
+  std::unordered_map<std::string, pkg_cfg *> custom_fetch_bundle_pkgs;
+  for (auto const &[alias, bundle_src] : bundles) {
+    auto const *custom_fetch{ std::get_if<pkg_cfg::custom_fetch_source>(
+        &bundle_src.fetch_source) };
+    if (!custom_fetch) { continue; }
+
+    // Create pkg_cfg for the bundle package
+    pkg_cfg *bundle_cfg{ pkg_cfg::pool()->emplace(
+        bundle_src.bundle_identity,  // identity = bundle identity
+        pkg_cfg::bundle_source{ bundle_src },
+        "{}",
+        std::nullopt,                // needed_by (root package)
+        nullptr,                     // parent
+        nullptr,                     // weak
+        custom_fetch->dependencies,  // source_dependencies
+        std::nullopt,                // product
+        manifest_path) };
+
+    bundle_cfg->bundle_identity = bundle_src.bundle_identity;
+    custom_fetch_bundle_pkgs[bundle_src.bundle_identity] = bundle_cfg;
+    m->packages.push_back(bundle_cfg);
+  }
+
   sol::object packages_obj = (*m->lua_)["PACKAGES"];
   if (!packages_obj.valid() || packages_obj.get_type() != sol::type::table) {
     throw std::runtime_error("Manifest must define 'PACKAGES' global as a table");
@@ -338,7 +372,10 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
   sol::table packages_table = packages_obj.as<sol::table>();
 
   for (size_t i{ 1 }; i <= packages_table.size(); ++i) {
-    m->packages.push_back(parse_package_entry(packages_table[i], manifest_path, bundles));
+    m->packages.push_back(parse_package_entry(packages_table[i],
+                                              manifest_path,
+                                              bundles,
+                                              custom_fetch_bundle_pkgs));
   }
 
   return m;
@@ -387,6 +424,64 @@ default_shell_cfg_t manifest::get_default_shell() const {
   }
 
   return convert_parsed(parse_shell_config_from_lua(default_shell_obj, "DEFAULT_SHELL"));
+}
+
+std::optional<std::string> manifest::run_bundle_fetch(
+    std::string const &bundle_identity,
+    void *phase_ctx,
+    std::filesystem::path const &tmp_dir) const {
+  std::lock_guard const lock(lua_mutex_);
+
+  if (!lua_) { return "manifest Lua state unavailable"; }
+
+  sol::object bundles_obj{ (*lua_)["BUNDLES"] };
+  if (!bundles_obj.valid() || !bundles_obj.is<sol::table>()) {
+    return "BUNDLES table not found";
+  }
+
+  sol::table bundles_table{ bundles_obj.as<sol::table>() };
+  sol::protected_function fetch_func;
+  bool found{ false };
+
+  for (auto const &[key, value] : bundles_table) {
+    if (!value.is<sol::table>()) { continue; }
+
+    sol::table bundle_entry{ value.as<sol::table>() };
+
+    sol::object identity_obj{ bundle_entry["identity"] };
+    if (!identity_obj.valid() || !identity_obj.is<std::string>()) { continue; }
+    if (identity_obj.as<std::string>() != bundle_identity) { continue; }
+
+    sol::object source_obj{ bundle_entry["source"] };
+    if (!source_obj.valid() || !source_obj.is<sol::table>()) { continue; }
+
+    sol::table source_table{ source_obj.as<sol::table>() };
+    sol::object fetch_obj{ source_table["fetch"] };
+    if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { continue; }
+
+    fetch_func = fetch_obj.as<sol::protected_function>();
+    found = true;
+    break;
+  }
+
+  if (!found) { return "bundle fetch function not found: " + bundle_identity; }
+
+  // RAII guard to clear registry on scope exit (including exceptions)
+  sol::state_view lua_view{ *lua_ };
+  struct registry_guard {
+    sol::state_view &lua;
+    ~registry_guard() { lua.registry()[ENVY_PHASE_CTX_RIDX] = sol::lua_nil; }
+  } guard{ lua_view };
+
+  lua_view.registry()[ENVY_PHASE_CTX_RIDX] = phase_ctx;
+
+  sol::protected_function_result result{ fetch_func(tmp_dir.string()) };
+  if (!result.valid()) {
+    sol::error err = result;
+    return std::string(err.what());
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace envy

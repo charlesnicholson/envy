@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "manifest.h"
 #include "phases/phase_build.h"
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
@@ -241,8 +242,10 @@ void engine_validate_dependency_cycle(std::string const &candidate_identity,
   }
 }
 
-engine::engine(cache &cache, default_shell_cfg_t default_shell)
-    : cache_(cache), default_shell_(default_shell) {}
+engine::engine(cache &cache, manifest const *manifest)
+    : cache_(cache),
+      default_shell_(manifest ? manifest->get_default_shell() : std::nullopt),
+      manifest_(manifest) {}
 
 engine::~engine() {
   fail_all_contexts();
@@ -548,7 +551,16 @@ void engine::process_fetch_dependencies(pkg *p,
   // Process fetch dependencies - added to dependencies map with needed_by=spec_fetch
   // Existing phase loop wait logic handles blocking automatically
   for (auto *fetch_dep_cfg : p->cfg->source_dependencies) {
-    fetch_dep_cfg->parent = p->cfg;  // Set parent pointer for custom fetch lookup
+    // Set parent pointer for custom fetch lookup, but only for spec-declared deps.
+    // Manifest-declared bundles (parent already null, identity == bundle_identity)
+    // should keep null parent - their fetch function is in the manifest, not a spec.
+    bool const is_manifest_bundle{ !fetch_dep_cfg->parent &&
+                                   fetch_dep_cfg->bundle_identity.has_value() &&
+                                   fetch_dep_cfg->identity ==
+                                       *fetch_dep_cfg->bundle_identity };
+    if (!is_manifest_bundle) {
+      fetch_dep_cfg->parent = p->cfg;  // Set parent pointer for custom fetch lookup
+    }
 
     engine_validate_dependency_cycle(fetch_dep_cfg->identity,
                                      ancestor_chain,
@@ -632,6 +644,7 @@ void engine::run_pkg_thread(pkg *p) {
         // BUNDLE_ONLY packages stop after spec_fetch - no lua state to execute
         if (p->type == pkg_type::BUNDLE_ONLY) {
           ctx.current_phase = pkg_phase::completion;
+          notify_phase_complete();  // Wake waiters before exiting
           break;
         }
       }

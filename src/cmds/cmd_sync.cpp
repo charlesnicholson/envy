@@ -258,7 +258,7 @@ void cmd_sync::execute() {
     return;
   }
 
-  engine eng{ *c, m->get_default_shell() };
+  engine eng{ *c, m.get() };
 
   if (cfg_.install_all) {
     auto result{ eng.run_full(targets) };
