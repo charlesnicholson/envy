@@ -54,32 +54,6 @@ class extract_progress_tracker {
   std::chrono::steady_clock::time_point start_time_;
 };
 
-// Multi-file extraction progress tracker with sub-sections
-// Lifetime: matches extract_all_archives() blocking call
-class extract_all_progress_tracker {
- public:
-  extract_all_progress_tracker(tui::section_handle section,
-                               std::string const &pkg_identity,
-                               std::vector<std::string> const &filenames,
-                               extract_totals const &totals);
-
-  // Returns pair of callbacks: (progress_cb, on_file_cb)
-  auto make_callbacks()
-      -> std::pair<extract_progress_cb_t, std::function<void(std::string const &)>>;
-
- private:
-  void set_frames(extract_progress const &prog);
-
-  tui::section_handle section_;
-  std::string label_;
-  std::chrono::steady_clock::time_point start_time_;
-
-  std::mutex mutex_;
-  std::vector<tui::section_frame> children_;
-  bool grouped_;
-  extract_progress last_prog_;
-};
-
 // Download progress tracker (single file)
 // Lifetime: matches fetch() blocking call
 class fetch_progress_tracker {

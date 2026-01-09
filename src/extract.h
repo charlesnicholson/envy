@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tui.h"
+
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -27,22 +29,26 @@ struct extract_options {
   extract_progress_cb_t progress;
 };
 
+// Extract a single archive to destination
 std::uint64_t extract(std::filesystem::path const &archive_path,
                       std::filesystem::path const &destination,
                       extract_options const &options = {});
 
+// Check if path has archive extension
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
-// Compute uncompressed totals for all regular files (plain + archives) in fetch_dir.
-extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir);
-
-// Extract all archives in a directory
+// Extract all archives in fetch_dir to dest_dir.
+// If section != kInvalidSection, shows spinner during totals computation and progress bar
+// during extraction. Pass kInvalidSection for silent extraction.
 void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::filesystem::path const &dest_dir,
                           int strip_components,
-                          extract_progress_cb_t progress = nullptr,
-                          std::string const &pkg_identity = "",
-                          std::function<void(std::string const &)> on_file = nullptr,
-                          std::optional<extract_totals> totals_hint = std::nullopt);
+                          std::string const &pkg_identity,
+                          tui::section_handle section);
+
+#ifdef ENVY_UNIT_TEST
+// Exposed for unit tests only - computes totals by scanning archives
+extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir);
+#endif
 
 }  // namespace envy

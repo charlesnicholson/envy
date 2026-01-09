@@ -1,6 +1,8 @@
 #include "lua_ctx_bindings.h"
 
 #include "extract.h"
+#include "pkg.h"
+#include "tui.h"
 
 #include <functional>
 
@@ -20,7 +22,10 @@ std::function<void(sol::optional<sol::table>)> make_ctx_extract_all(lua_ctx_comm
       }
     }
 
-    extract_all_archives(ctx->fetch_dir, ctx->run_dir, strip_components);
+    std::string const &identity{ ctx->pkg_->cfg->identity };
+    tui::section_handle const section{ ctx->pkg_->tui_section };
+
+    extract_all_archives(ctx->fetch_dir, ctx->run_dir, strip_components, identity, section);
   };
 }
 

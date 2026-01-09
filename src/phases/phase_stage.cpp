@@ -11,7 +11,6 @@
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
-#include "tui_actions.h"
 #include "util.h"
 
 #include <chrono>
@@ -70,34 +69,6 @@ stage_options parse_stage_options(sol::table const &stage_tbl, std::string const
   }
 
   return opts;
-}
-
-void run_extract_stage(extract_totals const &totals,
-                       std::filesystem::path const &fetch_dir,
-                       std::filesystem::path const &dest_dir,
-                       std::string const &identity,
-                       tui::section_handle section,
-                       int strip_components) {
-  tui::debug("phase stage: extracting (strip=%d)", strip_components);
-
-  std::vector<std::string> items;
-  for (auto const &entry : std::filesystem::directory_iterator(fetch_dir)) {
-    if (!entry.is_regular_file()) { continue; }
-    if (entry.path().filename() == "envy-complete") { continue; }
-    items.push_back(entry.path().filename().string());
-  }
-
-  tui_actions::extract_all_progress_tracker tracker{ section, identity, items, totals };
-  auto [progress_cb, on_file_cb] = tracker.make_callbacks();
-
-  extract_all_archives(
-      fetch_dir,
-      dest_dir,
-      strip_components,
-      progress_cb,
-      identity,
-      items.size() > 1 ? on_file_cb : std::function<void(std::string const &)>{},
-      totals);
 }
 
 void run_programmatic_stage(sol::protected_function stage_func,
@@ -178,8 +149,8 @@ void run_stage_phase(pkg *p, engine &eng) {
   }
 
   if (!stage_obj.valid()) {
-    extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
-    run_extract_stage(totals, lock->fetch_dir(), stage_dir, identity, p->tui_section, 0);
+    tui::debug("phase stage: extracting (strip=0)");
+    extract_all_archives(lock->fetch_dir(), stage_dir, 0, identity, p->tui_section);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
     run_shell_stage(script_str,
@@ -196,13 +167,12 @@ void run_stage_phase(pkg *p, engine &eng) {
                            p);
   } else if (stage_obj.is<sol::table>()) {
     stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
-    extract_totals const totals{ compute_extract_totals(lock->fetch_dir()) };
-    run_extract_stage(totals,
-                      lock->fetch_dir(),
-                      stage_dir,
-                      identity,
-                      p->tui_section,
-                      opts.strip_components);
+    tui::debug("phase stage: extracting (strip=%d)", opts.strip_components);
+    extract_all_archives(lock->fetch_dir(),
+                         stage_dir,
+                         opts.strip_components,
+                         identity,
+                         p->tui_section);
   } else {
     throw std::runtime_error("STAGE field must be nil, string, table, or function for " +
                              identity);
