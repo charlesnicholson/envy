@@ -1,14 +1,151 @@
 #!/usr/bin/env python3
 """Functional tests for weak dependency hash inclusion in cache keys."""
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
+
+# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH}, {SPECS_DIR} replaced at runtime
+SPECS = {
+    "hash_provider_a.lua": """-- Provider A for hash testing
+IDENTITY = "local.hash_provider_a@v1"
+
+PRODUCTS = {{
+  tool = "bin/tool_a",
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "hash_provider_b.lua": """-- Provider B for hash testing (different identity, same product)
+IDENTITY = "local.hash_provider_b@v1"
+
+PRODUCTS = {{
+  tool = "bin/tool_b",
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "hash_consumer_weak.lua": """-- Consumer with weak product dependency for hash testing
+IDENTITY = "local.hash_consumer_weak@v1"
+
+-- Note: weak fallback source must be relative to THIS recipe's location
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    weak = {{
+      spec = "local.hash_provider_a@v1",
+      source = "hash_provider_a.lua",  -- Relative to this recipe's directory
+    }},
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "hash_provider_aaa.lua": """-- Provider for aaa_tool
+IDENTITY = "local.hash_provider_aaa@v1"
+
+PRODUCTS = {{
+  aaa_tool = "bin/aaa",
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "hash_provider_zzz.lua": """-- Provider for zzz_tool
+IDENTITY = "local.hash_provider_zzz@v1"
+
+PRODUCTS = {{
+  zzz_tool = "bin/zzz",
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "hash_consumer_multi_weak.lua": """-- Consumer with multiple weak dependencies for hash testing
+IDENTITY = "local.hash_consumer_multi@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "zzz_tool",  -- Sorts last alphabetically
+    weak = {{
+      spec = "local.hash_provider_zzz@v1",
+      source = "hash_provider_zzz.lua",
+    }},
+  }},
+  {{
+    product = "aaa_tool",  -- Sorts first alphabetically
+    weak = {{
+      spec = "local.hash_provider_aaa@v1",
+      source = "hash_provider_aaa.lua",
+    }},
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+}
 
 
 class TestWeakDepHash(unittest.TestCase):
@@ -17,16 +154,30 @@ class TestWeakDepHash(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-weak-hash-cache-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+                SPECS_DIR=self.specs_dir.as_posix(),
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    def lua_path(self, path: Path) -> str:
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
@@ -63,11 +214,11 @@ class TestWeakDepHash(unittest.TestCase):
 PACKAGES = {{
   {{
     spec = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
+    source = "{self.lua_path("hash_provider_a.lua")}",
   }},
   {{
     spec = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
+    source = "{self.lua_path("hash_consumer_weak.lua")}",
   }},
 }}
 """
@@ -91,11 +242,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
+    source = "{self.lua_path("hash_provider_b.lua")}",
   }},
   {{
     spec = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
+    source = "{self.lua_path("hash_consumer_weak.lua")}",
   }},
 }}
 """
@@ -124,7 +275,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
+    source = "{self.lua_path("hash_consumer_weak.lua")}",
   }},
 }}
 """
@@ -147,11 +298,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
+    source = "{self.lua_path("hash_provider_b.lua")}",
   }},
   {{
     spec = "local.hash_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_weak.lua",
+    source = "{self.lua_path("hash_consumer_weak.lua")}",
   }},
 }}
 """
@@ -178,15 +329,15 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_provider_zzz@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_zzz.lua",
+    source = "{self.lua_path("hash_provider_zzz.lua")}",
   }},
   {{
     spec = "local.hash_provider_aaa@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_aaa.lua",
+    source = "{self.lua_path("hash_provider_aaa.lua")}",
   }},
   {{
     spec = "local.hash_consumer_multi@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_multi_weak.lua",
+    source = "{self.lua_path("hash_consumer_multi_weak.lua")}",
   }},
 }}
 """
@@ -209,15 +360,15 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_provider_aaa@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_aaa.lua",
+    source = "{self.lua_path("hash_provider_aaa.lua")}",
   }},
   {{
     spec = "local.hash_provider_zzz@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_zzz.lua",
+    source = "{self.lua_path("hash_provider_zzz.lua")}",
   }},
   {{
     spec = "local.hash_consumer_multi@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_consumer_multi_weak.lua",
+    source = "{self.lua_path("hash_consumer_multi_weak.lua")}",
   }},
 }}
 """
@@ -251,14 +402,14 @@ DEPENDENCIES = {{
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 
 INSTALL = function(ctx)
 end
 """
-        consumer_path = self.test_dir / "hash_consumer_refonly.lua"
+        consumer_path = self.specs_dir / "hash_consumer_refonly.lua"
         consumer_path.write_text(consumer_lua, encoding="utf-8")
 
         # Scenario 1: provider_a satisfies ref-only dep
@@ -267,11 +418,11 @@ end
 PACKAGES = {{
   {{
     spec = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
+    source = "{self.lua_path("hash_provider_a.lua")}",
   }},
   {{
     spec = "local.hash_consumer_refonly@v1",
-    source = "{self.lua_path(consumer_path)}",
+    source = "{consumer_path.as_posix()}",
   }},
 }}
 """
@@ -294,11 +445,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.hash_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_b.lua",
+    source = "{self.lua_path("hash_provider_b.lua")}",
   }},
   {{
     spec = "local.hash_consumer_refonly@v1",
-    source = "{self.lua_path(consumer_path)}",
+    source = "{consumer_path.as_posix()}",
   }},
 }}
 """
@@ -328,19 +479,19 @@ DEPENDENCIES = {{
   {{
     product = "tool",
     spec = "local.hash_provider_a@v1",
-    source = "{self.lua_path(self.test_data)}/specs/hash_provider_a.lua",
+    source = "{self.lua_path("hash_provider_a.lua")}",
   }},
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 
 INSTALL = function(ctx)
 end
 """
-        consumer_path = self.test_dir / "hash_consumer_strong.lua"
+        consumer_path = self.specs_dir / "hash_consumer_strong.lua"
         consumer_path.write_text(consumer_lua, encoding="utf-8")
 
         manifest = self.manifest(
@@ -348,7 +499,7 @@ end
 PACKAGES = {{
   {{
     spec = "local.hash_consumer_strong@v1",
-    source = "{self.lua_path(consumer_path)}",
+    source = "{consumer_path.as_posix()}",
   }},
 }}
 """
@@ -361,18 +512,18 @@ PACKAGES = {{
         self.assertEqual(len(cache_dirs), 1)
 
         # Create consumer with NO deps (just base identity)
-        consumer_nodeps_lua = """
+        consumer_nodeps_lua = f"""
 IDENTITY = "local.hash_consumer_nodeps@v1"
 
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 
 INSTALL = function(ctx)
 end
 """
-        consumer_nodeps_path = self.test_dir / "hash_consumer_nodeps.lua"
+        consumer_nodeps_path = self.specs_dir / "hash_consumer_nodeps.lua"
         consumer_nodeps_path.write_text(consumer_nodeps_lua, encoding="utf-8")
 
         # The hash format is: BLAKE3(identity|resolved_weak1|resolved_weak2|...)

@@ -5,6 +5,7 @@ Tests declarative fetch syntax: FETCH = "url", FETCH = {url, sha256},
 FETCH = [{...}, ...], and basic error handling (collision, bad SHA256).
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -14,24 +15,36 @@ import unittest
 
 from . import test_config
 
+# Inline test files for declarative fetch tests
+TEST_FILES = {
+    "simple.lua": "-- Simple test script for lua_util tests\nexpected_value = 42\n",
+    "print_single.lua": 'print("hello")\n',
+    "print_multiple.lua": 'print("a", "b", "c")\n',
+}
+
 
 class TestEngineDeclarativeFetch(unittest.TestCase):
     """Tests for declarative fetch phase (package fetching)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.test_files_dir = Path(tempfile.mkdtemp(prefix="envy-decl-fetch-files-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
+        # Write inline test files to temp directory
+        for name, content in TEST_FILES.items():
+            (self.test_files_dir / name).write_text(content, encoding="utf-8")
+
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_files_dir, ignore_errors=True)
 
-    @staticmethod
-    def lua_path(path: Path) -> str:
-        """Convert path to Lua-safe string (forward slashes work on all platforms)."""
-        return path.as_posix()
+    def lua_path(self, filename: str) -> str:
+        """Get Lua-safe path to test file."""
+        return (self.test_files_dir / filename).as_posix()
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -45,6 +58,16 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
 
     def test_declarative_fetch_string(self):
         """Spec with declarative fetch (string format) downloads file."""
+        # Create spec with inline content
+        spec_content = f"""-- Test declarative fetch with string format
+IDENTITY = "local.fetch_string@v1"
+
+-- String format: simple path, no verification
+FETCH = "{self.lua_path("simple.lua")}"
+"""
+        spec_path = self.cache_root / "fetch_string.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -52,7 +75,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
                 "--trace",
                 "engine-test",
                 "local.fetch_string@v1",
-                "test_data/specs/fetch_string.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -72,7 +95,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
     def test_declarative_fetch_single_table(self):
         """Spec with declarative fetch (single table with sha256) downloads and verifies."""
         # Compute hash dynamically
-        simple_hash = self.get_file_hash("test_data/lua/simple.lua")
+        simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
 
         # Create spec with computed hash
         spec_content = f"""-- Test declarative fetch with single table format and SHA256 verification
@@ -80,7 +103,7 @@ IDENTITY = "local.fetch_single@v1"
 
 -- Single table format with optional sha256
 FETCH = {{
-  source = "test_data/lua/simple.lua",
+  source = "{self.lua_path("simple.lua")}",
   sha256 = "{simple_hash}"
 }}
 """
@@ -114,8 +137,8 @@ FETCH = {{
     def test_declarative_fetch_array(self):
         """Spec with declarative fetch (array format) downloads multiple files concurrently."""
         # Compute hashes dynamically
-        simple_hash = self.get_file_hash("test_data/lua/simple.lua")
-        print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+        simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+        print_single_hash = self.get_file_hash(self.test_files_dir / "print_single.lua")
 
         # Create spec with computed hashes
         spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
@@ -124,15 +147,15 @@ IDENTITY = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 FETCH = {{
   {{
-    source = "test_data/lua/simple.lua",
+    source = "{self.lua_path("simple.lua")}",
     sha256 = "{simple_hash}"
   }},
   {{
-    source = "test_data/lua/print_single.lua",
+    source = "{self.lua_path("print_single.lua")}",
     sha256 = "{print_single_hash}"
   }},
   {{
-    source = "test_data/lua/print_multiple.lua"
+    source = "{self.lua_path("print_multiple.lua")}"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -171,6 +194,26 @@ FETCH = {{
 
     def test_declarative_fetch_collision(self):
         """Spec with duplicate filenames fails with collision error."""
+        # Create two different files with same basename in different subdirs
+        subdir1 = self.test_files_dir / "lua"
+        subdir2 = self.test_files_dir / "specs"
+        subdir1.mkdir()
+        subdir2.mkdir()
+        (subdir1 / "simple.lua").write_text("-- lua version\n", encoding="utf-8")
+        (subdir2 / "simple.lua").write_text("-- specs version\n", encoding="utf-8")
+
+        spec_content = f"""-- Test declarative fetch with filename collision (should error)
+IDENTITY = "local.fetch_collision@v1"
+
+-- Both URLs have the same basename "simple.lua" - should error
+FETCH = {{
+  {{ source = "{(subdir1 / "simple.lua").as_posix()}" }},
+  {{ source = "{(subdir2 / "simple.lua").as_posix()}" }}  -- Different file, same basename
+}}
+"""
+        spec_path = self.cache_root / "fetch_collision.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -178,7 +221,7 @@ FETCH = {{
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_collision@v1",
-                "test_data/specs/fetch_collision.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -200,6 +243,18 @@ FETCH = {{
 
     def test_declarative_fetch_bad_sha256(self):
         """Spec with wrong SHA256 fails verification."""
+        spec_content = f"""-- Test declarative fetch with wrong SHA256 (should fail verification)
+IDENTITY = "local.fetch_bad_sha256@v1"
+
+-- Wrong sha256 - should fail after download
+FETCH = {{
+  source = "{self.lua_path("simple.lua")}",
+  sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+}}
+"""
+        spec_path = self.cache_root / "fetch_bad_sha256.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -207,7 +262,7 @@ FETCH = {{
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_bad_sha256@v1",
-                "test_data/specs/fetch_bad_sha256.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -225,15 +280,15 @@ FETCH = {{
     def test_declarative_fetch_string_array(self):
         """Spec with FETCH = {\"url1\", \"url2\", \"url3\"} downloads all files."""
         # Create spec with array of strings (no SHA256)
-        spec_content = """-- Test declarative fetch with string array
+        spec_content = f"""-- Test declarative fetch with string array
 IDENTITY = "local.fetch_string_array@v1"
 
 -- Array of strings (no SHA256 verification)
-FETCH = {
-  "test_data/lua/simple.lua",
-  "test_data/lua/print_single.lua",
-  "test_data/lua/print_multiple.lua"
-}
+FETCH = {{
+  "{self.lua_path("simple.lua")}",
+  "{self.lua_path("print_single.lua")}",
+  "{self.lua_path("print_multiple.lua")}"
+}}
 """
         spec_path = self.cache_root / "fetch_string_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")

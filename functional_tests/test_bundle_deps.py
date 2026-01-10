@@ -27,7 +27,6 @@ class TestSpecBundleDependencies(unittest.TestCase):
         self.bundle_dir = Path(tempfile.mkdtemp(prefix="envy-test-bundle-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)

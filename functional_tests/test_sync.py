@@ -5,9 +5,12 @@ Tests syncing entire manifest, specific identities, error handling,
 and transitive dependencies.
 """
 
+import hashlib
+import io
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -18,6 +21,97 @@ from . import test_config
 from .test_config import make_manifest
 from .trace_parser import TraceParser
 
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
+
+# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH} replaced at runtime
+SPECS = {
+    "simple.lua": """-- Minimal test spec - no dependencies
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+""",
+    "build_dependency.lua": """-- Test dependency for build_with_asset
+IDENTITY = "local.build_dependency@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  envy.run([[echo 'dependency_data' > dependency.txt
+      mkdir -p bin
+      echo 'binary' > bin/app]])
+end
+""",
+    "diamond_d.lua": """-- Base of diamond dependency
+IDENTITY = "local.diamond_d@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "diamond_c.lua": """-- Right side of diamond: C depends on D
+IDENTITY = "local.diamond_c@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "product_provider.lua": """-- Product provider with cached package
+IDENTITY = "local.product_provider@v1"
+PRODUCTS = {{ tool = "bin/tool" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- No real payload needed; just mark complete to populate pkg_path
+end
+""",
+}
+
 
 class TestSyncCommand(unittest.TestCase):
     """Tests for 'envy sync' command."""
@@ -25,18 +119,29 @@ class TestSyncCommand(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-sync-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-sync-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-sync-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    @staticmethod
-    def lua_path(path: Path) -> str:
-        """Convert path to Lua-safe string (forward slashes work on all platforms)."""
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def create_manifest(self, content: str) -> Path:
         """Create manifest file with given content."""
@@ -72,8 +177,8 @@ class TestSyncCommand(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path("build_dependency.lua")}" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -93,8 +198,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path("build_dependency.lua")}" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -117,8 +222,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path("build_dependency.lua")}" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -141,7 +246,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -157,7 +262,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -178,7 +283,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -238,7 +343,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -255,7 +360,7 @@ PACKAGES = {{
             manifest = self.create_manifest(
                 f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
             )
@@ -296,7 +401,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.diamond_c@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_c.lua" }},
+    {{ spec = "local.diamond_c@v1", source = "{self.lua_path("diamond_c.lua")}" }},
 }}
 """
         )
@@ -315,17 +420,29 @@ class TestSyncProductScripts(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-sync-deploy-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-sync-deploy-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-sync-deploy-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    @staticmethod
-    def lua_path(path: Path) -> str:
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def create_manifest(self, content: str, deploy: bool = True) -> Path:
         manifest_path = self.test_dir / "envy.lua"
@@ -348,7 +465,7 @@ class TestSyncProductScripts(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """
         )
@@ -373,7 +490,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """
         )
@@ -398,7 +515,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """
         )
@@ -420,7 +537,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -444,7 +561,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )
@@ -470,7 +587,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """
         )
@@ -504,7 +621,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """
         )
@@ -536,17 +653,29 @@ class TestSyncDeployDirective(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-deploy-directive-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-deploy-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-deploy-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    @staticmethod
-    def lua_path(path: Path) -> str:
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def create_manifest(self, content: str, deploy: Optional[str] = None) -> Path:
         """Create manifest with optional deploy directive."""
@@ -571,7 +700,7 @@ class TestSyncDeployDirective(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """,
             deploy="true",
@@ -590,7 +719,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.product_provider@v1", source = "{self.lua_path(self.test_data)}/specs/product_provider.lua" }},
+    {{ spec = "local.product_provider@v1", source = "{self.lua_path("product_provider.lua")}" }},
 }}
 """,
             deploy="false",
@@ -612,7 +741,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )  # No deploy directive
@@ -627,7 +756,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path("simple.lua")}" }},
 }}
 """
         )  # No deploy directive

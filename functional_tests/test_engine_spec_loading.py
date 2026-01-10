@@ -15,19 +15,159 @@ import unittest
 
 from . import test_config
 
+# Inline specs for spec loading tests
+SPECS = {
+    "simple.lua": """-- Minimal test spec - no dependencies
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+""",
+    "no_phases.lua": """-- Invalid spec - no phases defined
+IDENTITY = "local.nophases@v1"
+DEPENDENCIES = {}
+""",
+    "remote_child.lua": """-- remote.child@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote child recipe")
+end
+""",
+    "identity_correct.lua": """-- Spec with correct identity declaration (valid)
+IDENTITY = "local.identity_correct@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Identity validation passed")
+end
+""",
+    "identity_mismatch.lua": """-- Spec with wrong identity declaration (mismatch)
+IDENTITY = "local.wrong_identity@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+""",
+    "identity_missing.lua": """-- Spec missing identity declaration (invalid)
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+""",
+    "identity_wrong_type.lua": """-- Spec with identity as wrong type (table instead of string)
+IDENTITY = { name = "wrong" }
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+""",
+    "validate_ok.lua": """IDENTITY = "test.validate_ok@v1"
+
+VALIDATE = function(opts)
+  if opts and opts.foo then
+    assert(opts.foo == "bar")
+  end
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+    "validate_false.lua": """IDENTITY = "test.validate_false@v1"
+
+VALIDATE = function(opts)
+  return false
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+    "validate_string.lua": """IDENTITY = "test.validate_string@v1"
+
+VALIDATE = function(opts)
+  return "nope"
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+    "validate_type.lua": """IDENTITY = "test.validate_type@v1"
+
+VALIDATE = function(opts)
+  return 123
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+    "validate_nonfn.lua": """IDENTITY = "test.validate_nonfn@v1"
+
+VALIDATE = 42
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+    "validate_error.lua": """IDENTITY = "test.validate_error@v1"
+
+VALIDATE = function(opts)
+  error("boom")
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+""",
+}
+
 
 class TestEngineSpecLoading(unittest.TestCase):
     """Tests for spec loading and validation phase."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-engine-specs-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
+        # Write inline specs to temp directory
+        for name, content in SPECS.items():
+            (self.specs_dir / name).write_text(content, encoding="utf-8")
+
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -48,7 +188,7 @@ class TestEngineSpecLoading(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.specs_dir / "simple.lua"),
             ],
             capture_output=True,
             text=True,
@@ -73,7 +213,7 @@ class TestEngineSpecLoading(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.nophases@v1",
-                "test_data/specs/no_phases.lua",
+                str(self.specs_dir / "no_phases.lua"),
             ],
             capture_output=True,
             text=True,
@@ -94,9 +234,7 @@ class TestEngineSpecLoading(unittest.TestCase):
     def test_sha256_verification_success(self):
         """Spec with correct SHA256 succeeds."""
         # Compute actual SHA256 of remote_child.lua
-        child_spec_path = (
-            Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
-        )
+        child_spec_path = self.specs_dir / "remote_child.lua"
         with open(child_spec_path, "rb") as f:
             actual_sha256 = hashlib.sha256(f.read()).hexdigest()
 
@@ -145,9 +283,7 @@ end
 
     def test_sha256_verification_failure(self):
         """Spec with incorrect SHA256 fails."""
-        child_spec_path = (
-            Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
-        )
+        child_spec_path = self.specs_dir / "remote_child.lua"
         wrong_sha256 = (
             "0000000000000000000000000000000000000000000000000000000000000000"
         )
@@ -214,7 +350,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_correct@v1",
-                "test_data/specs/identity_correct.lua",
+                str(self.specs_dir / "identity_correct.lua"),
             ],
             capture_output=True,
             text=True,
@@ -234,7 +370,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_missing@v1",
-                "test_data/specs/identity_missing.lua",
+                str(self.specs_dir / "identity_missing.lua"),
             ],
             capture_output=True,
             text=True,
@@ -263,7 +399,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_expected@v1",
-                "test_data/specs/identity_mismatch.lua",
+                str(self.specs_dir / "identity_mismatch.lua"),
             ],
             capture_output=True,
             text=True,
@@ -297,7 +433,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_wrong_type@v1",
-                "test_data/specs/identity_wrong_type.lua",
+                str(self.specs_dir / "identity_wrong_type.lua"),
             ],
             capture_output=True,
             text=True,
@@ -363,7 +499,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_ok@v1",
-                "test_data/specs/validate_ok.lua",
+                str(self.specs_dir / "validate_ok.lua"),
             ],
             capture_output=True,
             text=True,
@@ -379,7 +515,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_false@v1",
-                "test_data/specs/validate_false.lua",
+                str(self.specs_dir / "validate_false.lua"),
             ],
             capture_output=True,
             text=True,
@@ -396,7 +532,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_string@v1",
-                "test_data/specs/validate_string.lua",
+                str(self.specs_dir / "validate_string.lua"),
             ],
             capture_output=True,
             text=True,
@@ -413,7 +549,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_type@v1",
-                "test_data/specs/validate_type.lua",
+                str(self.specs_dir / "validate_type.lua"),
             ],
             capture_output=True,
             text=True,
@@ -430,7 +566,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_nonfn@v1",
-                "test_data/specs/validate_nonfn.lua",
+                str(self.specs_dir / "validate_nonfn.lua"),
             ],
             capture_output=True,
             text=True,
@@ -447,7 +583,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_error@v1",
-                "test_data/specs/validate_error.lua",
+                str(self.specs_dir / "validate_error.lua"),
             ],
             capture_output=True,
             text=True,

@@ -16,6 +16,43 @@ from pathlib import Path
 from . import test_config
 from .test_config import make_manifest
 
+# Inline specs for TUI testing
+SPECS = {
+    "build_function.lua": '''IDENTITY = "local.build_function@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo 'Building with envy.run()'", { quiet = true })
+  envy.run("echo 'Build finished successfully'", { quiet = true })
+end
+''',
+    "build_dependency.lua": '''IDENTITY = "local.build_dependency@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo 'dependency: begin'", { quiet = true })
+  envy.run("echo 'dependency: success'", { quiet = true })
+end
+''',
+    "simple.lua": '''IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- No-op install
+end
+''',
+}
+
 
 class TestTUIRendering(unittest.TestCase):
     """Tests for TUI progress rendering modes."""
@@ -25,7 +62,12 @@ class TestTUIRendering(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-tui-manifest-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Write inline specs to temp directory
+        self.specs_dir = self.test_dir / "specs"
+        self.specs_dir.mkdir()
+        for name, content in SPECS.items():
+            (self.specs_dir / name).write_text(content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -75,8 +117,8 @@ class TestTUIRendering(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }},
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.specs_dir)}/build_function.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }},
 }}
 """
         )
@@ -85,18 +127,16 @@ PACKAGES = {{
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr.decode()}")
 
-        # Verify packages completed (simple@v1 won't appear since CHECK doesn't print)
+        # Verify packages completed - user-managed packages show in summary
         stderr = result.stderr.decode()
-        self.assertIn("local.build_function@v1", stderr)
-        self.assertIn("local.build_dependency@v1", stderr)
-        self.assertIn("installed", stderr.lower())
+        self.assertIn("user-managed", stderr.lower())
 
     def test_fallback_mode_with_term_dumb(self):
         """No ANSI codes when TERM=dumb."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.specs_dir)}/simple.lua" }},
 }}
 """
         )
@@ -117,7 +157,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.specs_dir)}/simple.lua" }},
 }}
 """
         )

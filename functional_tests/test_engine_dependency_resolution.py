@@ -5,14 +5,783 @@ Tests the dependency graph construction phase: building dependency graphs,
 cycle detection, memoization, and local/remote security constraints.
 """
 
+import hashlib
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 from pathlib import Path
 import unittest
 
 from . import test_config
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Root file content\n",
+    "root/file2.txt": "Another root file\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
+
+# Inline specs for dependency resolution tests
+# Note: {ARCHIVE_PATH} and {ARCHIVE_HASH} will be replaced at runtime
+SPECS = {
+    # simple.lua is reused from test_engine_spec_loading
+    "simple.lua": """-- Minimal test spec - no dependencies
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+""",
+    "with_dep.lua": """-- Spec with a dependency
+IDENTITY = "local.withdep@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.simple@v1", source = "simple.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+""",
+    "cycle_a.lua": """-- Spec A in a cycle: A -> B
+IDENTITY = "local.cycle_a@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.cycle_b@v1", source = "cycle_b.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "cycle_b.lua": """-- Spec B in a cycle: B -> A
+IDENTITY = "local.cycle_b@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.cycle_a@v1", source = "cycle_a.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "self_dep.lua": """-- Spec that depends on itself (self-loop)
+IDENTITY = "local.self_dep@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.self_dep@v1", source = "self_dep.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "diamond_a.lua": """-- Top of diamond: A depends on B and C (which both depend on D)
+IDENTITY = "local.diamond_a@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.diamond_b@v1", source = "diamond_b.lua" }},
+  {{ spec = "local.diamond_c@v1", source = "diamond_c.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "diamond_b.lua": """-- Left side of diamond: B depends on D
+IDENTITY = "local.diamond_b@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "diamond_c.lua": """-- Right side of diamond: C depends on D
+IDENTITY = "local.diamond_c@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "diamond_d.lua": """-- Base of diamond dependency
+IDENTITY = "local.diamond_d@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fetch_dep_blocked.lua": """-- Parent spec whose recipe_fetch depends on a helper finishing all phases.
+IDENTITY = "local.fetch_dep_blocked@v1"
+
+DEPENDENCIES = {{
+  {{
+    spec = "local.fetch_dep_helper@v1",
+    source = "fetch_dep_helper.lua",
+    needed_by = "check",
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+    "fetch_dep_helper.lua": """IDENTITY = "local.fetch_dep_helper@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+    "multiple_roots.lua": """-- Spec with two independent dependencies
+IDENTITY = "local.multiple_roots@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.independent_left@v1", source = "independent_left.lua" }},
+  {{ spec = "local.independent_right@v1", source = "independent_right.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "independent_left.lua": """-- Independent tree, no shared deps
+IDENTITY = "local.independent_left@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "independent_right.lua": """-- Independent tree, no shared deps
+IDENTITY = "local.independent_right@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "options_parent.lua": """-- Spec with same dependency but different options
+IDENTITY = "local.options_parent@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.with_options@v1", source = "with_options.lua", options = {{ variant = "foo" }} }},
+  {{ spec = "local.with_options@v1", source = "with_options.lua", options = {{ variant = "bar" }} }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "with_options.lua": """-- Spec that supports options
+IDENTITY = "local.with_options@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "chain_a.lua": """-- Deep chain: A -> B
+IDENTITY = "local.chain_a@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.chain_b@v1", source = "chain_b.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "chain_b.lua": """-- Deep chain: B -> C
+IDENTITY = "local.chain_b@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.chain_c@v1", source = "chain_c.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "chain_c.lua": """-- Deep chain: C -> D
+IDENTITY = "local.chain_c@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.chain_d@v1", source = "chain_d.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "chain_d.lua": """-- Deep chain: D -> E
+IDENTITY = "local.chain_d@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.chain_e@v1", source = "chain_e.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "chain_e.lua": """-- End of deep chain
+IDENTITY = "local.chain_e@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fanout_root.lua": """-- Wide fan-out: root depends on many children
+IDENTITY = "local.fanout_root@v1"
+DEPENDENCIES = {{
+  {{ spec = "local.fanout_child1@v1", source = "fanout_child1.lua" }},
+  {{ spec = "local.fanout_child2@v1", source = "fanout_child2.lua" }},
+  {{ spec = "local.fanout_child3@v1", source = "fanout_child3.lua" }},
+  {{ spec = "local.fanout_child4@v1", source = "fanout_child4.lua" }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fanout_child1.lua": """-- Fan-out child 1
+IDENTITY = "local.fanout_child1@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fanout_child2.lua": """-- Fan-out child 2
+IDENTITY = "local.fanout_child2@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fanout_child3.lua": """-- Fan-out child 3
+IDENTITY = "local.fanout_child3@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fanout_child4.lua": """-- Fan-out child 4
+IDENTITY = "local.fanout_child4@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "nonlocal_bad.lua": """-- remote.badrecipe@v1
+-- Security test: non-local spec trying to depend on local.* recipe
+
+IDENTITY = "remote.badrecipe@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.simple@v1",
+    source = "simple.lua"
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing bad recipe")
+end
+""",
+    "remote_fileuri.lua": """-- remote.fileuri@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.fileuri@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote fileuri recipe")
+end
+""",
+    "remote_parent.lua": """-- remote.parent@v1
+-- Remote spec depending on another remote recipe
+
+IDENTITY = "remote.parent@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "remote.child@v1",
+    source = "remote_child.lua"
+    -- No SHA256 (permissive mode - for testing)
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote parent recipe")
+end
+""",
+    "remote_child.lua": """-- remote.child@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote child recipe")
+end
+""",
+    "local_wrapper.lua": """-- local.wrapper@v1
+-- Local spec depending on remote recipe
+
+IDENTITY = "local.wrapper@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "remote.base@v1",
+    source = "remote_base.lua"
+    -- No SHA256 (permissive mode - for testing)
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing local wrapper recipe")
+end
+""",
+    "remote_base.lua": """-- remote.base@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.base@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote base recipe")
+end
+""",
+    "local_parent.lua": """-- local.parent@v1
+-- Local spec depending on another local recipe
+
+IDENTITY = "local.parent@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.child@v1",
+    source = "local_child.lua"
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing local parent recipe")
+end
+""",
+    "local_child.lua": """-- local.child@v1
+-- Local spec with no dependencies
+
+IDENTITY = "local.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing local child recipe")
+end
+""",
+    "remote_transitive_a.lua": """-- remote.a@v1
+-- Remote spec that transitively depends on local.* through remote.b
+
+IDENTITY = "remote.a@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "remote.b@v1",
+    source = "remote_transitive_b.lua"
+    -- No SHA256 (permissive mode - for testing)
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote transitive a recipe")
+end
+""",
+    "remote_transitive_b.lua": """-- remote.b@v1
+-- Remote spec that depends on local.* (transitively violates security)
+
+IDENTITY = "remote.b@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.c@v1",
+    source = "local_c.lua"
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote transitive b recipe")
+end
+""",
+    "local_c.lua": """-- local.c@v1
+-- Local spec with no dependencies
+
+IDENTITY = "local.c@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing local c recipe")
+end
+""",
+    "fetch_cycle_a.lua": """-- Spec A in a fetch dependency cycle: A fetch needs B
+IDENTITY = "local.fetch_cycle_a@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.fetch_cycle_b@v1",
+    source = "fetch_cycle_b.lua",  -- Will be fetched by custom fetch function
+    fetch = function(tmp_dir, options)
+      -- Custom fetch that needs fetch_cycle_b to be available
+      -- This creates a cycle since fetch_cycle_b also fetch-depends on A
+      error("Should not reach here - cycle should be detected first")
+    end
+  }}
+}}
+
+function FETCH(tmp_dir, options)
+  -- Simple fetch function for this recipe
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "fetch_cycle_b.lua": """-- Spec B in a fetch dependency cycle: B fetch needs A
+IDENTITY = "local.fetch_cycle_b@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.fetch_cycle_a@v1",
+    source = "fetch_cycle_a.lua",  -- Will be fetched by custom fetch function
+    fetch = function(tmp_dir, options)
+      -- Custom fetch that needs fetch_cycle_a to be available
+      -- This completes the cycle: A fetch needs B, B fetch needs A
+      error("Should not reach here - cycle should be detected first")
+    end
+  }}
+}}
+
+function FETCH(tmp_dir, options)
+  -- Simple fetch function for this recipe
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "simple_fetch_dep_base.lua": """-- Base spec that will be a fetch dependency for another recipe
+IDENTITY = "local.simple_fetch_dep_base@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+    "simple_fetch_dep_parent.lua": """-- Spec with a dependency that has fetch prerequisites
+IDENTITY = "local.simple_fetch_dep_parent@v1"
+
+DEPENDENCIES = {{
+  {{
+    spec = "local.simple_fetch_dep_child@v1",
+    source = {{
+      dependencies = {{
+        {{ spec = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" }}
+      }},
+      fetch = function(tmp_dir, options)
+        -- Base spec is guaranteed to be installed before this runs
+        -- Write the spec.lua for the child recipe
+        local recipe_content = [[
+IDENTITY = "local.simple_fetch_dep_child@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+]]
+        local recipe_path = tmp_dir .. "/spec.lua"
+        local f = io.open(recipe_path, "w")
+        f:write(recipe_content)
+        f:close()
+
+        -- Commit the spec file to the fetch_dir
+        envy.commit_fetch("spec.lua")
+      end
+    }}
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "multi_level_a.lua": """IDENTITY = "local.multi_level_a@v1"
+
+DEPENDENCIES = {{
+  {{
+    spec = "local.multi_level_b@v1",
+    source = {{
+      dependencies = {{
+        {{ spec = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" }}
+      }},
+      fetch = function(tmp_dir, options)
+        local recipe_content = [=[
+IDENTITY = "local.multi_level_b@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.multi_level_c@v1",
+    source = {{
+      dependencies = {{
+        {{ spec = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" }}
+      }},
+      fetch = function(tmp_dir, options)
+        local recipe_content_c = [[
+IDENTITY = "local.multi_level_c@v1"
+DEPENDENCIES = {{}}
+function CHECK(project_root, options)
+  return false
+end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+]]
+        local recipe_path_c = tmp_dir .. "/spec.lua"
+        local f_c = io.open(recipe_path_c, "w")
+        f_c:write(recipe_content_c)
+        f_c:close()
+        envy.commit_fetch("spec.lua")
+      end
+    }}
+  }}
+}}
+function CHECK(project_root, options)
+  return false
+end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+]=]
+        local recipe_path = tmp_dir .. "/spec.lua"
+        local f = io.open(recipe_path, "w")
+        f:write(recipe_content)
+        f:close()
+        envy.commit_fetch("spec.lua")
+      end
+    }}
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+    "multiple_fetch_deps_parent.lua": """IDENTITY = "local.multiple_fetch_deps_parent@v1"
+
+DEPENDENCIES = {{
+  {{
+    spec = "local.multiple_fetch_deps_child@v1",
+    source = {{
+      dependencies = {{
+        {{ spec = "local.simple_fetch_dep_base@v1", source = "simple_fetch_dep_base.lua" }},
+        {{ spec = "local.fetch_dep_helper@v1", source = "fetch_dep_helper.lua" }}
+      }},
+      fetch = function(tmp_dir, options)
+        local recipe_content = [[
+IDENTITY = "local.multiple_fetch_deps_child@v1"
+DEPENDENCIES = {{}}
+function CHECK(project_root, options)
+  return false
+end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+]]
+        local recipe_path = tmp_dir .. "/spec.lua"
+        local f = io.open(recipe_path, "w")
+        f:write(recipe_content)
+        f:close()
+        envy.commit_fetch("spec.lua")
+      end
+    }}
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+}
 
 
 class TestEngineDependencyResolution(unittest.TestCase):
@@ -20,13 +789,28 @@ class TestEngineDependencyResolution(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-dep-specs-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with archive path/hash substituted
+        for name, content in SPECS.items():
+            # Replace placeholders with actual values
+            content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(content, encoding="utf-8")
+
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -47,7 +831,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.withdep@v1",
-                "test_data/specs/with_dep.lua",
+                str(self.specs_dir / "with_dep.lua"),
             ],
             capture_output=True,
             text=True,
@@ -72,7 +856,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.cycle_a@v1",
-                "test_data/specs/cycle_a.lua",
+                str(self.specs_dir / "cycle_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -94,7 +878,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.self_dep@v1",
-                "test_data/specs/self_dep.lua",
+                str(self.specs_dir / "self_dep.lua"),
             ],
             capture_output=True,
             text=True,
@@ -118,7 +902,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.diamond_a@v1",
-                "test_data/specs/diamond_a.lua",
+                str(self.specs_dir / "diamond_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -157,7 +941,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_dep_blocked@v1",
-                "test_data/specs/fetch_dep_blocked.lua",
+                str(self.specs_dir / "fetch_dep_blocked.lua"),
             ],
             capture_output=True,
             text=True,
@@ -187,7 +971,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.multiple_roots@v1",
-                "test_data/specs/multiple_roots.lua",
+                str(self.specs_dir / "multiple_roots.lua"),
             ],
             capture_output=True,
             text=True,
@@ -213,7 +997,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.options_parent@v1",
-                "test_data/specs/options_parent.lua",
+                str(self.specs_dir / "options_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -243,7 +1027,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.chain_a@v1",
-                "test_data/specs/chain_a.lua",
+                str(self.specs_dir / "chain_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -273,7 +1057,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.fanout_root@v1",
-                "test_data/specs/fanout_root.lua",
+                str(self.specs_dir / "fanout_root.lua"),
             ],
             capture_output=True,
             text=True,
@@ -301,7 +1085,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "remote.badrecipe@v1",
-                "test_data/specs/nonlocal_bad.lua",
+                str(self.specs_dir / "nonlocal_bad.lua"),
             ],
             capture_output=True,
             text=True,
@@ -325,7 +1109,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "remote.fileuri@v1",
-                "test_data/specs/remote_fileuri.lua",
+                str(self.specs_dir / "remote_fileuri.lua"),
             ],
             capture_output=True,
             text=True,
@@ -349,7 +1133,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "remote.parent@v1",
-                "test_data/specs/remote_parent.lua",
+                str(self.specs_dir / "remote_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -373,7 +1157,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.wrapper@v1",
-                "test_data/specs/local_wrapper.lua",
+                str(self.specs_dir / "local_wrapper.lua"),
             ],
             capture_output=True,
             text=True,
@@ -397,7 +1181,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.parent@v1",
-                "test_data/specs/local_parent.lua",
+                str(self.specs_dir / "local_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -421,7 +1205,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "remote.a@v1",
-                "test_data/specs/remote_transitive_a.lua",
+                str(self.specs_dir / "remote_transitive_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -445,7 +1229,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_cycle_a@v1",
-                "test_data/specs/fetch_cycle_a.lua",
+                str(self.specs_dir / "fetch_cycle_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -482,7 +1266,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.simple_fetch_dep_parent@v1",
-                "test_data/specs/simple_fetch_dep_parent.lua",
+                str(self.specs_dir / "simple_fetch_dep_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -513,7 +1297,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.multi_level_a@v1",
-                "test_data/specs/multi_level_a.lua",
+                str(self.specs_dir / "multi_level_a.lua"),
             ],
             capture_output=True,
             text=True,
@@ -545,7 +1329,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.multiple_fetch_deps_parent@v1",
-                "test_data/specs/multiple_fetch_deps_parent.lua",
+                str(self.specs_dir / "multiple_fetch_deps_parent.lua"),
             ],
             capture_output=True,
             text=True,

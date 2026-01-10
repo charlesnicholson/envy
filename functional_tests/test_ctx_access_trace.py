@@ -2,6 +2,7 @@
 """Functional test to validate ctx.package/ctx.product trace emission and ordering."""
 
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -9,17 +10,70 @@ from pathlib import Path
 
 from . import test_config
 
+# Inline specs for ctx access trace testing
+# Uses INSTALL phase for ctx.package/ctx.product calls (avoids need for archives)
+SPECS = {
+    "trace_ctx_access.lua": '''IDENTITY = "local.trace_ctx_access@v1"
+
+DEPENDENCIES = {
+  { spec = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "install" },
+  { product = "tool", spec = "local.product_provider@v1", source = "product_provider.lua", needed_by = "install" },
+}
+
+function FETCH(tmp_dir, options)
+end
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Allowed package access
+  envy.package("local.dep_val_lib@v1")
+
+  -- Denied package access (undeclared)
+  local ok, err = pcall(function() envy.package("local.missing@v1") end)
+  assert(not ok, "expected missing package access to fail")
+
+  -- Allowed product access
+  envy.product("tool")
+
+  -- Denied product access (undeclared)
+  local ok2, err2 = pcall(function() envy.product("missing_prod") end)
+  assert(not ok2, "expected missing product access to fail")
+end
+''',
+    "dep_val_lib.lua": '''IDENTITY = "local.dep_val_lib@v1"
+
+function FETCH(tmp_dir, options)
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo 'lib built' > " .. install_dir .. "/lib.txt", { quiet = true })
+end
+''',
+    "product_provider.lua": '''IDENTITY = "local.product_provider@v1"
+PRODUCTS = { tool = "bin/tool" }
+
+function FETCH(tmp_dir, options)
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("mkdir -p " .. install_dir .. "/bin && echo 'tool' > " .. install_dir .. "/bin/tool", { quiet = true })
+end
+''',
+}
+
 
 class TestCtxAccessTrace(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-ctx-trace-cache-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-ctx-trace-specs-"))
         self.envy = test_config.get_envy_executable()
-        self.project_root = Path(__file__).parent.parent
+
+        # Write specs to temp directory
+        for name, content in SPECS.items():
+            (self.test_dir / name).write_text(content, encoding="utf-8")
 
     def tearDown(self):
-        import shutil
-
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def run_envy(self, trace_file: Path):
         return subprocess.run(
@@ -29,9 +83,8 @@ class TestCtxAccessTrace(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.trace_ctx_access@v1",
-                "test_data/specs/trace_ctx_access.lua",
+                str(self.test_dir / "trace_ctx_access.lua"),
             ],
-            cwd=self.project_root,
             capture_output=True,
             text=True,
         )

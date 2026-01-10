@@ -1,14 +1,216 @@
 #!/usr/bin/env python3
 """Functional tests for products feature."""
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
+
+# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH} replaced at runtime
+SPECS = {
+    "product_provider.lua": """-- Product provider with cached package
+IDENTITY = "local.product_provider@v1"
+PRODUCTS = {{ tool = "bin/tool" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- No real payload needed; just mark complete to populate pkg_path
+end
+""",
+    "product_provider_b.lua": """-- Second provider for collision testing
+IDENTITY = "local.product_provider_b@v1"
+PRODUCTS = {{ tool = "bin/other" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_consumer_strong.lua": """-- Consumer with strong product dependency
+IDENTITY = "local.product_consumer_strong@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    spec = "local.product_provider@v1",
+    source = "product_provider.lua",
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+""",
+    "product_consumer_weak.lua": """-- Consumer with weak product dependency (fallback)
+IDENTITY = "local.product_consumer_weak@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    spec = "local.product_provider@v1",
+    weak = {{
+      spec = "local.product_provider@v1",
+      source = "product_provider.lua",
+    }},
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+""",
+    "product_consumer_missing.lua": """-- Consumer with missing product dependency (no fallback)
+IDENTITY = "local.product_consumer_missing@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "missing_tool",
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+""",
+    "product_provider_programmatic.lua": """-- Programmatic provider (user-managed) returning raw product value
+IDENTITY = "local.product_programmatic@v1"
+PRODUCTS = {{ tool = "programmatic-tool" }}
+
+CHECK = function(project_root, options)
+  return true  -- Already satisfied; no cache artifact
+end
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- User-managed; no cache artifact
+end
+""",
+    "product_provider_function.lua": """-- Provider with programmatic products function (takes options, returns table)
+IDENTITY = "local.product_function@v1"
+
+PRODUCTS = function(options)
+  return {{
+    ["python" .. options.version] = "bin/python",
+    ["pip" .. options.version] = "bin/pip",
+  }}
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_cycle_a.lua": """IDENTITY = "local.cycle_a@v1"
+PRODUCTS = {{ tool_a = "bin/a" }}
+
+DEPENDENCIES = {{
+  {{
+    product = "tool_b",
+    spec = "local.cycle_b@v1",
+    weak = {{
+      spec = "local.cycle_b@v1",
+      source = "product_cycle_b.lua",
+    }}
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_cycle_b.lua": """IDENTITY = "local.cycle_b@v1"
+PRODUCTS = {{ tool_b = "bin/b" }}
+
+DEPENDENCIES = {{
+  {{
+    product = "tool_a",
+    spec = "local.cycle_a@v1",
+    weak = {{
+      spec = "local.cycle_a@v1",
+      source = "product_cycle_a.lua",
+    }}
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_ref_only_consumer.lua": """-- Consumer with ref-only product dependency (no recipe/source, unconstrained)
+IDENTITY = "local.ref_only_consumer@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    -- No spec, no source - resolves to ANY provider of "tool"
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+}
 
 
 class TestProducts(unittest.TestCase):
@@ -17,16 +219,29 @@ class TestProducts(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-products-cache-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-products-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-products-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    def lua_path(self, path: Path) -> str:
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
@@ -45,7 +260,7 @@ class TestProducts(unittest.TestCase):
 PACKAGES = {{
   {{
     spec = "local.product_consumer_strong@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_consumer_strong.lua",
+    source = "{self.lua_path("product_consumer_strong.lua")}",
   }},
 }}
 """
@@ -65,7 +280,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_consumer_weak@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_consumer_weak.lua",
+    source = "{self.lua_path("product_consumer_weak.lua")}",
   }},
 }}
 """
@@ -83,7 +298,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_consumer_missing@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_consumer_missing.lua",
+    source = "{self.lua_path("product_consumer_missing.lua")}",
   }},
 }}
 """
@@ -101,11 +316,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
+    source = "{self.lua_path("product_provider.lua")}",
   }},
   {{
     spec = "local.product_provider_b@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider_b.lua",
+    source = "{self.lua_path("product_provider_b.lua")}",
   }},
 }}
 """
@@ -121,7 +336,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
+    source = "{self.lua_path("product_provider.lua")}",
   }},
 }}
 """
@@ -139,7 +354,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_programmatic@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider_programmatic.lua",
+    source = "{self.lua_path("product_provider_programmatic.lua")}",
   }},
 }}
 """
@@ -157,7 +372,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_function@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider_function.lua",
+    source = "{self.lua_path("product_provider_function.lua")}",
     options = {{ version = "3.14" }},
   }},
 }}
@@ -178,25 +393,27 @@ PACKAGES = {{
 
     def test_absolute_path_in_product_value_rejected(self):
         """Product values with absolute paths should be rejected during parsing."""
-        lua_content = """
+        lua_content = f"""
 IDENTITY = "local.bad_provider@v1"
-PRODUCTS = { tool = "/etc/passwd" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+PRODUCTS = {{ tool = "/etc/passwd" }}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        provider_path = self.test_dir / "bad_provider.lua"
+        provider_path = self.specs_dir / "bad_provider.lua"
         provider_path.write_text(lua_content, encoding="utf-8")
 
         manifest = self.manifest(
             f"""
-PACKAGES = {{{{
-  spec = "local.bad_provider@v1",
-  source = "{self.lua_path(provider_path)}"
-}}}}
+PACKAGES = {{
+  {{
+    spec = "local.bad_provider@v1",
+    source = "{provider_path.as_posix()}"
+  }}
+}}
 """
         )
 
@@ -206,25 +423,27 @@ PACKAGES = {{{{
 
     def test_path_traversal_in_product_value_rejected(self):
         """Product values with path traversal should be rejected during parsing."""
-        lua_content = """
+        lua_content = f"""
 IDENTITY = "local.bad_provider@v1"
-PRODUCTS = { tool = "../../etc/passwd" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+PRODUCTS = {{ tool = "../../etc/passwd" }}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        provider_path = self.test_dir / "bad_provider.lua"
+        provider_path = self.specs_dir / "bad_provider.lua"
         provider_path.write_text(lua_content, encoding="utf-8")
 
         manifest = self.manifest(
             f"""
-PACKAGES = {{{{
-  spec = "local.bad_provider@v1",
-  source = "{self.lua_path(provider_path)}"
-}}}}
+PACKAGES = {{
+  {{
+    spec = "local.bad_provider@v1",
+    source = "{provider_path.as_posix()}"
+  }}
+}}
 """
         )
 
@@ -235,30 +454,30 @@ PACKAGES = {{{{
     def test_strong_product_dep_not_resolved_as_weak(self):
         """Strong product dependencies should wire directly, not via weak resolution."""
         # Create two providers for same product
-        lua_content_a = """
+        lua_content_a = f"""
 IDENTITY = "local.provider_a@v1"
-PRODUCTS = { tool = "bin/tool_a" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+PRODUCTS = {{ tool = "bin/tool_a" }}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        provider_a_path = self.test_dir / "provider_a.lua"
+        provider_a_path = self.specs_dir / "provider_a.lua"
         provider_a_path.write_text(lua_content_a, encoding="utf-8")
 
-        lua_content_b = """
+        lua_content_b = f"""
 IDENTITY = "local.provider_b@v1"
-PRODUCTS = { other_tool = "bin/other" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+PRODUCTS = {{ other_tool = "bin/other" }}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        provider_b_path = self.test_dir / "provider_b.lua"
+        provider_b_path = self.specs_dir / "provider_b.lua"
         provider_b_path.write_text(lua_content_b, encoding="utf-8")
 
         # Consumer with STRONG dep on provider_a (has source)
@@ -269,12 +488,12 @@ DEPENDENCIES = {{
   {{
     product = "tool",
     spec = "local.provider_a@v1",
-    source = "{self.lua_path(provider_a_path)}",
+    source = "{provider_a_path.as_posix()}",
   }},
 }}
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 INSTALL = function(ctx)
   local tool_path = envy.package("local.provider_a@v1")
@@ -283,7 +502,7 @@ INSTALL = function(ctx)
   end
 end
 """
-        consumer_path = self.test_dir / "consumer_strong.lua"
+        consumer_path = self.specs_dir / "consumer_strong.lua"
         consumer_path.write_text(lua_content_consumer, encoding="utf-8")
 
         # Include both providers in manifest - provider_b appears first (registry order)
@@ -292,11 +511,11 @@ end
 PACKAGES = {{
   {{
     spec = "local.provider_b@v1",
-    source = "{self.lua_path(provider_b_path)}"
+    source = "{provider_b_path.as_posix()}"
   }},
   {{
     spec = "local.consumer_strong_only@v1",
-    source = "{self.lua_path(consumer_path)}"
+    source = "{consumer_path.as_posix()}"
   }},
 }}
 """
@@ -316,7 +535,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.cycle_a@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_cycle_a.lua",
+    source = "{self.lua_path("product_cycle_a.lua")}",
   }},
 }}
 """
@@ -337,11 +556,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
+    source = "{self.lua_path("product_provider.lua")}",
   }},
   {{
     spec = "local.ref_only_consumer@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_ref_only_consumer.lua",
+    source = "{self.lua_path("product_ref_only_consumer.lua")}",
   }},
 }}
 """
@@ -363,7 +582,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.ref_only_consumer@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_ref_only_consumer.lua",
+    source = "{self.lua_path("product_ref_only_consumer.lua")}",
   }},
 }}
 """
@@ -380,17 +599,17 @@ PACKAGES = {{
     def test_product_listing_shows_all_products(self):
         """Product command with no args should list all products from all providers."""
         # Create second provider with non-colliding product
-        lua_content = """
+        lua_content = f"""
 IDENTITY = "local.list_provider@v1"
-PRODUCTS = { compiler = "bin/gcc" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+PRODUCTS = {{ compiler = "bin/gcc" }}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        list_provider_path = self.test_dir / "list_provider.lua"
+        list_provider_path = self.specs_dir / "list_provider.lua"
         list_provider_path.write_text(lua_content, encoding="utf-8")
 
         manifest = self.manifest(
@@ -398,11 +617,11 @@ end
 PACKAGES = {{
   {{
     spec = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
+    source = "{self.lua_path("product_provider.lua")}",
   }},
   {{
     spec = "local.list_provider@v1",
-    source = "{self.lua_path(list_provider_path)}",
+    source = "{list_provider_path.as_posix()}",
   }},
 }}
 """
@@ -424,7 +643,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider.lua",
+    source = "{self.lua_path("product_provider.lua")}",
   }},
 }}
 """
@@ -455,7 +674,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_programmatic@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_provider_programmatic.lua",
+    source = "{self.lua_path("product_provider_programmatic.lua")}",
   }},
 }}
 """
@@ -474,16 +693,16 @@ PACKAGES = {{
     def test_product_listing_empty(self):
         """Product listing with no products should indicate empty result."""
         # Create manifest with spec that has no products
-        lua_content = """
+        lua_content = f"""
 IDENTITY = "local.no_products@v1"
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
-}
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
+}}
 INSTALL = function(ctx)
 end
 """
-        no_products_path = self.test_dir / "no_products.lua"
+        no_products_path = self.specs_dir / "no_products.lua"
         no_products_path.write_text(lua_content, encoding="utf-8")
 
         manifest = self.manifest(
@@ -491,7 +710,7 @@ end
 PACKAGES = {{
   {{
     spec = "local.no_products@v1",
-    source = "{self.lua_path(no_products_path)}"
+    source = "{no_products_path.as_posix()}"
   }},
 }}
 """
@@ -510,24 +729,24 @@ PACKAGES = {{
         isn't explicitly the target.
         """
         # Create product provider spec
-        provider_spec = """IDENTITY = "local.test_product_query_provider@v1"
+        provider_spec = f"""IDENTITY = "local.test_product_query_provider@v1"
 
-FETCH = { source = "test_data/archives/test.tar.gz",
-          sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
+FETCH = {{ source = "{self.archive_path.as_posix()}",
+          sha256 = "{self.archive_hash}" }}
 
 INSTALL = function(ctx)
 end
 
-PRODUCTS = { test_query_tool = "bin/query_tool" }
+PRODUCTS = {{ test_query_tool = "bin/query_tool" }}
 """
-        provider_path = self.test_dir / "test_product_query_provider.lua"
+        provider_path = self.specs_dir / "test_product_query_provider.lua"
         provider_path.write_text(provider_spec, encoding="utf-8")
 
         # Manifest with the provider
         manifest = self.manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.test_product_query_provider@v1", source = "{self.lua_path(provider_path)}" }}
+    {{ spec = "local.test_product_query_provider@v1", source = "{provider_path.as_posix()}" }}
 }}
 """
         )

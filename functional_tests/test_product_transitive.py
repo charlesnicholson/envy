@@ -1,14 +1,133 @@
 #!/usr/bin/env python3
 """Functional tests for transitive product provision."""
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
+
+# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH} replaced at runtime
+SPECS = {
+    "product_transitive_provider.lua": """-- Leaf node that actually provides the product
+IDENTITY = "local.product_transitive_provider@v1"
+
+PRODUCTS = {{
+    tool = "bin/actual_tool"
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_transitive_intermediate.lua": """-- Middle node that depends on the actual provider
+IDENTITY = "local.product_transitive_intermediate@v1"
+
+-- Does NOT provide "tool" directly, but transitively via dependency
+DEPENDENCIES = {{
+    {{
+        spec = "local.product_transitive_provider@v1",
+        source = "product_transitive_provider.lua",
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_transitive_root.lua": """-- Root node with weak product dependency on "tool"
+IDENTITY = "local.product_transitive_root@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate@v1",
+            source = "product_transitive_intermediate.lua",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    -- If fallback was used, we have intermediate; if provider was in manifest, we don't
+    -- Either way, the transitive provision validation should have ensured correctness
+end
+""",
+    "product_transitive_intermediate_no_provide.lua": """-- Middle node that does NOT provide "tool" and has no dependencies
+-- Used to test validation failure when fallback doesn't transitively provide
+IDENTITY = "local.product_transitive_intermediate_no_provide@v1"
+
+-- No PRODUCTS, no DEPENDENCIES - cannot provide "tool" transitively
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+    "product_transitive_root_fail.lua": """-- Root node with weak product dependency that will fail validation
+IDENTITY = "local.product_transitive_root_fail@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate_no_provide@v1",
+            source = "product_transitive_intermediate_no_provide.lua",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""",
+}
 
 
 class TestProductTransitive(unittest.TestCase):
@@ -17,16 +136,29 @@ class TestProductTransitive(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-transitive-cache-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-transitive-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-transitive-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory with placeholders substituted
+        for name, content in SPECS.items():
+            spec_content = content.format(
+                ARCHIVE_PATH=self.archive_path.as_posix(),
+                ARCHIVE_HASH=self.archive_hash,
+            )
+            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    def lua_path(self, path: Path) -> str:
-        return path.as_posix()
+    def lua_path(self, name: str) -> str:
+        return (self.specs_dir / name).as_posix()
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
@@ -50,7 +182,7 @@ class TestProductTransitive(unittest.TestCase):
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{self.lua_path("product_transitive_root.lua")}",
   }},
 }}
 """
@@ -82,7 +214,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root_fail@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root_fail.lua",
+    source = "{self.lua_path("product_transitive_root_fail.lua")}",
   }},
 }}
 """
@@ -110,7 +242,7 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{self.lua_path("product_transitive_root.lua")}",
   }},
 }}
 """
@@ -137,11 +269,11 @@ PACKAGES = {{
 PACKAGES = {{
   {{
     spec = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
+    source = "{self.lua_path("product_transitive_provider.lua")}",
   }},
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{self.lua_path("product_transitive_root.lua")}",
   }},
 }}
 """
@@ -169,19 +301,19 @@ IDENTITY = "local.transitive_mid2@v1"
 DEPENDENCIES = {{
   {{
     spec = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
+    source = "{self.lua_path("product_transitive_provider.lua")}",
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 
 INSTALL = function(ctx)
 end
 """
-        mid2_path = self.test_dir / "transitive_mid2.lua"
+        mid2_path = self.specs_dir / "transitive_mid2.lua"
         mid2_path.write_text(mid2_lua, encoding="utf-8")
 
         mid1_lua = f"""
@@ -190,19 +322,19 @@ IDENTITY = "local.transitive_mid1@v1"
 DEPENDENCIES = {{
   {{
     spec = "local.transitive_mid2@v1",
-    source = "{self.lua_path(mid2_path)}",
+    source = "{mid2_path.as_posix()}",
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 
 INSTALL = function(ctx)
 end
 """
-        mid1_path = self.test_dir / "transitive_mid1.lua"
+        mid1_path = self.specs_dir / "transitive_mid1.lua"
         mid1_path.write_text(mid1_lua, encoding="utf-8")
 
         consumer_lua = f"""
@@ -213,20 +345,20 @@ DEPENDENCIES = {{
     product = "tool",
     weak = {{
       spec = "local.transitive_mid1@v1",
-      source = "{self.lua_path(mid1_path)}",
+      source = "{mid1_path.as_posix()}",
     }}
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}",
 }}
 
 INSTALL = function(ctx)
 end
 """
-        consumer_path = self.test_dir / "transitive_consumer.lua"
+        consumer_path = self.specs_dir / "transitive_consumer.lua"
         consumer_path.write_text(consumer_lua, encoding="utf-8")
 
         manifest = self.manifest(
@@ -234,7 +366,7 @@ end
 PACKAGES = {{
   {{
     spec = "local.transitive_consumer@v1",
-    source = "{self.lua_path(consumer_path)}",
+    source = "{consumer_path.as_posix()}",
   }},
 }}
 """
