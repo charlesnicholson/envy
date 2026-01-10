@@ -148,10 +148,10 @@ void lua_envy_run_install(sol::table &envy_table) {
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "envy.run");
     }
 
-    // Auto-manage TUI progress if in phase context
+    // Auto-manage TUI progress if in phase context (skip if quiet)
     std::optional<tui_actions::run_progress> progress;
     engine *eng{ ctx ? ctx->eng : nullptr };
-    if (p && p->tui_section && eng) {
+    if (p && p->tui_section && eng && !quiet) {
       progress.emplace(p->tui_section, p->cfg->identity, eng->cache_root());
       progress->on_command_start(script_view);
     }
