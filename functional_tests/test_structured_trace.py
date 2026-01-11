@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Smoke tests for structured trace output.
 
 Tests the trace infrastructure works correctly with different output modes:
@@ -17,17 +16,33 @@ from pathlib import Path
 from . import test_config
 from .trace_parser import TraceParser
 
+SIMPLE_SPEC = """IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
 
 class TestStructuredTrace(unittest.TestCase):
     """Smoke tests for structured logging infrastructure."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-trace-smoke-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-trace-specs-"))
         self.envy = test_config.get_envy_executable()
-        self.project_root = Path(__file__).parent.parent
+
+        # Write spec to temp directory
+        self.spec_path = self.test_dir / "simple.lua"
+        self.spec_path.write_text(SIMPLE_SPEC, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_trace_stderr_human_readable(self):
         """Verify --trace=stderr produces human-readable output."""
@@ -38,7 +53,7 @@ class TestStructuredTrace(unittest.TestCase):
                 "--trace=stderr",
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.spec_path),
             ],
             capture_output=True,
             text=True,
@@ -72,7 +87,7 @@ class TestStructuredTrace(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.spec_path),
             ],
             capture_output=True,
             text=True,
@@ -114,7 +129,7 @@ class TestStructuredTrace(unittest.TestCase):
                 f"--trace=stderr,file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.spec_path),
             ],
             capture_output=True,
             text=True,
@@ -143,7 +158,7 @@ class TestStructuredTrace(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.spec_path),
             ],
             capture_output=True,
             text=True,
@@ -180,7 +195,7 @@ class TestStructuredTrace(unittest.TestCase):
                 f"--cache-root={self.cache_root}",
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(self.spec_path),
             ],
             capture_output=True,
             text=True,

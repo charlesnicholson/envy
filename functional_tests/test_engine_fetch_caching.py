@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine declarative fetch per-file caching.
 
 Tests package cache management: per-file caching across partial failures,
@@ -15,19 +14,36 @@ import unittest
 from . import test_config
 from .trace_parser import TraceParser
 
+# Inline test files for fetch caching tests
+TEST_FILES = {
+    "simple.lua": "-- Simple test script for lua_util tests\nexpected_value = 42\n",
+    "print_single.lua": 'print("hello")\n',
+    "print_multiple.lua": 'print("a", "b", "c")\n',
+}
+
 
 class TestEngineFetchCaching(unittest.TestCase):
     """Tests for per-file package caching and recovery."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.test_files_dir = Path(tempfile.mkdtemp(prefix="envy-fetch-cache-files-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
+        # Write inline test files to temp directory
+        for name, content in TEST_FILES.items():
+            (self.test_files_dir / name).write_text(content, encoding="utf-8")
+
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_files_dir, ignore_errors=True)
+
+    def lua_path(self, filename: str) -> str:
+        """Get Lua-safe path to test file."""
+        return (self.test_files_dir / filename).as_posix()
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -51,8 +67,10 @@ class TestEngineFetchCaching(unittest.TestCase):
             missing_file = temp_dir / "fetch_partial_missing.lua"
 
             # Compute hashes dynamically
-            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
-            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+            print_single_hash = self.get_file_hash(
+                self.test_files_dir / "print_single.lua"
+            )
 
             # Create empty file and compute its hash
             empty_temp = shared_cache / "empty_temp.txt"
@@ -68,11 +86,11 @@ IDENTITY = "local.fetch_partial@v1"
 
 FETCH = {{
   {{
-    source = "test_data/lua/simple.lua",
+    source = "{self.lua_path("simple.lua")}",
     sha256 = "{simple_hash}"
   }},
   {{
-    source = "test_data/lua/print_single.lua",
+    source = "{self.lua_path("print_single.lua")}",
     sha256 = "{print_single_hash}"
   }},
   {{
@@ -173,8 +191,10 @@ FETCH = {{
 
         try:
             # Compute hashes dynamically
-            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
-            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+            print_single_hash = self.get_file_hash(
+                self.test_files_dir / "print_single.lua"
+            )
 
             # Create spec with computed hashes
             spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
@@ -183,15 +203,15 @@ IDENTITY = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 FETCH = {{
   {{
-    source = "test_data/lua/simple.lua",
+    source = "{self.lua_path("simple.lua")}",
     sha256 = "{simple_hash}"
   }},
   {{
-    source = "test_data/lua/print_single.lua",
+    source = "{self.lua_path("print_single.lua")}",
     sha256 = "{print_single_hash}"
   }},
   {{
-    source = "test_data/lua/print_multiple.lua"
+    source = "{self.lua_path("print_multiple.lua")}"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -280,8 +300,10 @@ FETCH = {{
 
         try:
             # Compute hashes dynamically
-            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
-            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+            print_single_hash = self.get_file_hash(
+                self.test_files_dir / "print_single.lua"
+            )
 
             # Create spec with computed hashes
             spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
@@ -290,15 +312,15 @@ IDENTITY = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 FETCH = {{
   {{
-    source = "test_data/lua/simple.lua",
+    source = "{self.lua_path("simple.lua")}",
     sha256 = "{simple_hash}"
   }},
   {{
-    source = "test_data/lua/print_single.lua",
+    source = "{self.lua_path("print_single.lua")}",
     sha256 = "{print_single_hash}"
   }},
   {{
-    source = "test_data/lua/print_multiple.lua"
+    source = "{self.lua_path("print_multiple.lua")}"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -385,8 +407,10 @@ FETCH = {{
 
         try:
             # Compute hashes dynamically
-            simple_hash = self.get_file_hash("test_data/lua/simple.lua")
-            print_single_hash = self.get_file_hash("test_data/lua/print_single.lua")
+            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+            print_single_hash = self.get_file_hash(
+                self.test_files_dir / "print_single.lua"
+            )
 
             # Create spec with computed hashes
             spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
@@ -395,15 +419,15 @@ IDENTITY = "local.fetch_array@v1"
 -- Array format: multiple files with optional sha256
 FETCH = {{
   {{
-    source = "test_data/lua/simple.lua",
+    source = "{self.lua_path("simple.lua")}",
     sha256 = "{simple_hash}"
   }},
   {{
-    source = "test_data/lua/print_single.lua",
+    source = "{self.lua_path("print_single.lua")}",
     sha256 = "{print_single_hash}"
   }},
   {{
-    source = "test_data/lua/print_multiple.lua"
+    source = "{self.lua_path("print_multiple.lua")}"
     -- No sha256 - should still work (permissive mode)
   }}
 }}
@@ -436,12 +460,13 @@ FETCH = {{
             fetch_dir.mkdir(parents=True, exist_ok=True)
 
             # Copy actual test files to cache (they'll match the computed hashes)
-            shutil.copy("test_data/lua/simple.lua", fetch_dir / "simple.lua")
+            shutil.copy(self.test_files_dir / "simple.lua", fetch_dir / "simple.lua")
             shutil.copy(
-                "test_data/lua/print_single.lua", fetch_dir / "print_single.lua"
+                self.test_files_dir / "print_single.lua", fetch_dir / "print_single.lua"
             )
             shutil.copy(
-                "test_data/lua/print_multiple.lua", fetch_dir / "print_multiple.lua"
+                self.test_files_dir / "print_multiple.lua",
+                fetch_dir / "print_multiple.lua",
             )
 
             # Ensure NO completion marker exists

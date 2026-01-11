@@ -1,14 +1,35 @@
-#!/usr/bin/env python3
 """Functional tests for transitive product provision."""
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
 
 
 class TestProductTransitive(unittest.TestCase):
@@ -17,16 +38,28 @@ class TestProductTransitive(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-transitive-cache-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-transitive-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-transitive-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
-    def lua_path(self, path: Path) -> str:
-        return path.as_posix()
+    def write_spec(self, name: str, content: str) -> Path:
+        """Write a spec file with {ARCHIVE_PATH} and {ARCHIVE_HASH} substituted."""
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+        )
+        path = self.specs_dir / name
+        path.write_text(spec_content, encoding="utf-8")
+        return path
 
     def manifest(self, content: str) -> Path:
         manifest_path = self.test_dir / "envy.lua"
@@ -41,16 +74,78 @@ class TestProductTransitive(unittest.TestCase):
 
     def test_transitive_provision_chain_success(self):
         """Weak dep fallback transitively provides via dependency chain (A→B→C, C provides)."""
-        # Root has weak dep on "tool" with fallback to intermediate
-        # Intermediate depends on provider
-        # Provider actually provides "tool"
-        # Validation should succeed because intermediate transitively provides "tool"
+        # Leaf node that actually provides the product
+        provider_spec = """
+IDENTITY = "local.product_transitive_provider@v1"
+
+PRODUCTS = {{
+    tool = "bin/actual_tool"
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+
+        # Middle node that depends on the actual provider
+        intermediate_spec = """
+IDENTITY = "local.product_transitive_intermediate@v1"
+
+-- Does NOT provide "tool" directly, but transitively via dependency
+DEPENDENCIES = {{
+    {{
+        spec = "local.product_transitive_provider@v1",
+        source = "{provider_path}",
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""".replace("{provider_path}", provider_path.as_posix())
+        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+
+        # Root node with weak product dependency on "tool"
+        root_spec = """
+IDENTITY = "local.product_transitive_root@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate@v1",
+            source = "{intermediate_path}",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    -- If fallback was used, we have intermediate; if provider was in manifest, we don't
+    -- Either way, the transitive provision validation should have ensured correctness
+end
+""".replace("{intermediate_path}", intermediate_path.as_posix())
+        root_path = self.write_spec("product_transitive_root.lua", root_spec)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{root_path.as_posix()}",
   }},
 }}
 """
@@ -74,15 +169,55 @@ PACKAGES = {{
 
     def test_fallback_doesnt_transitively_provide_error(self):
         """Weak dep fallback that doesn't transitively provide should fail validation."""
-        # Root has weak dep on "tool" with fallback to intermediate_no_provide
-        # Intermediate has no products and no dependencies
-        # Validation should fail because intermediate can't provide "tool"
+        # Middle node that does NOT provide "tool" and has no dependencies
+        # Used to test validation failure when fallback doesn't transitively provide
+        intermediate_no_provide_spec = """
+IDENTITY = "local.product_transitive_intermediate_no_provide@v1"
+
+-- No PRODUCTS, no DEPENDENCIES - cannot provide "tool" transitively
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        intermediate_no_provide_path = self.write_spec(
+            "product_transitive_intermediate_no_provide.lua", intermediate_no_provide_spec
+        )
+
+        # Root node with weak product dependency that will fail validation
+        root_fail_spec = """
+IDENTITY = "local.product_transitive_root_fail@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate_no_provide@v1",
+            source = "{intermediate_no_provide_path}",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""".replace("{intermediate_no_provide_path}", intermediate_no_provide_path.as_posix())
+        root_fail_path = self.write_spec("product_transitive_root_fail.lua", root_fail_spec)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root_fail@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root_fail.lua",
+    source = "{root_fail_path.as_posix()}",
   }},
 }}
 """
@@ -103,14 +238,78 @@ PACKAGES = {{
 
     def test_fallback_transitively_provides_via_dependency(self):
         """Fallback with dependency that provides product should pass validation."""
-        # Same as test_transitive_provision_chain_success but emphasizes
-        # that fallback itself doesn't provide, only its dependency does
+        # Leaf node that actually provides the product
+        provider_spec = """
+IDENTITY = "local.product_transitive_provider@v1"
+
+PRODUCTS = {{
+    tool = "bin/actual_tool"
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+
+        # Middle node that depends on the actual provider
+        intermediate_spec = """
+IDENTITY = "local.product_transitive_intermediate@v1"
+
+-- Does NOT provide "tool" directly, but transitively via dependency
+DEPENDENCIES = {{
+    {{
+        spec = "local.product_transitive_provider@v1",
+        source = "{provider_path}",
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""".replace("{provider_path}", provider_path.as_posix())
+        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+
+        # Root node with weak product dependency on "tool"
+        root_spec = """
+IDENTITY = "local.product_transitive_root@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate@v1",
+            source = "{intermediate_path}",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    -- If fallback was used, we have intermediate; if provider was in manifest, we don't
+    -- Either way, the transitive provision validation should have ensured correctness
+end
+""".replace("{intermediate_path}", intermediate_path.as_posix())
+        root_path = self.write_spec("product_transitive_root.lua", root_spec)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{root_path.as_posix()}",
   }},
 }}
 """
@@ -130,18 +329,82 @@ PACKAGES = {{
 
     def test_transitive_provision_with_existing_provider(self):
         """When provider exists in manifest, weak dep should use it instead of fallback."""
-        # Include direct provider in manifest alongside root with weak dep
-        # Resolution should prefer the direct provider over fallback's transitive provision
+        # Leaf node that actually provides the product
+        provider_spec = """
+IDENTITY = "local.product_transitive_provider@v1"
+
+PRODUCTS = {{
+    tool = "bin/actual_tool"
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+
+        # Middle node that depends on the actual provider
+        intermediate_spec = """
+IDENTITY = "local.product_transitive_intermediate@v1"
+
+-- Does NOT provide "tool" directly, but transitively via dependency
+DEPENDENCIES = {{
+    {{
+        spec = "local.product_transitive_provider@v1",
+        source = "{provider_path}",
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+""".replace("{provider_path}", provider_path.as_posix())
+        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+
+        # Root node with weak product dependency on "tool"
+        root_spec = """
+IDENTITY = "local.product_transitive_root@v1"
+
+DEPENDENCIES = {{
+    {{
+        product = "tool",
+        weak = {{
+            spec = "local.product_transitive_intermediate@v1",
+            source = "{intermediate_path}",
+        }}
+    }}
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    -- If fallback was used, we have intermediate; if provider was in manifest, we don't
+    -- Either way, the transitive provision validation should have ensured correctness
+end
+""".replace("{intermediate_path}", intermediate_path.as_posix())
+        root_path = self.write_spec("product_transitive_root.lua", root_spec)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
     spec = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
+    source = "{provider_path.as_posix()}",
   }},
   {{
     spec = "local.product_transitive_root@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_root.lua",
+    source = "{root_path.as_posix()}",
   }},
 }}
 """
@@ -162,50 +425,69 @@ PACKAGES = {{
 
     def test_deep_transitive_chain(self):
         """Verify transitive provision works through multiple levels."""
-        # Create a 4-level chain: consumer → mid1 → mid2 → provider
-        mid2_lua = f"""
+        # Leaf node that actually provides the product
+        provider_spec = """
+IDENTITY = "local.product_transitive_provider@v1"
+
+PRODUCTS = {{
+    tool = "bin/actual_tool"
+}}
+
+FETCH = {{
+    source = "{ARCHIVE_PATH}",
+    sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+
+        # Create a 4-level chain: consumer -> mid1 -> mid2 -> provider
+        # Level 3: mid2 depends on provider
+        mid2_spec = """
 IDENTITY = "local.transitive_mid2@v1"
 
 DEPENDENCIES = {{
   {{
     spec = "local.product_transitive_provider@v1",
-    source = "{self.lua_path(self.test_data)}/specs/product_transitive_provider.lua",
+    source = "{provider_path}",
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
 }}
 
 INSTALL = function(ctx)
 end
-"""
-        mid2_path = self.test_dir / "transitive_mid2.lua"
-        mid2_path.write_text(mid2_lua, encoding="utf-8")
+""".replace("{provider_path}", provider_path.as_posix())
+        mid2_path = self.write_spec("transitive_mid2.lua", mid2_spec)
 
-        mid1_lua = f"""
+        # Level 2: mid1 depends on mid2
+        mid1_spec = """
 IDENTITY = "local.transitive_mid1@v1"
 
 DEPENDENCIES = {{
   {{
     spec = "local.transitive_mid2@v1",
-    source = "{self.lua_path(mid2_path)}",
+    source = "{mid2_path}",
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
 }}
 
 INSTALL = function(ctx)
 end
-"""
-        mid1_path = self.test_dir / "transitive_mid1.lua"
-        mid1_path.write_text(mid1_lua, encoding="utf-8")
+""".replace("{mid2_path}", mid2_path.as_posix())
+        mid1_path = self.write_spec("transitive_mid1.lua", mid1_spec)
 
-        consumer_lua = f"""
+        # Level 1: consumer has weak dep on "tool" with fallback to mid1
+        consumer_spec = """
 IDENTITY = "local.transitive_consumer@v1"
 
 DEPENDENCIES = {{
@@ -213,28 +495,27 @@ DEPENDENCIES = {{
     product = "tool",
     weak = {{
       spec = "local.transitive_mid1@v1",
-      source = "{self.lua_path(mid1_path)}",
+      source = "{mid1_path}",
     }}
   }}
 }}
 
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c",
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
 }}
 
 INSTALL = function(ctx)
 end
-"""
-        consumer_path = self.test_dir / "transitive_consumer.lua"
-        consumer_path.write_text(consumer_lua, encoding="utf-8")
+""".replace("{mid1_path}", mid1_path.as_posix())
+        consumer_path = self.write_spec("transitive_consumer.lua", consumer_spec)
 
         manifest = self.manifest(
             f"""
 PACKAGES = {{
   {{
     spec = "local.transitive_consumer@v1",
-    source = "{self.lua_path(consumer_path)}",
+    source = "{consumer_path.as_posix()}",
   }},
 }}
 """

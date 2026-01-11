@@ -1,8 +1,10 @@
-#!/usr/bin/env python3
 """Functional tests for product command parallel execution."""
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +12,26 @@ from pathlib import Path
 from . import test_config
 from .test_config import make_manifest
 from .trace_parser import TraceParser, PkgPhase
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Root file content\n",
+    "root/file2.txt": "Another root file\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
 
 
 class TestProductParallelism(unittest.TestCase):
@@ -20,7 +42,10 @@ class TestProductParallelism(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-product-manifest-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.test_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -49,13 +74,14 @@ class TestProductParallelism(unittest.TestCase):
         """
         # Create dependency chain: tool_c (leaf) <- tool_b <- tool_a (provider)
         # Plus unrelated tool_d
+        archive_lua_path = self.archive_path.as_posix()
 
-        tool_c_spec = """IDENTITY = "local.tool_c@v1"
-PRODUCTS = { tool_c = "bin/tool_c" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
-}
+        tool_c_spec = f"""IDENTITY = "local.tool_c@v1"
+PRODUCTS = {{ tool_c = "bin/tool_c" }}
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
 """
         tool_c_path = self.test_dir / "tool_c.lua"
         tool_c_path.write_text(tool_c_spec, encoding="utf-8")
@@ -69,8 +95,8 @@ DEPENDENCIES = {{
   }}
 }}
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
 }}
 """
         tool_b_path = self.test_dir / "tool_b.lua"
@@ -85,20 +111,20 @@ DEPENDENCIES = {{
   }}
 }}
 FETCH = {{
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
 }}
 """
         tool_a_path = self.test_dir / "tool_a.lua"
         tool_a_path.write_text(tool_a_spec, encoding="utf-8")
 
         # Unrelated spec (not in tool_a's dependency closure)
-        tool_d_spec = """IDENTITY = "local.tool_d@v1"
-PRODUCTS = { tool_d = "bin/tool_d" }
-FETCH = {
-  source = "test_data/archives/test.tar.gz",
-  sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
-}
+        tool_d_spec = f"""IDENTITY = "local.tool_d@v1"
+PRODUCTS = {{ tool_d = "bin/tool_d" }}
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
 """
         tool_d_path = self.test_dir / "tool_d.lua"
         tool_d_path.write_text(tool_d_spec, encoding="utf-8")
@@ -144,28 +170,26 @@ PACKAGES = {{
         extended_to_completion = set()
         for event in target_extended_events:
             spec = event.raw.get("spec")
-            new_target = event.raw.get("new_target_num")  # Field is new_target_num, not new_target_phase_num
+            new_target = event.raw.get(
+                "new_target_num"
+            )  # Field is new_target_num, not new_target_phase_num
             if spec and new_target == PkgPhase.COMPLETION:
                 extended_to_completion.add(spec)
 
         # Verify tool_a, tool_b, tool_c had targets extended to completion
-        expected_closure = {
-            "local.tool_a@v1",
-            "local.tool_b@v1",
-            "local.tool_c@v1"
-        }
+        expected_closure = {"local.tool_a@v1", "local.tool_b@v1", "local.tool_c@v1"}
 
         self.assertTrue(
             expected_closure.issubset(extended_to_completion),
             f"Expected all specs in closure to have targets extended: "
-            f"expected {expected_closure}, got {extended_to_completion}"
+            f"expected {expected_closure}, got {extended_to_completion}",
         )
 
         # Verify tool_d did NOT have target extended to completion (not in closure)
         self.assertNotIn(
             "local.tool_d@v1",
             extended_to_completion,
-            "Unrelated spec should not have target extended to completion"
+            "Unrelated spec should not have target extended to completion",
         )
 
 

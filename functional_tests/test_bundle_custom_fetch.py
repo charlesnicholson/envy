@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for bundle custom fetch functionality.
 
 Tests bundles with custom fetch functions, including bundles
@@ -21,11 +20,7 @@ class TestBundleCustomFetch(unittest.TestCase):
         exe = test_config.get_envy_executable()
         env = test_config.get_test_env()
         return subprocess.run(
-            [str(exe)] + args,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            env=env
+            [str(exe)] + args, cwd=cwd, capture_output=True, text=True, env=env
         )
 
     def test_bundle_custom_fetch_simple(self):
@@ -83,10 +78,16 @@ PACKAGES = {{
                 f.write(manifest)
 
             # Run sync
-            result = self.run_envy(["sync", "--install-all", "--manifest", manifest_path], tmpdir)
+            result = self.run_envy(
+                ["sync", "--install-all", "--manifest", manifest_path], tmpdir
+            )
 
             # Should succeed - bundle custom fetch creates the bundle, then spec resolves
-            self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+            )
 
     def test_bundle_custom_fetch_with_dependency(self):
         """Test bundle custom fetch with user-managed dependency."""
@@ -165,10 +166,16 @@ PACKAGES = {{
                 f.write(manifest)
 
             # Run sync
-            result = self.run_envy(["sync", "--install-all", "--manifest", manifest_path], tmpdir)
+            result = self.run_envy(
+                ["sync", "--install-all", "--manifest", manifest_path], tmpdir
+            )
 
             # Should succeed - dependency installs first, then custom fetch runs
-            self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}")
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+            )
 
 
 if __name__ == "__main__":

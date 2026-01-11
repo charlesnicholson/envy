@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for two-step fetch pattern (fetch → commit).
 
 Tests the security gating pattern where envy.fetch() downloads to tmp
@@ -14,18 +13,29 @@ import unittest
 
 from . import test_config
 
+# Simple test file content for fetch tests
+SIMPLE_LUA_CONTENT = """-- Simple test script for lua_util tests
+expected_value = 42
+"""
+
 
 class TestEngineTwoStepFetch(unittest.TestCase):
     """Tests for two-step fetch pattern (ungated fetch → gated commit)."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-two-step-fetch-"))
+        self.test_files_dir = Path(tempfile.mkdtemp(prefix="envy-two-step-files-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
+        # Write test file to temp directory
+        self.simple_lua = self.test_files_dir / "simple.lua"
+        self.simple_lua.write_text(SIMPLE_LUA_CONTENT, encoding="utf-8")
+
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_files_dir, ignore_errors=True)
 
     @staticmethod
     def lua_path(path: Path) -> str:
@@ -45,7 +55,7 @@ class TestEngineTwoStepFetch(unittest.TestCase):
     def test_two_step_with_sha256(self):
         """Fetch → inspect → commit with SHA256 verification."""
         # Get actual SHA256 of test file
-        test_file = Path("test_data/lua/simple.lua").resolve()
+        test_file = self.simple_lua
         expected_hash = self.get_file_hash(test_file)
 
         spec_content = f"""IDENTITY = "local.two_step_sha256@v1"

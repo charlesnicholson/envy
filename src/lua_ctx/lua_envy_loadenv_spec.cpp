@@ -60,12 +60,12 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
 
     auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
       ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(consumer->cfg->identity,
-                                              identity,
-                                              module_path,  // Log original dot syntax
-                                              current_phase,
-                                              needed_by,
-                                              allowed,
-                                              reason);
+                                             identity,
+                                             module_path,  // Log original dot syntax
+                                             current_phase,
+                                             needed_by,
+                                             allowed,
+                                             reason);
     };
 
     // Look up dependency by identity (with fuzzy matching)
@@ -79,11 +79,11 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     }
 
     if (current_phase < first_needed_by) {
-      std::string const msg{
-          "envy.loadenv_spec: dependency '" + identity + "' needed_by '" +
-          std::string(pkg_phase_name(first_needed_by)) + "' but accessed during '" +
-          std::string(pkg_phase_name(current_phase)) + "'"
-      };
+      std::string const msg{ "envy.loadenv_spec: dependency '" + identity +
+                             "' needed_by '" +
+                             std::string(pkg_phase_name(first_needed_by)) +
+                             "' but accessed during '" +
+                             std::string(pkg_phase_name(current_phase)) + "'" };
       emit_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
@@ -148,12 +148,9 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     oss << ifs.rdbuf();
     std::string const content{ oss.str() };
 
-    // Create sandboxed environment with access to stdlib via _G
+    // Create sandboxed environment with access to stdlib via _G (metatable fallback)
     sol::state_view lua{ L };
-    sol::table env{ lua.create_table() };
-    sol::table meta{ lua.create_table() };
-    meta[sol::meta_function::index] = lua.globals();
-    env[sol::metatable_key] = meta;
+    sol::environment env{ lua, sol::create, lua.globals() };
 
     // Load chunk
     sol::load_result chunk{ lua.load(content, full_path.string()) };
@@ -163,13 +160,9 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
                                std::string(err.what()));
     }
 
-    // Set environment on the function (using Lua C API)
+    // Set environment on the function
     sol::protected_function fn{ chunk };
-    lua_State *lua_st{ lua.lua_state() };
-    fn.push();
-    env.push();
-    lua_setupvalue(lua_st, -2, 1);  // Set first upvalue (_ENV) to our env table
-    lua_pop(lua_st, 1);             // Pop function (it's already stored in fn)
+    sol::set_environment(env, fn);
 
     // Execute with our environment
     sol::protected_function_result result{ fn() };

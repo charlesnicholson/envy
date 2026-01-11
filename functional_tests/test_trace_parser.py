@@ -236,9 +236,7 @@ class TestTraceParser(unittest.TestCase):
         parser = TraceParser(trace_file)
 
         # Should not raise
-        parser.assert_dependency_needed_by(
-            "parent@v1", "child@v1", PkgPhase.PKG_FETCH
-        )
+        parser.assert_dependency_needed_by("parent@v1", "child@v1", PkgPhase.PKG_FETCH)
 
         trace_file.unlink()
 

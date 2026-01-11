@@ -1,12 +1,36 @@
+"""Tests for '-- @envy cache' manifest directive."""
+
+import hashlib
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Test file content\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
 
 
 class TestCacheDirective(unittest.TestCase):
@@ -16,9 +40,30 @@ class TestCacheDirective(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-cache-directive-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
         # pid distinguishes between test runs, unique_suffix distinguishes parallel threads
         self.unique_suffix = f"{os.getpid()}-{self.test_dir.name.split('-')[-1]}"
+
+        # Create test archive and spec
+        self.archive_path = self.test_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline spec to temp directory
+        self.spec_content = f"""-- Test cache-managed package
+IDENTITY = "local.cache_test_pkg@v1"
+
+FETCH = {{
+  source = "{self.archive_path.as_posix()}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  envy.run([[echo 'built' > built.txt]])
+end
+"""
+        self.spec_path = self.test_dir / "cache_test_pkg.lua"
+        self.spec_path.write_text(self.spec_content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
@@ -65,12 +110,11 @@ class TestCacheDirective(unittest.TestCase):
         expected_cache = home / custom_cache_name
 
         try:
-            # Use build_dependency.lua which is cache-managed (has FETCH, STAGE, BUILD)
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{custom_cache_name}"
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
 """
             )
@@ -91,7 +135,7 @@ PACKAGES = {{
                 f"Cache should exist at {expected_cache}. stderr: {result.stderr}",
             )
             # Verify the package was installed in the custom cache
-            pkg_path = expected_cache / "packages" / "local.build_dependency@v1"
+            pkg_path = expected_cache / "packages" / "local.cache_test_pkg@v1"
             self.assertTrue(
                 pkg_path.exists(),
                 f"Package should exist at {pkg_path}",
@@ -109,12 +153,11 @@ PACKAGES = {{
         expected_cache = home / custom_cache_name
 
         try:
-            # Use build_dependency.lua which is cache-managed
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
                 f"""-- @envy cache "$HOME/{custom_cache_name}"
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
 """
             )
@@ -146,12 +189,11 @@ PACKAGES = {{
         manifest_cache = Path.home() / manifest_cache_name
 
         try:
-            # Use build_dependency.lua which is cache-managed
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{manifest_cache_name}"
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
 """
             )
@@ -190,12 +232,11 @@ PACKAGES = {{
         manifest_cache = Path.home() / manifest_cache_name
 
         try:
-            # Use build_dependency.lua which is cache-managed
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
                 f"""-- @envy cache "~/{manifest_cache_name}"
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
 """
             )
@@ -229,12 +270,11 @@ PACKAGES = {{
         """Cache directive with plain path uses it directly."""
         custom_cache = self.test_dir / "custom-cache"
 
-        # Use build_dependency.lua which is cache-managed
         # Note: @envy directive values must be quoted
         manifest = self.create_manifest(
             f"""-- @envy cache "{self.lua_path(custom_cache)}"
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
 """
         )
@@ -251,7 +291,7 @@ PACKAGES = {{
             f"Cache should exist at {custom_cache}",
         )
         # Verify the package was installed
-        pkg_path = custom_cache / "packages" / "local.build_dependency@v1"
+        pkg_path = custom_cache / "packages" / "local.cache_test_pkg@v1"
         self.assertTrue(
             pkg_path.exists(),
             f"Package should exist at {pkg_path}",

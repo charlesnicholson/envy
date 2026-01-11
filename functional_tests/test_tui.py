@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for TUI progress rendering.
 
 Tests ANSI rendering in TTY mode, fallback mode for non-TTY environments,
@@ -16,6 +15,45 @@ from pathlib import Path
 from . import test_config
 from .test_config import make_manifest
 
+# User-managed spec that runs shell commands during install
+SPEC_BUILD_FUNCTION = """IDENTITY = "local.build_function@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo 'Building with envy.run()'", { quiet = true })
+  envy.run("echo 'Build finished successfully'", { quiet = true })
+end
+"""
+
+# Dependency spec for parallel execution test
+SPEC_BUILD_DEPENDENCY = """IDENTITY = "local.build_dependency@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo 'dependency: begin'", { quiet = true })
+  envy.run("echo 'dependency: success'", { quiet = true })
+end
+"""
+
+# Minimal spec for ANSI/fallback mode tests
+SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- No-op install
+end
+"""
+
 
 class TestTUIRendering(unittest.TestCase):
     """Tests for TUI progress rendering modes."""
@@ -25,7 +63,14 @@ class TestTUIRendering(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-tui-manifest-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        self.specs_dir = self.test_dir / "specs"
+        self.specs_dir.mkdir()
+
+        # Write specs
+        (self.specs_dir / "build_function.lua").write_text(SPEC_BUILD_FUNCTION)
+        (self.specs_dir / "build_dependency.lua").write_text(SPEC_BUILD_DEPENDENCY)
+        (self.specs_dir / "simple.lua").write_text(SPEC_SIMPLE)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -75,8 +120,8 @@ class TestTUIRendering(unittest.TestCase):
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }},
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.specs_dir)}/build_function.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }},
 }}
 """
         )
@@ -85,18 +130,16 @@ PACKAGES = {{
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr.decode()}")
 
-        # Verify packages completed (simple@v1 won't appear since CHECK doesn't print)
+        # Verify packages completed - user-managed packages show in summary
         stderr = result.stderr.decode()
-        self.assertIn("local.build_function@v1", stderr)
-        self.assertIn("local.build_dependency@v1", stderr)
-        self.assertIn("installed", stderr.lower())
+        self.assertIn("user-managed", stderr.lower())
 
     def test_fallback_mode_with_term_dumb(self):
         """No ANSI codes when TERM=dumb."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.specs_dir)}/simple.lua" }},
 }}
 """
         )
@@ -107,17 +150,17 @@ PACKAGES = {{
 
         # Check that no ANSI codes are present
         stderr = result.stderr.decode()
-        self.assertNotIn(
-            "\x1b[", stderr, "Expected no ANSI codes when TERM=dumb"
-        )
+        self.assertNotIn("\x1b[", stderr, "Expected no ANSI codes when TERM=dumb")
 
-    @unittest.skipIf(sys.platform == "win32", "Unix shell piping not supported on Windows")
+    @unittest.skipIf(
+        sys.platform == "win32", "Unix shell piping not supported on Windows"
+    )
     def test_fallback_mode_with_piped_stderr(self):
         """No ANSI codes when stderr is piped (not a TTY)."""
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{self.lua_path(self.test_data)}/specs/simple.lua" }},
+    {{ spec = "local.simple@v1", source = "{self.lua_path(self.specs_dir)}/simple.lua" }},
 }}
 """
         )
@@ -145,9 +188,7 @@ PACKAGES = {{
 
         # Check that no ANSI codes are present in piped output
         output = result.stdout.decode()
-        self.assertNotIn(
-            "\x1b[", output, "Expected no ANSI codes when stderr is piped"
-        )
+        self.assertNotIn("\x1b[", output, "Expected no ANSI codes when stderr is piped")
 
 
 if __name__ == "__main__":

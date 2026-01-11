@@ -10,10 +10,6 @@
 #include <stdexcept>
 #include <vector>
 
-extern "C" {
-#include "lua.h"
-}
-
 namespace envy {
 
 namespace {
@@ -462,7 +458,8 @@ pkg_cfg *pkg_cfg::parse_from_stack(sol::state_view lua,
 }
 
 std::optional<sol::protected_function> pkg_cfg::get_source_fetch(
-    sol::state_view lua, std::string const &dep_identity) {
+    sol::state_view lua,
+    std::string const &dep_identity) {
   sol::object deps_obj{ lua["DEPENDENCIES"] };
   if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return std::nullopt; }
 
@@ -491,7 +488,8 @@ std::optional<sol::protected_function> pkg_cfg::get_source_fetch(
 }
 
 std::optional<sol::protected_function> pkg_cfg::get_bundle_fetch(
-    sol::state_view lua, std::string const &bundle_identity) {
+    sol::state_view lua,
+    std::string const &bundle_identity) {
   sol::object deps_obj{ lua["DEPENDENCIES"] };
   if (!deps_obj.valid() || !deps_obj.is<sol::table>()) { return std::nullopt; }
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for git repository fetching.
 
 Tests git repository support with ref specification (tags, branches, SHAs),
@@ -20,6 +19,7 @@ class TestFetchGit(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-git-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-git-specs-"))
         root = Path(__file__).resolve().parent.parent
         self.envy = test_config.get_envy_executable()
         self.envy_test = test_config.get_envy_executable()
@@ -28,6 +28,7 @@ class TestFetchGit(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
     # ========================================================================
     # Basic Success Cases
@@ -292,6 +293,32 @@ end
 
     def test_parallel_git_fetch(self):
         """Spec with multiple git sources fetches concurrently (programmatic)."""
+        # Programmatic fetch with multiple git repos (should parallelize)
+        spec = """IDENTITY = "local.fetch_git_parallel@v1"
+
+function FETCH(tmp_dir, options)
+    envy.fetch({
+        {source = "https://github.com/ninja-build/ninja.git", ref = "v1.13.2"},
+        {source = "https://github.com/google/re2.git", ref = "2024-07-02"}
+    }, {dest = tmp_dir})
+    envy.commit_fetch({"ninja.git", "re2.git"})
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    local repos = {"ninja.git", "re2.git"}
+    for _, repo in ipairs(repos) do
+        local git_head = fetch_dir .. "/" .. repo .. "/.git/HEAD"
+        local f = io.open(git_head, "r")
+        if not f then
+            error("Parallel git fetch failed: repo not found: " .. repo)
+        end
+        f:close()
+    end
+end
+"""
+        spec_path = self.specs_dir / "fetch_git_parallel.lua"
+        spec_path.write_text(spec, encoding="utf-8")
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -299,7 +326,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_parallel@v1",
-                "test_data/specs/fetch_git_parallel.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -310,6 +337,35 @@ end
 
     def test_parallel_git_fetch_declarative(self):
         """Spec with multiple git sources fetches concurrently (declarative)."""
+        # Declarative fetch with multiple repos triggers parallel fetch
+        spec = """IDENTITY = "local.fetch_git_parallel_declarative@v1"
+
+FETCH = {
+  {
+    source = "https://github.com/ninja-build/ninja.git",
+    ref = "v1.13.2"
+  },
+  {
+    source = "https://github.com/google/re2.git",
+    ref = "2024-07-02"
+  }
+}
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    local repos = {"ninja.git", "re2.git"}
+    for _, repo in ipairs(repos) do
+        local git_head = stage_dir .. "/" .. repo .. "/.git/HEAD"
+        local f = io.open(git_head, "r")
+        if not f then
+            error("Parallel git fetch failed: repo not found: " .. repo)
+        end
+        f:close()
+    end
+end
+"""
+        spec_path = self.specs_dir / "fetch_git_parallel_declarative.lua"
+        spec_path.write_text(spec, encoding="utf-8")
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -317,7 +373,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.fetch_git_parallel_declarative@v1",
-                "test_data/specs/fetch_git_parallel_declarative.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

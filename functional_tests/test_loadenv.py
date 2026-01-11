@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for envy.loadenv() function.
 
 Tests loading Lua files into sandboxed environments at various scopes:

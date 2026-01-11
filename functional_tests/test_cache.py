@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for cache implementation using envy_functional_tester."""
 
 import shutil
@@ -56,7 +55,12 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         fail_before_complete=False,
     ):
         """Helper to run envy_functional_tester cache command."""
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if barrier_signal:
@@ -74,7 +78,9 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
 
     def test_ensure_asset_first_time(self):
         """Acquire lock for new package, returns staging path with lock."""
-        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "a1b2c3d4")
+        proc = self.run_cache_cmd(
+            "ensure-package", "gcc", "darwin", "arm64", "a1b2c3d4"
+        )
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -104,7 +110,9 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         entry.mkdir(parents=True)
         (entry / "envy-complete").touch()
 
-        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "complete1")
+        proc = self.run_cache_cmd(
+            "ensure-package", "gcc", "darwin", "arm64", "complete1"
+        )
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -185,11 +193,14 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
 class TestStagingAndCommit(CacheTestBase):
     """Staging directory and commit behavior tests."""
 
-
-
     def run_cache_cmd(self, *args, **kwargs):
         # Each process gets unique trace file in test's trace directory
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -205,14 +216,18 @@ class TestStagingAndCommit(CacheTestBase):
     def test_staging_auto_created(self):
         """Lock returned, staging directory created and then renamed on completion."""
         # Run command that will create staging and complete
-        proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "staging1")
+        proc = self.run_cache_cmd(
+            "ensure-package", "gcc", "darwin", "arm64", "staging1"
+        )
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
         self.assertEqual(result["locked"], "true")
 
         # After completion, staging should be renamed to final directory
-        final_dir = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-staging1"
+        final_dir = (
+            self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-staging1"
+        )
         staging = (
             self.cache_root
             / "packages"
@@ -274,10 +289,13 @@ class TestStagingAndCommit(CacheTestBase):
 class TestCrashRecovery(CacheTestBase):
     """Crash recovery and stale staging cleanup tests."""
 
-
-
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -367,10 +385,13 @@ class TestCrashRecovery(CacheTestBase):
 class TestLockFileLifecycle(CacheTestBase):
     """Lock file creation and removal tests."""
 
-
-
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -405,7 +426,9 @@ class TestLockFileLifecycle(CacheTestBase):
 
         # Verify lock file exists
         lock_file = (
-            self.cache_root / "locks" / "packages.gcc.darwin-arm64-blake3-lockfile1.lock"
+            self.cache_root
+            / "locks"
+            / "packages.gcc.darwin-arm64-blake3-lockfile1.lock"
         )
         self.assertTrue(lock_file.exists())
 
@@ -438,10 +461,13 @@ class TestLockFileLifecycle(CacheTestBase):
 class TestEntryPathsAndStructure(CacheTestBase):
     """Entry path construction and cache directory structure tests."""
 
-
-
     def run_cache_cmd(self, *args):
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         return subprocess.Popen(
@@ -450,7 +476,9 @@ class TestEntryPathsAndStructure(CacheTestBase):
 
     def test_asset_entry_path_structure(self):
         """Verify package path is assets/{identity}.{platform}-{arch}-blake3-{hash}/."""
-        proc = self.run_cache_cmd("ensure-package", "gcc", "linux", "x86_64", "deadbeef")
+        proc = self.run_cache_cmd(
+            "ensure-package", "gcc", "linux", "x86_64", "deadbeef"
+        )
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
@@ -534,10 +562,13 @@ class TestEntryPathsAndStructure(CacheTestBase):
 class TestEdgeCases(CacheTestBase):
     """Edge cases and corner scenarios."""
 
-
-
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
         if "barrier_signal" in kwargs:
@@ -566,7 +597,12 @@ class TestEdgeCases(CacheTestBase):
 
         # Process B: wait for A to acquire lock, then attempt (will find complete)
         proc_b = self.run_cache_cmd(
-            "ensure-package", "gcc", "darwin", "arm64", "recheck1", barrier_wait="a_ready"
+            "ensure-package",
+            "gcc",
+            "darwin",
+            "arm64",
+            "recheck1",
+            barrier_wait="a_ready",
         )
 
         stdout_a, _ = proc_a.communicate()
@@ -660,10 +696,13 @@ class TestEdgeCases(CacheTestBase):
 class TestSubprocessConcurrency(CacheTestBase):
     """Integration tests with real subprocess spawning."""
 
-
-
     def run_cache_cmd(self, *args, **kwargs):
-        cmd = [str(self.envy_test), f"--cache-root={self.cache_root}", f"--trace=file:{self._make_trace_file()}", "cache"] + list(args)
+        cmd = [
+            str(self.envy_test),
+            f"--cache-root={self.cache_root}",
+            f"--trace=file:{self._make_trace_file()}",
+            "cache",
+        ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         if "crash_after_ms" in kwargs:
             cmd.append(f"--crash-after={kwargs['crash_after_ms']}")
@@ -676,7 +715,9 @@ class TestSubprocessConcurrency(CacheTestBase):
         # Spawn 5 processes simultaneously
         procs = []
         for _ in range(5):
-            proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "many1")
+            proc = self.run_cache_cmd(
+                "ensure-package", "gcc", "darwin", "arm64", "many1"
+            )
             procs.append(proc)
 
         results = []

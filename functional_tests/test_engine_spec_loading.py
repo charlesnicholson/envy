@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine spec loading and validation.
 
 Tests the spec fetch phase: loading recipes, validating identity field,
@@ -21,6 +20,7 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-engine-specs-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
         # Enable trace for all tests if ENVY_TEST_TRACE is set
@@ -28,6 +28,13 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> Path:
+        """Write a spec file to the temp specs directory."""
+        path = self.specs_dir / name
+        path.write_text(content, encoding="utf-8")
+        return path
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -41,6 +48,21 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def test_single_local_spec_no_deps(self):
         """Engine loads single local spec with no dependencies."""
+        # Minimal test spec - no dependencies
+        simple_spec = """-- Minimal test spec - no dependencies
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+"""
+        spec_path = self.write_spec("simple.lua", simple_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -48,7 +70,7 @@ class TestEngineSpecLoading(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.simple@v1",
-                "test_data/specs/simple.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -66,6 +88,13 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def test_validation_no_phases(self):
         """Engine rejects spec with no phases."""
+        # Invalid spec - no phases defined
+        no_phases_spec = """-- Invalid spec - no phases defined
+IDENTITY = "local.nophases@v1"
+DEPENDENCIES = {}
+"""
+        spec_path = self.write_spec("no_phases.lua", no_phases_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -73,7 +102,7 @@ class TestEngineSpecLoading(unittest.TestCase):
                 *self.trace_flag,
                 "engine-test",
                 "local.nophases@v1",
-                "test_data/specs/no_phases.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -93,10 +122,23 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def test_sha256_verification_success(self):
         """Spec with correct SHA256 succeeds."""
+        # Remote spec with no dependencies (dependency target)
+        remote_child_spec = """-- remote.child@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote child recipe")
+end
+"""
+        child_spec_path = self.write_spec("remote_child.lua", remote_child_spec)
+
         # Compute actual SHA256 of remote_child.lua
-        child_spec_path = (
-            Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
-        )
         with open(child_spec_path, "rb") as f:
             actual_sha256 = hashlib.sha256(f.read()).hexdigest()
 
@@ -145,9 +187,21 @@ end
 
     def test_sha256_verification_failure(self):
         """Spec with incorrect SHA256 fails."""
-        child_spec_path = (
-            Path(__file__).parent.parent / "test_data" / "specs" / "remote_child.lua"
-        )
+        # Remote spec with no dependencies (dependency target)
+        remote_child_spec = """-- remote.child@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote child recipe")
+end
+"""
+        child_spec_path = self.write_spec("remote_child.lua", remote_child_spec)
         wrong_sha256 = (
             "0000000000000000000000000000000000000000000000000000000000000000"
         )
@@ -207,6 +261,21 @@ end
 
     def test_identity_validation_correct(self):
         """Spec with correct identity declaration succeeds."""
+        # Spec with correct identity declaration (valid)
+        identity_correct_spec = """-- Spec with correct identity declaration (valid)
+IDENTITY = "local.identity_correct@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Identity validation passed")
+end
+"""
+        spec_path = self.write_spec("identity_correct.lua", identity_correct_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -214,7 +283,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_correct@v1",
-                "test_data/specs/identity_correct.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -227,6 +296,20 @@ end
 
     def test_identity_validation_missing(self):
         """Spec missing identity field fails with clear error."""
+        # Spec missing identity declaration (invalid)
+        identity_missing_spec = """-- Spec missing identity declaration (invalid)
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+"""
+        spec_path = self.write_spec("identity_missing.lua", identity_missing_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -234,7 +317,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_missing@v1",
-                "test_data/specs/identity_missing.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -256,6 +339,21 @@ end
 
     def test_identity_validation_mismatch(self):
         """Spec with wrong identity fails with clear error."""
+        # Spec with wrong identity declaration (mismatch)
+        identity_mismatch_spec = """-- Spec with wrong identity declaration (mismatch)
+IDENTITY = "local.wrong_identity@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+"""
+        spec_path = self.write_spec("identity_mismatch.lua", identity_mismatch_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -263,7 +361,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_expected@v1",
-                "test_data/specs/identity_mismatch.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -290,6 +388,21 @@ end
 
     def test_identity_validation_wrong_type(self):
         """Spec with identity as wrong type fails with clear error."""
+        # Spec with identity as wrong type (table instead of string)
+        identity_wrong_type_spec = """-- Spec with identity as wrong type (table instead of string)
+IDENTITY = { name = "wrong" }
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- This should never execute
+end
+"""
+        spec_path = self.write_spec("identity_wrong_type.lua", identity_wrong_type_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -297,7 +410,7 @@ end
                 *self.trace_flag,
                 "engine-test",
                 "local.identity_wrong_type@v1",
-                "test_data/specs/identity_wrong_type.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -356,6 +469,20 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_success(self):
         """VALIDATE nil/true succeeds."""
+        # VALIDATE function returning nil/true (valid)
+        validate_ok_spec = """IDENTITY = "test.validate_ok@v1"
+
+VALIDATE = function(opts)
+  if opts and opts.foo then
+    assert(opts.foo == "bar")
+  end
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_ok.lua", validate_ok_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -363,7 +490,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_ok@v1",
-                "test_data/specs/validate_ok.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -372,6 +499,18 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_false(self):
         """VALIDATE returning false fails."""
+        # VALIDATE function returning false (invalid)
+        validate_false_spec = """IDENTITY = "test.validate_false@v1"
+
+VALIDATE = function(opts)
+  return false
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_false.lua", validate_false_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -379,7 +518,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_false@v1",
-                "test_data/specs/validate_false.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -389,6 +528,18 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_string(self):
         """VALIDATE returning string surfaces message."""
+        # VALIDATE function returning error string
+        validate_string_spec = """IDENTITY = "test.validate_string@v1"
+
+VALIDATE = function(opts)
+  return "nope"
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_string.lua", validate_string_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -396,7 +547,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_string@v1",
-                "test_data/specs/validate_string.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -406,6 +557,18 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_invalid_return(self):
         """VALIDATE returning invalid type errors."""
+        # VALIDATE function returning invalid type (number)
+        validate_type_spec = """IDENTITY = "test.validate_type@v1"
+
+VALIDATE = function(opts)
+  return 123
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_type.lua", validate_type_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -413,7 +576,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_type@v1",
-                "test_data/specs/validate_type.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -423,6 +586,16 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_non_function(self):
         """VALIDATE non-function errors."""
+        # VALIDATE as non-function (number)
+        validate_nonfn_spec = """IDENTITY = "test.validate_nonfn@v1"
+
+VALIDATE = 42
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_nonfn.lua", validate_nonfn_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -430,7 +603,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_nonfn@v1",
-                "test_data/specs/validate_nonfn.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -440,6 +613,18 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
     def test_validate_hook_runtime_error(self):
         """VALIDATE error bubbles with context."""
+        # VALIDATE function that raises an error
+        validate_error_spec = """IDENTITY = "test.validate_error@v1"
+
+VALIDATE = function(opts)
+  error("boom")
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("validate_error.lua", validate_error_spec)
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -447,7 +632,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 *self.trace_flag,
                 "engine-test",
                 "test.validate_error@v1",
-                "test_data/specs/validate_error.lua",
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

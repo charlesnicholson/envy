@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for bundle fetching and spec resolution.
 
 Tests bundle fetching from local directories, identity verification,
@@ -15,19 +14,67 @@ from . import test_config
 from .test_config import make_manifest
 
 
+def create_simple_bundle(bundle_dir: Path) -> Path:
+    """Create a simple bundle with two specs for testing."""
+    specs_dir = bundle_dir / "specs"
+    specs_dir.mkdir(parents=True, exist_ok=True)
+
+    bundle_lua = """-- Test bundle with two specs
+BUNDLE = "test.simple-bundle@v1"
+
+SPECS = {
+  ["test.spec_a@v1"] = "specs/spec_a.lua",
+  ["test.spec_b@v1"] = "specs/spec_b.lua",
+}
+"""
+    (bundle_dir / "envy-bundle.lua").write_text(bundle_lua)
+
+    spec_a_lua = """IDENTITY = "test.spec_a@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+    (specs_dir / "spec_a.lua").write_text(spec_a_lua)
+
+    spec_b_lua = """IDENTITY = "test.spec_b@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+    (specs_dir / "spec_b.lua").write_text(spec_b_lua)
+
+    return bundle_dir
+
+
 class TestBundleFetchLocal(unittest.TestCase):
     """Tests for fetching bundles from local directories."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-bundle-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-bundle-manifest-"))
+        self.bundle_dir = Path(tempfile.mkdtemp(prefix="envy-bundle-src-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create simple bundle for tests that need it
+        self.simple_bundle = self.bundle_dir / "simple-bundle"
+        self.simple_bundle.mkdir(parents=True)
+        create_simple_bundle(self.simple_bundle)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.bundle_dir, ignore_errors=True)
 
     @staticmethod
     def lua_path(path: Path) -> str:
@@ -61,13 +108,12 @@ class TestBundleFetchLocal(unittest.TestCase):
 
     def test_fetch_spec_from_local_bundle(self):
         """Fetch a spec from a local bundle directory."""
-        bundle_path = self.test_data / "bundles" / "simple-bundle"
         manifest = self.create_manifest(
             f"""
 BUNDLES = {{
     toolchain = {{
         identity = "test.simple-bundle@v1",
-        source = "{self.lua_path(bundle_path)}",
+        source = "{self.lua_path(self.simple_bundle)}",
     }},
 }}
 
@@ -88,13 +134,12 @@ PACKAGES = {{
 
     def test_fetch_multiple_specs_from_same_bundle(self):
         """Multiple specs from same bundle share one fetch."""
-        bundle_path = self.test_data / "bundles" / "simple-bundle"
         manifest = self.create_manifest(
             f"""
 BUNDLES = {{
     toolchain = {{
         identity = "test.simple-bundle@v1",
-        source = "{self.lua_path(bundle_path)}",
+        source = "{self.lua_path(self.simple_bundle)}",
     }},
 }}
 
@@ -121,7 +166,6 @@ PACKAGES = {{
 
     def test_inline_bundle_declaration(self):
         """Inline bundle declaration in package entry."""
-        bundle_path = self.test_data / "bundles" / "simple-bundle"
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
@@ -129,7 +173,7 @@ PACKAGES = {{
         spec = "test.spec_a@v1",
         bundle = {{
             identity = "test.simple-bundle@v1",
-            source = "{self.lua_path(bundle_path)}",
+            source = "{self.lua_path(self.simple_bundle)}",
         }},
     }},
 }}
@@ -326,13 +370,19 @@ class TestBundleAliasResolution(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-bundle-alias-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-bundle-manifest-"))
+        self.bundle_dir = Path(tempfile.mkdtemp(prefix="envy-bundle-src-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create simple bundle for tests that need it
+        self.simple_bundle = self.bundle_dir / "simple-bundle"
+        self.simple_bundle.mkdir(parents=True)
+        create_simple_bundle(self.simple_bundle)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.bundle_dir, ignore_errors=True)
 
     @staticmethod
     def lua_path(path: Path) -> str:
@@ -378,13 +428,12 @@ PACKAGES = {
 
     def test_cannot_have_both_source_and_bundle(self):
         """Package cannot specify both source and bundle."""
-        bundle_path = self.test_data / "bundles" / "simple-bundle"
         manifest = self.create_manifest(
             f"""
 BUNDLES = {{
     toolchain = {{
         identity = "test.simple-bundle@v1",
-        source = "{self.lua_path(bundle_path)}",
+        source = "{self.lua_path(self.simple_bundle)}",
     }},
 }}
 

@@ -1,12 +1,14 @@
-#!/usr/bin/env python3
 """Functional tests for 'envy package' command.
 
 Tests package path querying, manifest discovery, dependency installation,
 ambiguity detection, and error handling.
 """
 
+import hashlib
+import io
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +17,27 @@ from typing import Optional
 from . import test_config
 from .test_config import make_manifest
 
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Root file content\n",
+    "root/file2.txt": "Another root file\n",
+    "root/subdir1/file3.txt": "Subdirectory file\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
 
 class TestPackageCommand(unittest.TestCase):
     """Tests for 'envy package' command."""
@@ -22,13 +45,179 @@ class TestPackageCommand(unittest.TestCase):
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-package-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-package-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-package-specs-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        self.test_data = self.project_root / "test_data"
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Write inline specs to temp directory
+        self._write_specs()
+
+    def _write_specs(self):
+        """Write all inline specs to the specs directory."""
+        archive_lua_path = self.archive_path.as_posix()
+
+        specs = {
+            "build_dependency.lua": f'''-- Test dependency for build_with_asset
+IDENTITY = "local.build_dependency@v1"
+
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  if envy.PLATFORM == "windows" then
+    envy.run([[Write-Output "dependency: begin"; Remove-Item -Force dependency.txt -ErrorAction SilentlyContinue; Set-Content -Path dependency.txt -Value "dependency_data"; New-Item -ItemType Directory -Path bin -Force | Out-Null; Set-Content -Path bin/app -Value "binary"; if (-not (Test-Path bin/app)) {{ Write-Error "missing bin/app"; exit 1 }}; Write-Output "dependency: success"; exit 0 ]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run([[echo 'dependency_data' > dependency.txt
+      mkdir -p bin
+      echo 'binary' > bin/app]])
+  end
+end
+''',
+            "build_function.lua": f'''-- Test build phase: build = function(ctx, opts) (programmatic with envy.run())
+IDENTITY = "local.build_function@v1"
+
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("Building with envy.run()")
+  local result
+  if envy.PLATFORM == "windows" then
+    result = envy.run([[mkdir build_output 2> nul & echo function_artifact > build_output\\result.txt & if not exist build_output\\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
+                     {{ shell = ENVY_SHELL.CMD, capture = true }})
+  else
+    result = envy.run([[
+      mkdir -p build_output
+      echo "function_artifact" > build_output/result.txt
+      echo "Build complete"
+    ]],
+                     {{ capture = true }})
+  end
+  if not result.stdout:match("Build complete") then
+    error("Expected 'Build complete' in stdout")
+  end
+  print("Build finished successfully")
+end
+''',
+            "build_nil.lua": f'''-- Test build phase: build = nil (skip build)
+IDENTITY = "local.build_nil@v1"
+
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+-- No build field - should skip build phase and proceed to install
+''',
+            "build_error_nonzero_exit.lua": f'''-- Test build phase: error on non-zero exit code
+IDENTITY = "local.build_error_nonzero_exit@v1"
+
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("Testing error handling")
+  if envy.PLATFORM == "windows" then
+    envy.run("exit 42", {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run("exit 42")
+  end
+  error("Should not reach here")
+end
+''',
+            "diamond_a.lua": """-- Top of diamond: A depends on B and C (which both depend on D)
+IDENTITY = "local.diamond_a@v1"
+DEPENDENCIES = {
+  { spec = "local.diamond_b@v1", source = "diamond_b.lua" },
+  { spec = "local.diamond_c@v1", source = "diamond_c.lua" }
+}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+            "diamond_b.lua": """-- Left side of diamond: B depends on D
+IDENTITY = "local.diamond_b@v1"
+DEPENDENCIES = {
+  { spec = "local.diamond_d@v1", source = "diamond_d.lua" }
+}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+            "diamond_c.lua": """-- Right side of diamond: C depends on D
+IDENTITY = "local.diamond_c@v1"
+DEPENDENCIES = {
+  { spec = "local.diamond_d@v1", source = "diamond_d.lua" }
+}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+            "diamond_d.lua": """-- Base of diamond dependency
+IDENTITY = "local.diamond_d@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package
+end
+""",
+            "install_programmatic.lua": """-- Test programmatic package (user-managed)
+IDENTITY = "local.programmatic@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache artifacts
+end
+""",
+        }
+
+        for name, content in specs.items():
+            (self.specs_dir / name).write_text(content, encoding="utf-8")
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
     @staticmethod
     def lua_path(path: Path) -> str:
@@ -68,11 +257,10 @@ class TestPackageCommand(unittest.TestCase):
 
     def test_package_simple_package(self):
         """Query package path for simple package with no dependencies."""
-        # Note: build_dependency.lua has relative fetch source, so we run from project root
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
         )
@@ -102,7 +290,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.specs_dir)}/diamond_a.lua" }}
 }}
 """
         )
@@ -118,7 +306,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
         )
@@ -153,7 +341,7 @@ PACKAGES = {{
                 make_manifest(
                     f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
                 ),
@@ -184,9 +372,9 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }},
-    {{ spec = "local.build_nil@v1", source = "{self.lua_path(self.test_data)}/specs/build_nil.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.specs_dir)}/build_function.lua" }},
+    {{ spec = "local.build_nil@v1", source = "{self.lua_path(self.specs_dir)}/build_nil.lua" }},
 }}
 """
         )
@@ -225,8 +413,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "debug" }} }},
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "release" }} }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua", options = {{ mode = "debug" }} }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua", options = {{ mode = "release" }} }}
 }}
 """
         )
@@ -242,8 +430,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }},
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
         )
@@ -258,7 +446,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.other@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.other@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
         )
@@ -273,7 +461,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.programmatic@v1", source = "{self.lua_path(self.test_data)}/specs/install_programmatic.lua" }}
+    {{ spec = "local.programmatic@v1", source = "{self.lua_path(self.specs_dir)}/install_programmatic.lua" }}
 }}
 """
         )
@@ -288,7 +476,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.failing@v1", source = "{self.lua_path(self.test_data)}/specs/build_error_nonzero_exit.lua" }}
+    {{ spec = "local.failing@v1", source = "{self.lua_path(self.specs_dir)}/build_error_nonzero_exit.lua" }}
 }}
 """
         )
@@ -319,7 +507,7 @@ PACKAGES = {
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
 }}
 """
         )
@@ -347,8 +535,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua" }},
-    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.test_data)}/specs/build_function.lua" }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }},
+    {{ spec = "local.build_function@v1", source = "{self.lua_path(self.specs_dir)}/build_function.lua" }}
 }}
 """
         )
@@ -370,7 +558,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.test_data)}/specs/build_dependency.lua", options = {{ mode = "debug" }} }}
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua", options = {{ mode = "debug" }} }}
 }}
 """
         )
@@ -455,7 +643,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.specs_dir)}/diamond_a.lua" }}
 }}
 """
         )
@@ -473,7 +661,7 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.test_data)}/specs/diamond_a.lua" }}
+    {{ spec = "local.diamond_a@v1", source = "{self.lua_path(self.specs_dir)}/diamond_a.lua" }}
 }}
 """
         )
@@ -491,16 +679,18 @@ PACKAGES = {{
         specs that provide products needed by dependencies. Without this,
         product dependencies fail on clean cache.
         """
-        # Create product provider spec
-        provider_spec = """IDENTITY = "local.test_product_provider@v1"
+        archive_lua_path = self.archive_path.as_posix()
 
-FETCH = { source = "test_data/archives/test.tar.gz",
-          sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c" }
+        # Create product provider spec
+        provider_spec = f"""IDENTITY = "local.test_product_provider@v1"
+
+FETCH = {{ source = "{archive_lua_path}",
+          sha256 = "{self.archive_hash}" }}
 
 INSTALL = function(ctx)
 end
 
-PRODUCTS = { test_tool = "bin/tool" }
+PRODUCTS = {{ test_tool = "bin/tool" }}
 """
         provider_path = self.test_dir / "test_product_provider.lua"
         provider_path.write_text(provider_spec, encoding="utf-8")
@@ -513,8 +703,8 @@ DEPENDENCIES = {{
 }}
 
 FETCH = {{
-    source = "test_data/archives/test.tar.gz",
-    sha256 = "ef981609163151ccb8bfd2bdae5710c525a149d29702708fb1c63a415713b11c"
+    source = "{archive_lua_path}",
+    sha256 = "{self.archive_hash}"
 }}
 
 INSTALL = function(ctx)

@@ -18,6 +18,45 @@ import threading
 import unittest
 from pathlib import Path
 
+# Inline fixture contents
+FIXTURES = {
+    "simple.lua": """-- @envy version "1.2.3"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+    "missing_version.lua": """-- This manifest has no @envy version directive
+-- @envy cache "/custom/cache"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+    "with_escapes.lua": """-- @envy version "1.2.3-\\"beta\\""
+-- @envy cache "/path/with\\\\backslash"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+    "whitespace_variants.lua": """--   @envy   version   "1.0.0"
+--\t@envy\tcache\t"/tab/separated"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+    "all_directives.lua": """-- @envy version "2.0.0"
+-- @envy cache "/opt/envy-cache"
+-- @envy mirror "https://internal.corp/envy-releases"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+}
+
 
 class EnvyServer:
     """Simple HTTP server that serves the envy binary."""
@@ -77,7 +116,6 @@ class BootstrapIntegrationTest(unittest.TestCase):
 
         cls._bootstrap_unix = cls._project_root / "src/resources/envy"
         cls._bootstrap_windows = cls._project_root / "src/resources/envy.bat"
-        cls._fixtures_dir = cls._project_root / "test_data/bootstrap/fixtures"
 
     def setUp(self) -> None:
         if not self._envy_binary.exists():
@@ -118,8 +156,9 @@ class BootstrapIntegrationTest(unittest.TestCase):
         project_dir.mkdir(parents=True)
         bin_dir.mkdir(parents=True)
 
-        fixture_path = self._fixtures_dir / fixture_name
-        shutil.copy(fixture_path, project_dir / "envy.lua")
+        # Write fixture content from inline string
+        fixture_content = FIXTURES[fixture_name]
+        (project_dir / "envy.lua").write_text(fixture_content)
 
         bootstrap_src = self._get_bootstrap_script()
         bootstrap_dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")

@@ -1,6 +1,10 @@
 """Tests for default needed_by phase behavior."""
 
+import hashlib
+import io
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,18 +12,124 @@ from pathlib import Path
 from . import test_config
 from .trace_parser import PkgPhase, TraceParser
 
+# Test archive contents
+TEST_ARCHIVE_FILES = {
+    "root/file1.txt": "Root file content\n",
+    "root/file2.txt": "Another root file\n",
+}
+
+
+def create_test_archive(output_path: Path) -> str:
+    """Create test.tar.gz archive and return its SHA256 hash."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, content in TEST_ARCHIVE_FILES.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    archive_data = buf.getvalue()
+    output_path.write_bytes(archive_data)
+    return hashlib.sha256(archive_data).hexdigest()
+
 
 class TestDefaultNeededBy(unittest.TestCase):
     """Tests verifying default needed_by phase is asset_build."""
 
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-needed-by-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-needed-by-specs-"))
         self.envy_test = test_config.get_envy_executable()
 
-    def tearDown(self):
-        import shutil
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
 
+        # Write inline specs
+        self._write_specs()
+
+    def _write_specs(self):
+        """Write all inline specs to the specs directory."""
+        archive_lua_path = self.archive_path.as_posix()
+
+        specs = {
+            "dep_val_lib.lua": f'''-- Dependency validation test: base library (no dependencies)
+IDENTITY = "local.dep_val_lib@v1"
+
+FETCH = {{
+  source = "{archive_lua_path}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  envy.run([[echo "lib built" > lib.txt]])
+end
+''',
+            "default_needed_by_parent.lua": f'''-- Tests default needed_by - no explicit needed_by specified
+IDENTITY = "local.default_needed_by_parent@v1"
+
+DEPENDENCIES = {{
+  {{ spec = "local.dep_val_lib@v1", source = "dep_val_lib.lua" }}
+  -- No needed_by specified - should default to "build"
+}}
+
+FETCH = function(tmp_dir, options)
+  return "{archive_lua_path}", "{self.archive_hash}"
+end
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  -- Dependency should be available here by default
+  local dep_path = envy.package("local.dep_val_lib@v1")
+end
+''',
+            "explicit_check_parent.lua": f'''-- Tests explicit needed_by="check" - dependency completes before parent's check phase
+IDENTITY = "local.explicit_check_parent@v1"
+
+DEPENDENCIES = {{
+  {{ spec = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "check" }}
+}}
+
+FETCH = function(tmp_dir, options)
+  -- Dependency will complete by check phase (before fetch)
+  return "{archive_lua_path}", "{self.archive_hash}"
+end
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+''',
+            "explicit_fetch_parent.lua": f'''-- Tests explicit needed_by="fetch" - dependency completes before parent's fetch phase
+IDENTITY = "local.explicit_fetch_parent@v1"
+
+DEPENDENCIES = {{
+  {{ spec = "local.dep_val_lib@v1", source = "dep_val_lib.lua", needed_by = "fetch" }}
+}}
+
+FETCH = function(tmp_dir, options)
+  -- Dependency will complete before this phase due to explicit needed_by
+  return "{archive_lua_path}", "{self.archive_hash}"
+end
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+''',
+        }
+
+        for name, content in specs.items():
+            (self.specs_dir / name).write_text(content, encoding="utf-8")
+
+    def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
 
     def test_default_needed_by_is_build_not_check(self):
         """Verify default needed_by is asset_build (phase 4), not asset_check."""
@@ -32,7 +142,7 @@ class TestDefaultNeededBy(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.default_needed_by_parent@v1",
-                "test_data/specs/default_needed_by_parent.lua",
+                str(self.specs_dir / "default_needed_by_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -69,7 +179,7 @@ class TestDefaultNeededBy(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.explicit_check_parent@v1",
-                "test_data/specs/explicit_check_parent.lua",
+                str(self.specs_dir / "explicit_check_parent.lua"),
             ],
             capture_output=True,
             text=True,
@@ -98,7 +208,7 @@ class TestDefaultNeededBy(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.explicit_fetch_parent@v1",
-                "test_data/specs/explicit_fetch_parent.lua",
+                str(self.specs_dir / "explicit_fetch_parent.lua"),
             ],
             capture_output=True,
             text=True,
