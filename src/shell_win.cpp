@@ -257,8 +257,9 @@ std::string build_cmd_script_contents(std::string_view script) {
   std::string result;
   result.reserve(script.size() * 2 + 64);
 
-  // Disable command echo for cleaner output
+  // Disable command echo for cleaner output and enable delayed expansion
   result.append("@echo off\r\n");
+  result.append("setlocal enabledelayedexpansion\r\n");
 
   for (auto const &wide_line : lines) {
     std::string line{ wstring_to_utf8(wide_line) };
@@ -269,7 +270,7 @@ std::string build_cmd_script_contents(std::string_view script) {
       trimmed.remove_prefix(1);
     }
 
-    // Skip empty lines, labels (:label), comments (REM/::), and @echo off
+    // Skip empty lines, labels (:label), comments (REM/::), @echo off, and exit commands
     bool const is_empty{ trimmed.empty() };
     bool const is_label{ !trimmed.empty() && trimmed.front() == ':' &&
                          (trimmed.size() == 1 || trimmed[1] != ':') };
@@ -281,14 +282,19 @@ std::string build_cmd_script_contents(std::string_view script) {
     bool const is_echo_off{ trimmed.size() >= 9 && (trimmed.substr(0, 9) == "@echo off" ||
                                                     trimmed.substr(0, 9) == "@ECHO OFF" ||
                                                     trimmed.substr(0, 9) == "@Echo Off") };
+    bool const is_exit{ trimmed.size() >= 4 &&
+                        (trimmed.substr(0, 4) == "exit" || trimmed.substr(0, 4) == "EXIT" ||
+                         trimmed.substr(0, 4) == "Exit") &&
+                        (trimmed.size() == 4 || trimmed[4] == ' ' || trimmed[4] == '\t' ||
+                         trimmed[4] == '/') };
 
-    if (is_empty || is_label || is_rem || is_comment || is_echo_off) {
+    if (is_empty || is_label || is_rem || is_comment || is_echo_off || is_exit) {
       result.append(line);
       result.append("\r\n");
     } else {
       // Append fail-fast suffix: exit immediately if command fails
       result.append(line);
-      result.append(" || exit /b %errorlevel%\r\n");
+      result.append(" || exit /b !errorlevel!\r\n");
     }
   }
 
@@ -506,6 +512,8 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
       std::string_view line{ pending.data() + offset, newline - offset };
       if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
+      // Trim trailing spaces (cmd echo adds trailing space)
+      while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
       if (stream == shell_stream::std_out) {
         if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
       } else {
@@ -525,6 +533,8 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
   if (offset < pending.size()) {
     std::string_view line{ pending.data() + offset, pending.size() - offset };
     if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
+    // Trim trailing spaces (cmd echo adds trailing space)
+    while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
     if (stream == shell_stream::std_out) {
       if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
     } else {
@@ -599,7 +609,7 @@ std::wstring build_command_line_builtin(shell_choice shell,
   }
 
   // cmd shell requires nested quotes: ""C:\path\script.cmd""
-  std::wstring command{ L"cmd.exe /D /V:OFF /S /C \"" };
+  std::wstring command{ L"cmd.exe /D /V:ON /S /C \"" };
   command.append(quoted);
   command.push_back(L'"');
   return command;
