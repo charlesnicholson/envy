@@ -92,23 +92,23 @@ class EnvyServer:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
-                if self.path.endswith(".tar.gz"):
-                    content = parent.tar_gz_content
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/gzip")
-                    self.send_header("Content-Length", str(len(content)))
-                    self.end_headers()
-                    self.wfile.write(content)
-                elif self.path.endswith(".zip"):
-                    content = parent.zip_content
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/zip")
-                    self.send_header("Content-Length", str(len(content)))
-                    self.end_headers()
-                    self.wfile.write(content)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
+                match self.path.rsplit(".", 1)[-1]:
+                    case "gz" if self.path.endswith(".tar.gz"):
+                        content, content_type = (
+                            parent.tar_gz_content,
+                            "application/gzip",
+                        )
+                    case "zip":
+                        content, content_type = parent.zip_content, "application/zip"
+                    case _:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
 
             def log_message(self, format: str, *args: object) -> None:
                 pass
