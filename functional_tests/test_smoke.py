@@ -18,9 +18,6 @@ class EnvyBinarySmokeTest(unittest.TestCase):
         )
 
     def test_envy_help_executes(self) -> None:
-        self.assertTrue(
-            self._envy_binary.exists(), f"Expected envy binary at {self._envy_binary}"
-        )
 
         env = os.environ.copy()
         env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))

@@ -97,12 +97,14 @@ class TestStagePhase(unittest.TestCase):
 
         if should_succeed:
             self.assertEqual(
-                result.returncode, 0,
+                result.returncode,
+                0,
                 f"Spec {name} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
             )
         else:
             self.assertNotEqual(
-                result.returncode, 0,
+                result.returncode,
+                0,
                 f"Spec {name} should have failed but succeeded",
             )
 
@@ -270,7 +272,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("shell_failure", spec)
-        result = self.run_spec("shell_failure", "local.stage_shell_failure@v1", should_succeed=False)
+        result = self.run_spec(
+            "shell_failure", "local.stage_shell_failure@v1", should_succeed=False
+        )
 
         error_output = result.stdout + result.stderr
         self.assertTrue(

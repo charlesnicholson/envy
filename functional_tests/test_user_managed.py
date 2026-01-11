@@ -93,7 +93,9 @@ class TestUserManagedPackages(unittest.TestCase):
 
         # Write shared specs
         (self.specs_dir / "simple.lua").write_text(SPEC_SIMPLE, encoding="utf-8")
-        (self.specs_dir / "ctx_forbidden.lua").write_text(SPEC_CTX_FORBIDDEN, encoding="utf-8")
+        (self.specs_dir / "ctx_forbidden.lua").write_text(
+            SPEC_CTX_FORBIDDEN, encoding="utf-8"
+        )
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -107,7 +109,9 @@ class TestUserManagedPackages(unittest.TestCase):
         path.write_text(content, encoding="utf-8")
         return path
 
-    def run_spec(self, name: str, identity: str, trace: bool = False, env_vars: dict = None):
+    def run_spec(
+        self, name: str, identity: str, trace: bool = False, env_vars: dict = None
+    ):
         """Run spec by name and identity."""
         cmd = [str(self.envy_test), f"--cache-root={self.cache_root}"]
         if trace:
@@ -151,12 +155,16 @@ class TestUserManagedPackages(unittest.TestCase):
         self.marker_simple.parent.mkdir(parents=True, exist_ok=True)
         self.marker_simple.write_text("already installed")
 
-        result = self.run_spec("simple", "local.user_managed_simple@v1", trace=True, env_vars=env)
+        result = self.run_spec(
+            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         self.assertIn("user check returned true", result.stderr.lower())
         self.assertIn("skipping all phases", result.stderr.lower())
-        self.assertIn("phase install: no lock (cache hit), skipping", result.stderr.lower())
+        self.assertIn(
+            "phase install: no lock (cache hit), skipping", result.stderr.lower()
+        )
 
     def test_multiple_runs_cache_lifecycle(self):
         """Verify cache entry created/purged/created on each install cycle."""
@@ -168,7 +176,9 @@ class TestUserManagedPackages(unittest.TestCase):
         self.assertTrue(self.marker_simple.exists(), "First run should create marker")
 
         # Run 2: Skip (check=true)
-        result2 = self.run_spec("simple", "local.user_managed_simple@v1", trace=True, env_vars=env)
+        result2 = self.run_spec(
+            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+        )
         self.assertEqual(result2.returncode, 0)
         self.assertIn("check passed", result2.stderr.lower())
         self.assertIn("skipping all phases", result2.stderr.lower())
@@ -177,13 +187,17 @@ class TestUserManagedPackages(unittest.TestCase):
         self.marker_simple.unlink()
         result3 = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
         self.assertEqual(result3.returncode, 0)
-        self.assertTrue(self.marker_simple.exists(), "Should reinstall after marker removed")
+        self.assertTrue(
+            self.marker_simple.exists(), "Should reinstall after marker removed"
+        )
 
     def test_double_check_lock_prevents_duplicate_work(self):
         """Double-check lock: if check passes post-lock, skip install."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
-        result = self.run_spec("simple", "local.user_managed_simple@v1", trace=True, env_vars=env)
+        result = self.run_spec(
+            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+        )
         self.assertIn("re-running user check (post-lock)", result.stderr)
         self.assertIn("re-check returned false", result.stderr)
 
@@ -201,7 +215,8 @@ class TestUserManagedPackages(unittest.TestCase):
                 r for r in remaining if r.is_file() and not r.name.endswith(".lock")
             ]
             self.assertEqual(
-                len(non_lock_files), 0,
+                len(non_lock_files),
+                0,
                 f"User-managed should not leave files in cache, found: {non_lock_files}",
             )
 
@@ -242,7 +257,9 @@ end
         self.write_spec("with_fetch", spec_with_fetch)
         env = {"ENVY_TEST_MARKER_WITH_FETCH": str(self.marker_with_fetch)}
 
-        result = self.run_spec("with_fetch", "local.user_managed_with_fetch@v1", trace=True, env_vars=env)
+        result = self.run_spec(
+            "with_fetch", "local.user_managed_with_fetch@v1", trace=True, env_vars=env
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         self.assertTrue(self.marker_with_fetch.exists())
@@ -311,7 +328,9 @@ end
 """
         self.write_spec("ctx_tmp_dir", spec_tmp_dir)
 
-        result = self.run_spec("ctx_tmp_dir", "local.user_managed_ctx_isolation_tmp_dir@v1")
+        result = self.run_spec(
+            "ctx_tmp_dir", "local.user_managed_ctx_isolation_tmp_dir@v1"
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_allowed_apis(self):
@@ -338,13 +357,16 @@ end
 """
         self.write_spec("ctx_allowed", spec_allowed)
 
-        result = self.run_spec("ctx_allowed", "local.user_managed_ctx_isolation_allowed@v1")
+        result = self.run_spec(
+            "ctx_allowed", "local.user_managed_ctx_isolation_allowed@v1"
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_forbids_fetch_dir(self):
         """User-managed packages: fetch_dir access verification."""
         result = self.run_spec(
-            "ctx_forbidden", "local.user_managed_ctx_isolation_forbidden@v1",
+            "ctx_forbidden",
+            "local.user_managed_ctx_isolation_forbidden@v1",
             env_vars={"ENVY_TEST_FORBIDDEN_API": "fetch_dir"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -352,7 +374,8 @@ end
     def test_user_managed_ctx_forbids_stage_dir(self):
         """User-managed packages: stage_dir access verification."""
         result = self.run_spec(
-            "ctx_forbidden", "local.user_managed_ctx_isolation_forbidden@v1",
+            "ctx_forbidden",
+            "local.user_managed_ctx_isolation_forbidden@v1",
             env_vars={"ENVY_TEST_FORBIDDEN_API": "stage_dir"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -360,7 +383,8 @@ end
     def test_user_managed_ctx_forbids_install_dir(self):
         """User-managed packages: install_dir should be nil."""
         result = self.run_spec(
-            "ctx_forbidden", "local.user_managed_ctx_isolation_forbidden@v1",
+            "ctx_forbidden",
+            "local.user_managed_ctx_isolation_forbidden@v1",
             env_vars={"ENVY_TEST_FORBIDDEN_API": "install_dir"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -368,7 +392,8 @@ end
     def test_user_managed_ctx_forbids_extract_all(self):
         """User-managed packages: extract_all fails without proper context."""
         result = self.run_spec(
-            "ctx_forbidden", "local.user_managed_ctx_isolation_forbidden@v1",
+            "ctx_forbidden",
+            "local.user_managed_ctx_isolation_forbidden@v1",
             env_vars={"ENVY_TEST_FORBIDDEN_API": "extract_all"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")

@@ -31,9 +31,6 @@ class TestEnvyInit(unittest.TestCase):
         self._cache_dir = self._temp_dir / "cache"
         self._envy = _get_envy_binary()
 
-        if not self._envy.exists():
-            self.skipTest(f"envy not found at {self._envy}")
-
     def tearDown(self) -> None:
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():
             shutil.rmtree(self._temp_dir, ignore_errors=True)
@@ -279,9 +276,6 @@ class TestSelfDeployment(unittest.TestCase):
         self._project_dir = self._temp_dir / "project"
         self._bin_dir = self._temp_dir / "bin"
         self._envy = _get_envy_binary()
-
-        if not self._envy.exists():
-            self.skipTest(f"envy not found at {self._envy}")
 
     def tearDown(self) -> None:
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():

@@ -29,9 +29,6 @@ class FetchCommandFunctionalTest(unittest.TestCase):
 
     def test_fetch_local_file(self) -> None:
         """Test fetch with local file source."""
-        self.assertTrue(
-            self._envy_binary.exists(), f"envy binary missing at {self._envy_binary}"
-        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             source_file = Path(temp_dir) / "source.txt"
