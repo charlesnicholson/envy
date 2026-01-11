@@ -76,11 +76,14 @@ set "ENVY_BIN=%CACHE%\envy\%VERSION%\envy.exe"
 if exist "%ENVY_BIN%" goto :run
 
 echo Downloading envy %VERSION%... >&2
-set "URL=%ENVY_MIRROR%/v%VERSION%/envy-windows-x86_64.exe"
-set "TEMP_BIN=%TEMP%\envy-%VERSION%-%RANDOM%.exe"
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%TEMP_BIN%' -UseBasicParsing"
-if errorlevel 1 (echo ERROR: Failed to download envy from %URL% >&2 & del "%TEMP_BIN%" 2>nul & exit /b 1)
-"%TEMP_BIN%" %*
+set "URL=%ENVY_MIRROR%/v%VERSION%/envy-windows-x86_64.zip"
+set "TEMP_DIR=%TEMP%\envy-%VERSION%-%RANDOM%"
+set "TEMP_ZIP=%TEMP_DIR%.zip"
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%URL%' -OutFile '%TEMP_ZIP%' -UseBasicParsing"
+if errorlevel 1 (echo ERROR: Failed to download envy from %URL% >&2 & del "%TEMP_ZIP%" 2>nul & exit /b 1)
+powershell -NoProfile -Command "Expand-Archive -Path '%TEMP_ZIP%' -DestinationPath '%TEMP_DIR%' -Force"
+if errorlevel 1 (echo ERROR: Failed to extract envy >&2 & del "%TEMP_ZIP%" 2>nul & exit /b 1)
+"%TEMP_DIR%\envy.exe" %*
 exit /b %ERRORLEVEL%
 
 :run

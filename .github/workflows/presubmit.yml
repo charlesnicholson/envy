@@ -10,8 +10,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/setup-python@v6
         with:
@@ -25,30 +29,13 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Build
-        run: ./build.sh && strip out/build/envy
+        run: ./build.sh
 
       - name: Smoke test
         run: ls -al out/build/envy && ./out/build/envy -v
 
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.1.2'
-
-      - uses: actions/checkout@v5
-
-      - name: Build
-        run: ./build.sh && strip out/build/envy
-
-      - name: Smoke test
-        run: ls -al out/build/envy && ./out/build/envy -v
+      - name: Functional tests
+        run: python3.13 -m functional_tests
 
   build-windows:
     runs-on: windows-latest
@@ -76,15 +63,17 @@ jobs:
           dir out\build\envy.exe
           out\build\envy.exe -v
 
+      - name: Functional tests
+        run: python3.13 -m functional_tests
+
   all-checks-pass:
     timeout-minutes: 5
     needs:
-      - build-linux
-      - build-macos
+      - build-unix
       - build-windows
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Fail with upstream jobs
         run: exit 1
-        if: (needs.build-linux.result != 'success') || (needs.build-macos.result != 'success') || (needs.build-windows.result != 'success')
+        if: (needs.build-unix.result != 'success') || (needs.build-windows.result != 'success')
