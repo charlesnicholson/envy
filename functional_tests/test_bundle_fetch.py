@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for bundle fetching and spec resolution.
 
 Tests bundle fetching from local directories, identity verification,

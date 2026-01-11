@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for weak dependency hash inclusion in cache keys."""
 
 import hashlib
@@ -33,9 +32,24 @@ def create_test_archive(output_path: Path) -> str:
     return hashlib.sha256(archive_data).hexdigest()
 
 
-# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH}, {SPECS_DIR} replaced at runtime
-SPECS = {
-    "hash_provider_a.lua": """-- Provider A for hash testing
+class TestWeakDepHash(unittest.TestCase):
+    """Tests verifying resolved weak deps contribute to cache hash."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-weak-hash-cache-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-specs-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+        # Provider A for hash testing
+        self.write_spec(
+            "hash_provider_a.lua",
+            """-- Provider A for hash testing
 IDENTITY = "local.hash_provider_a@v1"
 
 PRODUCTS = {{
@@ -50,7 +64,12 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-    "hash_provider_b.lua": """-- Provider B for hash testing (different identity, same product)
+        )
+
+        # Provider B for hash testing (different identity, same product)
+        self.write_spec(
+            "hash_provider_b.lua",
+            """-- Provider B for hash testing (different identity, same product)
 IDENTITY = "local.hash_provider_b@v1"
 
 PRODUCTS = {{
@@ -65,7 +84,12 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-    "hash_consumer_weak.lua": """-- Consumer with weak product dependency for hash testing
+        )
+
+        # Consumer with weak product dependency for hash testing
+        self.write_spec(
+            "hash_consumer_weak.lua",
+            """-- Consumer with weak product dependency for hash testing
 IDENTITY = "local.hash_consumer_weak@v1"
 
 -- Note: weak fallback source must be relative to THIS recipe's location
@@ -87,7 +111,12 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-    "hash_provider_aaa.lua": """-- Provider for aaa_tool
+        )
+
+        # Provider for aaa_tool
+        self.write_spec(
+            "hash_provider_aaa.lua",
+            """-- Provider for aaa_tool
 IDENTITY = "local.hash_provider_aaa@v1"
 
 PRODUCTS = {{
@@ -102,7 +131,12 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-    "hash_provider_zzz.lua": """-- Provider for zzz_tool
+        )
+
+        # Provider for zzz_tool
+        self.write_spec(
+            "hash_provider_zzz.lua",
+            """-- Provider for zzz_tool
 IDENTITY = "local.hash_provider_zzz@v1"
 
 PRODUCTS = {{
@@ -117,7 +151,12 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-    "hash_consumer_multi_weak.lua": """-- Consumer with multiple weak dependencies for hash testing
+        )
+
+        # Consumer with multiple weak dependencies for hash testing
+        self.write_spec(
+            "hash_consumer_multi_weak.lua",
+            """-- Consumer with multiple weak dependencies for hash testing
 IDENTITY = "local.hash_consumer_multi@v1"
 
 DEPENDENCIES = {{
@@ -145,36 +184,23 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """,
-}
-
-
-class TestWeakDepHash(unittest.TestCase):
-    """Tests verifying resolved weak deps contribute to cache hash."""
-
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-weak-hash-cache-"))
-        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-manifest-"))
-        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-weak-hash-specs-"))
-        self.envy = test_config.get_envy_executable()
-        self.project_root = Path(__file__).parent.parent
-
-        # Create test archive and get its hash
-        self.archive_path = self.specs_dir / "test.tar.gz"
-        self.archive_hash = create_test_archive(self.archive_path)
-
-        # Write inline specs to temp directory with placeholders substituted
-        for name, content in SPECS.items():
-            spec_content = content.format(
-                ARCHIVE_PATH=self.archive_path.as_posix(),
-                ARCHIVE_HASH=self.archive_hash,
-                SPECS_DIR=self.specs_dir.as_posix(),
-            )
-            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
+        )
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
         shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> Path:
+        """Write spec to temp directory with placeholders substituted."""
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+            SPECS_DIR=self.specs_dir.as_posix(),
+        )
+        path = self.specs_dir / name
+        path.write_text(spec_content, encoding="utf-8")
+        return path
 
     def lua_path(self, name: str) -> str:
         return (self.specs_dir / name).as_posix()
@@ -390,8 +416,10 @@ PACKAGES = {{
 
     def test_ref_only_dep_contributes_to_hash(self):
         """Ref-only product dependency should contribute resolved identity to hash."""
-        # Create consumer with ref-only dep
-        consumer_lua = f"""
+        # Consumer with ref-only dep
+        consumer_path = self.write_spec(
+            "hash_consumer_refonly.lua",
+            """-- Consumer with ref-only dep (no recipe, no source)
 IDENTITY = "local.hash_consumer_refonly@v1"
 
 DEPENDENCIES = {{
@@ -402,15 +430,14 @@ DEPENDENCIES = {{
 }}
 
 FETCH = {{
-  source = "{self.archive_path.as_posix()}",
-  sha256 = "{self.archive_hash}",
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
 }}
 
 INSTALL = function(ctx)
 end
-"""
-        consumer_path = self.specs_dir / "hash_consumer_refonly.lua"
-        consumer_path.write_text(consumer_lua, encoding="utf-8")
+""",
+        )
 
         # Scenario 1: provider_a satisfies ref-only dep
         manifest1 = self.manifest(
@@ -471,28 +498,29 @@ PACKAGES = {{
 
     def test_strong_product_dep_does_not_contribute_to_hash(self):
         """Strong product deps (with source) should NOT contribute additional hash input."""
-        # Create consumer with strong product dep
-        consumer_lua = f"""
+        # Consumer with strong product dep
+        consumer_path = self.write_spec(
+            "hash_consumer_strong.lua",
+            f"""-- Consumer with strong product dep (has source)
 IDENTITY = "local.hash_consumer_strong@v1"
 
-DEPENDENCIES = {{
-  {{
+DEPENDENCIES = {{{{
+  {{{{
     product = "tool",
     spec = "local.hash_provider_a@v1",
     source = "{self.lua_path("hash_provider_a.lua")}",
-  }},
-}}
+  }}}},
+}}}}
 
-FETCH = {{
+FETCH = {{{{
   source = "{self.archive_path.as_posix()}",
   sha256 = "{self.archive_hash}",
-}}
+}}}}
 
 INSTALL = function(ctx)
 end
-"""
-        consumer_path = self.specs_dir / "hash_consumer_strong.lua"
-        consumer_path.write_text(consumer_lua, encoding="utf-8")
+""",
+        )
 
         manifest = self.manifest(
             f"""
@@ -511,29 +539,31 @@ PACKAGES = {{
         cache_dirs = self.get_cache_variant_dirs("local.hash_consumer_strong@v1")
         self.assertEqual(len(cache_dirs), 1)
 
-        # Create consumer with NO deps (just base identity)
-        consumer_nodeps_lua = f"""
+        # Consumer with NO deps (just base identity)
+        self.write_spec(
+            "hash_consumer_nodeps.lua",
+            """-- Consumer with no deps for baseline
 IDENTITY = "local.hash_consumer_nodeps@v1"
 
 FETCH = {{
-  source = "{self.archive_path.as_posix()}",
-  sha256 = "{self.archive_hash}",
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
 }}
 
 INSTALL = function(ctx)
 end
-"""
-        consumer_nodeps_path = self.specs_dir / "hash_consumer_nodeps.lua"
-        consumer_nodeps_path.write_text(consumer_nodeps_lua, encoding="utf-8")
+""",
+        )
 
         # The hash format is: BLAKE3(identity|resolved_weak1|resolved_weak2|...)
         # Strong deps have no weak_references, so they contribute nothing beyond base identity
         # We can't directly compare hashes across different identities, but we can verify
         # that changing the strong dep's provider doesn't change consumer's hash
-
         # This is implicitly tested by the fact that strong deps don't create weak_references
         # so no additional hash input is added. The test passes if sync succeeds.
-        self.assertTrue(True, "Strong deps don't add weak_references, verified by code inspection")
+        self.assertTrue(
+            True, "Strong deps don't add weak_references, verified by code inspection"
+        )
 
 
 if __name__ == "__main__":

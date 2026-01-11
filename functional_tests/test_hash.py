@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for hash command."""
 
 import base64

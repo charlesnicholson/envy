@@ -51,7 +51,9 @@ def create_tar_zst_archive(output_path: Path) -> None:
         # Fall back to creating via subprocess if zstandard not available
         tar_path = output_path.with_suffix("")
         create_tar_archive(tar_path)
-        subprocess.run(["zstd", "-f", str(tar_path), "-o", str(output_path)], check=True)
+        subprocess.run(
+            ["zstd", "-f", str(tar_path), "-o", str(output_path)], check=True
+        )
         tar_path.unlink()
         return
 
@@ -95,9 +97,12 @@ class EnvyExtractTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         import shutil
+
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _run_envy(self, *args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    def _run_envy(
+        self, *args: str, cwd: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         self.assertTrue(
             self._envy_binary.exists(), f"Expected envy binary at {self._envy_binary}"
         )

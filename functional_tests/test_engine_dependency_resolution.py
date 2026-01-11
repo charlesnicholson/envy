@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine dependency resolution.
 
 Tests the dependency graph construction phase: building dependency graphs,
@@ -38,11 +37,51 @@ def create_test_archive(output_path: Path) -> str:
     return hashlib.sha256(archive_data).hexdigest()
 
 
-# Inline specs for dependency resolution tests
-# Note: {ARCHIVE_PATH} and {ARCHIVE_HASH} will be replaced at runtime
-SPECS = {
-    # simple.lua is reused from test_engine_spec_loading
-    "simple.lua": """-- Minimal test spec - no dependencies
+class TestEngineDependencyResolution(unittest.TestCase):
+    """Tests for dependency graph construction and validation."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-dep-specs-"))
+        self.envy_test = test_config.get_envy_executable()
+        self.envy = test_config.get_envy_executable()
+        # Enable trace for all tests if ENVY_TEST_TRACE is set
+        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> Path:
+        """Write a spec file with placeholder substitution."""
+        content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+        )
+        path = self.specs_dir / name
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def get_file_hash(self, filepath):
+        """Get SHA256 hash of file using envy hash command."""
+        result = subprocess.run(
+            [str(self.envy), "hash", str(filepath)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    def test_recipe_with_one_dependency(self):
+        """Engine loads spec and its dependency."""
+        # Minimal test spec - no dependencies
+        self.write_spec(
+            "simple.lua",
+            """-- Minimal test spec - no dependencies
 IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
@@ -54,7 +93,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package - no cache interaction
 end
 """,
-    "with_dep.lua": """-- Spec with a dependency
+        )
+
+        # Spec with a dependency
+        self.write_spec(
+            "with_dep.lua",
+            """-- Spec with a dependency
 IDENTITY = "local.withdep@v1"
 DEPENDENCIES = {{
   {{ spec = "local.simple@v1", source = "simple.lua" }}
@@ -68,7 +112,37 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package - no cache interaction
 end
 """,
-    "cycle_a.lua": """-- Spec A in a cycle: A -> B
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.withdep@v1",
+                str(self.specs_dir / "with_dep.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        # Check both identities present
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.withdep@v1", output)
+        self.assertIn("local.simple@v1", output)
+
+    def test_cycle_detection(self):
+        """Engine detects and rejects dependency cycles."""
+        # Spec A in a cycle: A -> B
+        self.write_spec(
+            "cycle_a.lua",
+            """-- Spec A in a cycle: A -> B
 IDENTITY = "local.cycle_a@v1"
 DEPENDENCIES = {{
   {{ spec = "local.cycle_b@v1", source = "cycle_b.lua" }}
@@ -82,7 +156,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "cycle_b.lua": """-- Spec B in a cycle: B -> A
+        )
+
+        # Spec B in a cycle: B -> A
+        self.write_spec(
+            "cycle_b.lua",
+            """-- Spec B in a cycle: B -> A
 IDENTITY = "local.cycle_b@v1"
 DEPENDENCIES = {{
   {{ spec = "local.cycle_a@v1", source = "cycle_a.lua" }}
@@ -96,7 +175,34 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "self_dep.lua": """-- Spec that depends on itself (self-loop)
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.cycle_a@v1",
+                str(self.specs_dir / "cycle_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0, "Expected cycle to cause failure")
+        self.assertIn(
+            "cycle",
+            result.stderr.lower(),
+            f"Expected cycle error, got: {result.stderr}",
+        )
+
+    def test_self_dependency_detection(self):
+        """Engine detects and rejects spec depending on itself."""
+        # Spec that depends on itself (self-loop)
+        self.write_spec(
+            "self_dep.lua",
+            """-- Spec that depends on itself (self-loop)
 IDENTITY = "local.self_dep@v1"
 DEPENDENCIES = {{
   {{ spec = "local.self_dep@v1", source = "self_dep.lua" }}
@@ -110,7 +216,36 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "diamond_a.lua": """-- Top of diamond: A depends on B and C (which both depend on D)
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.self_dep@v1",
+                str(self.specs_dir / "self_dep.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(
+            result.returncode, 0, "Expected self-dependency to cause failure"
+        )
+        self.assertIn(
+            "cycle",
+            result.stderr.lower(),
+            f"Expected cycle error, got: {result.stderr}",
+        )
+
+    def test_diamond_dependency_memoization(self):
+        """Engine memoizes shared dependencies (diamond: A->B,C; B,C->D)."""
+        # Top of diamond: A depends on B and C (which both depend on D)
+        self.write_spec(
+            "diamond_a.lua",
+            """-- Top of diamond: A depends on B and C (which both depend on D)
 IDENTITY = "local.diamond_a@v1"
 DEPENDENCIES = {{
   {{ spec = "local.diamond_b@v1", source = "diamond_b.lua" }},
@@ -125,7 +260,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "diamond_b.lua": """-- Left side of diamond: B depends on D
+        )
+
+        # Left side of diamond: B depends on D
+        self.write_spec(
+            "diamond_b.lua",
+            """-- Left side of diamond: B depends on D
 IDENTITY = "local.diamond_b@v1"
 DEPENDENCIES = {{
   {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
@@ -139,7 +279,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "diamond_c.lua": """-- Right side of diamond: C depends on D
+        )
+
+        # Right side of diamond: C depends on D
+        self.write_spec(
+            "diamond_c.lua",
+            """-- Right side of diamond: C depends on D
 IDENTITY = "local.diamond_c@v1"
 DEPENDENCIES = {{
   {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
@@ -153,7 +298,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "diamond_d.lua": """-- Base of diamond dependency
+        )
+
+        # Base of diamond dependency
+        self.write_spec(
+            "diamond_d.lua",
+            """-- Base of diamond dependency
 IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {{}}
 
@@ -165,7 +315,67 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fetch_dep_blocked.lua": """-- Parent spec whose recipe_fetch depends on a helper finishing all phases.
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.diamond_a@v1",
+                str(self.specs_dir / "diamond_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}"
+        )
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines), 4, f"Expected 4 specs (A,B,C,D once), got: {result.stdout}"
+        )
+
+        # Verify all present - parse with better error reporting
+        output = {}
+        for i, line in enumerate(lines):
+            parts = line.split(" -> ", 1)
+            self.assertEqual(
+                len(parts),
+                2,
+                f"Line {i} malformed (expected 'key -> value'): {repr(line)}\nAll lines: {lines}",
+            )
+            output[parts[0]] = parts[1]
+        self.assertIn("local.diamond_a@v1", output)
+        self.assertIn("local.diamond_b@v1", output)
+        self.assertIn("local.diamond_c@v1", output)
+        self.assertIn("local.diamond_d@v1", output)
+
+    def test_dependency_completion_blocks_parent_check(self):
+        """Dependency marked needed_by=check runs to completion and graph fully resolves."""
+        # Helper spec with FETCH and STAGE
+        self.write_spec(
+            "fetch_dep_helper.lua",
+            """IDENTITY = "local.fetch_dep_helper@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+        )
+
+        # Parent spec whose recipe_fetch depends on a helper finishing all phases
+        self.write_spec(
+            "fetch_dep_blocked.lua",
+            """-- Parent spec whose recipe_fetch depends on a helper finishing all phases.
 IDENTITY = "local.fetch_dep_blocked@v1"
 
 DEPENDENCIES = {{
@@ -185,18 +395,42 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 """,
-    "fetch_dep_helper.lua": """IDENTITY = "local.fetch_dep_helper@v1"
+        )
 
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_dep_blocked@v1",
+                str(self.specs_dir / "fetch_dep_blocked.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
 
-STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
-  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
-end
-""",
-    "multiple_roots.lua": """-- Spec with two independent dependencies
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        )
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines),
+            2,
+            f"Expected 2 specs (parent + helper), got: {result.stdout}",
+        )
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.fetch_dep_blocked@v1", output)
+        self.assertIn("local.fetch_dep_helper@v1", output)
+
+    def test_multiple_independent_roots(self):
+        """Engine resolves multiple independent dependency trees."""
+        # Spec with two independent dependencies
+        self.write_spec(
+            "multiple_roots.lua",
+            """-- Spec with two independent dependencies
 IDENTITY = "local.multiple_roots@v1"
 DEPENDENCIES = {{
   {{ spec = "local.independent_left@v1", source = "independent_left.lua" }},
@@ -211,7 +445,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "independent_left.lua": """-- Independent tree, no shared deps
+        )
+
+        # Independent tree, no shared deps
+        self.write_spec(
+            "independent_left.lua",
+            """-- Independent tree, no shared deps
 IDENTITY = "local.independent_left@v1"
 DEPENDENCIES = {{}}
 
@@ -223,7 +462,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "independent_right.lua": """-- Independent tree, no shared deps
+        )
+
+        # Independent tree, no shared deps
+        self.write_spec(
+            "independent_right.lua",
+            """-- Independent tree, no shared deps
 IDENTITY = "local.independent_right@v1"
 DEPENDENCIES = {{}}
 
@@ -235,7 +479,38 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "options_parent.lua": """-- Spec with same dependency but different options
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.multiple_roots@v1",
+                str(self.specs_dir / "multiple_roots.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 3, f"Expected 3 recipes, got: {result.stdout}")
+
+        # Verify all present
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.multiple_roots@v1", output)
+        self.assertIn("local.independent_left@v1", output)
+        self.assertIn("local.independent_right@v1", output)
+
+    def test_options_differentiate_recipes(self):
+        """Same spec identity with different options creates separate entries."""
+        # Spec with same dependency but different options
+        self.write_spec(
+            "options_parent.lua",
+            """-- Spec with same dependency but different options
 IDENTITY = "local.options_parent@v1"
 DEPENDENCIES = {{
   {{ spec = "local.with_options@v1", source = "with_options.lua", options = {{ variant = "foo" }} }},
@@ -250,7 +525,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "with_options.lua": """-- Spec that supports options
+        )
+
+        # Spec that supports options
+        self.write_spec(
+            "with_options.lua",
+            """-- Spec that supports options
 IDENTITY = "local.with_options@v1"
 DEPENDENCIES = {{}}
 
@@ -262,7 +542,42 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "chain_a.lua": """-- Deep chain: A -> B
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.options_parent@v1",
+                str(self.specs_dir / "options_parent.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines),
+            3,
+            f"Expected 3 specs (parent + 2 variants), got: {result.stdout}",
+        )
+
+        # Verify all present with options in keys (strings are quoted)
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.options_parent@v1", output)
+        self.assertIn('local.with_options@v1{variant="bar"}', output)
+        self.assertIn('local.with_options@v1{variant="foo"}', output)
+
+    def test_deep_chain_dependency(self):
+        """Engine resolves deep dependency chain (A->B->C->D->E)."""
+        # Deep chain: A -> B
+        self.write_spec(
+            "chain_a.lua",
+            """-- Deep chain: A -> B
 IDENTITY = "local.chain_a@v1"
 DEPENDENCIES = {{
   {{ spec = "local.chain_b@v1", source = "chain_b.lua" }}
@@ -276,7 +591,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "chain_b.lua": """-- Deep chain: B -> C
+        )
+
+        # Deep chain: B -> C
+        self.write_spec(
+            "chain_b.lua",
+            """-- Deep chain: B -> C
 IDENTITY = "local.chain_b@v1"
 DEPENDENCIES = {{
   {{ spec = "local.chain_c@v1", source = "chain_c.lua" }}
@@ -290,7 +610,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "chain_c.lua": """-- Deep chain: C -> D
+        )
+
+        # Deep chain: C -> D
+        self.write_spec(
+            "chain_c.lua",
+            """-- Deep chain: C -> D
 IDENTITY = "local.chain_c@v1"
 DEPENDENCIES = {{
   {{ spec = "local.chain_d@v1", source = "chain_d.lua" }}
@@ -304,7 +629,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "chain_d.lua": """-- Deep chain: D -> E
+        )
+
+        # Deep chain: D -> E
+        self.write_spec(
+            "chain_d.lua",
+            """-- Deep chain: D -> E
 IDENTITY = "local.chain_d@v1"
 DEPENDENCIES = {{
   {{ spec = "local.chain_e@v1", source = "chain_e.lua" }}
@@ -318,7 +648,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "chain_e.lua": """-- End of deep chain
+        )
+
+        # End of deep chain
+        self.write_spec(
+            "chain_e.lua",
+            """-- End of deep chain
 IDENTITY = "local.chain_e@v1"
 DEPENDENCIES = {{}}
 
@@ -330,7 +665,42 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fanout_root.lua": """-- Wide fan-out: root depends on many children
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.chain_a@v1",
+                str(self.specs_dir / "chain_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines), 5, f"Expected 5 specs (A,B,C,D,E), got: {result.stdout}"
+        )
+
+        # Verify all present
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.chain_a@v1", output)
+        self.assertIn("local.chain_b@v1", output)
+        self.assertIn("local.chain_c@v1", output)
+        self.assertIn("local.chain_d@v1", output)
+        self.assertIn("local.chain_e@v1", output)
+
+    def test_wide_fanout_dependency(self):
+        """Engine resolves wide fan-out (root->child1,2,3,4)."""
+        # Wide fan-out: root depends on many children
+        self.write_spec(
+            "fanout_root.lua",
+            """-- Wide fan-out: root depends on many children
 IDENTITY = "local.fanout_root@v1"
 DEPENDENCIES = {{
   {{ spec = "local.fanout_child1@v1", source = "fanout_child1.lua" }},
@@ -347,7 +717,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fanout_child1.lua": """-- Fan-out child 1
+        )
+
+        # Fan-out child 1
+        self.write_spec(
+            "fanout_child1.lua",
+            """-- Fan-out child 1
 IDENTITY = "local.fanout_child1@v1"
 DEPENDENCIES = {{}}
 
@@ -359,7 +734,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fanout_child2.lua": """-- Fan-out child 2
+        )
+
+        # Fan-out child 2
+        self.write_spec(
+            "fanout_child2.lua",
+            """-- Fan-out child 2
 IDENTITY = "local.fanout_child2@v1"
 DEPENDENCIES = {{}}
 
@@ -371,7 +751,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fanout_child3.lua": """-- Fan-out child 3
+        )
+
+        # Fan-out child 3
+        self.write_spec(
+            "fanout_child3.lua",
+            """-- Fan-out child 3
 IDENTITY = "local.fanout_child3@v1"
 DEPENDENCIES = {{}}
 
@@ -383,7 +768,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fanout_child4.lua": """-- Fan-out child 4
+        )
+
+        # Fan-out child 4
+        self.write_spec(
+            "fanout_child4.lua",
+            """-- Fan-out child 4
 IDENTITY = "local.fanout_child4@v1"
 DEPENDENCIES = {{}}
 
@@ -395,7 +785,57 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "nonlocal_bad.lua": """-- remote.badrecipe@v1
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.fanout_root@v1",
+                str(self.specs_dir / "fanout_root.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 5, f"Expected 5 recipes, got: {result.stdout}")
+
+        # Verify all present
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.fanout_root@v1", output)
+        self.assertIn("local.fanout_child1@v1", output)
+        self.assertIn("local.fanout_child2@v1", output)
+        self.assertIn("local.fanout_child3@v1", output)
+        self.assertIn("local.fanout_child4@v1", output)
+
+    def test_nonlocal_cannot_depend_on_local(self):
+        """Engine rejects non-local spec depending on local.*."""
+        # Minimal test spec - no dependencies (used as target)
+        self.write_spec(
+            "simple.lua",
+            """-- Minimal test spec - no dependencies
+IDENTITY = "local.simple@v1"
+DEPENDENCIES = {{}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+""",
+        )
+
+        # Security test: non-local spec trying to depend on local.* recipe
+        self.write_spec(
+            "nonlocal_bad.lua",
+            """-- remote.badrecipe@v1
 -- Security test: non-local spec trying to depend on local.* recipe
 
 IDENTITY = "remote.badrecipe@v1"
@@ -414,7 +854,36 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing bad recipe")
 end
 """,
-    "remote_fileuri.lua": """-- remote.fileuri@v1
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "remote.badrecipe@v1",
+                str(self.specs_dir / "nonlocal_bad.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(
+            result.returncode, 0, "Expected validation to cause failure"
+        )
+        stderr_lower = result.stderr.lower()
+        self.assertTrue(
+            "security" in stderr_lower or "local" in stderr_lower,
+            f"Expected security/local dep error, got: {result.stderr}",
+        )
+
+    def test_remote_file_uri_no_dependencies(self):
+        """Remote spec with file:// source and no dependencies succeeds."""
+        # Remote spec with no dependencies
+        self.write_spec(
+            "remote_fileuri.lua",
+            """-- remote.fileuri@v1
 -- Remote spec with no dependencies
 
 IDENTITY = "remote.fileuri@v1"
@@ -427,7 +896,54 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing remote fileuri recipe")
 end
 """,
-    "remote_parent.lua": """-- remote.parent@v1
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "remote.fileuri@v1",
+                str(self.specs_dir / "remote_fileuri.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 1)
+
+        key, value = lines[0].split(" -> ", 1)
+        self.assertEqual(key, "remote.fileuri@v1")
+        self.assertGreater(len(value), 0)
+
+    def test_remote_depends_on_remote(self):
+        """Remote spec depending on another remote spec succeeds."""
+        # Remote spec with no dependencies
+        self.write_spec(
+            "remote_child.lua",
+            """-- remote.child@v1
+-- Remote spec with no dependencies
+
+IDENTITY = "remote.child@v1"
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote child recipe")
+end
+""",
+        )
+
+        # Remote spec depending on another remote recipe
+        self.write_spec(
+            "remote_parent.lua",
+            """-- remote.parent@v1
 -- Remote spec depending on another remote recipe
 
 IDENTITY = "remote.parent@v1"
@@ -447,20 +963,54 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing remote parent recipe")
 end
 """,
-    "remote_child.lua": """-- remote.child@v1
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "remote.parent@v1",
+                str(self.specs_dir / "remote_parent.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("remote.parent@v1", output)
+        self.assertIn("remote.child@v1", output)
+
+    def test_local_depends_on_remote(self):
+        """Local spec depending on remote spec succeeds."""
+        # Remote spec with no dependencies
+        self.write_spec(
+            "remote_base.lua",
+            """-- remote.base@v1
 -- Remote spec with no dependencies
 
-IDENTITY = "remote.child@v1"
+IDENTITY = "remote.base@v1"
 
 function CHECK(project_root, options)
   return false
 end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote child recipe")
+  envy.info("Installing remote base recipe")
 end
 """,
-    "local_wrapper.lua": """-- local.wrapper@v1
+        )
+
+        # Local spec depending on remote recipe
+        self.write_spec(
+            "local_wrapper.lua",
+            """-- local.wrapper@v1
 -- Local spec depending on remote recipe
 
 IDENTITY = "local.wrapper@v1"
@@ -480,20 +1030,54 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing local wrapper recipe")
 end
 """,
-    "remote_base.lua": """-- remote.base@v1
--- Remote spec with no dependencies
+        )
 
-IDENTITY = "remote.base@v1"
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.wrapper@v1",
+                str(self.specs_dir / "local_wrapper.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.wrapper@v1", output)
+        self.assertIn("remote.base@v1", output)
+
+    def test_local_depends_on_local(self):
+        """Local spec depending on another local spec succeeds."""
+        # Local spec with no dependencies
+        self.write_spec(
+            "local_child.lua",
+            """-- local.child@v1
+-- Local spec with no dependencies
+
+IDENTITY = "local.child@v1"
 
 function CHECK(project_root, options)
   return false
 end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote base recipe")
+  envy.info("Installing local child recipe")
 end
 """,
-    "local_parent.lua": """-- local.parent@v1
+        )
+
+        # Local spec depending on another local recipe
+        self.write_spec(
+            "local_parent.lua",
+            """-- local.parent@v1
 -- Local spec depending on another local recipe
 
 IDENTITY = "local.parent@v1"
@@ -512,20 +1096,78 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing local parent recipe")
 end
 """,
-    "local_child.lua": """-- local.child@v1
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.parent@v1",
+                str(self.specs_dir / "local_parent.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.parent@v1", output)
+        self.assertIn("local.child@v1", output)
+
+    def test_transitive_local_dependency_rejected(self):
+        """Remote spec transitively depending on local.* fails."""
+        # Local spec with no dependencies
+        self.write_spec(
+            "local_c.lua",
+            """-- local.c@v1
 -- Local spec with no dependencies
 
-IDENTITY = "local.child@v1"
+IDENTITY = "local.c@v1"
 
 function CHECK(project_root, options)
   return false
 end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local child recipe")
+  envy.info("Installing local c recipe")
 end
 """,
-    "remote_transitive_a.lua": """-- remote.a@v1
+        )
+
+        # Remote spec that depends on local.* (transitively violates security)
+        self.write_spec(
+            "remote_transitive_b.lua",
+            """-- remote.b@v1
+-- Remote spec that depends on local.* (transitively violates security)
+
+IDENTITY = "remote.b@v1"
+DEPENDENCIES = {{
+  {{
+    spec = "local.c@v1",
+    source = "local_c.lua"
+  }}
+}}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.info("Installing remote transitive b recipe")
+end
+""",
+        )
+
+        # Remote spec that transitively depends on local.* through remote.b
+        self.write_spec(
+            "remote_transitive_a.lua",
+            """-- remote.a@v1
 -- Remote spec that transitively depends on local.* through remote.b
 
 IDENTITY = "remote.a@v1"
@@ -545,39 +1187,36 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.info("Installing remote transitive a recipe")
 end
 """,
-    "remote_transitive_b.lua": """-- remote.b@v1
--- Remote spec that depends on local.* (transitively violates security)
+        )
 
-IDENTITY = "remote.b@v1"
-DEPENDENCIES = {{
-  {{
-    spec = "local.c@v1",
-    source = "local_c.lua"
-  }}
-}}
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "remote.a@v1",
+                str(self.specs_dir / "remote_transitive_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
 
-function CHECK(project_root, options)
-  return false
-end
+        self.assertNotEqual(
+            result.returncode, 0, "Expected transitive violation to cause failure"
+        )
+        stderr_lower = result.stderr.lower()
+        self.assertTrue(
+            "security" in stderr_lower or "local" in stderr_lower,
+            f"Expected security/local dep error, got: {result.stderr}",
+        )
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote transitive b recipe")
-end
-""",
-    "local_c.lua": """-- local.c@v1
--- Local spec with no dependencies
-
-IDENTITY = "local.c@v1"
-
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local c recipe")
-end
-""",
-    "fetch_cycle_a.lua": """-- Spec A in a fetch dependency cycle: A fetch needs B
+    def test_fetch_dependency_cycle(self):
+        """Engine detects and rejects fetch dependency cycles."""
+        # Spec A in a fetch dependency cycle: A fetch needs B
+        self.write_spec(
+            "fetch_cycle_a.lua",
+            """-- Spec A in a fetch dependency cycle: A fetch needs B
 IDENTITY = "local.fetch_cycle_a@v1"
 DEPENDENCIES = {{
   {{
@@ -599,7 +1238,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "fetch_cycle_b.lua": """-- Spec B in a fetch dependency cycle: B fetch needs A
+        )
+
+        # Spec B in a fetch dependency cycle: B fetch needs A
+        self.write_spec(
+            "fetch_cycle_b.lua",
+            """-- Spec B in a fetch dependency cycle: B fetch needs A
 IDENTITY = "local.fetch_cycle_b@v1"
 DEPENDENCIES = {{
   {{
@@ -621,7 +1265,49 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "simple_fetch_dep_base.lua": """-- Base spec that will be a fetch dependency for another recipe
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_cycle_a@v1",
+                str(self.specs_dir / "fetch_cycle_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(
+            result.returncode, 0, "Expected fetch dependency cycle to cause failure"
+        )
+        stderr_lower = result.stderr.lower()
+        # Accept either "Fetch dependency cycle" or "Dependency cycle" as both indicate detection
+        self.assertIn(
+            "cycle",
+            stderr_lower,
+            f"Expected cycle error, got: {result.stderr}",
+        )
+        # Verify the cycle path includes both recipes
+        self.assertIn(
+            "fetch_cycle_a",
+            stderr_lower,
+            f"Expected fetch_cycle_a in error, got: {result.stderr}",
+        )
+        self.assertIn(
+            "fetch_cycle_b",
+            stderr_lower,
+            f"Expected fetch_cycle_b in error, got: {result.stderr}",
+        )
+
+    def test_simple_fetch_dependency(self):
+        """Simple fetch dependency: A fetch needs B - validates basic flow and blocking."""
+        # Base spec that will be a fetch dependency for another recipe
+        self.write_spec(
+            "simple_fetch_dep_base.lua",
+            """-- Base spec that will be a fetch dependency for another recipe
 IDENTITY = "local.simple_fetch_dep_base@v1"
 
 FETCH = {{
@@ -633,7 +1319,12 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 """,
-    "simple_fetch_dep_parent.lua": """-- Spec with a dependency that has fetch prerequisites
+        )
+
+        # Spec with a dependency that has fetch prerequisites
+        self.write_spec(
+            "simple_fetch_dep_parent.lua",
+            """-- Spec with a dependency that has fetch prerequisites
 IDENTITY = "local.simple_fetch_dep_parent@v1"
 
 DEPENDENCIES = {{
@@ -678,7 +1369,60 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "multi_level_a.lua": """IDENTITY = "local.multi_level_a@v1"
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.simple_fetch_dep_parent@v1",
+                str(self.specs_dir / "simple_fetch_dep_parent.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
+        )
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines),
+            3,
+            f"Expected 3 specs (parent + child + base), got: {result.stdout}",
+        )
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.simple_fetch_dep_parent@v1", output)
+        self.assertIn("local.simple_fetch_dep_child@v1", output)
+        self.assertIn("local.simple_fetch_dep_base@v1", output)
+
+    def test_multi_level_nesting(self):
+        """Multi-level nesting: A fetch needs B, B fetch needs C, C fetch needs base."""
+        # Base spec that will be a fetch dependency for another recipe
+        self.write_spec(
+            "simple_fetch_dep_base.lua",
+            """-- Base spec that will be a fetch dependency for another recipe
+IDENTITY = "local.simple_fetch_dep_base@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+        )
+
+        # Multi-level nesting spec
+        self.write_spec(
+            "multi_level_a.lua",
+            """IDENTITY = "local.multi_level_a@v1"
 
 DEPENDENCIES = {{
   {{
@@ -742,7 +1486,77 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-    "multiple_fetch_deps_parent.lua": """IDENTITY = "local.multiple_fetch_deps_parent@v1"
+        )
+
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.multi_level_a@v1",
+                str(self.specs_dir / "multi_level_a.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
+        )
+
+        lines = [line for line in result.stdout.strip().split("\n") if line]
+        self.assertEqual(
+            len(lines),
+            4,
+            f"Expected 4 specs (A + B + C + base), got: {result.stdout}",
+        )
+
+        output = dict(line.split(" -> ", 1) for line in lines)
+        self.assertIn("local.multi_level_a@v1", output)
+        self.assertIn("local.multi_level_b@v1", output)
+        self.assertIn("local.multi_level_c@v1", output)
+        self.assertIn("local.simple_fetch_dep_base@v1", output)
+
+    def test_multiple_fetch_dependencies(self):
+        """Multiple fetch dependencies: A fetch needs [B, C] - parallel installation."""
+        # Base spec that will be a fetch dependency for another recipe
+        self.write_spec(
+            "simple_fetch_dep_base.lua",
+            """-- Base spec that will be a fetch dependency for another recipe
+IDENTITY = "local.simple_fetch_dep_base@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+        )
+
+        # Helper spec with FETCH and STAGE
+        self.write_spec(
+            "fetch_dep_helper.lua",
+            """IDENTITY = "local.fetch_dep_helper@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+end
+""",
+        )
+
+        # Spec with multiple fetch dependencies
+        self.write_spec(
+            "multiple_fetch_deps_parent.lua",
+            """IDENTITY = "local.multiple_fetch_deps_parent@v1"
 
 DEPENDENCIES = {{
   {{
@@ -781,547 +1595,8 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Programmatic package
 end
 """,
-}
-
-
-class TestEngineDependencyResolution(unittest.TestCase):
-    """Tests for dependency graph construction and validation."""
-
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
-        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-dep-specs-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.envy = test_config.get_envy_executable()
-        # Enable trace for all tests if ENVY_TEST_TRACE is set
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
-
-        # Create test archive and get its hash
-        self.archive_path = self.specs_dir / "test.tar.gz"
-        self.archive_hash = create_test_archive(self.archive_path)
-
-        # Write inline specs to temp directory with archive path/hash substituted
-        for name, content in SPECS.items():
-            # Replace placeholders with actual values
-            content = content.format(
-                ARCHIVE_PATH=self.archive_path.as_posix(),
-                ARCHIVE_HASH=self.archive_hash,
-            )
-            (self.specs_dir / name).write_text(content, encoding="utf-8")
-
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.specs_dir, ignore_errors=True)
-
-    def get_file_hash(self, filepath):
-        """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
-            [str(self.envy), "hash", str(filepath)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip()
-
-    def test_recipe_with_one_dependency(self):
-        """Engine loads spec and its dependency."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.withdep@v1",
-                str(self.specs_dir / "with_dep.lua"),
-            ],
-            capture_output=True,
-            text=True,
         )
 
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
-
-        # Check both identities present
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.withdep@v1", output)
-        self.assertIn("local.simple@v1", output)
-
-    def test_cycle_detection(self):
-        """Engine detects and rejects dependency cycles."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.cycle_a@v1",
-                str(self.specs_dir / "cycle_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertNotEqual(result.returncode, 0, "Expected cycle to cause failure")
-        self.assertIn(
-            "cycle",
-            result.stderr.lower(),
-            f"Expected cycle error, got: {result.stderr}",
-        )
-
-    def test_self_dependency_detection(self):
-        """Engine detects and rejects spec depending on itself."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.self_dep@v1",
-                str(self.specs_dir / "self_dep.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertNotEqual(
-            result.returncode, 0, "Expected self-dependency to cause failure"
-        )
-        self.assertIn(
-            "cycle",
-            result.stderr.lower(),
-            f"Expected cycle error, got: {result.stderr}",
-        )
-
-    def test_diamond_dependency_memoization(self):
-        """Engine memoizes shared dependencies (diamond: A->B,C; B,C->D)."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.diamond_a@v1",
-                str(self.specs_dir / "diamond_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}"
-        )
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines), 4, f"Expected 4 specs (A,B,C,D once), got: {result.stdout}"
-        )
-
-        # Verify all present - parse with better error reporting
-        output = {}
-        for i, line in enumerate(lines):
-            parts = line.split(" -> ", 1)
-            self.assertEqual(
-                len(parts),
-                2,
-                f"Line {i} malformed (expected 'key -> value'): {repr(line)}\nAll lines: {lines}",
-            )
-            output[parts[0]] = parts[1]
-        self.assertIn("local.diamond_a@v1", output)
-        self.assertIn("local.diamond_b@v1", output)
-        self.assertIn("local.diamond_c@v1", output)
-        self.assertIn("local.diamond_d@v1", output)
-
-    def test_dependency_completion_blocks_parent_check(self):
-        """Dependency marked needed_by=check runs to completion and graph fully resolves."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_dep_blocked@v1",
-                str(self.specs_dir / "fetch_dep_blocked.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
-        )
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines),
-            2,
-            f"Expected 2 specs (parent + helper), got: {result.stdout}",
-        )
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.fetch_dep_blocked@v1", output)
-        self.assertIn("local.fetch_dep_helper@v1", output)
-
-    def test_multiple_independent_roots(self):
-        """Engine resolves multiple independent dependency trees."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.multiple_roots@v1",
-                str(self.specs_dir / "multiple_roots.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 3, f"Expected 3 recipes, got: {result.stdout}")
-
-        # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.multiple_roots@v1", output)
-        self.assertIn("local.independent_left@v1", output)
-        self.assertIn("local.independent_right@v1", output)
-
-    def test_options_differentiate_recipes(self):
-        """Same spec identity with different options creates separate entries."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.options_parent@v1",
-                str(self.specs_dir / "options_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines),
-            3,
-            f"Expected 3 specs (parent + 2 variants), got: {result.stdout}",
-        )
-
-        # Verify all present with options in keys (strings are quoted)
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.options_parent@v1", output)
-        self.assertIn('local.with_options@v1{variant="bar"}', output)
-        self.assertIn('local.with_options@v1{variant="foo"}', output)
-
-    def test_deep_chain_dependency(self):
-        """Engine resolves deep dependency chain (A->B->C->D->E)."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.chain_a@v1",
-                str(self.specs_dir / "chain_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines), 5, f"Expected 5 specs (A,B,C,D,E), got: {result.stdout}"
-        )
-
-        # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.chain_a@v1", output)
-        self.assertIn("local.chain_b@v1", output)
-        self.assertIn("local.chain_c@v1", output)
-        self.assertIn("local.chain_d@v1", output)
-        self.assertIn("local.chain_e@v1", output)
-
-    def test_wide_fanout_dependency(self):
-        """Engine resolves wide fan-out (root->child1,2,3,4)."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fanout_root@v1",
-                str(self.specs_dir / "fanout_root.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 5, f"Expected 5 recipes, got: {result.stdout}")
-
-        # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.fanout_root@v1", output)
-        self.assertIn("local.fanout_child1@v1", output)
-        self.assertIn("local.fanout_child2@v1", output)
-        self.assertIn("local.fanout_child3@v1", output)
-        self.assertIn("local.fanout_child4@v1", output)
-
-    def test_nonlocal_cannot_depend_on_local(self):
-        """Engine rejects non-local spec depending on local.*."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.badrecipe@v1",
-                str(self.specs_dir / "nonlocal_bad.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertNotEqual(
-            result.returncode, 0, "Expected validation to cause failure"
-        )
-        stderr_lower = result.stderr.lower()
-        self.assertTrue(
-            "security" in stderr_lower or "local" in stderr_lower,
-            f"Expected security/local dep error, got: {result.stderr}",
-        )
-
-    def test_remote_file_uri_no_dependencies(self):
-        """Remote spec with file:// source and no dependencies succeeds."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.fileuri@v1",
-                str(self.specs_dir / "remote_fileuri.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-
-        key, value = lines[0].split(" -> ", 1)
-        self.assertEqual(key, "remote.fileuri@v1")
-        self.assertGreater(len(value), 0)
-
-    def test_remote_depends_on_remote(self):
-        """Remote spec depending on another remote spec succeeds."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.parent@v1",
-                str(self.specs_dir / "remote_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("remote.parent@v1", output)
-        self.assertIn("remote.child@v1", output)
-
-    def test_local_depends_on_remote(self):
-        """Local spec depending on remote spec succeeds."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.wrapper@v1",
-                str(self.specs_dir / "local_wrapper.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.wrapper@v1", output)
-        self.assertIn("remote.base@v1", output)
-
-    def test_local_depends_on_local(self):
-        """Local spec depending on another local spec succeeds."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.parent@v1",
-                str(self.specs_dir / "local_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.parent@v1", output)
-        self.assertIn("local.child@v1", output)
-
-    def test_transitive_local_dependency_rejected(self):
-        """Remote spec transitively depending on local.* fails."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.a@v1",
-                str(self.specs_dir / "remote_transitive_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertNotEqual(
-            result.returncode, 0, "Expected transitive violation to cause failure"
-        )
-        stderr_lower = result.stderr.lower()
-        self.assertTrue(
-            "security" in stderr_lower or "local" in stderr_lower,
-            f"Expected security/local dep error, got: {result.stderr}",
-        )
-
-    def test_fetch_dependency_cycle(self):
-        """Engine detects and rejects fetch dependency cycles."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_cycle_a@v1",
-                str(self.specs_dir / "fetch_cycle_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertNotEqual(
-            result.returncode, 0, "Expected fetch dependency cycle to cause failure"
-        )
-        stderr_lower = result.stderr.lower()
-        # Accept either "Fetch dependency cycle" or "Dependency cycle" as both indicate detection
-        self.assertIn(
-            "cycle",
-            stderr_lower,
-            f"Expected cycle error, got: {result.stderr}",
-        )
-        # Verify the cycle path includes both recipes
-        self.assertIn(
-            "fetch_cycle_a",
-            stderr_lower,
-            f"Expected fetch_cycle_a in error, got: {result.stderr}",
-        )
-        self.assertIn(
-            "fetch_cycle_b",
-            stderr_lower,
-            f"Expected fetch_cycle_b in error, got: {result.stderr}",
-        )
-
-    def test_simple_fetch_dependency(self):
-        """Simple fetch dependency: A fetch needs B - validates basic flow and blocking."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.simple_fetch_dep_parent@v1",
-                str(self.specs_dir / "simple_fetch_dep_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
-        )
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines),
-            3,
-            f"Expected 3 specs (parent + child + base), got: {result.stdout}",
-        )
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.simple_fetch_dep_parent@v1", output)
-        self.assertIn("local.simple_fetch_dep_child@v1", output)
-        self.assertIn("local.simple_fetch_dep_base@v1", output)
-
-    def test_multi_level_nesting(self):
-        """Multi-level nesting: A fetch needs B, B fetch needs C, C fetch needs base."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.multi_level_a@v1",
-                str(self.specs_dir / "multi_level_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
-        )
-
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines),
-            4,
-            f"Expected 4 specs (A + B + C + base), got: {result.stdout}",
-        )
-
-        output = dict(line.split(" -> ", 1) for line in lines)
-        self.assertIn("local.multi_level_a@v1", output)
-        self.assertIn("local.multi_level_b@v1", output)
-        self.assertIn("local.multi_level_c@v1", output)
-        self.assertIn("local.simple_fetch_dep_base@v1", output)
-
-    def test_multiple_fetch_dependencies(self):
-        """Multiple fetch dependencies: A fetch needs [B, C] - parallel installation."""
         result = subprocess.run(
             [
                 str(self.envy_test),

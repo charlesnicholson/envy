@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for two-step fetch pattern (fetch → commit).
 
 Tests the security gating pattern where envy.fetch() downloads to tmp

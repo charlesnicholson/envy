@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine phase execution.
 
 Tests the phase lifecycle: check(), fetch(), and install() phase execution
@@ -15,60 +14,6 @@ import unittest
 from . import test_config
 from .trace_parser import PkgPhase, TraceParser
 
-# Inline specs for phase execution tests
-SPECS = {
-    "simple.lua": '''-- Minimal test spec - no dependencies
-IDENTITY = "local.simple@v1"
-DEPENDENCIES = {}
-
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
-''',
-    "fetch_function_basic.lua": '''-- Test spec with basic fetch function
-IDENTITY = "local.fetcher@v1"
-DEPENDENCIES = {}
-
-function FETCH(tmp_dir, options)
-  -- Simulates fetching by writing a test file
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Install from fetched materials
-end
-''',
-    "fetch_function_with_dep.lua": '''-- Test spec with fetch function that depends on another recipe
-IDENTITY = "local.fetcher_with_dep@v1"
-DEPENDENCIES = {
-  { spec = "local.tool@v1", source = "tool.lua" }
-}
-
-function FETCH(tmp_dir, options)
-  -- Fetch phase uses a dependency
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Install from fetched materials
-end
-''',
-    "tool.lua": '''-- Minimal tool spec used as dependency
-IDENTITY = "local.tool@v1"
-DEPENDENCIES = {}
-
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Install tool
-end
-''',
-}
-
 
 class TestEnginePhases(unittest.TestCase):
     """Tests for phase execution lifecycle."""
@@ -79,13 +24,15 @@ class TestEnginePhases(unittest.TestCase):
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
 
-        # Write inline specs to temp directory
-        for name, content in SPECS.items():
-            (self.specs_dir / name).write_text(content, encoding="utf-8")
-
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> Path:
+        """Write spec to temp directory."""
+        path = self.specs_dir / f"{name}.lua"
+        path.write_text(content, encoding="utf-8")
+        return path
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
@@ -99,7 +46,21 @@ class TestEnginePhases(unittest.TestCase):
 
     def test_phase_execution_check_false(self):
         """Engine executes check() and install() phases with structured trace."""
+        # Minimal spec with no dependencies
+        spec = """IDENTITY = "local.simple@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Programmatic package - no cache interaction
+end
+"""
+        spec_path = self.write_spec("simple", spec)
         trace_file = self.cache_root / "trace.jsonl"
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -107,7 +68,7 @@ class TestEnginePhases(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.simple@v1",
-                str(self.specs_dir / "simple.lua"),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -123,7 +84,21 @@ class TestEnginePhases(unittest.TestCase):
 
     def test_fetch_function_basic(self):
         """Engine executes fetch() phase for specs with fetch function."""
+        # Spec with basic fetch function
+        spec = """IDENTITY = "local.fetcher@v1"
+DEPENDENCIES = {}
+
+function FETCH(tmp_dir, options)
+  -- Simulates fetching by writing a test file
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Install from fetched materials
+end
+"""
+        spec_path = self.write_spec("fetch_function_basic", spec)
         trace_file = self.cache_root / "trace.jsonl"
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -131,7 +106,7 @@ class TestEnginePhases(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher@v1",
-                str(self.specs_dir / "fetch_function_basic.lua"),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,
@@ -153,7 +128,37 @@ class TestEnginePhases(unittest.TestCase):
 
     def test_fetch_function_with_dependency(self):
         """Engine executes fetch() with dependencies available."""
+        # Minimal tool spec used as dependency
+        tool_spec = """IDENTITY = "local.tool@v1"
+DEPENDENCIES = {}
+
+function CHECK(project_root, options)
+  return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Install tool
+end
+"""
+        self.write_spec("tool", tool_spec)
+
+        # Spec with fetch function that depends on another recipe
+        fetcher_spec = """IDENTITY = "local.fetcher_with_dep@v1"
+DEPENDENCIES = {
+  { spec = "local.tool@v1", source = "tool.lua" }
+}
+
+function FETCH(tmp_dir, options)
+  -- Fetch phase uses a dependency
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Install from fetched materials
+end
+"""
+        spec_path = self.write_spec("fetch_function_with_dep", fetcher_spec)
         trace_file = self.cache_root / "trace.jsonl"
+
         result = subprocess.run(
             [
                 str(self.envy_test),
@@ -161,7 +166,7 @@ class TestEnginePhases(unittest.TestCase):
                 f"--trace=file:{trace_file}",
                 "engine-test",
                 "local.fetcher_with_dep@v1",
-                str(self.specs_dir / "fetch_function_with_dep.lua"),
+                str(spec_path),
             ],
             capture_output=True,
             text=True,

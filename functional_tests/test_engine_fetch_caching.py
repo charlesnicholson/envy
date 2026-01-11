@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine declarative fetch per-file caching.
 
 Tests package cache management: per-file caching across partial failures,
@@ -461,9 +460,7 @@ FETCH = {{
             fetch_dir.mkdir(parents=True, exist_ok=True)
 
             # Copy actual test files to cache (they'll match the computed hashes)
-            shutil.copy(
-                self.test_files_dir / "simple.lua", fetch_dir / "simple.lua"
-            )
+            shutil.copy(self.test_files_dir / "simple.lua", fetch_dir / "simple.lua")
             shutil.copy(
                 self.test_files_dir / "print_single.lua", fetch_dir / "print_single.lua"
             )

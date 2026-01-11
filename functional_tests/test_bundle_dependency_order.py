@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for bundle dependency ordering using trace JSON.
 
 Tests that:
@@ -138,11 +137,13 @@ end
         bundle_path = self.create_bundle(
             "test.helpers@v1",
             {"test.dummy@v1": "specs/dummy.lua"},
-            {"lib/helper.lua": """HELPER_VERSION = "1.0.0"
+            {
+                "lib/helper.lua": """HELPER_VERSION = "1.0.0"
 function compute_value()
   return 42
 end
-"""},
+"""
+            },
         )
 
         # Create spec that depends on bundle and uses loadenv_spec
@@ -183,8 +184,7 @@ PACKAGES = {{
         bundle_fetch_completes = [
             e
             for e in self.filter_events(events, "phase_complete")
-            if "test.helpers@v1" in e.get("spec", "")
-            and e.get("phase") == "spec_fetch"
+            if "test.helpers@v1" in e.get("spec", "") and e.get("phase") == "spec_fetch"
         ]
 
         # Find loadenv_spec_access for the consumer
@@ -254,9 +254,7 @@ PACKAGES = {{
 
         # Find the access for our specific subpath
         matching_accesses = [
-            e
-            for e in loadenv_accesses
-            if e.get("subpath") == "lib.math.utils"
+            e for e in loadenv_accesses if e.get("subpath") == "lib.math.utils"
         ]
 
         self.assertTrue(
@@ -269,9 +267,11 @@ PACKAGES = {{
         bundle_path = self.create_bundle(
             "acme.toolchain@v2",
             {"acme.dummy@v1": "specs/dummy.lua"},
-            {"lib/config.lua": """CONFIG_VERSION = "2.0"
+            {
+                "lib/config.lua": """CONFIG_VERSION = "2.0"
 function get_version() return CONFIG_VERSION end
-"""},
+"""
+            },
         )
 
         # Use fuzzy match: "toolchain" instead of full "acme.toolchain@v2"

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine build phase.
 
 Tests build phase with nil, string, and function forms. Verifies ctx API
@@ -38,10 +37,85 @@ def create_test_archive(output_path: Path) -> str:
     return hashlib.sha256(archive_data).hexdigest()
 
 
-# Inline specs for build tests - use {ARCHIVE_PATH} and {ARCHIVE_HASH} placeholders
-SPECS = {
-    "build_nil.lua": """-- Test build phase: build = nil (skip build)
-IDENTITY = "local.build_nil@v1"
+class TestBuildPhase(unittest.TestCase):
+    """Tests for build phase (compilation and processing workflows)."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-build-test-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-build-specs-"))
+        self.envy_test = test_config.get_envy_executable()
+        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> str:
+        """Write spec to temp dir with placeholder substitution, return path."""
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+            SPECS_DIR=self.specs_dir.as_posix(),
+        )
+        path = self.specs_dir / f"{name}.lua"
+        path.write_text(spec_content, encoding="utf-8")
+        return str(path)
+
+    def get_pkg_path(self, identity):
+        """Find package directory for given identity in cache."""
+        pkgs_dir = self.cache_root / "packages" / identity
+        if not pkgs_dir.exists():
+            return None
+        for subdir in pkgs_dir.iterdir():
+            if subdir.is_dir():
+                pkg_dir = subdir / "pkg"
+                if pkg_dir.exists():
+                    return pkg_dir
+                return subdir
+        return None
+
+    def run_spec(self, name: str, identity: str, should_succeed: bool = True):
+        """Run spec and return result."""
+        result = subprocess.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                identity,
+                str(self.specs_dir / f"{name}.lua"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if should_succeed:
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"Spec {name} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
+            )
+        else:
+            self.assertNotEqual(
+                result.returncode,
+                0,
+                f"Spec {name} should have failed but succeeded",
+            )
+
+        return result
+
+    # =========================================================================
+    # Basic build phase forms
+    # =========================================================================
+
+    def test_build_nil_skips_phase(self):
+        """Spec with no build field should skip build phase."""
+        # Build = nil: no BUILD field, skip build phase and proceed to install
+        spec = """IDENTITY = "local.build_nil@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -49,11 +123,18 @@ FETCH = {{
 }}
 
 STAGE = {{strip = 1}}
+"""
+        self.write_spec("nil_skip_build", spec)
+        self.run_spec("nil_skip_build", "local.build_nil@v1")
 
--- No build field - should skip build phase and proceed to install
-""",
-    "build_string.lua": """-- Test build phase: build = "shell script" (shell execution)
-IDENTITY = "local.build_string@v1"
+        pkg_path = self.get_pkg_path("local.build_nil@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "file1.txt").exists())
+
+    def test_build_string_executes_shell(self):
+        """Spec with build = function executing shell script."""
+        # Build creates artifacts via shell script
+        spec = """IDENTITY = "local.build_string@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -81,9 +162,22 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 end
-""",
-    "build_function.lua": """-- Test build phase: build = function(ctx, opts) (programmatic with envy.run())
-IDENTITY = "local.build_function@v1"
+"""
+        self.write_spec("string_shell", spec)
+        self.run_spec("string_shell", "local.build_string@v1")
+
+        pkg_path = self.get_pkg_path("local.build_string@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "build_output").exists())
+        self.assertTrue((pkg_path / "build_output" / "artifact.txt").exists())
+
+        content = (pkg_path / "build_output" / "artifact.txt").read_text()
+        self.assertEqual(content.strip(), "build_artifact")
+
+    def test_build_function_with_ctx_run(self):
+        """Spec with build = function(ctx) uses envy.run() with capture."""
+        # Build function using envy.run() with capture to verify output
+        spec = """IDENTITY = "local.build_function@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -95,7 +189,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Building with envy.run()")
 
-  -- Create build artifacts
   local result
   if envy.PLATFORM == "windows" then
     result = envy.run([[mkdir build_output 2> nul & echo function_artifact > build_output\\result.txt & if not exist build_output\\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
@@ -105,20 +198,34 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
       mkdir -p build_output
       echo "function_artifact" > build_output/result.txt
       echo "Build complete"
-    ]],
-                     {{ capture = true }})
+    ]], {{ capture = true }})
   end
 
-  -- Verify stdout contains expected output
   if not result.stdout:match("Build complete") then
     error("Expected 'Build complete' in stdout")
   end
 
   print("Build finished successfully")
 end
-""",
-    "build_dependency.lua": """-- Test dependency for build_with_asset
-IDENTITY = "local.build_dependency@v1"
+"""
+        self.write_spec("function_ctx_run", spec)
+        self.run_spec("function_ctx_run", "local.build_function@v1")
+
+        pkg_path = self.get_pkg_path("local.build_function@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "build_output" / "result.txt").exists())
+
+        content = (pkg_path / "build_output" / "result.txt").read_text()
+        self.assertEqual(content.strip(), "function_artifact")
+
+    # =========================================================================
+    # Dependency access tests
+    # =========================================================================
+
+    def test_build_with_package_dependency(self):
+        """Build phase can access dependencies via envy.package()."""
+        # First write the dependency spec
+        dep_spec = """IDENTITY = "local.build_dependency@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -136,12 +243,14 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
       echo 'binary' > bin/app]])
   end
 end
-""",
-    "build_with_package.lua": """-- Test build phase: envy.package() for dependency access
-IDENTITY = "local.build_with_package@v1"
+"""
+        self.write_spec("dependency", dep_spec)
+
+        # Consumer spec that uses envy.package() to access dependency
+        consumer_spec = """IDENTITY = "local.build_with_package@v1"
 
 DEPENDENCIES = {{
-  {{ spec = "local.build_dependency@v1", source = "{SPECS_DIR}/build_dependency.lua" }}
+  {{ spec = "local.build_dependency@v1", source = "{SPECS_DIR}/dependency.lua" }}
 }}
 
 FETCH = {{
@@ -157,7 +266,6 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   local dep_path = envy.package("local.build_dependency@v1")
   print("Dependency path: " .. dep_path)
 
-  -- Copy dependency file
   local result
   if envy.PLATFORM == "windows" then
     result = envy.run([[
@@ -168,23 +276,37 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
       Write-Output "Used dependency data"
       if (-not (Test-Path from_dependency.txt)) {{ Write-Error "Output artifact missing"; exit 62 }}
       exit 0
-    ]],
-                     {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
+    ]], {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
   else
     result = envy.run([[
       cat "]] .. dep_path .. [[/dependency.txt" > from_dependency.txt
       echo "Used dependency data"
-    ]],
-                     {{ capture = true }})
+    ]], {{ capture = true }})
   end
 
   if not result.stdout:match("Used dependency data") then
     error("Failed to use dependency")
   end
 end
-""",
-    "build_with_copy.lua": """-- Test build phase: envy.copy() for file and directory copy
-IDENTITY = "local.build_with_copy@v1"
+"""
+        self.write_spec("with_package", consumer_spec)
+        self.run_spec("with_package", "local.build_with_package@v1")
+
+        pkg_path = self.get_pkg_path("local.build_with_package@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "from_dependency.txt").exists())
+
+        content = (pkg_path / "from_dependency.txt").read_text()
+        self.assertEqual(content.strip(), "dependency_data")
+
+    # =========================================================================
+    # File operation tests (copy, move, extract)
+    # =========================================================================
+
+    def test_build_with_copy_operations(self):
+        """Build phase can copy files and directories with envy.copy()."""
+        # Test envy.copy() for single file and directory copy
+        spec = """IDENTITY = "local.build_with_copy@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -196,7 +318,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.copy()")
 
-  -- Create source files
   if envy.PLATFORM == "windows" then
     envy.run([[
       Set-Content -Path source.txt -Value "source_file"
@@ -214,27 +335,14 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Copy single file
   envy.copy("source.txt", "dest_file.txt")
-
-  -- Copy directory recursively
   envy.copy("source_dir", "dest_dir")
 
-  -- Verify copies
   if envy.PLATFORM == "windows" then
     envy.run([[
-      if (-not (Test-Path dest_file.txt)) {{
-        Write-Output "missing dest_file.txt"
-        exit 1
-      }}
-      if (-not (Test-Path dest_dir/file1.txt)) {{
-        Write-Output "missing file1.txt"
-        exit 1
-      }}
-      if (-not (Test-Path dest_dir/file2.txt)) {{
-        Write-Output "missing file2.txt"
-        exit 1
-      }}
+      if (-not (Test-Path dest_file.txt)) {{ Write-Output "missing dest_file.txt"; exit 1 }}
+      if (-not (Test-Path dest_dir/file1.txt)) {{ Write-Output "missing file1.txt"; exit 1 }}
+      if (-not (Test-Path dest_dir/file2.txt)) {{ Write-Output "missing file2.txt"; exit 1 }}
       Write-Output "Copy operations successful"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -246,9 +354,25 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 end
-""",
-    "build_with_move.lua": """-- Test build phase: envy.move() for efficient rename operations
-IDENTITY = "local.build_with_move@v1"
+"""
+        self.write_spec("with_copy", spec)
+        self.run_spec("with_copy", "local.build_with_copy@v1")
+
+        pkg_path = self.get_pkg_path("local.build_with_copy@v1")
+        self.assertIsNotNone(pkg_path)
+
+        self.assertTrue((pkg_path / "dest_file.txt").exists())
+        content = (pkg_path / "dest_file.txt").read_text()
+        self.assertEqual(content.strip(), "source_file")
+
+        self.assertTrue((pkg_path / "dest_dir").is_dir())
+        self.assertTrue((pkg_path / "dest_dir" / "file1.txt").exists())
+        self.assertTrue((pkg_path / "dest_dir" / "file2.txt").exists())
+
+    def test_build_with_move_operations(self):
+        """Build phase can move files and directories with envy.move()."""
+        # Test envy.move() for efficient rename operations
+        spec = """IDENTITY = "local.build_with_move@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -260,7 +384,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.move()")
 
-  -- Create source files
   if envy.PLATFORM == "windows" then
     envy.run([[
       Set-Content -Path source_move.txt -Value "moveable_file"
@@ -275,13 +398,9 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Move file
   envy.move("source_move.txt", "moved_file.txt")
-
-  -- Move directory
   envy.move("move_dir", "moved_dir")
 
-  -- Verify moves (source should not exist, dest should exist)
   if envy.PLATFORM == "windows" then
     envy.run([[
       if (Test-Path source_move.txt) {{ exit 1 }}
@@ -300,18 +419,31 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 end
-""",
-    "build_with_extract.lua": """-- Test build phase: envy.extract() to extract archive during build
-IDENTITY = "local.build_with_extract@v1"
+"""
+        self.write_spec("with_move", spec)
+        self.run_spec("with_move", "local.build_with_move@v1")
+
+        pkg_path = self.get_pkg_path("local.build_with_move@v1")
+        self.assertIsNotNone(pkg_path)
+
+        self.assertFalse((pkg_path / "source_move.txt").exists())
+        self.assertFalse((pkg_path / "move_dir").exists())
+
+        self.assertTrue((pkg_path / "moved_file.txt").exists())
+        self.assertTrue((pkg_path / "moved_dir").is_dir())
+        self.assertTrue((pkg_path / "moved_dir" / "content.txt").exists())
+
+    def test_build_with_extract(self):
+        """Build phase can extract archives with envy.extract()."""
+        # Test envy.extract() to extract archive in build phase
+        spec = """IDENTITY = "local.build_with_extract@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
   sha256 = "{ARCHIVE_HASH}"
 }}
 
--- Skip stage phase, extract manually in build
 STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
-  -- Don't extract yet, just prepare
   if envy.PLATFORM == "windows" then
     envy.run([[New-Item -ItemType Directory -Path manual_build -Force | Out-Null]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -322,23 +454,9 @@ end
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.extract()")
 
-  -- Extract the archive from fetch_dir into stage_dir
   local files_extracted = envy.extract(fetch_dir .. "/test.tar.gz", stage_dir)
   print("Extracted " .. files_extracted .. " files")
 
-  -- Extract again with strip_components
-  if envy.PLATFORM == "windows" then
-    envy.run([[New-Item -ItemType Directory -Path stripped -Force | Out-Null]], {{ shell = ENVY_SHELL.POWERSHELL }})
-    envy.run([[Set-Location stripped; $true]], {{ shell = ENVY_SHELL.POWERSHELL }})  -- Create directory
-    envy.run([[New-Item -ItemType Directory -Path extracted_stripped -Force | Out-Null]], {{ shell = ENVY_SHELL.POWERSHELL }})
-  else
-    envy.run("mkdir -p stripped")
-    envy.run("cd stripped && true")  -- Create directory
-    envy.run([[mkdir -p extracted_stripped]])
-  end
-
-  -- Note: extract extracts to cwd, so we need to work around this
-  -- For now, just verify the first extraction worked
   if envy.PLATFORM == "windows" then
     envy.run([[
       if (-not (Test-Path root -PathType Container)) {{ exit 1 }}
@@ -353,9 +471,23 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 end
-""",
-    "build_multiple_operations.lua": """-- Test build phase: multiple operations in sequence
-IDENTITY = "local.build_multiple_operations@v1"
+"""
+        self.write_spec("with_extract", spec)
+        self.run_spec("with_extract", "local.build_with_extract@v1")
+
+        pkg_path = self.get_pkg_path("local.build_with_extract@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "root").exists())
+        self.assertTrue((pkg_path / "root" / "file1.txt").exists())
+
+    # =========================================================================
+    # Multi-operation tests
+    # =========================================================================
+
+    def test_build_multiple_operations(self):
+        """Build phase can chain multiple operations."""
+        # Multi-step build: create -> copy -> modify -> move -> verify
+        spec = """IDENTITY = "local.build_multiple_operations@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -367,7 +499,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing multiple operations")
 
-  -- Operation 1: Create initial structure
   if envy.PLATFORM == "windows" then
     envy.run([[
       New-Item -ItemType Directory -Path step1 -Force | Out-Null
@@ -380,10 +511,8 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Operation 2: Copy to next stage
   envy.copy("step1", "step2")
 
-  -- Operation 3: Modify in step2
   if envy.PLATFORM == "windows" then
     envy.run([[
       Add-Content -Path step2/data.txt -Value "step2_additional"
@@ -396,32 +525,15 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Operation 4: Move to final location
   envy.move("step2", "final")
 
-  -- Operation 5: Verify final state
   if envy.PLATFORM == "windows" then
     envy.run([[
-      if (-not (Test-Path final -PathType Container)) {{
-        Write-Output "missing final"
-        exit 1
-      }}
-      if (Test-Path step2) {{
-        Write-Output "step2 still exists"
-        exit 1
-      }}
-      if (-not (Select-String -Path final/data.txt -Pattern "step1_output" -Quiet)) {{
-        Write-Output "missing step1_output"
-        exit 1
-      }}
-      if (-not (Select-String -Path final/data.txt -Pattern "step2_additional" -Quiet)) {{
-        Write-Output "missing step2_additional"
-        exit 1
-      }}
-      if (-not (Test-Path final/new.txt)) {{
-        Write-Output "missing new.txt"
-        exit 1
-      }}
+      if (-not (Test-Path final -PathType Container)) {{ Write-Output "missing final"; exit 1 }}
+      if (Test-Path step2) {{ Write-Output "step2 still exists"; exit 1 }}
+      if (-not (Select-String -Path final/data.txt -Pattern "step1_output" -Quiet)) {{ Write-Output "missing step1_output"; exit 1 }}
+      if (-not (Select-String -Path final/data.txt -Pattern "step2_additional" -Quiet)) {{ Write-Output "missing step2_additional"; exit 1 }}
+      if (-not (Test-Path final/new.txt)) {{ Write-Output "missing new.txt"; exit 1 }}
       Write-Output "All operations completed"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -437,9 +549,31 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
 
   print("Multiple operations successful")
 end
-""",
-    "build_with_env.lua": """-- Test build phase: envy.run() with custom environment variables
-IDENTITY = "local.build_with_env@v1"
+"""
+        self.write_spec("multi_op", spec)
+        self.run_spec("multi_op", "local.build_multiple_operations@v1")
+
+        pkg_path = self.get_pkg_path("local.build_multiple_operations@v1")
+        self.assertIsNotNone(pkg_path)
+
+        self.assertFalse((pkg_path / "step2").exists())
+
+        self.assertTrue((pkg_path / "final").is_dir())
+        self.assertTrue((pkg_path / "final" / "data.txt").exists())
+        self.assertTrue((pkg_path / "final" / "new.txt").exists())
+
+        content = (pkg_path / "final" / "data.txt").read_text()
+        self.assertIn("step1_output", content)
+        self.assertIn("step2_additional", content)
+
+    # =========================================================================
+    # Environment and cwd tests
+    # =========================================================================
+
+    def test_build_with_custom_env(self):
+        """Build phase can set custom environment variables."""
+        # Test envy.run() with custom env parameter
+        spec = """IDENTITY = "local.build_with_env@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -451,7 +585,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing custom environment variables")
 
-  -- Run with custom environment
   local result
   if envy.PLATFORM == "windows" then
     result = envy.run([[
@@ -460,10 +593,7 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
       if ($env:BUILD_MODE -ne "release") {{ exit 1 }}
       if ($env:CUSTOM_VAR -ne "test_value") {{ exit 1 }}
     ]], {{
-      env = {{
-        BUILD_MODE = "release",
-        CUSTOM_VAR = "test_value"
-      }},
+      env = {{ BUILD_MODE = "release", CUSTOM_VAR = "test_value" }},
       shell = ENVY_SHELL.POWERSHELL,
       capture = true
     }})
@@ -474,15 +604,11 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
       test "$BUILD_MODE" = "release" || exit 1
       test "$CUSTOM_VAR" = "test_value" || exit 1
     ]], {{
-      env = {{
-        BUILD_MODE = "release",
-        CUSTOM_VAR = "test_value"
-      }},
+      env = {{ BUILD_MODE = "release", CUSTOM_VAR = "test_value" }},
       capture = true
     }})
   end
 
-  -- Verify environment was set
   if not result.stdout:match("BUILD_MODE=release") then
     error("BUILD_MODE not set correctly")
   end
@@ -493,9 +619,14 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
 
   print("Environment variables work correctly")
 end
-""",
-    "build_with_cwd.lua": """-- Test build phase: envy.run() with custom working directory
-IDENTITY = "local.build_with_cwd@v1"
+"""
+        self.write_spec("with_env", spec)
+        self.run_spec("with_env", "local.build_with_env@v1")
+
+    def test_build_with_custom_cwd(self):
+        """Build phase can run commands in custom working directory."""
+        # Test envy.run() with cwd parameter
+        spec = """IDENTITY = "local.build_with_cwd@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -507,14 +638,12 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing custom working directory")
 
-  -- Create subdirectory
   if envy.PLATFORM == "windows" then
     envy.run([[New-Item -ItemType Directory -Path subdir -Force | Out-Null]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
     envy.run("mkdir -p subdir")
   end
 
-  -- Run in subdirectory (relative path)
   if envy.PLATFORM == "windows" then
     envy.run([[
       (Get-Location).Path | Out-File -FilePath current_dir.txt
@@ -527,18 +656,11 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]], {{cwd = "subdir"}})
   end
 
-  -- Verify we ran in subdirectory
   if envy.PLATFORM == "windows" then
     envy.run([[
-      if (-not (Test-Path subdir/marker.txt)) {{
-        Write-Output "missing subdir/marker.txt"
-        exit 1
-      }}
+      if (-not (Test-Path subdir/marker.txt)) {{ Write-Output "missing subdir/marker.txt"; exit 1 }}
       $content = Get-Content subdir/current_dir.txt -Raw
-      if ($content -notmatch "(?i)subdir") {{
-        Write-Output "current_dir does not contain subdir: $content"
-        exit 1
-      }}
+      if ($content -notmatch "(?i)subdir") {{ Write-Output "current_dir does not contain subdir: $content"; exit 1 }}
       Write-Output "CWD subdir verified"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -548,36 +670,21 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Create nested structure
   if envy.PLATFORM == "windows" then
     envy.run([[New-Item -ItemType Directory -Path nested/deep/dir -Force | Out-Null]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
     envy.run("mkdir -p nested/deep/dir")
   end
 
-  -- Run in deeply nested directory
   if envy.PLATFORM == "windows" then
-    envy.run([[
-      Set-Content -Path deep_marker.txt -Value "deep"
-    ]], {{cwd = "nested/deep/dir", shell = ENVY_SHELL.POWERSHELL}})
+    envy.run([[Set-Content -Path deep_marker.txt -Value "deep"]], {{cwd = "nested/deep/dir", shell = ENVY_SHELL.POWERSHELL}})
   else
-    envy.run([[
-      echo "deep" > deep_marker.txt
-    ]], {{cwd = "nested/deep/dir"}})
+    envy.run([[echo "deep" > deep_marker.txt]], {{cwd = "nested/deep/dir"}})
   end
 
-  -- Verify
   if envy.PLATFORM == "windows" then
     envy.run([[
-      if (-not (Test-Path nested/deep/dir/deep_marker.txt)) {{
-        Write-Output "missing deep_marker.txt"
-        exit 1
-      }}
-      $deep = Get-Content nested/deep/dir/deep_marker.txt -Raw
-      if ($deep -notmatch "deep") {{
-        Write-Output "deep_marker.txt does not contain deep"
-        exit 1
-      }}
+      if (-not (Test-Path nested/deep/dir/deep_marker.txt)) {{ Write-Output "missing deep_marker.txt"; exit 1 }}
       Write-Output "CWD operations successful"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -589,9 +696,25 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
 
   print("Custom working directory works correctly")
 end
-""",
-    "build_error_nonzero_exit.lua": """-- Test build phase: error on non-zero exit code
-IDENTITY = "local.build_error_nonzero_exit@v1"
+"""
+        self.write_spec("with_cwd", spec)
+        self.run_spec("with_cwd", "local.build_with_cwd@v1")
+
+        pkg_path = self.get_pkg_path("local.build_with_cwd@v1")
+        self.assertIsNotNone(pkg_path)
+        self.assertTrue((pkg_path / "subdir" / "marker.txt").exists())
+        self.assertTrue(
+            (pkg_path / "nested" / "deep" / "dir" / "deep_marker.txt").exists()
+        )
+
+    # =========================================================================
+    # Error handling tests
+    # =========================================================================
+
+    def test_build_error_nonzero_exit(self):
+        """Build phase fails on non-zero exit code."""
+        # Build that exits with non-zero code
+        spec = """IDENTITY = "local.build_error_nonzero_exit@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -603,19 +726,24 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Testing error handling")
 
-  -- This should fail and abort the build
   if envy.PLATFORM == "windows" then
     envy.run("exit 42", {{ shell = ENVY_SHELL.POWERSHELL }})
   else
     envy.run("exit 42")
   end
 
-  -- This should never execute
   error("Should not reach here")
 end
-""",
-    "build_string_error.lua": """-- Test build phase: shell script with error
-IDENTITY = "local.build_string_error@v1"
+"""
+        self.write_spec("error_nonzero", spec)
+        self.run_spec(
+            "error_nonzero", "local.build_error_nonzero_exit@v1", should_succeed=False
+        )
+
+    def test_build_string_error(self):
+        """Build phase fails when shell script returns non-zero."""
+        # Build with intentional shell script failure
+        spec = """IDENTITY = "local.build_string_error@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -624,7 +752,6 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
--- This build script should fail
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     local result = envy.run([[Write-Output "Starting build"; Write-Error "Intentional failure"; exit 7 ]], {{ shell = ENVY_SHELL.POWERSHELL }})
@@ -638,9 +765,20 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]], {{ check = true }})
   end
 end
-""",
-    "build_access_dirs.lua": """-- Test build phase: access to fetch_dir, stage_dir
-IDENTITY = "local.build_access_dirs@v1"
+"""
+        self.write_spec("string_error", spec)
+        self.run_spec(
+            "string_error", "local.build_string_error@v1", should_succeed=False
+        )
+
+    # =========================================================================
+    # Directory access tests
+    # =========================================================================
+
+    def test_build_access_directories(self):
+        """Build phase has access to fetch_dir, stage_dir."""
+        # Verify directory parameters are accessible and contain expected data
+        spec = """IDENTITY = "local.build_access_dirs@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -654,7 +792,6 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("fetch_dir: " .. fetch_dir)
   print("stage_dir: " .. stage_dir)
 
-  -- Verify directories exist
   if envy.PLATFORM == "windows" then
     envy.run([[
       if (-not (Test-Path -LiteralPath ']] .. fetch_dir .. [[' -PathType Container)) {{ exit 42 }}
@@ -669,7 +806,6 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Verify fetch_dir contains the archive
   if envy.PLATFORM == "windows" then
     envy.run([[
       if (-not (Test-Path -LiteralPath ']] .. fetch_dir .. [[/test.tar.gz')) {{ exit 45 }}
@@ -682,22 +818,25 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Create output in stage_dir for later verification
   if envy.PLATFORM == "windows" then
-    envy.run([[
-      Set-Content -Path build_marker.txt -Value "Built successfully"
-    ]], {{ shell = ENVY_SHELL.POWERSHELL }})
+    envy.run([[Set-Content -Path build_marker.txt -Value "Built successfully"]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
-    envy.run([[
-      echo "Built successfully" > build_marker.txt
-    ]])
+    envy.run([[echo "Built successfully" > build_marker.txt]])
   end
 
   print("Directory access successful")
 end
-""",
-    "build_nested_dirs.lua": """-- Test build phase: create complex nested directory structure
-IDENTITY = "local.build_nested_dirs@v1"
+"""
+        self.write_spec("access_dirs", spec)
+        self.run_spec("access_dirs", "local.build_access_dirs@v1")
+
+        pkg_path = self.get_pkg_path("local.build_access_dirs@v1")
+        self.assertIsNotNone(pkg_path)
+
+    def test_build_nested_directory_structure(self):
+        """Build phase can create and manipulate nested directories."""
+        # Complex nested directory creation and copying
+        spec = """IDENTITY = "local.build_nested_dirs@v1"
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -709,7 +848,6 @@ STAGE = {{strip = 1}}
 BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
   print("Creating nested directory structure")
 
-  -- Create complex directory hierarchy
   if envy.PLATFORM == "windows" then
     envy.run([[
       New-Item -ItemType Directory -Path output/bin -Force | Out-Null
@@ -736,32 +874,15 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
     ]])
   end
 
-  -- Copy nested structure
   envy.copy("output", "copied_output")
 
-  -- Verify all files exist in copied structure
   if envy.PLATFORM == "windows" then
     envy.run([[
-      if (-not (Test-Path copied_output/bin/app)) {{
-        Write-Output "missing bin/app"
-        exit 1
-      }}
-      if (-not (Test-Path copied_output/lib/x86_64/libapp.so)) {{
-        Write-Output "missing libapp.so"
-        exit 1
-      }}
-      if (-not (Test-Path copied_output/include/app.h)) {{
-        Write-Output "missing app.h"
-        exit 1
-      }}
-      if (-not (Test-Path copied_output/include/subproject/sub.h)) {{
-        Write-Output "missing sub.h"
-        exit 1
-      }}
-      if (-not (Test-Path copied_output/share/doc/README.md)) {{
-        Write-Output "missing README.md"
-        exit 1
-      }}
+      if (-not (Test-Path copied_output/bin/app)) {{ Write-Output "missing bin/app"; exit 1 }}
+      if (-not (Test-Path copied_output/lib/x86_64/libapp.so)) {{ Write-Output "missing libapp.so"; exit 1 }}
+      if (-not (Test-Path copied_output/include/app.h)) {{ Write-Output "missing app.h"; exit 1 }}
+      if (-not (Test-Path copied_output/include/subproject/sub.h)) {{ Write-Output "missing sub.h"; exit 1 }}
+      if (-not (Test-Path copied_output/share/doc/README.md)) {{ Write-Output "missing README.md"; exit 1 }}
       Write-Output "Nested directory operations successful"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -777,363 +898,13 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
 
   print("Nested directory handling works correctly")
 end
-""",
-    "build_output_capture.lua": """-- Test build phase: verify envy.run() captures stdout/stderr
-IDENTITY = "local.build_output_capture@v1"
+"""
+        self.write_spec("nested_dirs", spec)
+        self.run_spec("nested_dirs", "local.build_nested_dirs@v1")
 
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}"
-}}
-
-STAGE = {{strip = 1}}
-
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
-  print("Testing output capture")
-
-  -- Capture output from command
-  local result
-  if envy.PLATFORM == "windows" then
-    result = envy.run(
-        [[if (-not $PSVersionTable) {{ Write-Output "psversion-init" }}; Write-Output "line1"; if (-not ("line1")) {{ Write-Output "line1" }}; Write-Output "line2"; Write-Output "line3"; exit 0]],
-        {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
-  else
-    result = envy.run(
-        [[
-      echo "line1"
-      echo "line2"
-      echo "line3"
-    ]],
-        {{ capture = true }})
-  end
-
-  -- Verify stdout contains all lines
-  if not result.stdout:match("line1") then
-    error("Missing line1 in stdout")
-  end
-  if not result.stdout:match("line2") then
-    error("Missing line2 in stdout")
-  end
-  if not result.stdout:match("line3") then
-    error("Missing line3 in stdout")
-  end
-
-  -- Test with special characters
-  if envy.PLATFORM == "windows" then
-      result = envy.run(
-          [[Write-Output "Special: !@#$%^&*()"; Write-Output "Unicode: hello"; Write-Output "Quotes: 'single' \\"double\\""; exit 0]],
-          {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
-  else
-    result = envy.run(
-        [[
-      echo "Special: !@#$%^&*()"
-      echo "Unicode: hello"
-      echo "Quotes: 'single' \\"double\\""
-    ]],
-        {{ capture = true }})
-  end
-
-  if not result.stdout:match("Special:") then
-    error("Missing special characters in output")
-  end
-
-  print("Output capture works correctly")
-end
-""",
-    "build_function_returns_string.lua": """-- Test build phase: build = function(ctx, opts) that returns a string to execute
-IDENTITY = "local.build_function_returns_string@v1"
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}"
-}}
-
-STAGE = {{strip = 1}}
-
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
-  print("BUILD function executing, preparing to return script")
-
-  -- Do some setup work first
-  if envy.PLATFORM == "windows" then
-    envy.run("mkdir setup_dir 2> nul", {{ shell = ENVY_SHELL.CMD }})
-  else
-    envy.run("mkdir -p setup_dir")
-  end
-
-  -- Return a script to be executed
-  if envy.PLATFORM == "windows" then
-    return [[
-      New-Item -ItemType Directory -Force -Path output_from_returned_script | Out-Null
-      Set-Content -Path output_from_returned_script\\marker.txt -Value "returned_script_artifact" -NoNewline
-    ]]
-  else
-    return [[
-      mkdir -p output_from_returned_script
-      echo "returned_script_artifact" > output_from_returned_script/marker.txt
-    ]]
-  end
-end
-""",
-    "build_failfast.lua": """-- Test build phase: multi-line BUILD string fails on first error (fail-fast)
--- This verifies that shell scripts stop execution when a command fails.
-IDENTITY = "local.build_failfast@v1"
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}"
-}}
-
-STAGE = {{strip = 1}}
-
--- Multi-line shell script where second command fails.
--- The third command should NOT run due to fail-fast behavior.
-BUILD = [[
-echo "line1"
-false
-echo "line2_should_not_run" > failfast_marker.txt
-]]
-""",
-}
-
-
-class TestBuildPhase(unittest.TestCase):
-    """Tests for build phase (compilation and processing workflows)."""
-
-    def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-build-test-"))
-        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-build-specs-"))
-        self.envy_test = test_config.get_envy_executable()
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
-
-        # Create test archive and get its hash
-        self.archive_path = self.specs_dir / "test.tar.gz"
-        self.archive_hash = create_test_archive(self.archive_path)
-
-        # Write all inline specs to temp directory
-        for name, content in SPECS.items():
-            spec_content = content.format(
-                ARCHIVE_PATH=self.archive_path.as_posix(),
-                ARCHIVE_HASH=self.archive_hash,
-                SPECS_DIR=self.specs_dir.as_posix(),
-            )
-            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
-
-    def tearDown(self):
-        shutil.rmtree(self.cache_root, ignore_errors=True)
-        shutil.rmtree(self.specs_dir, ignore_errors=True)
-
-    def get_pkg_path(self, identity):
-        """Find package directory for given identity in cache."""
-        pkgs_dir = self.cache_root / "packages" / identity
-        if not pkgs_dir.exists():
-            return None
-        # Find the platform-specific package subdirectory
-        for subdir in pkgs_dir.iterdir():
-            if subdir.is_dir():
-                pkg_dir = subdir / "pkg"
-                if pkg_dir.exists():
-                    return pkg_dir
-                return subdir
-        return None
-
-    def run_spec(self, spec_file, identity, should_succeed=True):
-        """Helper to run a spec and return result."""
-        result = subprocess.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                identity,
-                str(self.specs_dir / spec_file),
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        if should_succeed:
-            self.assertEqual(
-                result.returncode,
-                0,
-                f"Spec {spec_file} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
-            )
-        else:
-            self.assertNotEqual(
-                result.returncode,
-                0,
-                f"Spec {spec_file} should have failed but succeeded",
-            )
-
-        return result
-
-    def test_build_nil_skips_phase(self):
-        """Spec with no build field should skip build phase."""
-        self.run_spec("build_nil.lua", "local.build_nil@v1")
-
-        # Files should still be present from stage
-        pkg_path = self.get_pkg_path("local.build_nil@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "file1.txt").exists())
-
-    def test_build_string_executes_shell(self):
-        """Spec with build = "string" executes shell script."""
-        self.run_spec("build_string.lua", "local.build_string@v1")
-
-        # Verify build artifacts were created
-        pkg_path = self.get_pkg_path("local.build_string@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "build_output").exists())
-        self.assertTrue((pkg_path / "build_output" / "artifact.txt").exists())
-
-        # Verify artifact content
-        content = (pkg_path / "build_output" / "artifact.txt").read_text()
-        self.assertEqual(content.strip(), "build_artifact")
-
-    def test_build_function_with_ctx_run(self):
-        """Spec with build = function(ctx) uses envy.run()."""
-        self.run_spec("build_function.lua", "local.build_function@v1")
-
-        # Verify build artifacts
-        pkg_path = self.get_pkg_path("local.build_function@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "build_output" / "result.txt").exists())
-
-        content = (pkg_path / "build_output" / "result.txt").read_text()
-        self.assertEqual(content.strip(), "function_artifact")
-
-    def test_build_with_package_dependency(self):
-        """Build phase can access dependencies via envy.package()."""
-        # Build spec with dependency (engine will build dependency automatically)
-        self.run_spec("build_with_package.lua", "local.build_with_package@v1")
-
-        # Verify dependency was used
-        pkg_path = self.get_pkg_path("local.build_with_package@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "from_dependency.txt").exists())
-
-        content = (pkg_path / "from_dependency.txt").read_text()
-        self.assertEqual(content.strip(), "dependency_data")
-
-    def test_build_with_copy_operations(self):
-        """Build phase can copy files and directories with envy.copy()."""
-        self.run_spec("build_with_copy.lua", "local.build_with_copy@v1")
-
-        # Verify copies
-        pkg_path = self.get_pkg_path("local.build_with_copy@v1")
-        self.assertIsNotNone(pkg_path)
-
-        # Verify file copy
-        self.assertTrue((pkg_path / "dest_file.txt").exists())
-        content = (pkg_path / "dest_file.txt").read_text()
-        self.assertEqual(content.strip(), "source_file")
-
-        # Verify directory copy
-        self.assertTrue((pkg_path / "dest_dir").is_dir())
-        self.assertTrue((pkg_path / "dest_dir" / "file1.txt").exists())
-        self.assertTrue((pkg_path / "dest_dir" / "file2.txt").exists())
-
-    def test_build_with_move_operations(self):
-        """Build phase can move files and directories with envy.move()."""
-        self.run_spec("build_with_move.lua", "local.build_with_move@v1")
-
-        # Verify moves
-        pkg_path = self.get_pkg_path("local.build_with_move@v1")
-        self.assertIsNotNone(pkg_path)
-
-        # Source should not exist
-        self.assertFalse((pkg_path / "source_move.txt").exists())
-        self.assertFalse((pkg_path / "move_dir").exists())
-
-        # Destination should exist
-        self.assertTrue((pkg_path / "moved_file.txt").exists())
-        self.assertTrue((pkg_path / "moved_dir").is_dir())
-        self.assertTrue((pkg_path / "moved_dir" / "content.txt").exists())
-
-    def test_build_with_extract(self):
-        """Build phase can extract archives with envy.extract()."""
-        self.run_spec("build_with_extract.lua", "local.build_with_extract@v1")
-
-        # Verify extraction
-        pkg_path = self.get_pkg_path("local.build_with_extract@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "root").exists())
-        self.assertTrue((pkg_path / "root" / "file1.txt").exists())
-
-    def test_build_multiple_operations(self):
-        """Build phase can chain multiple operations."""
-        self.run_spec(
-            "build_multiple_operations.lua", "local.build_multiple_operations@v1"
-        )
-
-        # Verify final state
-        pkg_path = self.get_pkg_path("local.build_multiple_operations@v1")
-        self.assertIsNotNone(pkg_path)
-
-        # Intermediate directories should be gone
-        self.assertFalse((pkg_path / "step2").exists())
-
-        # Final directory should exist with all content
-        self.assertTrue((pkg_path / "final").is_dir())
-        self.assertTrue((pkg_path / "final" / "data.txt").exists())
-        self.assertTrue((pkg_path / "final" / "new.txt").exists())
-
-        # Verify content has both modifications
-        content = (pkg_path / "final" / "data.txt").read_text()
-        self.assertIn("step1_output", content)
-        self.assertIn("step2_additional", content)
-
-    def test_build_with_custom_env(self):
-        """Build phase can set custom environment variables."""
-        self.run_spec("build_with_env.lua", "local.build_with_env@v1")
-        # Success is verified by spec not throwing an error
-
-    def test_build_with_custom_cwd(self):
-        """Build phase can run commands in custom working directory."""
-        self.run_spec("build_with_cwd.lua", "local.build_with_cwd@v1")
-
-        # Verify files were created in correct locations
-        pkg_path = self.get_pkg_path("local.build_with_cwd@v1")
-        self.assertIsNotNone(pkg_path)
-        self.assertTrue((pkg_path / "subdir" / "marker.txt").exists())
-        self.assertTrue(
-            (pkg_path / "nested" / "deep" / "dir" / "deep_marker.txt").exists()
-        )
-
-    def test_build_error_nonzero_exit(self):
-        """Build phase fails on non-zero exit code."""
-        self.run_spec(
-            "build_error_nonzero_exit.lua",
-            "local.build_error_nonzero_exit@v1",
-            should_succeed=False,
-        )
-        # Spec should fail with non-zero exit
-
-    def test_build_string_error(self):
-        """Build phase fails when shell script returns non-zero."""
-        self.run_spec(
-            "build_string_error.lua",
-            "local.build_string_error@v1",
-            should_succeed=False,
-        )
-        # Spec should fail with non-zero exit
-
-    def test_build_access_directories(self):
-        """Build phase has access to fetch_dir, stage_dir, install_dir."""
-        self.run_spec("build_access_dirs.lua", "local.build_access_dirs@v1")
-
-        pkg_path = self.get_pkg_path("local.build_access_dirs@v1")
-        self.assertIsNotNone(pkg_path)
-        # Spec validates directory access internally
-
-    def test_build_nested_directory_structure(self):
-        """Build phase can create and manipulate nested directories."""
-        self.run_spec("build_nested_dirs.lua", "local.build_nested_dirs@v1")
-
-        # Verify nested structure
         pkg_path = self.get_pkg_path("local.build_nested_dirs@v1")
         self.assertIsNotNone(pkg_path)
 
-        # Verify copied nested structure
         self.assertTrue((pkg_path / "copied_output" / "bin" / "app").exists())
         self.assertTrue(
             (pkg_path / "copied_output" / "lib" / "x86_64" / "libapp.so").exists()
@@ -1146,24 +917,109 @@ class TestBuildPhase(unittest.TestCase):
             (pkg_path / "copied_output" / "share" / "doc" / "README.md").exists()
         )
 
+    # =========================================================================
+    # Output capture tests
+    # =========================================================================
+
     def test_build_output_capture(self):
         """Build phase captures stdout correctly."""
-        self.run_spec("build_output_capture.lua", "local.build_output_capture@v1")
-        # Success is verified by spec validating captured output
+        # Test envy.run() capture=true captures output correctly
+        spec = """IDENTITY = "local.build_output_capture@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("Testing output capture")
+
+  local result
+  if envy.PLATFORM == "windows" then
+    result = envy.run(
+        [[if (-not $PSVersionTable) {{ Write-Output "psversion-init" }}; Write-Output "line1"; if (-not ("line1")) {{ Write-Output "line1" }}; Write-Output "line2"; Write-Output "line3"; exit 0]],
+        {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
+  else
+    result = envy.run([[
+      echo "line1"
+      echo "line2"
+      echo "line3"
+    ]], {{ capture = true }})
+  end
+
+  if not result.stdout:match("line1") then error("Missing line1 in stdout") end
+  if not result.stdout:match("line2") then error("Missing line2 in stdout") end
+  if not result.stdout:match("line3") then error("Missing line3 in stdout") end
+
+  if envy.PLATFORM == "windows" then
+      result = envy.run(
+          [[Write-Output "Special: !@#$%^&*()"; Write-Output "Unicode: hello"; Write-Output "Quotes: 'single' \\"double\\""; exit 0]],
+          {{ shell = ENVY_SHELL.POWERSHELL, capture = true }})
+  else
+    result = envy.run([[
+      echo "Special: !@#$%^&*()"
+      echo "Unicode: hello"
+      echo "Quotes: 'single' \\"double\\""
+    ]], {{ capture = true }})
+  end
+
+  if not result.stdout:match("Special:") then
+    error("Missing special characters in output")
+  end
+
+  print("Output capture works correctly")
+end
+"""
+        self.write_spec("output_capture", spec)
+        self.run_spec("output_capture", "local.build_output_capture@v1")
+
+    # =========================================================================
+    # Function return string tests
+    # =========================================================================
 
     def test_build_function_returns_string(self):
         """Build function can return a string that gets executed."""
-        self.run_spec(
-            "build_function_returns_string.lua",
-            "local.build_function_returns_string@v1",
-        )
+        # Build function does setup then returns a script to execute
+        spec = """IDENTITY = "local.build_function_returns_string@v1"
 
-        # Verify setup directory was created by function body
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  print("BUILD function executing, preparing to return script")
+
+  if envy.PLATFORM == "windows" then
+    envy.run("mkdir setup_dir 2> nul", {{ shell = ENVY_SHELL.CMD }})
+  else
+    envy.run("mkdir -p setup_dir")
+  end
+
+  if envy.PLATFORM == "windows" then
+    return [[
+      New-Item -ItemType Directory -Force -Path output_from_returned_script | Out-Null
+      Set-Content -Path output_from_returned_script\\marker.txt -Value "returned_script_artifact" -NoNewline
+    ]]
+  else
+    return [[
+      mkdir -p output_from_returned_script
+      echo "returned_script_artifact" > output_from_returned_script/marker.txt
+    ]]
+  end
+end
+"""
+        self.write_spec("func_returns_string", spec)
+        self.run_spec("func_returns_string", "local.build_function_returns_string@v1")
+
         pkg_path = self.get_pkg_path("local.build_function_returns_string@v1")
         self.assertIsNotNone(pkg_path)
         self.assertTrue((pkg_path / "setup_dir").exists())
 
-        # Verify output from returned script was created
         self.assertTrue((pkg_path / "output_from_returned_script").exists())
         self.assertTrue(
             (pkg_path / "output_from_returned_script" / "marker.txt").exists()
@@ -1172,15 +1028,35 @@ class TestBuildPhase(unittest.TestCase):
         content = (pkg_path / "output_from_returned_script" / "marker.txt").read_text()
         self.assertEqual(content.strip(), "returned_script_artifact")
 
-    def test_cache_path_includes_platform_arch(self):
-        """Verify cache variant directory includes platform-arch prefix, not empty."""
-        self.run_spec("build_function.lua", "local.build_function@v1")
+    # =========================================================================
+    # Cache path tests
+    # =========================================================================
 
-        # Find the variant subdirectory under the identity
-        identity_dir = self.cache_root / "packages" / "local.build_function@v1"
-        self.assertTrue(
-            identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
-        )
+    def test_cache_path_includes_platform_arch(self):
+        """Verify cache variant directory includes platform-arch prefix."""
+        # Run a spec and verify cache directory naming
+        spec = """IDENTITY = "local.build_cache_test@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+  if envy.PLATFORM == "windows" then
+    envy.run([[Set-Content -Path result.txt -Value "test"]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run([[echo "test" > result.txt]])
+  end
+end
+"""
+        self.write_spec("cache_test", spec)
+        self.run_spec("cache_test", "local.build_cache_test@v1")
+
+        identity_dir = self.cache_root / "packages" / "local.build_cache_test@v1"
+        self.assertTrue(identity_dir.exists())
 
         variant_dirs = [d for d in identity_dir.iterdir() if d.is_dir()]
         self.assertEqual(
@@ -1188,42 +1064,45 @@ class TestBuildPhase(unittest.TestCase):
         )
 
         variant_name = variant_dirs[0].name
-        # Verify format is {platform}-{arch}-blake3-{hash}, not --blake3-{hash}
         self.assertNotIn(
             variant_name.startswith("--blake3-"),
             [True],
-            f"Variant dir should not start with '--blake3-' (missing platform/arch): {variant_name}",
+            f"Variant dir should not start with '--blake3-': {variant_name}",
         )
 
-        # Verify it starts with a valid platform
         valid_platforms = ("darwin-", "linux-", "windows-")
         self.assertTrue(
             any(variant_name.startswith(p) for p in valid_platforms),
             f"Variant dir should start with platform prefix: {variant_name}",
         )
 
-        # Verify it contains blake3 hash marker
-        self.assertIn(
-            "-blake3-",
-            variant_name,
-            f"Variant dir should contain '-blake3-': {variant_name}",
-        )
+        self.assertIn("-blake3-", variant_name)
+
+    # =========================================================================
+    # Fail-fast tests
+    # =========================================================================
 
     def test_build_failfast_stops_on_first_error(self):
-        """Multi-line BUILD string stops on first error (fail-fast behavior).
+        """Multi-line BUILD string stops on first error (fail-fast behavior)."""
+        # Shell script where 'false' fails, subsequent echo should NOT run
+        spec = """IDENTITY = "local.build_failfast@v1"
 
-        Tests that when a command fails in a multi-line shell script,
-        subsequent commands are NOT executed.
-        """
-        # Spec should fail because 'false' returns non-zero
-        self.run_spec(
-            "build_failfast.lua",
-            "local.build_failfast@v1",
-            should_succeed=False,
-        )
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
 
-        # Verify that the marker file was NOT created.
-        # If fail-fast works correctly, the third command never runs.
+STAGE = {{strip = 1}}
+
+BUILD = [[
+echo "line1"
+false
+echo "line2_should_not_run" > failfast_marker.txt
+]]
+"""
+        self.write_spec("failfast", spec)
+        self.run_spec("failfast", "local.build_failfast@v1", should_succeed=False)
+
         identity_dir = self.cache_root / "packages" / "local.build_failfast@v1"
         marker_found = False
         if identity_dir.exists():

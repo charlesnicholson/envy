@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for TUI progress rendering.
 
 Tests ANSI rendering in TTY mode, fallback mode for non-TTY environments,
@@ -16,9 +15,8 @@ from pathlib import Path
 from . import test_config
 from .test_config import make_manifest
 
-# Inline specs for TUI testing
-SPECS = {
-    "build_function.lua": '''IDENTITY = "local.build_function@v1"
+# User-managed spec that runs shell commands during install
+SPEC_BUILD_FUNCTION = """IDENTITY = "local.build_function@v1"
 
 function CHECK(project_root, options)
   return false
@@ -28,8 +26,10 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run("echo 'Building with envy.run()'", { quiet = true })
   envy.run("echo 'Build finished successfully'", { quiet = true })
 end
-''',
-    "build_dependency.lua": '''IDENTITY = "local.build_dependency@v1"
+"""
+
+# Dependency spec for parallel execution test
+SPEC_BUILD_DEPENDENCY = """IDENTITY = "local.build_dependency@v1"
 
 function CHECK(project_root, options)
   return false
@@ -39,8 +39,10 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run("echo 'dependency: begin'", { quiet = true })
   envy.run("echo 'dependency: success'", { quiet = true })
 end
-''',
-    "simple.lua": '''IDENTITY = "local.simple@v1"
+"""
+
+# Minimal spec for ANSI/fallback mode tests
+SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)
@@ -50,8 +52,7 @@ end
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No-op install
 end
-''',
-}
+"""
 
 
 class TestTUIRendering(unittest.TestCase):
@@ -63,11 +64,13 @@ class TestTUIRendering(unittest.TestCase):
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
 
-        # Write inline specs to temp directory
         self.specs_dir = self.test_dir / "specs"
         self.specs_dir.mkdir()
-        for name, content in SPECS.items():
-            (self.specs_dir / name).write_text(content, encoding="utf-8")
+
+        # Write specs
+        (self.specs_dir / "build_function.lua").write_text(SPEC_BUILD_FUNCTION)
+        (self.specs_dir / "build_dependency.lua").write_text(SPEC_BUILD_DEPENDENCY)
+        (self.specs_dir / "simple.lua").write_text(SPEC_SIMPLE)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -147,11 +150,11 @@ PACKAGES = {{
 
         # Check that no ANSI codes are present
         stderr = result.stderr.decode()
-        self.assertNotIn(
-            "\x1b[", stderr, "Expected no ANSI codes when TERM=dumb"
-        )
+        self.assertNotIn("\x1b[", stderr, "Expected no ANSI codes when TERM=dumb")
 
-    @unittest.skipIf(sys.platform == "win32", "Unix shell piping not supported on Windows")
+    @unittest.skipIf(
+        sys.platform == "win32", "Unix shell piping not supported on Windows"
+    )
     def test_fallback_mode_with_piped_stderr(self):
         """No ANSI codes when stderr is piped (not a TTY)."""
         manifest = self.create_manifest(
@@ -185,9 +188,7 @@ PACKAGES = {{
 
         # Check that no ANSI codes are present in piped output
         output = result.stdout.decode()
-        self.assertNotIn(
-            "\x1b[", output, "Expected no ANSI codes when stderr is piped"
-        )
+        self.assertNotIn("\x1b[", output, "Expected no ANSI codes when stderr is piped")
 
 
 if __name__ == "__main__":

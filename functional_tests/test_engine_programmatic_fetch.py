@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine programmatic fetch (fetch functions).
 
 Tests FETCH = function(ctx) ... end syntax with envy.fetch() and envy.commit_fetch().
@@ -58,7 +57,7 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
         spec_content = f"""IDENTITY = "local.prog_fetch_single@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
 
   -- Verify return is scalar string, not array
   if type(file) ~= "string" then
@@ -93,8 +92,8 @@ end
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({{
-    "{self.lua_path('simple.lua')}",
-    "{self.lua_path('print_single.lua')}"
+    "{self.lua_path("simple.lua")}",
+    "{self.lua_path("print_single.lua")}"
   }}, {{dest = tmp_dir}})
 
   -- Verify return is array
@@ -131,7 +130,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_fetch_table@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch({{source = "{self.lua_path('simple.lua')}"}}, {{dest = tmp_dir}})
+  local file = envy.fetch({{source = "{self.lua_path("simple.lua")}"}}, {{dest = tmp_dir}})
 
   -- Verify return is scalar string
   if type(file) ~= "string" then
@@ -165,8 +164,8 @@ end
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({{
-    {{source = "{self.lua_path('simple.lua')}"}},
-    {{source = "{self.lua_path('print_single.lua')}"}}
+    {{source = "{self.lua_path("simple.lua")}"}},
+    {{source = "{self.lua_path("print_single.lua")}"}}
   }}, {{dest = tmp_dir}})
 
   -- Verify return is array
@@ -200,7 +199,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_commit_scalar@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
 
   -- File should be in tmp before commit
   local tmp_path = tmp_dir .. "/" .. file
@@ -240,7 +239,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_commit_sha256@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
 
   -- Commit with SHA256 verification
   envy.commit_fetch({{
@@ -274,7 +273,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_commit_bad_sha256@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
 
   -- Commit with wrong SHA256
   envy.commit_fetch({{
@@ -308,8 +307,8 @@ end
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({{
-    "{self.lua_path('simple.lua')}",
-    "{self.lua_path('print_single.lua')}"
+    "{self.lua_path("simple.lua")}",
+    "{self.lua_path("print_single.lua")}"
   }}, {{dest = tmp_dir}})
 
   envy.commit_fetch(files)
@@ -371,9 +370,9 @@ end
 
 function FETCH(tmp_dir, options)
   local files = envy.fetch({{
-    "{self.lua_path('simple.lua')}",
-    "{self.lua_path('print_single.lua')}",
-    "{self.lua_path('print_multiple.lua')}"
+    "{self.lua_path("simple.lua")}",
+    "{self.lua_path("print_single.lua")}",
+    "{self.lua_path("print_multiple.lua")}"
   }}, {{dest = tmp_dir}})
 
   -- Only commit first 2
@@ -410,7 +409,7 @@ function FETCH(tmp_dir, options)
   end
 
   -- Fetch something so phase completes successfully
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
   envy.commit_fetch(file)
 end
 """
@@ -442,7 +441,7 @@ function FETCH(tmp_dir, options)
     error("Expected options to be table, got: " .. type(options))
   end
 
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
   envy.commit_fetch(file)
 end
 """
@@ -483,7 +482,7 @@ function FETCH(tmp_dir, options)
     error("Expected empty options, got " .. count .. " entries")
   end
 
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
   envy.commit_fetch(file)
 end
 """
@@ -511,7 +510,7 @@ end
 
 function FETCH(tmp_dir, options)
   -- First fetch
-  local file1 = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file1 = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
 
   -- Verify file1 exists in tmp
   local f = io.open(tmp_dir .. "/" .. file1, "r")
@@ -519,7 +518,7 @@ function FETCH(tmp_dir, options)
   f:close()
 
   -- Second fetch
-  local file2 = envy.fetch("{self.lua_path('print_single.lua')}", {{dest = tmp_dir}})
+  local file2 = envy.fetch("{self.lua_path("print_single.lua")}", {{dest = tmp_dir}})
 
   -- Verify both files exist
   f = io.open(tmp_dir .. "/" .. file1, "r")
@@ -531,7 +530,7 @@ function FETCH(tmp_dir, options)
   f:close()
 
   -- Third fetch
-  local file3 = envy.fetch("{self.lua_path('print_multiple.lua')}", {{dest = tmp_dir}})
+  local file3 = envy.fetch("{self.lua_path("print_multiple.lua")}", {{dest = tmp_dir}})
 
   -- Commit all
   envy.commit_fetch({{file1, file2, file3}})
@@ -589,7 +588,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_return_string@v1"
 
 FETCH = function(ctx)
-  return "{self.lua_path('simple.lua')}"
+  return "{self.lua_path("simple.lua")}"
 end
 """
         spec_path = self.cache_root / "prog_return_string.lua"
@@ -620,7 +619,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_return_table@v1"
 
 FETCH = function(ctx)
-  return {{source = "{self.lua_path('simple.lua')}", sha256 = "{file_hash}"}}
+  return {{source = "{self.lua_path("simple.lua")}", sha256 = "{file_hash}"}}
 end
 """
         spec_path = self.cache_root / "prog_return_table.lua"
@@ -647,8 +646,8 @@ end
 
 FETCH = function(ctx)
   return {{
-    {{source = "{self.lua_path('simple.lua')}"}},
-    {{source = "{self.lua_path('print_single.lua')}"}}
+    {{source = "{self.lua_path("simple.lua")}"}},
+    {{source = "{self.lua_path("print_single.lua")}"}}
   }}
 end
 """
@@ -676,8 +675,8 @@ end
 
 FETCH = function(ctx)
   return {{
-    "{self.lua_path('simple.lua')}",
-    "{self.lua_path('print_single.lua')}"
+    "{self.lua_path("simple.lua")}",
+    "{self.lua_path("print_single.lua")}"
   }}
 end
 """
@@ -735,13 +734,13 @@ end
 
 function FETCH(tmp_dir, options)
   -- Imperative: fetch and commit one file
-  local file1 = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file1 = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
   envy.commit_fetch(file1)
 
   -- Declarative: return spec for more files
   return {{
-    "{self.lua_path('print_single.lua')}",
-    "{self.lua_path('print_multiple.lua')}"
+    "{self.lua_path("print_single.lua")}",
+    "{self.lua_path("print_multiple.lua")}"
   }}
 end
 """
@@ -768,7 +767,7 @@ end
         spec_content = f"""IDENTITY = "local.prog_return_nil@v1"
 
 function FETCH(tmp_dir, options)
-  local file = envy.fetch("{self.lua_path('simple.lua')}", {{dest = tmp_dir}})
+  local file = envy.fetch("{self.lua_path("simple.lua")}", {{dest = tmp_dir}})
   envy.commit_fetch(file)
   return nil
 end

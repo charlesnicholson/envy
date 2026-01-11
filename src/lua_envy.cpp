@@ -11,10 +11,6 @@
 #include "shell.h"
 #include "tui.h"
 
-extern "C" {
-#include "lua.h"
-}
-
 #include <sstream>
 
 namespace envy {

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for 'envy package' command.
 
 Tests package path querying, manifest discovery, dependency installation,

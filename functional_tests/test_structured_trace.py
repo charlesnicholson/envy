@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Smoke tests for structured trace output.
 
 Tests the trace infrastructure works correctly with different output modes:
@@ -17,7 +16,7 @@ from pathlib import Path
 from . import test_config
 from .trace_parser import TraceParser
 
-SIMPLE_SPEC = '''IDENTITY = "local.simple@v1"
+SIMPLE_SPEC = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)
@@ -26,7 +25,7 @@ end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
-'''
+"""
 
 
 class TestStructuredTrace(unittest.TestCase):

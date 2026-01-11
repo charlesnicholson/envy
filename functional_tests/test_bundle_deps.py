@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for bundle dependencies in spec files.
 
 Tests spec DEPENDENCIES with bundle references, including:

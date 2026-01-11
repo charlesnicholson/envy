@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for engine declarative fetch.
 
 Tests declarative fetch syntax: FETCH = "url", FETCH = {url, sha256},

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tests for '-- @envy cache' manifest directive."""
 
 import hashlib

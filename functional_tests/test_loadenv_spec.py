@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for envy.loadenv_spec() function.
 
 Tests loading Lua code from declared dependencies:

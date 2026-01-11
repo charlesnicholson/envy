@@ -1,9 +1,4 @@
 #include "shell.h"
-
-extern "C" {
-#include "lua.h"
-}
-
 #include "util.h"
 
 #include <filesystem>

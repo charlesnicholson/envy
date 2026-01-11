@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Functional tests for products feature."""
 
 import hashlib
@@ -33,9 +32,8 @@ def create_test_archive(output_path: Path) -> str:
     return hashlib.sha256(archive_data).hexdigest()
 
 
-# Inline spec templates - {ARCHIVE_PATH}, {ARCHIVE_HASH} replaced at runtime
-SPECS = {
-    "product_provider.lua": """-- Product provider with cached package
+# Shared spec: Product provider with cached package - used by multiple tests
+SPEC_PRODUCT_PROVIDER = """-- Product provider with cached package
 IDENTITY = "local.product_provider@v1"
 PRODUCTS = {{ tool = "bin/tool" }}
 
@@ -47,78 +45,10 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No real payload needed; just mark complete to populate pkg_path
 end
-""",
-    "product_provider_b.lua": """-- Second provider for collision testing
-IDENTITY = "local.product_provider_b@v1"
-PRODUCTS = {{ tool = "bin/other" }}
+"""
 
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-""",
-    "product_consumer_strong.lua": """-- Consumer with strong product dependency
-IDENTITY = "local.product_consumer_strong@v1"
-
-DEPENDENCIES = {{
-  {{
-    product = "tool",
-    spec = "local.product_provider@v1",
-    source = "product_provider.lua",
-  }},
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-""",
-    "product_consumer_weak.lua": """-- Consumer with weak product dependency (fallback)
-IDENTITY = "local.product_consumer_weak@v1"
-
-DEPENDENCIES = {{
-  {{
-    product = "tool",
-    spec = "local.product_provider@v1",
-    weak = {{
-      spec = "local.product_provider@v1",
-      source = "product_provider.lua",
-    }},
-  }},
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-""",
-    "product_consumer_missing.lua": """-- Consumer with missing product dependency (no fallback)
-IDENTITY = "local.product_consumer_missing@v1"
-
-DEPENDENCIES = {{
-  {{
-    product = "missing_tool",
-  }},
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-""",
-    "product_provider_programmatic.lua": """-- Programmatic provider (user-managed) returning raw product value
+# Shared spec: Programmatic provider (user-managed) returning raw product value
+SPEC_PRODUCT_PROGRAMMATIC = """-- Programmatic provider (user-managed) returning raw product value
 IDENTITY = "local.product_programmatic@v1"
 PRODUCTS = {{ tool = "programmatic-tool" }}
 
@@ -129,70 +59,10 @@ end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- User-managed; no cache artifact
 end
-""",
-    "product_provider_function.lua": """-- Provider with programmatic products function (takes options, returns table)
-IDENTITY = "local.product_function@v1"
+"""
 
-PRODUCTS = function(options)
-  return {{
-    ["python" .. options.version] = "bin/python",
-    ["pip" .. options.version] = "bin/pip",
-  }}
-end
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-""",
-    "product_cycle_a.lua": """IDENTITY = "local.cycle_a@v1"
-PRODUCTS = {{ tool_a = "bin/a" }}
-
-DEPENDENCIES = {{
-  {{
-    product = "tool_b",
-    spec = "local.cycle_b@v1",
-    weak = {{
-      spec = "local.cycle_b@v1",
-      source = "product_cycle_b.lua",
-    }}
-  }},
-}}
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-""",
-    "product_cycle_b.lua": """IDENTITY = "local.cycle_b@v1"
-PRODUCTS = {{ tool_b = "bin/b" }}
-
-DEPENDENCIES = {{
-  {{
-    product = "tool_a",
-    spec = "local.cycle_a@v1",
-    weak = {{
-      spec = "local.cycle_a@v1",
-      source = "product_cycle_a.lua",
-    }}
-  }},
-}}
-
-FETCH = {{
-  source = "{ARCHIVE_PATH}",
-  sha256 = "{ARCHIVE_HASH}",
-}}
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
-""",
-    "product_ref_only_consumer.lua": """-- Consumer with ref-only product dependency (no recipe/source, unconstrained)
+# Shared spec: Consumer with ref-only product dependency (no recipe/source, unconstrained)
+SPEC_REF_ONLY_CONSUMER = """-- Consumer with ref-only product dependency (no recipe/source, unconstrained)
 IDENTITY = "local.ref_only_consumer@v1"
 
 DEPENDENCIES = {{
@@ -209,8 +79,7 @@ FETCH = {{
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
-""",
-}
+"""
 
 
 class TestProducts(unittest.TestCase):
@@ -227,13 +96,20 @@ class TestProducts(unittest.TestCase):
         self.archive_path = self.specs_dir / "test.tar.gz"
         self.archive_hash = create_test_archive(self.archive_path)
 
-        # Write inline specs to temp directory with placeholders substituted
-        for name, content in SPECS.items():
-            spec_content = content.format(
-                ARCHIVE_PATH=self.archive_path.as_posix(),
-                ARCHIVE_HASH=self.archive_hash,
-            )
-            (self.specs_dir / name).write_text(spec_content, encoding="utf-8")
+        # Write shared specs to temp directory with placeholders substituted
+        self._write_spec("product_provider.lua", SPEC_PRODUCT_PROVIDER)
+        self._write_spec("product_provider_programmatic.lua", SPEC_PRODUCT_PROGRAMMATIC)
+        self._write_spec("product_ref_only_consumer.lua", SPEC_REF_ONLY_CONSUMER)
+
+    def _write_spec(self, name: str, content: str) -> Path:
+        """Write a spec file with archive placeholders substituted."""
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+        )
+        path = self.specs_dir / name
+        path.write_text(spec_content, encoding="utf-8")
+        return path
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -255,6 +131,28 @@ class TestProducts(unittest.TestCase):
         )
 
     def test_strong_product_dependency_resolves_provider(self):
+        # Consumer with strong product dependency
+        spec_consumer_strong = """-- Consumer with strong product dependency
+IDENTITY = "local.product_consumer_strong@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    spec = "local.product_provider@v1",
+    source = "product_provider.lua",
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+"""
+        self._write_spec("product_consumer_strong.lua", spec_consumer_strong)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -275,6 +173,31 @@ PACKAGES = {{
         self.assertTrue(consumer_dir.exists(), f"missing {consumer_dir}")
 
     def test_weak_product_dependency_uses_fallback(self):
+        # Consumer with weak product dependency (fallback)
+        spec_consumer_weak = """-- Consumer with weak product dependency (fallback)
+IDENTITY = "local.product_consumer_weak@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "tool",
+    spec = "local.product_provider@v1",
+    weak = {{
+      spec = "local.product_provider@v1",
+      source = "product_provider.lua",
+    }},
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+"""
+        self._write_spec("product_consumer_weak.lua", spec_consumer_weak)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -293,6 +216,26 @@ PACKAGES = {{
         self.assertTrue(provider_dir.exists(), f"missing {provider_dir}")
 
     def test_missing_product_dependency_errors(self):
+        # Consumer with missing product dependency (no fallback)
+        spec_consumer_missing = """-- Consumer with missing product dependency (no fallback)
+IDENTITY = "local.product_consumer_missing@v1"
+
+DEPENDENCIES = {{
+  {{
+    product = "missing_tool",
+  }},
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+"""
+        self._write_spec("product_consumer_missing.lua", spec_consumer_missing)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -311,6 +254,21 @@ PACKAGES = {{
         self.assertIn("missing", result.stderr.lower())
 
     def test_product_collision_errors(self):
+        # Second provider for collision testing
+        spec_provider_b = """-- Second provider for collision testing
+IDENTITY = "local.product_provider_b@v1"
+PRODUCTS = {{ tool = "bin/other" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        self._write_spec("product_provider_b.lua", spec_provider_b)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -367,6 +325,27 @@ PACKAGES = {{
 
     def test_product_function_with_options(self):
         """Products can be a function taking options and returning a table."""
+        # Provider with programmatic products function (takes options, returns table)
+        spec_provider_function = """-- Provider with programmatic products function (takes options, returns table)
+IDENTITY = "local.product_function@v1"
+
+PRODUCTS = function(options)
+  return {{
+    ["python" .. options.version] = "bin/python",
+    ["pip" .. options.version] = "bin/pip",
+  }}
+end
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        self._write_spec("product_provider_function.lua", spec_provider_function)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -393,6 +372,7 @@ PACKAGES = {{
 
     def test_absolute_path_in_product_value_rejected(self):
         """Product values with absolute paths should be rejected during parsing."""
+        # Bad provider with absolute path in product value
         lua_content = f"""
 IDENTITY = "local.bad_provider@v1"
 PRODUCTS = {{ tool = "/etc/passwd" }}
@@ -423,6 +403,7 @@ PACKAGES = {{
 
     def test_path_traversal_in_product_value_rejected(self):
         """Product values with path traversal should be rejected during parsing."""
+        # Bad provider with path traversal in product value
         lua_content = f"""
 IDENTITY = "local.bad_provider@v1"
 PRODUCTS = {{ tool = "../../etc/passwd" }}
@@ -453,7 +434,7 @@ PACKAGES = {{
 
     def test_strong_product_dep_not_resolved_as_weak(self):
         """Strong product dependencies should wire directly, not via weak resolution."""
-        # Create two providers for same product
+        # Provider A for same product
         lua_content_a = f"""
 IDENTITY = "local.provider_a@v1"
 PRODUCTS = {{ tool = "bin/tool_a" }}
@@ -467,6 +448,7 @@ end
         provider_a_path = self.specs_dir / "provider_a.lua"
         provider_a_path.write_text(lua_content_a, encoding="utf-8")
 
+        # Provider B with different product
         lua_content_b = f"""
 IDENTITY = "local.provider_b@v1"
 PRODUCTS = {{ other_tool = "bin/other" }}
@@ -530,6 +512,56 @@ PACKAGES = {{
 
     def test_product_semantic_cycle_detected(self):
         """Product dependencies forming a semantic cycle should be detected and rejected."""
+        # Cycle provider A - depends on tool_b from cycle_b
+        spec_cycle_a = """IDENTITY = "local.cycle_a@v1"
+PRODUCTS = {{ tool_a = "bin/a" }}
+
+DEPENDENCIES = {{
+  {{
+    product = "tool_b",
+    spec = "local.cycle_b@v1",
+    weak = {{
+      spec = "local.cycle_b@v1",
+      source = "product_cycle_b.lua",
+    }}
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        self._write_spec("product_cycle_a.lua", spec_cycle_a)
+
+        # Cycle provider B - depends on tool_a from cycle_a
+        spec_cycle_b = """IDENTITY = "local.cycle_b@v1"
+PRODUCTS = {{ tool_b = "bin/b" }}
+
+DEPENDENCIES = {{
+  {{
+    product = "tool_a",
+    spec = "local.cycle_a@v1",
+    weak = {{
+      spec = "local.cycle_a@v1",
+      source = "product_cycle_a.lua",
+    }}
+  }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+        self._write_spec("product_cycle_b.lua", spec_cycle_b)
+
         manifest = self.manifest(
             f"""
 PACKAGES = {{
@@ -598,7 +630,7 @@ PACKAGES = {{
 
     def test_product_listing_shows_all_products(self):
         """Product command with no args should list all products from all providers."""
-        # Create second provider with non-colliding product
+        # Second provider with non-colliding product for listing test
         lua_content = f"""
 IDENTITY = "local.list_provider@v1"
 PRODUCTS = {{ compiler = "bin/gcc" }}
@@ -692,7 +724,7 @@ PACKAGES = {{
 
     def test_product_listing_empty(self):
         """Product listing with no products should indicate empty result."""
-        # Create manifest with spec that has no products
+        # Spec with no products for empty listing test
         lua_content = f"""
 IDENTITY = "local.no_products@v1"
 FETCH = {{
@@ -728,7 +760,7 @@ PACKAGES = {{
         requested. This ensures products can be queried even when the provider
         isn't explicitly the target.
         """
-        # Create product provider spec
+        # Product provider spec for clean cache resolution test
         provider_spec = f"""IDENTITY = "local.test_product_query_provider@v1"
 
 FETCH = {{ source = "{self.archive_path.as_posix()}",
