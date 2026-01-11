@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -327,8 +328,10 @@ std::filesystem::path create_temp_script(std::string_view script,
 
   // Generate unique filename directly without GetTempFileNameW to avoid zero-byte file
   // creation that can trigger sharing violations from antivirus/indexers
+  static std::atomic<uint64_t> counter{ 0 };
   DWORD const pid{ ::GetCurrentProcessId() };
   ULONGLONG const tick{ ::GetTickCount64() };
+  uint64_t const seq{ counter.fetch_add(1, std::memory_order_relaxed) };
 
   // Determine extension based on shell type
   std::wstring ext{ std::visit(
@@ -346,7 +349,7 @@ std::filesystem::path create_temp_script(std::string_view script,
       inv.shell) };
 
   std::wstring const filename{ L"env" + std::to_wstring(pid) + L"_" +
-                               std::to_wstring(tick) + ext };
+                               std::to_wstring(tick) + L"_" + std::to_wstring(seq) + ext };
   std::filesystem::path script_path{ std::wstring{ temp_dir } + filename };
 
   // Create file with retry on sharing violation
@@ -501,7 +504,10 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cfg) {
+void stream_pipe_lines(HANDLE pipe,
+                        shell_stream stream,
+                        shell_run_cfg const &cfg,
+                        std::mutex &callback_mutex) {
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -528,12 +534,17 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
       if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
       // Trim trailing spaces (cmd echo adds trailing space)
       while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
-      if (stream == shell_stream::std_out) {
-        if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
-      } else {
-        if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+
+      // Serialize callbacks to prevent concurrent modification of shared state
+      {
+        std::lock_guard<std::mutex> lock{ callback_mutex };
+        if (stream == shell_stream::std_out) {
+          if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+        } else {
+          if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+        }
+        if (cfg.on_output_line) { cfg.on_output_line(line); }
       }
-      if (cfg.on_output_line) { cfg.on_output_line(line); }
       offset = newline + 1;
     }
 
@@ -549,12 +560,17 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
     if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
     // Trim trailing spaces (cmd echo adds trailing space)
     while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
-    if (stream == shell_stream::std_out) {
-      if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
-    } else {
-      if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+
+    // Serialize callbacks to prevent concurrent modification of shared state
+    {
+      std::lock_guard<std::mutex> lock{ callback_mutex };
+      if (stream == shell_stream::std_out) {
+        if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+      } else {
+        if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+      }
+      if (cfg.on_output_line) { cfg.on_output_line(line); }
     }
-    if (cfg.on_output_line) { cfg.on_output_line(line); }
   }
 }
 
@@ -826,17 +842,18 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   shell_result result{};
   std::exception_ptr stdout_exception;
   std::exception_ptr stderr_exception;
+  std::mutex callback_mutex;
 
   try {
     std::thread stdout_reader{ [&]() {
       try {
-        stream_pipe_lines(stdout_read_end.get(), shell_stream::std_out, cfg);
+        stream_pipe_lines(stdout_read_end.get(), shell_stream::std_out, cfg, callback_mutex);
       } catch (...) { stdout_exception = std::current_exception(); }
     } };
 
     std::thread stderr_reader{ [&]() {
       try {
-        stream_pipe_lines(stderr_read_end.get(), shell_stream::std_err, cfg);
+        stream_pipe_lines(stderr_read_end.get(), shell_stream::std_err, cfg, callback_mutex);
       } catch (...) { stderr_exception = std::current_exception(); }
     } };
 

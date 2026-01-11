@@ -48,8 +48,8 @@ INSTALL = function() end
             with open(os.path.join(bundle_dir, "specs", "simple.lua"), "w") as f:
                 f.write(simple_spec)
 
-            # Escape path for Lua string
-            bundle_dir_escaped = bundle_dir.replace("\\", "\\\\")
+            # Escape path for Lua string (use forward slashes to avoid escaping issues)
+            bundle_dir_lua = bundle_dir.replace("\\", "/")
 
             # Create manifest with custom fetch bundle
             manifest = f"""
@@ -61,7 +61,12 @@ BUNDLES = {{
         source = {{
             fetch = function(tmp_dir)
                 -- Simple fetch: copy bundle files
-                envy.run("cp -r '{bundle_dir_escaped}/'* " .. tmp_dir .. "/")
+                if envy.PLATFORM == "windows" then
+                    local src = '{bundle_dir_lua}'
+                    envy.run('xcopy /E /I /Y "' .. src .. '" "' .. tmp_dir .. '"', {{shell = ENVY_SHELL.CMD}})
+                else
+                    envy.run("cp -r '{bundle_dir_lua}/'* " .. tmp_dir .. "/")
+                end
                 envy.commit_fetch({{"envy-bundle.lua", "specs"}})
             end,
             dependencies = {{}}
@@ -130,9 +135,9 @@ INSTALL = function() end
             with open(os.path.join(bundle_dir, "specs", "from-dep.lua"), "w") as f:
                 f.write(from_dep_spec)
 
-            # Escape paths for Lua strings
-            bundle_dir_escaped = bundle_dir.replace("\\", "\\\\")
-            tool_path_escaped = tool_path.replace("\\", "\\\\")
+            # Escape paths for Lua strings (use forward slashes to avoid escaping issues)
+            bundle_dir_lua = bundle_dir.replace("\\", "/")
+            tool_path_lua = tool_path.replace("\\", "/")
 
             # Create manifest with custom fetch bundle that has a dependency
             # Note: We don't use envy.package() since the tool is user-managed
@@ -147,11 +152,16 @@ BUNDLES = {{
             fetch = function(tmp_dir)
                 -- Dependencies are resolved before this runs (user-managed tool installed)
                 -- Copy bundle files
-                envy.run("cp -r '{bundle_dir_escaped}/'* " .. tmp_dir .. "/")
+                if envy.PLATFORM == "windows" then
+                    local src = '{bundle_dir_lua}'
+                    envy.run('xcopy /E /I /Y "' .. src .. '" "' .. tmp_dir .. '"', {{shell = ENVY_SHELL.CMD}})
+                else
+                    envy.run("cp -r '{bundle_dir_lua}/'* " .. tmp_dir .. "/")
+                end
                 envy.commit_fetch({{"envy-bundle.lua", "specs"}})
             end,
             dependencies = {{
-                {{spec = "local.fetcher-tool@v1", source = "{tool_path_escaped}"}}
+                {{spec = "local.fetcher-tool@v1", source = "{tool_path_lua}"}}
             }}
         }}
     }}
