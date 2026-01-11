@@ -71,8 +71,8 @@ jobs:
 
       - name: Setup cmake
         run: |
-          mkdir cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C cmake --strip-components=1
-          echo "$PWD/cmake/bin" >> $GITHUB_PATH
+          mkdir -p out/cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C out/cmake --strip-components=1
+          echo "$PWD/out/cmake/bin" >> $GITHUB_PATH
 
       - name: Build
         run: ./build.sh ${{ matrix.build_args }}
@@ -106,9 +106,9 @@ jobs:
         shell: pwsh
         run: |
           curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
-          Expand-Archive -Path cmake.zip -DestinationPath cmake-tmp
-          Move-Item cmake-tmp/cmake-* cmake
-          echo "$PWD/cmake/bin" >> $env:GITHUB_PATH
+          Expand-Archive -Path cmake.zip -DestinationPath out
+          Move-Item out/cmake-* out/cmake
+          echo "$PWD/out/cmake/bin" >> $env:GITHUB_PATH
 
       - name: Build
         shell: powershell
