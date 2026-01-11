@@ -72,10 +72,13 @@ jobs:
       - name: Setup cmake
         run: |
           mkdir -p out/cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C out/cmake --strip-components=1
-          echo "$PWD/out/cmake/bin" >> $GITHUB_PATH
 
       - name: Build
-        run: ./build.sh ${{ matrix.build_args }}
+        run: |
+          export PATH="$PWD/out/cmake/bin:$PATH"
+          which cmake
+          cmake --version
+          ./build.sh ${{ matrix.build_args }}
 
       - name: Smoke test
         if: matrix.shard == 'main'
@@ -108,11 +111,13 @@ jobs:
           curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
           Expand-Archive -Path cmake.zip -DestinationPath out
           Move-Item out/cmake-* out/cmake
-          echo "$PWD/out/cmake/bin" >> $env:GITHUB_PATH
 
       - name: Build
         shell: powershell
         run: |
+          $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
+          Get-Command cmake
+          cmake --version
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           ./build.bat ${{ matrix.build_args }}
 
