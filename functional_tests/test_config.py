@@ -56,4 +56,16 @@ def get_envy_executable() -> Path:
 
 def get_test_env() -> dict[str, str]:
     """Get environment variables for running tests."""
-    return os.environ.copy()
+    env = os.environ.copy()
+    root = Path(__file__).parent.parent
+
+    # Point sanitizers to suppression files
+    tsan_supp = root / "tsan.supp"
+    if tsan_supp.exists():
+        env.setdefault("TSAN_OPTIONS", f"suppressions={tsan_supp}")
+
+    asan_supp = root / "asan.supp"
+    if asan_supp.exists():
+        env.setdefault("ASAN_OPTIONS", f"suppressions={asan_supp}")
+
+    return env
