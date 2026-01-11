@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  CMAKE_VERSION: 4.1.2
+
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
@@ -20,10 +23,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: envy-linux-x86_64.tar.gz
+            cmake_arch: linux-x86_64
           - os: ubuntu-24.04-arm
             artifact: envy-linux-arm64.tar.gz
+            cmake_arch: linux-aarch64
           - os: macos-latest
             artifact: envy-darwin-arm64.tar.gz
+            cmake_arch: macos-universal
 
     runs-on: ${{ matrix.os }}
 
@@ -33,9 +39,9 @@ jobs:
           python-version: "3.13"
 
       - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.1.2'
+        run: |
+          curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-${{ matrix.cmake_arch }}.tar.gz" | tar -xzf -
+          echo "$PWD/cmake-${CMAKE_VERSION}-${{ matrix.cmake_arch }}/bin" >> $GITHUB_PATH
 
       - uses: actions/checkout@v5
 
@@ -62,9 +68,10 @@ jobs:
           python-version: "3.13"
 
       - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.1.2'
+        run: |
+          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v${{ env.CMAKE_VERSION }}/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip"
+          unzip -q cmake.zip
+          echo "$PWD/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64/bin" >> $env:GITHUB_PATH
 
       - uses: actions/checkout@v5
 
