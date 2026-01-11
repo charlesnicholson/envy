@@ -3,9 +3,6 @@ name: ci
 on:
   workflow_call:
 
-env:
-  CMAKE_VERSION: 4.1.2
-
 jobs:
   build:
     strategy:
@@ -16,54 +13,54 @@ jobs:
           - os: ubuntu-latest
             shard: main
             build_args: --no-functional-tester
-            cmake_arch: linux-x86_64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - os: ubuntu-24.04-arm
             shard: main
             build_args: --no-functional-tester
-            cmake_arch: linux-aarch64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - os: macos-latest
             shard: main
             build_args: --no-functional-tester
-            cmake_arch: macos-universal
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
           # Functional test shards - Linux x64
           - os: ubuntu-latest
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_arch: linux-x86_64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - os: ubuntu-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_arch: linux-x86_64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - os: ubuntu-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_arch: linux-x86_64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           # Functional test shards - Linux arm64
           - os: ubuntu-24.04-arm
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_arch: linux-aarch64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - os: ubuntu-24.04-arm
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_arch: linux-aarch64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - os: ubuntu-24.04-arm
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_arch: linux-aarch64
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           # Functional test shards - macOS
           - os: macos-latest
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_arch: macos-universal
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
           - os: macos-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_arch: macos-universal
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
           - os: macos-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_arch: macos-universal
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/setup-python@v6
@@ -72,8 +69,8 @@ jobs:
 
       - name: Setup cmake
         run: |
-          curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-${{ matrix.cmake_arch }}.tar.gz" | tar -xzf -
-          echo "$PWD/cmake-${CMAKE_VERSION}-${{ matrix.cmake_arch }}/bin" >> $GITHUB_PATH
+          mkdir cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C cmake --strip-components=1
+          echo "$PWD/cmake/bin" >> $GITHUB_PATH
 
       - uses: actions/checkout@v5
 
@@ -104,10 +101,12 @@ jobs:
           python-version: "3.13"
 
       - name: Setup cmake
+        shell: pwsh
         run: |
-          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v${{ env.CMAKE_VERSION }}/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip"
-          unzip -q cmake.zip
-          echo "$PWD/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64/bin" >> $env:GITHUB_PATH
+          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
+          Expand-Archive -Path cmake.zip -DestinationPath cmake-tmp
+          Move-Item cmake-tmp/cmake-* cmake
+          echo "$PWD/cmake/bin" >> $env:GITHUB_PATH
 
       - uses: actions/checkout@v5
 
