@@ -90,7 +90,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
-        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+        provider_path = self.write_spec(
+            "product_transitive_provider.lua", provider_spec
+        )
 
         # Middle node that depends on the actual provider
         intermediate_spec = """
@@ -112,7 +114,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """.replace("{provider_path}", provider_path.as_posix())
-        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+        intermediate_path = self.write_spec(
+            "product_transitive_intermediate.lua", intermediate_spec
+        )
 
         # Root node with weak product dependency on "tool"
         root_spec = """
@@ -185,7 +189,8 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
         intermediate_no_provide_path = self.write_spec(
-            "product_transitive_intermediate_no_provide.lua", intermediate_no_provide_spec
+            "product_transitive_intermediate_no_provide.lua",
+            intermediate_no_provide_spec,
         )
 
         # Root node with weak product dependency that will fail validation
@@ -210,7 +215,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """.replace("{intermediate_no_provide_path}", intermediate_no_provide_path.as_posix())
-        root_fail_path = self.write_spec("product_transitive_root_fail.lua", root_fail_spec)
+        root_fail_path = self.write_spec(
+            "product_transitive_root_fail.lua", root_fail_spec
+        )
 
         manifest = self.manifest(
             f"""
@@ -254,7 +261,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
-        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+        provider_path = self.write_spec(
+            "product_transitive_provider.lua", provider_spec
+        )
 
         # Middle node that depends on the actual provider
         intermediate_spec = """
@@ -276,7 +285,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """.replace("{provider_path}", provider_path.as_posix())
-        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+        intermediate_path = self.write_spec(
+            "product_transitive_intermediate.lua", intermediate_spec
+        )
 
         # Root node with weak product dependency on "tool"
         root_spec = """
@@ -345,7 +356,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
-        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+        provider_path = self.write_spec(
+            "product_transitive_provider.lua", provider_spec
+        )
 
         # Middle node that depends on the actual provider
         intermediate_spec = """
@@ -367,7 +380,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """.replace("{provider_path}", provider_path.as_posix())
-        intermediate_path = self.write_spec("product_transitive_intermediate.lua", intermediate_spec)
+        intermediate_path = self.write_spec(
+            "product_transitive_intermediate.lua", intermediate_spec
+        )
 
         # Root node with weak product dependency on "tool"
         root_spec = """
@@ -441,7 +456,9 @@ FETCH = {{
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
-        provider_path = self.write_spec("product_transitive_provider.lua", provider_spec)
+        provider_path = self.write_spec(
+            "product_transitive_provider.lua", provider_spec
+        )
 
         # Create a 4-level chain: consumer -> mid1 -> mid2 -> provider
         # Level 3: mid2 depends on provider

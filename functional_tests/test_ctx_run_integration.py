@@ -491,7 +491,9 @@ chmod +x generated.sh
 end
 """
         self.write_spec("ctx_run_stage_generation.lua", spec)
-        self.run_spec("local.ctx_run_stage_generation@v1", "ctx_run_stage_generation.lua")
+        self.run_spec(
+            "local.ctx_run_stage_generation@v1", "ctx_run_stage_generation.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_stage_generation@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "generated.h").exists())
