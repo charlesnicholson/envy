@@ -69,13 +69,30 @@ jobs:
 
       - name: Setup cmake
         run: |
+          echo "Downloading from: ${{ matrix.cmake_url }}"
           mkdir cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C cmake --strip-components=1
+          echo "Contents of cmake dir:"
+          ls -la cmake/
+          echo "Contents of cmake/bin:"
+          ls -la cmake/bin/
+          echo "cmake version:"
+          cmake/bin/cmake --version
           echo "$PWD/cmake/bin" >> $GITHUB_PATH
+
+      - name: Verify cmake in PATH
+        run: |
+          echo "PATH: $PATH"
+          which cmake
+          cmake --version
 
       - uses: actions/checkout@v5
 
       - name: Build
-        run: ./build.sh ${{ matrix.build_args }}
+        run: |
+          echo "cmake in build step:"
+          which cmake
+          cmake --version
+          ./build.sh ${{ matrix.build_args }}
 
       - name: Smoke test
         if: matrix.shard == 'main'
@@ -103,16 +120,36 @@ jobs:
       - name: Setup cmake
         shell: pwsh
         run: |
+          echo "Downloading cmake..."
           curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
+          echo "Extracting..."
           Expand-Archive -Path cmake.zip -DestinationPath cmake-tmp
+          echo "Contents of cmake-tmp:"
+          Get-ChildItem cmake-tmp
           Move-Item cmake-tmp/cmake-* cmake
+          echo "Contents of cmake:"
+          Get-ChildItem cmake
+          echo "Contents of cmake/bin:"
+          Get-ChildItem cmake/bin
+          echo "cmake version:"
+          ./cmake/bin/cmake.exe --version
           echo "$PWD/cmake/bin" >> $env:GITHUB_PATH
+
+      - name: Verify cmake in PATH
+        shell: pwsh
+        run: |
+          echo "PATH: $env:PATH"
+          Get-Command cmake
+          cmake --version
 
       - uses: actions/checkout@v5
 
       - name: Build
         shell: powershell
         run: |
+          echo "cmake in build step:"
+          Get-Command cmake
+          cmake --version
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           ./build.bat ${{ matrix.build_args }}
 
