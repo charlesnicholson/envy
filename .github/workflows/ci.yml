@@ -22,33 +22,33 @@ jobs:
           # Functional test shards - Linux x64
           - os: ubuntu-latest
             shard: func-asan
-            build_args: --no-envy --sanitizer=asan
+            build_args: --sanitizer=asan
           - os: ubuntu-latest
             shard: func-ubsan
-            build_args: --no-envy --sanitizer=ubsan
+            build_args: --sanitizer=ubsan
           - os: ubuntu-latest
             shard: func-tsan
-            build_args: --no-envy --sanitizer=tsan
+            build_args: --sanitizer=tsan
           # Functional test shards - Linux arm64
           - os: ubuntu-24.04-arm
             shard: func-asan
-            build_args: --no-envy --sanitizer=asan
+            build_args: --sanitizer=asan
           - os: ubuntu-24.04-arm
             shard: func-ubsan
-            build_args: --no-envy --sanitizer=ubsan
+            build_args: --sanitizer=ubsan
           - os: ubuntu-24.04-arm
             shard: func-tsan
-            build_args: --no-envy --sanitizer=tsan
+            build_args: --sanitizer=tsan
           # Functional test shards - macOS
           - os: macos-latest
             shard: func-asan
-            build_args: --no-envy --sanitizer=asan
+            build_args: --sanitizer=asan
           - os: macos-latest
             shard: func-ubsan
-            build_args: --no-envy --sanitizer=ubsan
+            build_args: --sanitizer=ubsan
           - os: macos-latest
             shard: func-tsan
-            build_args: --no-envy --sanitizer=tsan
+            build_args: --sanitizer=tsan
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/setup-python@v6
@@ -81,7 +81,7 @@ jobs:
           - shard: main
             build_args: --no-functional-tester
           - shard: func-asan
-            build_args: --no-envy --sanitizer=asan
+            build_args: --sanitizer=asan
     runs-on: windows-latest
     steps:
       - uses: actions/setup-python@v6
