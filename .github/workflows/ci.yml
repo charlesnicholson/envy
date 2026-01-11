@@ -5,59 +5,68 @@ on:
 
 jobs:
   build:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Main shards (build envy + unit tests)
-          - os: ubuntu-latest
+          - name: linux-x64-main
+            os: ubuntu-latest
             shard: main
             build_args: --no-functional-tester
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
-          - os: ubuntu-24.04-arm
+          - name: linux-arm64-main
+            os: ubuntu-24.04-arm
             shard: main
             build_args: --no-functional-tester
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
-          - os: macos-latest
+          - name: macos-arm64-main
+            os: macos-latest
             shard: main
             build_args: --no-functional-tester
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
-          # Functional test shards - Linux x64
-          - os: ubuntu-latest
+          - name: linux-x64-asan
+            os: ubuntu-latest
             shard: func-asan
             build_args: --sanitizer=asan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
-          - os: ubuntu-latest
+          - name: linux-x64-ubsan
+            os: ubuntu-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
-          - os: ubuntu-latest
+          - name: linux-x64-tsan
+            os: ubuntu-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
-          # Functional test shards - Linux arm64
-          - os: ubuntu-24.04-arm
+          - name: linux-arm64-asan
+            os: ubuntu-24.04-arm
             shard: func-asan
             build_args: --sanitizer=asan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
-          - os: ubuntu-24.04-arm
+          - name: linux-arm64-ubsan
+            os: ubuntu-24.04-arm
             shard: func-ubsan
             build_args: --sanitizer=ubsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
-          - os: ubuntu-24.04-arm
+          - name: linux-arm64-tsan
+            os: ubuntu-24.04-arm
             shard: func-tsan
             build_args: --sanitizer=tsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
-          # Functional test shards - macOS
-          - os: macos-latest
+          - name: macos-arm64-asan
+            os: macos-latest
             shard: func-asan
             build_args: --sanitizer=asan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
-          - os: macos-latest
+          - name: macos-arm64-ubsan
+            os: macos-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
-          - os: macos-latest
+          - name: macos-arm64-tsan
+            os: macos-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
@@ -76,8 +85,6 @@ jobs:
       - name: Build
         run: |
           export PATH="$PWD/out/cmake/bin:$PATH"
-          which cmake
-          cmake --version
           ./build.sh ${{ matrix.build_args }}
 
       - name: Smoke test
@@ -89,13 +96,16 @@ jobs:
         run: python3.13 -m functional_tests
 
   build-windows:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - shard: main
+          - name: windows-x64-main
+            shard: main
             build_args: --no-functional-tester
-          - shard: func-asan
+          - name: windows-x64-asan
+            shard: func-asan
             build_args: --sanitizer=asan
     runs-on: windows-latest
     steps:
@@ -116,8 +126,6 @@ jobs:
         shell: powershell
         run: |
           $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
-          Get-Command cmake
-          cmake --version
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           ./build.bat ${{ matrix.build_args }}
 
