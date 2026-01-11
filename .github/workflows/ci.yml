@@ -111,15 +111,3 @@ jobs:
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
         run: python3.13 -m functional_tests
-
-  all-checks-pass:
-    timeout-minutes: 5
-    needs:
-      - build
-      - build-windows
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Fail with upstream jobs
-        run: exit 1
-        if: (needs.build.result != 'success') || (needs.build-windows.result != 'success')
