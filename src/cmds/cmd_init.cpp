@@ -8,6 +8,7 @@
 #include "CLI11.hpp"
 #include "lua.h"
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -37,7 +38,11 @@ std::string make_portable_path(fs::path const &path) {
   char const env_var[]{ "${env:HOME}" };
   char const sep{ '/' };
 #endif
-  if (!home) { return path.string(); }
+  if (!home) {
+    std::string result{ path.string() };
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
+  }
 
   std::string const path_str{ path.string() };
   std::string const home_str{ home };
@@ -45,10 +50,14 @@ std::string make_portable_path(fs::path const &path) {
   if (path_str == home_str) { return env_var; }
 
   if (path_str.starts_with(home_str + sep)) {
-    return env_var + path_str.substr(home_str.size());
+    std::string result{ env_var + path_str.substr(home_str.size()) };
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
   }
 
-  return path_str;
+  std::string result{ path_str };
+  std::replace(result.begin(), result.end(), '\\', '/');
+  return result;
 }
 
 void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {

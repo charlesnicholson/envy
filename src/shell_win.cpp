@@ -205,28 +205,30 @@ bool is_powershell_line_empty_or_comment(std::wstring_view line) {
   return true;
 }
 
-// Build script contents for PowerShell with fail-fast behavior.
-// Wraps each line with $LASTEXITCODE check to exit immediately on native command failure.
-std::wstring build_powershell_script_contents(std::string_view script) {
+// Build script contents for PowerShell with optional fail-fast behavior.
+// When check=true, wraps each line with $LASTEXITCODE check to exit immediately on failure.
+std::wstring build_powershell_script_contents(std::string_view script, bool check) {
   std::wstring user_script{ utf8_to_wstring(script) };
   auto lines{ split_script_lines(user_script) };
 
   std::wstring wrapper;
   wrapper.reserve(user_script.size() * 2 + 256);
 
-  // Stop on PowerShell cmdlet errors immediately
-  wrapper.append(L"$ErrorActionPreference = 'Stop'\r\n");
-  wrapper.append(L"$Error.Clear()\r\n");
+  if (check) {
+    // Stop on PowerShell cmdlet errors immediately
+    wrapper.append(L"$ErrorActionPreference = 'Stop'\r\n");
+    wrapper.append(L"$Error.Clear()\r\n");
 
-  // For PowerShell 7.3+, native commands also respect ErrorActionPreference
-  wrapper.append(
-      L"if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor "
-      L"-ge "
-      L"3) {\r\n");
-  wrapper.append(L"  $PSNativeCommandUseErrorActionPreference = $true\r\n");
-  wrapper.append(L"}\r\n");
+    // For PowerShell 7.3+, native commands also respect ErrorActionPreference
+    wrapper.append(
+        L"if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor "
+        L"-ge "
+        L"3) {\r\n");
+    wrapper.append(L"  $PSNativeCommandUseErrorActionPreference = $true\r\n");
+    wrapper.append(L"}\r\n");
+  }
 
-  // Emit each line followed by exit-code check for native commands
+  // Emit each line, optionally followed by exit-code check for native commands
   for (auto const &line : lines) {
     if (is_powershell_line_empty_or_comment(line)) {
       wrapper.append(line);
@@ -234,32 +236,40 @@ std::wstring build_powershell_script_contents(std::string_view script) {
     } else {
       wrapper.append(line);
       wrapper.append(L"\r\n");
-      // Check $LASTEXITCODE after each non-empty line for native command failures.
-      // $LASTEXITCODE is only set by native commands, not by PowerShell cmdlets.
-      wrapper.append(
-          L"if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE "
-          L"}\r\n");
+      if (check) {
+        // Check $LASTEXITCODE after each non-empty line for native command failures.
+        // $LASTEXITCODE is only set by native commands, not by PowerShell cmdlets.
+        wrapper.append(
+            L"if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE "
+            L"}\r\n");
+      }
     }
   }
 
-  // Final error check for any accumulated PowerShell errors
-  wrapper.append(L"if ($Error.Count -gt 0) { exit 1 }\r\n");
+  if (check) {
+    // Final error check for any accumulated PowerShell errors
+    wrapper.append(L"if ($Error.Count -gt 0) { exit 1 }\r\n");
+  }
   wrapper.append(L"exit 0\r\n");
   return wrapper;
 }
 
-// Build script contents for cmd.exe with fail-fast behavior.
-// Appends "|| exit /b %errorlevel%" after each command line.
-std::string build_cmd_script_contents(std::string_view script) {
+// Build script contents for cmd.exe with optional fail-fast behavior.
+// When check=true, appends "|| exit /b !errorlevel!" after each command line.
+std::string build_cmd_script_contents(std::string_view script, bool check) {
   std::wstring wide_script{ utf8_to_wstring(script) };
   auto lines{ split_script_lines(wide_script) };
 
   std::string result;
   result.reserve(script.size() * 2 + 64);
 
-  // Disable command echo for cleaner output and enable delayed expansion
+  // Disable command echo for cleaner output
   result.append("@echo off\r\n");
-  result.append("setlocal enabledelayedexpansion\r\n");
+
+  if (check) {
+    // Enable delayed expansion for !errorlevel! in fail-fast checks
+    result.append("setlocal enabledelayedexpansion\r\n");
+  }
 
   for (auto const &wide_line : lines) {
     std::string line{ wstring_to_utf8(wide_line) };
@@ -292,9 +302,13 @@ std::string build_cmd_script_contents(std::string_view script) {
       result.append(line);
       result.append("\r\n");
     } else {
-      // Append fail-fast suffix: exit immediately if command fails
       result.append(line);
-      result.append(" || exit /b !errorlevel!\r\n");
+      if (check) {
+        // Append fail-fast suffix: exit immediately if command fails
+        result.append(" || exit /b !errorlevel!\r\n");
+      } else {
+        result.append("\r\n");
+      }
     }
   }
 
@@ -363,7 +377,7 @@ std::filesystem::path create_temp_script(std::string_view script,
           [&](shell_choice const &shell_cfg) {
             if (shell_cfg == shell_choice::powershell) {
               // UTF-16 BOM + UTF-16 LE content
-              std::wstring const content{ build_powershell_script_contents(script) };
+              std::wstring const content{ build_powershell_script_contents(script, inv.check) };
               wchar_t const bom{ 0xFEFF };
               if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
                   written != sizeof(bom)) {
@@ -390,7 +404,7 @@ std::filesystem::path create_temp_script(std::string_view script,
               // natively. Older versions use system codepage (CP1252, CP932, etc.) which
               // breaks non-ASCII. This implementation requires Windows 10+; non-ASCII on
               // older versions will fail.
-              std::string const content{ build_cmd_script_contents(script) };
+              std::string const content{ build_cmd_script_contents(script, inv.check) };
               if (!content.empty()) {
                 DWORD const byte_count{ static_cast<DWORD>(content.size()) };
                 if (!::WriteFile(file_guard.get(),

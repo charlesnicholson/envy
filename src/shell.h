@@ -56,6 +56,7 @@ struct shell_run_cfg {
   std::optional<std::filesystem::path> cwd;
   shell_env_t env;
   resolved_shell shell{ shell_resolve_default(nullptr) };
+  bool check{ false };
 };
 
 shell_choice shell_parse_choice(std::optional<std::string_view> value);
