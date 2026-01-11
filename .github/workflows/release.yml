@@ -20,27 +20,31 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: envy-linux-x86_64.tar.gz
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - os: ubuntu-24.04-arm
             artifact: envy-linux-arm64.tar.gz
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - os: macos-latest
             artifact: envy-darwin-arm64.tar.gz
+            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
 
     runs-on: ${{ matrix.os }}
 
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.1.2'
-
-      - uses: actions/checkout@v5
+        run: |
+          mkdir -p out/cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C out/cmake --strip-components=1
 
       - name: Build
-        run: ./build.sh --no-functional-tester
+        run: |
+          export PATH="$PWD/out/cmake/bin:$PATH"
+          ./build.sh --no-functional-tester
 
       - name: Package
         run: tar -czf ${{ matrix.artifact }} -C out/build envy
@@ -57,20 +61,23 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
       - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.1.2'
-
-      - uses: actions/checkout@v5
+        shell: pwsh
+        run: |
+          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
+          Expand-Archive -Path cmake.zip -DestinationPath out
+          Move-Item out/cmake-* out/cmake
 
       - name: Build
         shell: powershell
         run: |
+          $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           ./build.bat --no-functional-tester
 

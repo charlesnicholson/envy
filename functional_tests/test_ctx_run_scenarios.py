@@ -65,7 +65,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_complex_workflow.lua", spec)
-        self.run_spec("local.ctx_run_complex_workflow@v1", "ctx_run_complex_workflow.lua")
+        self.run_spec(
+            "local.ctx_run_complex_workflow@v1", "ctx_run_complex_workflow.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_complex_workflow@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "workflow_complete.txt").exists())
@@ -117,7 +119,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_complex_env_manip.lua", spec)
-        self.run_spec("local.ctx_run_complex_env_manip@v1", "ctx_run_complex_env_manip.lua")
+        self.run_spec(
+            "local.ctx_run_complex_env_manip@v1", "ctx_run_complex_env_manip.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_complex_env_manip@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "env_step1.txt").exists())
@@ -188,7 +192,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_complex_conditional.lua", spec)
-        self.run_spec("local.ctx_run_complex_conditional@v1", "ctx_run_complex_conditional.lua")
+        self.run_spec(
+            "local.ctx_run_complex_conditional@v1", "ctx_run_complex_conditional.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_complex_conditional@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "os_info.txt").exists())
@@ -551,7 +557,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_edge_special_chars.lua", spec)
-        self.run_spec("local.ctx_run_edge_special_chars@v1", "ctx_run_edge_special_chars.lua")
+        self.run_spec(
+            "local.ctx_run_edge_special_chars@v1", "ctx_run_edge_special_chars.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_edge_special_chars@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "special_chars.txt").exists())
@@ -631,7 +639,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_edge_slow_command.lua", spec)
-        self.run_spec("local.ctx_run_edge_slow_command@v1", "ctx_run_edge_slow_command.lua")
+        self.run_spec(
+            "local.ctx_run_edge_slow_command@v1", "ctx_run_edge_slow_command.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_edge_slow_command@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "slow_verify.txt").exists())
@@ -668,7 +678,11 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_lua_error_after.lua", spec)
-        self.run_spec("local.ctx_run_lua_error_after@v1", "ctx_run_lua_error_after.lua", should_fail=True)
+        self.run_spec(
+            "local.ctx_run_lua_error_after@v1",
+            "ctx_run_lua_error_after.lua",
+            should_fail=True,
+        )
 
     def test_lua_error_before(self):
         """Lua error before envy.run()."""
@@ -693,7 +707,11 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_lua_error_before.lua", spec)
-        self.run_spec("local.ctx_run_lua_error_before@v1", "ctx_run_lua_error_before.lua", should_fail=True)
+        self.run_spec(
+            "local.ctx_run_lua_error_before@v1",
+            "ctx_run_lua_error_before.lua",
+            should_fail=True,
+        )
 
     def test_lua_bad_args(self):
         """envy.run() with invalid arguments (Lua error)."""
@@ -713,7 +731,11 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_lua_bad_args.lua", spec)
-        self.run_spec("local.ctx_run_lua_bad_args@v1", "ctx_run_lua_bad_args.lua", should_fail=True)
+        self.run_spec(
+            "local.ctx_run_lua_bad_args@v1",
+            "ctx_run_lua_bad_args.lua",
+            should_fail=True,
+        )
 
     def test_lua_bad_options(self):
         """envy.run() with invalid options (Lua error)."""
@@ -735,7 +757,11 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 end
 """
         self.write_spec("ctx_run_lua_bad_options.lua", spec)
-        self.run_spec("local.ctx_run_lua_bad_opts@v1", "ctx_run_lua_bad_options.lua", should_fail=True)
+        self.run_spec(
+            "local.ctx_run_lua_bad_opts@v1",
+            "ctx_run_lua_bad_options.lua",
+            should_fail=True,
+        )
 
 
 class TestCtxRunOutput(CtxRunTestBase):
@@ -894,7 +920,9 @@ MULTILINE
 end
 """
         self.write_spec("ctx_run_output_multiline.lua", spec)
-        self.run_spec("local.ctx_run_output_multiline@v1", "ctx_run_output_multiline.lua")
+        self.run_spec(
+            "local.ctx_run_output_multiline@v1", "ctx_run_output_multiline.lua"
+        )
         pkg_path = self.get_pkg_path("local.ctx_run_output_multiline@v1")
         assert pkg_path
         self.assertTrue((pkg_path / "multiline_marker.txt").exists())

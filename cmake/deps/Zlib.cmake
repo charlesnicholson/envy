@@ -16,6 +16,11 @@ FetchContent_Declare(envy_zlib
 FetchContent_MakeAvailable(envy_zlib)
 FetchContent_GetProperties(envy_zlib)
 
+# Exclude shared library from build (we only need static)
+if(TARGET zlib)
+    set_target_properties(zlib PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()
+
 if(DEFINED envy_zlib_BINARY_DIR)
     set(_envy_zlib_primary_target "")
     if(TARGET zlibstatic)

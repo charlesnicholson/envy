@@ -291,13 +291,18 @@ PACKAGES = {{
         trace_file1 = self.cache_root / "trace1.jsonl"
         cmd1 = [
             str(self.envy),
-            "--cache-root", str(self.cache_root),
+            "--cache-root",
+            str(self.cache_root),
             f"--trace=file:{trace_file1}",
-            "sync", "--install-all",
+            "sync",
+            "--install-all",
             "local.simple@v1",
-            "--manifest", str(manifest),
+            "--manifest",
+            str(manifest),
         ]
-        result1 = subprocess.run(cmd1, cwd=self.project_root, capture_output=True, text=True)
+        result1 = subprocess.run(
+            cmd1, cwd=self.project_root, capture_output=True, text=True
+        )
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
 
         parser1 = TraceParser(trace_file1)
@@ -308,18 +313,25 @@ PACKAGES = {{
         trace_file2 = self.cache_root / "trace2.jsonl"
         cmd2 = [
             str(self.envy),
-            "--cache-root", str(self.cache_root),
+            "--cache-root",
+            str(self.cache_root),
             f"--trace=file:{trace_file2}",
-            "sync", "--install-all",
+            "sync",
+            "--install-all",
             "local.simple@v1",
-            "--manifest", str(manifest),
+            "--manifest",
+            str(manifest),
         ]
-        result2 = subprocess.run(cmd2, cwd=self.project_root, capture_output=True, text=True)
+        result2 = subprocess.run(
+            cmd2, cwd=self.project_root, capture_output=True, text=True
+        )
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
 
         parser2 = TraceParser(trace_file2)
         completes2 = parser2.filter_by_event("phase_complete")
-        self.assertGreater(len(completes2), 0, "Expected phase completions on second run")
+        self.assertGreater(
+            len(completes2), 0, "Expected phase completions on second run"
+        )
 
     def test_sync_no_stdout_output(self):
         """Sync command produces no stdout output."""
@@ -350,11 +362,16 @@ PACKAGES = {{
 
             cmd = [
                 str(self.envy),
-                "--cache-root", str(custom_cache),
-                "sync", "--install-all",
-                "--manifest", str(manifest),
+                "--cache-root",
+                str(custom_cache),
+                "sync",
+                "--install-all",
+                "--manifest",
+                str(manifest),
             ]
-            result = subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, cwd=self.project_root, capture_output=True, text=True
+            )
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -422,7 +439,9 @@ class TestSyncProductScripts(unittest.TestCase):
 
     def create_manifest(self, content: str, deploy: bool = True) -> Path:
         manifest_path = self.test_dir / "envy.lua"
-        manifest_path.write_text(make_manifest(content, deploy=deploy), encoding="utf-8")
+        manifest_path.write_text(
+            make_manifest(content, deploy=deploy), encoding="utf-8"
+        )
         return manifest_path
 
     def run_sync(self, manifest: Path, identities: Optional[List[str]] = None):
@@ -430,7 +449,9 @@ class TestSyncProductScripts(unittest.TestCase):
         if identities:
             cmd.extend(identities)
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True)
+        return subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
 
     def test_sync_creates_product_scripts(self):
         """Default sync creates product scripts in bin directory."""
@@ -562,11 +583,16 @@ PACKAGES = {{
 
         cmd = [
             str(self.envy),
-            "--cache-root", str(self.cache_root),
-            "sync", "--install-all",
-            "--manifest", str(manifest),
+            "--cache-root",
+            str(self.cache_root),
+            "sync",
+            "--install-all",
+            "--manifest",
+            str(manifest),
         ]
-        result = subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("installed", result.stderr.lower())
@@ -736,17 +762,22 @@ class TestSyncDeployDirective(unittest.TestCase):
         if install_all:
             cmd.append("--install-all")
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(cmd, cwd=self.project_root, capture_output=True, text=True)
+        return subprocess.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
 
     def test_sync_deploy_true_creates_scripts(self):
         """Sync with deploy=true creates product scripts."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
-        manifest = self.create_manifest(f"""
+        manifest = self.create_manifest(
+            f"""
 PACKAGES = {{
     {{ spec = "local.product_provider@v1", source = "{product_path}" }},
 }}
-""", deploy="true")
+""",
+            deploy="true",
+        )
 
         result = self.run_sync(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -760,11 +791,14 @@ PACKAGES = {{
         """Sync with deploy=false does not create product scripts."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
-        manifest = self.create_manifest(f"""
+        manifest = self.create_manifest(
+            f"""
 PACKAGES = {{
     {{ spec = "local.product_provider@v1", source = "{product_path}" }},
 }}
-""", deploy="false")
+""",
+            deploy="false",
+        )
 
         result = self.run_sync(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")

@@ -4,7 +4,6 @@ Tests declarative fetch syntax: FETCH = "url", FETCH = {url, sha256},
 FETCH = [{...}, ...], and basic error handling (collision, bad SHA256).
 """
 
-import hashlib
 import os
 import shutil
 import subprocess

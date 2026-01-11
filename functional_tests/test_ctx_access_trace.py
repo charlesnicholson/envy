@@ -52,8 +52,12 @@ class TestCtxAccessTrace(unittest.TestCase):
         self.envy = test_config.get_envy_executable()
 
         # Write shared provider specs
-        (self.test_dir / "dep_val_lib.lua").write_text(SPEC_DEP_VAL_LIB, encoding="utf-8")
-        (self.test_dir / "product_provider.lua").write_text(SPEC_PRODUCT_PROVIDER, encoding="utf-8")
+        (self.test_dir / "dep_val_lib.lua").write_text(
+            SPEC_DEP_VAL_LIB, encoding="utf-8"
+        )
+        (self.test_dir / "product_provider.lua").write_text(
+            SPEC_PRODUCT_PROVIDER, encoding="utf-8"
+        )
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -95,7 +99,9 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   assert(not ok2, "expected missing product access to fail")
 end
 """
-        (self.test_dir / "trace_ctx_access.lua").write_text(spec_trace_ctx_access, encoding="utf-8")
+        (self.test_dir / "trace_ctx_access.lua").write_text(
+            spec_trace_ctx_access, encoding="utf-8"
+        )
 
         trace_file = self.cache_root / "trace.jsonl"
         result = subprocess.run(

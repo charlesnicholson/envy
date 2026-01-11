@@ -144,9 +144,6 @@ class BootstrapIntegrationTest(unittest.TestCase):
         cls._bootstrap_windows = cls._project_root / "src/resources/envy.bat"
 
     def setUp(self) -> None:
-        if not self._envy_binary.exists():
-            self.skipTest(f"envy not found at {self._envy_binary}")
-
         if sys.platform == "win32":
             self.assertTrue(
                 self._bootstrap_windows.exists(),

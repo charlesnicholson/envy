@@ -15,9 +15,6 @@ class EnvyLuaTests(unittest.TestCase):
         self._envy_binary = self._project_root / "out" / "build" / binary_name
 
     def _run_envy(self, *args: str) -> subprocess.CompletedProcess[str]:
-        self.assertTrue(
-            self._envy_binary.exists(), f"Expected envy binary at {self._envy_binary}"
-        )
         env = os.environ.copy()
         env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
         return subprocess.run(

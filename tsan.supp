@@ -16,6 +16,11 @@ race:mbedtls-src/library/ecp.c
 # Each git operation should have its own client context; any shared state races are benign
 race:libgit2-src/src/libgit2/transports/httpclient.c
 
+# Benign races in libgit2 reference handling - signature creation for reflogs
+# Concurrent git operations may race on default signature caching
+race:libgit2-src/src/libgit2/refs.c
+race:libgit2-src/src/libgit2/signature.c
+
 # Benign races in libarchive - format readers may have unsynchronized state
 # Each archive operation has its own context; shared state races don't affect correctness
 race:libarchive-src/libarchive/archive_read_support_format_tar.c

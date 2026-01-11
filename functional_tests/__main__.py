@@ -10,6 +10,28 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import test_config
 
 
+def _setup_sanitizer_env() -> None:
+    """Set up sanitizer environment variables and print configuration for debugging."""
+    root = pathlib.Path(__file__).resolve().parent.parent
+    tsan_supp = root / "tsan.supp"
+    asan_supp = root / "asan.supp"
+
+    print(f"Sanitizer suppression files:")
+    print(f"  TSAN: {tsan_supp} (exists: {tsan_supp.exists()})")
+    print(f"  ASAN: {asan_supp} (exists: {asan_supp.exists()})")
+
+    # Actually set the environment variables so child processes inherit them
+    if tsan_supp.exists() and "TSAN_OPTIONS" not in os.environ:
+        os.environ["TSAN_OPTIONS"] = f"suppressions={tsan_supp}"
+    if asan_supp.exists() and "ASAN_OPTIONS" not in os.environ:
+        os.environ["ASAN_OPTIONS"] = f"suppressions={asan_supp}"
+
+    print(f"Sanitizer environment:")
+    print(f"  TSAN_OPTIONS: {os.environ.get('TSAN_OPTIONS', '(not set)')}")
+    print(f"  ASAN_OPTIONS: {os.environ.get('ASAN_OPTIONS', '(not set)')}")
+    print()
+
+
 def _build_default_argv() -> list[str]:
     root = pathlib.Path(__file__).resolve().parent
     return [
@@ -149,6 +171,8 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
 
 
 def main() -> None:
+    _setup_sanitizer_env()
+
     # Determine number of jobs for parallel execution
     jobs_env = os.environ.get("ENVY_TEST_JOBS")
     verbose = os.environ.get("ENVY_TEST_VERBOSE", "").lower() in ("1", "true", "yes")
