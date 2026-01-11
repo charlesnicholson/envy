@@ -60,6 +60,7 @@ jobs:
             shard: func-asan
             build_args: --sanitizer=asan
             cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
+            test_jobs: 2
           - name: macos-arm64-ubsan
             os: macos-latest
             shard: func-ubsan
@@ -94,6 +95,8 @@ jobs:
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
         run: python3.13 -m functional_tests
+        env:
+          ENVY_TEST_JOBS: ${{ matrix.test_jobs || '' }}
 
   build-windows:
     name: ${{ matrix.name }}
