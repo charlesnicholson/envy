@@ -7,15 +7,18 @@ Uses a mock HTTP server serving the real envy binary.
 from __future__ import annotations
 
 import http.server
+import io
 import os
 import shutil
 import socketserver
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import unittest
+import zipfile
 from pathlib import Path
 
 # Inline fixture contents
@@ -59,7 +62,7 @@ PACKAGES = {
 
 
 class EnvyServer:
-    """Simple HTTP server that serves the envy binary."""
+    """Simple HTTP server that serves the envy binary as tar.gz (Unix) or zip (Windows)."""
 
     def __init__(self, binary_path: Path):
         self.binary_path = binary_path
@@ -68,21 +71,44 @@ class EnvyServer:
         self.thread: threading.Thread | None = None
         self.port: int = 0
 
+        # Pre-create tar.gz archive for Unix
+        tar_buffer = io.BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name="envy")
+            info.size = len(self.binary_content)
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(self.binary_content))
+        self.tar_gz_content = tar_buffer.getvalue()
+
+        # Pre-create zip archive for Windows
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("envy.exe", self.binary_content)
+        self.zip_content = zip_buffer.getvalue()
+
     def start(self) -> int:
         """Start the server and return the port number."""
         parent = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
-                if "/envy-" in self.path or "/envy.exe" in self.path:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/octet-stream")
-                    self.send_header("Content-Length", str(len(parent.binary_content)))
-                    self.end_headers()
-                    self.wfile.write(parent.binary_content)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
+                match self.path.rsplit(".", 1)[-1]:
+                    case "gz" if self.path.endswith(".tar.gz"):
+                        content, content_type = (
+                            parent.tar_gz_content,
+                            "application/gzip",
+                        )
+                    case "zip":
+                        content, content_type = parent.zip_content, "application/zip"
+                    case _:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
 
             def log_message(self, format: str, *args: object) -> None:
                 pass

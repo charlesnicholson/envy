@@ -92,6 +92,10 @@ unset(_envy_flags)
 unset(_envy_lang)
 
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
+option(ENVY_BUILD_ENVY "Build the main envy executable" ON)
+option(ENVY_BUILD_FUNCTIONAL_TESTER "Build the functional test executable" ON)
+set(ENVY_SANITIZER "NONE" CACHE STRING "Sanitizer configuration (NONE, ASAN, UBSAN, TSAN)")
+set_property(CACHE ENVY_SANITIZER PROPERTY STRINGS NONE ASAN UBSAN TSAN)
 if(ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported OUTPUT ipo_output)
@@ -131,14 +135,6 @@ if(ENABLE_LTO)
     else()
         message(WARNING "IPO/LTO not supported: ${ipo_output}")
     endif()
-endif()
-
-# Enable AddressSanitizer globally on MSVC when ENVY_ENABLE_ASAN is set
-if(MSVC AND ENVY_ENABLE_ASAN)
-    add_compile_options($<$<COMPILE_LANGUAGE:C>:/fsanitize=address>)
-    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fsanitize=address>)
-    add_link_options(/INCREMENTAL:NO)
-    message(STATUS "MSVC: AddressSanitizer enabled globally for C/C++ targets")
 endif()
 
 include(cmake/Dependencies.cmake)
@@ -292,8 +288,8 @@ set(ENVY_COMMON_COMPILE_OPTIONS
     $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
 )
 
-# Function to configure an envy executable
-function(configure_envy_executable TARGET_NAME SANITIZERS)
+# Function to configure an envy executable (base configuration, no sanitizers)
+function(configure_envy_executable TARGET_NAME)
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
     target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -306,25 +302,6 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
     )
     target_link_libraries(${TARGET_NAME} PRIVATE envy::thirdparty)
 
-    # Add sanitizer flags if specified (only for Clang/GCC; MSVC is handled globally)
-    if(SANITIZERS AND NOT MSVC)
-        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-            target_compile_options(${TARGET_NAME} PRIVATE
-                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS} -fno-omit-frame-pointer -g>
-                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/sanitizer_blacklist.txt>
-            )
-            target_link_options(${TARGET_NAME} PRIVATE
-                $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-fsanitize=${SANITIZERS}>
-            )
-            # Suppress TSAN warnings about atomic_thread_fence in third-party code
-            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SANITIZERS MATCHES "thread")
-                target_link_options(${TARGET_NAME} PRIVATE
-                    -Wno-tsan
-                )
-            endif()
-        endif()
-    endif()
-
     # Add noexecstack for all GCC builds (security hardening)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_link_options(${TARGET_NAME} PRIVATE
@@ -333,11 +310,57 @@ function(configure_envy_executable TARGET_NAME SANITIZERS)
     endif()
 endfunction()
 
+# Function to apply sanitizers based on ENVY_SANITIZER option
+function(apply_sanitizers TARGET_NAME)
+    if(ENVY_SANITIZER STREQUAL "NONE")
+        return()
+    endif()
+
+    # MSVC only supports ASan
+    if(MSVC)
+        if(ENVY_SANITIZER STREQUAL "ASAN")
+            target_compile_options(${TARGET_NAME} PRIVATE /fsanitize=address)
+            target_link_options(${TARGET_NAME} PRIVATE /INCREMENTAL:NO)
+        endif()
+        return()
+    endif()
+
+    # Map option to compiler flags
+    if(ENVY_SANITIZER STREQUAL "ASAN")
+        # GCC: Disable ASan to avoid third-party false positives (mbedTLS, AWS SDK)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            message(STATUS "GCC: ASan disabled due to third-party false positives; using UBSAN instead")
+            return()
+        endif()
+        set(_sanitizer_flags "address")
+    elseif(ENVY_SANITIZER STREQUAL "UBSAN")
+        set(_sanitizer_flags "undefined")
+    elseif(ENVY_SANITIZER STREQUAL "TSAN")
+        set(_sanitizer_flags "thread")
+    else()
+        message(FATAL_ERROR "Unknown ENVY_SANITIZER value: ${ENVY_SANITIZER}")
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${TARGET_NAME} PRIVATE
+            -fsanitize=${_sanitizer_flags} -fno-omit-frame-pointer -g
+            $<$<OR:$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:Clang>>:-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/sanitizer_blacklist.txt>
+        )
+        target_link_options(${TARGET_NAME} PRIVATE -fsanitize=${_sanitizer_flags})
+
+        # Suppress TSAN warnings about atomic_thread_fence in third-party code
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND _sanitizer_flags STREQUAL "thread")
+            target_link_options(${TARGET_NAME} PRIVATE -Wno-tsan)
+        endif()
+    endif()
+endfunction()
+
 # Production executable -------------------------------------------------------
+if(ENVY_BUILD_ENVY)
 add_executable(envy)
 target_sources(envy PRIVATE ${ENVY_COMMON_SOURCES})
 target_compile_definitions(envy PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\")
-configure_envy_executable(envy "")
+configure_envy_executable(envy)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CMAKE_C_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE CACHE BOOL "" FORCE)
@@ -368,47 +391,19 @@ if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         )
     endif()
 endif()
+endif() # ENVY_BUILD_ENVY
 
-# Functional tester executables with different sanitizers -------------------
-if(MSVC)
-    # MSVC only supports AddressSanitizer (not UBSan/TSan)
-    # Build single functional tester without sanitizers (third-party libs not built with ASan)
-    add_executable(envy_functional_tester)
-    target_sources(envy_functional_tester PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
-    target_compile_definitions(envy_functional_tester PRIVATE
-        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
-        ENVY_FUNCTIONAL_TESTER=1
-    )
-    configure_envy_executable(envy_functional_tester "")
-else()
-    # Clang/GCC: Build two sanitizer variants
-    # ASan+UBSan variant
-    add_executable(envy_functional_tester_asan_ubsan)
-    target_sources(envy_functional_tester_asan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
-    target_compile_definitions(envy_functional_tester_asan_ubsan PRIVATE
-        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
-        ENVY_FUNCTIONAL_TESTER=1
-    )
-    # GCC: Disable ASan to avoid third-party false positives (mbedTLS, AWS SDK)
-    # Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        configure_envy_executable(envy_functional_tester_asan_ubsan "undefined")
-    else()
-        configure_envy_executable(envy_functional_tester_asan_ubsan "address,undefined")
-    endif()
-
-    # TSan+UBSan variant
-    add_executable(envy_functional_tester_tsan_ubsan)
-    target_sources(envy_functional_tester_tsan_ubsan PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
-    target_compile_definitions(envy_functional_tester_tsan_ubsan PRIVATE
-        ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
-        ENVY_FUNCTIONAL_TESTER=1
-    )
-    configure_envy_executable(envy_functional_tester_tsan_ubsan "thread,undefined")
-
-    # Legacy name alias for backward compatibility
-    add_executable(envy_functional_tester ALIAS envy_functional_tester_asan_ubsan)
-endif()
+# Functional tester executable ------------------------------------------------
+if(ENVY_BUILD_FUNCTIONAL_TESTER)
+add_executable(envy_functional_tester)
+target_sources(envy_functional_tester PRIVATE ${ENVY_COMMON_SOURCES} ${ENVY_FUNCTIONAL_TEST_SOURCES})
+target_compile_definitions(envy_functional_tester PRIVATE
+    ENVY_VERSION_STR=\"${PROJECT_VERSION}\"
+    ENVY_FUNCTIONAL_TESTER=1
+)
+configure_envy_executable(envy_functional_tester)
+apply_sanitizers(envy_functional_tester)
+endif() # ENVY_BUILD_FUNCTIONAL_TESTER
 
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
@@ -455,13 +450,8 @@ add_executable(envy_unit_tests)
 target_sources(envy_unit_tests PRIVATE ${ENVY_BASE_SOURCES} ${ENVY_UNIT_TEST_SOURCES})
 target_compile_definitions(envy_unit_tests PRIVATE ENVY_VERSION_STR=\"${PROJECT_VERSION}\" ENVY_UNIT_TEST)
 target_link_libraries(envy_unit_tests PRIVATE doctest::doctest)
-# GCC: Disable ASan to avoid AWS SDK hashlittle2 false positive (LTO inlines across libs)
-# Clang: Use -fsanitize-blacklist (configured in configure_envy_executable)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    configure_envy_executable(envy_unit_tests "undefined")
-else()
-    configure_envy_executable(envy_unit_tests "address,undefined")
-endif()
+configure_envy_executable(envy_unit_tests)
+apply_sanitizers(envy_unit_tests)
 
 
 # Run tests and create timestamp on success

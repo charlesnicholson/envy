@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Main shards (build envy + unit tests)
+          - os: ubuntu-latest
+            shard: main
+            build_args: --no-functional-tester
+          - os: ubuntu-24.04-arm
+            shard: main
+            build_args: --no-functional-tester
+          - os: macos-latest
+            shard: main
+            build_args: --no-functional-tester
+          # Functional test shards - Linux x64
+          - os: ubuntu-latest
+            shard: func-asan
+            build_args: --no-envy --sanitizer=asan
+          - os: ubuntu-latest
+            shard: func-ubsan
+            build_args: --no-envy --sanitizer=ubsan
+          - os: ubuntu-latest
+            shard: func-tsan
+            build_args: --no-envy --sanitizer=tsan
+          # Functional test shards - Linux arm64
+          - os: ubuntu-24.04-arm
+            shard: func-asan
+            build_args: --no-envy --sanitizer=asan
+          - os: ubuntu-24.04-arm
+            shard: func-ubsan
+            build_args: --no-envy --sanitizer=ubsan
+          - os: ubuntu-24.04-arm
+            shard: func-tsan
+            build_args: --no-envy --sanitizer=tsan
+          # Functional test shards - macOS
+          - os: macos-latest
+            shard: func-asan
+            build_args: --no-envy --sanitizer=asan
+          - os: macos-latest
+            shard: func-ubsan
+            build_args: --no-envy --sanitizer=ubsan
+          - os: macos-latest
+            shard: func-tsan
+            build_args: --no-envy --sanitizer=tsan
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.1.2'
+
+      - uses: actions/checkout@v5
+
+      - name: Build
+        run: ./build.sh ${{ matrix.build_args }}
+
+      - name: Smoke test
+        if: matrix.shard == 'main'
+        run: ls -al out/build/envy && ./out/build/envy -v
+
+      - name: Functional tests
+        if: startsWith(matrix.shard, 'func-')
+        run: python3.13 -m functional_tests
+
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: main
+            build_args: --no-functional-tester
+          - shard: func-asan
+            build_args: --no-envy --sanitizer=asan
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.1.2'
+
+      - uses: actions/checkout@v5
+
+      - name: Build
+        shell: powershell
+        run: |
+          &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
+          ./build.bat ${{ matrix.build_args }}
+
+      - name: Smoke test
+        if: matrix.shard == 'main'
+        shell: cmd
+        run: |
+          dir out\build\envy.exe
+          out\build\envy.exe -v
+
+      - name: Functional tests
+        if: startsWith(matrix.shard, 'func-')
+        run: python3.13 -m functional_tests
+
+  all-checks-pass:
+    timeout-minutes: 5
+    needs:
+      - build
+      - build-windows
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Fail with upstream jobs
+        run: exit 1
+        if: (needs.build.result != 'success') || (needs.build-windows.result != 'success')
