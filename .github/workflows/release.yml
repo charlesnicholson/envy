@@ -31,6 +31,8 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -39,8 +41,6 @@ jobs:
         run: |
           mkdir cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C cmake --strip-components=1
           echo "$PWD/cmake/bin" >> $GITHUB_PATH
-
-      - uses: actions/checkout@v5
 
       - name: Build
         run: ./build.sh --no-functional-tester
@@ -60,6 +60,8 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -71,8 +73,6 @@ jobs:
           Expand-Archive -Path cmake.zip -DestinationPath cmake-tmp
           Move-Item cmake-tmp/cmake-* cmake
           echo "$PWD/cmake/bin" >> $env:GITHUB_PATH
-
-      - uses: actions/checkout@v5
 
       - name: Build
         shell: powershell
