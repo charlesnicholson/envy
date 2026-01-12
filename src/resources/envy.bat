@@ -13,7 +13,8 @@ if exist "!DIR!\envy.lua" (
     for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("!DIR!\envy.lua") do (
         if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
             set "VAL=%%d"
-            if "!VAL!"=="""false""" set "IS_ROOT=false"
+            set "VAL=!VAL:"=!"
+            if "!VAL!"=="false" set "IS_ROOT=false"
         )
     )
     if "!IS_ROOT!"=="true" (
