@@ -80,12 +80,13 @@ if exist "!ENVY_BIN!" goto :run
 
 echo Downloading envy !VERSION!... >&2
 set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-x86_64.zip"
-set "TEMP_DIR=!TEMP!\envy-!VERSION!-!RANDOM!"
+for /f %%i in ('powershell -NoProfile -Command "[System.IO.Path]::GetRandomFileName()"') do set "TEMP_DIR=!TEMP!\envy-%%i"
 set "TEMP_ZIP=!TEMP_DIR!.zip"
 powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '!URL!' -OutFile '!TEMP_ZIP!' -UseBasicParsing"
 if errorlevel 1 (echo ERROR: Failed to download envy from !URL! >&2 & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '!TEMP_ZIP!' -DestinationPath '!TEMP_DIR!' -Force"
 if errorlevel 1 (echo ERROR: Failed to extract envy >&2 & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+del "!TEMP_ZIP!" 2>nul
 "!TEMP_DIR!\envy.exe" %*
 exit /b !ERRORLEVEL!
 
