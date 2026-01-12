@@ -44,7 +44,9 @@ jobs:
       - name: Build
         run: |
           export PATH="$PWD/out/cmake/bin:$PATH"
-          ./build.sh --no-functional-tester
+          # Extract version from tag (v1.2.3 -> 1.2.3)
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./build.sh --no-functional-tester -DENVY_VERSION="$VERSION"
 
       - name: Package
         run: tar -czf ${{ matrix.artifact }} -C out/build envy
@@ -79,7 +81,9 @@ jobs:
         run: |
           $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
-          ./build.bat --no-functional-tester
+          # Extract version from tag (v1.2.3 -> 1.2.3)
+          $Version = "$env:GITHUB_REF_NAME" -replace '^v', ''
+          ./build.bat --no-functional-tester "-DENVY_VERSION=$Version"
 
       - name: Package
         run: Compress-Archive -Path out\build\envy.exe -DestinationPath envy-windows-x86_64.zip

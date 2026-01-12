@@ -17,7 +17,7 @@ def main():
                         help="Skip building functional tester")
     parser.add_argument("--sanitizer", choices=["none", "asan", "ubsan", "tsan"],
                         default="none", help="Sanitizer to use (default: none)")
-    args = parser.parse_args()
+    args, extra_cmake_args = parser.parse_known_args()
 
     # Check for cl.exe on Windows
     if sys.platform == "win32":
@@ -36,7 +36,8 @@ def main():
     state_file = build_dir / ".envy-build-state"
 
     # Build current state string for comparison
-    current_state = f"envy={not args.no_envy},functional={not args.no_functional_tester},sanitizer={args.sanitizer}"
+    extra_str = ",".join(extra_cmake_args) if extra_cmake_args else ""
+    current_state = f"envy={not args.no_envy},functional={not args.no_functional_tester},sanitizer={args.sanitizer},extra={extra_str}"
 
     # Ensure cache directory exists
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +55,8 @@ def main():
             f"-DENVY_BUILD_ENVY={'OFF' if args.no_envy else 'ON'}",
             f"-DENVY_BUILD_FUNCTIONAL_TESTER={'OFF' if args.no_functional_tester else 'ON'}",
             f"-DENVY_SANITIZER={args.sanitizer.upper()}",
-            "--log-level=STATUS"
+            "--log-level=STATUS",
+            *extra_cmake_args,
         ]
         result = subprocess.run(cmake_args, cwd=root_dir)
         if result.returncode != 0:
