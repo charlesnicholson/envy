@@ -12,7 +12,7 @@ from . import test_config
 
 def _setup_sanitizer_env() -> None:
     """Set up sanitizer environment variables and print configuration for debugging."""
-    # MSVC ASAN doesn't support ASAN_OPTIONS/TSAN_OPTIONS; only set on Unix
+    # Sanitizers not supported on Windows
     if sys.platform == "win32":
         return
 

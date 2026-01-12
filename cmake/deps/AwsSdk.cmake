@@ -142,8 +142,6 @@ unset(_envy_prev_build_testing)
 
 # Disable sanitizers for AWS CRT libraries due to false positive in hashlittle2
 # lookup3.inl hash intentionally overreads strings; gets inlined via headers into many compilation units
-# MSVC: Cannot disable per-target; ASAN flags are global so all libs match STL annotations.
-#       False positives must be suppressed at runtime via ASAN_OPTIONS instead.
 set(_envy_aws_crt_targets
     aws-c-common aws-c-io aws-c-http aws-c-auth aws-c-cal aws-c-compression
     aws-c-event-stream aws-c-s3 aws-c-sdkutils aws-checksums aws-crt-cpp
@@ -156,7 +154,6 @@ foreach(_envy_target IN LISTS _envy_aws_crt_targets)
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             target_compile_options(${_envy_target} PRIVATE -fno-sanitize=all)
         endif()
-        # MSVC: No per-target sanitizer control; global /fsanitize=address applies to all
     endif()
 endforeach()
 unset(_envy_aws_crt_targets)

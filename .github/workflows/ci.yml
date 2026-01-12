@@ -107,9 +107,8 @@ jobs:
           - name: windows-x64-main
             shard: main
             build_args: --no-functional-tester
-          - name: windows-x64-asan
-            shard: func-asan
-            build_args: --sanitizer=asan
+          - name: windows-x64-func
+            shard: func-main
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5

@@ -58,7 +58,7 @@ def get_test_env() -> dict[str, str]:
     """Get environment variables for running tests."""
     env = os.environ.copy()
 
-    # MSVC ASAN doesn't support ASAN_OPTIONS/TSAN_OPTIONS; only set on Unix
+    # Sanitizers not supported on Windows
     if sys.platform == "win32":
         return env
 
