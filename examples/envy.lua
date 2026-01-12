@@ -30,6 +30,9 @@ PACKAGES = {
 
   { spec = "local.cmake@r0", source = "local.cmake@r0.lua",
     options = { version = "4.2.1" } },
+
+  { spec = "local.protobuf@r0", source = "local.protobuf@r0.lua",
+    options = { version = "33.3" } },
 }
 
 if envy.PLATFORM ~= "windows" then
