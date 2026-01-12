@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 
@@ -23,13 +24,13 @@ TEST_CASE("make_portable_path") {
   SUBCASE("replaces home prefix with env var") {
     fs::path const path{ home_str + sep + "Library" + sep + "Caches" };
     CHECK(envy::make_portable_path(path) ==
-          std::string{ env_var } + sep + "Library" + sep + "Caches");
+          std::string{ env_var } + "/" + "Library" + "/" + "Caches");
   }
 
   SUBCASE("preserves paths not under home") {
 #ifdef _WIN32
     fs::path const path{ "C:\\Windows\\System32" };
-    CHECK(envy::make_portable_path(path) == "C:\\Windows\\System32");
+    CHECK(envy::make_portable_path(path) == "C:/Windows/System32");
 #else
     fs::path const path{ "/tmp/some/other/path" };
     CHECK(envy::make_portable_path(path) == "/tmp/some/other/path");
@@ -43,6 +44,8 @@ TEST_CASE("make_portable_path") {
 
   SUBCASE("does not replace partial home matches") {
     fs::path const path{ home_str + "-other" + sep + "something" };
-    CHECK(envy::make_portable_path(path) == home_str + "-other" + sep + "something");
+    std::string expected{ home_str + "-other" + sep + "something" };
+    std::replace(expected.begin(), expected.end(), '\\', '/');
+    CHECK(envy::make_portable_path(path) == expected);
   }
 }

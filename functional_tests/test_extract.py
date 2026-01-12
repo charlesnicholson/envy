@@ -51,7 +51,7 @@ def create_tar_zst_archive(output_path: Path) -> None:
         # Fall back to creating via subprocess if zstandard not available
         tar_path = output_path.with_suffix("")
         create_tar_archive(tar_path)
-        subprocess.run(
+        test_config.run(
             ["zstd", "-f", str(tar_path), "-o", str(output_path)], check=True
         )
         tar_path.unlink()
@@ -107,7 +107,7 @@ class EnvyExtractTests(unittest.TestCase):
             self._envy_binary.exists(), f"Expected envy binary at {self._envy_binary}"
         )
         env = os.environ.copy()
-        return subprocess.run(
+        return test_config.run(
             [str(self._envy_binary), *args],
             check=False,
             stdout=subprocess.PIPE,

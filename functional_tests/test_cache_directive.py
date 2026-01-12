@@ -93,7 +93,7 @@ end
 
         env = env_override if env_override else test_config.get_test_env()
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,

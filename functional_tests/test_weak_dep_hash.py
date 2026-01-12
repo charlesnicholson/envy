@@ -212,7 +212,7 @@ end
 
     def run_envy(self, args):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), *args]
-        return subprocess.run(
+        return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 

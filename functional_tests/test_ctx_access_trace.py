@@ -20,7 +20,11 @@ function FETCH(tmp_dir, options)
 end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("echo 'lib built' > " .. install_dir .. "/lib.txt", { quiet = true })
+  if envy.PLATFORM == "windows" then
+    envy.run('echo lib built > "' .. install_dir .. '\\\\lib.txt"', { shell = ENVY_SHELL.CMD, quiet = true })
+  else
+    envy.run("echo 'lib built' > " .. install_dir .. "/lib.txt", { quiet = true })
+  end
 end
 """
 
@@ -32,7 +36,11 @@ function FETCH(tmp_dir, options)
 end
 
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("mkdir -p " .. install_dir .. "/bin && echo 'tool' > " .. install_dir .. "/bin/tool", { quiet = true })
+  if envy.PLATFORM == "windows" then
+    envy.run('mkdir "' .. install_dir .. '\\\\bin" 2>nul & echo tool > "' .. install_dir .. '\\\\bin\\\\tool"', { shell = ENVY_SHELL.CMD, quiet = true })
+  else
+    envy.run("mkdir -p " .. install_dir .. "/bin && echo 'tool' > " .. install_dir .. "/bin/tool", { quiet = true })
+  end
 end
 """
 
@@ -96,7 +104,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",

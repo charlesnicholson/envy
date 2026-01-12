@@ -44,7 +44,7 @@ class TestHash(unittest.TestCase):
         )
 
         # Compute hash with envy
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(test_file)],
             capture_output=True,
             text=True,
@@ -62,7 +62,7 @@ class TestHash(unittest.TestCase):
 
     def test_hash_nonexistent_file_fails(self):
         """Hash command fails gracefully on nonexistent file."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", "/nonexistent/file.txt"],
             capture_output=True,
             text=True,
@@ -73,7 +73,7 @@ class TestHash(unittest.TestCase):
 
     def test_hash_directory_fails(self):
         """Hash command fails gracefully on directory."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", self.tmpdir],
             capture_output=True,
             text=True,
@@ -84,7 +84,7 @@ class TestHash(unittest.TestCase):
 
     def test_hash_missing_argument_fails(self):
         """Hash command fails when file argument is missing."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash"],
             capture_output=True,
             text=True,

@@ -38,7 +38,7 @@ class TestEngineSpecLoading(unittest.TestCase):
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(filepath)],
             capture_output=True,
             text=True,
@@ -63,7 +63,7 @@ end
 """
         spec_path = self.write_spec("simple.lua", simple_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -95,7 +95,7 @@ DEPENDENCIES = {}
 """
         spec_path = self.write_spec("no_phases.lua", no_phases_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -166,7 +166,7 @@ end
             tmp_path = tmp.name
 
         try:
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
@@ -230,7 +230,7 @@ end
             tmp_path = tmp.name
 
         try:
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
@@ -276,7 +276,7 @@ end
 """
         spec_path = self.write_spec("identity_correct.lua", identity_correct_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -310,7 +310,7 @@ end
 """
         spec_path = self.write_spec("identity_missing.lua", identity_missing_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -354,7 +354,7 @@ end
 """
         spec_path = self.write_spec("identity_mismatch.lua", identity_mismatch_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -403,7 +403,7 @@ end
 """
         spec_path = self.write_spec("identity_wrong_type.lua", identity_wrong_type_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -443,7 +443,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
             tmp_path = tmp.name
 
         try:
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
@@ -483,7 +483,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_ok.lua", validate_ok_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -511,7 +511,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_false.lua", validate_false_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -540,7 +540,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_string.lua", validate_string_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -569,7 +569,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_type.lua", validate_type_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -596,7 +596,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_nonfn.lua", validate_nonfn_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -625,7 +625,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
         spec_path = self.write_spec("validate_error.lua", validate_error_spec)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -656,7 +656,7 @@ PACKAGES = {
             manifest_path = tmp.name
 
         try:
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     f"--cache-root={self.cache_root}",

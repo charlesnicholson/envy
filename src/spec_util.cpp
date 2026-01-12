@@ -19,7 +19,7 @@ std::string extract_spec_identity(std::filesystem::path const &spec_path,
   // Configure package.path for bundle-local requires if root provided
   if (!package_path_root.empty()) {
     std::string const root{ package_path_root.string() };
-    sol::table package_table{ (*lua)["package"] };
+    sol::table package_table = (*lua)["package"];
     std::string const current_path{ package_table["path"].get_or<std::string>("") };
     package_table["path"] = root + "/?.lua;" + root + "/?/init.lua;" + current_path;
   }
@@ -30,7 +30,7 @@ std::string extract_spec_identity(std::filesystem::path const &spec_path,
   };
 
   if (!result.valid()) {
-    sol::error err{ result };
+    sol::error err = result;
     throw std::runtime_error("failed to execute spec '" + spec_path.string() +
                              "': " + err.what());
   }

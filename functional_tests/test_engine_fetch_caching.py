@@ -47,7 +47,7 @@ class TestEngineFetchCaching(unittest.TestCase):
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(filepath)],
             capture_output=True,
             text=True,
@@ -105,7 +105,7 @@ FETCH = {{
 
             # Run 1: Partial failure (2 succeed, 1 fails - missing file doesn't exist yet)
             trace_file1 = shared_cache / "trace1.jsonl"
-            result1 = subprocess.run(
+            result1 = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -148,7 +148,7 @@ FETCH = {{
 
             # Run 2: Completion with cache - use same cache root
             trace_file2 = shared_cache / "trace2.jsonl"
-            result2 = subprocess.run(
+            result2 = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -220,7 +220,7 @@ FETCH = {{
             modified_spec.write_text(spec_content)
 
             # Run 1: Download 2 files then fail
-            result1 = subprocess.run(
+            result1 = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -263,7 +263,7 @@ FETCH = {{
             )
 
             # Run 2: Complete without flag - use same cache root
-            result2 = subprocess.run(
+            result2 = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -331,7 +331,7 @@ FETCH = {{
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
             # Run 1: Let it create the structure but fail it
-            result_setup = subprocess.run(
+            result_setup = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -361,7 +361,7 @@ FETCH = {{
             )
 
             # Run 2: Should detect corruption and re-download
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -438,7 +438,7 @@ FETCH = {{
             identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
 
             # Run once to establish cache structure, then fail it
-            result_setup = subprocess.run(
+            result_setup = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
@@ -475,7 +475,7 @@ FETCH = {{
                 completion_marker.unlink()
 
             # Run: Should verify cached files by SHA256, reuse them
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",

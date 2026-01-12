@@ -135,7 +135,7 @@ end
         """Verify default needed_by is asset_build (phase 4), not asset_check."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -172,7 +172,7 @@ end
         """Verify explicit needed_by='check' still works correctly."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -201,7 +201,7 @@ end
         """Verify explicit needed_by='fetch' works correctly."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

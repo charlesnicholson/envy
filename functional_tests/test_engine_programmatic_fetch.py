@@ -44,7 +44,7 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(filepath)],
             capture_output=True,
             text=True,
@@ -70,7 +70,7 @@ end
         spec_path = self.cache_root / "prog_fetch_single.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -110,7 +110,7 @@ end
         spec_path = self.cache_root / "prog_fetch_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -143,7 +143,7 @@ end
         spec_path = self.cache_root / "prog_fetch_table.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -179,7 +179,7 @@ end
         spec_path = self.cache_root / "prog_fetch_table_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -215,7 +215,7 @@ end
         spec_path = self.cache_root / "prog_commit_scalar.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -251,7 +251,7 @@ end
         spec_path = self.cache_root / "prog_commit_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -285,7 +285,7 @@ end
         spec_path = self.cache_root / "prog_commit_bad_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -317,7 +317,7 @@ end
         spec_path = self.cache_root / "prog_commit_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -344,7 +344,7 @@ end
         spec_path = self.cache_root / "prog_commit_missing.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -384,7 +384,7 @@ end
         spec_path = self.cache_root / "prog_selective_commit.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -416,7 +416,7 @@ end
         spec_path = self.cache_root / "prog_ctx_identity.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -448,7 +448,7 @@ end
         spec_path = self.cache_root / "prog_ctx_options.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -489,7 +489,7 @@ end
         spec_path = self.cache_root / "prog_ctx_options_empty.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -539,7 +539,7 @@ end
         spec_path = self.cache_root / "prog_serial_fetches.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -565,7 +565,7 @@ end
         spec_path = self.cache_root / "prog_error_prop.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -594,7 +594,7 @@ end
         spec_path = self.cache_root / "prog_return_string.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -625,7 +625,7 @@ end
         spec_path = self.cache_root / "prog_return_table.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -654,7 +654,7 @@ end
         spec_path = self.cache_root / "prog_return_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -683,7 +683,7 @@ end
         spec_path = self.cache_root / "prog_return_str_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -713,7 +713,7 @@ end
         spec_path = self.cache_root / "prog_options_template.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -747,7 +747,7 @@ end
         spec_path = self.cache_root / "prog_mixed_mode.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -775,7 +775,7 @@ end
         spec_path = self.cache_root / "prog_return_nil.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -801,7 +801,7 @@ end
         spec_path = self.cache_root / "prog_return_invalid.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

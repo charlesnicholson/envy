@@ -316,12 +316,8 @@ function(apply_sanitizers TARGET_NAME)
         return()
     endif()
 
-    # MSVC only supports ASan
+    # MSVC doesn't support sanitizers
     if(MSVC)
-        if(ENVY_SANITIZER STREQUAL "ASAN")
-            target_compile_options(${TARGET_NAME} PRIVATE /fsanitize=address)
-            target_link_options(${TARGET_NAME} PRIVATE /INCREMENTAL:NO)
-        endif()
         return()
     endif()
 

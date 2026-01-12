@@ -240,7 +240,7 @@ bundle bundle::from_path(std::filesystem::path const &cache_path) {
 
 void bundle::configure_package_path(sol::state &lua) const {
   std::string const bundle_root{ cache_path.string() };
-  sol::table package_table{ lua["package"] };
+  sol::table package_table = lua["package"];
   std::string const current_path{ package_table["path"].get_or<std::string>("") };
   package_table["path"] =
       bundle_root + "/?.lua;" + bundle_root + "/?/init.lua;" + current_path;

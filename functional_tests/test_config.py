@@ -1,8 +1,30 @@
 """Shared configuration for functional tests."""
 
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+# Subprocess text mode kwargs - use UTF-8 to avoid cp1252 decode errors on Windows
+SUBPROCESS_TEXT_MODE = {"text": True, "encoding": "utf-8", "errors": "replace"}
+
+
+def run(*args, **kwargs) -> subprocess.CompletedProcess[str]:
+    """Wrapper for subprocess.run with UTF-8 encoding."""
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    if "text" not in kwargs and "encoding" in kwargs:
+        kwargs["text"] = True
+    return subprocess.run(*args, **kwargs)
+
+
+def popen(*args, **kwargs) -> subprocess.Popen[str]:
+    """Wrapper for subprocess.Popen with UTF-8 encoding."""
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    if "text" not in kwargs and "encoding" in kwargs:
+        kwargs["text"] = True
+    return subprocess.Popen(*args, **kwargs)
 
 # Required manifest header for all manifests (bin is mandatory)
 MANIFEST_HEADER = '-- @envy bin "envy-bin"\n'
@@ -57,6 +79,11 @@ def get_envy_executable() -> Path:
 def get_test_env() -> dict[str, str]:
     """Get environment variables for running tests."""
     env = os.environ.copy()
+
+    # Sanitizers not supported on Windows
+    if sys.platform == "win32":
+        return env
+
     root = Path(__file__).parent.parent
 
     # Point sanitizers to suppression files

@@ -163,7 +163,7 @@ class TestSyncCommand(unittest.TestCase):
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -300,7 +300,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result1 = subprocess.run(
+        result1 = test_config.run(
             cmd1, cwd=self.project_root, capture_output=True, text=True
         )
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
@@ -322,7 +322,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result2 = subprocess.run(
+        result2 = test_config.run(
             cmd2, cwd=self.project_root, capture_output=True, text=True
         )
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
@@ -369,7 +369,7 @@ PACKAGES = {{
                 "--manifest",
                 str(manifest),
             ]
-            result = subprocess.run(
+            result = test_config.run(
                 cmd, cwd=self.project_root, capture_output=True, text=True
             )
 
@@ -449,7 +449,7 @@ class TestSyncProductScripts(unittest.TestCase):
         if identities:
             cmd.extend(identities)
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(
+        return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
@@ -590,7 +590,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result = subprocess.run(
+        result = test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
@@ -634,6 +634,89 @@ PACKAGES = {{
         mtime2 = stat2.st_mtime
 
         self.assertEqual(mtime1, mtime2, "File timestamp should be unchanged")
+
+    def test_product_script_execution_and_arg_forwarding(self):
+        """Product scripts execute correctly and forward arguments."""
+        # Create archive similar to other tests
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            if sys.platform == "win32":
+                tool_content = b"@echo off\necho Args: %*\n"
+                tool_name = "echotool.bat"
+            else:
+                tool_content = b"#!/bin/sh\necho \"Args: $@\"\n"
+                tool_name = "echotool"
+
+            # Add tool file to archive
+            tool_info = tarfile.TarInfo(name=f"bin/{tool_name}")
+            tool_info.size = len(tool_content)
+            tool_info.mode = 0o755
+            tar.addfile(tool_info, io.BytesIO(tool_content))
+
+        archive_data = buf.getvalue()
+        archive_path = self.specs_dir / "echotool.tar.gz"
+        archive_path.write_bytes(archive_data)
+        archive_hash = hashlib.sha256(archive_data).hexdigest()
+
+        # Create spec for product provider (use normal Python substitution to avoid escaping issues)
+        spec = 'IDENTITY = "local.echotool@v1"\n'
+        spec += 'PRODUCTS = { echotool = "bin/' + tool_name + '" }\n\n'
+        spec += 'FETCH = {\n'
+        spec += '  source = "' + archive_path.as_posix() + '",\n'
+        spec += '  sha256 = "' + archive_hash + '",\n'
+        spec += '}\n\n'
+        spec += 'STAGE = { strip = 0 }\n\n'
+        spec += 'INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n'
+        spec += '  envy.run("cp -r " .. stage_dir .. "/* " .. install_dir .. "/")\n'
+        spec += 'end\n'
+        spec_file = self.specs_dir / "echotool.lua"
+        spec_file.write_text(spec, encoding="utf-8")
+        spec_path = spec_file.as_posix()
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.echotool@v1", source = "{spec_path}" }},
+}}
+""")
+
+        # Run sync to create product script
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Copy envy executable to bin dir so product script can find it
+        bin_dir = self.test_dir / "envy-bin"
+        envy_name = "envy.exe" if sys.platform == "win32" else "envy"
+        shutil.copy(self.envy, bin_dir / envy_name)
+
+        # Test 1: Execute product script without arguments
+        script_name = "echotool.bat" if sys.platform == "win32" else "echotool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists(), f"Product script not created: {script_path}")
+
+        result = test_config.run(
+            [str(script_path)],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            env={**test_config.get_test_env(), "ENVY_CACHE_ROOT": str(self.cache_root)},
+        )
+        self.assertEqual(result.returncode, 0,
+                        f"Product script failed: {result.stderr}")
+        self.assertIn("Args:", result.stdout)
+
+        # Test 2: Execute product script with arguments
+        result = test_config.run(
+            [str(script_path), "arg1", "arg2", "arg with spaces"],
+            cwd=self.test_dir,
+            capture_output=True,
+            text=True,
+            env={**test_config.get_test_env(), "ENVY_CACHE_ROOT": str(self.cache_root)},
+        )
+        self.assertEqual(result.returncode, 0,
+                        f"Product script with args failed: {result.stderr}")
+        self.assertIn("arg1", result.stdout)
+        self.assertIn("arg2", result.stdout)
+        self.assertIn("arg with spaces", result.stdout)
 
 
 class TestSyncDeployDirective(unittest.TestCase):
@@ -679,7 +762,7 @@ class TestSyncDeployDirective(unittest.TestCase):
         if install_all:
             cmd.append("--install-all")
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(
+        return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 

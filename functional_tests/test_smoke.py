@@ -4,6 +4,8 @@ import os
 import subprocess
 import sys
 import unittest
+
+from . import test_config
 from pathlib import Path
 
 
@@ -21,7 +23,7 @@ class EnvyBinarySmokeTest(unittest.TestCase):
 
         env = os.environ.copy()
         env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
-        result = subprocess.run(
+        result = test_config.run(
             [str(self._envy_binary), "version"],
             check=True,
             stdout=subprocess.PIPE,

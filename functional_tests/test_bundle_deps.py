@@ -89,7 +89,7 @@ end
         ]
         if install_all:
             cmd.append("--install-all")
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -313,7 +313,7 @@ class TestBundleDependencyErrors(unittest.TestCase):
             "--manifest",
             str(manifest),
         ]
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,

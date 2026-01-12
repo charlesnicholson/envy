@@ -155,7 +155,7 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     // Load chunk
     sol::load_result chunk{ lua.load(content, full_path.string()) };
     if (!chunk.valid()) {
-      sol::error err{ chunk };
+      sol::error err = chunk;
       throw std::runtime_error("envy.loadenv_spec: load error: " +
                                std::string(err.what()));
     }
@@ -167,7 +167,7 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     // Execute with our environment
     sol::protected_function_result result{ fn() };
     if (!result.valid()) {
-      sol::error err{ result };
+      sol::error err = result;
       throw std::runtime_error("envy.loadenv_spec: exec error: " +
                                std::string(err.what()));
     }

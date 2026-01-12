@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from .test_config import get_envy_executable
+from . import test_config
 
 
 def _get_envy_binary() -> Path:
@@ -30,7 +30,7 @@ class TestPlatformExePath(unittest.TestCase):
     def test_exe_path_matches_invoked_binary(self):
         """Exe path should match the binary we invoked."""
         envy_binary = _get_envy_binary()
-        result = subprocess.run(
+        result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,
             text=True,
@@ -44,8 +44,8 @@ class TestPlatformExePath(unittest.TestCase):
 
     def test_exe_path_matches_functional_tester(self):
         """Exe path works for functional tester binary too."""
-        functional_tester = get_envy_executable()
-        result = subprocess.run(
+        functional_tester = test_config.get_envy_executable()
+        result = test_config.run(
             [str(functional_tester), "version"],
             capture_output=True,
             text=True,
@@ -60,7 +60,7 @@ class TestPlatformExePath(unittest.TestCase):
     def test_exe_path_is_absolute(self):
         """Reported exe path should be absolute."""
         envy_binary = _get_envy_binary()
-        result = subprocess.run(
+        result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,
             text=True,
@@ -73,7 +73,7 @@ class TestPlatformExePath(unittest.TestCase):
     def test_exe_path_exists(self):
         """Reported exe path should exist."""
         envy_binary = _get_envy_binary()
-        result = subprocess.run(
+        result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,
             text=True,

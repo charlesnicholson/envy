@@ -149,7 +149,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -221,7 +221,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -288,7 +288,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -358,7 +358,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -425,7 +425,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -479,7 +479,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -526,7 +526,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -615,7 +615,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -709,7 +709,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -769,7 +769,7 @@ end
         env["ENVY_TEST_JOBS"] = "8"
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -821,7 +821,7 @@ end
         )
 
         trace_file1 = self.cache_root / "trace1.jsonl"
-        result1 = subprocess.run(
+        result1 = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -843,7 +843,7 @@ end
 
         # Second run: cache hit (should still respect needed_by)
         trace_file2 = self.cache_root / "trace2.jsonl"
-        result2 = subprocess.run(
+        result2 = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -985,7 +985,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
