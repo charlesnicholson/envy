@@ -504,10 +504,24 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
+<<<<<<< Updated upstream
 void stream_pipe_lines(HANDLE pipe,
                         shell_stream stream,
                         shell_run_cfg const &cfg,
                         std::mutex &callback_mutex) {
+=======
+void dispatch_line(std::string_view line, shell_stream stream, shell_run_cfg const &cfg) {
+  if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
+  if (stream == shell_stream::std_out) {
+    if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
+  } else {
+    if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
+  }
+  if (cfg.on_output_line) { cfg.on_output_line(line); }
+}
+
+void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cfg) {
+>>>>>>> Stashed changes
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -530,6 +544,7 @@ void stream_pipe_lines(HANDLE pipe,
 
     size_t newline{ 0 };
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
+<<<<<<< Updated upstream
       std::string_view line{ pending.data() + offset, newline - offset };
       if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
       // Trim trailing spaces (cmd echo adds trailing space)
@@ -545,6 +560,9 @@ void stream_pipe_lines(HANDLE pipe,
         }
         if (cfg.on_output_line) { cfg.on_output_line(line); }
       }
+=======
+      dispatch_line({ pending.data() + offset, newline - offset }, stream, cfg);
+>>>>>>> Stashed changes
       offset = newline + 1;
     }
 
@@ -556,6 +574,7 @@ void stream_pipe_lines(HANDLE pipe,
   }
 
   if (offset < pending.size()) {
+<<<<<<< Updated upstream
     std::string_view line{ pending.data() + offset, pending.size() - offset };
     if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
     // Trim trailing spaces (cmd echo adds trailing space)
@@ -571,6 +590,9 @@ void stream_pipe_lines(HANDLE pipe,
       }
       if (cfg.on_output_line) { cfg.on_output_line(line); }
     }
+=======
+    dispatch_line({ pending.data() + offset, pending.size() - offset }, stream, cfg);
+>>>>>>> Stashed changes
   }
 }
 
