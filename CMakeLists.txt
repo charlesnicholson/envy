@@ -137,6 +137,14 @@ if(ENABLE_LTO)
     endif()
 endif()
 
+# MSVC ASAN: Must add /fsanitize=address to global flags BEFORE dependencies
+# so AWS SDK and all libs are built with matching STL annotation settings.
+# Unlike Clang/GCC, MSVC doesn't allow mixing ASAN and non-ASAN object files.
+if(MSVC AND ENVY_SANITIZER STREQUAL "ASAN")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /fsanitize=address" CACHE STRING "" FORCE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address" CACHE STRING "" FORCE)
+endif()
+
 include(cmake/Dependencies.cmake)
 include(cmake/EmbedResource.cmake)
 
@@ -316,10 +324,10 @@ function(apply_sanitizers TARGET_NAME)
         return()
     endif()
 
-    # MSVC only supports ASan
+    # MSVC only supports ASan; compile flags are global (set before Dependencies.cmake)
+    # so all libs have matching STL annotations. Only add link options here.
     if(MSVC)
         if(ENVY_SANITIZER STREQUAL "ASAN")
-            target_compile_options(${TARGET_NAME} PRIVATE /fsanitize=address)
             target_link_options(${TARGET_NAME} PRIVATE /INCREMENTAL:NO)
         endif()
         return()

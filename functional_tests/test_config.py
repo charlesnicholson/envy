@@ -57,6 +57,11 @@ def get_envy_executable() -> Path:
 def get_test_env() -> dict[str, str]:
     """Get environment variables for running tests."""
     env = os.environ.copy()
+
+    # MSVC ASAN doesn't support ASAN_OPTIONS/TSAN_OPTIONS; only set on Unix
+    if sys.platform == "win32":
+        return env
+
     root = Path(__file__).parent.parent
 
     # Point sanitizers to suppression files

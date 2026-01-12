@@ -12,6 +12,10 @@ from . import test_config
 
 def _setup_sanitizer_env() -> None:
     """Set up sanitizer environment variables and print configuration for debugging."""
+    # MSVC ASAN doesn't support ASAN_OPTIONS/TSAN_OPTIONS; only set on Unix
+    if sys.platform == "win32":
+        return
+
     root = pathlib.Path(__file__).resolve().parent.parent
     tsan_supp = root / "tsan.supp"
     asan_supp = root / "asan.supp"
