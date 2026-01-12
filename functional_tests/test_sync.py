@@ -163,7 +163,7 @@ class TestSyncCommand(unittest.TestCase):
         if manifest:
             cmd.extend(["--manifest", str(manifest)])
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -300,7 +300,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result1 = subprocess.run(
+        result1 = test_config.run(
             cmd1, cwd=self.project_root, capture_output=True, text=True
         )
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
@@ -322,7 +322,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result2 = subprocess.run(
+        result2 = test_config.run(
             cmd2, cwd=self.project_root, capture_output=True, text=True
         )
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
@@ -369,7 +369,7 @@ PACKAGES = {{
                 "--manifest",
                 str(manifest),
             ]
-            result = subprocess.run(
+            result = test_config.run(
                 cmd, cwd=self.project_root, capture_output=True, text=True
             )
 
@@ -449,7 +449,7 @@ class TestSyncProductScripts(unittest.TestCase):
         if identities:
             cmd.extend(identities)
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(
+        return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
@@ -590,7 +590,7 @@ PACKAGES = {{
             "--manifest",
             str(manifest),
         ]
-        result = subprocess.run(
+        result = test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
@@ -693,7 +693,7 @@ PACKAGES = {{
         script_path = bin_dir / script_name
         self.assertTrue(script_path.exists(), f"Product script not created: {script_path}")
 
-        result = subprocess.run(
+        result = test_config.run(
             [str(script_path)],
             cwd=self.test_dir,
             capture_output=True,
@@ -705,7 +705,7 @@ PACKAGES = {{
         self.assertIn("Args:", result.stdout)
 
         # Test 2: Execute product script with arguments
-        result = subprocess.run(
+        result = test_config.run(
             [str(script_path), "arg1", "arg2", "arg with spaces"],
             cwd=self.test_dir,
             capture_output=True,
@@ -762,7 +762,7 @@ class TestSyncDeployDirective(unittest.TestCase):
         if install_all:
             cmd.append("--install-all")
         cmd.extend(["--manifest", str(manifest)])
-        return subprocess.run(
+        return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 

@@ -80,7 +80,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def run_spec(self, name: str, identity: str, should_succeed: bool = True):
         """Run spec and return result."""
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

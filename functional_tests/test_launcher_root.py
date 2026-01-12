@@ -31,6 +31,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from . import test_config
 from pathlib import Path
 
 
@@ -102,7 +104,7 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
 
     def _run_find_manifest(self, cwd: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self._script)],
             cwd=str(cwd),
             capture_output=True,
@@ -294,7 +296,7 @@ echo !MANIFEST!
 
     def _run_find_manifest(self, cwd: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
-        result = subprocess.run(
+        result = test_config.run(
             ["cmd", "/c", str(self._script)],
             cwd=str(cwd),
             capture_output=True,

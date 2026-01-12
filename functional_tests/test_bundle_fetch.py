@@ -99,7 +99,7 @@ class TestBundleFetchLocal(unittest.TestCase):
         ]
         if install_all:
             cmd.append("--install-all")
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -255,7 +255,7 @@ end
             "--manifest",
             str(manifest),
         ]
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -403,7 +403,7 @@ class TestBundleAliasResolution(unittest.TestCase):
             "--manifest",
             str(manifest),
         ]
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -520,7 +520,7 @@ end
             "--manifest",
             str(manifest),
         ]
-        return subprocess.run(
+        return test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,

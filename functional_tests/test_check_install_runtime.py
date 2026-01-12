@@ -59,7 +59,7 @@ class TestCheckInstallRuntime(unittest.TestCase):
         if env_vars:
             env.update(env_vars)
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd, capture_output=True, text=True, env=env, cwd=self.test_dir
         )
 

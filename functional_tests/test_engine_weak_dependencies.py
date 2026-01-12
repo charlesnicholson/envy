@@ -29,7 +29,7 @@ class TestEngineWeakDependencies(unittest.TestCase):
 
     def run_engine(self, identity, spec_name):
         spec_path = str(self.specs_dir / spec_name)
-        return subprocess.run(
+        return test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

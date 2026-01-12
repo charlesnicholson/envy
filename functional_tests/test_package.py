@@ -247,7 +247,7 @@ end
             cmd.extend(["--manifest", str(manifest)])
 
         # Run from project root so relative paths in specs work
-        result = subprocess.run(
+        result = test_config.run(
             cmd,
             cwd=cwd or self.project_root,
             capture_output=True,

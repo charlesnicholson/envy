@@ -104,7 +104,7 @@ end
         )
 
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",

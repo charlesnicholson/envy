@@ -19,7 +19,7 @@ class TestBundleCustomFetch(unittest.TestCase):
         """Run envy with given arguments."""
         exe = test_config.get_envy_executable()
         env = test_config.get_test_env()
-        return subprocess.run(
+        return test_config.run(
             [str(exe)] + args, cwd=cwd, capture_output=True, text=True, env=env
         )
 

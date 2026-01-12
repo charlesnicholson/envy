@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .test_config import get_test_env
+from . import test_config
 
 
 def _get_envy_binary() -> Path:
@@ -50,10 +50,10 @@ class TestEnvyInit(unittest.TestCase):
         if "root" in kwargs:
             cmd.append(f"--root={kwargs['root']}")
 
-        env = get_test_env()
+        env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
 
-        return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+        return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
 
     def test_init_creates_all_expected_files(self) -> None:
         """Init creates bootstrap script, manifest, and .luarc.json."""
@@ -283,11 +283,11 @@ class TestSelfDeployment(unittest.TestCase):
 
     def _run_envy(self, *args) -> subprocess.CompletedProcess[str]:
         """Run envy with custom cache root."""
-        env = get_test_env()
+        env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
 
         cmd = [str(self._envy), *args]
-        return subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+        return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
 
     def _run_envy_with_self_deploy(self) -> subprocess.CompletedProcess[str]:
         """Run an envy command that triggers self-deployment."""
@@ -392,10 +392,10 @@ class TestSelfDeployment(unittest.TestCase):
         else:
             cached_binary = version_dirs[0] / "envy"
 
-        env = get_test_env()
+        env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
 
-        result2 = subprocess.run(
+        result2 = test_config.run(
             [str(cached_binary), "version"],
             capture_output=True,
             text=True,

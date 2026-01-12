@@ -44,7 +44,7 @@ class TestEngineTwoStepFetch(unittest.TestCase):
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(filepath)],
             capture_output=True,
             text=True,
@@ -79,7 +79,7 @@ end
         spec_path = self.cache_root / "two_step_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -141,7 +141,7 @@ end
         spec_path = self.cache_root / "manifest_workflow.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
