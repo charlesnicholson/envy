@@ -504,14 +504,13 @@ std::vector<wchar_t> build_environment_block(shell_env_t const &env) {
   return block;
 }
 
-<<<<<<< Updated upstream
-void stream_pipe_lines(HANDLE pipe,
-                        shell_stream stream,
-                        shell_run_cfg const &cfg,
-                        std::mutex &callback_mutex) {
-=======
-void dispatch_line(std::string_view line, shell_stream stream, shell_run_cfg const &cfg) {
+void dispatch_line(std::string_view line,
+                   shell_stream stream,
+                   shell_run_cfg const &cfg,
+                   std::mutex &callback_mutex) {
   if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
+  while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
+  std::lock_guard<std::mutex> lock{ callback_mutex };
   if (stream == shell_stream::std_out) {
     if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
   } else {
@@ -520,8 +519,10 @@ void dispatch_line(std::string_view line, shell_stream stream, shell_run_cfg con
   if (cfg.on_output_line) { cfg.on_output_line(line); }
 }
 
-void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cfg) {
->>>>>>> Stashed changes
+void stream_pipe_lines(HANDLE pipe,
+                       shell_stream stream,
+                       shell_run_cfg const &cfg,
+                       std::mutex &callback_mutex) {
   std::string pending{};
   pending.reserve(kLinePendingReserve);
   std::array<char, kPipeBufferSize> buffer{};
@@ -544,25 +545,7 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
 
     size_t newline{ 0 };
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
-<<<<<<< Updated upstream
-      std::string_view line{ pending.data() + offset, newline - offset };
-      if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-      // Trim trailing spaces (cmd echo adds trailing space)
-      while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
-
-      // Serialize callbacks to prevent concurrent modification of shared state
-      {
-        std::lock_guard<std::mutex> lock{ callback_mutex };
-        if (stream == shell_stream::std_out) {
-          if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
-        } else {
-          if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
-        }
-        if (cfg.on_output_line) { cfg.on_output_line(line); }
-      }
-=======
-      dispatch_line({ pending.data() + offset, newline - offset }, stream, cfg);
->>>>>>> Stashed changes
+      dispatch_line({ pending.data() + offset, newline - offset }, stream, cfg, callback_mutex);
       offset = newline + 1;
     }
 
@@ -574,25 +557,7 @@ void stream_pipe_lines(HANDLE pipe, shell_stream stream, shell_run_cfg const &cf
   }
 
   if (offset < pending.size()) {
-<<<<<<< Updated upstream
-    std::string_view line{ pending.data() + offset, pending.size() - offset };
-    if (!line.empty() && line.back() == '\r') { line.remove_suffix(1); }
-    // Trim trailing spaces (cmd echo adds trailing space)
-    while (!line.empty() && line.back() == ' ') { line.remove_suffix(1); }
-
-    // Serialize callbacks to prevent concurrent modification of shared state
-    {
-      std::lock_guard<std::mutex> lock{ callback_mutex };
-      if (stream == shell_stream::std_out) {
-        if (cfg.on_stdout_line) { cfg.on_stdout_line(line); }
-      } else {
-        if (cfg.on_stderr_line) { cfg.on_stderr_line(line); }
-      }
-      if (cfg.on_output_line) { cfg.on_output_line(line); }
-    }
-=======
-    dispatch_line({ pending.data() + offset, pending.size() - offset }, stream, cfg);
->>>>>>> Stashed changes
+    dispatch_line({ pending.data() + offset, pending.size() - offset }, stream, cfg, callback_mutex);
   }
 }
 
