@@ -141,4 +141,4 @@ jobs:
 
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
-        run: python3.13 -m functional_tests
+        run: py -3.13 -m functional_tests
