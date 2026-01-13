@@ -10,6 +10,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import unittest
 
+from . import test_config
+
 
 class _QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory: str | None = None, **kwargs):
@@ -40,7 +42,7 @@ class FetchCommandFunctionalTest(unittest.TestCase):
             env = os.environ.copy()
             env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
 
-            result = subprocess.run(
+            result = test_config.run(
                 [str(self._envy_binary), "fetch", str(source_file), str(destination)],
                 check=True,
                 stdout=subprocess.PIPE,
@@ -75,7 +77,7 @@ class FetchCommandFunctionalTest(unittest.TestCase):
             env = os.environ.copy()
             env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
 
-            result = subprocess.run(
+            result = test_config.run(
                 [str(self._envy_binary), "fetch", str(source_dir), str(destination)],
                 check=True,
                 stdout=subprocess.PIPE,
@@ -109,7 +111,7 @@ class FetchCommandFunctionalTest(unittest.TestCase):
             env = os.environ.copy()
             env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
 
-            result = subprocess.run(
+            result = test_config.run(
                 [str(self._envy_binary), "fetch", str(source), str(destination)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -148,7 +150,7 @@ class FetchCommandFunctionalTest(unittest.TestCase):
                     "ENVY_CACHE_DIR", str(self._project_root / "out" / "cache")
                 )
 
-                result = subprocess.run(
+                result = test_config.run(
                     [str(self._envy_binary), "fetch", url, str(destination)],
                     check=True,
                     stdout=subprocess.PIPE,

@@ -5,6 +5,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from . import test_config
 from pathlib import Path
 
 
@@ -17,7 +19,7 @@ class EnvyLuaTests(unittest.TestCase):
     def _run_envy(self, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
-        return subprocess.run(
+        return test_config.run(
             [str(self._envy_binary), *args],
             check=False,
             stdout=subprocess.PIPE,

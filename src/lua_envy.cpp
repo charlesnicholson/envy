@@ -38,8 +38,8 @@ return function(module_path)
     source = source:sub(2)
   end
 
-  -- Get directory from source file
-  local dir = source:match("(.*/)")
+  -- Get directory from source file (handle both / and \ path separators)
+  local dir = source:match("(.*[/\\])")
   if not dir then dir = "./" end
 
   -- Construct full path (add .lua extension)

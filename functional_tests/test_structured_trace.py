@@ -46,7 +46,7 @@ class TestStructuredTrace(unittest.TestCase):
 
     def test_trace_stderr_human_readable(self):
         """Verify --trace=stderr produces human-readable output."""
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
@@ -80,7 +80,7 @@ class TestStructuredTrace(unittest.TestCase):
         """Verify --trace=file:<path> produces valid JSONL."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
@@ -122,7 +122,7 @@ class TestStructuredTrace(unittest.TestCase):
         """Verify --trace=stderr,file:<path> works simultaneously."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
@@ -151,7 +151,7 @@ class TestStructuredTrace(unittest.TestCase):
         """Verify trace file contains expected event types."""
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
@@ -189,7 +189,7 @@ class TestStructuredTrace(unittest.TestCase):
         trace_file = self.cache_root / "trace.jsonl"
 
         # Run WITHOUT --trace flag
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",

@@ -72,7 +72,7 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         if fail_before_complete:
             cmd.append("--fail-before-complete")
 
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -209,7 +209,7 @@ class TestStagingAndCommit(CacheTestBase):
             cmd.append(f"--barrier-wait={kwargs['barrier_wait']}")
         if "fail_before_complete" in kwargs and kwargs["fail_before_complete"]:
             cmd.append("--fail-before-complete")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -304,7 +304,7 @@ class TestCrashRecovery(CacheTestBase):
             cmd.append(f"--barrier-wait={kwargs['barrier_wait']}")
         if "crash_after_ms" in kwargs:
             cmd.append(f"--crash-after={kwargs['crash_after_ms']}")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -402,7 +402,7 @@ class TestLockFileLifecycle(CacheTestBase):
             cmd.append(f"--barrier-signal-after={kwargs['barrier_signal_after']}")
         if "barrier_wait_after" in kwargs:
             cmd.append(f"--barrier-wait-after={kwargs['barrier_wait_after']}")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -470,7 +470,7 @@ class TestEntryPathsAndStructure(CacheTestBase):
         ] + list(args)
         cmd.append(f"--test-id={self.test_id}")
         cmd.append(f"--barrier-dir={self.barrier_dir}")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -579,7 +579,7 @@ class TestEdgeCases(CacheTestBase):
             cmd.append(f"--barrier-signal-after={kwargs['barrier_signal_after']}")
         if "barrier_wait_after" in kwargs:
             cmd.append(f"--barrier-wait-after={kwargs['barrier_wait_after']}")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 
@@ -671,7 +671,7 @@ class TestEdgeCases(CacheTestBase):
         # Already tested via --cache-root flag in all tests
         custom_root = Path(tempfile.mkdtemp(prefix="custom-cache-"))
 
-        proc = subprocess.Popen(
+        proc = test_config.popen(
             [
                 str(self.envy_test),
                 f"--cache-root={custom_root}",
@@ -706,7 +706,7 @@ class TestSubprocessConcurrency(CacheTestBase):
         cmd.append(f"--test-id={self.test_id}")
         if "crash_after_ms" in kwargs:
             cmd.append(f"--crash-after={kwargs['crash_after_ms']}")
-        return subprocess.Popen(
+        return test_config.popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
 

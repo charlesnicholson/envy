@@ -141,7 +141,7 @@ PACKAGES = {{
 
         # Run product command with trace enabled
         trace_file = self.cache_root / "trace.jsonl"
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy),
                 "--cache-root",

@@ -116,7 +116,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -183,7 +183,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -288,7 +288,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -375,7 +375,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -483,7 +483,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -612,7 +612,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -675,7 +675,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -736,7 +736,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -818,7 +818,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -919,7 +919,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -1018,7 +1018,7 @@ end
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -1085,7 +1085,7 @@ end
 """,
         )
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -1218,7 +1218,7 @@ end
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

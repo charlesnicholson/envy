@@ -122,7 +122,7 @@ class TestUserManagedPackages(unittest.TestCase):
         if env_vars:
             env.update(env_vars)
 
-        return subprocess.run(
+        return test_config.run(
             cmd, capture_output=True, text=True, env=env, cwd=self.test_dir
         )
 

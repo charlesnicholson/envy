@@ -3,15 +3,36 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+import threading
 import time
+import traceback
 import unittest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import test_config
 
+# Track thread exceptions to catch subprocess decode errors
+_thread_exceptions: list[tuple[str, str]] = []
+_original_excepthook = threading.excepthook
+
+
+def _thread_excepthook(args):
+    """Capture unhandled exceptions in threads."""
+    exc_str = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb))
+    _thread_exceptions.append((args.thread.name if args.thread else "unknown", exc_str))
+    # Still call original hook to print the exception
+    _original_excepthook(args)
+
+
+threading.excepthook = _thread_excepthook
+
 
 def _setup_sanitizer_env() -> None:
     """Set up sanitizer environment variables and print configuration for debugging."""
+    # Sanitizers not supported on Windows
+    if sys.platform == "win32":
+        return
+
     root = pathlib.Path(__file__).resolve().parent.parent
     tsan_supp = root / "tsan.supp"
     asan_supp = root / "asan.supp"
@@ -152,6 +173,15 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
     sys.stdout.write("-" * 70 + "\n")
     sys.stdout.write(f"Ran {len(test_cases)} tests in {elapsed:.3f}s\n")
     sys.stdout.write("\n")
+
+    # Check for thread exceptions (e.g., subprocess decode errors)
+    if _thread_exceptions:
+        sys.stdout.write("=" * 70 + "\n")
+        sys.stdout.write(f"THREAD EXCEPTIONS ({len(_thread_exceptions)}):\n")
+        sys.stdout.write("-" * 70 + "\n")
+        for thread_name, exc_str in _thread_exceptions:
+            sys.stdout.write(f"Thread: {thread_name}\n{exc_str}\n")
+        errors += len(_thread_exceptions)
 
     if failed + errors > 0:
         parts = []

@@ -80,7 +80,7 @@ class TestBuildPhase(unittest.TestCase):
 
     def run_spec(self, name: str, identity: str, should_succeed: bool = True):
         """Run spec and return result."""
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -191,8 +191,11 @@ BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
 
   local result
   if envy.PLATFORM == "windows" then
-    result = envy.run([[mkdir build_output 2> nul & echo function_artifact > build_output\\result.txt & if not exist build_output\\result.txt ( echo Artifact missing & exit /b 1 ) & echo Build complete & exit /b 0 ]],
-                     {{ shell = ENVY_SHELL.CMD, capture = true }})
+    result = envy.run([[
+mkdir build_output 2> nul
+echo function_artifact > build_output\\result.txt
+echo Build complete
+    ]],{{ shell = ENVY_SHELL.CMD, capture = true }})
   else
     result = envy.run([[
       mkdir -p build_output

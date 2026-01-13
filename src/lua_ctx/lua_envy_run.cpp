@@ -172,7 +172,8 @@ void lua_envy_run_install(sol::table &envy_table) {
       .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
       .cwd = cwd,
       .env = std::move(env),
-      .shell = shell
+      .shell = shell,
+      .check = check
     };
 
     std::optional<tui::interactive_mode_guard> guard;

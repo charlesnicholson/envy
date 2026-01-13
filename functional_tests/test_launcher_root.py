@@ -31,6 +31,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from . import test_config
 from pathlib import Path
 
 
@@ -74,6 +76,7 @@ find_manifest
 """
 
 
+@unittest.skipIf(sys.platform == "win32", "Bash tests skipped on Windows")
 class TestBashLauncherRootDiscovery(unittest.TestCase):
     """Test bash launcher's root-aware manifest discovery."""
 
@@ -101,7 +104,7 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
 
     def _run_find_manifest(self, cwd: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self._script)],
             cwd=str(cwd),
             capture_output=True,
@@ -255,23 +258,24 @@ set "MANIFEST="
 set "CANDIDATE="
 set "DIR=%CD%"
 :findloop
-if exist "%DIR%\\envy.lua" (
+if exist "!DIR!\\envy.lua" (
     set "IS_ROOT=true"
-    for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("%DIR%\\envy.lua") do (
+    for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("!DIR!\\envy.lua") do (
         if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
             set "VAL=%%d"
-            if "!VAL!"=="""false""" set "IS_ROOT=false"
+            set "VAL=!VAL:"=!"
+            if "!VAL!"=="false" set "IS_ROOT=false"
         )
     )
     if "!IS_ROOT!"=="true" (
-        set "MANIFEST=%DIR%\\envy.lua"
+        set "MANIFEST=!DIR!\\envy.lua"
         goto :found
     ) else (
-        set "CANDIDATE=%DIR%\\envy.lua"
+        set "CANDIDATE=!DIR!\\envy.lua"
     )
 )
-for %%I in ("%DIR%\\..") do set "PARENT=%%~fI"
-if "%PARENT%"=="%DIR%" (
+for %%I in ("!DIR!\\..") do set "PARENT=%%~fI"
+if "!PARENT!"=="!DIR!" (
     if defined CANDIDATE (
         set "MANIFEST=!CANDIDATE!"
         goto :found
@@ -279,10 +283,10 @@ if "%PARENT%"=="%DIR%" (
     echo ERROR: envy.lua not found >&2
     exit /b 1
 )
-set "DIR=%PARENT%"
+set "DIR=!PARENT!"
 goto :findloop
 :found
-echo %MANIFEST%
+echo !MANIFEST!
 '''
 
     def _write_manifest(self, directory: Path, root_value: str | None) -> None:
@@ -292,7 +296,7 @@ echo %MANIFEST%
 
     def _run_find_manifest(self, cwd: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
-        result = subprocess.run(
+        result = test_config.run(
             ["cmd", "/c", str(self._script)],
             cwd=str(cwd),
             capture_output=True,

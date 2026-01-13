@@ -51,7 +51,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "ninja"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -80,7 +80,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "ninja"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -113,7 +113,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "gn"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -140,7 +140,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "ninja"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -175,7 +175,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "output"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -201,7 +201,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "ninja"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -223,7 +223,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "output"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -247,7 +247,7 @@ class TestFetchGit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             dest = Path(temp_dir) / "path with spaces" / "ninja build"
 
-            result = subprocess.run(
+            result = test_config.run(
                 [
                     str(self.envy),
                     "fetch",
@@ -287,7 +287,7 @@ end
         spec_path = self.cache_root / "ninja_recipe.lua"
         spec_path.write_text(spec_content)
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -335,7 +335,7 @@ end
         spec_path = self.specs_dir / "fetch_git_parallel.lua"
         spec_path.write_text(spec, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -382,7 +382,7 @@ end
         spec_path = self.specs_dir / "fetch_git_parallel_declarative.lua"
         spec_path.write_text(spec, encoding="utf-8")
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

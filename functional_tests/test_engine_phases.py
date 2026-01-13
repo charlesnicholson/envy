@@ -36,7 +36,7 @@ class TestEnginePhases(unittest.TestCase):
 
     def get_file_hash(self, filepath):
         """Get SHA256 hash of file using envy hash command."""
-        result = subprocess.run(
+        result = test_config.run(
             [str(self.envy), "hash", str(filepath)],
             capture_output=True,
             text=True,
@@ -61,7 +61,7 @@ end
         spec_path = self.write_spec("simple", spec)
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -99,7 +99,7 @@ end
         spec_path = self.write_spec("fetch_function_basic", spec)
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
@@ -159,7 +159,7 @@ end
         spec_path = self.write_spec("fetch_function_with_dep", fetcher_spec)
         trace_file = self.cache_root / "trace.jsonl"
 
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

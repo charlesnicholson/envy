@@ -207,8 +207,13 @@ std::filesystem::path expand_path(std::string_view p) {
       std::string var_name{ p.substr(start, i - start) };
       if (braced && i < p.size() && p[i] == '}') { ++i; }
 
-      if (char const *val{ std::getenv(var_name.c_str()) }) { result += val; }
-      // undefined var → empty string on Windows
+      if (char const *val{ std::getenv(var_name.c_str()) }) {
+        result += val;
+      } else if (var_name == "HOME") {
+        // $HOME is common in cross-platform scripts; map to USERPROFILE on Windows
+        if (char const *profile{ std::getenv("USERPROFILE") }) { result += profile; }
+      }
+      // other undefined vars → empty string on Windows
     } else {
       result += p[i++];
     }

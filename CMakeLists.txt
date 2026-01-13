@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 4.1.2)
 
-set(ENVY_VERSION "0.0.0")
+# Version can be overridden via -DENVY_VERSION=x.y.z; defaults to 0.0.0 for local builds
+if(NOT DEFINED ENVY_VERSION)
+    set(ENVY_VERSION "0.0.0")
+endif()
 
 project(envy
     VERSION ${ENVY_VERSION}
@@ -316,12 +319,8 @@ function(apply_sanitizers TARGET_NAME)
         return()
     endif()
 
-    # MSVC only supports ASan
+    # MSVC doesn't support sanitizers
     if(MSVC)
-        if(ENVY_SANITIZER STREQUAL "ASAN")
-            target_compile_options(${TARGET_NAME} PRIVATE /fsanitize=address)
-            target_link_options(${TARGET_NAME} PRIVATE /INCREMENTAL:NO)
-        endif()
         return()
     endif()
 

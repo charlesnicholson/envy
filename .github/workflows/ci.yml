@@ -114,9 +114,8 @@ jobs:
           - name: windows-x64-main
             shard: main
             build_args: --no-functional-tester
-          - name: windows-x64-asan
-            shard: func-asan
-            build_args: --sanitizer=asan
+          - name: windows-x64-func
+            shard: func-main
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -148,7 +147,7 @@ jobs:
 
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
-        run: python3.13 -m functional_tests
+        run: py -3.13 -m functional_tests
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v4

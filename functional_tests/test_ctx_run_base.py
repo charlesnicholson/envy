@@ -79,7 +79,7 @@ class CtxRunTestBase(unittest.TestCase):
     def run_spec(self, identity, spec_name, should_fail=False):
         """Run a spec and return result."""
         spec_path = str(self.specs_dir / spec_name)
-        result = subprocess.run(
+        result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",

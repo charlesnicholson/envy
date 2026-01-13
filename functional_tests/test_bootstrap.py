@@ -12,12 +12,13 @@ import os
 import shutil
 import socketserver
 import stat
-import subprocess
 import sys
 import tarfile
 import tempfile
 import threading
 import unittest
+
+from . import test_config
 import zipfile
 from pathlib import Path
 
@@ -214,7 +215,7 @@ class BootstrapIntegrationTest(unittest.TestCase):
         else:
             cmd = [str(bootstrap_script), *args]
 
-        return subprocess.run(
+        return test_config.run(
             cmd,
             capture_output=True,
             text=True,
@@ -305,7 +306,7 @@ class BootstrapIntegrationTest(unittest.TestCase):
         else:
             cmd = [str(bootstrap_dest), "version"]
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd, capture_output=True, text=True, env=env, cwd=project_dir, timeout=30
         )
 
