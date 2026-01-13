@@ -16,8 +16,6 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
       - name: Download CI artifacts
         uses: actions/download-artifact@v4
         with:
@@ -26,11 +24,9 @@ jobs:
       - name: Package release artifacts
         run: |
           mkdir -p release
-          # Package Unix builds as tarballs
           tar -czf release/envy-linux-x86_64.tar.gz -C artifacts/envy-linux-x64-main envy
           tar -czf release/envy-linux-arm64.tar.gz -C artifacts/envy-linux-arm64-main envy
           tar -czf release/envy-darwin-arm64.tar.gz -C artifacts/envy-macos-arm64-main envy
-          # Package Windows build as zip
           cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe
 
       - name: Upload to release
