@@ -81,5 +81,6 @@ ENVY_BIN="$CACHE/envy/$VERSION/envy"
 echo "Downloading envy $VERSION..." >&2
 T=${TMPDIR:-/tmp}/envy-$$
 mkdir -p "$T"
-curl -fsSL "$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH.tar.gz" | tar -xzf - -C "$T" || { echo "ERROR: Download failed" >&2; rm -rf "$T"; exit 1; }
+URL="$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH.tar.gz"
+curl -fsSL "$URL" | tar -xzf - -C "$T" || { echo "ERROR: Failed to download envy from $URL" >&2; rm -rf "$T"; exit 1; }
 chmod +x "$T/envy" && exec "$T/envy" "$@"
