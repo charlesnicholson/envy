@@ -31,13 +31,14 @@ jobs:
           tar -czf release/envy-darwin-arm64.tar.gz -C artifacts/envy-macos-arm64-main envy
           cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe
 
-      - name: Upload to release
+      - name: Create release with artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} \
+          gh release create ${{ github.ref_name }} \
             release/envy-linux-x86_64.tar.gz \
             release/envy-linux-arm64.tar.gz \
             release/envy-darwin-arm64.tar.gz \
             release/envy-windows-x86_64.zip \
-            --repo ${{ github.repository }}
+            --repo ${{ github.repository }} \
+            --generate-notes
