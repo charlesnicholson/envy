@@ -12,107 +12,30 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  build:
-    needs: ci
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: envy-linux-x86_64.tar.gz
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
-          - os: ubuntu-24.04-arm
-            artifact: envy-linux-arm64.tar.gz
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
-          - os: macos-latest
-            artifact: envy-darwin-arm64.tar.gz
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Setup cmake
-        run: |
-          mkdir -p out/cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C out/cmake --strip-components=1
-
-      - name: Build
-        run: |
-          export PATH="$PWD/out/cmake/bin:$PATH"
-          # Extract version from tag (v1.2.3 -> 1.2.3)
-          VERSION="${GITHUB_REF_NAME#v}"
-          ./build.sh --no-functional-tester -DENVY_VERSION="$VERSION"
-
-      - name: Package
-        run: tar -czf ${{ matrix.artifact }} -C out/build envy
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
-          retention-days: 1
-
-  build-windows:
-    needs: ci
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Setup cmake
-        shell: pwsh
-        run: |
-          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
-          Expand-Archive -Path cmake.zip -DestinationPath out
-          Move-Item out/cmake-* out/cmake
-
-      - name: Build
-        shell: powershell
-        run: |
-          $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
-          &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
-          # Extract version from tag (v1.2.3 -> 1.2.3)
-          $Version = "$env:GITHUB_REF_NAME" -replace '^v', ''
-          ./build.bat --no-functional-tester "-DENVY_VERSION=$Version"
-
-      - name: Package
-        run: Compress-Archive -Path out\build\envy.exe -DestinationPath envy-windows-x86_64.zip
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: envy-windows-x86_64.zip
-          path: envy-windows-x86_64.zip
-          retention-days: 1
-
   release:
-    needs: [build, build-windows]
+    needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Download all artifacts
+      - name: Download CI artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Package release artifacts
+        run: |
+          mkdir -p release
+          tar -czf release/envy-linux-x86_64.tar.gz -C artifacts/envy-linux-x64-main envy
+          tar -czf release/envy-linux-arm64.tar.gz -C artifacts/envy-linux-arm64-main envy
+          tar -czf release/envy-darwin-arm64.tar.gz -C artifacts/envy-macos-arm64-main envy
+          cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.ref_name }} \
-            artifacts/envy-linux-x86_64.tar.gz/envy-linux-x86_64.tar.gz \
-            artifacts/envy-linux-arm64.tar.gz/envy-linux-arm64.tar.gz \
-            artifacts/envy-darwin-arm64.tar.gz/envy-darwin-arm64.tar.gz \
-            artifacts/envy-windows-x86_64.zip/envy-windows-x86_64.zip \
+            release/envy-linux-x86_64.tar.gz \
+            release/envy-linux-arm64.tar.gz \
+            release/envy-darwin-arm64.tar.gz \
+            release/envy-windows-x86_64.zip \
             --repo ${{ github.repository }}
