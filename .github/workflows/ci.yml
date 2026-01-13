@@ -98,6 +98,13 @@ jobs:
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '' }}
 
+      - name: Upload envy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: envy-${{ matrix.name }}
+          path: out/build/envy
+          retention-days: 90
+
   build-windows:
     name: ${{ matrix.name }}
     strategy:
@@ -142,3 +149,10 @@ jobs:
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
         run: python3.13 -m functional_tests
+
+      - name: Upload envy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: envy-${{ matrix.name }}
+          path: out\build\envy.exe
+          retention-days: 90
