@@ -135,10 +135,10 @@ add_library(envy::thirdparty ALIAS envy_thirdparty)
 target_link_libraries(envy_thirdparty
     INTERFACE
         envy::libgit2
-        $<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:Windows>>:CURL::libcurl>
+        CURL::libcurl
         libssh2::libssh2
-        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
-        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
+        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedtls>
+        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedx509>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA
@@ -165,7 +165,7 @@ if(APPLE)
 endif()
 
 target_compile_definitions(envy_thirdparty INTERFACE
-    CURL_STATICLIB
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:CURL_STATICLIB>
 )
 
 target_include_directories(envy_thirdparty INTERFACE
@@ -173,6 +173,6 @@ target_include_directories(envy_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${ENVY_AWSCRT_ROOT}/include>"
-    $<$<BOOL:${ENVY_LIBCURL_INCLUDE}>:$<BUILD_INTERFACE:${ENVY_LIBCURL_INCLUDE}>>
-    $<$<BOOL:${ENVY_LIBCURL_BINARY_INCLUDE}>:$<BUILD_INTERFACE:${ENVY_LIBCURL_BINARY_INCLUDE}>>
+    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<BOOL:${ENVY_LIBCURL_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_INCLUDE}>>
+    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<BOOL:${ENVY_LIBCURL_BINARY_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_BINARY_INCLUDE}>>
 )
