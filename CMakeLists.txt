@@ -177,7 +177,6 @@ set(ENVY_LICENSE_SOURCES
     "BLAKE3=${blake3_SOURCE_DIR}"
     "bzip2=${envy_libbz2_SOURCE_DIR}"
     "libarchive=${libarchive_SOURCE_DIR}"
-    "libcurl=${libcurl_SOURCE_DIR}"
     "libgit2=${libgit2_SOURCE_DIR}"
     "liblzma=${envy_liblzma_SOURCE_DIR}"
     "libssh2=${libssh2_SOURCE_DIR}"
@@ -186,6 +185,11 @@ set(ENVY_LICENSE_SOURCES
     "Sol2=${sol2_SOURCE_DIR}"
     "zlib=${envy_zlib_SOURCE_DIR}"
 )
+
+# libcurl only bundled on non-Apple (macOS uses system libcurl)
+if(NOT APPLE)
+    list(APPEND ENVY_LICENSE_SOURCES "libcurl=${libcurl_SOURCE_DIR}")
+endif()
 
 # mbedTLS only used on non-Windows
 if(NOT WIN32)

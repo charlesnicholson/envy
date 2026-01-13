@@ -1,3 +1,15 @@
+# On macOS, use the system libcurl dylib instead of building our own.
+# This uses SecureTransport for TLS and avoids certificate path issues.
+if(APPLE)
+    find_package(CURL REQUIRED)
+    # Create alias for consistency with other platforms
+    if(NOT TARGET CURL::libcurl)
+        add_library(CURL::libcurl ALIAS CURL::libcurl_shared)
+    endif()
+    set(ENVY_USE_SYSTEM_CURL ON)
+    return()
+endif()
+
 if(WIN32)
     set(CMAKE_USE_OPENSSL OFF CACHE BOOL "" FORCE)
     set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
