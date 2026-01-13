@@ -414,7 +414,8 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
     }
     tui::section_set_content(
         section,
-        tui::section_frame{ .label = key, .content = tui::static_text_data{ .text = status_text } });
+        tui::section_frame{ .label = "[" + key + "]",
+                            .content = tui::static_text_data{ .text = status_text } });
 
     std::ostringstream oss;
     oss << "Fetch failed for " << key << ":\n";
