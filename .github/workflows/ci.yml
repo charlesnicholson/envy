@@ -86,11 +86,11 @@ jobs:
       - name: Build
         run: |
           export PATH="$PWD/out/cmake/bin:$PATH"
-          VERSION_ARG=""
+          BUILD_ARGS="${{ matrix.build_args }}"
           if [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
-            VERSION_ARG="-DENVY_VERSION=${GITHUB_REF_NAME#v}"
+            BUILD_ARGS="$BUILD_ARGS -DENVY_VERSION=${GITHUB_REF_NAME#v}"
           fi
-          ./build.sh ${{ matrix.build_args }} $VERSION_ARG
+          ./build.sh $BUILD_ARGS
 
       - name: Smoke test
         if: matrix.shard == 'main'
@@ -140,12 +140,12 @@ jobs:
         run: |
           $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
-          $VersionArg = ""
+          $Arguments = @("${{ matrix.build_args }}")
           if ($env:GITHUB_REF_NAME -match '^v') {
             $Version = $env:GITHUB_REF_NAME -replace '^v', ''
-            $VersionArg = "-DENVY_VERSION=$Version"
+            $Arguments += "-DENVY_VERSION=$Version"
           }
-          ./build.bat ${{ matrix.build_args }} $VersionArg
+          & ./build.bat @Arguments
 
       - name: Smoke test
         if: matrix.shard == 'main'
