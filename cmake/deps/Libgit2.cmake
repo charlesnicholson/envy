@@ -1,5 +1,7 @@
 if(WIN32)
     set(USE_HTTPS WinHTTP CACHE STRING "" FORCE)
+elseif(APPLE)
+    set(USE_HTTPS SecureTransport CACHE STRING "" FORCE)
 else()
     set(USE_HTTPS mbedTLS CACHE STRING "" FORCE)
 endif()

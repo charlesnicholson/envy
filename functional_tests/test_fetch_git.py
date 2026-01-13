@@ -7,11 +7,23 @@ error handling, and basic integration scenarios.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 import unittest
 
 from . import test_config
+
+
+def _is_macos_ci_sanitizer_build() -> bool:
+    """Check if running on macOS CI with sanitizers (where timing issues occur)."""
+    if sys.platform != "darwin":
+        return False
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return False
+    # CI sanitizer shards have "func-asan" or "func-tsan" in their names
+    # and the test runner sets suppression env vars
+    return bool(os.environ.get("TSAN_OPTIONS") or os.environ.get("ASAN_OPTIONS"))
 
 
 class TestFetchGit(unittest.TestCase):
@@ -88,6 +100,10 @@ class TestFetchGit(unittest.TestCase):
                 (dest / ".git").exists(), ".git directory should be present"
             )
 
+    @unittest.skipIf(
+        _is_macos_ci_sanitizer_build(),
+        "SecureTransport has timing issues with googlesource.com under CI sanitizers",
+    )
     def test_clone_googlesource_shallow_fallback(self):
         """Clone from googlesource.com which requires full clone fallback.
 
