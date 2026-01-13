@@ -139,7 +139,7 @@ target_link_libraries(envy_thirdparty
         libssh2::libssh2
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
-        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedcrypto>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA
         BZip2::BZip2
