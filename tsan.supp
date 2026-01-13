@@ -21,6 +21,11 @@ race:libgit2-src/src/libgit2/transports/httpclient.c
 race:libgit2-src/src/libgit2/refs.c
 race:libgit2-src/src/libgit2/signature.c
 
+# Benign race in libgit2 filter registry - git_filter_list__load has unsynchronized
+# access to filter->initialized flag during concurrent checkouts
+# Each clone operates on separate repos; the race is on global filter init state
+race:libgit2-src/src/libgit2/filter.c
+
 # Benign races in libarchive - format readers may have unsynchronized state
 # Each archive operation has its own context; shared state races don't affect correctness
 race:libarchive-src/libarchive/archive_read_support_format_tar.c
