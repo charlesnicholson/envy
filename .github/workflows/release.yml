@@ -16,6 +16,8 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+
       - name: Download CI artifacts
         uses: actions/download-artifact@v4
         with:
