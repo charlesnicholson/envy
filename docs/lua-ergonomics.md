@@ -44,9 +44,8 @@ end
 
 -- Build phase: compile artifacts (fetch_dir available for reference)
 -- Default cwd for envy.run(): stage_dir
--- NOTE: install_dir is NOT exposed to BUILD—use INSTALL phase for final artifacts
-BUILD = function(stage_dir, fetch_dir, tmp_dir)
-  envy.run("./configure")  -- cwd defaults to stage_dir
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  envy.run("./configure --prefix=" .. install_dir)  -- cwd defaults to stage_dir
   envy.run("make")
 end
 
@@ -89,7 +88,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir) ... end
 -- Build/Install declarative shortcuts
 BUILD = "make -j"
 INSTALL = "make install"
-BUILD = function(...) ... end
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts) ... end
 INSTALL = function(...) ... end
 ```
 
@@ -204,10 +203,11 @@ function FETCH(tmp_dir) end
 function STAGE(fetch_dir, stage_dir, tmp_dir) end
 
 ---Build phase: compile artifacts
+---@param install_dir string Installation directory (for --prefix)
 ---@param stage_dir string Extracted sources directory (default cwd for envy.run)
 ---@param fetch_dir string Downloaded archives directory (rarely needed)
 ---@param tmp_dir string Temporary scratch directory
-function BUILD(stage_dir, fetch_dir, tmp_dir) end
+function BUILD(install_dir, stage_dir, fetch_dir, tmp_dir) end
 
 ---Install phase: final artifact preparation (cache-managed) or system modification (user-managed)
 ---@param install_dir string|nil Installation directory (nil for user-managed packages)
@@ -323,7 +323,7 @@ User-managed packages (CHECK verb present) modify system state rather than produ
 ```lua
 FETCH   = function(tmp_dir) ... end
 STAGE   = function(fetch_dir, stage_dir, tmp_dir) ... end
-BUILD   = function(stage_dir, fetch_dir, tmp_dir) ... end  -- install_dir NOT exposed
+BUILD   = function(install_dir, stage_dir, fetch_dir, tmp_dir) ... end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) ... end  -- install_dir=nil for user-managed
 CHECK   = function(project_root) ... end  -- no tmp_dir (lock not yet acquired)
 ```
@@ -544,8 +544,7 @@ if (build_obj.is<std::string>()) {
 
 ### Phase Signature Updates - BUILD
 
-- [x] Update `src/phases/phase_build.cpp` - Change BUILD function signature to (stage_dir, fetch_dir, tmp_dir)
-- [x] install_dir NOT exposed to BUILD—use INSTALL phase for final artifacts
+- [x] Update `src/phases/phase_build.cpp` - Change BUILD function signature to (install_dir, stage_dir, fetch_dir, tmp_dir)
 - [x] Set thread-local context with phase_context_guard before calling BUILD function
 - [x] Handle declarative BUILD form (string or array) with C++ expansion to envy.run
 - [x] Update default cwd for this phase to stage_dir

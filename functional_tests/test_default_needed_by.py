@@ -65,7 +65,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 ''',
@@ -85,7 +85,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Dependency should be available here by default
   local dep_path = envy.package("local.dep_val_lib@v1")
 end

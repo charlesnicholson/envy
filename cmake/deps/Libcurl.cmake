@@ -52,6 +52,7 @@ set(CURL_DISABLE_GOPHER ON CACHE BOOL "" FORCE)
 set(CURL_DISABLE_RTMP ON CACHE BOOL "" FORCE)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+set(CURL_USE_PKGCONFIG OFF CACHE BOOL "" FORCE)
 
 # Pre-configure zstd detection for libcurl - disable pkg-config path by
 # pre-setting ZSTD_INCLUDE_DIR/ZSTD_LIBRARY so FindZstd.cmake skips pkg-config

@@ -70,7 +70,7 @@ set(ENVY_SOL2_GIT_TAG "c1f95a773c6f8f4fde8ca3efe872e7286afe4444")
 
 set(ENVY_ZLIB_VERSION "1.3.1")
 set(ENVY_ZLIB_ARCHIVE "zlib-${ENVY_ZLIB_VERSION}.tar.gz")
-set(ENVY_ZLIB_URL "https://zlib.net/${ENVY_ZLIB_ARCHIVE}")
+set(ENVY_ZLIB_URL "https://github.com/madler/zlib/releases/download/v${ENVY_ZLIB_VERSION}/${ENVY_ZLIB_ARCHIVE}")
 set(ENVY_ZLIB_SHA256 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23)
 
 set(ENVY_LIBLZMA_VERSION "5.8.1")
@@ -137,8 +137,8 @@ target_link_libraries(envy_thirdparty
         envy::libgit2
         CURL::libcurl
         libssh2::libssh2
-        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedtls>
-        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedx509>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA

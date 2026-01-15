@@ -71,7 +71,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     envy.run([[Write-Output "dependency: begin"; Remove-Item -Force dependency.txt -ErrorAction SilentlyContinue; Set-Content -Path dependency.txt -Value "dependency_data"; New-Item -ItemType Directory -Path bin -Force | Out-Null; Set-Content -Path bin/app -Value "binary"; if (-not (Test-Path bin/app)) {{ Write-Error "missing bin/app"; exit 1 }}; Write-Output "dependency: success"; exit 0 ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -91,7 +91,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Building with envy.run()")
   local result
   if envy.PLATFORM == "windows" then
@@ -133,7 +133,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing error handling")
   if envy.PLATFORM == "windows" then
     envy.run("exit 42", {{ shell = ENVY_SHELL.POWERSHELL }})

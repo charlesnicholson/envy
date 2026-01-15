@@ -84,6 +84,7 @@ void execute_build_script(std::string_view script,
 }
 
 void run_programmatic_build(sol::protected_function build_func,
+                            std::filesystem::path const &install_dir,
                             std::filesystem::path const &fetch_dir,
                             std::filesystem::path const &stage_dir,
                             std::filesystem::path const &tmp_dir,
@@ -102,7 +103,8 @@ void run_programmatic_build(sol::protected_function build_func,
       p,
       "BUILD",
       [&]() {
-        return build_func(util_path_with_separator(stage_dir),
+        return build_func(util_path_with_separator(install_dir),
+                          util_path_with_separator(stage_dir),
                           util_path_with_separator(fetch_dir),
                           util_path_with_separator(tmp_dir),
                           opts);
@@ -154,6 +156,7 @@ void run_build_phase(pkg *p, engine &eng) {
     run_shell_build(script, p->lock->stage_dir(), p->cfg->identity, p);
   } else if (build_obj.is<sol::protected_function>()) {
     run_programmatic_build(build_obj.as<sol::protected_function>(),
+                           p->lock->install_dir(),
                            p->lock->fetch_dir(),
                            p->lock->stage_dir(),
                            p->lock->tmp_dir(),

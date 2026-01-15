@@ -18,7 +18,7 @@ FETCH = function(tmp_dir, opts)
   }
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, opts)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local cmd = [[
 {{python}} build/gen.py
 {{ninja}} -C out

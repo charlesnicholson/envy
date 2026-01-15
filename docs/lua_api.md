@@ -209,9 +209,9 @@ Get installed asset path for declared dependency.
 - Access must occur at or after dependency's `needed_by` phase
 
 ```lua
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   local gcc = envy.asset("arm.gcc@v2")
-  envy.run("./configure CC=" .. gcc .. "/bin/arm-none-eabi-gcc")
+  envy.run("./configure --prefix=" .. install_dir .. " CC=" .. gcc .. "/bin/arm-none-eabi-gcc")
 end
 ```
 
@@ -375,7 +375,8 @@ BUILD = function(ctx)
 end
 
 -- New
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("make DESTDIR=" .. stage_dir)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("./configure --prefix=" .. install_dir)
+  envy.run("make -j")
 end
 ```

@@ -66,7 +66,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo 'dependency_data' > dependency.txt
       mkdir -p bin
       echo 'binary' > bin/app]])

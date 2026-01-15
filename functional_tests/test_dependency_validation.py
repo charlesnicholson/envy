@@ -83,7 +83,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """,
@@ -108,7 +108,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Access direct dependency - SHOULD WORK
   local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "direct access worked" > direct.txt]])
@@ -152,7 +152,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """,
@@ -175,7 +175,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Try to access lib without declaring it - SHOULD FAIL
   local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "should not get here" > bad.txt]])
@@ -221,7 +221,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """,
@@ -246,7 +246,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Access our direct dependency - should work
   local lib_path = envy.package("local.dep_val_lib@v1")
   envy.run([[echo "tool built with lib" > tool.txt]])
@@ -276,7 +276,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Access tool (direct dependency) - should work
   local tool_path = envy.package("local.dep_val_tool@v1")
 
@@ -647,7 +647,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """,
@@ -853,7 +853,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """,

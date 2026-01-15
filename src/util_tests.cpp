@@ -679,6 +679,34 @@ TEST_CASE("util_simplify_cache_paths real-world ninja configure example") {
         "python3 configure.py --bootstrap --gtest-source-dir=gtest");
 }
 
+TEST_CASE("util_simplify_cache_paths handles trailing slash in key=value") {
+  std::filesystem::path const cache_root{ "/cache" };
+  // Path with trailing slash (common from util_path_with_separator)
+  std::string const cmd{ "./configure --prefix=/cache/pkg@v1/install/" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
+        "./configure --prefix=install");
+}
+
+TEST_CASE("util_simplify_cache_paths handles trailing slash standalone path") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "/cache/pkg@v1/install/ --flag" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "install --flag");
+}
+
+TEST_CASE("util_simplify_cache_paths treats semicolon as separator") {
+  std::filesystem::path const cache_root{ "/cache" };
+  // Semicolons separate commands after flattening; must not be included in path
+  std::string const cmd{ "./configure --prefix=/cache/pkg@v1/install/; make -j" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) ==
+        "./configure --prefix=install; make -j");
+}
+
+TEST_CASE("util_simplify_cache_paths handles multiple semicolon-separated commands") {
+  std::filesystem::path const cache_root{ "/cache" };
+  std::string const cmd{ "/cache/bin/cmd1; /cache/bin/cmd2; /cache/bin/cmd3" };
+  CHECK(envy::util_simplify_cache_paths(cmd, cache_root) == "cmd1; cmd2; cmd3");
+}
+
 // util_path_with_separator tests
 
 TEST_CASE("util_path_with_separator handles empty path") {

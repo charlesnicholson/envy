@@ -8,7 +8,6 @@ import hashlib
 import io
 import os
 import shutil
-import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
@@ -143,7 +142,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     envy.run([[
       Write-Host "Building in shell script mode"
@@ -186,7 +185,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Building with envy.run()")
 
   local result
@@ -237,7 +236,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     envy.run([[Write-Output "dependency: begin"; Remove-Item -Force dependency.txt -ErrorAction SilentlyContinue; Set-Content -Path dependency.txt -Value "dependency_data"; New-Item -ItemType Directory -Path bin -Force | Out-Null; Set-Content -Path bin/app -Value "binary"; if (-not (Test-Path bin/app)) {{ Write-Error "missing bin/app"; exit 1 }}; Write-Output "dependency: success"; exit 0 ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -263,7 +262,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Accessing dependency via envy.package()")
 
   local dep_path = envy.package("local.build_dependency@v1")
@@ -318,7 +317,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.copy()")
 
   if envy.PLATFORM == "windows" then
@@ -384,7 +383,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.move()")
 
   if envy.PLATFORM == "windows" then
@@ -454,7 +453,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   end
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing envy.extract()")
 
   local files_extracted = envy.extract(fetch_dir .. "/test.tar.gz", stage_dir)
@@ -499,7 +498,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing multiple operations")
 
   if envy.PLATFORM == "windows" then
@@ -585,7 +584,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing custom environment variables")
 
   local result
@@ -638,7 +637,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing custom working directory")
 
   if envy.PLATFORM == "windows" then
@@ -726,7 +725,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing error handling")
 
   if envy.PLATFORM == "windows" then
@@ -755,7 +754,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     local result = envy.run([[Write-Output "Starting build"; Write-Error "Intentional failure"; exit 7 ]], {{ shell = ENVY_SHELL.POWERSHELL }})
     error("Intentional failure after ctx.run")
@@ -790,7 +789,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing directory access")
   print("fetch_dir: " .. fetch_dir)
   print("stage_dir: " .. stage_dir)
@@ -848,7 +847,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Creating nested directory structure")
 
   if envy.PLATFORM == "windows" then
@@ -936,7 +935,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("Testing output capture")
 
   local result
@@ -994,7 +993,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   print("BUILD function executing, preparing to return script")
 
   if envy.PLATFORM == "windows" then
@@ -1047,7 +1046,7 @@ FETCH = {{
 
 STAGE = {{strip = 1}}
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     envy.run([[Set-Content -Path result.txt -Value "test"]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
@@ -1080,6 +1079,176 @@ end
         )
 
         self.assertIn("-blake3-", variant_name)
+
+    # =========================================================================
+    # install_dir parameter tests
+    # =========================================================================
+
+    def test_build_receives_install_dir(self):
+        """BUILD function receives install_dir as first parameter."""
+        spec = """IDENTITY = "local.build_install_dir@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Verify install_dir is a non-empty string
+  if type(install_dir) ~= "string" or install_dir == "" then
+    error("install_dir should be a non-empty string, got: " .. tostring(install_dir))
+  end
+
+  -- Write install_dir to a marker file in stage_dir for verification
+  if envy.PLATFORM == "windows" then
+    envy.run('Set-Content -Path build_install_dir.txt -Value "' .. install_dir .. '"', {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run('echo "' .. install_dir .. '" > build_install_dir.txt')
+  end
+end
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Read what BUILD wrote
+  local build_marker = stage_dir .. "build_install_dir.txt"
+  if not envy.exists(build_marker) then
+    error("BUILD should have written build_install_dir.txt")
+  end
+
+  -- Copy the marker to install_dir so we can verify from Python
+  envy.copy(build_marker, install_dir .. "build_install_dir.txt")
+
+  -- Also write INSTALL's view of install_dir
+  if envy.PLATFORM == "windows" then
+    envy.run('Set-Content -Path install_install_dir.txt -Value "' .. install_dir .. '"', {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run('echo "' .. install_dir .. '" > install_install_dir.txt')
+  end
+end
+"""
+        self.write_spec("build_install_dir", spec)
+        self.run_spec("build_install_dir", "local.build_install_dir@v1")
+
+        pkg_path = self.get_pkg_path("local.build_install_dir@v1")
+        self.assertIsNotNone(pkg_path, "Package should be installed")
+
+        # Verify BUILD received install_dir
+        build_marker = pkg_path / "build_install_dir.txt"
+        self.assertTrue(
+            build_marker.exists(), "BUILD should have written install_dir marker"
+        )
+        build_install_dir = build_marker.read_text().strip()
+        self.assertTrue(
+            len(build_install_dir) > 0, "BUILD install_dir should be non-empty"
+        )
+
+        # Verify INSTALL received install_dir
+        install_marker = pkg_path / "install_install_dir.txt"
+        self.assertTrue(
+            install_marker.exists(), "INSTALL should have written install_dir marker"
+        )
+        install_install_dir = install_marker.read_text().strip()
+
+        # Both should point to the same directory
+        self.assertEqual(
+            build_install_dir,
+            install_install_dir,
+            "BUILD and INSTALL should receive the same install_dir",
+        )
+
+        # The install_dir should end with /install or \install (working dir, later promoted to /pkg)
+        normalized = build_install_dir.rstrip("/").rstrip("\\").replace("\\", "/")
+        self.assertTrue(
+            normalized.endswith("/install"),
+            f"install_dir should end with /install, got: {build_install_dir}",
+        )
+
+    def test_build_install_dir_usable_for_prefix(self):
+        """BUILD can use install_dir for --prefix style configuration."""
+        spec = """IDENTITY = "local.build_prefix@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Simulate a configure script that writes prefix to a file
+  local prefix_file = stage_dir .. "configured_prefix.txt"
+  if envy.PLATFORM == "windows" then
+    envy.run('Set-Content -Path configured_prefix.txt -Value "' .. install_dir .. '"', {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run('echo "' .. install_dir .. '" > configured_prefix.txt')
+  end
+
+  -- Create a bin directory structure as if we ran make
+  if envy.PLATFORM == "windows" then
+    envy.run([[
+      New-Item -ItemType Directory -Path staged_bin -Force | Out-Null
+      Set-Content -Path staged_bin/mytool.txt -Value "tool_binary"
+    ]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run([[
+      mkdir -p staged_bin
+      echo "tool_binary" > staged_bin/mytool.txt
+    ]])
+  end
+end
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Simulate make install: copy from stage to install_dir/bin
+  if envy.PLATFORM == "windows" then
+    envy.run([[
+      New-Item -ItemType Directory -Path bin -Force | Out-Null
+      Copy-Item -Path ]] .. stage_dir .. [[staged_bin/mytool.txt -Destination bin/mytool.txt
+    ]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run("mkdir -p bin && cp " .. stage_dir .. "staged_bin/mytool.txt bin/")
+  end
+
+  -- Copy the configured prefix for verification
+  envy.copy(stage_dir .. "configured_prefix.txt", install_dir .. "configured_prefix.txt")
+end
+
+PRODUCTS = {{ mytool = "bin/mytool.txt" }}
+"""
+        self.write_spec("build_prefix", spec)
+        self.run_spec("build_prefix", "local.build_prefix@v1")
+
+        pkg_path = self.get_pkg_path("local.build_prefix@v1")
+        self.assertIsNotNone(pkg_path, "Package should be installed")
+
+        # Verify the tool was installed
+        tool_path = pkg_path / "bin" / "mytool.txt"
+        self.assertTrue(tool_path.exists(), "Tool should be installed to bin/")
+
+        # Verify BUILD's configured prefix points to install dir (which becomes pkg after completion)
+        prefix_file = pkg_path / "configured_prefix.txt"
+        self.assertTrue(prefix_file.exists(), "Prefix file should exist")
+        configured_prefix = prefix_file.read_text().strip().rstrip("/").rstrip("\\")
+
+        # install_dir during BUILD ends with /install or \install, pkg_path ends with /pkg
+        # They should be siblings in the same variant directory
+        normalized_prefix = configured_prefix.replace("\\", "/")
+        self.assertTrue(
+            normalized_prefix.endswith("/install"),
+            f"Configured prefix should end with /install, got: {configured_prefix}",
+        )
+
+        # Verify they share the same parent (variant directory)
+        # Normalize to forward slashes for comparison
+        prefix_parent = normalized_prefix.rsplit("/", 1)[0]
+        pkg_parent = (
+            str(pkg_path).rstrip("/").rstrip("\\").replace("\\", "/").rsplit("/", 1)[0]
+        )
+        self.assertEqual(
+            prefix_parent,
+            pkg_parent,
+            f"install and pkg should be in same variant dir: {prefix_parent} vs {pkg_parent}",
+        )
 
     # =========================================================================
     # Fail-fast tests
