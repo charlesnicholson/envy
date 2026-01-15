@@ -59,7 +59,6 @@ if(DEFINED mbedtls_SOURCE_DIR AND DEFINED mbedtls_BINARY_DIR)
         "${MBEDX509_LIBRARY}"
         "${MBEDCRYPTO_LIBRARY}"
         CACHE STRING "" FORCE)
-    set(MBEDTLS_FOUND TRUE CACHE BOOL "" FORCE)
     set(MBEDTLS_VERSION "${ENVY_MBEDTLS_VERSION}" CACHE STRING "" FORCE)
     unset(_mbedcrypto_lib)
     unset(_mbedtls_libdir)
