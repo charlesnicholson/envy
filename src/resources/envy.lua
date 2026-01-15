@@ -276,7 +276,7 @@ FETCH = {}
 STAGE = {}
 
 ---BUILD phase: shell script string or function
----@type string|fun(stage_dir: string, fetch_dir: string, tmp_dir: string, options: table)
+---@type string|fun(install_dir: string, stage_dir: string, fetch_dir: string, tmp_dir: string, options: table)
 BUILD = nil
 
 ---INSTALL phase: shell script string or function
