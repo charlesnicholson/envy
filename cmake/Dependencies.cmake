@@ -137,8 +137,8 @@ target_link_libraries(envy_thirdparty
         envy::libgit2
         CURL::libcurl
         libssh2::libssh2
-        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedtls>
-        $<$<PLATFORM_ID:Linux>:MbedTLS::mbedx509>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
+        $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedcrypto>
         ZLIB::ZLIB
         LibLZMA::LibLZMA

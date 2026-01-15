@@ -8,7 +8,6 @@ import hashlib
 import io
 import os
 import shutil
-import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
@@ -1136,26 +1135,33 @@ end
 
         # Verify BUILD received install_dir
         build_marker = pkg_path / "build_install_dir.txt"
-        self.assertTrue(build_marker.exists(), "BUILD should have written install_dir marker")
+        self.assertTrue(
+            build_marker.exists(), "BUILD should have written install_dir marker"
+        )
         build_install_dir = build_marker.read_text().strip()
-        self.assertTrue(len(build_install_dir) > 0, "BUILD install_dir should be non-empty")
+        self.assertTrue(
+            len(build_install_dir) > 0, "BUILD install_dir should be non-empty"
+        )
 
         # Verify INSTALL received install_dir
         install_marker = pkg_path / "install_install_dir.txt"
-        self.assertTrue(install_marker.exists(), "INSTALL should have written install_dir marker")
+        self.assertTrue(
+            install_marker.exists(), "INSTALL should have written install_dir marker"
+        )
         install_install_dir = install_marker.read_text().strip()
 
         # Both should point to the same directory
         self.assertEqual(
             build_install_dir,
             install_install_dir,
-            "BUILD and INSTALL should receive the same install_dir"
+            "BUILD and INSTALL should receive the same install_dir",
         )
 
-        # The install_dir should end with /install (working dir, later promoted to /pkg)
+        # The install_dir should end with /install or \install (working dir, later promoted to /pkg)
+        normalized = build_install_dir.rstrip("/").rstrip("\\").replace("\\", "/")
         self.assertTrue(
-            build_install_dir.rstrip("/").endswith("/install"),
-            f"install_dir should end with /install, got: {build_install_dir}"
+            normalized.endswith("/install"),
+            f"install_dir should end with /install, got: {build_install_dir}",
         )
 
     def test_build_install_dir_usable_for_prefix(self):
@@ -1222,22 +1228,26 @@ PRODUCTS = {{ mytool = "bin/mytool.txt" }}
         # Verify BUILD's configured prefix points to install dir (which becomes pkg after completion)
         prefix_file = pkg_path / "configured_prefix.txt"
         self.assertTrue(prefix_file.exists(), "Prefix file should exist")
-        configured_prefix = prefix_file.read_text().strip().rstrip("/")
+        configured_prefix = prefix_file.read_text().strip().rstrip("/").rstrip("\\")
 
-        # install_dir during BUILD ends with /install, pkg_path ends with /pkg
+        # install_dir during BUILD ends with /install or \install, pkg_path ends with /pkg
         # They should be siblings in the same variant directory
+        normalized_prefix = configured_prefix.replace("\\", "/")
         self.assertTrue(
-            configured_prefix.endswith("/install"),
-            f"Configured prefix should end with /install, got: {configured_prefix}"
+            normalized_prefix.endswith("/install"),
+            f"Configured prefix should end with /install, got: {configured_prefix}",
         )
 
         # Verify they share the same parent (variant directory)
-        prefix_parent = configured_prefix.rsplit("/", 1)[0]
-        pkg_parent = str(pkg_path).rstrip("/").rsplit("/", 1)[0]
+        # Normalize to forward slashes for comparison
+        prefix_parent = normalized_prefix.rsplit("/", 1)[0]
+        pkg_parent = (
+            str(pkg_path).rstrip("/").rstrip("\\").replace("\\", "/").rsplit("/", 1)[0]
+        )
         self.assertEqual(
             prefix_parent,
             pkg_parent,
-            f"install and pkg should be in same variant dir: {prefix_parent} vs {pkg_parent}"
+            f"install and pkg should be in same variant dir: {prefix_parent} vs {pkg_parent}",
         )
 
     # =========================================================================
