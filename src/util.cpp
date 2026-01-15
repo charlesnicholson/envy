@@ -265,7 +265,9 @@ std::string simplify_path_value(std::string_view value,
     }() };
 
     if (is_cache_path) {
-      std::filesystem::path const value_path{ value };
+      std::filesystem::path value_path{ value };
+      // Handle trailing slash: /foo/bar/ has empty filename(), use parent's filename
+      if (value_path.filename().empty()) { value_path = value_path.parent_path(); }
       return value_path.filename().string();
     }
   }
@@ -285,20 +287,22 @@ std::string util_simplify_cache_paths(std::string_view command,
   std::string result;
   result.reserve(command.size());
 
+  auto const is_separator = [](char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';';
+  };
+
   std::size_t pos{ 0 };
   while (pos < command.size()) {
-    while (pos < command.size() && (command[pos] == ' ' || command[pos] == '\t' ||
-                                    command[pos] == '\n' || command[pos] == '\r')) {
+    while (pos < command.size() && is_separator(command[pos])) {
       result += command[pos];
       ++pos;
     }
 
     if (pos >= command.size()) { break; }
 
-    // Extract token (non-whitespace sequence)
+    // Extract token (sequence until separator)
     std::size_t const token_start{ pos };
-    while (pos < command.size() && command[pos] != ' ' && command[pos] != '\t' &&
-           command[pos] != '\n' && command[pos] != '\r') {
+    while (pos < command.size() && !is_separator(command[pos])) {
       ++pos;
     }
 

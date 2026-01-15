@@ -253,14 +253,14 @@ DEPENDENCIES = {
   },
 }
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   local gcc_root = envy.asset("arm.gcc@v2")
-  envy.run("./configure --prefix=" .. stage_dir .. " CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
+  envy.run("./configure --prefix=" .. install_dir .. " CC=" .. gcc_root .. "/bin/arm-none-eabi-gcc")
   envy.run("make -j$(nproc)")
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("make install DESTDIR=" .. install_dir)
+  envy.run("make install", { cwd = stage_dir })
 end
 ```
 

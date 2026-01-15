@@ -101,9 +101,9 @@ Support declarative table form for common build systems (cmake, make, meson, nin
 
 **Current approach (imperative):**
 ```lua
-BUILD = function(ctx)
-  ctx.run([[
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=]] .. ctx.install_dir .. [[
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  envy.run([[
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=]] .. install_dir .. [[
     cmake --build build --parallel
     cmake --install build
   ]])

@@ -56,7 +56,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run([[echo "lib built" > lib.txt]])
 end
 """
@@ -195,7 +195,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Can access dependency in build phase
   envy.package("local.needed_by_build_dep@v1")
   envy.run("echo 'build complete' > build.txt")
@@ -471,7 +471,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Dependency should be available by build phase
   envy.package("local.dep_val_lib@v1")
 end
@@ -590,7 +590,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Can access chain_c in build phase
   envy.package("local.needed_by_chain_c@v1")
 end
@@ -666,7 +666,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Can access both B and C in build phase
   envy.package("local.needed_by_diamond_b@v1")
   envy.package("local.needed_by_diamond_c@v1")
@@ -813,7 +813,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Access simple in build phase
   envy.package("local.dep_val_lib@v1")
 end
@@ -970,7 +970,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir, options)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Access all dependencies
   envy.package("local.needed_by_fetch_dep@v1")
   envy.package("local.needed_by_check_dep@v1")

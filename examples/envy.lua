@@ -33,6 +33,9 @@ PACKAGES = {
 
   { spec = "local.protobuf@r0", source = "local.protobuf@r0.lua",
     options = { version = "33.3" } },
+
+  { spec = "local.swig@r0", source = "local.swig@r0.lua",
+    options = { version = "4.4.1" } },
 }
 
 if envy.PLATFORM ~= "windows" then

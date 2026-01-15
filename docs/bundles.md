@@ -149,7 +149,7 @@ DEPENDENCIES = {
   {bundle = "acme.toolchain-specs@v1", source = "...", ref = "..."},
 }
 
-BUILD = function(...)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   -- Load helper code from the bundle
   local helpers = envy.loadenv_spec("toolchain-specs", "lib.helpers")
   helpers.do_something()
@@ -226,7 +226,7 @@ DEPENDENCIES = {
   },
 }
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   -- Use the installed package
   local gcc = envy.package("acme.gcc")
   envy.run(gcc .. "/bin/gcc -o app main.c")
@@ -336,7 +336,7 @@ FETCH = function(tmp_dir)
   envy.commit_fetch("complex.tar.gz")
 end
 
-BUILD = function(stage_dir, fetch_dir, tmp_dir)
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local gcc = envy.package("acme.gcc")
   envy.run(gcc .. "/bin/gcc -o complex main.c")
 end

@@ -401,9 +401,9 @@ DEPENDENCIES = function(ctx)
   }
 end
 
-BUILD = function(ctx)
-  local compiler = ctx:asset("vendor.compiler@v3")
-  ctx:run(compiler .. "/bin/gcc", "-o", ctx.install_dir() .. "/toolchain", "main.c")
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  local compiler = envy.asset("vendor.compiler@v3")
+  envy.run(compiler .. "/bin/gcc -o " .. install_dir .. "/toolchain main.c")
 end
 ```
 
