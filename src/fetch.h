@@ -29,30 +29,32 @@ struct fetch_git_progress {
 using fetch_progress_t = std::variant<fetch_transfer_progress, fetch_git_progress>;
 using fetch_progress_cb_t = std::function<bool(fetch_progress_t const &)>;
 
-// HTTP/HTTPS/FTP/FTPS fetch requests (no additional fields)
-struct fetch_request_http {
+struct http_tag {};
+struct https_tag {};
+
+template <typename SchemeTag>
+struct http_request {
+  std::string source;
+  std::filesystem::path destination;
+  fetch_progress_cb_t progress{};
+  std::optional<std::string> post_data;
+};
+
+using fetch_request_http = http_request<http_tag>;
+using fetch_request_https = http_request<https_tag>;
+
+struct ftp_tag {};
+struct ftps_tag {};
+
+template <typename SchemeTag>
+struct ftp_request {
   std::string source;
   std::filesystem::path destination;
   fetch_progress_cb_t progress{};
 };
 
-struct fetch_request_https {
-  std::string source;
-  std::filesystem::path destination;
-  fetch_progress_cb_t progress{};
-};
-
-struct fetch_request_ftp {
-  std::string source;
-  std::filesystem::path destination;
-  fetch_progress_cb_t progress{};
-};
-
-struct fetch_request_ftps {
-  std::string source;
-  std::filesystem::path destination;
-  fetch_progress_cb_t progress{};
-};
+using fetch_request_ftp = ftp_request<ftp_tag>;
+using fetch_request_ftps = ftp_request<ftps_tag>;
 
 // S3 fetch request with region
 struct fetch_request_s3 {

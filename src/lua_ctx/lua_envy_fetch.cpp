@@ -25,6 +25,7 @@ struct fetch_item {
   std::string source;
   std::optional<std::string> sha256;
   std::optional<std::string> ref;
+  std::optional<std::string> post_data;
 };
 
 // Parse envy.fetch() url_or_spec argument
@@ -33,36 +34,38 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
   bool is_array{ false };
 
   if (arg.is<std::string>()) {
-    // Single string: "url"
-    items.push_back({ arg.as<std::string>(), std::nullopt, std::nullopt });
+    items.push_back({ arg.as<std::string>(), std::nullopt, std::nullopt, std::nullopt });
   } else if (arg.is<sol::table>()) {
     sol::table tbl{ arg.as<sol::table>() };
     sol::object first_elem{ tbl[1] };
 
     if (first_elem.get_type() == sol::type::lua_nil) {
-      // Single table: {source="...", sha256="...", ref="..."}
       std::string source{
         sol_util_get_required<std::string>(tbl, "source", "envy.fetch")
       };
+
       auto sha256{ sol_util_get_optional<std::string>(tbl, "sha256", "envy.fetch") };
       auto ref{ sol_util_get_optional<std::string>(tbl, "ref", "envy.fetch") };
-      items.push_back({ source, sha256, ref });
+      auto post_data{ sol_util_get_optional<std::string>(tbl, "post_data", "envy.fetch") };
+      items.push_back({ source, sha256, ref, post_data });
     } else if (first_elem.is<std::string>()) {
-      // Array of strings: {"source1", "source2"}
       is_array = true;
+
       for (auto const &[key, value] : tbl) {
         if (!value.is<std::string>()) {
           throw std::runtime_error("envy.fetch: array elements must be strings");
         }
-        items.push_back({ value.as<std::string>(), std::nullopt, std::nullopt });
+
+        items.push_back(
+            { value.as<std::string>(), std::nullopt, std::nullopt, std::nullopt });
       }
     } else if (first_elem.is<sol::table>()) {
-      // Array of tables: {{source="...", sha256="..."}, {...}}
       is_array = true;
       for (auto const &[key, value] : tbl) {
         if (!value.is<sol::table>()) {
           throw std::runtime_error("envy.fetch: array elements must be tables");
         }
+
         sol::table item_tbl{ value.as<sol::table>() };
         std::string source{ sol_util_get_required<std::string>(
             item_tbl,
@@ -72,7 +75,11 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
           sol_util_get_optional<std::string>(item_tbl, "sha256", "envy.fetch")
         };
         auto ref{ sol_util_get_optional<std::string>(item_tbl, "ref", "envy.fetch") };
-        items.push_back({ source, sha256, ref });
+        auto post_data{
+          sol_util_get_optional<std::string>(item_tbl, "post_data", "envy.fetch")
+        };
+
+        items.push_back({ source, sha256, ref, post_data });
       }
     } else {
       throw std::runtime_error("envy.fetch: invalid array element type");
@@ -232,9 +239,11 @@ void lua_envy_fetch_install(sol::table &envy_table) {
       sources.push_back(item.source);
 
       std::filesystem::path const file_dest{ dest_dir / final_basename };
-      fetch_request req{
-        url_to_fetch_request(item.source, file_dest, item.ref, "envy.fetch")
-      };
+      fetch_request req{ url_to_fetch_request(item.source,
+                                              file_dest,
+                                              item.ref,
+                                              item.post_data,
+                                              "envy.fetch") };
 
       // Set up progress tracking if in phase context
       if (items.size() == 1 && p && p->tui_section) {
