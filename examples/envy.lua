@@ -39,7 +39,11 @@ PACKAGES = {
 }
 
 if envy.PLATFORM ~= "windows" then
-  envy.extend(PACKAGES, { { spec = "local.ragel@r0", source = "local.ragel@r0.lua" } })
+  envy.extend(PACKAGES, {
+    { spec = "local.ragel@r0", source = "local.ragel@r0.lua" },
+    { spec = "local.jlink@r0", source = "local.jlink@r0.lua",
+      options = { version = "912" } },
+  })
 end
 
 if envy.PLATFORM == "darwin" then
