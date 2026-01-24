@@ -219,25 +219,38 @@ fetch_result fetch_git_repo(std::string const &url,
 }  // namespace
 
 fetch_result fetch_single(fetch_request const &request) {
-  // Helper for HTTP/HTTPS/FTP/FTPS requests that all use libcurl
-  auto const fetch_via_curl = [](auto const &req) -> fetch_result {
+  auto const fetch_http{ [](auto const &req) -> fetch_result {
     auto const info{ uri_classify(req.source) };
     if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
       throw std::invalid_argument("fetch: source URI is empty");
     }
-    return fetch_result{ .scheme = info.scheme,
-                         .resolved_source = std::filesystem::path{ info.canonical },
-                         .resolved_destination = libcurl_download(info.canonical,
-                                                                  req.destination,
-                                                                  req.progress) };
-  };
+    return fetch_result{
+      .scheme = info.scheme,
+      .resolved_source = std::filesystem::path{ info.canonical },
+      .resolved_destination =
+          libcurl_download(info.canonical, req.destination, req.progress, req.post_data)
+    };
+  } };
+
+  auto const fetch_ftp{ [](auto const &req) -> fetch_result {
+    auto const info{ uri_classify(req.source) };
+    if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {
+      throw std::invalid_argument("fetch: source URI is empty");
+    }
+    return fetch_result{
+      .scheme = info.scheme,
+      .resolved_source = std::filesystem::path{ info.canonical },
+      .resolved_destination =
+          libcurl_download(info.canonical, req.destination, req.progress, std::nullopt)
+    };
+  } };
 
   return std::visit(
       match{
-          [&](fetch_request_http const &req) { return fetch_via_curl(req); },
-          [&](fetch_request_https const &req) { return fetch_via_curl(req); },
-          [&](fetch_request_ftp const &req) { return fetch_via_curl(req); },
-          [&](fetch_request_ftps const &req) { return fetch_via_curl(req); },
+          [&](fetch_request_http const &req) { return fetch_http(req); },
+          [&](fetch_request_https const &req) { return fetch_http(req); },
+          [&](fetch_request_ftp const &req) { return fetch_ftp(req); },
+          [&](fetch_request_ftps const &req) { return fetch_ftp(req); },
           [](fetch_request_s3 const &req) -> fetch_result {
             auto const info{ uri_classify(req.source) };
             if (info.canonical.empty() && info.scheme == uri_scheme::UNKNOWN) {

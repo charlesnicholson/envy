@@ -147,8 +147,14 @@ Download files to destination.
 
 **source formats:**
 - `"https://example.com/file.tar.gz"` — URL string
-- `{ source = "...", sha256 = "..." }` — single spec with optional hash
+- `{ source = "...", sha256 = "...", post_data = "..." }` — single spec with optional hash and POST body
 - `{ { source = "..." }, { source = "..." } }` — array of specs
+
+**spec fields:**
+- `source` — required URL
+- `sha256` — optional hash for verification
+- `ref` — required for git URLs (branch, tag, or SHA)
+- `post_data` — optional form-urlencoded body; triggers HTTP POST (HTTP/HTTPS only)
 
 **opts:**
 - `dest` — required, destination directory
@@ -166,6 +172,13 @@ envy.fetch({ source = url, sha256 = "abc123..." }, { dest = tmp_dir })
 local files = envy.fetch({
   { source = url1, sha256 = hash1 },
   { source = url2, sha256 = hash2 }
+}, { dest = tmp_dir })
+
+-- POST request (for license-gated downloads)
+envy.fetch({
+  source = "https://example.com/download/file.pkg",
+  sha256 = hash,
+  post_data = "accept_license=yes"
 }, { dest = tmp_dir })
 ```
 

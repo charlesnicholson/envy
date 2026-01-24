@@ -34,18 +34,27 @@
 
 namespace envy {
 
-// Create fetch_request from URL and destination, validating scheme
 // Not in anonymous namespace so tests can call it
 fetch_request url_to_fetch_request(std::string const &url,
                                    std::filesystem::path const &dest,
                                    std::optional<std::string> const &ref,
+                                   std::optional<std::string> const &post_data,
                                    std::string const &context) {
   auto const info{ uri_classify(url) };
 
+  if (post_data && info.scheme != uri_scheme::HTTP && info.scheme != uri_scheme::HTTPS) {
+    throw std::runtime_error("post_data only valid for HTTP/HTTPS in " + context);
+  }
+
   switch (info.scheme) {
-    case uri_scheme::HTTP: return fetch_request_http{ .source = url, .destination = dest };
+    case uri_scheme::HTTP:
+      return fetch_request_http{ .source = url,
+                                 .destination = dest,
+                                 .post_data = post_data };
     case uri_scheme::HTTPS:
-      return fetch_request_https{ .source = url, .destination = dest };
+      return fetch_request_https{ .source = url,
+                                  .destination = dest,
+                                  .post_data = post_data };
     case uri_scheme::FTP: return fetch_request_ftp{ .source = url, .destination = dest };
     case uri_scheme::FTPS: return fetch_request_ftps{ .source = url, .destination = dest };
     case uri_scheme::S3:
@@ -87,6 +96,7 @@ struct table_entry {
   std::string url;
   std::string sha256;
   std::optional<std::string> ref;
+  std::optional<std::string> post_data;
 };
 
 std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
@@ -166,7 +176,6 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
   return should_mark_complete;
 }
 
-// Extract source, sha256, and ref from a Lua table.
 table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
   std::string url{ sol_util_get_required<std::string>(tbl, "source", context) };
   if (url.empty()) {
@@ -184,13 +193,17 @@ table_entry parse_table_entry(sol::table const &tbl, std::string const &context)
     entry.ref = std::move(*ref);
   }
 
+  if (auto pd{ sol_util_get_optional<std::string>(tbl, "post_data", context) }) {
+    entry.post_data = std::move(*pd);
+  }
+
   return entry;
 }
 
-// Create fetch_spec from URL, SHA256, and optional ref, checking for filename collisions.
 fetch_spec create_fetch_spec(std::string url,
                              std::string sha256,
                              std::optional<std::string> ref,
+                             std::optional<std::string> post_data,
                              std::filesystem::path const &fetch_dir,
                              std::filesystem::path const &stage_dir,
                              std::unordered_set<std::string> &basenames,
@@ -208,13 +221,11 @@ fetch_spec create_fetch_spec(std::string url,
 
   auto const info{ uri_classify(url) };
 
-  // Git repos go directly to stage_dir (no extraction needed), everything else to
-  // fetch_dir
   std::filesystem::path const dest{ info.scheme == uri_scheme::GIT
                                         ? stage_dir / basename
                                         : fetch_dir / basename };
 
-  return { .request = url_to_fetch_request(url, dest, ref, context),
+  return { .request = url_to_fetch_request(url, dest, ref, post_data, context),
            .sha256 = std::move(sha256) };
 }
 
@@ -235,7 +246,8 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
       }
       std::filesystem::path dest{ fetch_dir / basename };
 
-      return { { .request = url_to_fetch_request(url, dest, std::nullopt, key),
+      return { { .request =
+                     url_to_fetch_request(url, dest, std::nullopt, std::nullopt, key),
                  .sha256 = "" } };
     }
 
@@ -253,6 +265,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
         specs.push_back(create_fetch_spec(std::move(entry.url),
                                           std::move(entry.sha256),
                                           std::move(entry.ref),
+                                          std::move(entry.post_data),
                                           fetch_dir,
                                           stage_dir,
                                           basenames,
@@ -273,6 +286,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
 
           specs.push_back(create_fetch_spec(std::move(url),
                                             "",
+                                            std::nullopt,
                                             std::nullopt,
                                             fetch_dir,
                                             stage_dir,

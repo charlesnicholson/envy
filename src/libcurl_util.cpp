@@ -37,7 +37,8 @@ void libcurl_ensure_initialized() {
 
 std::filesystem::path libcurl_download(std::string_view url,
                                        std::filesystem::path const &destination,
-                                       fetch_progress_cb_t const &progress) {
+                                       fetch_progress_cb_t const &progress,
+                                       std::optional<std::string> const &post_data) {
   libcurl_ensure_initialized();
 
   std::string const url_copy{ url };
@@ -87,6 +88,12 @@ std::filesystem::path libcurl_download(std::string_view url,
   setopt(CURLOPT_WRITEFUNCTION, curl_write_file);
   setopt(CURLOPT_WRITEDATA, &output);
   setopt(CURLOPT_NOPROGRESS, progress ? 0L : 1L);
+
+  if (post_data) {
+    setopt(CURLOPT_POST, 1L);
+    setopt(CURLOPT_POSTFIELDS, post_data->c_str());
+    setopt(CURLOPT_POSTFIELDSIZE, static_cast<long>(post_data->size()));
+  }
 
   if (progress) {
     setopt(
