@@ -114,10 +114,12 @@ class EnvyLuaTests(unittest.TestCase):
         self.assertEqual("", result.stderr.strip())
 
     def test_abspath_rejects_absolute_path(self) -> None:
+        # Use platform-appropriate absolute path
+        abs_path = r"C:\abs\path" if sys.platform == "win32" else "/abs/path"
         with tempfile.TemporaryDirectory() as tmpdir:
             script = Path(tmpdir) / "test.lua"
             script.write_text(
-                "envy.stdout(envy.abspath('/abs/path'))\n", encoding="utf-8"
+                f"envy.stdout(envy.abspath('{abs_path}'))\n", encoding="utf-8"
             )
 
             result = self._run_envy("lua", str(script))

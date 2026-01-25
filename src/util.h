@@ -75,7 +75,8 @@ std::string util_path_with_separator(std::filesystem::path const &path);
 // Example: {"cmake", "bin/cmake.exe"} or {"python", "bin/python3"}
 using product_map_t = std::vector<std::pair<std::string, std::string>>;
 
-// Resolve relative path against anchor directory. Throws if relative is absolute.
+// Resolve relative path against an anchor directory.
+// Throws if `relative` is absolute, or if `anchor` is not an absolute path.
 std::filesystem::path util_absolute_path(std::filesystem::path const &relative,
                                          std::filesystem::path const &anchor);
 
