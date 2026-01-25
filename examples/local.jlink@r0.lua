@@ -4,13 +4,21 @@ VALIDATE = function(opts)
   if opts.version == nil then
     return "version option is required"
   end
+  if not opts.version:find("%.") then
+    return "version must contain a dot (e.g., '9.12' not '912')"
+  end
+end
+
+local function version_nodot(version)
+  return version:gsub("%.", "")
 end
 
 local function jlink_filename(opts)
+  local ver = version_nodot(opts.version)
   local arch = ({ arm64 = "arm64", aarch64 = "arm64", x86_64 = "x86_64" })[envy.ARCH]
   local name = ({
-    darwin = "JLink_MacOSX_V" .. opts.version .. "_" .. arch .. ".pkg",
-    linux = "JLink_Linux_V" .. opts.version .. "_" .. arch .. ".tgz",
+    darwin = "JLink_MacOSX_V" .. ver .. "_" .. arch .. ".pkg",
+    linux = "JLink_Linux_V" .. ver .. "_" .. arch .. ".tgz",
   })[envy.PLATFORM]
 
   if not name then error("unsupported platform: " .. envy.PLATFORM) end
@@ -24,28 +32,21 @@ FETCH = function(tmp_dir, opts)
   }
 end
 
-STAGE = function(fetch_dir, stage_dir, tmp_dir, opts)
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local src = fetch_dir .. jlink_filename(opts)
 
   if envy.PLATFORM == "darwin" then
-    envy.run("pkgutil --expand-full " .. src .. " " .. stage_dir .. "pkg")
+    envy.run("pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink")
   else
-    envy.extract(src, stage_dir, { strip = 1 })
-  end
-end
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  if envy.PLATFORM == "darwin" then
-    envy.move(stage_dir .. "pkg", install_dir)
-  else
-    envy.move(stage_dir, install_dir)
+    envy.extract(src, install_dir, { strip = 1 })
   end
 end
 
 PRODUCTS = function(opts)
   local bin, lib
   if envy.PLATFORM == "darwin" then
-    bin = "JLink.pkg/Payload/Applications/SEGGER/JLink_V" .. opts.version .. "/"
+    bin = "jlink/JLink.pkg/Payload/Applications/SEGGER/JLink_V" ..
+    version_nodot(opts.version) .. "/"
     lib = bin .. "libjlinkarm.9.dylib"
   else
     bin = ""
@@ -68,4 +69,3 @@ PRODUCTS = function(opts)
     libjlinkarm = lib,
   }
 end
-
