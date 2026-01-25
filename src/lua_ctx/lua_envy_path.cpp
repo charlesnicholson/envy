@@ -53,8 +53,8 @@ void lua_envy_path_install(sol::table &envy_table) {
   envy_table.set_function("abspath", [](sol::this_state L, std::string const &path_str) {
     std::string const source{ [&] {
       sol::state_view lua{ L };
-      sol::table const info{ lua["debug"]["getinfo"](2, "S") };
-      sol::optional<std::string> const source_opt{ info["source"] };
+      sol::table const info = lua["debug"]["getinfo"](2, "S");
+      sol::optional<std::string> const source_opt = info["source"];
       if (!source_opt) {
         throw std::runtime_error("envy.abspath: cannot determine caller's source file");
       }
