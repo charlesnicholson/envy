@@ -149,6 +149,19 @@ std::string util_path_with_separator(std::filesystem::path const &path) {
   return result;
 }
 
+std::filesystem::path util_absolute_path(std::filesystem::path const &relative,
+                                         std::filesystem::path const &anchor) {
+  if (relative.is_absolute()) {
+    throw std::runtime_error("util_absolute_path: path must be relative, got: " +
+                             relative.string());
+  }
+  if (!anchor.is_absolute()) {
+    throw std::runtime_error("util_absolute_path: anchor must be absolute, got: " +
+                             anchor.string());
+  }
+  return (anchor / relative).lexically_normal();
+}
+
 std::string util_flatten_script_with_semicolons(std::string_view script) {
   if (script.empty()) { return {}; }
 
@@ -302,9 +315,7 @@ std::string util_simplify_cache_paths(std::string_view command,
 
     // Extract token (sequence until separator)
     std::size_t const token_start{ pos };
-    while (pos < command.size() && !is_separator(command[pos])) {
-      ++pos;
-    }
+    while (pos < command.size() && !is_separator(command[pos])) { ++pos; }
 
     std::string_view const token{ command.data() + token_start, pos - token_start };
 

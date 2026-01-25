@@ -1,5 +1,7 @@
 #include "lua_envy_path.h"
 
+#include "util.h"
+
 #include <filesystem>
 #include <string>
 
@@ -46,6 +48,30 @@ void lua_envy_path_install(sol::table &envy_table) {
   };
 
   envy_table["path"] = path_table;
+
+  // envy.abspath(path) - Resolve relative path against calling script's directory
+  envy_table.set_function("abspath", [](sol::this_state L, std::string const &path_str) {
+    std::string const source{ [&] {
+      sol::state_view lua{ L };
+      sol::table const info{ lua["debug"]["getinfo"](2, "S") };
+      sol::optional<std::string> const source_opt{ info["source"] };
+      if (!source_opt) {
+        throw std::runtime_error("envy.abspath: cannot determine caller's source file");
+      }
+
+      std::string s{ *source_opt };
+      if (!s.empty() && s[0] == '@') { s = s.substr(1); }  // Strip "@" file-source prefix
+
+      return s;
+    }() };
+
+    std::filesystem::path const anchor{ std::filesystem::path{ source }.parent_path() };
+    if (anchor.empty()) {
+      throw std::runtime_error("envy.abspath: cannot determine script directory");
+    }
+
+    return util_absolute_path(path_str, anchor).string();
+  });
 }
 
 }  // namespace envy
