@@ -711,6 +711,36 @@ TEST_CASE("util_simplify_cache_paths handles multiple semicolon-separated comman
 
 // util_absolute_path tests
 
+#ifdef _WIN32
+TEST_CASE("util_absolute_path resolves relative path") {
+  CHECK(envy::util_absolute_path("foo\\bar.txt", "C:\\anchor\\dir") ==
+        "C:\\anchor\\dir\\foo\\bar.txt");
+}
+
+TEST_CASE("util_absolute_path normalizes parent refs") {
+  CHECK(envy::util_absolute_path("..\\sibling\\file.txt", "C:\\anchor\\dir") ==
+        "C:\\anchor\\sibling\\file.txt");
+}
+
+TEST_CASE("util_absolute_path normalizes dot refs") {
+  CHECK(envy::util_absolute_path(".\\foo\\..\\bar.txt", "C:\\anchor\\dir") ==
+        "C:\\anchor\\dir\\bar.txt");
+}
+
+TEST_CASE("util_absolute_path throws on absolute path") {
+  CHECK_THROWS_WITH(envy::util_absolute_path("C:\\abs\\path", "D:\\anchor"),
+                    doctest::Contains("path must be relative"));
+}
+
+TEST_CASE("util_absolute_path throws on relative anchor") {
+  CHECK_THROWS_WITH(envy::util_absolute_path("foo.txt", "relative\\anchor"),
+                    doctest::Contains("anchor must be absolute"));
+}
+
+TEST_CASE("util_absolute_path handles empty relative") {
+  CHECK(envy::util_absolute_path("", "C:\\anchor\\dir") == "C:\\anchor\\dir\\");
+}
+#else
 TEST_CASE("util_absolute_path resolves relative path") {
   CHECK(envy::util_absolute_path("foo/bar.txt", "/anchor/dir") ==
         "/anchor/dir/foo/bar.txt");
@@ -726,7 +756,7 @@ TEST_CASE("util_absolute_path normalizes dot refs") {
         "/anchor/dir/bar.txt");
 }
 
-TEST_CASE("util_absolute_path throws on absolute posix path") {
+TEST_CASE("util_absolute_path throws on absolute path") {
   CHECK_THROWS_WITH(envy::util_absolute_path("/abs/path", "/anchor"),
                     doctest::Contains("path must be relative"));
 }
@@ -736,21 +766,10 @@ TEST_CASE("util_absolute_path throws on relative anchor") {
                     doctest::Contains("anchor must be absolute"));
 }
 
-#ifdef _WIN32
-TEST_CASE("util_absolute_path throws on absolute windows path") {
-  CHECK_THROWS_WITH(envy::util_absolute_path("C:\\abs\\path", "D:\\anchor"),
-                    doctest::Contains("path must be relative"));
-}
-
-TEST_CASE("util_absolute_path throws on relative anchor windows") {
-  CHECK_THROWS_WITH(envy::util_absolute_path("foo.txt", "relative\\anchor"),
-                    doctest::Contains("anchor must be absolute"));
-}
-#endif
-
 TEST_CASE("util_absolute_path handles empty relative") {
   CHECK(envy::util_absolute_path("", "/anchor/dir") == "/anchor/dir/");
 }
+#endif
 
 // util_path_with_separator tests
 
