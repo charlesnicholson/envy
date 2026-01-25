@@ -66,6 +66,6 @@ PRODUCTS = function(opts)
     JLinkXVCDServerExe = bin .. "JLinkXVCDServerExe",
     JRunExe = bin .. "JRunExe",
     JTAGLoadExe = bin .. "JTAGLoadExe",
-    libjlinkarm = lib,
+    libjlinkarm = { value = lib, script = false },
   }
 end

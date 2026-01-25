@@ -62,6 +62,7 @@ struct product_info {
   std::string provider_canonical;  // Full canonical identity with options
   pkg_type type;
   std::filesystem::path pkg_path;
+  bool script = true;
 };
 
 class engine : unmovable {

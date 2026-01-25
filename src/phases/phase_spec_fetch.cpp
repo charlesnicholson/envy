@@ -432,10 +432,10 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
   return spec_path;
 }
 
-std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const &cfg,
-                                                                  sol::state &lua,
-                                                                  pkg *p) {
-  std::unordered_map<std::string, std::string> parsed_products;
+std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg const &cfg,
+                                                                    sol::state &lua,
+                                                                    pkg *p) {
+  std::unordered_map<std::string, product_entry> parsed_products;
   sol::object products_obj{ lua["PRODUCTS"] };
   std::string const &id{ cfg.identity };
 
@@ -483,12 +483,29 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
     if (!key_obj.is<std::string>()) {
       throw std::runtime_error("PRODUCTS key must be string in spec '" + id + "'");
     }
-    if (!val_obj.is<std::string>()) {
-      throw std::runtime_error("PRODUCTS value must be string in spec '" + id + "'");
-    }
 
     std::string key_str{ key_obj.as<std::string>() };
-    std::string val_str{ val_obj.as<std::string>() };
+    std::string val_str;
+    bool script{ true };
+
+    if (val_obj.is<std::string>()) {
+      val_str = val_obj.as<std::string>();
+    } else if (val_obj.is<sol::table>()) {
+      sol::table t{ val_obj.as<sol::table>() };
+      sol::object val_field{ t["value"] };
+      if (!val_field.is<std::string>()) {
+        throw std::runtime_error("PRODUCTS table entry '" + key_str +
+                                 "' must have string 'value' field in spec '" + id + "'");
+      }
+      val_str = val_field.as<std::string>();
+      sol::object script_field{ t["script"] };
+      if (script_field.valid() && script_field.is<bool>()) {
+        script = script_field.as<bool>();
+      }
+    } else {
+      throw std::runtime_error("PRODUCTS value must be string or table in spec '" + id +
+                               "'");
+    }
 
     if (key_str.empty()) {
       throw std::runtime_error("PRODUCTS key cannot be empty in spec '" + id + "'");
@@ -524,7 +541,7 @@ std::unordered_map<std::string, std::string> parse_products_table(pkg_cfg const 
       }
     }
 
-    parsed_products[std::move(key_str)] = std::move(val_str);
+    parsed_products[std::move(key_str)] = product_entry{ std::move(val_str), script };
   }
 
   return parsed_products;
@@ -1274,10 +1291,10 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
   }
 
   p->products = parse_products_table(cfg, *lua, p);
-  for (auto const &[name, value] : p->products) {
+  for (auto const &[name, entry] : p->products) {
     ENVY_TRACE_EMIT((trace_events::product_parsed{ .spec = cfg.identity,
                                                    .product_name = name,
-                                                   .product_value = value }));
+                                                   .product_value = entry.value }));
   }
   p->owned_dependency_cfgs = parse_dependencies_table(*lua, spec_path, cfg);
 
