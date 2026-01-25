@@ -45,7 +45,7 @@ std::unique_ptr<pkg> make_pkg(std::string identity, pkg_type type) {
 TEST_CASE("product_util_resolve returns joined path for cache-managed provider") {
   auto provider{ make_pkg("local.provider@v1", pkg_type::CACHE_MANAGED) };
   provider->pkg_path = std::filesystem::path("/tmp/provider");
-  provider->products["tool"] = "bin/tool";
+  provider->products["tool"] = product_entry{ "bin/tool", true };
 
   auto const value{ product_util_resolve(provider.get(), "tool") };
   CHECK(value == "/tmp/provider/bin/tool");
@@ -53,7 +53,7 @@ TEST_CASE("product_util_resolve returns joined path for cache-managed provider")
 
 TEST_CASE("product_util_resolve returns raw value for user-managed provider") {
   auto provider{ make_pkg("local.provider@v1", pkg_type::USER_MANAGED) };
-  provider->products["tool"] = "raw-tool";
+  provider->products["tool"] = product_entry{ "raw-tool", true };
 
   auto const value{ product_util_resolve(provider.get(), "tool") };
   CHECK(value == "raw-tool");
@@ -74,7 +74,7 @@ TEST_CASE("product_util_resolve throws on missing product entry") {
 
 TEST_CASE("product_util_resolve throws on empty product value") {
   auto provider{ make_pkg("local.provider@v1", pkg_type::CACHE_MANAGED) };
-  provider->products["tool"] = "";
+  provider->products["tool"] = product_entry{ "", true };
   CHECK_THROWS_WITH_AS(product_util_resolve(provider.get(), "tool"),
                        "Product 'tool' is empty in provider 'local.provider@v1'",
                        std::runtime_error);
@@ -82,7 +82,7 @@ TEST_CASE("product_util_resolve throws on empty product value") {
 
 TEST_CASE("product_util_resolve throws on missing package path for cached provider") {
   auto provider{ make_pkg("local.provider@v1", pkg_type::CACHE_MANAGED) };
-  provider->products["tool"] = "bin/tool";
+  provider->products["tool"] = product_entry{ "bin/tool", true };
   CHECK_THROWS_WITH_AS(product_util_resolve(provider.get(), "tool"),
                        "Product 'tool' provider 'local.provider@v1' missing pkg path",
                        std::runtime_error);

@@ -7,7 +7,6 @@ and transitive dependencies.
 import hashlib
 import io
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
@@ -102,6 +101,22 @@ end
 # Product provider: cached package exposing 'tool' product at bin/tool
 SPEC_PRODUCT_PROVIDER = """IDENTITY = "local.product_provider@v1"
 PRODUCTS = {{ tool = "bin/tool" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
+# Product provider with mixed script/noscript products
+SPEC_MIXED_PRODUCTS = """IDENTITY = "local.mixed_products@v1"
+PRODUCTS = {{
+  tool = "bin/tool",
+  library = {{ value = "lib/libfoo.so", script = false }},
+}}
 
 FETCH = {{
   source = "{ARCHIVE_PATH}",
@@ -644,7 +659,7 @@ PACKAGES = {{
                 tool_content = b"@echo off\necho Args: %*\n"
                 tool_name = "echotool.bat"
             else:
-                tool_content = b"#!/bin/sh\necho \"Args: $@\"\n"
+                tool_content = b'#!/bin/sh\necho "Args: $@"\n'
                 tool_name = "echotool"
 
             # Add tool file to archive
@@ -661,14 +676,16 @@ PACKAGES = {{
         # Create spec for product provider (use normal Python substitution to avoid escaping issues)
         spec = 'IDENTITY = "local.echotool@v1"\n'
         spec += 'PRODUCTS = { echotool = "bin/' + tool_name + '" }\n\n'
-        spec += 'FETCH = {\n'
+        spec += "FETCH = {\n"
         spec += '  source = "' + archive_path.as_posix() + '",\n'
         spec += '  sha256 = "' + archive_hash + '",\n'
-        spec += '}\n\n'
-        spec += 'STAGE = { strip = 0 }\n\n'
-        spec += 'INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n'
+        spec += "}\n\n"
+        spec += "STAGE = { strip = 0 }\n\n"
+        spec += (
+            "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n"
+        )
         spec += '  envy.run("cp -r " .. stage_dir .. "/* " .. install_dir .. "/")\n'
-        spec += 'end\n'
+        spec += "end\n"
         spec_file = self.specs_dir / "echotool.lua"
         spec_file.write_text(spec, encoding="utf-8")
         spec_path = spec_file.as_posix()
@@ -691,7 +708,9 @@ PACKAGES = {{
         # Test 1: Execute product script without arguments
         script_name = "echotool.bat" if sys.platform == "win32" else "echotool"
         script_path = bin_dir / script_name
-        self.assertTrue(script_path.exists(), f"Product script not created: {script_path}")
+        self.assertTrue(
+            script_path.exists(), f"Product script not created: {script_path}"
+        )
 
         result = test_config.run(
             [str(script_path)],
@@ -700,8 +719,9 @@ PACKAGES = {{
             text=True,
             env={**test_config.get_test_env(), "ENVY_CACHE_ROOT": str(self.cache_root)},
         )
-        self.assertEqual(result.returncode, 0,
-                        f"Product script failed: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"Product script failed: {result.stderr}"
+        )
         self.assertIn("Args:", result.stdout)
 
         # Test 2: Execute product script with arguments
@@ -712,11 +732,106 @@ PACKAGES = {{
             text=True,
             env={**test_config.get_test_env(), "ENVY_CACHE_ROOT": str(self.cache_root)},
         )
-        self.assertEqual(result.returncode, 0,
-                        f"Product script with args failed: {result.stderr}")
+        self.assertEqual(
+            result.returncode, 0, f"Product script with args failed: {result.stderr}"
+        )
         self.assertIn("arg1", result.stdout)
         self.assertIn("arg2", result.stdout)
         self.assertIn("arg with spaces", result.stdout)
+
+    def test_no_script_for_noscript_product(self):
+        """Products with script=false do not get scripts created."""
+        mixed_path = self.write_spec("mixed_products", SPEC_MIXED_PRODUCTS)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.mixed_products@v1", source = "{mixed_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue(bin_dir.exists())
+
+        # Tool script should exist
+        tool_script = "tool.bat" if sys.platform == "win32" else "tool"
+        self.assertTrue(
+            (bin_dir / tool_script).exists(), "tool script should be created"
+        )
+
+        # Library script should NOT exist
+        library_script = "library.bat" if sys.platform == "win32" else "library"
+        self.assertFalse(
+            (bin_dir / library_script).exists(),
+            "library script should NOT be created (script=false)",
+        )
+
+    def test_product_command_returns_noscript_value(self):
+        """envy product command returns full path for noscript products."""
+        mixed_path = self.write_spec("mixed_products", SPEC_MIXED_PRODUCTS)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.mixed_products@v1", source = "{mixed_path}" }},
+}}
+""")
+
+        # First sync to install the package
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Now run envy product to get the library path
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "product",
+            "library",
+            "--manifest",
+            str(manifest),
+        ]
+        result = test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        # The output should contain the full resolved path
+        self.assertIn("lib/libfoo.so", result.stdout)
+
+    def test_product_listing_includes_noscript(self):
+        """envy product listing includes both script and noscript products."""
+        mixed_path = self.write_spec("mixed_products", SPEC_MIXED_PRODUCTS)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.mixed_products@v1", source = "{mixed_path}" }},
+}}
+""")
+
+        # First sync to install the package
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Now run envy product to list all products
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "product",
+            "--manifest",
+            str(manifest),
+        ]
+        result = test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        # Both products should be listed (output is to stderr for human-readable format)
+        self.assertIn("tool", result.stderr)
+        self.assertIn("library", result.stderr)
 
 
 class TestSyncDeployDirective(unittest.TestCase):

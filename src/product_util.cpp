@@ -20,7 +20,7 @@ std::string product_util_resolve(pkg *provider, std::string const &product_name)
                              provider->cfg->identity + "'");
   }
 
-  std::string const &value{ it->second };
+  std::string const &value{ it->second.value };
   if (value.empty()) {
     throw std::runtime_error("Product '" + product_name + "' is empty in provider '" +
                              provider->cfg->identity + "'");

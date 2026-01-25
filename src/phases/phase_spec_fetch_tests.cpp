@@ -410,4 +410,190 @@ TEST_CASE("product name validation") {
   }
 }
 
+TEST_CASE("PRODUCTS table syntax") {
+  SUBCASE("string value produces script=true") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_string" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("tool") == 1);
+    CHECK(p->products.at("tool").value == "/usr/bin/tool");
+    CHECK(p->products.at("tool").script == true);
+  }
+
+  SUBCASE("table value with script=true") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_table_true" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", script = true } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("tool") == 1);
+    CHECK(p->products.at("tool").value == "/usr/bin/tool");
+    CHECK(p->products.at("tool").script == true);
+  }
+
+  SUBCASE("table value with script=false") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_table_false" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { lib = { value = \"/usr/lib/libfoo.so\", script = false } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("lib") == 1);
+    CHECK(p->products.at("lib").value == "/usr/lib/libfoo.so");
+    CHECK(p->products.at("lib").script == false);
+  }
+
+  SUBCASE("table value without script defaults to true") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_table_default" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("tool") == 1);
+    CHECK(p->products.at("tool").value == "/usr/bin/tool");
+    CHECK(p->products.at("tool").script == true);
+  }
+
+  SUBCASE("table missing value field throws") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_missing_value" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { lib = { script = false } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                      doctest::Contains("must have string 'value' field"));
+  }
+
+  SUBCASE("table with invalid value type throws") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_invalid_value" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { lib = { value = 123 } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                      doctest::Contains("must have string 'value' field"));
+  }
+
+  SUBCASE("mixed string and table forms") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_mixed" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = {\n";
+    ofs << "  tool = \"/usr/bin/tool\",\n";
+    ofs << "  lib = { value = \"/usr/lib/libfoo.so\", script = false },\n";
+    ofs << "}\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("tool") == 1);
+    CHECK(p->products.at("tool").value == "/usr/bin/tool");
+    CHECK(p->products.at("tool").script == true);
+    CHECK(p->products.count("lib") == 1);
+    CHECK(p->products.at("lib").value == "/usr/lib/libfoo.so");
+    CHECK(p->products.at("lib").script == false);
+  }
+}
+
 }  // namespace envy

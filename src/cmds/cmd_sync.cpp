@@ -114,14 +114,20 @@ fs::path product_script_path(fs::path const &bin_dir, std::string_view product_n
 void deploy_product_scripts(engine &eng,
                             fs::path const &bin_dir,
                             std::vector<product_info> const &products) {
-  std::set<std::string> current_products;
-  for (auto const &p : products) { current_products.insert(p.product_name); }
+  std::set<std::string> const current_products{ [&] {
+    std::set<std::string> s;
+    for (auto const &p : products) {
+      if (p.script) { s.insert(p.product_name); }
+    }
+    return s;
+  }() };
 
   size_t created{ 0 };
   size_t updated{ 0 };
   size_t unchanged{ 0 };
 
   for (auto const &product : products) {
+    if (!product.script) { continue; }
     fs::path const script_path{ product_script_path(bin_dir, product.product_name) };
 
     if (fs::exists(script_path) && !has_envy_marker(script_path)) {
@@ -198,9 +204,10 @@ void deploy_product_scripts(engine &eng,
     return;
   }
 
+  size_t const script_count{ created + updated + unchanged };
   tui::info(
       "sync: %zu product script(s) (%zu created, %zu updated, %zu unchanged, %zu removed)",
-      products.size(),
+      script_count,
       created,
       updated,
       unchanged,

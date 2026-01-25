@@ -389,13 +389,14 @@ std::vector<product_info> engine::collect_all_products() const {
     std::lock_guard const lock(mutex_);
 
     for (auto const &[key, package] : packages_) {
-      for (auto const &[prod_name, prod_value] : package->products) {
+      for (auto const &[prod_name, prod_entry] : package->products) {
         infos.push_back({
             .product_name = prod_name,
-            .value = prod_value,
+            .value = prod_entry.value,
             .provider_canonical = package->key.canonical(),
             .type = package->type,
             .pkg_path = package->pkg_path,
+            .script = prod_entry.script,
         });
       }
     }

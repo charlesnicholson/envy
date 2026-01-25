@@ -19,6 +19,11 @@ namespace envy {
 enum class pkg_type;
 struct pkg_execution_ctx;
 
+struct product_entry {
+  std::string value;
+  bool script = true;
+};
+
 struct pkg {
   struct dependency_info {  // pkg and phase by which dependency must be complete
     pkg *p;
@@ -68,7 +73,7 @@ struct pkg {
   std::unordered_map<std::string, dependency_info> dependencies;
   std::unordered_map<std::string, product_dependency> product_dependencies;
   std::vector<weak_reference> weak_references;
-  std::unordered_map<std::string, std::string> products;
+  std::unordered_map<std::string, product_entry> products;
   std::vector<std::string> resolved_weak_dependency_keys;
 };
 
