@@ -83,9 +83,11 @@ class EnvyLuaTests(unittest.TestCase):
             )
 
             # Main script requires helper
+            # Use forward slashes for Lua compatibility (avoids escape sequence issues on Windows)
+            lua_tmpdir = tmpdir.replace("\\", "/")
             script = Path(tmpdir) / "main.lua"
             script.write_text(
-                f"package.path = '{tmpdir}/?.lua;' .. package.path\n"
+                f"package.path = '{lua_tmpdir}/?.lua;' .. package.path\n"
                 "local helper = require('helpers.helper')\n"
                 "envy.stdout(helper.get_path())\n",
                 encoding="utf-8",
@@ -115,7 +117,8 @@ class EnvyLuaTests(unittest.TestCase):
 
     def test_abspath_rejects_absolute_path(self) -> None:
         # Use platform-appropriate absolute path
-        abs_path = r"C:\abs\path" if sys.platform == "win32" else "/abs/path"
+        # Windows path needs doubled backslashes for Lua string escaping
+        abs_path = r"C:\\abs\\path" if sys.platform == "win32" else "/abs/path"
         with tempfile.TemporaryDirectory() as tmpdir:
             script = Path(tmpdir) / "test.lua"
             script.write_text(
