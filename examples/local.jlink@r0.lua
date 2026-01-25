@@ -36,7 +36,8 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local src = fetch_dir .. jlink_filename(opts)
 
   if envy.PLATFORM == "darwin" then
-    envy.run("pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink")
+    local cmd = "pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink"
+    envy.run(cmd, { check = true })
   else
     envy.extract(src, install_dir, { strip = 1 })
   end
@@ -46,7 +47,7 @@ PRODUCTS = function(opts)
   local bin, lib
   if envy.PLATFORM == "darwin" then
     bin = "jlink/JLink.pkg/Payload/Applications/SEGGER/JLink_V" ..
-    version_nodot(opts.version) .. "/"
+        version_nodot(opts.version) .. "/"
     lib = bin .. "libjlinkarm.9.dylib"
   else
     bin = ""
