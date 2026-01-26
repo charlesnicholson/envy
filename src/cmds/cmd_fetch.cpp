@@ -65,12 +65,14 @@ void cmd_fetch::execute() {
                                     cfg_.manifest_root.value_or(std::filesystem::path{}) };
       break;
     case uri_scheme::GIT:
+    case uri_scheme::GIT_HTTPS:
       if (!cfg_.ref.has_value() || cfg_.ref->empty()) {
         throw std::runtime_error("fetch: git sources require --ref <branch|tag|sha>");
       }
       req = fetch_request_git{ .source = info.canonical,
                                .destination = cfg_.destination,
-                               .ref = *cfg_.ref };
+                               .ref = *cfg_.ref,
+                               .scheme = info.scheme };
       break;
     default: throw std::runtime_error("fetch: unsupported URL scheme");
   }

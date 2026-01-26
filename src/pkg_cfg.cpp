@@ -95,7 +95,7 @@ pkg_cfg::source_t parse_source_string(std::string const &source_uri,
                                       std::filesystem::path const &base_path) {
   auto const info{ uri_classify(source_uri) };
 
-  if (info.scheme == uri_scheme::GIT) {
+  if (info.scheme == uri_scheme::GIT || info.scheme == uri_scheme::GIT_HTTPS) {
     std::string const ref_str{
       sol_util_get_required<std::string>(table, "ref", "Spec with git source")
     };

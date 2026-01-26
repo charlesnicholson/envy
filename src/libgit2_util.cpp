@@ -2,10 +2,11 @@
 
 #include <git2.h>
 
-#ifndef _WIN32
-#include <sys/stat.h>
 #include <stdexcept>
 #include <string>
+
+#ifndef _WIN32
+#include <sys/stat.h>
 #endif
 
 namespace envy {
@@ -26,7 +27,9 @@ bool configure_ssl_certs() {
 #ifdef __APPLE__
   struct stat st;
   if (stat(kCaBundlePath, &st) == 0 && S_ISREG(st.st_mode)) {
-    git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, kCaBundlePath, nullptr);
+    if (git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, kCaBundlePath, nullptr) < 0) {
+      return false;
+    }
     return true;
   }
   return false;
@@ -41,7 +44,9 @@ bool configure_ssl_certs() {
   struct stat st;
   for (auto const *path : ca_paths) {
     if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
-      git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, path, nullptr);
+      if (git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, path, nullptr) < 0) {
+        continue;  // Try next path
+      }
       return true;
     }
   }
@@ -53,7 +58,9 @@ bool configure_ssl_certs() {
 #endif
 
 libgit2_scope::libgit2_scope() {
-  git_libgit2_init();
+  if (git_libgit2_init() < 0) {
+    throw std::runtime_error("Failed to initialize libgit2");
+  }
 #ifndef _WIN32
   g_ssl_certs_configured = configure_ssl_certs();
 #endif

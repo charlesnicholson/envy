@@ -24,12 +24,14 @@ envy::uri_info expect_uri(std::string_view input,
 }  // namespace
 
 TEST_CASE("classify_uri detects git via suffix") {
+  // HTTPS git repos use GIT_HTTPS (require SSL certs)
   expect_uri("https://example.com/repo.git",
-             envy::uri_scheme::GIT,
+             envy::uri_scheme::GIT_HTTPS,
              "https://example.com/repo.git");
   expect_uri("https://example.com/repo.git?ref=main",
-             envy::uri_scheme::GIT,
+             envy::uri_scheme::GIT_HTTPS,
              "https://example.com/repo.git?ref=main");
+  // Non-HTTPS git repos use GIT (no SSL certs needed)
   expect_uri("git@github.com:org/repo.git",
              envy::uri_scheme::GIT,
              "git@github.com:org/repo.git");

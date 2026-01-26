@@ -116,12 +116,22 @@ uri_info uri_classify(std::string_view value) {
   if (canonical.empty()) { return uri_info{ uri_scheme::UNKNOWN, std::move(canonical) }; }
 
   auto const path_segment{ strip_query_and_fragment(canonical) };
-  if (iends_with(path_segment, ".git")) {
-    return uri_info{ uri_scheme::GIT, std::move(canonical) };
-  }
+
+  // Git protocol schemes (no SSL certs needed)
   if (istarts_with(canonical, "git://") || istarts_with(canonical, "git+ssh://")) {
     return uri_info{ uri_scheme::GIT, std::move(canonical) };
   }
+
+  // HTTPS git repos (SSL certs needed)
+  if (istarts_with(canonical, "https://") && iends_with(path_segment, ".git")) {
+    return uri_info{ uri_scheme::GIT_HTTPS, std::move(canonical) };
+  }
+
+  // Non-git .git suffix with other schemes - treat as git protocol
+  if (iends_with(path_segment, ".git")) {
+    return uri_info{ uri_scheme::GIT, std::move(canonical) };
+  }
+
   if (istarts_with(canonical, "s3://")) {
     return uri_info{ uri_scheme::S3, std::move(canonical) };
   }

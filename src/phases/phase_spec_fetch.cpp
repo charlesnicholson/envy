@@ -170,9 +170,11 @@ std::filesystem::path fetch_git_source(pkg_cfg const &cfg, pkg *p) {
                git_src->ref.c_str());
 
     std::filesystem::path install_dir{ cache_result.lock->install_dir() };
+    auto const info{ uri_classify(git_src->url) };
     auto const results{ fetch({ fetch_request_git{ .source = git_src->url,
                                                    .destination = install_dir,
-                                                   .ref = git_src->ref } }) };
+                                                   .ref = git_src->ref,
+                                                   .scheme = info.scheme } }) };
     if (results.empty() || std::holds_alternative<std::string>(results[0])) {
       throw std::runtime_error(
           "Failed to fetch git spec: " +
@@ -302,9 +304,11 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
             },
 
             [&](pkg_cfg::git_source const &git) {  // git source
+              auto const git_info{ uri_classify(git.url) };
               auto const results{ fetch({ fetch_request_git{ .source = git.url,
                                                              .destination = install_dir,
-                                                             .ref = git.ref } }) };
+                                                             .ref = git.ref,
+                                                             .scheme = git_info.scheme } }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
@@ -608,7 +612,7 @@ std::optional<pkg_cfg::bundle_source> try_parse_pure_bundle_dep(
   std::string const source_uri{ source_obj.as<std::string>() };
   auto const info{ uri_classify(source_uri) };
 
-  if (info.scheme == uri_scheme::GIT) {
+  if (info.scheme == uri_scheme::GIT || info.scheme == uri_scheme::GIT_HTTPS) {
     auto ref_opt{ sol_util_get_optional<std::string>(table, "ref", "Bundle dependency") };
     if (!ref_opt.has_value() || ref_opt->empty()) {
       throw std::runtime_error("Bundle dependency with git source requires 'ref' field");
@@ -1084,9 +1088,11 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
               }
             },
             [&](pkg_cfg::git_source const &git) {
+              auto const git_info{ uri_classify(git.url) };
               auto const results{ fetch({ fetch_request_git{ .source = git.url,
                                                              .destination = install_dir,
-                                                             .ref = git.ref } }) };
+                                                             .ref = git.ref,
+                                                             .scheme = git_info.scheme } }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
