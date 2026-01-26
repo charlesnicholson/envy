@@ -10,4 +10,8 @@ struct libgit2_scope : unmovable {
   ~libgit2_scope();
 };
 
+// Throws if SSL certificates are required but not found (Linux only).
+// Call before any HTTPS git operations.
+void libgit2_require_ssl_certs();
+
 }  // namespace envy

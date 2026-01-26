@@ -2,6 +2,7 @@
 
 #include "aws_util.h"
 #include "libcurl_util.h"
+#include "libgit2_util.h"
 #include "util.h"
 
 #include "git2.h"
@@ -141,6 +142,7 @@ fetch_result fetch_git_repo(std::string const &url,
                             std::string const &ref,
                             std::filesystem::path const &destination,
                             fetch_progress_cb_t const &progress) {
+  libgit2_require_ssl_certs();
   auto const dest{ prepare_destination(destination) };
 
   // Try shallow clone first; fall back to full clone if shallow fails or ref not found.
