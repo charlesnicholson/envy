@@ -99,7 +99,7 @@ bundle_decl parse_decl(sol::table const &table, std::filesystem::path const &bas
 
   auto const info{ uri_classify(source_uri) };
 
-  if (info.scheme == uri_scheme::GIT) {
+  if (info.scheme == uri_scheme::GIT || info.scheme == uri_scheme::GIT_HTTPS) {
     auto ref_opt{ sol_util_get_optional<std::string>(table, "ref", "Bundle") };
     if (!ref_opt.has_value() || ref_opt->empty()) {
       throw std::runtime_error("Bundle with git source requires 'ref' field");

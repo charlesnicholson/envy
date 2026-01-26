@@ -79,6 +79,7 @@ struct fetch_request_git {
   std::filesystem::path destination;
   fetch_progress_cb_t progress{};
   std::string ref;
+  uri_scheme scheme{ uri_scheme::GIT };  // GIT or GIT_HTTPS
 };
 
 using fetch_request = std::variant<fetch_request_http,

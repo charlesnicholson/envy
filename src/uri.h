@@ -13,7 +13,8 @@ enum class uri_scheme {
   HTTPS,
   FTP,
   FTPS,
-  GIT,
+  GIT,        // git:// or git+ssh:// (no SSL certs needed)
+  GIT_HTTPS,  // https://...*.git (SSL certs needed)
   SSH,
   LOCAL_FILE_ABSOLUTE,
   LOCAL_FILE_RELATIVE,

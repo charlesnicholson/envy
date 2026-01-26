@@ -65,10 +65,11 @@ fetch_request url_to_fetch_request(std::string const &url,
       return fetch_request_file{ .source = url, .destination = dest };
       // TODO: file_root support
     case uri_scheme::GIT:
+    case uri_scheme::GIT_HTTPS:
       if (!ref.has_value() || ref->empty()) {
         throw std::runtime_error("Git URLs require 'ref' field in " + context);
       }
-      return fetch_request_git{ .source = url, .destination = dest, .ref = *ref };
+      return fetch_request_git{ .source = url, .destination = dest, .ref = *ref, .scheme = info.scheme };
     default: throw std::runtime_error("Unsupported URL scheme in " + context + ": " + url);
   }
 }
@@ -221,9 +222,11 @@ fetch_spec create_fetch_spec(std::string url,
 
   auto const info{ uri_classify(url) };
 
-  std::filesystem::path const dest{ info.scheme == uri_scheme::GIT
-                                        ? stage_dir / basename
-                                        : fetch_dir / basename };
+  std::filesystem::path const dest{
+    (info.scheme == uri_scheme::GIT || info.scheme == uri_scheme::GIT_HTTPS)
+        ? stage_dir / basename
+        : fetch_dir / basename
+  };
 
   return { .request = url_to_fetch_request(url, dest, ref, post_data, context),
            .sha256 = std::move(sha256) };

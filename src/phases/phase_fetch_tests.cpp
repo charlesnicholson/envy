@@ -115,6 +115,22 @@ TEST_CASE("url_to_fetch_request git with ref") {
   CHECK(git_req.source == "git://github.com/user/repo.git");
   CHECK(git_req.destination == "/tmp/repo");
   CHECK(git_req.ref == "abc123def456");
+  CHECK(git_req.scheme == uri_scheme::GIT);
+}
+
+TEST_CASE("url_to_fetch_request git_https with ref") {
+  auto req{ url_to_fetch_request("https://github.com/user/repo.git",
+                                 "/tmp/repo",
+                                 "main",
+                                 std::nullopt,
+                                 "test") };
+
+  REQUIRE(std::holds_alternative<fetch_request_git>(req));
+  auto const &git_req{ std::get<fetch_request_git>(req) };
+  CHECK(git_req.source == "https://github.com/user/repo.git");
+  CHECK(git_req.destination == "/tmp/repo");
+  CHECK(git_req.ref == "main");
+  CHECK(git_req.scheme == uri_scheme::GIT_HTTPS);
 }
 
 TEST_CASE("url_to_fetch_request git without ref throws") {

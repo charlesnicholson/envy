@@ -2,10 +2,12 @@
 
 #include "aws_util.h"
 #include "libcurl_util.h"
+#include "libgit2_util.h"
 #include "util.h"
 
 #include "git2.h"
 
+#include <cctype>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -140,7 +142,9 @@ git_object *try_resolve_ref(git_repository *repo, std::string const &ref) {
 fetch_result fetch_git_repo(std::string const &url,
                             std::string const &ref,
                             std::filesystem::path const &destination,
-                            fetch_progress_cb_t const &progress) {
+                            fetch_progress_cb_t const &progress,
+                            uri_scheme scheme) {
+  if (scheme == uri_scheme::GIT_HTTPS) { libgit2_require_ssl_certs(); }
   auto const dest{ prepare_destination(destination) };
 
   // Try shallow clone first; fall back to full clone if shallow fails or ref not found.
@@ -211,7 +215,7 @@ fetch_result fetch_git_repo(std::string const &url,
     throw std::runtime_error(msg);
   }
 
-  return fetch_result{ .scheme = uri_scheme::GIT,
+  return fetch_result{ .scheme = scheme,
                        .resolved_source = std::filesystem::path{ url },
                        .resolved_destination = dest };
 }
@@ -273,7 +277,7 @@ fetch_result fetch_single(fetch_request const &request) {
             return fetch_local_file(info.canonical, req.destination, req.file_root);
           },
           [](fetch_request_git const &req) -> fetch_result {
-            return fetch_git_repo(req.source, req.ref, req.destination, req.progress);
+            return fetch_git_repo(req.source, req.ref, req.destination, req.progress, req.scheme);
           },
       },
       request);
