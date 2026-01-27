@@ -55,21 +55,26 @@ void extract_from_domain(SecTrustSettingsDomain domain, std::vector<unsigned cha
       if (trust_settings.count == 0) {
         trusted = true;
       } else {
+        bool dominated = false;  // True if an explicit result was found
         for (NSDictionary *setting in trust_settings) {
           NSNumber *result_num = setting[(__bridge NSString *)kSecTrustSettingsResult];
           if (result_num) {
             SInt32 result = [result_num intValue];
+            if (result == kSecTrustSettingsResultDeny) {
+              trusted = false;
+              dominated = true;
+              break;
+            }
             if (result == kSecTrustSettingsResultTrustRoot ||
                 result == kSecTrustSettingsResultTrustAsRoot) {
               trusted = true;
+              dominated = true;
               break;
             }
-          } else {
-            // No result specified = use default (trust for SSL)
-            trusted = true;
-            break;
           }
         }
+        // No explicit result found: treat as trusted (default behavior)
+        if (!dominated) { trusted = true; }
       }
     } else if (ts_status == errSecItemNotFound) {
       // No specific settings = trust for all purposes (for system domain)

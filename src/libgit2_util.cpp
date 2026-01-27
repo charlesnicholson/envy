@@ -32,8 +32,9 @@ std::unique_ptr<scoped_path_cleanup> g_ssl_cert_file_cleanup;
 
 #ifdef __APPLE__
 // Write certificate bundle to temp file with unique name via mkstemp.
-// Returns path to the created file.
-std::filesystem::path write_cert_bundle(std::vector<unsigned char> const &cert_data) {
+// Returns scoped_path_cleanup that owns the temp file.
+std::unique_ptr<scoped_path_cleanup> write_cert_bundle(
+    std::vector<unsigned char> const &cert_data) {
   std::string path{
     (std::filesystem::temp_directory_path() / "envy-ca-certs-XXXXXX").string()
   };
@@ -42,29 +43,35 @@ std::filesystem::path write_cert_bundle(std::vector<unsigned char> const &cert_d
   if (fd == -1) {
     throw std::runtime_error("Failed to create temp file for CA certificates");
   }
-  ::close(fd);
 
-  auto file{ util_open_file(path, "wb") };
-  if (!file) { throw std::runtime_error("Failed to open temp file for CA certificates"); }
+  // Immediately register cleanup so file is deleted even if fdopen/fwrite fails
+  auto cleanup = std::make_unique<scoped_path_cleanup>(path);
+
+  FILE *raw_file = ::fdopen(fd, "wb");
+  if (!raw_file) {
+    ::close(fd);
+    throw std::runtime_error("Failed to open temp file for CA certificates");
+  }
+  file_ptr_t file{ raw_file };
 
   if (std::fwrite(cert_data.data(), 1, cert_data.size(), file.get()) != cert_data.size()) {
     throw std::runtime_error("Failed to write CA certificates to temp file");
   }
 
-  return path;
+  return cleanup;
 }
 
 void configure_ssl_certs_macos() {
   auto cert_data{ extract_system_ca_certs() };
-  auto cert_path{ write_cert_bundle(cert_data) };
-
-  // Register cleanup for process exit
-  g_ssl_cert_file_cleanup = std::make_unique<scoped_path_cleanup>(cert_path);
+  auto cleanup{ write_cert_bundle(cert_data) };
+  auto const &cert_path = cleanup->path();
 
   if (git_libgit2_opts(GIT_OPT_SET_SSL_CERT_LOCATIONS, cert_path.c_str(), nullptr) < 0) {
     throw std::runtime_error("Failed to configure libgit2 SSL certificate location");
   }
 
+  // Transfer ownership to global only after success
+  g_ssl_cert_file_cleanup = std::move(cleanup);
   g_ssl_certs_configured = true;
 }
 #else
