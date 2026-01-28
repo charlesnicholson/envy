@@ -259,6 +259,7 @@ set(ENVY_BASE_SOURCES
     src/spec_util.cpp
     $<$<PLATFORM_ID:Windows>:src/sha256_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
+    $<$<PLATFORM_ID:Darwin>:src/ssl_certs_macos.mm>
     src/fetch.cpp
     src/libcurl_util.cpp
     $<$<PLATFORM_ID:Windows>:src/platform_win.cpp>
@@ -284,6 +285,11 @@ set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/pkg_phase.cpp
     src/test_support.cpp
 )
+
+# Enable ARC for Objective-C++ files
+if(APPLE)
+    set_source_files_properties(src/ssl_certs_macos.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+endif()
 
 # Common compile options
 set(ENVY_COMMON_COMPILE_OPTIONS
