@@ -590,17 +590,20 @@ PACKAGES = {{
         envy_path = bin_dir / envy_name
         self.assertTrue(envy_path.exists())
 
-        # Get mtime after first sync
-        mtime1 = envy_path.stat().st_mtime
-        time.sleep(0.1)
+        # Set mtime to a known past date to reliably detect rewrites
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(envy_path, (jan_1_2000, jan_1_2000))
 
         # Run sync again
         result2 = self.run_sync(manifest=manifest)
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
 
         # Bootstrap should not be rewritten (mtime unchanged)
-        mtime2 = envy_path.stat().st_mtime
-        self.assertEqual(mtime1, mtime2, "Bootstrap should not be rewritten when unchanged")
+        mtime_after = envy_path.stat().st_mtime
+        self.assertEqual(
+            mtime_after, jan_1_2000,
+            "Bootstrap should not be rewritten when unchanged"
+        )
 
     def test_sync_install_all_does_full_install(self):
         """Sync --install-all installs packages then deploys scripts."""
@@ -653,18 +656,18 @@ PACKAGES = {{
         script_name = "tool.bat" if sys.platform == "win32" else "tool"
         script_path = bin_dir / script_name
 
-        stat1 = script_path.stat()
-        mtime1 = stat1.st_mtime
-
-        time.sleep(0.1)
+        # Set mtime to a known past date to reliably detect rewrites
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(script_path, (jan_1_2000, jan_1_2000))
 
         result2 = self.run_sync(manifest=manifest)
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
 
-        stat2 = script_path.stat()
-        mtime2 = stat2.st_mtime
-
-        self.assertEqual(mtime1, mtime2, "File timestamp should be unchanged")
+        mtime_after = script_path.stat().st_mtime
+        self.assertEqual(
+            mtime_after, jan_1_2000,
+            "File timestamp should be unchanged"
+        )
 
     def test_product_script_execution_and_arg_forwarding(self):
         """Product scripts execute correctly and forward arguments."""
@@ -991,6 +994,8 @@ class TestSyncBootstrap(unittest.TestCase):
 
     def write_spec(self, name: str, content: str) -> str:
         """Write spec to temp dir with placeholder substitution, return Lua path."""
+        # Always call format() to handle {{}} escapes in Lua tables
+        # Extra kwargs are silently ignored by Python's str.format()
         spec_content = content.format(
             ARCHIVE_PATH=self.archive_path.as_posix(),
             ARCHIVE_HASH=self.archive_hash,
@@ -1098,19 +1103,21 @@ PACKAGES = {{
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
 
         bootstrap_path = self.get_bootstrap_path()
-        stat1 = bootstrap_path.stat()
-        mtime1 = stat1.st_mtime
 
-        time.sleep(0.1)
+        # Set mtime to a known past date to reliably detect rewrites
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(bootstrap_path, (jan_1_2000, jan_1_2000))
 
         # Second sync should not update
         result2 = self.run_sync(manifest=manifest)
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
         self.assertNotIn("Updated bootstrap script", result2.stderr)
 
-        stat2 = bootstrap_path.stat()
-        mtime2 = stat2.st_mtime
-        self.assertEqual(mtime1, mtime2, "Bootstrap should not be rewritten")
+        mtime_after = bootstrap_path.stat().st_mtime
+        self.assertEqual(
+            mtime_after, jan_1_2000,
+            "Bootstrap should not be rewritten"
+        )
 
     def test_sync_errors_on_non_envy_managed_bootstrap(self):
         """Sync errors if bootstrap exists but is not envy-managed."""
