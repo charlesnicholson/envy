@@ -83,4 +83,5 @@ T=${TMPDIR:-/tmp}/envy-$$
 mkdir -p "$T"
 URL="$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH.tar.gz"
 curl -fsSL "$URL" | tar -xzf - -C "$T" || { echo "ERROR: Failed to download envy from $URL" >&2; rm -rf "$T"; exit 1; }
+[[ $PLATFORM == darwin ]] && xattr -d com.apple.quarantine "$T/envy" 2>/dev/null || true
 chmod +x "$T/envy" && exec "$T/envy" "$@"
