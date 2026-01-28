@@ -6,6 +6,7 @@ and transitive dependencies.
 
 import hashlib
 import io
+import os
 import shutil
 import sys
 import tarfile
@@ -18,6 +19,14 @@ from typing import Optional, List
 from . import test_config
 from .test_config import make_manifest
 from .trace_parser import TraceParser
+
+
+def _get_envy_binary() -> Path:
+    """Get the main envy binary (not functional tester)."""
+    root = Path(__file__).parent.parent / "out" / "build"
+    if sys.platform == "win32":
+        return root / "envy.exe"
+    return root / "envy"
 
 # Test archive contents
 TEST_ARCHIVE_FILES = {
@@ -1033,6 +1042,21 @@ PACKAGES = {{
         content = bootstrap_path.read_text()
         self.assertIn("envy-managed", content)
 
+    def _make_old_bootstrap_content(self) -> str:
+        """Create platform-appropriate old bootstrap content with marker."""
+        if sys.platform == "win32":
+            return """@echo off
+REM envy-managed bootstrap script - do not edit
+set FALLBACK_VERSION=0.0.1
+echo old bootstrap
+"""
+        else:
+            return """#!/usr/bin/env bash
+# envy-managed bootstrap script - do not edit
+FALLBACK_VERSION="0.0.1"
+echo "old bootstrap"
+"""
+
     def test_sync_updates_bootstrap_on_version_change(self):
         """Sync updates bootstrap when version differs."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
@@ -1048,12 +1072,7 @@ PACKAGES = {{
 
         bootstrap_path = self.get_bootstrap_path()
         # Create an old bootstrap with different version
-        old_content = """#!/usr/bin/env bash
-# envy-managed bootstrap script - do not edit
-FALLBACK_VERSION="0.0.1"
-echo "old bootstrap"
-"""
-        bootstrap_path.write_text(old_content)
+        bootstrap_path.write_text(self._make_old_bootstrap_content())
 
         result = self.run_sync(manifest=manifest)
 
@@ -1156,11 +1175,7 @@ PACKAGES = {{
 
         bootstrap_path = self.get_bootstrap_path()
         # Create an old bootstrap
-        old_content = """#!/usr/bin/env bash
-# envy-managed bootstrap script - do not edit
-FALLBACK_VERSION="0.0.1"
-"""
-        bootstrap_path.write_text(old_content)
+        bootstrap_path.write_text(self._make_old_bootstrap_content())
 
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
         cmd.extend(["--manifest", str(manifest_path)])
@@ -1174,6 +1189,59 @@ FALLBACK_VERSION="0.0.1"
 
         new_content = bootstrap_path.read_text()
         self.assertNotIn("0.0.1", new_content)
+
+    def test_init_then_sync_preserves_bootstrap_mtime(self):
+        """Init creates bootstrap, sync preserves it when unchanged (mtime test)."""
+        envy_main = _get_envy_binary()
+        env = test_config.get_test_env()
+        env["ENVY_CACHE_ROOT"] = str(self.cache_root)
+
+        project_dir = self.test_dir / "init-project"
+        bin_dir = project_dir / "bin"
+
+        # Run envy init to create bootstrap and manifest
+        init_cmd = [str(envy_main), "init", str(project_dir), str(bin_dir)]
+        init_result = test_config.run(
+            init_cmd, capture_output=True, text=True, env=env, timeout=30
+        )
+        self.assertEqual(init_result.returncode, 0, f"init stderr: {init_result.stderr}")
+
+        # Get bootstrap path
+        bootstrap_name = "envy.bat" if sys.platform == "win32" else "envy"
+        bootstrap_path = bin_dir / bootstrap_name
+        self.assertTrue(bootstrap_path.exists(), "Bootstrap not created by init")
+
+        # Set file time to Jan 1, 2000 (a date clearly in the past)
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(bootstrap_path, (jan_1_2000, jan_1_2000))
+
+        # Verify mtime was set
+        mtime_before = bootstrap_path.stat().st_mtime
+        self.assertEqual(mtime_before, jan_1_2000, "Failed to set mtime to Jan 1, 2000")
+
+        # Run envy sync
+        manifest_path = project_dir / "envy.lua"
+        sync_cmd = [
+            str(self.envy),
+            "--cache-root", str(self.cache_root),
+            "sync",
+            "--manifest", str(manifest_path),
+        ]
+        sync_result = test_config.run(
+            sync_cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+        self.assertEqual(sync_result.returncode, 0, f"sync stderr: {sync_result.stderr}")
+
+        # Bootstrap should NOT be updated (content unchanged)
+        self.assertNotIn("Updated bootstrap script", sync_result.stderr)
+
+        # Verify mtime is still Jan 1, 2000
+        mtime_after = bootstrap_path.stat().st_mtime
+        self.assertEqual(
+            mtime_after, jan_1_2000,
+            f"Bootstrap mtime changed from {mtime_before} to {mtime_after}; "
+            "sync should not rewrite when content unchanged"
+        )
 
 
 if __name__ == "__main__":
