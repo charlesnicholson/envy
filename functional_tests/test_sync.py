@@ -562,8 +562,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertFalse(obsolete_path.exists())
 
-    def test_sync_preserves_envy_executable(self):
-        """Sync does not remove or modify the envy executable itself."""
+    def test_sync_preserves_envy_executable_content_when_unchanged(self):
+        """Sync does not rewrite bootstrap script when content matches."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
 
         manifest = self.create_manifest(f"""
@@ -572,19 +572,26 @@ PACKAGES = {{
 }}
 """)
 
-        bin_dir = self.test_dir / "envy-bin"
-        bin_dir.mkdir(parents=True, exist_ok=True)
+        # Run sync once to create bootstrap
+        result1 = self.run_sync(manifest=manifest)
+        self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
 
+        bin_dir = self.test_dir / "envy-bin"
         envy_name = "envy.bat" if sys.platform == "win32" else "envy"
         envy_path = bin_dir / envy_name
-        envy_content = "# envy bootstrap\n"
-        envy_path.write_text(envy_content)
-
-        result = self.run_sync(manifest=manifest)
-
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(envy_path.exists())
-        self.assertEqual(envy_path.read_text(), envy_content)
+
+        # Get mtime after first sync
+        mtime1 = envy_path.stat().st_mtime
+        time.sleep(0.1)
+
+        # Run sync again
+        result2 = self.run_sync(manifest=manifest)
+        self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
+
+        # Bootstrap should not be rewritten (mtime unchanged)
+        mtime2 = envy_path.stat().st_mtime
+        self.assertEqual(mtime1, mtime2, "Bootstrap should not be rewritten when unchanged")
 
     def test_sync_install_all_does_full_install(self):
         """Sync --install-all installs packages then deploys scripts."""
@@ -952,6 +959,221 @@ PACKAGES = {{
         result = self.run_sync(manifest=manifest, install_all=True)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertNotIn("deployment is disabled", result.stderr)
+
+
+class TestSyncBootstrap(unittest.TestCase):
+    """Tests for bootstrap script update via 'envy sync'."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-bootstrap-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-bootstrap-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-bootstrap-specs-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        # Create test archive and get its hash
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> str:
+        """Write spec to temp dir with placeholder substitution, return Lua path."""
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+        )
+        path = self.specs_dir / f"{name}.lua"
+        path.write_text(spec_content, encoding="utf-8")
+        return path.as_posix()
+
+    def create_manifest(self, content: str, deploy: bool = True) -> Path:
+        manifest_path = self.test_dir / "envy.lua"
+        manifest_path.write_text(
+            make_manifest(content, deploy=deploy), encoding="utf-8"
+        )
+        return manifest_path
+
+    def run_sync(self, manifest: Path):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def get_bootstrap_path(self) -> Path:
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "envy.bat" if sys.platform == "win32" else "envy"
+        return bin_dir / script_name
+
+    def test_sync_creates_bootstrap_if_missing(self):
+        """Sync creates bootstrap script if it doesn't exist."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        # Ensure bin dir exists but bootstrap doesn't
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        bootstrap_path = self.get_bootstrap_path()
+        self.assertFalse(bootstrap_path.exists())
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(bootstrap_path.exists())
+        content = bootstrap_path.read_text()
+        self.assertIn("envy-managed", content)
+
+    def test_sync_updates_bootstrap_on_version_change(self):
+        """Sync updates bootstrap when version differs."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        bootstrap_path = self.get_bootstrap_path()
+        # Create an old bootstrap with different version
+        old_content = """#!/usr/bin/env bash
+# envy-managed bootstrap script - do not edit
+FALLBACK_VERSION="0.0.1"
+echo "old bootstrap"
+"""
+        bootstrap_path.write_text(old_content)
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("Updated bootstrap script", result.stderr)
+
+        new_content = bootstrap_path.read_text()
+        self.assertNotIn("0.0.1", new_content)
+        self.assertIn("envy-managed", new_content)
+
+    def test_sync_leaves_bootstrap_unchanged_when_current(self):
+        """Sync does not rewrite bootstrap when content matches."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        # First sync to create bootstrap
+        result1 = self.run_sync(manifest=manifest)
+        self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
+
+        bootstrap_path = self.get_bootstrap_path()
+        stat1 = bootstrap_path.stat()
+        mtime1 = stat1.st_mtime
+
+        time.sleep(0.1)
+
+        # Second sync should not update
+        result2 = self.run_sync(manifest=manifest)
+        self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
+        self.assertNotIn("Updated bootstrap script", result2.stderr)
+
+        stat2 = bootstrap_path.stat()
+        mtime2 = stat2.st_mtime
+        self.assertEqual(mtime1, mtime2, "Bootstrap should not be rewritten")
+
+    def test_sync_errors_on_non_envy_managed_bootstrap(self):
+        """Sync errors if bootstrap exists but is not envy-managed."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        bootstrap_path = self.get_bootstrap_path()
+        # Create a non-envy-managed file
+        bootstrap_path.write_text("#!/bin/bash\necho 'user script'\n")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertNotEqual(result.returncode, 0, "Expected non-zero exit code")
+        self.assertIn("not envy-managed", result.stderr.lower())
+
+    @unittest.skipIf(sys.platform == "win32", "Unix permissions test")
+    def test_bootstrap_has_executable_permissions(self):
+        """Bootstrap script has executable permissions on Unix."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bootstrap_path = self.get_bootstrap_path()
+        self.assertTrue(bootstrap_path.exists())
+
+        import stat
+        mode = bootstrap_path.stat().st_mode
+        self.assertTrue(mode & stat.S_IXUSR, "Owner execute bit should be set")
+        self.assertTrue(mode & stat.S_IXGRP, "Group execute bit should be set")
+        self.assertTrue(mode & stat.S_IXOTH, "Others execute bit should be set")
+
+    def test_sync_updates_bootstrap_regardless_of_deploy_directive(self):
+        """Bootstrap update happens even when deploy is disabled."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        # Create manifest with deploy=false
+        manifest_path = self.test_dir / "envy.lua"
+        manifest_path.write_text(
+            f'-- @envy bin "envy-bin"\n-- @envy deploy "false"\nPACKAGES = {{\n'
+            f'    {{ spec = "local.simple@v1", source = "{simple_path}" }},\n}}\n',
+            encoding="utf-8"
+        )
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        bootstrap_path = self.get_bootstrap_path()
+        # Create an old bootstrap
+        old_content = """#!/usr/bin/env bash
+# envy-managed bootstrap script - do not edit
+FALLBACK_VERSION="0.0.1"
+"""
+        bootstrap_path.write_text(old_content)
+
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        cmd.extend(["--manifest", str(manifest_path)])
+        result = test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        # Bootstrap should still be updated even though deploy is false
+        self.assertIn("Updated bootstrap script", result.stderr)
+
+        new_content = bootstrap_path.read_text()
+        self.assertNotIn("0.0.1", new_content)
 
 
 if __name__ == "__main__":

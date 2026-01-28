@@ -2,8 +2,8 @@
 # envy-managed bootstrap script - do not edit
 set -euo pipefail
 
-ENVY_MIRROR="${ENVY_MIRROR:-@@DOWNLOAD_URL@@}"
-FALLBACK_VERSION="@@ENVY_VERSION@@"
+ENVY_MIRROR="${ENVY_MIRROR:-https://github.com/charlesnicholson/envy/releases/download}"
+FALLBACK_VERSION="0.0.0"
 
 find_manifest() {
     local d="$PWD"
