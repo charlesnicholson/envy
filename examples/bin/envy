@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ENVY_MIRROR="${ENVY_MIRROR:-https://github.com/charlesnicholson/envy/releases/download}"
-FALLBACK_VERSION="0.0.0"
+FALLBACK_VERSION="0.0.14"
 
 find_manifest() {
     local d="$PWD"
