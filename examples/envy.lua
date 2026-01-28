@@ -36,6 +36,9 @@ PACKAGES = {
 
   { spec = "local.swig@r0", source = "local.swig@r0.lua",
     options = { version = "4.4.1" } },
+
+  { spec = "local.clang-tools@r0", source = "local.clang-tools@r0.lua",
+    options = { version = "21.1.0", tools = { "clang-format" } } },
 }
 
 if envy.PLATFORM ~= "windows" then
@@ -50,9 +53,6 @@ if envy.PLATFORM == "darwin" then
   envy.extend(PACKAGES, {
     { spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
       options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } } },
-
-    { spec = "local.clang-tools@r0", source = "local.clang-tools@r0.lua",
-      options = { version = "21.1.0", tools = { "clang-format" } } },
   })
 end
 
