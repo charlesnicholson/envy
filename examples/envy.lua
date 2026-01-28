@@ -52,7 +52,7 @@ if envy.PLATFORM == "darwin" then
       options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } } },
 
     { spec = "local.clang-tools@r0", source = "local.clang-tools@r0.lua",
-      options = { version = "21.1.0" } },
+      options = { version = "21.1.0", tools = { "clang-format" } } },
   })
 end
 
