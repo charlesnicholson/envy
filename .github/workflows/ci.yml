@@ -14,63 +14,51 @@ jobs:
             os: ubuntu-latest
             shard: main
             build_args: --no-functional-tester
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - name: linux-arm64-main
             os: ubuntu-24.04-arm
             shard: main
             build_args: --no-functional-tester
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - name: macos-arm64-main
             os: macos-latest
             shard: main
             build_args: --no-functional-tester
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
           - name: linux-x64-asan
             os: ubuntu-latest
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - name: linux-x64-ubsan
             os: ubuntu-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - name: linux-x64-tsan
             os: ubuntu-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
           - name: linux-arm64-asan
             os: ubuntu-24.04-arm
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - name: linux-arm64-ubsan
             os: ubuntu-24.04-arm
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - name: linux-arm64-tsan
             os: ubuntu-24.04-arm
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
           - name: macos-arm64-asan
             os: macos-latest
             shard: func-asan
             build_args: --sanitizer=asan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
             test_jobs: 2
           - name: macos-arm64-ubsan
             os: macos-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
           - name: macos-arm64-tsan
             os: macos-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
-            cmake_url: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -79,13 +67,8 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Setup cmake
-        run: |
-          mkdir -p out/cmake && curl -fsSL "${{ matrix.cmake_url }}" | tar -xzf - -C out/cmake --strip-components=1
-
       - name: Build
         run: |
-          export PATH="$PWD/out/cmake/bin:$PATH"
           BUILD_ARGS="${{ matrix.build_args }}"
           if [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
             BUILD_ARGS="$BUILD_ARGS -DENVY_VERSION=${GITHUB_REF_NAME#v}"
@@ -128,17 +111,9 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Setup cmake
-        shell: pwsh
-        run: |
-          curl -fsSL -o cmake.zip "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
-          Expand-Archive -Path cmake.zip -DestinationPath out
-          Move-Item out/cmake-* out/cmake
-
       - name: Build
         shell: powershell
         run: |
-          $env:PATH = "$PWD\out\cmake\bin;$env:PATH"
           &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           $BuildArgs = "${{ matrix.build_args }}"
           $Arguments = @()
