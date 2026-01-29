@@ -28,7 +28,13 @@ CMAKE_SUFFIXES = {
 NINJA_BASE = (
     f"https://github.com/ninja-build/ninja/releases/download/v{NINJA_VERSION}/ninja-"
 )
-NINJA_SUFFIXES = {"Darwin": "mac.zip", "Linux": "linux.zip", "Windows": "win.zip"}
+NINJA_SUFFIXES = {
+    ("Darwin", "arm64"): "mac.zip",
+    ("Darwin", "x86_64"): "mac.zip",
+    ("Linux", "x86_64"): "linux.zip",
+    ("Linux", "aarch64"): "linux-aarch64.zip",
+    ("Windows", "AMD64"): "win.zip",
+}
 
 
 def remove_quarantine(path: Path) -> None:
@@ -112,17 +118,17 @@ def download_cmake(cache_dir: Path) -> Path:
 def download_ninja(cache_dir: Path) -> Path:
     """Download and extract ninja, return path to ninja binary."""
     ninja_dir = cache_dir / "ninja"
-    system = platform.system()
+    system, machine = platform.system(), platform.machine()
 
     ninja_bin = ninja_dir / ("ninja.exe" if system == "Windows" else "ninja")
 
     if ninja_bin.exists():
         return ninja_bin
 
-    suffix = NINJA_SUFFIXES.get(system)
+    suffix = NINJA_SUFFIXES.get((system, machine))
     url = f"{NINJA_BASE}{suffix}" if suffix else None
     if not url:
-        print(f"No ninja download available for {system}, using system ninja")
+        print(f"No ninja download available for {system}/{machine}, using system ninja")
         return Path(shutil.which("ninja") or "ninja")
 
     print(f"Downloading ninja {NINJA_VERSION}...")
