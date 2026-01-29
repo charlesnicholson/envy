@@ -1,4 +1,5 @@
 @echo off
+REM envy-managed bootstrap script - do not edit
 setlocal EnableDelayedExpansion
 
 if not defined ENVY_MIRROR set "ENVY_MIRROR=@@DOWNLOAD_URL@@"
