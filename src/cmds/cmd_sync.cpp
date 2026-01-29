@@ -1,5 +1,6 @@
 #include "cmd_sync.h"
 
+#include "bootstrap.h"
 #include "cache.h"
 #include "embedded_init_resources.h"
 #include "engine.h"
@@ -297,6 +298,11 @@ void cmd_sync::execute() {
   }
 
   auto const products{ eng.collect_all_products() };
+
+  // Update bootstrap script (always, regardless of deploy setting)
+  if (bootstrap_write_script(bin_dir, m->meta.mirror)) {
+    tui::info("Updated bootstrap script");
+  }
 
   // Check deploy directive: absent or false means deployment disabled
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };

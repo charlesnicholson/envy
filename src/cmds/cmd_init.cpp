@@ -1,5 +1,6 @@
 #include "cmd_init.h"
 
+#include "bootstrap.h"
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "platform.h"
@@ -76,11 +77,6 @@ void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
 }
 
 namespace {
-
-std::string_view get_bootstrap() {
-  return { reinterpret_cast<char const *>(embedded::kBootstrap),
-           embedded::kBootstrapSize };
-}
 
 std::string_view get_manifest_template() {
   return { reinterpret_cast<char const *>(embedded::kManifestTemplate),
@@ -173,33 +169,6 @@ fs::path extract_lua_ls_types() {
   return types_dir;
 }
 
-void write_bootstrap(fs::path const &bin_dir, std::optional<std::string> const &mirror) {
-#ifdef _WIN32
-  fs::path const script_path{ bin_dir / "envy.bat" };
-#else
-  fs::path const script_path{ bin_dir / "envy" };
-#endif
-
-  std::string_view const url{ mirror ? std::string_view{ *mirror } : kEnvyDownloadUrl };
-  std::string const content{ stamp_placeholders(get_bootstrap(), url) };
-  write_file(script_path, content);
-
-#ifndef _WIN32
-  std::error_code ec;
-  fs::permissions(script_path,
-                  fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-                  fs::perm_options::add,
-                  ec);
-  if (ec) {
-    tui::warn("Failed to set executable bit on %s: %s",
-              script_path.string().c_str(),
-              ec.message().c_str());
-  }
-#endif
-
-  tui::info("Created %s", script_path.string().c_str());
-}
-
 void write_manifest(fs::path const &project_dir,
                     fs::path const &bin_dir,
                     std::optional<bool> deploy,
@@ -274,7 +243,13 @@ void cmd_init::execute() {
     }
   }
 
-  write_bootstrap(cfg_.bin_dir, cfg_.mirror);
+  bootstrap_write_script(cfg_.bin_dir, cfg_.mirror);
+#ifdef _WIN32
+  tui::info("Created %s", (cfg_.bin_dir / "envy.bat").string().c_str());
+#else
+  tui::info("Created %s", (cfg_.bin_dir / "envy").string().c_str());
+#endif
+
   write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.deploy, cfg_.root);
   write_luarc(cfg_.project_dir, extract_lua_ls_types());
 

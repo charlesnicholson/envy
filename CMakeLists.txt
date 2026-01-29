@@ -211,6 +211,7 @@ add_dependencies(envy_embedded_licenses envy_licenses_compressed)
 
 # Common source files shared by all envy executables (main added separately)
 set(ENVY_BASE_SOURCES
+    src/bootstrap.cpp
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
