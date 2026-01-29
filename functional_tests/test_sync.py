@@ -28,6 +28,7 @@ def _get_envy_binary() -> Path:
         return root / "envy.exe"
     return root / "envy"
 
+
 # Test archive contents
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Test file content\n",
@@ -601,8 +602,7 @@ PACKAGES = {{
         # Bootstrap should not be rewritten (mtime unchanged)
         mtime_after = envy_path.stat().st_mtime
         self.assertEqual(
-            mtime_after, jan_1_2000,
-            "Bootstrap should not be rewritten when unchanged"
+            mtime_after, jan_1_2000, "Bootstrap should not be rewritten when unchanged"
         )
 
     def test_sync_install_all_does_full_install(self):
@@ -664,10 +664,7 @@ PACKAGES = {{
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
 
         mtime_after = script_path.stat().st_mtime
-        self.assertEqual(
-            mtime_after, jan_1_2000,
-            "File timestamp should be unchanged"
-        )
+        self.assertEqual(mtime_after, jan_1_2000, "File timestamp should be unchanged")
 
     def test_product_script_execution_and_arg_forwarding(self):
         """Product scripts execute correctly and forward arguments."""
@@ -1085,7 +1082,8 @@ PACKAGES = {{
         self.assertIn("Updated bootstrap script", result.stderr)
 
         new_content = bootstrap_path.read_text()
-        self.assertNotIn("0.0.1", new_content)
+        # Check for quoted "0.0.1" to avoid substring match with e.g. "0.0.14"
+        self.assertNotIn('"0.0.1"', new_content)
         self.assertIn("envy-managed", new_content)
 
     def test_sync_leaves_bootstrap_unchanged_when_current(self):
@@ -1114,10 +1112,7 @@ PACKAGES = {{
         self.assertNotIn("Updated bootstrap script", result2.stderr)
 
         mtime_after = bootstrap_path.stat().st_mtime
-        self.assertEqual(
-            mtime_after, jan_1_2000,
-            "Bootstrap should not be rewritten"
-        )
+        self.assertEqual(mtime_after, jan_1_2000, "Bootstrap should not be rewritten")
 
     def test_sync_errors_on_non_envy_managed_bootstrap(self):
         """Sync errors if bootstrap exists but is not envy-managed."""
@@ -1160,6 +1155,7 @@ PACKAGES = {{
         self.assertTrue(bootstrap_path.exists())
 
         import stat
+
         mode = bootstrap_path.stat().st_mode
         self.assertTrue(mode & stat.S_IXUSR, "Owner execute bit should be set")
         self.assertTrue(mode & stat.S_IXGRP, "Group execute bit should be set")
@@ -1174,7 +1170,7 @@ PACKAGES = {{
         manifest_path.write_text(
             f'-- @envy bin "envy-bin"\n-- @envy deploy "false"\nPACKAGES = {{\n'
             f'    {{ spec = "local.simple@v1", source = "{simple_path}" }},\n}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         bin_dir = self.test_dir / "envy-bin"
@@ -1195,7 +1191,8 @@ PACKAGES = {{
         self.assertIn("Updated bootstrap script", result.stderr)
 
         new_content = bootstrap_path.read_text()
-        self.assertNotIn("0.0.1", new_content)
+        # Check for quoted "0.0.1" to avoid substring match with e.g. "0.0.14"
+        self.assertNotIn('"0.0.1"', new_content)
 
     def test_init_then_sync_preserves_bootstrap_mtime(self):
         """Init creates bootstrap, sync preserves it when unchanged (mtime test)."""
@@ -1211,7 +1208,9 @@ PACKAGES = {{
         init_result = test_config.run(
             init_cmd, capture_output=True, text=True, env=env, timeout=30
         )
-        self.assertEqual(init_result.returncode, 0, f"init stderr: {init_result.stderr}")
+        self.assertEqual(
+            init_result.returncode, 0, f"init stderr: {init_result.stderr}"
+        )
 
         # Get bootstrap path
         bootstrap_name = "envy.bat" if sys.platform == "win32" else "envy"
@@ -1230,14 +1229,18 @@ PACKAGES = {{
         manifest_path = project_dir / "envy.lua"
         sync_cmd = [
             str(self.envy),
-            "--cache-root", str(self.cache_root),
+            "--cache-root",
+            str(self.cache_root),
             "sync",
-            "--manifest", str(manifest_path),
+            "--manifest",
+            str(manifest_path),
         ]
         sync_result = test_config.run(
             sync_cmd, cwd=self.project_root, capture_output=True, text=True
         )
-        self.assertEqual(sync_result.returncode, 0, f"sync stderr: {sync_result.stderr}")
+        self.assertEqual(
+            sync_result.returncode, 0, f"sync stderr: {sync_result.stderr}"
+        )
 
         # Bootstrap should NOT be updated (content unchanged)
         self.assertNotIn("Updated bootstrap script", sync_result.stderr)
@@ -1245,9 +1248,10 @@ PACKAGES = {{
         # Verify mtime is still Jan 1, 2000
         mtime_after = bootstrap_path.stat().st_mtime
         self.assertEqual(
-            mtime_after, jan_1_2000,
+            mtime_after,
+            jan_1_2000,
             f"Bootstrap mtime changed from {mtime_before} to {mtime_after}; "
-            "sync should not rewrite when content unchanged"
+            "sync should not rewrite when content unchanged",
         )
 
 
