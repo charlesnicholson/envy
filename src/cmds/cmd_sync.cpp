@@ -177,11 +177,14 @@ void deploy_product_scripts(engine &eng,
     std::string filename{ entry.path().filename().string() };
     if (filename == "envy" || filename == "envy.bat") { continue; }
 
-    std::string product_name{ filename };
+    bool const is_batch{ filename.size() > 4 &&
+                         filename.substr(filename.size() - 4) == ".bat" };
 #ifdef _WIN32
-    if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".bat") {
-      product_name = filename.substr(0, filename.size() - 4);
-    }
+    if (!is_batch) { continue; }
+    std::string const product_name{ filename.substr(0, filename.size() - 4) };
+#else
+    if (is_batch) { continue; }
+    std::string const product_name{ filename };
 #endif
 
     if (!current_products.contains(product_name) && has_envy_marker(entry.path())) {
