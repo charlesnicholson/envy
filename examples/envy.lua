@@ -1,4 +1,4 @@
--- @envy version "0.0.13"
+-- @envy version "0.0.15"
 -- @envy bin "bin"
 -- @envy deploy "true"
 -- @envy root "true"
