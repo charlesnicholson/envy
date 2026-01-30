@@ -1082,8 +1082,13 @@ PACKAGES = {{
         self.assertIn("Updated bootstrap script", result.stderr)
 
         new_content = bootstrap_path.read_text()
-        # Check for quoted "0.0.1" to avoid substring match with e.g. "0.0.14"
-        self.assertNotIn('"0.0.1"', new_content)
+        # Check for the full FALLBACK_VERSION assignment to avoid substring
+        # matches (e.g. "0.0.14") and to cover both POSIX and Windows templates.
+        if sys.platform == "win32":
+            old_version_token = "FALLBACK_VERSION=0.0.1"
+        else:
+            old_version_token = 'FALLBACK_VERSION="0.0.1"'
+        self.assertNotIn(old_version_token, new_content)
         self.assertIn("envy-managed", new_content)
 
     def test_sync_leaves_bootstrap_unchanged_when_current(self):
@@ -1191,8 +1196,13 @@ PACKAGES = {{
         self.assertIn("Updated bootstrap script", result.stderr)
 
         new_content = bootstrap_path.read_text()
-        # Check for quoted "0.0.1" to avoid substring match with e.g. "0.0.14"
-        self.assertNotIn('"0.0.1"', new_content)
+        # Check for the full FALLBACK_VERSION assignment to avoid substring
+        # matches (e.g. "0.0.14") and to cover both POSIX and Windows templates.
+        if sys.platform == "win32":
+            old_version_token = "FALLBACK_VERSION=0.0.1"
+        else:
+            old_version_token = 'FALLBACK_VERSION="0.0.1"'
+        self.assertNotIn(old_version_token, new_content)
 
     def test_init_then_sync_preserves_bootstrap_mtime(self):
         """Init creates bootstrap, sync preserves it when unchanged (mtime test)."""
