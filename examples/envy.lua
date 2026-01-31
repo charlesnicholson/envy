@@ -11,7 +11,7 @@ BUNDLES = {
 }
 
 PACKAGES = {
-  { spec = "local.uv@r0", source = "local.uv@r0.lua", options = { version = "0.9.21" } },
+  { spec = "local.uv@r0", source = "local.uv@r0.lua", options = { version = "0.9.28" } },
 
   { spec = "local.armgcc@r0", bundle = "embedded-tools",
     options = { version = "14.3.rel1" } },
@@ -29,10 +29,10 @@ PACKAGES = {
     options = { ref = "5964f499767097d81dbe034e8b541c3988168073" } },
 
   { spec = "local.cmake@r0", source = "local.cmake@r0.lua",
-    options = { version = "4.2.1" } },
+    options = { version = "4.2.3" } },
 
   { spec = "local.protobuf@r0", source = "local.protobuf@r0.lua",
-    options = { version = "33.3" } },
+    options = { version = "33.5" } },
 
   { spec = "local.swig@r0", source = "local.swig@r0.lua",
     options = { version = "4.4.1" } },
