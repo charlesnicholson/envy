@@ -39,13 +39,14 @@ PACKAGES = {
 
   { spec = "local.clang-tools@r0", source = "local.clang-tools@r0.lua",
     options = { version = "21.1.0", tools = { "clang-format" } } },
+
+  { spec = "local.jlink@r0", source = "local.jlink@r0.lua",
+    options = { version = "9.12" } },
 }
 
 if envy.PLATFORM ~= "windows" then
   envy.extend(PACKAGES, {
     { spec = "local.ragel@r0", source = "local.ragel@r0.lua" },
-    { spec = "local.jlink@r0", source = "local.jlink@r0.lua",
-      options = { version = "9.12" } },
   })
 end
 

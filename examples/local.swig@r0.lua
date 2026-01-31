@@ -35,4 +35,5 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   end
 end
 
-PRODUCTS = { swig = "bin/swig" .. envy.EXE_EXT }
+local bin = (envy.PLATFORM == "windows") and "" or "bin/"
+PRODUCTS = { swig = bin .. "swig" .. envy.EXE_EXT }

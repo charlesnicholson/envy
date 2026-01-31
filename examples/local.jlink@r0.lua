@@ -19,6 +19,7 @@ local function jlink_filename(opts)
   local name = ({
     darwin = "JLink_MacOSX_V" .. ver .. "_" .. arch .. ".pkg",
     linux = "JLink_Linux_V" .. ver .. "_" .. arch .. ".tgz",
+    windows = "JLink_Windows_V" .. ver .. "_x86_64.exe",
   })[envy.PLATFORM]
 
   if not name then error("unsupported platform: " .. envy.PLATFORM) end
@@ -38,6 +39,8 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   if envy.PLATFORM == "darwin" then
     local cmd = "pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink"
     envy.run(cmd, { check = true })
+  elseif envy.PLATFORM == "windows" then
+    envy.run('Start-Process -Wait -FilePath "' .. src .. '" -ArgumentList "/S","/D=' .. install_dir .. '"', { check = true })
   else
     envy.extract(src, install_dir, { strip = 1 })
   end
@@ -49,24 +52,35 @@ PRODUCTS = function(opts)
     bin = "jlink/JLink.pkg/Payload/Applications/SEGGER/JLink_V" ..
         version_nodot(opts.version) .. "/"
     lib = bin .. "libjlinkarm.9.dylib"
+  elseif envy.PLATFORM == "windows" then
+    bin = "JLink_V" .. version_nodot(opts.version) .. "/"
+    lib = bin .. "JLink_x64.dll"
   else
     bin = ""
     lib = "libjlinkarm.so.9"
   end
 
+  local function exe(name)
+    if envy.PLATFORM == "windows" then
+      return bin .. name .. ".exe"
+    else
+      return bin .. name .. "Exe"
+    end
+  end
+
   return {
-    JLinkExe = bin .. "JLinkExe",
-    JLinkGDBServerCLExe = bin .. "JLinkGDBServerCLExe",
-    JLinkGUIServerExe = bin .. "JLinkGUIServerExe",
-    JLinkRemoteServerCLExe = bin .. "JLinkRemoteServerCLExe",
-    JLinkRTTClientExe = bin .. "JLinkRTTClientExe",
-    JLinkRTTLoggerExe = bin .. "JLinkRTTLoggerExe",
-    JLinkSTM32Exe = bin .. "JLinkSTM32Exe",
-    JLinkSWOViewerCLExe = bin .. "JLinkSWOViewerCLExe",
-    JLinkUSBWebServerExe = bin .. "JLinkUSBWebServerExe",
-    JLinkXVCDServerExe = bin .. "JLinkXVCDServerExe",
-    JRunExe = bin .. "JRunExe",
-    JTAGLoadExe = bin .. "JTAGLoadExe",
-    libjlinkarm = { value = lib, script = false },
+    JLinkExe = exe("JLink"),
+    JLinkGDBServerCLExe = exe("JLinkGDBServerCL"),
+    JLinkGUIServerExe = exe("JLinkGUIServer"),
+    JLinkRemoteServerCLExe = exe("JLinkRemoteServerCL"),
+    JLinkRTTClientExe = exe("JLinkRTTClient"),
+    JLinkRTTLoggerExe = exe("JLinkRTTLogger"),
+    JLinkSTM32Exe = exe("JLinkSTM32"),
+    JLinkSWOViewerCLExe = exe("JLinkSWOViewerCL"),
+    JLinkUSBWebServerExe = exe("JLinkUSBWebServer"),
+    JLinkXVCDServerExe = exe("JLinkXVCDServer"),
+    JRunExe = exe("JRun"),
+    JTAGLoadExe = exe("JTAGLoad"),
+    libjlink = { value = lib, script = false },
   }
 end

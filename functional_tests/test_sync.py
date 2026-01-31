@@ -1083,9 +1083,10 @@ PACKAGES = {{
 
         new_content = bootstrap_path.read_text()
         # Check for the full FALLBACK_VERSION assignment to avoid substring
-        # matches (e.g. "0.0.14") and to cover both POSIX and Windows templates.
+        # matches (e.g. "0.0.15" containing "0.0.1"). Use platform-specific
+        # patterns matching quote positions in POSIX vs Windows templates.
         if sys.platform == "win32":
-            old_version_token = "FALLBACK_VERSION=0.0.1"
+            old_version_token = 'FALLBACK_VERSION=0.0.1"'
         else:
             old_version_token = 'FALLBACK_VERSION="0.0.1"'
         self.assertNotIn(old_version_token, new_content)
@@ -1197,9 +1198,10 @@ PACKAGES = {{
 
         new_content = bootstrap_path.read_text()
         # Check for the full FALLBACK_VERSION assignment to avoid substring
-        # matches (e.g. "0.0.14") and to cover both POSIX and Windows templates.
+        # matches (e.g. "0.0.15" containing "0.0.1"). Use platform-specific
+        # patterns matching quote positions in POSIX vs Windows templates.
         if sys.platform == "win32":
-            old_version_token = "FALLBACK_VERSION=0.0.1"
+            old_version_token = 'FALLBACK_VERSION=0.0.1"'
         else:
             old_version_token = 'FALLBACK_VERSION="0.0.1"'
         self.assertNotIn(old_version_token, new_content)
