@@ -68,10 +68,13 @@ All values are quoted. Escaping is supported:
 | Directive | Required | Description |
 |-----------|----------|-------------|
 | `version` | Yes* | Pinned envy version (semver) |
-| `cache` | Optional | Override cache location |
+| `cache-posix` | Optional | Override cache location (macOS/Linux) |
+| `cache-win` | Optional | Override cache location (Windows) |
 | `mirror` | Optional | Override download mirror URL |
 
 *If `version` is missing, bootstrap falls back to the version stamped when `envy init` created the scripts. A warning is emitted, and envy restores the directive on next run.
+
+**Platform-specific cache:** Use `cache-posix` for Unix-style paths (`~/...`, `$HOME/...`) and `cache-win` for Windows paths (`%LOCALAPPDATA%\...`). Each platform's bootstrap script and envy binary only parse their respective directive.
 
 ### Parsing Regex
 
@@ -101,7 +104,8 @@ The parsing logic is intentionally simple (regex on first 20 lines) so both bash
 ```lua
 -- envy.lua - Project manifest
 -- @envy version "1.2.3"
--- @envy cache "/opt/shared-envy-cache"
+-- @envy cache-posix "/opt/shared-envy-cache"
+-- @envy cache-win "D:\envy-cache"
 -- @envy mirror "https://internal.corp/envy-releases"
 
 PACKAGES = {
@@ -139,7 +143,7 @@ PACKAGES = {
 
 1. `--cache-dir` command-line argument
 2. `ENVY_CACHE_ROOT` environment variable
-3. `@envy cache` directive in manifest
+3. `@envy cache-posix` / `@envy cache-win` directive in manifest
 4. Platform default
 
 ### Cache Structure
@@ -355,7 +359,7 @@ For CI with shared cache or custom paths:
 ```lua
 -- envy.lua
 -- @envy version "1.2.3"
--- @envy cache "/opt/envy-cache"
+-- @envy cache-posix "/opt/envy-cache"
 ```
 
 Or via environment:
@@ -542,7 +546,6 @@ function STAGE(fetch_dir, stage_dir, tmp_dir) end
 3. **Write manifest template** to `./envy.lua`
    - Skip if already exists
    - Stamp `-- @envy version "X.Y.Z"` with running envy's version
-   - Include commented examples for `@envy cache`, `@envy mirror`
 
 4. **Extract type definitions** to `$CACHE/envy/$VERSION/`
    - Write embedded lua types
@@ -557,7 +560,7 @@ function STAGE(fetch_dir, stage_dir, tmp_dir) end
 
 1. **Bootstrap script executes**
 2. **Parse `@envy version`** from `envy.lua` (grep first 20 lines, unescape)
-3. **Parse `@envy cache`** (optional)
+3. **Parse `@envy cache-posix`/`cache-win`** (optional, platform-specific)
 4. **Resolve cache dir** (env > manifest > default)
 5. **Check cache** → `$CACHE/envy/1.2.3/envy` exists
 6. **exec** → replace shell with envy binary, pass all args
@@ -613,7 +616,7 @@ Phase 1 delivers complete `@envy` directive parsing in both bootstrap scripts an
 
 **Runtime directive parsing:**
 - [x] Add `@envy` directive parsing to manifest loader (manual string parsing, no regex)
-- [x] Parse `@envy version`, `@envy cache`, `@envy mirror` with escape handling
+- [x] Parse `@envy version`, `@envy cache-posix`/`cache-win`, `@envy mirror` with escape handling
 - [x] Implement unescape logic (`\"` → `"`, `\\` → `\`)
 - [x] Expose parsed directives via `manifest` struct (version, cache, mirror fields)
 - [ ] Detect missing `@envy version` and restore it (using running envy's version)
@@ -770,9 +773,9 @@ This works because `%%L` loop variables expand raw content when delayed expansio
 
 **Status:** Deferred. The edge case is rare enough (version strings, paths, and URLs don't typically contain `!`) that we accept the limitation for now. Revisit if users report issues.
 
-### `@envy cache` Directive — Partial Fix Complete
+### `@envy cache-posix`/`cache-win` Directive — Partial Fix Complete
 
-**Bug discovered 2024-12:** The `@envy cache` directive was parsed but not used by the C++ runtime. Additionally, tilde (`~`) expansion was broken in both bootstrap script and C++ paths.
+**Bug discovered 2024-12:** The `@envy cache` directive (now `cache-posix`/`cache-win`) was parsed but not used by the C++ runtime. Additionally, tilde (`~`) expansion was broken in both bootstrap script and C++ paths.
 
 **Status (2024-12):** C++ runtime fix complete. Bootstrap script expansion still pending.
 
@@ -783,7 +786,7 @@ This works because `%%L` loop variables expand raw content when delayed expansio
 Current precedence (fully implemented):
 1. `--cache-root` CLI flag
 2. `ENVY_CACHE_ROOT` env var
-3. `@envy cache` directive ← **Now works**
+3. `@envy cache-posix`/`cache-win` directive ← **Now works**
 4. Platform default
 
 #### Problem 2: No Tilde Expansion — FIXED
@@ -877,5 +880,5 @@ Bootstrap path expansion is tested via the existing functional tests which exerc
 7. [x] Update cache-only command (`init`) to use `cache::ensure()`
 8. [x] Fix bootstrap script path expansion (Unix) — tilde + $VAR
 9. [x] Fix bootstrap script path expansion (Windows) — tilde
-10. [x] Add functional tests for `@envy cache` directive
+10. [x] Add functional tests for `@envy cache-posix`/`cache-win` directive
 11. [x] Delete `src/runtime.{h,cpp,_tests.cpp}` (superseded by `cache::ensure()`)

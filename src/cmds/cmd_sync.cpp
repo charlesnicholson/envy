@@ -208,14 +208,17 @@ void deploy_product_scripts(engine &eng,
     return;
   }
 
-  size_t const script_count{ created + updated + unchanged };
-  tui::info(
-      "sync: %zu product script(s) (%zu created, %zu updated, %zu unchanged, %zu removed)",
-      script_count,
-      created,
-      updated,
-      unchanged,
-      removed);
+  if (created > 0 || updated > 0 || removed > 0) {
+    size_t const script_count{ created + updated + unchanged };
+    tui::info(
+        "sync: %zu product script(s) (%zu created, %zu updated, %zu unchanged, %zu "
+        "removed)",
+        script_count,
+        created,
+        updated,
+        unchanged,
+        removed);
+  }
 }
 
 }  // namespace
@@ -264,10 +267,7 @@ void cmd_sync::execute() {
     }
   }
 
-  if (targets.empty()) {
-    tui::info("nothing to sync");
-    return;
-  }
+  if (targets.empty()) { return; }
 
   engine eng{ *c, m.get() };
 

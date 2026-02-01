@@ -17,7 +17,7 @@ namespace envy {
 // @envy metadata parsed from comment headers in manifest
 struct envy_meta {
   std::optional<std::string> version;  // @envy version "x.y.z"
-  std::optional<std::string> cache;    // @envy cache "/path"
+  std::optional<std::string> cache;    // @envy cache-posix or cache-win
   std::optional<std::string> mirror;   // @envy mirror "https://..."
   std::optional<std::string> bin;      // @envy bin "relative/path/to/bin"
   std::optional<bool> deploy;          // @envy deploy "true"/"false"

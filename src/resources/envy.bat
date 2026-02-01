@@ -53,7 +53,7 @@ for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
             set "VAL=!VAL:\"="!"
             set "VAL=!VAL:\\=\!"
             if "!KEY!"=="version" set "VERSION=!VAL!"
-            if "!KEY!"=="cache" set "MANIFEST_CACHE=!VAL!"
+            if "!KEY!"=="cache-win" set "MANIFEST_CACHE=!VAL!"
             if "!KEY!"=="mirror" set "MANIFEST_MIRROR=!VAL!"
         )
     )

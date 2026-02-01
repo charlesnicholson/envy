@@ -31,28 +31,28 @@ PACKAGES = {
 }
 """,
     "missing_version.lua": """-- This manifest has no @envy version directive
--- @envy cache "/custom/cache"
+-- @envy cache-posix "/custom/cache"
 
 PACKAGES = {
     "local.example@v1",
 }
 """,
     "with_escapes.lua": """-- @envy version "1.2.3-\\"beta\\""
--- @envy cache "/path/with\\\\backslash"
+-- @envy cache-posix "/path/with\\\\backslash"
 
 PACKAGES = {
     "local.example@v1",
 }
 """,
     "whitespace_variants.lua": """--   @envy   version   "1.0.0"
---\t@envy\tcache\t"/tab/separated"
+--\t@envy\tcache-posix\t"/tab/separated"
 
 PACKAGES = {
     "local.example@v1",
 }
 """,
     "all_directives.lua": """-- @envy version "2.0.0"
--- @envy cache "/opt/envy-cache"
+-- @envy cache-posix "/opt/envy-cache"
 -- @envy mirror "https://internal.corp/envy-releases"
 
 PACKAGES = {

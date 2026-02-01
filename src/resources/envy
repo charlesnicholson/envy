@@ -31,7 +31,7 @@ MANIFEST=$(find_manifest) || { echo "ERROR: envy.lua not found" >&2; exit 1; }
 parse_directives() {
     head -20 "$MANIFEST" | sed -nE '
         s/^--[[:space:]]*@envy[[:space:]]+version[[:space:]]+"(([^"\\]|\\.)*)".*/version \1/p
-        s/^--[[:space:]]*@envy[[:space:]]+cache[[:space:]]+"(([^"\\]|\\.)*)".*/cache \1/p
+        s/^--[[:space:]]*@envy[[:space:]]+cache-posix[[:space:]]+"(([^"\\]|\\.)*)".*/cache \1/p
         s/^--[[:space:]]*@envy[[:space:]]+mirror[[:space:]]+"(([^"\\]|\\.)*)".*/mirror \1/p
     '
 }

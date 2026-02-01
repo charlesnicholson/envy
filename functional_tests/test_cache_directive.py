@@ -1,4 +1,4 @@
-"""Tests for '-- @envy cache' manifest directive."""
+"""Tests for '-- @envy cache-posix' manifest directive."""
 
 import hashlib
 import io
@@ -34,7 +34,7 @@ def create_test_archive(output_path: Path) -> str:
 
 
 class TestCacheDirective(unittest.TestCase):
-    """Tests for '-- @envy cache' manifest directive."""
+    """Tests for '-- @envy cache-posix' manifest directive."""
 
     def setUp(self):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-cache-directive-"))
@@ -112,7 +112,7 @@ end
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{custom_cache_name}"
+                f"""-- @envy cache-posix "~/{custom_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -155,7 +155,7 @@ PACKAGES = {{
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "$HOME/{custom_cache_name}"
+                f"""-- @envy cache-posix "$HOME/{custom_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -191,7 +191,7 @@ PACKAGES = {{
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{manifest_cache_name}"
+                f"""-- @envy cache-posix "~/{manifest_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -234,7 +234,7 @@ PACKAGES = {{
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{manifest_cache_name}"
+                f"""-- @envy cache-posix "~/{manifest_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -272,7 +272,7 @@ PACKAGES = {{
 
         # Note: @envy directive values must be quoted
         manifest = self.create_manifest(
-            f"""-- @envy cache "{self.lua_path(custom_cache)}"
+            f"""-- @envy cache-posix "{self.lua_path(custom_cache)}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
