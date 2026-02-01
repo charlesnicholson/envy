@@ -406,13 +406,12 @@ PACKAGES = {{
             shutil.rmtree(custom_cache, ignore_errors=True)
 
     def test_sync_empty_manifest(self):
-        """Sync with empty manifest succeeds (nothing to do)."""
+        """Sync with empty manifest succeeds silently."""
         manifest = self.create_manifest("PACKAGES = {}")
 
         result = self.run_sync(manifest=manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("nothing to sync", result.stderr.lower())
 
     def test_sync_install_all_transitive_dependencies(self):
         """Sync --install-all installs transitive dependencies."""

@@ -225,7 +225,11 @@ envy_meta parse_envy_meta(std::string_view content) {
       auto const &[key, value]{ *directive };
       if (key == "version") {
         result.version = value;
-      } else if (key == "cache") {
+#ifdef _WIN32
+      } else if (key == "cache-win") {
+#else
+      } else if (key == "cache-posix") {
+#endif
         result.cache = value;
       } else if (key == "mirror") {
         result.mirror = value;

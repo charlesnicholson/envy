@@ -454,7 +454,7 @@ PACKAGES = {{
         result = self.run_package("local.nonexistent@v1", manifest)
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not found", result.stderr.lower())
+        self.assertIn("no package matching", result.stderr.lower())
 
     def test_package_programmatic_package(self):
         """Error for programmatic packages (no cached artifacts)."""
@@ -734,6 +734,122 @@ PACKAGES = {{
         self.assertTrue(
             package_path.exists(), f"Package path should exist: {package_path}"
         )
+
+    def test_package_partial_match_full_identity(self):
+        """Full identity match works."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
+}}
+"""
+        )
+
+        result = self.run_package("local.build_dependency@v1", manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip())
+
+    def test_package_partial_match_namespace_name(self):
+        """Partial match by namespace.name (no revision) works."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
+}}
+"""
+        )
+
+        # Match without the @v1 revision
+        result = self.run_package("local.build_dependency", manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip())
+
+    def test_package_partial_match_name_only(self):
+        """Partial match by name only (no namespace or revision) works."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
+}}
+"""
+        )
+
+        # Match with just the name part
+        result = self.run_package("build_dependency", manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip())
+
+    def test_package_partial_match_name_revision(self):
+        """Partial match by name@revision (no namespace) works."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
+}}
+"""
+        )
+
+        # Match with name@revision but no namespace
+        result = self.run_package("build_dependency@v1", manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(result.stdout.strip())
+
+    def test_package_partial_match_ambiguous_error(self):
+        """Ambiguous partial match produces error with candidates."""
+        archive_lua_path = self.archive_path.as_posix()
+
+        # Create two specs with the same name but different namespaces
+        spec_local = f"""IDENTITY = "local.common@v1"
+FETCH = {{ source = "{archive_lua_path}", sha256 = "{self.archive_hash}" }}
+STAGE = {{ strip = 1 }}
+BUILD = function() end
+"""
+        spec_other = f"""IDENTITY = "other.common@v1"
+FETCH = {{ source = "{archive_lua_path}", sha256 = "{self.archive_hash}" }}
+STAGE = {{ strip = 1 }}
+BUILD = function() end
+"""
+        spec_local_path = self.test_dir / "common_local.lua"
+        spec_other_path = self.test_dir / "common_other.lua"
+        spec_local_path.write_text(spec_local, encoding="utf-8")
+        spec_other_path.write_text(spec_other, encoding="utf-8")
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.common@v1", source = "{self.lua_path(spec_local_path)}" }},
+    {{ spec = "other.common@v1", source = "{self.lua_path(spec_other_path)}" }}
+}}
+"""
+        )
+
+        # Ambiguous query - "common" matches both local.common@v1 and other.common@v1
+        result = self.run_package("common", manifest)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("ambiguous", result.stderr.lower())
+        self.assertIn("local.common@v1", result.stderr)
+        self.assertIn("other.common@v1", result.stderr)
+
+    def test_package_partial_match_no_match(self):
+        """Partial match with no matches produces clear error."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.build_dependency@v1", source = "{self.lua_path(self.specs_dir)}/build_dependency.lua" }}
+}}
+"""
+        )
+
+        result = self.run_package("nonexistent", manifest)
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no package matching", result.stderr.lower())
+        self.assertIn("nonexistent", result.stderr)
 
 
 if __name__ == "__main__":

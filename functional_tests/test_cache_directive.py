@@ -1,8 +1,9 @@
-"""Tests for '-- @envy cache' manifest directive."""
+"""Tests for '-- @envy cache-posix/cache-win' manifest directive."""
 
 import hashlib
 import io
 import os
+import platform
 import shutil
 import subprocess
 import tarfile
@@ -12,6 +13,10 @@ from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+
+# Platform-specific cache directive
+IS_WINDOWS = platform.system() == "Windows"
+CACHE_DIRECTIVE = "cache-win" if IS_WINDOWS else "cache-posix"
 
 # Test archive contents
 TEST_ARCHIVE_FILES = {
@@ -34,7 +39,7 @@ def create_test_archive(output_path: Path) -> str:
 
 
 class TestCacheDirective(unittest.TestCase):
-    """Tests for '-- @envy cache' manifest directive."""
+    """Tests for '-- @envy cache-posix/cache-win' manifest directive."""
 
     def setUp(self):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-cache-directive-"))
@@ -112,7 +117,7 @@ end
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{custom_cache_name}"
+                f"""-- @envy {CACHE_DIRECTIVE} "~/{custom_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -148,14 +153,16 @@ PACKAGES = {{
     def test_cache_directive_env_var_expansion(self):
         """Cache directive with $HOME expands environment variable."""
         # Create a custom cache path using $HOME
+        # Note: On Windows, envy maps $HOME to USERPROFILE
         custom_cache_name = f".envy-cache-test-env-{self.unique_suffix}"
         home = Path.home()
         expected_cache = home / custom_cache_name
 
         try:
             # Note: @envy directive values must be quoted
+            # $HOME works cross-platform (envy maps it to USERPROFILE on Windows)
             manifest = self.create_manifest(
-                f"""-- @envy cache "$HOME/{custom_cache_name}"
+                f"""-- @envy {CACHE_DIRECTIVE} "$HOME/{custom_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -191,7 +198,7 @@ PACKAGES = {{
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{manifest_cache_name}"
+                f"""-- @envy {CACHE_DIRECTIVE} "~/{manifest_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -234,7 +241,7 @@ PACKAGES = {{
         try:
             # Note: @envy directive values must be quoted
             manifest = self.create_manifest(
-                f"""-- @envy cache "~/{manifest_cache_name}"
+                f"""-- @envy {CACHE_DIRECTIVE} "~/{manifest_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
@@ -272,7 +279,7 @@ PACKAGES = {{
 
         # Note: @envy directive values must be quoted
         manifest = self.create_manifest(
-            f"""-- @envy cache "{self.lua_path(custom_cache)}"
+            f"""-- @envy {CACHE_DIRECTIVE} "{self.lua_path(custom_cache)}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
