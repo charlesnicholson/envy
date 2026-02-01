@@ -4,39 +4,25 @@ local sha256  -- populated at end of file
 local win_x86_64 = { ["14.2.rel1"] = true, ["14.3.rel1"] = true }
 local darwin_arm64_only = { ["14.3.rel1"] = true }
 
+local function platform_suffix(version)
+  if envy.PLATFORM == "darwin" then return "darwin-" .. envy.ARCH
+  elseif envy.PLATFORM == "linux" then return (envy.ARCH == "arm64") and "aarch64" or envy.ARCH
+  else return win_x86_64[version] and "mingw-w64-x86_64" or "mingw-w64-i686" end
+end
+
 VALIDATE = function(opts)
   if opts.version == nil then return "'version' is a required option" end
-
-  local suffix
-  if envy.PLATFORM == "darwin" then
-    if envy.ARCH == "x86_64" and darwin_arm64_only[opts.version] then
-      return "version " .. opts.version .. " not available for Intel Mac (darwin-x86_64)"
-    end
-    suffix = "darwin-" .. envy.ARCH
-  elseif envy.PLATFORM == "linux" then
-    suffix = (envy.ARCH == "arm64") and "aarch64" or envy.ARCH
-  else
-    suffix = win_x86_64[opts.version] and "mingw-w64-x86_64" or "mingw-w64-i686"
+  if envy.PLATFORM == "darwin" and envy.ARCH == "x86_64" and darwin_arm64_only[opts.version] then
+    return "version " .. opts.version .. " not available for Intel Mac (darwin-x86_64)"
   end
-
-  if not sha256[opts.version .. "-" .. suffix] then
-    return "unsupported version/platform: " .. opts.version .. "-" .. suffix
-  end
+  local key = opts.version .. "-" .. platform_suffix(opts.version)
+  if not sha256[key] then return "unsupported version/platform: " .. key end
 end
 
 FETCH = function(tmp_dir, opts)
-  local suffix
-  if envy.PLATFORM == "darwin" then
-    suffix = "darwin-" .. envy.ARCH
-  elseif envy.PLATFORM == "linux" then
-    suffix = (envy.ARCH == "arm64") and "aarch64" or envy.ARCH
-  else
-    suffix = win_x86_64[opts.version] and "mingw-w64-x86_64" or "mingw-w64-i686"
-  end
-
+  local suffix = platform_suffix(opts.version)
   local ext = (envy.PLATFORM == "windows") and "zip" or "tar.xz"
   local filename = "arm-gnu-toolchain-" .. opts.version .. "-" .. suffix .. "-arm-none-eabi." .. ext
-
   return {
     source = "https://developer.arm.com/-/media/Files/downloads/gnu/" .. opts.version .. "/binrel/" .. filename,
     sha256 = sha256[opts.version .. "-" .. suffix]
