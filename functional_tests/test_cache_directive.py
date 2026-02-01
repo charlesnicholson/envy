@@ -151,21 +151,18 @@ PACKAGES = {{
                 shutil.rmtree(expected_cache, ignore_errors=True)
 
     def test_cache_directive_env_var_expansion(self):
-        """Cache directive with $HOME/%USERPROFILE% expands environment variable."""
-        # Create a custom cache path using $HOME (POSIX) or %USERPROFILE% (Windows)
+        """Cache directive with $HOME expands environment variable."""
+        # Create a custom cache path using $HOME
+        # Note: On Windows, envy maps $HOME to USERPROFILE
         custom_cache_name = f".envy-cache-test-env-{self.unique_suffix}"
         home = Path.home()
         expected_cache = home / custom_cache_name
 
         try:
             # Note: @envy directive values must be quoted
-            # Windows uses %USERPROFILE%, POSIX uses $HOME
-            if IS_WINDOWS:
-                env_path = f"%USERPROFILE%/{custom_cache_name}"
-            else:
-                env_path = f"$HOME/{custom_cache_name}"
+            # $HOME works cross-platform (envy maps it to USERPROFILE on Windows)
             manifest = self.create_manifest(
-                f"""-- @envy {CACHE_DIRECTIVE} "{env_path}"
+                f"""-- @envy {CACHE_DIRECTIVE} "$HOME/{custom_cache_name}"
 PACKAGES = {{
     {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
 }}
