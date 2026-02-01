@@ -40,7 +40,9 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
     local cmd = "pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink"
     envy.run(cmd, { check = true })
   elseif envy.PLATFORM == "windows" then
-    envy.run('Start-Process -Wait -FilePath "' .. src .. '" -ArgumentList "/S","/D=' .. install_dir .. '"', { check = true })
+    envy.run(
+    'Start-Process -Wait -FilePath "' ..
+    src .. '" -ArgumentList "/S","/D=' .. install_dir .. '"', { check = true })
   else
     envy.extract(src, install_dir, { strip = 1 })
   end
@@ -68,7 +70,7 @@ PRODUCTS = function(opts)
     end
   end
 
-  return {
+  local products = {
     JLinkExe = exe("JLink"),
     JLinkGDBServerCLExe = exe("JLinkGDBServerCL"),
     JLinkGUIServerExe = exe("JLinkGUIServer"),
@@ -83,4 +85,10 @@ PRODUCTS = function(opts)
     JTAGLoadExe = exe("JTAGLoad"),
     libjlink = { value = lib, script = false },
   }
+
+  if envy.PLATFORM == "linux" then
+    products.jlink_udev_rules = { value = "99-jlink.rules", script = false }
+  end
+
+  return products
 end
