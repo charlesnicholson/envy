@@ -39,7 +39,8 @@ fetch_request url_to_fetch_request(std::string const &url,
                                    std::filesystem::path const &dest,
                                    std::optional<std::string> const &ref,
                                    std::optional<std::string> const &post_data,
-                                   std::string const &context) {
+                                   std::string const &context,
+                                   std::optional<std::filesystem::path> const &file_root) {
   auto const info{ uri_classify(url) };
 
   if (post_data && info.scheme != uri_scheme::HTTP && info.scheme != uri_scheme::HTTPS) {
@@ -62,14 +63,19 @@ fetch_request url_to_fetch_request(std::string const &url,
       // TODO: region support
     case uri_scheme::LOCAL_FILE_ABSOLUTE:
     case uri_scheme::LOCAL_FILE_RELATIVE:
-      return fetch_request_file{ .source = url, .destination = dest };
-      // TODO: file_root support
+      return fetch_request_file{ .source = url,
+                                 .destination = dest,
+                                 .file_root =
+                                     file_root.value_or(std::filesystem::path{}) };
     case uri_scheme::GIT:
     case uri_scheme::GIT_HTTPS:
       if (!ref.has_value() || ref->empty()) {
         throw std::runtime_error("Git URLs require 'ref' field in " + context);
       }
-      return fetch_request_git{ .source = url, .destination = dest, .ref = *ref, .scheme = info.scheme };
+      return fetch_request_git{ .source = info.canonical,
+                                .destination = dest,
+                                .ref = *ref,
+                                .scheme = info.scheme };
     default: throw std::runtime_error("Unsupported URL scheme in " + context + ": " + url);
   }
 }
@@ -98,6 +104,7 @@ struct table_entry {
   std::string sha256;
   std::optional<std::string> ref;
   std::optional<std::string> post_data;
+  std::optional<std::string> dest;
 };
 
 std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
@@ -198,6 +205,10 @@ table_entry parse_table_entry(sol::table const &tbl, std::string const &context)
     entry.post_data = std::move(*pd);
   }
 
+  if (auto dst{ sol_util_get_optional<std::string>(tbl, "dest", context) }) {
+    entry.dest = std::move(*dst);
+  }
+
   return entry;
 }
 
@@ -205,14 +216,28 @@ fetch_spec create_fetch_spec(std::string url,
                              std::string sha256,
                              std::optional<std::string> ref,
                              std::optional<std::string> post_data,
+                             std::optional<std::string> dest_name,
                              std::filesystem::path const &fetch_dir,
                              std::filesystem::path const &stage_dir,
                              std::unordered_set<std::string> &basenames,
                              std::string const &context) {
-  std::string basename{ uri_extract_filename(url) };
-  if (basename.empty()) {
-    throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
-                             context);
+  std::string basename;
+  if (dest_name) {
+    if (dest_name->empty()) {
+      throw std::runtime_error("Empty dest for URL: " + url + " in " + context);
+    }
+    if (dest_name->find_first_of("/\\") != std::string::npos || *dest_name == ".." ||
+        *dest_name == ".") {
+      throw std::runtime_error("dest must be a plain filename (no path separators): " +
+                               *dest_name + " in " + context);
+    }
+    basename = std::move(*dest_name);
+  } else {
+    basename = uri_extract_filename(url);
+    if (basename.empty()) {
+      throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
+                               context);
+    }
   }
 
   if (basenames.contains(basename)) {
@@ -222,11 +247,10 @@ fetch_spec create_fetch_spec(std::string url,
 
   auto const info{ uri_classify(url) };
 
-  std::filesystem::path const dest{
-    (info.scheme == uri_scheme::GIT || info.scheme == uri_scheme::GIT_HTTPS)
-        ? stage_dir / basename
-        : fetch_dir / basename
-  };
+  std::filesystem::path const dest{ (info.scheme == uri_scheme::GIT ||
+                                     info.scheme == uri_scheme::GIT_HTTPS)
+                                        ? stage_dir / basename
+                                        : fetch_dir / basename };
 
   return { .request = url_to_fetch_request(url, dest, ref, post_data, context),
            .sha256 = std::move(sha256) };
@@ -269,6 +293,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
                                           std::move(entry.sha256),
                                           std::move(entry.ref),
                                           std::move(entry.post_data),
+                                          std::move(entry.dest),
                                           fetch_dir,
                                           stage_dir,
                                           basenames,
@@ -289,6 +314,7 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
 
           specs.push_back(create_fetch_spec(std::move(url),
                                             "",
+                                            std::nullopt,
                                             std::nullopt,
                                             std::nullopt,
                                             fetch_dir,

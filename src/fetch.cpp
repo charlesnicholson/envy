@@ -277,7 +277,11 @@ fetch_result fetch_single(fetch_request const &request) {
             return fetch_local_file(info.canonical, req.destination, req.file_root);
           },
           [](fetch_request_git const &req) -> fetch_result {
-            return fetch_git_repo(req.source, req.ref, req.destination, req.progress, req.scheme);
+            return fetch_git_repo(req.source,
+                                  req.ref,
+                                  req.destination,
+                                  req.progress,
+                                  req.scheme);
           },
       },
       request);

@@ -1,10 +1,5 @@
 IDENTITY = "local.gn@r0"
 
-DEPENDENCIES = {
-  { product = "python3" },
-  { product = "ninja" },
-}
-
 VALIDATE = function(opts)
   if opts.ref == nil then
     return "'ref' is a required option (GN doesn't tag, so use a git committish)"
@@ -12,32 +7,18 @@ VALIDATE = function(opts)
 end
 
 FETCH = function(tmp_dir, opts)
+  local platform = ({
+    darwin = "mac-arm64",
+    linux = (envy.ARCH == "x86_64") and "linux-amd64" or "linux-arm64",
+    windows = "windows-amd64",
+  })[envy.PLATFORM]
+  assert(platform, "unsupported platform: " .. envy.PLATFORM)
+
   return {
-    source = "https://gn.googlesource.com/gn.git",
-    ref = opts.ref
+    source = "https://chrome-infra-packages.appspot.com/dl/gn/gn/" ..
+        platform .. "/+/git_revision:" .. opts.ref,
+    dest = "gn.zip",
   }
-end
-
-BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  local cmd = [[
-{{python}} build/gen.py
-{{ninja}} -C out
-]]
-
-  if envy.PLATFORM ~= "windows" then
-    cmd = cmd .. [[
-out/gn_unittests
-]]
-  end
-
-  local shell = envy.PLATFORM == "windows" and ENVY_SHELL.CMD or ENVY_SHELL.BASH
-  envy.run(envy.template(cmd,
-      { python = envy.product("python3"), ninja = envy.product("ninja") }),
-    { cwd = stage_dir .. "gn.git", check = true, shell = shell })
-end
-
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.move(stage_dir .. "gn.git/out/gn" .. envy.EXE_EXT, install_dir)
 end
 
 PRODUCTS = { gn = "gn" .. envy.EXE_EXT }
