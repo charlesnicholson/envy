@@ -221,10 +221,23 @@ fetch_spec create_fetch_spec(std::string url,
                              std::filesystem::path const &stage_dir,
                              std::unordered_set<std::string> &basenames,
                              std::string const &context) {
-  std::string basename{ dest_name ? std::move(*dest_name) : uri_extract_filename(url) };
-  if (basename.empty()) {
-    throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
-                             context);
+  std::string basename;
+  if (dest_name) {
+    if (dest_name->empty()) {
+      throw std::runtime_error("Empty dest for URL: " + url + " in " + context);
+    }
+    if (dest_name->find_first_of("/\\") != std::string::npos || *dest_name == ".." ||
+        *dest_name == ".") {
+      throw std::runtime_error("dest must be a plain filename (no path separators): " +
+                               *dest_name + " in " + context);
+    }
+    basename = std::move(*dest_name);
+  } else {
+    basename = uri_extract_filename(url);
+    if (basename.empty()) {
+      throw std::runtime_error("Cannot extract filename from URL: " + url + " in " +
+                               context);
+    }
   }
 
   if (basenames.contains(basename)) {

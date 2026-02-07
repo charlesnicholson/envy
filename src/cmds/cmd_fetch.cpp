@@ -3,6 +3,7 @@
 #include "fetch.h"
 #include "phases/phase_fetch.h"
 #include "tui.h"
+#include "uri.h"
 
 #include "CLI11.hpp"
 
@@ -36,6 +37,12 @@ void cmd_fetch::execute() {
   if (cfg_.source.empty()) { throw std::runtime_error("fetch: source URI is empty"); }
   if (cfg_.destination.empty()) {
     throw std::runtime_error("fetch: destination path is empty");
+  }
+
+  auto const scheme{ uri_classify(cfg_.source).scheme };
+  if ((scheme == uri_scheme::GIT || scheme == uri_scheme::GIT_HTTPS) &&
+      (!cfg_.ref.has_value() || cfg_.ref->empty())) {
+    throw std::runtime_error("fetch: git sources require --ref <branch|tag|sha>");
   }
 
   auto req{ url_to_fetch_request(cfg_.source,

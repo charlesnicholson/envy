@@ -218,10 +218,25 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     pkg *p{ ctx ? ctx->p : nullptr };
 
     for (auto const &item : items) {
-      std::string basename{ item.dest ? *item.dest : uri_extract_filename(item.source) };
-      if (basename.empty()) {
-        throw std::runtime_error("envy.fetch: cannot extract filename from source: " +
-                                 item.source);
+      std::string basename;
+      if (item.dest) {
+        if (item.dest->empty()) {
+          throw std::runtime_error("envy.fetch: dest cannot be empty for source: " +
+                                   item.source);
+        }
+        if (item.dest->find_first_of("/\\") != std::string::npos || *item.dest == ".." ||
+            *item.dest == ".") {
+          throw std::runtime_error(
+              "envy.fetch: dest must be a plain filename (no path separators): " +
+              *item.dest);
+        }
+        basename = *item.dest;
+      } else {
+        basename = uri_extract_filename(item.source);
+        if (basename.empty()) {
+          throw std::runtime_error("envy.fetch: cannot extract filename from source: " +
+                                   item.source);
+        }
       }
 
       // Deduplicate basenames

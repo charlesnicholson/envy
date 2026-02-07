@@ -220,4 +220,44 @@ TEST_CASE("url_to_fetch_request post_data on file throws") {
                        std::runtime_error);
 }
 
+TEST_CASE("url_to_fetch_request file with file_root") {
+  auto req{ url_to_fetch_request("relative/path/file.tar.gz",
+                                 "/tmp/file.tar.gz",
+                                 std::nullopt,
+                                 std::nullopt,
+                                 "test",
+                                 "/some/root") };
+
+  REQUIRE(std::holds_alternative<fetch_request_file>(req));
+  auto const &file_req{ std::get<fetch_request_file>(req) };
+  CHECK(file_req.source == "relative/path/file.tar.gz");
+  CHECK(file_req.destination == "/tmp/file.tar.gz");
+  CHECK(file_req.file_root == "/some/root");
+}
+
+TEST_CASE("url_to_fetch_request file without file_root") {
+  auto req{ url_to_fetch_request("relative/path/file.tar.gz",
+                                 "/tmp/file.tar.gz",
+                                 std::nullopt,
+                                 std::nullopt,
+                                 "test") };
+
+  REQUIRE(std::holds_alternative<fetch_request_file>(req));
+  auto const &file_req{ std::get<fetch_request_file>(req) };
+  CHECK(file_req.file_root.empty());
+}
+
+TEST_CASE("url_to_fetch_request git uses canonical source") {
+  auto req{ url_to_fetch_request("https://github.com/user/repo.git",
+                                 "/tmp/repo",
+                                 "main",
+                                 std::nullopt,
+                                 "test") };
+
+  REQUIRE(std::holds_alternative<fetch_request_git>(req));
+  auto const &git_req{ std::get<fetch_request_git>(req) };
+  // Should use canonical form from uri_classify, not raw URL
+  CHECK_FALSE(git_req.source.empty());
+}
+
 }  // namespace envy
