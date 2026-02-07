@@ -1,8 +1,8 @@
 #include "cmd_fetch.h"
 
 #include "fetch.h"
+#include "phases/phase_fetch.h"
 #include "tui.h"
-#include "uri.h"
 
 #include "CLI11.hpp"
 
@@ -38,44 +38,12 @@ void cmd_fetch::execute() {
     throw std::runtime_error("fetch: destination path is empty");
   }
 
-  // Determine the request type based on URL scheme
-  auto const info{ uri_classify(cfg_.source) };
-  fetch_request req;
-  switch (info.scheme) {
-    case uri_scheme::HTTP:
-      req = fetch_request_http{ .source = cfg_.source, .destination = cfg_.destination };
-      break;
-    case uri_scheme::HTTPS:
-      req = fetch_request_https{ .source = cfg_.source, .destination = cfg_.destination };
-      break;
-    case uri_scheme::FTP:
-      req = fetch_request_ftp{ .source = cfg_.source, .destination = cfg_.destination };
-      break;
-    case uri_scheme::FTPS:
-      req = fetch_request_ftps{ .source = cfg_.source, .destination = cfg_.destination };
-      break;
-    case uri_scheme::S3:
-      req = fetch_request_s3{ .source = cfg_.source, .destination = cfg_.destination };
-      break;
-    case uri_scheme::LOCAL_FILE_ABSOLUTE:
-    case uri_scheme::LOCAL_FILE_RELATIVE:
-      req = fetch_request_file{ .source = cfg_.source,
-                                .destination = cfg_.destination,
-                                .file_root =
-                                    cfg_.manifest_root.value_or(std::filesystem::path{}) };
-      break;
-    case uri_scheme::GIT:
-    case uri_scheme::GIT_HTTPS:
-      if (!cfg_.ref.has_value() || cfg_.ref->empty()) {
-        throw std::runtime_error("fetch: git sources require --ref <branch|tag|sha>");
-      }
-      req = fetch_request_git{ .source = info.canonical,
-                               .destination = cfg_.destination,
-                               .ref = *cfg_.ref,
-                               .scheme = info.scheme };
-      break;
-    default: throw std::runtime_error("fetch: unsupported URL scheme");
-  }
+  auto req{ url_to_fetch_request(cfg_.source,
+                                 cfg_.destination,
+                                 cfg_.ref,
+                                 std::nullopt,
+                                 "fetch",
+                                 cfg_.manifest_root) };
 
   auto const results{ fetch({ req }) };
   if (results.empty()) { throw std::runtime_error("fetch: no result returned"); }

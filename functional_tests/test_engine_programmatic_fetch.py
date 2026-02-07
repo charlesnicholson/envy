@@ -194,6 +194,122 @@ end
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
+    def test_fetch_single_table_destination(self):
+        """envy.fetch({source="...", dest="..."}) uses dest as basename."""
+        spec_content = f"""IDENTITY = "local.prog_fetch_dest@v1"
+
+function FETCH(tmp_dir, options)
+  local file = envy.fetch({{
+    source = "{self.lua_path("simple.lua")}",
+    dest ="renamed.dat"
+  }}, {{dest = tmp_dir}})
+
+  if file ~= "renamed.dat" then
+    error("Expected basename 'renamed.dat', got '" .. file .. "'")
+  end
+
+  -- Verify file exists under the new name
+  local f = io.open(tmp_dir .. "/renamed.dat", "r")
+  if not f then error("renamed.dat not in tmp_dir") end
+  f:close()
+
+  envy.commit_fetch(file)
+end
+"""
+        spec_path = self.cache_root / "prog_fetch_dest.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_fetch_dest@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_table_array_destination(self):
+        """envy.fetch({{source=..., dest=...}, ...}) returns overridden basenames."""
+        spec_content = f"""IDENTITY = "local.prog_fetch_dest_array@v1"
+
+function FETCH(tmp_dir, options)
+  local files = envy.fetch({{
+    {{source = "{self.lua_path("simple.lua")}", dest ="alpha.dat"}},
+    {{source = "{self.lua_path("print_single.lua")}", dest ="beta.dat"}}
+  }}, {{dest = tmp_dir}})
+
+  if type(files) ~= "table" or #files ~= 2 then
+    error("Expected array of 2 files")
+  end
+  if files[1] ~= "alpha.dat" then
+    error("Expected 'alpha.dat', got '" .. files[1] .. "'")
+  end
+  if files[2] ~= "beta.dat" then
+    error("Expected 'beta.dat', got '" .. files[2] .. "'")
+  end
+
+  envy.commit_fetch(files)
+end
+"""
+        spec_path = self.cache_root / "prog_fetch_dest_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_fetch_dest_array@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_fetch_function_returns_table_with_destination(self):
+        """FETCH function returning {source=..., dest=...} uses dest."""
+        spec_content = f"""IDENTITY = "local.prog_return_dest@v1"
+
+FETCH = function(tmp_dir, options)
+  return {{
+    source = "{self.lua_path("simple.lua")}",
+    dest ="output.dat"
+  }}
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  local f = io.open(fetch_dir .. "/output.dat", "r")
+  if not f then error("output.dat not found in fetch_dir") end
+  f:close()
+end
+"""
+        spec_path = self.cache_root / "prog_return_dest.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.prog_return_dest@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
     def test_commit_fetch_scalar_string(self):
         """envy.commit_fetch("file.tar.gz") moves file to fetch_dir."""
         spec_content = f"""IDENTITY = "local.prog_commit_scalar@v1"

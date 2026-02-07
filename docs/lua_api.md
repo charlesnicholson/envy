@@ -155,6 +155,7 @@ Download files to destination.
 - `sha256` — optional hash for verification
 - `ref` — required for git URLs (branch, tag, or SHA)
 - `post_data` — optional form-urlencoded body; triggers HTTP POST (HTTP/HTTPS only)
+- `dest` — optional override for cache filename (use when URL lacks a recognizable filename)
 
 **opts:**
 - `dest` — required, destination directory
@@ -179,6 +180,12 @@ envy.fetch({
   source = "https://example.com/download/file.pkg",
   sha256 = hash,
   post_data = "accept_license=yes"
+}, { dest = tmp_dir })
+
+-- Dest override (URL has no usable basename)
+envy.fetch({
+  source = "https://cipd.example.com/dl/pkg/+/git_revision:" .. ref,
+  dest = "pkg.zip"
 }, { dest = tmp_dir })
 ```
 

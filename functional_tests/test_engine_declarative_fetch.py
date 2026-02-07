@@ -275,6 +275,174 @@ FETCH = {{
             f"Expected SHA256 error, got: {result.stderr}",
         )
 
+    def test_declarative_fetch_destination_override(self):
+        """Spec with destination field uses it instead of URL-derived basename."""
+        simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
+
+        spec_content = f"""-- Test declarative fetch with dest override
+IDENTITY = "local.fetch_dest_override@v1"
+
+FETCH = {{
+  source = "{self.lua_path("simple.lua")}",
+  dest ="custom_name.dat",
+  sha256 = "{simple_hash}"
+}}
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  -- Verify file exists under the overridden destination name
+  local f = io.open(fetch_dir .. "/custom_name.dat", "r")
+  if not f then
+    error("File not found as custom_name.dat in fetch_dir")
+  end
+  f:close()
+
+  -- Verify file does NOT exist under the original URL basename
+  local g = io.open(fetch_dir .. "/simple.lua", "r")
+  if g then
+    g:close()
+    error("File should NOT exist as simple.lua (dest override failed)")
+  end
+end
+"""
+        spec_path = self.cache_root / "fetch_dest_override.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                "--trace",
+                "engine-test",
+                "local.fetch_dest_override@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_declarative_fetch_destination_array(self):
+        """dest field works in array-of-tables format."""
+        spec_content = f"""-- Test dest override in array format
+IDENTITY = "local.fetch_dest_array@v1"
+
+FETCH = {{
+  {{ source = "{self.lua_path("simple.lua")}", dest ="first.dat" }},
+  {{ source = "{self.lua_path("print_single.lua")}", dest ="second.dat" }}
+}}
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  local f = io.open(fetch_dir .. "/first.dat", "r")
+  if not f then error("first.dat not found in fetch_dir") end
+  f:close()
+
+  f = io.open(fetch_dir .. "/second.dat", "r")
+  if not f then error("second.dat not found in fetch_dir") end
+  f:close()
+end
+"""
+        spec_path = self.cache_root / "fetch_dest_array.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                "--trace",
+                "engine-test",
+                "local.fetch_dest_array@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_declarative_fetch_destination_resolves_collision(self):
+        """dest field can resolve what would otherwise be a filename collision."""
+        subdir1 = self.test_files_dir / "a"
+        subdir2 = self.test_files_dir / "b"
+        subdir1.mkdir()
+        subdir2.mkdir()
+        (subdir1 / "data.txt").write_text("version a\n", encoding="utf-8")
+        (subdir2 / "data.txt").write_text("version b\n", encoding="utf-8")
+
+        spec_content = f"""-- dest resolves collision between same-basename files
+IDENTITY = "local.fetch_dest_collision_fix@v1"
+
+FETCH = {{
+  {{ source = "{(subdir1 / "data.txt").as_posix()}", dest ="data_a.txt" }},
+  {{ source = "{(subdir2 / "data.txt").as_posix()}", dest ="data_b.txt" }}
+}}
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  local f = io.open(fetch_dir .. "/data_a.txt", "r")
+  if not f then error("data_a.txt not found") end
+  local content_a = f:read("*a")
+  f:close()
+
+  f = io.open(fetch_dir .. "/data_b.txt", "r")
+  if not f then error("data_b.txt not found") end
+  local content_b = f:read("*a")
+  f:close()
+
+  if content_a == content_b then
+    error("Files should have different content")
+  end
+end
+"""
+        spec_path = self.cache_root / "fetch_dest_collision_fix.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_dest_collision_fix@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_declarative_fetch_destination_collision(self):
+        """Duplicate dest values still trigger collision error."""
+        spec_content = f"""-- Duplicate dest values should collide
+IDENTITY = "local.fetch_dest_dup@v1"
+
+FETCH = {{
+  {{ source = "{self.lua_path("simple.lua")}", dest ="same.dat" }},
+  {{ source = "{self.lua_path("print_single.lua")}", dest ="same.dat" }}
+}}
+"""
+        spec_path = self.cache_root / "fetch_dest_dup.lua"
+        spec_path.write_text(spec_content, encoding="utf-8")
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "local.fetch_dest_dup@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(
+            result.returncode, 0, "Expected collision error for duplicate dest"
+        )
+        self.assertIn("collision", result.stderr.lower())
+        self.assertIn("same.dat", result.stderr)
+
     def test_declarative_fetch_string_array(self):
         """Spec with FETCH = {\"url1\", \"url2\", \"url3\"} downloads all files."""
         # Create spec with array of strings (no SHA256)

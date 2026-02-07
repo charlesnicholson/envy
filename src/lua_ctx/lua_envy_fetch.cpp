@@ -26,6 +26,7 @@ struct fetch_item {
   std::optional<std::string> sha256;
   std::optional<std::string> ref;
   std::optional<std::string> post_data;
+  std::optional<std::string> dest;
 };
 
 // Parse envy.fetch() url_or_spec argument
@@ -47,7 +48,8 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
       auto sha256{ sol_util_get_optional<std::string>(tbl, "sha256", "envy.fetch") };
       auto ref{ sol_util_get_optional<std::string>(tbl, "ref", "envy.fetch") };
       auto post_data{ sol_util_get_optional<std::string>(tbl, "post_data", "envy.fetch") };
-      items.push_back({ source, sha256, ref, post_data });
+      auto dest{ sol_util_get_optional<std::string>(tbl, "dest", "envy.fetch") };
+      items.push_back({ source, sha256, ref, post_data, dest });
     } else if (first_elem.is<std::string>()) {
       is_array = true;
 
@@ -78,8 +80,9 @@ std::pair<std::vector<fetch_item>, bool> parse_fetch_args(sol::object const &arg
         auto post_data{
           sol_util_get_optional<std::string>(item_tbl, "post_data", "envy.fetch")
         };
+        auto dest{ sol_util_get_optional<std::string>(item_tbl, "dest", "envy.fetch") };
 
-        items.push_back({ source, sha256, ref, post_data });
+        items.push_back({ source, sha256, ref, post_data, dest });
       }
     } else {
       throw std::runtime_error("envy.fetch: invalid array element type");
@@ -215,7 +218,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
     pkg *p{ ctx ? ctx->p : nullptr };
 
     for (auto const &item : items) {
-      std::string basename{ uri_extract_filename(item.source) };
+      std::string basename{ item.dest ? *item.dest : uri_extract_filename(item.source) };
       if (basename.empty()) {
         throw std::runtime_error("envy.fetch: cannot extract filename from source: " +
                                  item.source);
