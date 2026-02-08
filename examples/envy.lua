@@ -42,6 +42,9 @@ PACKAGES = {
 
   { spec = "local.jlink@r0", source = "local.jlink@r0.lua",
     options = { version = "9.12" } },
+
+  { spec = "local.taplo@r0", source = "local.taplo@r0.lua",
+    options = { version = "0.10.0" } },
 }
 
 if envy.PLATFORM ~= "windows" then
