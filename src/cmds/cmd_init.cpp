@@ -5,6 +5,7 @@
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "platform.h"
 #include "tui.h"
+#include "util.h"
 
 #include "CLI11.hpp"
 #include "lua.h"
@@ -12,7 +13,6 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -101,13 +101,6 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
   }
 }
 
-void write_file(fs::path const &path, std::string_view content) {
-  std::ofstream out{ path, std::ios::binary };
-  if (!out) { throw std::runtime_error("init: failed to create " + path.string()); }
-  out.write(content.data(), static_cast<std::streamsize>(content.size()));
-  if (!out.good()) { throw std::runtime_error("init: failed to write " + path.string()); }
-}
-
 std::string stamp_manifest_placeholders(std::string_view content,
                                         std::string_view download_url,
                                         std::string_view bin_dir,
@@ -163,7 +156,7 @@ fs::path extract_lua_ls_types() {
   }
 
   auto const types{ stamp_placeholders(get_type_definitions(), kEnvyDownloadUrl) };
-  write_file(types_path, types);
+  util_write_file(types_path, types);
 
   tui::info("Extracted type definitions to %s", types_path.string().c_str());
   return types_dir;
@@ -190,7 +183,7 @@ void write_manifest(fs::path const &project_dir,
                                                          relative_bin.string(),
                                                          deploy,
                                                          root) };
-  write_file(manifest_path, content);
+  util_write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());
 }
@@ -212,7 +205,7 @@ void write_luarc(fs::path const &project_dir, fs::path const &types_dir) {
   replace_all(content, "@@LUA_VERSION@@", LUA_VERSION);
   replace_all(content, "@@TYPES_DIR@@", portable_types_dir);
 
-  write_file(luarc_path, content);
+  util_write_file(luarc_path, content);
 
   tui::info("Created %s", luarc_path.string().c_str());
 }

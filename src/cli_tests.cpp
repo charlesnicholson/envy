@@ -5,6 +5,7 @@
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
+#include "cmds/cmd_shell.h"
 #include "cmds/cmd_version.h"
 
 #include "doctest.h"
@@ -538,5 +539,75 @@ TEST_CASE("cli_parse: cmd_sync flags") {
     CHECK(cfg->install_all);
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+}
+
+TEST_CASE("cli_parse: cmd_shell") {
+  SUBCASE("bash") {
+    std::vector<std::string> args{ "envy", "shell", "bash" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_shell::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->shell == "bash");
+  }
+
+  SUBCASE("zsh") {
+    std::vector<std::string> args{ "envy", "shell", "zsh" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_shell::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->shell == "zsh");
+  }
+
+  SUBCASE("fish") {
+    std::vector<std::string> args{ "envy", "shell", "fish" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_shell::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->shell == "fish");
+  }
+
+  SUBCASE("powershell") {
+    std::vector<std::string> args{ "envy", "shell", "powershell" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_shell::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->shell == "powershell");
+  }
+
+  SUBCASE("missing shell argument") {
+    std::vector<std::string> args{ "envy", "shell" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("invalid shell rejected") {
+    std::vector<std::string> args{ "envy", "shell", "csh" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }

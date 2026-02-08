@@ -7,6 +7,7 @@
 #include "manifest.h"
 #include "pkg_cfg.h"
 #include "tui.h"
+#include "util.h"
 
 #include "CLI11.hpp"
 
@@ -80,30 +81,6 @@ bool has_envy_marker(fs::path const &path) {
   return content.find("envy-managed") != std::string::npos;
 }
 
-void write_file_atomic(fs::path const &path, std::string_view content) {
-  fs::path const temp_path{ path.parent_path() /
-                            (".envy-tmp-" + path.filename().string()) };
-
-  {
-    std::ofstream out{ temp_path, std::ios::binary };
-    if (!out) {
-      throw std::runtime_error("sync: failed to create temp file " + temp_path.string());
-    }
-    out.write(content.data(), static_cast<std::streamsize>(content.size()));
-    if (!out.good()) {
-      throw std::runtime_error("sync: failed to write temp file " + temp_path.string());
-    }
-  }
-
-  std::error_code ec;
-  fs::rename(temp_path, path, ec);
-  if (ec) {
-    fs::remove(temp_path, ec);
-    throw std::runtime_error("sync: failed to rename " + temp_path.string() + " to " +
-                             path.string() + ": " + ec.message());
-  }
-}
-
 fs::path product_script_path(fs::path const &bin_dir, std::string_view product_name) {
 #ifdef _WIN32
   return bin_dir / (std::string(product_name) + ".bat");
@@ -145,7 +122,7 @@ void deploy_product_scripts(engine &eng,
     }
 
     bool const is_new{ existing_content.empty() };
-    write_file_atomic(script_path, new_content);
+    util_write_file(script_path, new_content);
 
 #ifndef _WIN32
     std::error_code ec;

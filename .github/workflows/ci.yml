@@ -67,6 +67,15 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install shell test dependencies
+        if: startsWith(matrix.shard, 'func-')
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq zsh fish
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install fish
+          fi
+
       - name: Build
         run: |
           BUILD_ARGS="${{ matrix.build_args }}"

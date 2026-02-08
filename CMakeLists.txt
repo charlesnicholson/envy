@@ -153,6 +153,10 @@ if(WIN32)
             type_definitions=src/resources/envy.lua
             luarc_template=src/resources/luarc_template.json
             product_script=src/resources/product_script.bat
+            shell_hook_bash=src/resources/shell_hook.bash
+            shell_hook_zsh=src/resources/shell_hook.zsh
+            shell_hook_fish=src/resources/shell_hook.fish
+            shell_hook_ps1=src/resources/shell_hook.ps1
     )
 else()
     embed_resources(envy_embedded_resources
@@ -163,6 +167,10 @@ else()
             type_definitions=src/resources/envy.lua
             luarc_template=src/resources/luarc_template.json
             product_script=src/resources/product_script
+            shell_hook_bash=src/resources/shell_hook.bash
+            shell_hook_zsh=src/resources/shell_hook.zsh
+            shell_hook_fish=src/resources/shell_hook.fish
+            shell_hook_ps1=src/resources/shell_hook.ps1
     )
 endif()
 
@@ -224,6 +232,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_lua.cpp
     src/cmds/cmd_product.cpp
     src/cmds/cmd_sync.cpp
+    src/cmds/cmd_shell.cpp
     src/cmds/cmd_version.cpp
     src/engine.cpp
     src/pkg_phase.cpp
@@ -267,6 +276,7 @@ set(ENVY_BASE_SOURCES
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/platform_posix.cpp>
     src/termination.cpp
     src/shell.cpp
+    src/shell_hooks.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_posix.cpp>
     src/trace.cpp
@@ -448,6 +458,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/product_util_tests.cpp
     src/sha256_tests.cpp
     src/sol_util_tests.cpp
+    src/shell_hooks_tests.cpp
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>

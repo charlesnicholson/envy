@@ -18,6 +18,10 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 
 **`envy package <identity> [--manifest=...]`** — Query and install package, print package path. Loads manifest (auto-discovered or via `--manifest`), finds matching spec, installs only that package plus transitive dependencies if not cached, prints absolute path to package directory to stdout. Other manifest packages are not processed. Errors if identity ambiguous (multiple option variants) or programmatic package (no cached artifacts). Exits 0 with path on success, exits 1 with "not found" on failure.
 
+### Shell Integration
+
+**`envy shell <shell>`** — Print the `source` line to add to your shell profile for automatic PATH management. Supported shells: `bash`, `zsh`, `fish`, `powershell`. Hook files are created automatically during self-deploy; this command just prints the line. Warns if using a non-default cache location. See `docs/shell-integration.md` for details.
+
 ### Utilities
 
 **`envy fetch <url> [destination]`** — Download file from any supported transport (HTTP/HTTPS, FTP/FTPS, SMB, Git, SSH, S3). Destination defaults to current directory with URL's filename. Verifies TLS, supports authentication (SSH keys, AWS credentials). Displays progress, optionally prints SHA256 on completion.

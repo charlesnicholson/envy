@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
@@ -116,6 +117,31 @@ std::vector<unsigned char> util_load_file(std::filesystem::path const &path) {
   }
 
   return buffer;
+}
+
+void util_write_file(std::filesystem::path const &path, std::string_view content) {
+  namespace fs = std::filesystem;
+  fs::path const temp_path{ path.parent_path() /
+                            (".envy-tmp-" + path.filename().string()) };
+
+  {
+    std::ofstream out{ temp_path, std::ios::binary };
+    if (!out) {
+      throw std::runtime_error("util_write_file: failed to create " + temp_path.string());
+    }
+    out.write(content.data(), static_cast<std::streamsize>(content.size()));
+    if (!out.good()) {
+      throw std::runtime_error("util_write_file: failed to write " + temp_path.string());
+    }
+  }
+
+  std::error_code ec;
+  fs::rename(temp_path, path, ec);
+  if (ec) {
+    fs::remove(temp_path, ec);
+    throw std::runtime_error("util_write_file: failed to rename " + temp_path.string() +
+                             " to " + path.string() + ": " + ec.message());
+  }
 }
 
 std::string util_format_bytes(std::uint64_t bytes) {

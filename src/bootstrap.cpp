@@ -2,6 +2,7 @@
 
 #include "embedded_init_resources.h"
 #include "tui.h"
+#include "util.h"
 
 #include <cstring>
 #include <filesystem>
@@ -56,31 +57,6 @@ std::string read_file_content(fs::path const &path) {
   return ss.str();
 }
 
-void write_file_atomic(fs::path const &path, std::string_view content) {
-  fs::path const temp_path{ path.parent_path() /
-                            (".envy-tmp-" + path.filename().string()) };
-
-  {
-    std::ofstream out{ temp_path, std::ios::binary };
-    if (!out) {
-      throw std::runtime_error("bootstrap: failed to create temp file " +
-                               temp_path.string());
-    }
-    out.write(content.data(), static_cast<std::streamsize>(content.size()));
-    if (!out.good()) {
-      throw std::runtime_error("bootstrap: failed to write temp file " +
-                               temp_path.string());
-    }
-  }
-
-  std::error_code ec;
-  fs::rename(temp_path, path, ec);
-  if (ec) {
-    fs::remove(temp_path, ec);
-    throw std::runtime_error("bootstrap: failed to rename " + temp_path.string() +
-                             " to " + path.string() + ": " + ec.message());
-  }
-}
 
 fs::path bootstrap_script_path(fs::path const &bin_dir) {
 #ifdef _WIN32
@@ -134,7 +110,7 @@ bool bootstrap_write_script(fs::path const &bin_dir,
   if (new_content == existing_content) { return false; }
 
   // Write atomically
-  write_file_atomic(script_path, new_content);
+  util_write_file(script_path, new_content);
   set_executable(script_path);
 
   return true;

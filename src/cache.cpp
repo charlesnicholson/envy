@@ -2,14 +2,15 @@
 
 #include "embedded_init_resources.h"
 #include "platform.h"
+#include "shell_hooks.h"
 #include "trace.h"
 #include "tui.h"
 
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 
 #ifndef ENVY_VERSION_STR
@@ -48,13 +49,6 @@ bool copy_binary(path const &src, path const &dst) {
   return true;
 }
 
-void write_file(path const &p, std::string_view content) {
-  std::ofstream out{ p, std::ios::binary };
-  if (!out) { throw std::runtime_error("cache: failed to create " + p.string()); }
-  out.write(content.data(), static_cast<std::streamsize>(content.size()));
-  if (!out.good()) { throw std::runtime_error("cache: failed to write " + p.string()); }
-}
-
 }  // namespace
 
 path resolve_cache_root(std::optional<path> const &cli_override,
@@ -77,7 +71,9 @@ std::unique_ptr<cache> cache::ensure(std::optional<path> const &cli_cache_root,
                                       embedded::kTypeDefinitions),
                                   embedded::kTypeDefinitionsSize };
     c->ensure_envy(ENVY_VERSION_STR, platform::get_exe_path(), types);
-  } catch (...) {}
+  } catch (std::exception const &e) {
+    tui::warn("cache: self-deploy failed: %s", e.what());
+  }
 
   return c;
 }
@@ -397,6 +393,7 @@ cache::path cache::ensure_envy(std::string_view version,
   path const types_path{ envy_dir / "envy.lua" };
 
   if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
+    shell_hooks::ensure(m->root_);
     return envy_dir;
   }
 
@@ -407,6 +404,7 @@ cache::path cache::ensure_envy(std::string_view version,
 
   // Re-check after lock (another process may have completed)
   if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
+    shell_hooks::ensure(m->root_);
     return envy_dir;
   }
 
@@ -415,7 +413,8 @@ cache::path cache::ensure_envy(std::string_view version,
   if (ec) { return envy_dir; }
 
   if (!copy_binary(exe_path, binary_path)) { return envy_dir; }
-  write_file(types_path, type_definitions);
+  util_write_file(types_path, type_definitions);
+  shell_hooks::ensure(m->root_);
 
   return envy_dir;
 }
