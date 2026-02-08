@@ -3,15 +3,19 @@ IDENTITY = "local.apt@r0"
 local missing_packages = {}
 
 CHECK = function(tmp_dir, opts)
-  local cmd = "dpkg-query -W -f='${Package}\n' " .. table.concat(opts.packages, " ")
+  local cmd = "dpkg-query -W -f='${Status} ${Package}\n' " ..
+  table.concat(opts.packages, " ")
+
   local res = envy.run(cmd, { capture = true, quiet = true })
 
   local installed = {}
 
   for line in res.stdout:gmatch("[^\r\n]+") do
-    local pkg = line:match("^%S+")
-    if pkg then
-      installed[pkg] = true
+    if line:match("^install ok installed") then
+      local pkg = line:match("%S+$")
+      if pkg then
+        installed[pkg] = true
+      end
     end
   end
 

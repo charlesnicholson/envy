@@ -59,24 +59,24 @@ cd build
         targets = table.concat(opts.tools, " ")
       }), { check = true })
   end
+end
 
-  INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-    for _, tool in ipairs(opts.tools) do
-      envy.move(stage_dir .. "build/bin/" .. tool .. envy.EXE_EXT, install_dir)
-    end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
+  local src_dir = (envy.PLATFORM == "darwin")
+      and envy.path.join(stage_dir, "build", "bin")
+      or envy.path.join(stage_dir, "bin")
+  for _, tool in ipairs(opts.tools) do
+    envy.move(
+      envy.path.join(src_dir, tool .. envy.EXE_EXT),
+      envy.path.join(install_dir, tool .. envy.EXE_EXT)
+    )
   end
 end
 
 PRODUCTS = function(opts)
   local result = {}
   for _, tool in ipairs(opts.tools) do
-    if envy.PLATFORM == "darwin" then
-      result[tool] = tool .. envy.EXE_EXT
-    elseif envy.PLATFORM == "windows" or envy.PLATFORM == "linux" then
-      result[tool] = "bin/" .. tool .. envy.EXE_EXT
-    else
-      error("unsupported platform: " .. envy.PLATFORM)
-    end
+    result[tool] = tool .. envy.EXE_EXT
   end
   return result
 end

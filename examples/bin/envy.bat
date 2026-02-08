@@ -3,7 +3,7 @@ REM envy-managed bootstrap script - do not edit
 setlocal EnableDelayedExpansion
 
 if not defined ENVY_MIRROR set "ENVY_MIRROR=https://github.com/charlesnicholson/envy/releases/download"
-set "FALLBACK_VERSION=0.0.15"
+set "FALLBACK_VERSION=0.0.17"
 
 set "MANIFEST="
 set "CANDIDATE="
