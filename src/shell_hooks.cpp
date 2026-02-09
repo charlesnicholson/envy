@@ -74,17 +74,17 @@ int ensure(std::filesystem::path const &cache_root) {
   fs::path const shell_dir{ cache_root / "shell" };
   int written{ 0 };
 
+  std::error_code ec;
+  fs::create_directories(shell_dir, ec);
+  if (ec) {
+    tui::warn("Failed to create shell hook directory %s: %s",
+              shell_dir.string().c_str(), ec.message().c_str());
+    return 0;
+  }
+
   for (auto const &h : kHooks) {
     fs::path const hook_path{ shell_dir / ("hook." + std::string{ h.ext }) };
     if (fs::exists(hook_path) && parse_version(hook_path) >= kVersion) { continue; }
-
-    std::error_code ec;
-    fs::create_directories(shell_dir, ec);
-    if (ec) {
-      tui::warn("Failed to create shell hook directory %s: %s",
-                shell_dir.string().c_str(), ec.message().c_str());
-      continue;
-    }
 
     bool const was_update{ fs::exists(hook_path) };
     std::string_view const content{ reinterpret_cast<char const *>(h.data), h.size };
