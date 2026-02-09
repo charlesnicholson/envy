@@ -1,4 +1,4 @@
-# envy shell hook v1 — managed by envy; do not edit
+# envy shell hook — managed by envy; do not edit
 set -g _ENVY_HOOK_VERSION 1
 
 function _envy_find_manifest
@@ -28,6 +28,9 @@ end
 
 function _envy_hook --on-variable PWD
     test "$ENVY_SHELL_HOOK_DISABLE" = 1; and return
+    # Guard against recursion: (cd ...) in subshells inherits this local
+    test "$_ENVY_HOOK_ACTIVE" = 1; and return
+    set -l _ENVY_HOOK_ACTIVE 1
 
     set -l manifest_dir (_envy_find_manifest 2>/dev/null)
 

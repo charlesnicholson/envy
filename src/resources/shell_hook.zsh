@@ -1,4 +1,4 @@
-# envy shell hook v1 — managed by envy; do not edit
+# envy shell hook — managed by envy; do not edit
 _ENVY_HOOK_VERSION=1
 
 _envy_find_manifest() {
@@ -41,6 +41,9 @@ _envy_remove_from_path() {
 
 _envy_hook() {
   if [ "${ENVY_SHELL_HOOK_DISABLE:-}" = "1" ]; then return; fi
+  # Guard against chpwd recursion: $(cd ...) in subshells inherits this local
+  if [ -n "${_ENVY_HOOK_ACTIVE:-}" ]; then return; fi
+  local _ENVY_HOOK_ACTIVE=1
 
   local manifest_dir
   manifest_dir=$(_envy_find_manifest 2>/dev/null) || true

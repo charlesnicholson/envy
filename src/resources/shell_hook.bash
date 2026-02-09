@@ -1,4 +1,4 @@
-# envy shell hook v1 — managed by envy; do not edit
+# envy shell hook — managed by envy; do not edit
 _ENVY_HOOK_VERSION=1
 
 _envy_find_manifest() {
