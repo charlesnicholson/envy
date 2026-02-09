@@ -315,10 +315,7 @@ class TestZshHook(unittest.TestCase):
         proj_a = self._make_envy_project("zsh-projA")
         proj_b = self._make_envy_project("zsh-projB")
         result = self._run_zsh_hook_test(
-            f'source "{self._hook_path}"\n'
-            f'cd "{proj_a}"\n'
-            f'cd "{proj_b}"\n'
-            f'echo "$PATH"'
+            f'source "{self._hook_path}"\ncd "{proj_a}"\ncd "{proj_b}"\necho "$PATH"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(proj_b / "tools"), result.stdout)
@@ -327,9 +324,7 @@ class TestZshHook(unittest.TestCase):
     def test_envy_project_root_set(self) -> None:
         project = self._make_envy_project("zsh-proj-root")
         result = self._run_zsh_hook_test(
-            f'source "{self._hook_path}"\n'
-            f'cd "{project}"\n'
-            f'echo "$ENVY_PROJECT_ROOT"'
+            f'source "{self._hook_path}"\ncd "{project}"\necho "$ENVY_PROJECT_ROOT"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
@@ -439,7 +434,9 @@ class TestPowerShellHook(unittest.TestCase):
     """Test PowerShell shell hook behavior."""
 
     def setUp(self) -> None:
-        self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-pwsh-hook-test-"))
+        # .resolve() converts Windows 8.3 short names (RUNNER~1) to long names
+        # (runneradmin) so Python paths match PowerShell's Resolve-Path output.
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-pwsh-hook-test-")).resolve()
         self._cache_dir = self._temp_dir / "cache"
         self._envy = _get_envy_binary()
 
