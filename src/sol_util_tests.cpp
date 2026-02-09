@@ -282,6 +282,69 @@ TEST_CASE("sol_util_get_or_default throws when wrong type") {
                        std::runtime_error);
 }
 
+TEST_CASE("sol_util_dump_table formats string-keyed table") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {source = 'https://example.com/file.tar.gz', sha256 = 'abc123'}");
+  sol::table t = (*lua)["t"];
+
+  std::string result = envy::sol_util_dump_table(t);
+  CHECK(result.find("source=") != std::string::npos);
+  CHECK(result.find("https://example.com/file.tar.gz") != std::string::npos);
+  CHECK(result.find("sha256=") != std::string::npos);
+  CHECK(result.find("abc123") != std::string::npos);
+  CHECK(result.front() == '{');
+  CHECK(result.back() == '}');
+}
+
+TEST_CASE("sol_util_dump_table formats integer-keyed array") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {'url1', 'url2'}");
+  sol::table t = (*lua)["t"];
+
+  std::string result = envy::sol_util_dump_table(t);
+  CHECK(result.find("[1]=") != std::string::npos);
+  CHECK(result.find("[2]=") != std::string::npos);
+  CHECK(result.find("url1") != std::string::npos);
+  CHECK(result.find("url2") != std::string::npos);
+}
+
+TEST_CASE("sol_util_dump_table shows nested tables as {...}") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {{source = 'url1'}, {source = 'url2'}}");
+  sol::table t = (*lua)["t"];
+
+  std::string result = envy::sol_util_dump_table(t);
+  CHECK(result.find("{...}") != std::string::npos);
+}
+
+TEST_CASE("sol_util_dump_table truncates long strings") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {url = string.rep('x', 100)}");
+  sol::table t = (*lua)["t"];
+
+  std::string result = envy::sol_util_dump_table(t);
+  CHECK(result.find("...") != std::string::npos);
+  CHECK(result.size() < 100);
+}
+
+TEST_CASE("sol_util_dump_table handles empty table") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {}");
+  sol::table t = (*lua)["t"];
+
+  CHECK(envy::sol_util_dump_table(t) == "{}");
+}
+
+TEST_CASE("sol_util_dump_table shows non-string non-table value types") {
+  auto lua = envy::sol_util_make_lua_state();
+  lua->script("t = {flag = true, count = 42}");
+  sol::table t = (*lua)["t"];
+
+  std::string result = envy::sol_util_dump_table(t);
+  CHECK(result.find("boolean") != std::string::npos);
+  CHECK(result.find("number") != std::string::npos);
+}
+
 TEST_CASE("type_name_for_error returns correct names") {
   CHECK(envy::detail::type_name_for_error<bool>() == "boolean");
   CHECK(envy::detail::type_name_for_error<std::string>() == "string");
