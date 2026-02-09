@@ -69,6 +69,14 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: out/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-deps-
+
       - name: Install shell test dependencies
         if: startsWith(matrix.shard, 'func-')
         run: |
@@ -121,6 +129,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: out/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-deps-
 
       - name: Build
         shell: powershell
