@@ -120,12 +120,9 @@ struct cache::scoped_entry_lock::impl {
 namespace {
 
 void remove_all_noexcept(path const &target) {
-  std::error_code ec;
-  std::filesystem::remove_all(target, ec);
-  if (ec) {
-    envy::tui::error("Failed to remove %s: %s",
-                     target.string().c_str(),
-                     ec.message().c_str());
+  if (!envy::platform::remove_all_with_retry(target)) {
+    envy::tui::error("Failed to remove %s after retries",
+                     target.string().c_str());
   }
 }
 

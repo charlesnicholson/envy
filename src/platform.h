@@ -57,6 +57,11 @@ std::filesystem::path expand_path(std::string_view path);
 
 void set_env_var(char const *name, char const *value);
 
+// Remove directory recursively with retry logic for Windows file locking issues.
+// On Windows, antivirus/indexer may hold file handles briefly after creation.
+// Returns true on success, false on failure (after all retries exhausted).
+bool remove_all_with_retry(std::filesystem::path const &target);
+
 [[noreturn]] void terminate_process();
 
 bool is_tty();

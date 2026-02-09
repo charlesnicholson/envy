@@ -185,6 +185,14 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 
+bool remove_all_with_retry(std::filesystem::path const &target) {
+  // On POSIX, file deletion works even with open handles (files get unlinked
+  // but data persists until all handles close). No retry needed.
+  std::error_code ec;
+  std::filesystem::remove_all(target, ec);
+  return !ec;
+}
+
 std::filesystem::path expand_path(std::string_view p) {
   if (p.empty()) { return {}; }
 
