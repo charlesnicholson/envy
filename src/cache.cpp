@@ -120,9 +120,10 @@ struct cache::scoped_entry_lock::impl {
 namespace {
 
 void remove_all_noexcept(path const &target) {
-  if (!envy::platform::remove_all_with_retry(target)) {
-    envy::tui::error("Failed to remove %s after retries",
-                     target.string().c_str());
+  if (auto ec{ envy::platform::remove_all_with_retry(target) }) {
+    envy::tui::error("Failed to remove %s: %s",
+                     target.string().c_str(),
+                     ec.message().c_str());
   }
 }
 

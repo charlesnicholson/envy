@@ -178,7 +178,7 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 
-bool remove_all_with_retry(std::filesystem::path const &target) {
+std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   // Windows antivirus (Defender) and Search indexer often hold file handles
   // briefly after files are created/downloaded. Retry with exponential backoff.
   constexpr int kMaxRetries{ 6 };
@@ -187,7 +187,7 @@ bool remove_all_with_retry(std::filesystem::path const &target) {
   std::error_code ec;
   for (int attempt{ 0 }; attempt < kMaxRetries; ++attempt) {
     std::filesystem::remove_all(target, ec);
-    if (!ec) { return true; }
+    if (!ec) { return ec; }
 
     // ERROR_SHARING_VIOLATION (32) and ERROR_LOCK_VIOLATION (33) are the
     // typical errors when another process has the file/directory open.
@@ -198,12 +198,14 @@ bool remove_all_with_retry(std::filesystem::path const &target) {
                           win_err == ERROR_ACCESS_DENIED };
     if (!retryable) { break; }
 
-    // Exponential backoff: 50, 100, 200, 400, 800, 1600ms
-    int const delay_ms{ kInitialDelayMs << attempt };
-    ::Sleep(static_cast<DWORD>(delay_ms));
+    if (attempt + 1 < kMaxRetries) {
+      // Exponential backoff: 50, 100, 200, 400, 800ms
+      int const delay_ms{ kInitialDelayMs << attempt };
+      ::Sleep(static_cast<DWORD>(delay_ms));
+    }
   }
 
-  return false;  // All retries exhausted
+  return ec;
 }
 
 std::filesystem::path expand_path(std::string_view p) {
