@@ -1,6 +1,5 @@
 """Tests for envy shell command and shell hook deployment."""
 
-import os
 import shutil
 import subprocess
 import sys
