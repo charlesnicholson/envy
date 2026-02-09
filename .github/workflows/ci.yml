@@ -74,8 +74,6 @@ jobs:
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-deps-
 
       - name: Install shell test dependencies
         if: startsWith(matrix.shard, 'func-')
@@ -135,8 +133,6 @@ jobs:
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-deps-
 
       - name: Build
         shell: powershell
