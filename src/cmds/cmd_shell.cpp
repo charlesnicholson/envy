@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace envy {
 
@@ -83,15 +84,21 @@ void cmd_shell::execute() {
 
   std::string const portable{ make_portable_path(hook_path) };
 
-  // Convert ${env:HOME} to shell-native syntax for display
+  // Convert VS Code-style env placeholders to shell-native syntax for display
   std::string display_path{ portable };
-  if (cfg_.shell == "powershell") {
-    // ${env:HOME} is already PowerShell-native — no conversion needed
-  } else {
-    // bash/zsh/fish use $HOME
-    auto pos{ display_path.find("${env:HOME}") };
+  if (cfg_.shell != "powershell") {
+    // bash/zsh/fish use $HOME; make_portable_path() returns ${env:HOME} on
+    // Unix and ${env:USERPROFILE} on Windows — map both to $HOME.
+    constexpr std::string_view kEnvHome{ "${env:HOME}" };
+    constexpr std::string_view kEnvUserProfile{ "${env:USERPROFILE}" };
+
+    auto pos{ display_path.find(kEnvHome) };
     if (pos != std::string::npos) {
-      display_path.replace(pos, 11, "$HOME");
+      display_path.replace(pos, kEnvHome.size(), "$HOME");
+    }
+    pos = display_path.find(kEnvUserProfile);
+    if (pos != std::string::npos) {
+      display_path.replace(pos, kEnvUserProfile.size(), "$HOME");
     }
   }
 

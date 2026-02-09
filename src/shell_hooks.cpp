@@ -35,9 +35,10 @@ int parse_version_from_content(std::string_view content) {
     auto const nl{ content.find('\n') };
     auto const line{ content.substr(0, nl) };
 
-    auto const pos{ line.find("_ENVY_HOOK_VERSION") };
+    constexpr std::string_view kKey{ "_ENVY_HOOK_VERSION" };
+    auto const pos{ line.find(kKey) };
     if (pos != std::string_view::npos) {
-      auto rest{ line.substr(pos + 18) };  // strlen("_ENVY_HOOK_VERSION")
+      auto rest{ line.substr(pos + kKey.size()) };
       // Skip past '=' or ' = ' or ' '
       while (!rest.empty() && (rest[0] == ' ' || rest[0] == '=')) {
         rest.remove_prefix(1);
@@ -79,7 +80,11 @@ int ensure(std::filesystem::path const &cache_root) {
 
     std::error_code ec;
     fs::create_directories(shell_dir, ec);
-    if (ec) { continue; }
+    if (ec) {
+      tui::warn("Failed to create shell hook directory %s: %s",
+                shell_dir.string().c_str(), ec.message().c_str());
+      continue;
+    }
 
     bool const was_update{ fs::exists(hook_path) };
     std::string_view const content{ reinterpret_cast<char const *>(h.data), h.size };

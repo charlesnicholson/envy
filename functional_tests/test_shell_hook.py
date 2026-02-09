@@ -286,32 +286,27 @@ class TestZshHook(unittest.TestCase):
         )
         return project
 
-    def test_cd_into_project_adds_bin_to_path(self) -> None:
-        project = self._make_envy_project("zsh-proj1")
-        result = test_config.run(
-            [
-                "zsh",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{project}"\necho "$PATH"',
-            ],
+    def _run_zsh_hook_test(self, script: str) -> subprocess.CompletedProcess[str]:
+        """Run a zsh script with -f (skip RC files) to avoid CI hangs."""
+        return test_config.run(
+            ["zsh", "-f", "-c", script],
             capture_output=True,
             text=True,
             timeout=30,
+        )
+
+    def test_cd_into_project_adds_bin_to_path(self) -> None:
+        project = self._make_envy_project("zsh-proj1")
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho "$PATH"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
 
     def test_cd_out_removes_path(self) -> None:
         project = self._make_envy_project("zsh-proj2")
-        result = test_config.run(
-            [
-                "zsh",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\necho "$PATH"',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\necho "$PATH"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertNotIn(str(project / "tools"), result.stdout)
@@ -319,18 +314,11 @@ class TestZshHook(unittest.TestCase):
     def test_cd_between_projects_swaps_path(self) -> None:
         proj_a = self._make_envy_project("zsh-projA")
         proj_b = self._make_envy_project("zsh-projB")
-        result = test_config.run(
-            [
-                "zsh",
-                "-c",
-                f'source "{self._hook_path}"\n'
-                f'cd "{proj_a}"\n'
-                f'cd "{proj_b}"\n'
-                f'echo "$PATH"',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{proj_a}"\n'
+            f'cd "{proj_b}"\n'
+            f'echo "$PATH"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(proj_b / "tools"), result.stdout)
@@ -338,17 +326,10 @@ class TestZshHook(unittest.TestCase):
 
     def test_envy_project_root_set(self) -> None:
         project = self._make_envy_project("zsh-proj-root")
-        result = test_config.run(
-            [
-                "zsh",
-                "-c",
-                f'source "{self._hook_path}"\n'
-                f'cd "{project}"\n'
-                f'echo "$ENVY_PROJECT_ROOT"',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'echo "$ENVY_PROJECT_ROOT"'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())

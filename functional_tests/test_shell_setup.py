@@ -202,6 +202,7 @@ class TestShellHookDeployment(unittest.TestCase):
                 "pwsh",
                 "-NoProfile",
                 "-Command",
+                f"$errors = $null; "
                 f"$null = [System.Management.Automation.Language.Parser]"
                 f"::ParseFile('{hook}', [ref]$null, [ref]$errors); "
                 f"if ($errors) {{ $errors | ForEach-Object {{ Write-Error $_ }}; exit 1 }}",
