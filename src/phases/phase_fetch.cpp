@@ -185,9 +185,18 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 }
 
 table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
-  std::string url{ sol_util_get_required<std::string>(tbl, "source", context) };
+  sol::optional<sol::object> source_obj = tbl["source"];
+  if (!source_obj || !source_obj->valid() || source_obj->get_type() == sol::type::lua_nil) {
+    throw std::runtime_error(context + ": FETCH table missing 'source' key; got " +
+                             sol_util_dump_table(tbl));
+  }
+  if (!source_obj->is<std::string>()) {
+    throw std::runtime_error(context + ": FETCH table 'source' must be a string; got " +
+                             sol::type_name(tbl.lua_state(), source_obj->get_type()));
+  }
+  std::string url{ source_obj->as<std::string>() };
   if (url.empty()) {
-    throw std::runtime_error("Fetch table 'source' field cannot be empty in " + context);
+    throw std::runtime_error(context + ": FETCH table 'source' cannot be empty");
   }
 
   table_entry entry;
@@ -325,8 +334,15 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
       } else if (first_elem_type == sol::type::table) {
         size_t const len{ tbl.size() };
         for (size_t i = 1; i <= len; ++i) {
-          sol::table elem = tbl[i];
-          process_table_entry(elem);
+          sol::object elem_obj{ tbl[i] };
+          if (!elem_obj.is<sol::table>()) {
+            throw std::runtime_error(
+                "FETCH for " + key + ": array element [" + std::to_string(i) +
+                "] must be a table (got " +
+                std::string(sol::type_name(tbl.lua_state(), elem_obj.get_type())) +
+                "); each element needs a 'source' key");
+          }
+          process_table_entry(elem_obj.as<sol::table>());
         }
       } else {
         throw std::runtime_error("Invalid fetch array element type in " + key);

@@ -7,6 +7,12 @@ VALIDATE = function(opts)
   if not opts.version:find("%.") then
     return "version must contain a dot (e.g., '9.12' not '912')"
   end
+  if opts.mode ~= nil and opts.mode ~= "install" and opts.mode ~= "extract" then
+    return "mode must be 'install' or 'extract'"
+  end
+  if opts.mode == "install" and envy.PLATFORM ~= "windows" then
+    return "mode 'install' is only supported on Windows"
+  end
 end
 
 local function version_nodot(version)
@@ -27,22 +33,46 @@ local function jlink_filename(opts)
 end
 
 FETCH = function(tmp_dir, opts)
-  return {
+  local jlink = {
     source = "https://www.segger.com/downloads/jlink/" .. jlink_filename(opts),
     post_data = "accept_license_agreement=accepted",
   }
+
+  if opts.mode == "extract" and envy.PLATFORM == "windows" then
+    return { jlink, { source = "https://www.7-zip.org/a/7z2501-x64.exe" } }
+  end
+
+  return jlink
+end
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, opts)
+  if opts.mode ~= "extract" or envy.PLATFORM ~= "windows" then return end
+
+  envy.run(
+    'Start-Process -Wait -FilePath "' .. fetch_dir .. '7z2501-x64.exe" ' ..
+    '-ArgumentList "/S","/D=' .. stage_dir .. '7z"',
+    { check = true })
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local src = fetch_dir .. jlink_filename(opts)
 
   if envy.PLATFORM == "darwin" then
-    local cmd = "pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink"
-    envy.run(cmd, { check = true })
+    envy.run("pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink",
+             { check = true })
   elseif envy.PLATFORM == "windows" then
-    envy.run(
-    'Start-Process -Wait -FilePath "' ..
-    src .. '" -ArgumentList "/S","/D=' .. install_dir .. '"', { check = true })
+    if opts.mode == "extract" then
+      local dest = install_dir .. "JLink_V" .. version_nodot(opts.version)
+      envy.run(
+        '& "' .. stage_dir .. '7z\\7z.exe" x "' .. src ..
+        '" "-o' .. dest .. '" -aoa -y',
+        { check = true })
+    else
+      envy.run(
+        'Start-Process -Wait -FilePath "' .. src ..
+        '" -ArgumentList "/S","/D=' .. install_dir .. '"',
+        { check = true })
+    end
   else
     envy.extract(src, install_dir, { strip = 1 })
   end

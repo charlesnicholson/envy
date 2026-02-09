@@ -41,7 +41,8 @@ PACKAGES = {
     options = { version = "21.1.0", tools = { "clang-format" } } },
 
   { spec = "local.jlink@r0", source = "local.jlink@r0.lua",
-    options = { version = "9.12" } },
+    options = { version = "9.12",
+                mode = envy.PLATFORM == "windows" and "install" or "extract" } },
 
   { spec = "local.taplo@r0", source = "local.taplo@r0.lua",
     options = { version = "0.10.0" } },

@@ -35,6 +35,36 @@ constexpr std::string_view type_name_for_error() {
 
 }  // namespace detail
 
+inline std::string sol_util_dump_table(sol::table const &tbl) {
+  std::string result{ "{" };
+  bool first{ true };
+  for (auto const &pair : tbl) {
+    if (!first) { result += ", "; }
+    first = false;
+
+    if (pair.first.is<std::string>()) {
+      result += pair.first.as<std::string>();
+    } else if (pair.first.is<int>()) {
+      result += "[" + std::to_string(pair.first.as<int>()) + "]";
+    } else {
+      result += "?";
+    }
+
+    result += "=";
+    if (pair.second.is<std::string>()) {
+      std::string val{ pair.second.as<std::string>() };
+      if (val.size() > 40) { val = val.substr(0, 37) + "..."; }
+      result += "\"" + val + "\"";
+    } else if (pair.second.is<sol::table>()) {
+      result += "{...}";
+    } else {
+      result += sol::type_name(pair.first.lua_state(), pair.second.get_type());
+    }
+  }
+  result += "}";
+  return result;
+}
+
 template <typename T>
 std::optional<T> sol_util_get_optional(sol::table const &table,
                                        std::string_view key,
