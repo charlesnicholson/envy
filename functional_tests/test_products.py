@@ -3,7 +3,6 @@
 import hashlib
 import io
 import shutil
-import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -667,7 +666,7 @@ PACKAGES = {{
         self.assertIn("compiler", result.stderr.lower())
 
     def test_product_listing_json_output(self):
-        """Product command with --json should output JSON array to stdout."""
+        """Product command with --json should output dict of resolved values to stdout."""
         import json
 
         manifest = self.manifest(
@@ -684,21 +683,20 @@ PACKAGES = {{
         result = self.run_envy(["product", "--json", "--manifest", str(manifest)])
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        # Parse JSON from stdout
+        # Parse JSON dict from stdout
         products = json.loads(result.stdout)
-        self.assertIsInstance(products, list)
-        self.assertGreater(len(products), 0)
+        self.assertIsInstance(products, dict)
+        self.assertIn("tool", products)
 
-        # Find the tool product
-        tool_product = next((p for p in products if p["product"] == "tool"), None)
-        assert tool_product
-        self.assertIsNotNone(tool_product, "tool product not found in JSON output")
-        self.assertEqual(tool_product["value"], "bin/tool")
-        self.assertEqual(tool_product["provider"], "local.product_provider@v1")
-        self.assertFalse(tool_product["user_managed"])
+        # Cache-managed: resolved value should be an absolute path ending with bin/tool
+        self.assertTrue(
+            products["tool"].endswith("bin/tool"),
+            f"unexpected tool value: {products['tool']}",
+        )
+        self.assertIn("packages", products["tool"])
 
     def test_product_listing_programmatic_marked(self):
-        """Product listing should mark programmatic products."""
+        """Product listing should emit verbatim value for user-managed products."""
         import json
 
         manifest = self.manifest(
@@ -716,11 +714,9 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, result.stderr)
 
         products = json.loads(result.stdout)
-        tool_product = next((p for p in products if p["product"] == "tool"), None)
-        assert tool_product
-        self.assertIsNotNone(tool_product)
-        self.assertTrue(tool_product["user_managed"])
-        self.assertEqual(tool_product["pkg_path"], "")
+        self.assertIsInstance(products, dict)
+        self.assertIn("tool", products)
+        self.assertEqual(products["tool"], "programmatic-tool")
 
     def test_product_listing_empty(self):
         """Product listing with no products should indicate empty result."""

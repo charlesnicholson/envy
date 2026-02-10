@@ -8,6 +8,7 @@
 #include "lua_ctx/lua_envy_path.h"
 #include "lua_ctx/lua_envy_product.h"
 #include "lua_ctx/lua_envy_run.h"
+#include "platform.h"
 #include "shell.h"
 #include "tui.h"
 
@@ -143,35 +144,15 @@ end
 
 void lua_envy_install(sol::state &lua) {
   // Platform detection
-  char const *platform{ nullptr };
-  char const *arch{ nullptr };
+  char const *plat{ platform::os_name() };
+  char const *arch{ platform::arch_name() };
+#ifdef _WIN32
+  char const *exe_ext{ ".exe" };
+#else
   char const *exe_ext{ "" };
-
-#if defined(__APPLE__) && defined(__MACH__)
-  platform = "darwin";
-#if defined(__arm64__)
-  arch = "arm64";
-#elif defined(__x86_64__)
-  arch = "x86_64";
-#endif
-#elif defined(__linux__)
-  platform = "linux";
-#if defined(__aarch64__)
-  arch = "aarch64";
-#elif defined(__x86_64__)
-  arch = "x86_64";
-#endif
-#elif defined(_WIN32)
-  platform = "windows";
-#if defined(_M_ARM64)
-  arch = "arm64";
-#elif defined(_M_X64)
-  arch = "x86_64";
-#endif
-  exe_ext = ".exe";
 #endif
 
-  std::string const platform_arch{ std::string{ platform } + "-" + arch };
+  std::string const platform_arch{ std::string{ plat } + "-" + arch };
 
   // Override print to route through TUI
   lua["print"] = [](sol::variadic_args va) {
@@ -228,7 +209,7 @@ void lua_envy_install(sol::state &lua) {
   }
 
   // Platform globals (moved from root level ENVY_* to envy.*)
-  envy_table["PLATFORM"] = platform;
+  envy_table["PLATFORM"] = plat;
   envy_table["ARCH"] = arch;
   envy_table["PLATFORM_ARCH"] = platform_arch;
   envy_table["EXE_EXT"] = exe_ext;

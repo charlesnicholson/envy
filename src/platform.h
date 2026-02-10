@@ -66,4 +66,7 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target);
 
 bool is_tty();
 
+char const *os_name();
+char const *arch_name();
+
 }  // namespace envy::platform

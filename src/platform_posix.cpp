@@ -185,6 +185,29 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 
+char const *os_name() {
+#if defined(__APPLE__) && defined(__MACH__)
+  return "darwin";
+#else
+  return "linux";
+#endif
+}
+
+char const *arch_name() {
+#if defined(__aarch64__) || defined(__arm64__)
+  return
+#if defined(__APPLE__)
+      "arm64";
+#else
+      "aarch64";
+#endif
+#elif defined(__x86_64__)
+  return "x86_64";
+#else
+#error "unsupported architecture"
+#endif
+}
+
 std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   // On POSIX, file deletion works even with open handles (files get unlinked
   // but data persists until all handles close). No retry needed.
