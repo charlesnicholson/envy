@@ -100,7 +100,7 @@ jobs:
 
       - name: Unit tests under valgrind
         if: matrix.shard == 'main' && runner.os == 'Linux'
-        run: valgrind --error-exitcode=1 --leak-check=full --suppressions=valgrind.supp out/build/envy_unit_tests
+        run: valgrind -q --error-exitcode=1 --leak-check=full --suppressions=valgrind.supp out/build/envy_unit_tests
 
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
@@ -108,7 +108,7 @@ jobs:
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
           ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
-          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
+          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v4
