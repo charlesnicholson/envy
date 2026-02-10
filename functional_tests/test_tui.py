@@ -151,9 +151,6 @@ PACKAGES = {{
             "\x1b[", result.stderr, "Expected no ANSI codes when TERM=dumb"
         )
 
-    @unittest.skipIf(
-        sys.platform == "win32", "Unix shell piping not supported on Windows"
-    )
     def test_fallback_mode_with_piped_stderr(self):
         """No ANSI codes when stderr is piped (not a TTY)."""
         manifest = self.create_manifest(
@@ -164,30 +161,14 @@ PACKAGES = {{
 """
         )
 
-        cmd = [
-            str(self.envy),
-            "--cache-root",
-            str(self.cache_root),
-            "sync",
-            "--install-all",
-            "--manifest",
-            str(manifest),
-        ]
+        # capture_output=True makes stderr a pipe, not a TTY
+        result = self.run_sync(manifest)
 
-        # Pipe stderr through cat to simulate non-TTY
-        result = test_config.run(
-            f"{' '.join(str(c) for c in cmd)} 2>&1 | cat",
-            shell=True,
-            cwd=self.project_root,
-            capture_output=True,
-            env=os.environ.copy(),
-        )
-
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Check that no ANSI codes are present in piped output
         self.assertNotIn(
-            "\x1b[", result.stdout, "Expected no ANSI codes when stderr is piped"
+            "\x1b[", result.stderr, "Expected no ANSI codes when stderr is piped"
         )
 
 
