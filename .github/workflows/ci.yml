@@ -108,7 +108,7 @@ jobs:
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
           ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
-          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && 'valgrind --error-exitcode=1 --leak-check=full --suppressions=valgrind.supp' || '' }}
+          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v4

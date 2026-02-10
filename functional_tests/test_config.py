@@ -10,10 +10,18 @@ from pathlib import Path
 SUBPROCESS_TEXT_MODE = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
+def _is_envy_cmd(cmd) -> bool:
+    """Return True if cmd invokes the envy functional tester binary."""
+    if not cmd:
+        return False
+    exe = str(cmd[0] if not isinstance(cmd, str) else cmd)
+    return "envy_functional_tester" in exe
+
+
 def _wrap_cmd(cmd):
-    """Prepend ENVY_TEST_WRAPPER to a command list if set."""
+    """Prepend ENVY_TEST_WRAPPER to a command list if set (envy commands only)."""
     wrapper = os.environ.get("ENVY_TEST_WRAPPER")
-    if wrapper:
+    if wrapper and _is_envy_cmd(cmd):
         return shlex.split(wrapper) + list(cmd)
     return cmd
 
