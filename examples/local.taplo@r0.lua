@@ -20,8 +20,8 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   else
     local arch = (envy.ARCH == "arm64") and "aarch64" or envy.ARCH
     local gz = envy.path.join(stage_dir, "taplo-" .. envy.PLATFORM .. "-" .. arch .. ".gz")
-    envy.run("gzip -dc " .. gz .. " > " .. bin, { check = true })
-    envy.run("chmod +x " .. bin, { check = true })
+    envy.run("gzip -dc " .. gz .. " > " .. bin)
+    envy.run("chmod +x " .. bin)
   end
 end
 
