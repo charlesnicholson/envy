@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 // Platform-specific unreachable hint. Use compiler intrinsics where available
 // while remaining safe for MSVC which lacks __builtin_unreachable.
@@ -65,5 +66,8 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target);
 [[noreturn]] void terminate_process();
 
 bool is_tty();
+
+std::string_view os_name();
+std::string_view arch_name();
 
 }  // namespace envy::platform

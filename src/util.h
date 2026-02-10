@@ -37,6 +37,10 @@ match(Ts...) -> match<Ts...>;
 // Convert bytes to lowercase hex string
 std::string util_bytes_to_hex(void const *data, size_t length);
 
+// Escape a string for JSON output (RFC 8259 compliant).
+// Handles \", \\, \b, \f, \n, \r, \t, and \u00xx for other control chars < 0x20.
+std::string util_escape_json_string(std::string_view value);
+
 // Convert hex string to bytes (case-insensitive)
 std::vector<unsigned char> util_hex_to_bytes(std::string const &hex);
 

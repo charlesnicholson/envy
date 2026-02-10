@@ -46,27 +46,7 @@ std::string format_timestamp(std::chrono::system_clock::time_point tp) {
 }
 
 void append_json_string(std::string &out, std::string_view value) {
-  for (char const ch : value) {
-    switch (ch) {
-      case '\\': out.append("\\\\"); break;
-      case '"': out.append("\\\""); break;
-      case '\b': out.append("\\b"); break;
-      case '\f': out.append("\\f"); break;
-      case '\n': out.append("\\n"); break;
-      case '\r': out.append("\\r"); break;
-      case '\t': out.append("\\t"); break;
-      default:
-        if (static_cast<unsigned char>(ch) < 0x20) {
-          static constexpr char hex[] = "0123456789abcdef";
-          out.append("\\u00");
-          out.push_back(hex[(ch >> 4) & 0xF]);
-          out.push_back(hex[ch & 0xF]);
-        } else {
-          out.push_back(ch);
-        }
-        break;
-    }
-  }
+  out.append(util_escape_json_string(value));
 }
 
 void append_kv(std::string &out, char const *key, std::string_view value) {

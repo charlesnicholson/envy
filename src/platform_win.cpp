@@ -178,6 +178,18 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 
+std::string_view os_name() { return "windows"; }
+
+std::string_view arch_name() {
+#if defined(_M_ARM64)
+  return "arm64";
+#elif defined(_M_X64)
+  return "x86_64";
+#else
+#error "unsupported architecture"
+#endif
+}
+
 std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   // Windows antivirus (Defender) and Search indexer often hold file handles
   // briefly after files are created/downloaded. Retry with exponential backoff.

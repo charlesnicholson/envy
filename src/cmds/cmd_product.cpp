@@ -1,17 +1,21 @@
 #include "cmd_product.h"
 
+#include "blake3_util.h"
 #include "cache.h"
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
+#include "platform.h"
 #include "product_util.h"
 #include "tui.h"
+#include "util.h"
 
 #include "CLI11.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -36,36 +40,39 @@ cmd_product::cmd_product(cfg cfg,
 
 namespace {
 
-void print_products_json(std::vector<product_info> const &products) {
-  std::ostringstream oss;
-  oss << "[";
-  for (size_t i{ 0 }; i < products.size(); ++i) {
-    if (i > 0) { oss << ","; }
-    oss << "\n  {";
-    auto const type_str{ [&]() {
-      switch (products[i].type) {
-        case pkg_type::CACHE_MANAGED: return "cache-managed";
-        case pkg_type::USER_MANAGED: return "user-managed";
-        case pkg_type::BUNDLE_ONLY: return "bundle-only";
-        case pkg_type::UNKNOWN: return "unknown";
-      }
-      return "unknown";
-    }() };
+void print_products_json(engine &eng, cache &c) {
+  auto const products{ eng.collect_all_products() };
 
-    oss << "\n    \"product\": \"" << products[i].product_name << "\",";
-    oss << "\n    \"value\": \"" << products[i].value << "\",";
-    oss << "\n    \"provider\": \"" << products[i].provider_canonical << "\",";
-    oss << "\n    \"type\": \"" << type_str << "\",";
-    oss << "\n    \"user_managed\": "
-        << (products[i].type == pkg_type::USER_MANAGED ? "true" : "false") << ",";
-    oss << "\n    \"pkg_path\": \""
-        << (products[i].type == pkg_type::USER_MANAGED ? ""
-                                                       : products[i].pkg_path.generic_string())
-        << "\"";
-    oss << "\n  }";
+  std::ostringstream oss;
+  oss << "{";
+  bool first{ true };
+  for (auto const &pi : products) {
+    if (!first) { oss << ","; }
+    first = false;
+
+    std::string resolved;
+    if (pi.type == pkg_type::USER_MANAGED) {
+      resolved = pi.value;
+    } else {
+      pkg *provider{ eng.find_product_provider(pi.product_name) };
+      std::string key_for_hash{ provider->cfg->format_key() };
+      for (auto const &wk : provider->resolved_weak_dependency_keys) {
+        key_for_hash += "|" + wk;
+      }
+      auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
+      std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
+      auto const pkg_path{ c.compute_pkg_path(provider->cfg->identity,
+                                              platform::os_name(),
+                                              platform::arch_name(),
+                                              hash_prefix) };
+      resolved = (pkg_path / pi.value).generic_string();
+    }
+
+    oss << "\n  \"" << util_escape_json_string(pi.product_name) << "\": \""
+        << util_escape_json_string(resolved) << "\"";
   }
   if (!products.empty()) { oss << "\n"; }
-  oss << "]\n";
+  oss << "}\n";
   tui::print_stdout("%s", oss.str().c_str());
 }
 
@@ -88,8 +95,9 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
   // Print aligned rows
   for (auto const &p : products) {
-    std::string const user_managed_marker{ p.type == pkg_type::USER_MANAGED ? " (user-managed)"
-                                                                            : "" };
+    std::string const user_managed_marker{ p.type == pkg_type::USER_MANAGED
+                                               ? " (user-managed)"
+                                               : "" };
     std::ostringstream oss;
     oss << std::left << std::setw(max_product) << p.product_name << "  "
         << std::setw(max_value) << p.value << "  " << p.provider_canonical
@@ -112,11 +120,10 @@ void cmd_product::execute() {
   eng.resolve_graph(roots);
 
   if (cfg_.product_name.empty()) {
-    auto const products{ eng.collect_all_products() };
     if (cfg_.json) {
-      print_products_json(products);
+      print_products_json(eng, *c);
     } else {
-      print_products_aligned(products);
+      print_products_aligned(eng.collect_all_products());
     }
     return;
   }

@@ -73,6 +73,11 @@ class cache : unmovable {
                            std::string_view arch,
                            std::string_view hash_prefix);
 
+  path compute_pkg_path(std::string_view identity,
+                        std::string_view platform,
+                        std::string_view arch,
+                        std::string_view hash_prefix) const;
+
   ensure_result ensure_spec(std::string_view identity);
 
   // Ensure envy binary and type definitions are deployed to cache.

@@ -349,23 +349,30 @@ bool cache::is_entry_complete(path const &entry_dir) {
   return exists;
 }
 
+path cache::compute_pkg_path(std::string_view identity,
+                             std::string_view platform,
+                             std::string_view arch,
+                             std::string_view hash_prefix) const {
+  std::ostringstream oss;
+  oss << platform << '-' << arch << "-blake3-" << hash_prefix;
+  return m->packages_dir() / std::string(identity) / oss.str() / "pkg";
+}
+
 cache::ensure_result cache::ensure_pkg(std::string_view identity,
                                        std::string_view platform,
                                        std::string_view arch,
                                        std::string_view hash_prefix) {
-  std::string const variant{ [&] {
-    std::ostringstream oss;
-    oss << platform << "-" << arch << "-blake3-" << hash_prefix;
-    return oss.str();
-  }() };
+  path const pkg_path{ compute_pkg_path(identity, platform, arch, hash_prefix) };
+  path const entry_dir{ pkg_path.parent_path() };
+  std::string const variant{ entry_dir.filename().string() };
 
-  std::string const lock_name{ [&] {
-    std::ostringstream oss;
-    oss << "packages." << identity << "." << variant << ".lock";
-    return oss.str();
-  }() };
-
-  path const entry_dir{ m->packages_dir() / std::string(identity) / variant };
+  std::string lock_name;
+  lock_name.reserve(9 + identity.size() + 1 + variant.size() + 5);
+  lock_name += "packages.";
+  lock_name += identity;
+  lock_name += '.';
+  lock_name += variant;
+  lock_name += ".lock";
 
   return ensure_entry(*m, entry_dir, m->locks_dir() / lock_name, identity, variant);
 }

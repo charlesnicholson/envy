@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <string_view>
 
 namespace envy {
 
@@ -38,6 +39,30 @@ TEST_CASE("platform::expand_path plain path returns unchanged") {
 TEST_CASE("platform::expand_path relative path returns unchanged") {
   auto result{ platform::expand_path("relative/path") };
   CHECK(result == "relative/path");
+}
+
+TEST_CASE("platform::os_name returns expected value") {
+  auto const os{ platform::os_name() };
+  CHECK(!os.empty());
+#if defined(__APPLE__) && defined(__MACH__)
+  CHECK(os == "darwin");
+#elif defined(__linux__)
+  CHECK(os == "linux");
+#elif defined(_WIN32)
+  CHECK(os == "windows");
+#endif
+}
+
+TEST_CASE("platform::arch_name returns expected value") {
+  auto const arch{ platform::arch_name() };
+  CHECK(!arch.empty());
+#if defined(__arm64__) || defined(_M_ARM64)
+  CHECK((arch == "arm64" || arch == "aarch64"));
+#elif defined(__aarch64__)
+  CHECK(arch == "aarch64");
+#elif defined(__x86_64__) || defined(_M_X64)
+  CHECK(arch == "x86_64");
+#endif
 }
 
 #ifndef _WIN32
