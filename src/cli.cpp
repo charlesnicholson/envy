@@ -55,6 +55,7 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_init,
                            cmd_package,
                            cmd_product,
+                           cmd_shell,
                            cmd_sync,
                            cmd_extract,
                            cmd_fetch,
@@ -77,7 +78,11 @@ cli_args cli_parse(int argc, char **argv) {
     app.parse(argc, argv);
   } catch (CLI::CallForHelp const &) {
     args.cli_output = app.help();
-  } catch (CLI::ParseError const &e) { args.cli_output = std::string(e.what()); }
+  } catch (CLI::ParseError const &e) {
+    auto const &subs{ app.get_subcommands() };
+    std::string help{ subs.empty() ? app.help() : subs.back()->help() };
+    args.cli_output = help + "Error: " + e.what() + "\n";
+  }
 
   // Handle trace logging: --trace defaults to stderr if no value provided
   bool const trace_requested{ trace_option->count() > 0 };

@@ -57,6 +57,10 @@ file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 // Throws std::runtime_error if file cannot be opened or read.
 std::vector<unsigned char> util_load_file(std::filesystem::path const &path);
 
+// Write content to file atomically (temp file + rename).
+// Parent directory must exist. Throws std::runtime_error on failure.
+void util_write_file(std::filesystem::path const &path, std::string_view content);
+
 // Human-readable byte formatter (B, KB, MB, GB, TB). B uses integer form, higher
 // units use one decimal place with rounding (e.g., 1536 -> "1.5KB").
 std::string util_format_bytes(std::uint64_t bytes);

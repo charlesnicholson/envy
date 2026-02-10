@@ -50,15 +50,17 @@ jobs:
             os: macos-latest
             shard: func-asan
             build_args: --sanitizer=asan
-            test_jobs: 2
+            test_jobs: 1
           - name: macos-arm64-ubsan
             os: macos-latest
             shard: func-ubsan
             build_args: --sanitizer=ubsan
+            test_jobs: 1
           - name: macos-arm64-tsan
             os: macos-latest
             shard: func-tsan
             build_args: --sanitizer=tsan
+            test_jobs: 1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -66,6 +68,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: out/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
+
+      - name: Install shell test dependencies
+        if: startsWith(matrix.shard, 'func-')
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq zsh fish
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install fish
+          fi
 
       - name: Build
         run: |
@@ -110,6 +127,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+
+      - name: Cache third-party downloads
+        uses: actions/cache@v4
+        with:
+          path: out/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
 
       - name: Build
         shell: powershell
