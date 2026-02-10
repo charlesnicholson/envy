@@ -144,15 +144,15 @@ end
 
 void lua_envy_install(sol::state &lua) {
   // Platform detection
-  char const *plat{ platform::os_name() };
-  char const *arch{ platform::arch_name() };
+  std::string_view const plat{ platform::os_name() };
+  std::string_view const arch{ platform::arch_name() };
 #ifdef _WIN32
-  char const *exe_ext{ ".exe" };
+  std::string_view const exe_ext{ ".exe" };
 #else
-  char const *exe_ext{ "" };
+  std::string_view const exe_ext{ "" };
 #endif
 
-  std::string const platform_arch{ std::string{ plat } + "-" + arch };
+  std::string const platform_arch{ std::string{ plat } + "-" + std::string{ arch } };
 
   // Override print to route through TUI
   lua["print"] = [](sol::variadic_args va) {

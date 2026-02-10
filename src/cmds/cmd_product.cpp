@@ -5,9 +5,9 @@
 #include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
-#include "platform.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
+#include "platform.h"
 #include "product_util.h"
 #include "tui.h"
 #include "util.h"
@@ -40,27 +40,8 @@ cmd_product::cmd_product(cfg cfg,
 
 namespace {
 
-std::string escape_json_string(std::string_view s) {
-  std::string out;
-  out.reserve(s.size());
-  for (char c : s) {
-    switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
-      default: out += c;
-    }
-  }
-  return out;
-}
-
 void print_products_json(engine &eng, cache &c) {
   auto const products{ eng.collect_all_products() };
-
-  char const *os{ platform::os_name() };
-  char const *arch{ platform::arch_name() };
 
   std::ostringstream oss;
   oss << "{";
@@ -80,12 +61,15 @@ void print_products_json(engine &eng, cache &c) {
       }
       auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
       std::string const hash_prefix{ util_bytes_to_hex(digest.data(), 8) };
-      auto const pkg_path{ c.compute_pkg_path(provider->cfg->identity, os, arch, hash_prefix) };
+      auto const pkg_path{ c.compute_pkg_path(provider->cfg->identity,
+                                              platform::os_name(),
+                                              platform::arch_name(),
+                                              hash_prefix) };
       resolved = (pkg_path / pi.value).generic_string();
     }
 
-    oss << "\n  \"" << escape_json_string(pi.product_name) << "\": \""
-        << escape_json_string(resolved) << "\"";
+    oss << "\n  \"" << util_escape_json_string(pi.product_name) << "\": \""
+        << util_escape_json_string(resolved) << "\"";
   }
   if (!products.empty()) { oss << "\n"; }
   oss << "}\n";
@@ -111,8 +95,9 @@ void print_products_aligned(std::vector<product_info> const &products) {
 
   // Print aligned rows
   for (auto const &p : products) {
-    std::string const user_managed_marker{ p.type == pkg_type::USER_MANAGED ? " (user-managed)"
-                                                                            : "" };
+    std::string const user_managed_marker{ p.type == pkg_type::USER_MANAGED
+                                               ? " (user-managed)"
+                                               : "" };
     std::ostringstream oss;
     oss << std::left << std::setw(max_product) << p.product_name << "  "
         << std::setw(max_value) << p.value << "  " << p.provider_canonical

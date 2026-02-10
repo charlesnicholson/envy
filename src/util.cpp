@@ -31,6 +31,33 @@ std::string util_bytes_to_hex(void const *data, size_t length) {
   return result;
 }
 
+std::string util_escape_json_string(std::string_view value) {
+  std::string out;
+  out.reserve(value.size());
+  for (char const ch : value) {
+    switch (ch) {
+      case '\\': out.append("\\\\"); break;
+      case '"': out.append("\\\""); break;
+      case '\b': out.append("\\b"); break;
+      case '\f': out.append("\\f"); break;
+      case '\n': out.append("\\n"); break;
+      case '\r': out.append("\\r"); break;
+      case '\t': out.append("\\t"); break;
+      default:
+        if (static_cast<unsigned char>(ch) < 0x20) {
+          static constexpr char hex[] = "0123456789abcdef";
+          out.append("\\u00");
+          out.push_back(hex[(ch >> 4) & 0xF]);
+          out.push_back(hex[ch & 0xF]);
+        } else {
+          out.push_back(ch);
+        }
+        break;
+    }
+  }
+  return out;
+}
+
 int util_hex_char_to_int(char c) {
   if (c >= '0' && c <= '9') { return c - '0'; }
   if (c >= 'a' && c <= 'f') { return c - 'a' + 10; }

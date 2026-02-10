@@ -178,9 +178,9 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 
-char const *os_name() { return "windows"; }
+std::string_view os_name() { return "windows"; }
 
-char const *arch_name() {
+std::string_view arch_name() {
 #if defined(_M_ARM64)
   return "arm64";
 #elif defined(_M_X64)

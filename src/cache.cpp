@@ -353,14 +353,9 @@ path cache::compute_pkg_path(std::string_view identity,
                              std::string_view platform,
                              std::string_view arch,
                              std::string_view hash_prefix) const {
-  std::string variant;
-  variant.reserve(platform.size() + 1 + arch.size() + 7 + hash_prefix.size());
-  variant += platform;
-  variant += '-';
-  variant += arch;
-  variant += "-blake3-";
-  variant += hash_prefix;
-  return m->packages_dir() / std::string(identity) / variant / "pkg";
+  std::ostringstream oss;
+  oss << platform << '-' << arch << "-blake3-" << hash_prefix;
+  return m->packages_dir() / std::string(identity) / oss.str() / "pkg";
 }
 
 cache::ensure_result cache::ensure_pkg(std::string_view identity,

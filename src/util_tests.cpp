@@ -835,3 +835,107 @@ TEST_CASE("util_path_with_separator enables correct Lua concatenation") {
   bool const has_backslash{ full_path.find("\\test.tar.gz") != std::string::npos };
   CHECK((has_forward_slash || has_backslash));
 }
+
+// --- util_escape_json_string tests ---
+
+TEST_CASE("util_escape_json_string handles empty string") {
+  CHECK(envy::util_escape_json_string("") == "");
+}
+
+TEST_CASE("util_escape_json_string passes through plain ASCII") {
+  CHECK(envy::util_escape_json_string("hello world") == "hello world");
+}
+
+TEST_CASE("util_escape_json_string passes through digits and punctuation") {
+  CHECK(envy::util_escape_json_string("abc123!@#$%^&*()") == "abc123!@#$%^&*()");
+}
+
+TEST_CASE("util_escape_json_string escapes backslash") {
+  CHECK(envy::util_escape_json_string(R"(a\b)") == R"(a\\b)");
+  CHECK(envy::util_escape_json_string(R"(\)") == R"(\\)");
+  CHECK(envy::util_escape_json_string(R"(\\)") == R"(\\\\)");
+}
+
+TEST_CASE("util_escape_json_string escapes double quote") {
+  CHECK(envy::util_escape_json_string(R"(say "hi")") == R"(say \"hi\")");
+  CHECK(envy::util_escape_json_string(R"(")") == R"(\")");
+}
+
+TEST_CASE("util_escape_json_string escapes newline") {
+  CHECK(envy::util_escape_json_string("line1\nline2") == "line1\\nline2");
+  CHECK(envy::util_escape_json_string("\n") == "\\n");
+}
+
+TEST_CASE("util_escape_json_string escapes carriage return") {
+  CHECK(envy::util_escape_json_string("line1\rline2") == "line1\\rline2");
+  CHECK(envy::util_escape_json_string("\r\n") == "\\r\\n");
+}
+
+TEST_CASE("util_escape_json_string escapes tab") {
+  CHECK(envy::util_escape_json_string("col1\tcol2") == "col1\\tcol2");
+}
+
+TEST_CASE("util_escape_json_string escapes backspace") {
+  CHECK(envy::util_escape_json_string("a\bb") == "a\\bb");
+}
+
+TEST_CASE("util_escape_json_string escapes form feed") {
+  CHECK(envy::util_escape_json_string("a\fb") == "a\\fb");
+}
+
+TEST_CASE("util_escape_json_string escapes null byte via unicode") {
+  std::string input{ "a" };
+  input += '\0';
+  input += 'b';
+  CHECK(envy::util_escape_json_string(input) == "a\\u0000b");
+}
+
+TEST_CASE("util_escape_json_string escapes other control chars via unicode") {
+  // \x01 through \x1f (excluding named escapes) should produce \u00xx
+  CHECK(envy::util_escape_json_string(std::string(1, '\x01')) == "\\u0001");
+  CHECK(envy::util_escape_json_string(std::string(1, '\x02')) == "\\u0002");
+  CHECK(envy::util_escape_json_string(std::string(1, '\x1f')) == "\\u001f");
+  CHECK(envy::util_escape_json_string(std::string(1, '\x1e')) == "\\u001e");
+  CHECK(envy::util_escape_json_string(std::string(1, '\x11')) == "\\u0011");
+}
+
+TEST_CASE("util_escape_json_string does not escape 0x20 (space)") {
+  CHECK(envy::util_escape_json_string(" ") == " ");
+  CHECK(envy::util_escape_json_string("a b") == "a b");
+}
+
+TEST_CASE("util_escape_json_string handles multiple escapes in sequence") {
+  CHECK(envy::util_escape_json_string("\"\\\n\r\t") == "\\\"\\\\\\n\\r\\t");
+}
+
+TEST_CASE("util_escape_json_string handles path-like strings") {
+  CHECK(envy::util_escape_json_string("/usr/bin/tool") == "/usr/bin/tool");
+  CHECK(envy::util_escape_json_string("C:\\Users\\foo") == "C:\\\\Users\\\\foo");
+}
+
+TEST_CASE("util_escape_json_string handles UTF-8 pass-through") {
+  // UTF-8 multibyte sequences (bytes >= 0x80) should pass through unmodified
+  CHECK(envy::util_escape_json_string("café") == "café");
+  CHECK(envy::util_escape_json_string("日本語") == "日本語");
+}
+
+TEST_CASE("util_escape_json_string all named escapes are distinct") {
+  // Verify each named escape produces its specific output
+  CHECK(envy::util_escape_json_string(std::string(1, '\b')) == "\\b");
+  CHECK(envy::util_escape_json_string(std::string(1, '\f')) == "\\f");
+  CHECK(envy::util_escape_json_string(std::string(1, '\n')) == "\\n");
+  CHECK(envy::util_escape_json_string(std::string(1, '\r')) == "\\r");
+  CHECK(envy::util_escape_json_string(std::string(1, '\t')) == "\\t");
+  CHECK(envy::util_escape_json_string(std::string(1, '"')) == "\\\"");
+  CHECK(envy::util_escape_json_string(std::string(1, '\\')) == "\\\\");
+}
+
+TEST_CASE("util_escape_json_string all control chars below 0x20 are escaped") {
+  for (int i{ 0 }; i < 0x20; ++i) {
+    std::string input(1, static_cast<char>(i));
+    std::string const result{ envy::util_escape_json_string(input) };
+    // Every control char must produce an escape sequence (starts with backslash)
+    CHECK(result.size() >= 2);
+    CHECK(result[0] == '\\');
+  }
+}

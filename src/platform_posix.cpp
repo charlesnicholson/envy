@@ -185,15 +185,17 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 
-char const *os_name() {
+std::string_view os_name() {
 #if defined(__APPLE__) && defined(__MACH__)
   return "darwin";
-#else
+#elif defined(__linux__)
   return "linux";
+#else
+#error "unsupported POSIX OS"
 #endif
 }
 
-char const *arch_name() {
+std::string_view arch_name() {
 #if defined(__aarch64__) || defined(__arm64__)
   return
 #if defined(__APPLE__)
