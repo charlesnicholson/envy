@@ -6,7 +6,6 @@ and interactive mode terminal control.
 
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -87,7 +86,7 @@ class TestTUIRendering(unittest.TestCase):
         manifest_path.write_text(make_manifest(content), encoding="utf-8")
         return manifest_path
 
-    def run_sync(self, manifest: Path, env: dict = None):
+    def run_sync(self, manifest: Path, env: dict | None = None):
         """Run 'envy sync' and return result."""
         cmd = [
             str(self.envy),
@@ -103,7 +102,7 @@ class TestTUIRendering(unittest.TestCase):
         if env:
             run_env.update(env)
 
-        result = subprocess.run(
+        result = test_config.run(
             cmd,
             cwd=self.project_root,
             capture_output=True,
@@ -128,11 +127,10 @@ PACKAGES = {{
 
         result = self.run_sync(manifest, env={"TERM": "xterm-256color"})
 
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr.decode()}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify packages completed - user-managed packages show in summary
-        stderr = result.stderr.decode()
-        self.assertIn("user-managed", stderr.lower())
+        self.assertIn("user-managed", result.stderr.lower())
 
     def test_fallback_mode_with_term_dumb(self):
         """No ANSI codes when TERM=dumb."""
@@ -146,15 +144,13 @@ PACKAGES = {{
 
         result = self.run_sync(manifest, env={"TERM": "dumb"})
 
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr.decode()}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Check that no ANSI codes are present
-        stderr = result.stderr.decode()
-        self.assertNotIn("\x1b[", stderr, "Expected no ANSI codes when TERM=dumb")
+        self.assertNotIn(
+            "\x1b[", result.stderr, "Expected no ANSI codes when TERM=dumb"
+        )
 
-    @unittest.skipIf(
-        sys.platform == "win32", "Unix shell piping not supported on Windows"
-    )
     def test_fallback_mode_with_piped_stderr(self):
         """No ANSI codes when stderr is piped (not a TTY)."""
         manifest = self.create_manifest(
@@ -165,30 +161,15 @@ PACKAGES = {{
 """
         )
 
-        cmd = [
-            str(self.envy),
-            "--cache-root",
-            str(self.cache_root),
-            "sync",
-            "--install-all",
-            "--manifest",
-            str(manifest),
-        ]
+        # capture_output=True makes stderr a pipe, not a TTY
+        result = self.run_sync(manifest)
 
-        # Pipe stderr through cat to simulate non-TTY
-        result = subprocess.run(
-            f"{' '.join(str(c) for c in cmd)} 2>&1 | cat",
-            shell=True,
-            cwd=self.project_root,
-            capture_output=True,
-            env=os.environ.copy(),
-        )
-
-        self.assertEqual(result.returncode, 0, f"stdout: {result.stdout.decode()}")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Check that no ANSI codes are present in piped output
-        output = result.stdout.decode()
-        self.assertNotIn("\x1b[", output, "Expected no ANSI codes when stderr is piped")
+        self.assertNotIn(
+            "\x1b[", result.stderr, "Expected no ANSI codes when stderr is piped"
+        )
 
 
 if __name__ == "__main__":

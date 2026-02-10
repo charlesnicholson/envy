@@ -18,9 +18,10 @@ _original_excepthook = threading.excepthook
 
 def _thread_excepthook(args):
     """Capture unhandled exceptions in threads."""
-    exc_str = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb))
+    exc_str = "".join(
+        traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb)
+    )
     _thread_exceptions.append((args.thread.name if args.thread else "unknown", exc_str))
-    # Still call original hook to print the exception
     _original_excepthook(args)
 
 
@@ -76,7 +77,9 @@ def _flatten_suite(suite: unittest.TestSuite) -> list[unittest.TestCase]:
     return tests
 
 
-def _run_single_test(test: unittest.TestCase, verbose: bool = False) -> unittest.TestResult:
+def _run_single_test(
+    test: unittest.TestCase, verbose: bool = False
+) -> unittest.TestResult:
     """Run a single test case and return its result."""
     if verbose:
         test_name = f"{test.__class__.__module__}.{test.__class__.__name__}.{test._testMethodName}"
@@ -89,9 +92,30 @@ def _run_single_test(test: unittest.TestCase, verbose: bool = False) -> unittest
     return result
 
 
-def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, verbose: bool = False) -> None:
+def _get_test_timeout() -> int:
+    """Get per-test timeout in seconds from ENVY_TEST_TIMEOUT (default: 60)."""
+    timeout_env = os.environ.get("ENVY_TEST_TIMEOUT")
+    if timeout_env:
+        try:
+            t = int(timeout_env)
+            if t >= 1:
+                return t
+            print(
+                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (must be >= 1), using 60"
+            )
+        except ValueError:
+            print(
+                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (not a number), using 60"
+            )
+    return 60
+
+
+def _run_parallel(
+    loader: unittest.TestLoader, root: pathlib.Path, jobs: int, verbose: bool = False
+) -> None:
     """Run tests in parallel using ThreadPoolExecutor."""
     start_time = time.time()
+    test_timeout = _get_test_timeout()
 
     # Discover all tests
     suite = loader.discover(str(root), top_level_dir=str(root.parent))
@@ -110,7 +134,11 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
         print(f"ERROR: {e}")
         sys.exit(1)
 
-    print(f"Running {len(test_cases)} tests with {jobs} workers..." + (" (verbose mode)" if verbose else ""))
+    timeout_note = f", timeout={test_timeout}s" if test_timeout != 60 else ""
+    print(
+        f"Running {len(test_cases)} tests with {jobs} workers{timeout_note}..."
+        + (" (verbose mode)" if verbose else "")
+    )
 
     # Counters for results
     passed = 0
@@ -129,11 +157,13 @@ def _run_parallel(loader: unittest.TestLoader, root: pathlib.Path, jobs: int, ve
         for i, future in enumerate(as_completed(future_to_test), 1):
             test = future_to_test[future]
             try:
-                result = future.result(timeout=60)
+                result = future.result(timeout=test_timeout)
             except Exception as e:
                 sys.stdout.write("E")
                 errors += 1
-                failure_details.append(("ERROR", str(test), f"Test execution failed: {e}\n"))
+                failure_details.append(
+                    ("ERROR", str(test), f"Test execution failed: {e}\n")
+                )
                 sys.stdout.flush()
                 continue
 
@@ -214,10 +244,14 @@ def main() -> None:
             try:
                 jobs = int(jobs_env)
                 if jobs < 1:
-                    print(f"Warning: Invalid ENVY_TEST_JOBS={jobs_env} (must be >= 1), using auto")
+                    print(
+                        f"Warning: Invalid ENVY_TEST_JOBS={jobs_env} (must be >= 1), using auto"
+                    )
                     jobs = os.cpu_count() or 4
             except ValueError:
-                print(f"Warning: Invalid ENVY_TEST_JOBS={jobs_env} (not a number), using auto")
+                print(
+                    f"Warning: Invalid ENVY_TEST_JOBS={jobs_env} (not a number), using auto"
+                )
                 jobs = os.cpu_count() or 4
     else:
         jobs = os.cpu_count() or 4

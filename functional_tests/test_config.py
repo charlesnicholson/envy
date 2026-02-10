@@ -1,6 +1,7 @@
 """Shared configuration for functional tests."""
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -9,22 +10,45 @@ from pathlib import Path
 SUBPROCESS_TEXT_MODE = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
+def _is_envy_cmd(cmd) -> bool:
+    """Return True if cmd invokes the envy functional tester binary."""
+    if not cmd:
+        return False
+    exe = str(cmd[0] if not isinstance(cmd, str) else cmd)
+    return "envy_functional_tester" in exe
+
+
+def _wrap_cmd(cmd):
+    """Prepend ENVY_TEST_WRAPPER to a command list if set (envy commands only)."""
+    wrapper = os.environ.get("ENVY_TEST_WRAPPER")
+    if wrapper and _is_envy_cmd(cmd):
+        return shlex.split(wrapper) + list(cmd)
+    return cmd
+
+
 def run(*args, **kwargs) -> subprocess.CompletedProcess[str]:
-    """Wrapper for subprocess.run with UTF-8 encoding."""
+    """Wrapper for subprocess.run with UTF-8 encoding and optional command wrapping."""
     kwargs.setdefault("encoding", "utf-8")
     kwargs.setdefault("errors", "replace")
     if "text" not in kwargs and "encoding" in kwargs:
         kwargs["text"] = True
+    args = list(args)
+    if args and not kwargs.get("shell"):
+        args[0] = _wrap_cmd(args[0])
     return subprocess.run(*args, **kwargs)
 
 
 def popen(*args, **kwargs) -> subprocess.Popen[str]:
-    """Wrapper for subprocess.Popen with UTF-8 encoding."""
+    """Wrapper for subprocess.Popen with UTF-8 encoding and optional command wrapping."""
     kwargs.setdefault("encoding", "utf-8")
     kwargs.setdefault("errors", "replace")
     if "text" not in kwargs and "encoding" in kwargs:
         kwargs["text"] = True
+    args = list(args)
+    if args and not kwargs.get("shell"):
+        args[0] = _wrap_cmd(args[0])
     return subprocess.Popen(*args, **kwargs)
+
 
 # Required manifest header for all manifests (bin is mandatory)
 MANIFEST_HEADER = '-- @envy bin "envy-bin"\n'
