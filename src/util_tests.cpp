@@ -851,14 +851,14 @@ TEST_CASE("util_escape_json_string passes through digits and punctuation") {
 }
 
 TEST_CASE("util_escape_json_string escapes backslash") {
-  CHECK(envy::util_escape_json_string(R"(a\b)") == R"(a\\b)");
-  CHECK(envy::util_escape_json_string(R"(\)") == R"(\\)");
-  CHECK(envy::util_escape_json_string(R"(\\)") == R"(\\\\)");
+  CHECK(envy::util_escape_json_string("a\\b") == "a\\\\b");
+  CHECK(envy::util_escape_json_string("\\") == "\\\\");
+  CHECK(envy::util_escape_json_string("\\\\") == "\\\\\\\\");
 }
 
 TEST_CASE("util_escape_json_string escapes double quote") {
-  CHECK(envy::util_escape_json_string(R"(say "hi")") == R"(say \"hi\")");
-  CHECK(envy::util_escape_json_string(R"(")") == R"(\")");
+  CHECK(envy::util_escape_json_string("say \"hi\"") == "say \\\"hi\\\"");
+  CHECK(envy::util_escape_json_string("\"") == "\\\"");
 }
 
 TEST_CASE("util_escape_json_string escapes newline") {
@@ -905,12 +905,25 @@ TEST_CASE("util_escape_json_string does not escape 0x20 (space)") {
 }
 
 TEST_CASE("util_escape_json_string handles multiple escapes in sequence") {
-  CHECK(envy::util_escape_json_string("\"\\\n\r\t") == "\\\"\\\\\\n\\r\\t");
+  std::string input;
+  input += '"';
+  input += '\\';
+  input += '\n';
+  input += '\r';
+  input += '\t';
+  CHECK(envy::util_escape_json_string(input) == "\\\"\\\\\\n\\r\\t");
 }
 
 TEST_CASE("util_escape_json_string handles path-like strings") {
   CHECK(envy::util_escape_json_string("/usr/bin/tool") == "/usr/bin/tool");
   CHECK(envy::util_escape_json_string("C:\\Users\\foo") == "C:\\\\Users\\\\foo");
+}
+
+TEST_CASE("util_escape_json_string handles Windows backslash paths") {
+  // Double-check Windows-style paths produce doubled backslashes
+  std::string const input{ "D:\\a\\envy\\envy" };
+  std::string const expected{ "D:\\\\a\\\\envy\\\\envy" };
+  CHECK(envy::util_escape_json_string(input) == expected);
 }
 
 TEST_CASE("util_escape_json_string handles UTF-8 pass-through") {
