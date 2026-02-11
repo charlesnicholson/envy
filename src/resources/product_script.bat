@@ -5,4 +5,5 @@ if not defined PRODUCT_PATH (
     echo envy: failed to resolve product '@@PRODUCT_NAME@@' 1>&2
     exit /b 1
 )
-"%PRODUCT_PATH%" %*
+call "%PRODUCT_PATH%" %*
+exit /b %ERRORLEVEL%
