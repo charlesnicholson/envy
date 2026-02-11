@@ -6,3 +6,4 @@ if not defined PRODUCT_PATH (
     exit /b 1
 )
 "%PRODUCT_PATH%" %*
+exit /b %ERRORLEVEL%
