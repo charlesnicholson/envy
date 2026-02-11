@@ -11,6 +11,37 @@ from .test_ctx_run_base import CtxRunTestBase
 class TestCtxRunCheckMode(CtxRunTestBase):
     """Tests for envy.run() check mode options."""
 
+    def test_default_check_throws_on_failure(self):
+        """envy.run() throws on non-zero exit by default (no explicit check)."""
+        spec = """-- Test envy.run() default check=true throws on failure
+IDENTITY = "local.ctx_run_default_check@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}"
+}}
+
+STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
+  envy.extract_all(fetch_dir, stage_dir, {{strip = 1}})
+
+  if envy.PLATFORM == "windows" then
+    envy.run([[
+      exit 7
+    ]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run([[
+      exit 7
+    ]])
+  end
+end
+"""
+        self.write_spec("ctx_run_default_check.lua", spec)
+        self.run_spec(
+            "local.ctx_run_default_check@v1",
+            "ctx_run_default_check.lua",
+            should_fail=True,
+        )
+
     def test_check_mode_catches_failures(self):
         """envy.run() check mode catches command failures."""
         # check=true with set -euo pipefail
@@ -48,8 +79,8 @@ end
         )
 
     def test_continue_after_failure(self):
-        """envy.run() continues execution after a failing command."""
-        # Without strict mode, script continues past failures
+        """envy.run() with check=false continues execution after a failing command."""
+        # check=false allows script to continue past failures
         spec = """-- Test envy.run() continues after a failing command
 IDENTITY = "local.ctx_run_continue_after_failure@v1"
 
@@ -66,12 +97,12 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
     envy.run([[
       cmd /c exit 1
       Set-Content -Path continued.txt -Value "This executes even after false"
-    ]], {{shell = ENVY_SHELL.POWERSHELL}})
+    ]], {{shell = ENVY_SHELL.POWERSHELL, check = false}})
   else
     envy.run([[
       false || true
       echo "This executes even after false" > continued.txt
-    ]])
+    ]], {{check = false}})
   end
 end
 """
@@ -495,10 +526,9 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
       Set-Content -Path all_opts_pwd.txt -Value (Get-Location).Path
       Set-Content -Path all_opts_env.txt -Value ("MY_VAR=" + $env:MY_VAR)
       Add-Content -Path all_opts_env.txt -Value ("ANOTHER=" + $env:ANOTHER)
-      $ErrorActionPreference = 'Continue'
       cmd /c exit 1
       Set-Content -Path all_opts_continued.txt -Value "Continued after false"
-    ]], {{cwd = "subdir", env = {{MY_VAR = "test", ANOTHER = "value"}}, shell = ENVY_SHELL.POWERSHELL}})
+    ]], {{cwd = "subdir", env = {{MY_VAR = "test", ANOTHER = "value"}}, shell = ENVY_SHELL.POWERSHELL, check = false}})
   else
     envy.run([[mkdir -p subdir]])
     envy.run([[
@@ -507,7 +537,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
       echo "ANOTHER=$ANOTHER" >> all_opts_env.txt
       false || true
       echo "Continued after false" > all_opts_continued.txt
-    ]], {{cwd = "subdir", env = {{MY_VAR = "test", ANOTHER = "value"}}}})
+    ]], {{cwd = "subdir", env = {{MY_VAR = "test", ANOTHER = "value"}}, check = false}})
   end
 end
 """
@@ -562,13 +592,13 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
       Set-Content -Path combo2_pwd.txt -Value (Get-Location).Path
       cmd /c exit 1
       Set-Content -Path combo2_continued.txt -Value "After false"
-    ]], {{cwd = "dir2", shell = ENVY_SHELL.POWERSHELL}})
+    ]], {{cwd = "dir2", shell = ENVY_SHELL.POWERSHELL, check = false}})
   else
     envy.run([[
       pwd > combo2_pwd.txt
       false || true
       echo "After false" > combo2_continued.txt
-    ]], {{cwd = "dir2"}})
+    ]], {{cwd = "dir2", check = false}})
   end
 
   -- Combination 3: env with a failing command (default cwd)
@@ -577,13 +607,13 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
       Set-Content -Path combo3_env.txt -Value ("VAR2=" + $env:VAR2)
       cmd /c exit 1
       Add-Content -Path combo3_env.txt -Value "Continued"
-    ]], {{env = {{VAR2 = "value2"}}, shell = ENVY_SHELL.POWERSHELL}})
+    ]], {{env = {{VAR2 = "value2"}}, shell = ENVY_SHELL.POWERSHELL, check = false}})
   else
     envy.run([[
       echo "VAR2=$VAR2" > combo3_env.txt
       false || true
       echo "Continued" >> combo3_env.txt
-    ]], {{env = {{VAR2 = "value2"}}}})
+    ]], {{env = {{VAR2 = "value2"}}, check = false}})
   end
 
   -- Combination 4: Just env
@@ -613,12 +643,12 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
     envy.run([[
       cmd /c exit 1
       Set-Content -Path combo6_continued.txt -Value "Standalone failure scenario"
-    ]], {{shell = ENVY_SHELL.POWERSHELL}})
+    ]], {{shell = ENVY_SHELL.POWERSHELL, check = false}})
   else
     envy.run([[
       false || true
       echo "Standalone failure scenario" > combo6_continued.txt
-    ]])
+    ]], {{check = false}})
   end
 end
 

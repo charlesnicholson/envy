@@ -214,7 +214,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
 
   if envy.PLATFORM == "windows" then
     envy.run([[
-      Remove-Item loop_output.txt, file_loop.txt, while_loop.txt, even_numbers.txt, odd_numbers.txt -ErrorAction SilentlyContinue
+      Remove-Item loop_output.txt, file_loop.txt, while_loop.txt, even_numbers.txt, odd_numbers.txt -ErrorAction Ignore
       for ($i = 1; $i -le 5; $i++) {{
         $line = "Iteration $i"
         if ($i -eq 1) {{
@@ -542,7 +542,7 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, options)
   if envy.PLATFORM == "windows" then
     envy.run([[
       Set-Content -Path special_chars.txt -Value 'Special chars: !@#$%^&*()_+-=[]{{}}|;:'',.<>?/~`'
-      Add-Content -Path special_chars.txt -Value 'Quotes: "double" ''single' ''
+      Add-Content -Path special_chars.txt -Value 'Quotes: "double" ''single'''
       Add-Content -Path special_chars.txt -Value 'Backslash: \\ and newline: (literal)'
       if (-not (Test-Path special_chars.txt)) {{ exit 1 }}
       exit 0

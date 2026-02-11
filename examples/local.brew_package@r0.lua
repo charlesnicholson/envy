@@ -5,7 +5,7 @@ DEPENDENCIES = { spec = "local.brew@r0", source = "local.brew@r0.lua" }
 local missing_packages = {}
 
 CHECK = function(tmp_dir, opts)
-  local res = envy.run("brew list", { capture = true, quiet = true })
+  local res = envy.run("brew list", { capture = true, quiet = true, check = false })
   if res.exit_code ~= 0 then
     return false
   end

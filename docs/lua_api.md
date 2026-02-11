@@ -51,7 +51,7 @@ Execute shell script in phase context.
   - `shell` — `ENVY_SHELL.*` constant
   - `quiet` — suppress output (default: false)
   - `capture` — capture stdout/stderr (default: false)
-  - `check` — throw on non-zero exit (default: false)
+  - `check` — throw on non-zero exit (default: true)
   - `interactive` — enable TTY passthrough (default: false)
 
 **Returns:** `{ exit_code, stdout, stderr }`
@@ -64,8 +64,7 @@ envy.run("make -j$(nproc)")
 local result = envy.run("./configure --prefix=" .. install_dir, {
   cwd = "subdir",
   env = { CC = "clang" },
-  capture = true,
-  check = true
+  capture = true
 })
 print(result.stdout)
 
@@ -74,7 +73,11 @@ envy.run({
   "cmake -B build -G Ninja",
   "cmake --build build",
   "cmake --install build"
-}, { check = true })
+})
+
+-- Probe system state without throwing
+local res = envy.run("dpkg -l foo", { capture = true, check = false })
+if res.exit_code ~= 0 then error("foo not installed") end
 ```
 
 **Default cwd by phase:**
