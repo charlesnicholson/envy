@@ -138,13 +138,13 @@ void lua_envy_run_install(sol::table &envy_table) {
 
     bool quiet{ false };
     bool capture{ false };
-    bool check{ false };
+    bool check{ true };
     bool interactive{ false };
     if (opts_table) {
       sol::table opts{ *opts_table };
       quiet = sol_util_get_or_default<bool>(opts, "quiet", false, "envy.run");
       capture = sol_util_get_or_default<bool>(opts, "capture", false, "envy.run");
-      check = sol_util_get_or_default<bool>(opts, "check", false, "envy.run");
+      check = sol_util_get_or_default<bool>(opts, "check", true, "envy.run");
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "envy.run");
     }
 

@@ -57,7 +57,7 @@ cd build
         cmake = envy.product("cmake"),
         ninja = envy.product("ninja"),
         targets = table.concat(opts.tools, " ")
-      }), { check = true })
+      }))
   end
 end
 

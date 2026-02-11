@@ -6,7 +6,7 @@ CHECK = function(tmp_dir, opts)
   local cmd = "dpkg-query -W -f='${Status} ${Package}\n' " ..
   table.concat(opts.packages, " ")
 
-  local res = envy.run(cmd, { capture = true, quiet = true })
+  local res = envy.run(cmd, { capture = true, quiet = true, check = false })
 
   local installed = {}
 

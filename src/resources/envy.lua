@@ -132,7 +132,7 @@ function envy.is_dir(path) end
 ---@field shell? integer|envy.shell_config Shell choice (ENVY_SHELL.*) or config table
 ---@field quiet? boolean Suppress output (default: false)
 ---@field capture? boolean Capture stdout/stderr in result (default: false)
----@field check? boolean Throw on non-zero exit code (default: false)
+---@field check? boolean Throw on non-zero exit code (default: true)
 ---@field interactive? boolean Enable interactive mode for user input (default: false)
 
 ---@class envy.run_result

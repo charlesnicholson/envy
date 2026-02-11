@@ -50,28 +50,24 @@ STAGE = function(fetch_dir, stage_dir, tmp_dir, opts)
 
   envy.run(
     'Start-Process -Wait -FilePath "' .. fetch_dir .. '7z2501-x64.exe" ' ..
-    '-ArgumentList "/S","/D=' .. stage_dir .. '7z"',
-    { check = true })
+    '-ArgumentList "/S","/D=' .. stage_dir .. '7z"')
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   local src = fetch_dir .. jlink_filename(opts)
 
   if envy.PLATFORM == "darwin" then
-    envy.run("pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink",
-             { check = true })
+    envy.run("pkgutil --expand-full " .. src .. " " .. install_dir .. "jlink")
   elseif envy.PLATFORM == "windows" then
     if opts.mode == "extract" then
       local dest = install_dir .. "JLink_V" .. version_nodot(opts.version)
       envy.run(
         '& "' .. stage_dir .. '7z\\7z.exe" x "' .. src ..
-        '" "-o' .. dest .. '" -aoa -y',
-        { check = true })
+        '" "-o' .. dest .. '" -aoa -y')
     else
       envy.run(
         'Start-Process -Wait -FilePath "' .. src ..
-        '" -ArgumentList "/S","/D=' .. install_dir .. '"',
-        { check = true })
+        '" -ArgumentList "/S","/D=' .. install_dir .. '"')
     end
   else
     envy.extract(src, install_dir, { strip = 1 })
