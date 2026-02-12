@@ -29,6 +29,7 @@ jobs:
           tar -czf release/envy-linux-x86_64.tar.gz -C artifacts/envy-linux-x64-main envy
           tar -czf release/envy-linux-arm64.tar.gz -C artifacts/envy-linux-arm64-main envy
           tar -czf release/envy-darwin-arm64.tar.gz -C artifacts/envy-macos-arm64-main envy
+          tar -czf release/envy-darwin-x86_64.tar.gz -C artifacts/envy-macos-x64-main envy
           cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe
 
       - name: Create release with artifacts
@@ -39,6 +40,7 @@ jobs:
             release/envy-linux-x86_64.tar.gz \
             release/envy-linux-arm64.tar.gz \
             release/envy-darwin-arm64.tar.gz \
+            release/envy-darwin-x86_64.tar.gz \
             release/envy-windows-x86_64.zip \
             --repo ${{ github.repository }} \
             --generate-notes

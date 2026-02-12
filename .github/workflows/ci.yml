@@ -25,6 +25,13 @@ jobs:
           - name: macos-arm64-func
             os: macos-latest
             shard: func-main
+          - name: macos-x64-main
+            os: macos-15-intel
+            shard: main
+            build_args: --no-functional-tester
+          - name: macos-x64-func
+            os: macos-15-intel
+            shard: func-main
           - name: linux-x64-asan
             os: ubuntu-latest
             shard: func-asan
