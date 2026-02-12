@@ -94,7 +94,7 @@ set(ENVY_CLI11_SHA256 4bf0a9490aa7209176ccda70544f95413e594d2207cca33c9cd18ded18
 
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
-    set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt)
+    set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt wininet)
 else()
     find_library(RESOLV_LIBRARY resolv REQUIRED)
     set(PLATFORM_NETWORK_LIBS ${RESOLV_LIBRARY})
@@ -135,7 +135,7 @@ add_library(envy::thirdparty ALIAS envy_thirdparty)
 target_link_libraries(envy_thirdparty
     INTERFACE
         envy::libgit2
-        CURL::libcurl
+        $<$<NOT:$<PLATFORM_ID:Windows>>:CURL::libcurl>
         libssh2::libssh2
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedtls>
         $<$<NOT:$<PLATFORM_ID:Windows>>:MbedTLS::mbedx509>
@@ -165,7 +165,7 @@ if(APPLE)
 endif()
 
 target_compile_definitions(envy_thirdparty INTERFACE
-    $<$<NOT:$<PLATFORM_ID:Darwin>>:CURL_STATICLIB>
+    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<NOT:$<PLATFORM_ID:Windows>>>:CURL_STATICLIB>
 )
 
 target_include_directories(envy_thirdparty INTERFACE
@@ -173,6 +173,6 @@ target_include_directories(envy_thirdparty INTERFACE
     "$<BUILD_INTERFACE:${aws_sdk_SOURCE_DIR}/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${aws_sdk_BINARY_DIR}/generated/src/aws-cpp-sdk-core/include>"
     "$<BUILD_INTERFACE:${ENVY_AWSCRT_ROOT}/include>"
-    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<BOOL:${ENVY_LIBCURL_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_INCLUDE}>>
-    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<BOOL:${ENVY_LIBCURL_BINARY_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_BINARY_INCLUDE}>>
+    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<NOT:$<PLATFORM_ID:Windows>>,$<BOOL:${ENVY_LIBCURL_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_INCLUDE}>>
+    $<$<AND:$<NOT:$<PLATFORM_ID:Darwin>>,$<NOT:$<PLATFORM_ID:Windows>>,$<BOOL:${ENVY_LIBCURL_BINARY_INCLUDE}>>:$<BUILD_INTERFACE:${ENVY_LIBCURL_BINARY_INCLUDE}>>
 )

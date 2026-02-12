@@ -415,8 +415,45 @@ function(envy_patch_libssh2_install source_dir binary_dir)
     unset(LIBSSH2_SRC_CMAKELISTS)
 endfunction()
 
+# Patch libgit2's MSVC Release flags from /O2 (maximize speed) to /O1
+# (minimize size).  libgit2's DefaultCFlags.cmake unconditionally replaces
+# CMAKE_C_FLAGS_RELEASE, discarding our global size-optimization setting.
+function(envy_patch_libgit2_cflags source_dir binary_dir)
+    if(NOT MSVC)
+        return()
+    endif()
+
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_libgit2_cflags_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_libgit2_cflags.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/libgit2_cflags_patch.py.in")
+
+    set(LIBGIT2_DEFAULT_CFLAGS "${source_dir}/cmake/DefaultCFlags.cmake")
+    if(NOT EXISTS "${LIBGIT2_DEFAULT_CFLAGS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_binary_dir_norm)
+    unset(LIBGIT2_DEFAULT_CFLAGS)
+endfunction()
+
 # Strip libgit2 install()/export() calls for the same reason—keep it scoped
-# to Envy’s build tree with no accidental installs.
+# to Envy's build tree with no accidental installs.
 function(envy_patch_libgit2_install source_dir binary_dir)
     set(_source_dir_norm "${source_dir}")
     set(_binary_dir_norm "${binary_dir}")

@@ -1,0 +1,16 @@
+import pathlib
+
+# Patch libgit2's DefaultCFlags.cmake to use /O1 (minimize size) instead of
+# /O2 (maximize speed) in Release builds.  libgit2 unconditionally overwrites
+# CMAKE_C_FLAGS_RELEASE, discarding Envy's global size-optimization setting.
+
+path = pathlib.Path(r"@LIBGIT2_DEFAULT_CFLAGS@")
+text = path.read_text()
+updated = text.replace(
+    'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O2 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")',
+    'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O1 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")',
+)
+if updated == text:
+    raise SystemExit("libgit2 DefaultCFlags.cmake: /O2 Release line not found")
+if updated != text:
+    path.write_text(updated)

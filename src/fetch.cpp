@@ -1,7 +1,7 @@
 #include "fetch.h"
 
 #include "aws_util.h"
-#include "libcurl_util.h"
+#include "fetch_http.h"
 #include "libgit2_util.h"
 #include "util.h"
 
@@ -232,7 +232,7 @@ fetch_result fetch_single(fetch_request const &request) {
       .scheme = info.scheme,
       .resolved_source = std::filesystem::path{ info.canonical },
       .resolved_destination =
-          libcurl_download(info.canonical, req.destination, req.progress, req.post_data)
+          fetch_http_download(info.canonical, req.destination, req.progress, req.post_data)
     };
   } };
 
@@ -245,7 +245,7 @@ fetch_result fetch_single(fetch_request const &request) {
       .scheme = info.scheme,
       .resolved_source = std::filesystem::path{ info.canonical },
       .resolved_destination =
-          libcurl_download(info.canonical, req.destination, req.progress, std::nullopt)
+          fetch_http_download(info.canonical, req.destination, req.progress, std::nullopt)
     };
   } };
 

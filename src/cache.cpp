@@ -236,7 +236,14 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     platform::atomic_rename(install_dir(), m->pkg_dir());
     tui::debug("  DTOR: cleaning up work/fetch dirs");
     remove_all_noexcept(work_dir());
-    remove_all_noexcept(fetch_dir());
+    // fetch_dir cleanup is best-effort: the install is already complete, so a
+    // lingering fetch dir only wastes disk space.  On Windows, Defender or Search
+    // Indexer may still be scanning recently-downloaded archives.
+    if (auto ec{platform::remove_all_with_retry(fetch_dir())}) {
+      tui::warn("cache: could not remove %s: %s",
+                fetch_dir().string().c_str(),
+                ec.message().c_str());
+    }
     tui::debug("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
     platform::flush_directory(m->entry_dir_);

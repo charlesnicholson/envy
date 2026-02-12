@@ -72,10 +72,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
 
-# Favor size-optimized release binaries by normalizing optimization flags
+# Favor size-optimized release binaries by normalizing optimization flags.
+# MSVC: /O1 = minimize size (/Os /Oy /Ob2 /GF /Gy).  /Os alone is just a
+# preference flag that has no effect without /O1 or /O2.
 set(_envy_size_opt "-Os")
 if(MSVC)
-    set(_envy_size_opt "/Os")
+    set(_envy_size_opt "/O1")
 endif()
 
 foreach(_envy_lang IN ITEMS C CXX)
@@ -194,8 +196,8 @@ set(ENVY_LICENSE_SOURCES
     "zlib=${envy_zlib_SOURCE_DIR}"
 )
 
-# libcurl only bundled on non-Apple (macOS uses system libcurl)
-if(NOT APPLE)
+# libcurl only bundled on Linux (macOS uses system libcurl, Windows uses WinINet)
+if(NOT APPLE AND NOT WIN32)
     list(APPEND ENVY_LICENSE_SOURCES "libcurl=${libcurl_SOURCE_DIR}")
 endif()
 
@@ -271,7 +273,8 @@ set(ENVY_BASE_SOURCES
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/sha256_mbedtls.cpp>
     $<$<PLATFORM_ID:Darwin>:src/ssl_certs_macos.mm>
     src/fetch.cpp
-    src/libcurl_util.cpp
+    $<$<PLATFORM_ID:Windows>:src/fetch_http_win32.cpp>
+    $<$<NOT:$<PLATFORM_ID:Windows>>:src/fetch_http_curl.cpp>
     $<$<PLATFORM_ID:Windows>:src/platform_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/platform_posix.cpp>
     src/termination.cpp
