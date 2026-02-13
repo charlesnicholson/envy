@@ -58,7 +58,7 @@ function _envy_hook {
                     # Leaving old project (switching)?
                     if ($global:_ENVY_BIN_DIR) {
                         $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
-                        Write-Host "envy: leaving $oldName $($global:_ENVY_DASH) PATH restored" -ForegroundColor DarkGray
+                        [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
                         $parts = $env:PATH -split [regex]::Escape($sep)
                         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
                         $env:PATH = $parts -join $sep
@@ -66,7 +66,7 @@ function _envy_hook {
                     $env:PATH = "$binDir$sep$env:PATH"
                     $global:_ENVY_BIN_DIR = $binDir
                     $newName = Split-Path $manifestDir -Leaf
-                    Write-Host "envy: entering $newName $($global:_ENVY_DASH) tools added to PATH" -ForegroundColor DarkGray
+                    [Console]::Error.WriteLine("envy: entering $newName $($global:_ENVY_DASH) tools added to PATH")
                     $global:_ENVY_PROMPT_ACTIVE = $true
                 }
                 $env:ENVY_PROJECT_ROOT = $manifestDir
@@ -78,7 +78,7 @@ function _envy_hook {
     # Left all projects or no bin — clean up
     if ($global:_ENVY_BIN_DIR) {
         $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
-        Write-Host "envy: leaving $oldName $($global:_ENVY_DASH) PATH restored" -ForegroundColor DarkGray
+        [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
         $parts = $env:PATH -split [regex]::Escape($sep)
         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
         $env:PATH = $parts -join $sep

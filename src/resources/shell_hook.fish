@@ -39,7 +39,7 @@ function _envy_set_prompt
     test "$ENVY_NO_PROMPT" = 1; and return
     test "$_ENVY_UTF8" != 1; and return
     test "$_ENVY_PROMPT_ACTIVE" = 1; and return
-    if functions -q fish_prompt
+    if functions -q fish_prompt; and not functions -q _envy_original_fish_prompt
         functions -c fish_prompt _envy_original_fish_prompt
         function fish_prompt
             printf '🦝 '
@@ -60,9 +60,9 @@ end
 
 function _envy_hook --on-variable PWD
     test "$ENVY_SHELL_HOOK_DISABLE" = 1; and return
-    # Guard against recursion: (cd ...) in subshells inherits this local
-    test "$_ENVY_HOOK_ACTIVE" = 1; and return
-    set -l _ENVY_HOOK_ACTIVE 1
+    # Deduplicate: --on-variable PWD can fire from cd in command substitutions
+    test "$PWD" = "$_ENVY_LAST_PWD"; and return
+    set -g _ENVY_LAST_PWD "$PWD"
 
     set -l manifest_dir (_envy_find_manifest 2>/dev/null)
 
