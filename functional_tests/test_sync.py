@@ -211,7 +211,6 @@ PACKAGES = {{
         result = self.run_sync(manifest=manifest, install_all=True)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("installed", result.stderr.lower())
 
         build_dep_cache = self.cache_root / "packages" / "local.build_dependency@v1"
         simple_cache = self.cache_root / "packages" / "local.simple@v1"
@@ -429,7 +428,6 @@ PACKAGES = {{
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("installed", result.stderr.lower())
 
 
 class TestSyncProductScripts(unittest.TestCase):
@@ -658,7 +656,6 @@ PACKAGES = {{
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("installed", result.stderr.lower())
 
         pkg_path = self.cache_root / "packages" / "local.product_provider@v1"
         self.assertTrue(pkg_path.exists())

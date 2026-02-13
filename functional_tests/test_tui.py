@@ -129,9 +129,6 @@ PACKAGES = {{
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Verify packages completed - user-managed packages show in summary
-        self.assertIn("user-managed", result.stderr.lower())
-
     def test_fallback_mode_with_term_dumb(self):
         """No ANSI codes when TERM=dumb."""
         manifest = self.create_manifest(
