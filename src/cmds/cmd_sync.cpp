@@ -258,24 +258,10 @@ void cmd_sync::execute() {
   if (cfg_.install_all) {
     auto result{ eng.run_full(targets) };
 
-    size_t completed{ 0 };
-    size_t user_managed{ 0 };
     size_t failed{ 0 };
-
     for (auto const &[key, outcome] : result) {
-      if (outcome.type == pkg_type::UNKNOWN) {
-        ++failed;
-      } else if (outcome.type == pkg_type::USER_MANAGED) {
-        ++user_managed;
-      } else {
-        ++completed;
-      }
+      if (outcome.type == pkg_type::UNKNOWN) { ++failed; }
     }
-
-    tui::info("sync: %zu package(s) installed, %zu user-managed, %zu failed",
-              completed,
-              user_managed,
-              failed);
 
     if (failed > 0) {
       throw std::runtime_error("sync: " + std::to_string(failed) + " package(s) failed");

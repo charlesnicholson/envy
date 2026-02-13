@@ -126,7 +126,6 @@ PACKAGES = {{
         result = self.run_sync(manifest=manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("installed", result.stderr.lower())
 
         # Verify package was installed
         pkg_path = self.cache_root / "packages" / "test.spec_a@v1"

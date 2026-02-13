@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/cache
-          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
       - name: Install test dependencies
         if: startsWith(matrix.shard, 'func-')
@@ -160,7 +160,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/cache
-          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/**', 'tools/build.py', 'tools/unzip') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
       - name: Build
         shell: powershell
