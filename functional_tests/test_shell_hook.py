@@ -249,6 +249,123 @@ class TestBashHook(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
 
+    # --- v2: enter/leave messages ---
+
+    def test_entering_message_on_cd_into_project(self) -> None:
+        project = self._make_envy_project("proj-msg-enter")
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering proj-msg-enter", result.stderr)
+        self.assertIn("tools added to PATH", result.stderr)
+
+    def test_leaving_message_on_cd_out(self) -> None:
+        project = self._make_envy_project("proj-msg-leave")
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f"cd /tmp\n"
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: leaving proj-msg-leave", result.stderr)
+        self.assertIn("PATH restored", result.stderr)
+
+    def test_switching_projects_prints_leave_and_enter(self) -> None:
+        proj_a = self._make_envy_project("proj-sw-A")
+        proj_b = self._make_envy_project("proj-sw-B")
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{proj_a}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'cd "{proj_b}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        leave_pos = result.stderr.index("leaving proj-sw-A")
+        enter_pos = result.stderr.index("entering proj-sw-B")
+        self.assertLess(leave_pos, enter_pos)
+
+    def test_no_duplicate_message_within_project(self) -> None:
+        project = self._make_envy_project("proj-nodup")
+        sub = project / "src"
+        sub.mkdir()
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'cd "{sub}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(1, result.stderr.count("entering proj-nodup"))
+
+    def test_initial_activation_prints_message(self) -> None:
+        project = self._make_envy_project("proj-init-msg")
+        result = self._run_bash_hook_test(
+            f'cd "{project}"\nsource "{self._hook_path}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering proj-init-msg", result.stderr)
+
+    # --- v2: raccoon prompt ---
+
+    def test_raccoon_in_prompt_when_in_project(self) -> None:
+        project = self._make_envy_project("proj-raccoon")
+        result = self._run_bash_hook_test(
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_raccoon_removed_on_leave(self) -> None:
+        project = self._make_envy_project("proj-raccoon-rm")
+        result = self._run_bash_hook_test(
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f"cd /tmp\n"
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertIn("$", result.stdout)
+
+    def test_raccoon_disabled_via_env_var(self) -> None:
+        project = self._make_envy_project("proj-raccoon-off")
+        result = self._run_bash_hook_test(
+            f"export ENVY_NO_PROMPT=1\n"
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertIn("$", result.stdout)
+
 
 @unittest.skipUnless(shutil.which("zsh"), "zsh not installed")
 @unittest.skipIf(sys.platform == "win32", "zsh hook tests require Unix")
@@ -328,6 +445,88 @@ class TestZshHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
+
+    # --- v2: enter/leave messages ---
+
+    def test_entering_message_on_cd_into_project(self) -> None:
+        project = self._make_envy_project("zsh-msg-enter")
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering zsh-msg-enter", result.stderr)
+        self.assertIn("tools added to PATH", result.stderr)
+
+    def test_leaving_message_on_cd_out(self) -> None:
+        project = self._make_envy_project("zsh-msg-leave")
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: leaving zsh-msg-leave", result.stderr)
+        self.assertIn("PATH restored", result.stderr)
+
+    def test_switching_projects_prints_leave_and_enter(self) -> None:
+        proj_a = self._make_envy_project("zsh-sw-A")
+        proj_b = self._make_envy_project("zsh-sw-B")
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{proj_a}"\ncd "{proj_b}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        leave_pos = result.stderr.index("leaving zsh-sw-A")
+        enter_pos = result.stderr.index("entering zsh-sw-B")
+        self.assertLess(leave_pos, enter_pos)
+
+    def test_no_duplicate_message_within_project(self) -> None:
+        project = self._make_envy_project("zsh-nodup")
+        sub = project / "src"
+        sub.mkdir()
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd "{sub}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(1, result.stderr.count("entering zsh-nodup"))
+
+    def test_initial_activation_prints_message(self) -> None:
+        project = self._make_envy_project("zsh-init-msg")
+        result = self._run_zsh_hook_test(
+            f'cd "{project}"\nsource "{self._hook_path}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering zsh-init-msg", result.stderr)
+
+    # --- v2: raccoon prompt ---
+
+    def test_raccoon_in_prompt_when_in_project(self) -> None:
+        project = self._make_envy_project("zsh-raccoon")
+        result = self._run_zsh_hook_test(
+            f'PROMPT="$ "\nsource "{self._hook_path}"\ncd "{project}"\necho "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_raccoon_removed_on_leave(self) -> None:
+        project = self._make_envy_project("zsh-raccoon-rm")
+        result = self._run_zsh_hook_test(
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertIn("$", result.stdout)
+
+    def test_raccoon_disabled_via_env_var(self) -> None:
+        project = self._make_envy_project("zsh-raccoon-off")
+        result = self._run_zsh_hook_test(
+            f"export ENVY_NO_PROMPT=1\n"
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertIn("$", result.stdout)
 
 
 @unittest.skipUnless(shutil.which("fish"), "fish not installed")
@@ -427,6 +626,90 @@ class TestFishHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
+
+    def _run_fish_hook_test(self, script: str) -> subprocess.CompletedProcess[str]:
+        return test_config.run(
+            ["fish", "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    # --- v2: enter/leave messages ---
+
+    def test_entering_message_on_cd_into_project(self) -> None:
+        project = self._make_envy_project("fish-msg-enter")
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering fish-msg-enter", result.stderr)
+        self.assertIn("tools added to PATH", result.stderr)
+
+    def test_leaving_message_on_cd_out(self) -> None:
+        project = self._make_envy_project("fish-msg-leave")
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: leaving fish-msg-leave", result.stderr)
+        self.assertIn("PATH restored", result.stderr)
+
+    def test_switching_projects_prints_leave_and_enter(self) -> None:
+        proj_a = self._make_envy_project("fish-sw-A")
+        proj_b = self._make_envy_project("fish-sw-B")
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{proj_a}"\ncd "{proj_b}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        leave_pos = result.stderr.index("leaving fish-sw-A")
+        enter_pos = result.stderr.index("entering fish-sw-B")
+        self.assertLess(leave_pos, enter_pos)
+
+    def test_no_duplicate_message_within_project(self) -> None:
+        project = self._make_envy_project("fish-nodup")
+        sub = project / "src"
+        sub.mkdir()
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd "{sub}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(1, result.stderr.count("entering fish-nodup"))
+
+    def test_initial_activation_prints_message(self) -> None:
+        project = self._make_envy_project("fish-init-msg")
+        result = self._run_fish_hook_test(
+            f'cd "{project}"\nsource "{self._hook_path}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering fish-init-msg", result.stderr)
+
+    # --- v2: raccoon prompt ---
+
+    def test_raccoon_in_prompt_when_in_project(self) -> None:
+        project = self._make_envy_project("fish-raccoon")
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\nfish_prompt'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_raccoon_removed_on_leave(self) -> None:
+        project = self._make_envy_project("fish-raccoon-rm")
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\nfish_prompt'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+
+    def test_raccoon_disabled_via_env_var(self) -> None:
+        project = self._make_envy_project("fish-raccoon-off")
+        result = self._run_fish_hook_test(
+            f"set -gx ENVY_NO_PROMPT 1\n"
+            f'source "{self._hook_path}"\ncd "{project}"\nfish_prompt'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
 
 
 @unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
@@ -626,6 +909,125 @@ class TestPowerShellHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
+
+    # --- v2: enter/leave messages ---
+
+    def test_entering_message_on_cd_into_project(self) -> None:
+        project = self._make_envy_project("ps-msg-enter")
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        # PowerShell Write-Host goes to stdout in non-interactive mode
+        combined = result.stdout + result.stderr
+        self.assertIn("envy: entering ps-msg-enter", combined)
+        self.assertIn("tools added to PATH", combined)
+
+    def test_leaving_message_on_cd_out(self) -> None:
+        project = self._make_envy_project("ps-msg-leave")
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f'Set-Location "{self._temp_dir}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertIn("envy: leaving ps-msg-leave", combined)
+        self.assertIn("PATH restored", combined)
+
+    def test_switching_projects_prints_leave_and_enter(self) -> None:
+        proj_a = self._make_envy_project("ps-sw-A")
+        proj_b = self._make_envy_project("ps-sw-B")
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{proj_a}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f'Set-Location "{proj_b}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        leave_pos = combined.index("leaving ps-sw-A")
+        enter_pos = combined.index("entering ps-sw-B")
+        self.assertLess(leave_pos, enter_pos)
+
+    def test_no_duplicate_message_within_project(self) -> None:
+        project = self._make_envy_project("ps-nodup")
+        sub = project / "src"
+        sub.mkdir()
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f'Set-Location "{sub}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertEqual(1, combined.count("entering ps-nodup"))
+
+    def test_initial_activation_prints_message(self) -> None:
+        project = self._make_envy_project("ps-init-msg")
+        result = self._run_pwsh_hook_test(
+            f'Set-Location "{project}"\n. "{self._hook_path}"\n'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertIn("envy: entering ps-init-msg", combined)
+
+    # --- v2: raccoon prompt ---
+
+    def test_raccoon_in_prompt_when_in_project(self) -> None:
+        project = self._make_envy_project("ps-raccoon")
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $global:_ENVY_PROMPT_ACTIVE"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual("True", result.stdout.strip())
+
+    def test_raccoon_removed_on_leave(self) -> None:
+        project = self._make_envy_project("ps-raccoon-rm")
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f'Set-Location "{self._temp_dir}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $global:_ENVY_PROMPT_ACTIVE"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual("False", result.stdout.strip())
+
+    def test_raccoon_disabled_via_env_var(self) -> None:
+        project = self._make_envy_project("ps-raccoon-off")
+        result = self._run_pwsh_hook_test(
+            f'$env:ENVY_NO_PROMPT = "1"\n'
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"prompt"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertNotIn("\U0001f99d", combined)
 
 
 if __name__ == "__main__":

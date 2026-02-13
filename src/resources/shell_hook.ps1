@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-$global:_ENVY_HOOK_VERSION = 1
+$global:_ENVY_HOOK_VERSION = 2
 
 function _envy_find_manifest {
     $d = (Get-Location).Path
@@ -50,13 +50,19 @@ function _envy_hook {
             if (Test-Path $binDir -PathType Container) {
                 $binDir = (Resolve-Path $binDir).Path
                 if ($binDir -ne $global:_ENVY_BIN_DIR) {
+                    # Leaving old project (switching)?
                     if ($global:_ENVY_BIN_DIR) {
+                        $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
+                        Write-Host "envy: leaving $oldName — PATH restored" -ForegroundColor DarkGray
                         $parts = $env:PATH -split [regex]::Escape($sep)
                         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
                         $env:PATH = $parts -join $sep
                     }
                     $env:PATH = "$binDir$sep$env:PATH"
                     $global:_ENVY_BIN_DIR = $binDir
+                    $newName = Split-Path $manifestDir -Leaf
+                    Write-Host "envy: entering $newName — tools added to PATH" -ForegroundColor DarkGray
+                    $global:_ENVY_PROMPT_ACTIVE = $true
                 }
                 $env:ENVY_PROJECT_ROOT = $manifestDir
                 return
@@ -66,10 +72,13 @@ function _envy_hook {
 
     # Left all projects or no bin — clean up
     if ($global:_ENVY_BIN_DIR) {
+        $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
+        Write-Host "envy: leaving $oldName — PATH restored" -ForegroundColor DarkGray
         $parts = $env:PATH -split [regex]::Escape($sep)
         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
         $env:PATH = $parts -join $sep
         $global:_ENVY_BIN_DIR = $null
+        $global:_ENVY_PROMPT_ACTIVE = $false
     }
     Remove-Item Env:\ENVY_PROJECT_ROOT -ErrorAction SilentlyContinue
 }
@@ -77,11 +86,15 @@ function _envy_hook {
 # Wrap prompt to call hook on every prompt render
 $global:_ENVY_LAST_PWD = $null
 $global:_ENVY_BIN_DIR = $null
+$global:_ENVY_PROMPT_ACTIVE = $false
 
 if (-not (Test-Path Function:\global:_envy_original_prompt)) {
     Copy-Item Function:\prompt Function:\global:_envy_original_prompt
     function global:prompt {
         _envy_hook
+        if ($global:_ENVY_PROMPT_ACTIVE -and $env:ENVY_NO_PROMPT -ne "1") {
+            Write-Host "🦝 " -NoNewline
+        }
         _envy_original_prompt
     }
 }
