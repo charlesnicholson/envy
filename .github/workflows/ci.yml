@@ -165,7 +165,7 @@ jobs:
       - name: Build
         shell: powershell
         run: |
-          &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch ${{ matrix.arch }} -HostArch ${{ matrix.arch }}
+          &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch ${{ matrix.arch }} -HostArch amd64
           $BuildArgs = "${{ matrix.build_args }}"
           $Arguments = @()
           if (-not [string]::IsNullOrWhiteSpace($BuildArgs)) {
