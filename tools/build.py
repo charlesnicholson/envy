@@ -23,6 +23,7 @@ CMAKE_SUFFIXES = {
     ("Linux", "x86_64"): "linux-x86_64.tar.gz",
     ("Linux", "aarch64"): "linux-aarch64.tar.gz",
     ("Windows", "AMD64"): "windows-x86_64.zip",
+    ("Windows", "ARM64"): "windows-arm64.zip",
 }
 
 NINJA_BASE = (
@@ -34,6 +35,7 @@ NINJA_SUFFIXES = {
     ("Linux", "x86_64"): "linux.zip",
     ("Linux", "aarch64"): "linux-aarch64.zip",
     ("Windows", "AMD64"): "win.zip",
+    ("Windows", "ARM64"): "winarm64.zip",
 }
 
 
