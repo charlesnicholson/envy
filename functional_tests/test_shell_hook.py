@@ -366,6 +366,23 @@ class TestBashHook(unittest.TestCase):
         self.assertNotIn("\U0001f99d", result.stdout)
         self.assertIn("$", result.stdout)
 
+    def test_non_utf8_locale_no_raccoon_and_ascii_dash(self) -> None:
+        project = self._make_envy_project("proj-c-locale")
+        result = self._run_bash_hook_test(
+            f"export LANG=C\n"
+            f"unset LC_ALL LC_CTYPE\n"
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertIn("--", result.stderr)
+        self.assertNotIn("\u2014", result.stderr)
+
 
 @unittest.skipUnless(shutil.which("zsh"), "zsh not installed")
 @unittest.skipIf(sys.platform == "win32", "zsh hook tests require Unix")

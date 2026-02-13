@@ -1,6 +1,15 @@
 # envy shell hook — managed by envy; do not edit
 set -g _ENVY_HOOK_VERSION 2
 
+# Detect UTF-8 locale for emoji/unicode output
+if string match -qi '*utf-8*' -- $LC_ALL $LC_CTYPE $LANG
+    set -g _ENVY_UTF8 1
+    set -g _ENVY_DASH "—"
+else
+    set -g _ENVY_UTF8 0
+    set -g _ENVY_DASH "--"
+end
+
 function _envy_find_manifest
     set -l d $PWD
     while test "$d" != /
@@ -28,6 +37,7 @@ end
 
 function _envy_set_prompt
     test "$ENVY_NO_PROMPT" = 1; and return
+    test "$_ENVY_UTF8" != 1; and return
     test "$_ENVY_PROMPT_ACTIVE" = 1; and return
     if functions -q fish_prompt
         functions -c fish_prompt _envy_original_fish_prompt
@@ -64,7 +74,7 @@ function _envy_hook --on-variable PWD
                 if test "$bin_dir" != "$_ENVY_BIN_DIR"
                     # Leaving old project (switching)?
                     if set -q _ENVY_BIN_DIR
-                        echo "envy: leaving "(string replace -r '.*/' '' "$ENVY_PROJECT_ROOT")" — PATH restored" >&2
+                        echo "envy: leaving "(string replace -r '.*/' '' "$ENVY_PROJECT_ROOT")" $_ENVY_DASH PATH restored" >&2
                         set -l idx (contains -i -- "$_ENVY_BIN_DIR" $PATH)
                         if test -n "$idx"
                             set -e PATH[$idx]
@@ -72,7 +82,7 @@ function _envy_hook --on-variable PWD
                     end
                     set -gx PATH "$bin_dir" $PATH
                     set -g _ENVY_BIN_DIR "$bin_dir"
-                    echo "envy: entering "(string replace -r '.*/' '' "$manifest_dir")" — tools added to PATH" >&2
+                    echo "envy: entering "(string replace -r '.*/' '' "$manifest_dir")" $_ENVY_DASH tools added to PATH" >&2
                     _envy_set_prompt
                 end
                 set -gx ENVY_PROJECT_ROOT "$manifest_dir"
@@ -83,7 +93,7 @@ function _envy_hook --on-variable PWD
 
     # Left all projects or no bin — clean up
     if set -q _ENVY_BIN_DIR
-        echo "envy: leaving "(string replace -r '.*/' '' "$ENVY_PROJECT_ROOT")" — PATH restored" >&2
+        echo "envy: leaving "(string replace -r '.*/' '' "$ENVY_PROJECT_ROOT")" $_ENVY_DASH PATH restored" >&2
         set -l idx (contains -i -- "$_ENVY_BIN_DIR" $PATH)
         if test -n "$idx"
             set -e PATH[$idx]

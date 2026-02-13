@@ -1,6 +1,12 @@
 # envy shell hook — managed by envy; do not edit
 _ENVY_HOOK_VERSION=2
 
+# Detect UTF-8 locale for emoji/unicode output
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) _ENVY_UTF8=1; _ENVY_DASH="—" ;;
+  *) _ENVY_UTF8=; _ENVY_DASH="--" ;;
+esac
+
 _envy_find_manifest() {
   local d="$PWD"
   while [ "$d" != / ]; do
@@ -41,6 +47,7 @@ _envy_remove_from_path() {
 
 _envy_set_prompt() {
   if [ "${ENVY_NO_PROMPT:-}" = "1" ]; then return; fi
+  if [ "${_ENVY_UTF8:-}" != "1" ]; then return; fi
   if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]; then return; fi
   _ENVY_ORIG_PS1="$PS1"
   PS1="🦝 $PS1"
@@ -72,13 +79,13 @@ _envy_hook() {
         if [ "$bin_dir" != "${_ENVY_BIN_DIR:-}" ]; then
           # Leaving old project (switching)?
           if [ -n "${_ENVY_BIN_DIR:-}" ]; then
-            printf 'envy: leaving %s — PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" >&2
+            printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
             PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
           fi
           PATH="$bin_dir:$PATH"
           export PATH
           _ENVY_BIN_DIR="$bin_dir"
-          printf 'envy: entering %s — tools added to PATH\n' "${manifest_dir##*/}" >&2
+          printf 'envy: entering %s %s tools added to PATH\n' "${manifest_dir##*/}" "$_ENVY_DASH" >&2
           _envy_set_prompt
         fi
         ENVY_PROJECT_ROOT="$manifest_dir"
@@ -90,7 +97,7 @@ _envy_hook() {
 
   # Left all projects or no bin — clean up
   if [ -n "${_ENVY_BIN_DIR:-}" ]; then
-    printf 'envy: leaving %s — PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" >&2
+    printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
     PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
     export PATH
     unset _ENVY_BIN_DIR
