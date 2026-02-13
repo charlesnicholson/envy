@@ -28,6 +28,8 @@ struct uri_info {
 
 uri_info uri_classify(std::string_view value);
 std::string uri_extract_filename(std::string_view uri);
+bool uri_is_http_scheme(std::string_view url);
+bool uri_is_https_scheme(std::string_view url);
 
 std::filesystem::path uri_resolve_local_file_relative(
     std::string_view local_file,

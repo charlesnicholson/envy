@@ -1,4 +1,6 @@
-#include "libcurl_util.h"
+#if !defined(_WIN32)
+
+#include "fetch_http.h"
 
 #include "curl/curl.h"
 
@@ -14,17 +16,7 @@ namespace {
 
 constexpr char kDefaultUserAgent[]{ "envy-fetch/0.0" };
 
-size_t curl_write_file(char *ptr, size_t size, size_t nmemb, void *userdata) {
-  auto *stream{ static_cast<std::ofstream *>(userdata) };
-  size_t const total{ size * nmemb };
-  stream->write(ptr, static_cast<std::streamsize>(total));
-  if (!*stream) { return 0; }
-  return total;
-}
-
-}  // namespace
-
-void libcurl_ensure_initialized() {
+void ensure_curl_initialized() {
   static std::once_flag once;
   std::call_once(once, [] {
     CURLcode const code{ curl_global_init(CURL_GLOBAL_DEFAULT) };
@@ -35,16 +27,27 @@ void libcurl_ensure_initialized() {
   });
 }
 
-std::filesystem::path libcurl_download(std::string_view url,
-                                       std::filesystem::path const &destination,
-                                       fetch_progress_cb_t const &progress,
-                                       std::optional<std::string> const &post_data) {
-  libcurl_ensure_initialized();
+size_t curl_write_file(char *ptr, size_t size, size_t nmemb, void *userdata) {
+  auto *stream{ static_cast<std::ofstream *>(userdata) };
+  size_t const total{ size * nmemb };
+  stream->write(ptr, static_cast<std::streamsize>(total));
+  if (!*stream) { return 0; }
+  return total;
+}
+
+}  // namespace
+
+std::filesystem::path fetch_http_download(
+    std::string_view url,
+    std::filesystem::path const &destination,
+    fetch_progress_cb_t const &progress,
+    std::optional<std::string> const &post_data) {
+  ensure_curl_initialized();
 
   std::string const url_copy{ url };
 
   if (destination.empty()) {
-    throw std::invalid_argument("libcurl_download: destination is empty");
+    throw std::invalid_argument("fetch_http_download: destination is empty");
   }
 
   std::filesystem::path resolved_destination{ destination };
@@ -58,15 +61,17 @@ std::filesystem::path libcurl_download(std::string_view url,
   if (!parent.empty()) {
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-      throw std::runtime_error("libcurl_download: failed to create parent directory: " +
-                               parent.string() + ": " + ec.message());
+      throw std::runtime_error(
+          "fetch_http_download: failed to create parent directory: " +
+          parent.string() + ": " + ec.message());
     }
   }
 
   std::ofstream output{ resolved_destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
-    throw std::runtime_error("libcurl_download: failed to open destination: " +
-                             resolved_destination.string());
+    throw std::runtime_error(
+        "fetch_http_download: failed to open destination: " +
+        resolved_destination.string());
   }
 
   std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle{ curl_easy_init(),
@@ -126,7 +131,7 @@ std::filesystem::path libcurl_download(std::string_view url,
   if (!output) {
     output.close();
     std::filesystem::remove(resolved_destination, ec);
-    throw std::runtime_error("libcurl_download: failed to flush destination file");
+    throw std::runtime_error("fetch_http_download: failed to flush destination file");
   }
   output.close();
 
@@ -134,3 +139,5 @@ std::filesystem::path libcurl_download(std::string_view url,
 }
 
 }  // namespace envy
+
+#endif  // !defined(_WIN32)

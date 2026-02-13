@@ -193,8 +193,9 @@ std::string_view arch_name() {
 std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   // Windows antivirus (Defender) and Search indexer often hold file handles
   // briefly after files are created/downloaded. Retry with exponential backoff.
-  constexpr int kMaxRetries{ 6 };
+  constexpr int kMaxRetries{ 8 };
   constexpr int kInitialDelayMs{ 50 };
+  constexpr int kMaxDelayMs{ 1000 };
 
   std::error_code ec;
   for (int attempt{ 0 }; attempt < kMaxRetries; ++attempt) {
@@ -211,8 +212,9 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target) {
     if (!retryable) { break; }
 
     if (attempt + 1 < kMaxRetries) {
-      // Exponential backoff: 50, 100, 200, 400, 800ms
-      int const delay_ms{ kInitialDelayMs << attempt };
+      // Exponential backoff: 50, 100, 200, 400, 800, 1000, 1000ms (~3.5s total)
+      int delay_ms{ kInitialDelayMs << attempt };
+      if (delay_ms > kMaxDelayMs) { delay_ms = kMaxDelayMs; }
       ::Sleep(static_cast<DWORD>(delay_ms));
     }
   }

@@ -9,7 +9,9 @@
 #include "aws/crt/Api.h"
 #include "blake3.h"
 #include "bzlib.h"
+#if !defined(_WIN32)
 #include "curl/curl.h"
+#endif
 #include "git2.h"
 #include "lzma.h"
 #ifndef _WIN32
@@ -109,6 +111,7 @@ void cmd_version::execute() {
   git_libgit2_version(&git_major, &git_minor, &git_revision);
   tui::info("  libgit2: %d.%d.%d", git_major, git_minor, git_revision);
 
+#if !defined(_WIN32)
   curl_version_info_data const *curl_info{ curl_version_info(CURLVERSION_NOW) };
   std::vector<std::string> curl_features;
   if (curl_info->features & CURL_VERSION_ZSTD) { curl_features.push_back("zstd"); }
@@ -124,6 +127,9 @@ void cmd_version::execute() {
   } else {
     tui::info("  libcurl: %s", curl_info->version);
   }
+#else
+  tui::info("  HTTP: WinINet (system)");
+#endif
 
   tui::info("  libssh2: %s", LIBSSH2_VERSION);
 

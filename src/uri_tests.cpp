@@ -550,3 +550,33 @@ TEST_CASE("extract_filename with mixed slashes and backslashes") {
   CHECK(envy::uri_extract_filename("C:/path\\to/file.tar.gz") == "file.tar.gz");
   CHECK(envy::uri_extract_filename("path/to\\file.zip") == "file.zip");
 }
+
+TEST_CASE("uri_is_http_scheme detects http and https case-insensitively") {
+  CHECK(envy::uri_is_http_scheme("http://example.com/file.tar.gz"));
+  CHECK(envy::uri_is_http_scheme("https://example.com/file.tar.gz"));
+  CHECK(envy::uri_is_http_scheme("HTTP://EXAMPLE.COM/FILE"));
+  CHECK(envy::uri_is_http_scheme("HTTPS://EXAMPLE.COM/FILE"));
+  CHECK(envy::uri_is_http_scheme("Http://example.com/file"));
+  CHECK(envy::uri_is_http_scheme("hTtPs://example.com/file"));
+  CHECK(envy::uri_is_http_scheme("Https://example.com/file"));
+
+  CHECK_FALSE(envy::uri_is_http_scheme("ftp://example.com/file"));
+  CHECK_FALSE(envy::uri_is_http_scheme("ftps://example.com/file"));
+  CHECK_FALSE(envy::uri_is_http_scheme("s3://bucket/key"));
+  CHECK_FALSE(envy::uri_is_http_scheme("git://example.com/repo"));
+  CHECK_FALSE(envy::uri_is_http_scheme("file:///tmp/file"));
+  CHECK_FALSE(envy::uri_is_http_scheme(""));
+  CHECK_FALSE(envy::uri_is_http_scheme("httpx://example.com"));
+}
+
+TEST_CASE("uri_is_https_scheme detects https case-insensitively") {
+  CHECK(envy::uri_is_https_scheme("https://example.com/file.tar.gz"));
+  CHECK(envy::uri_is_https_scheme("HTTPS://EXAMPLE.COM/FILE"));
+  CHECK(envy::uri_is_https_scheme("Https://example.com/file"));
+  CHECK(envy::uri_is_https_scheme("hTtPs://example.com/file"));
+
+  CHECK_FALSE(envy::uri_is_https_scheme("http://example.com/file"));
+  CHECK_FALSE(envy::uri_is_https_scheme("HTTP://EXAMPLE.COM/FILE"));
+  CHECK_FALSE(envy::uri_is_https_scheme("ftp://example.com/file"));
+  CHECK_FALSE(envy::uri_is_https_scheme(""));
+}
