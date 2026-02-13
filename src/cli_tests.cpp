@@ -523,6 +523,43 @@ TEST_CASE("cli_parse: cmd_sync flags") {
     CHECK(cfg->identities[1] == "pkg2");
   }
 
+  SUBCASE("default strict is false") {
+    std::vector<std::string> args{ "envy", "sync" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->strict);
+  }
+
+  SUBCASE("--strict flag") {
+    std::vector<std::string> args{ "envy", "sync", "--strict" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+  }
+
+  SUBCASE("--strict with --install-all") {
+    std::vector<std::string> args{ "envy", "sync", "--strict", "--install-all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+    CHECK(cfg->install_all);
+  }
+
   SUBCASE("--manifest with --install-all") {
     std::vector<std::string> args{ "envy",
                                    "sync",

@@ -468,8 +468,15 @@ class TestSyncProductScripts(unittest.TestCase):
         )
         return manifest_path
 
-    def run_sync(self, manifest: Path, identities: Optional[List[str]] = None):
+    def run_sync(
+        self,
+        manifest: Path,
+        identities: Optional[List[str]] = None,
+        strict: bool = False,
+    ):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if strict:
+            cmd.append("--strict")
         if identities:
             cmd.extend(identities)
         cmd.extend(["--manifest", str(manifest)])
@@ -527,8 +534,31 @@ PACKAGES = {{
         self.assertNotIn("OLD_VERSION", content)
         self.assertIn("envy-managed", content)
 
-    def test_sync_errors_on_non_envy_file_conflict(self):
-        """Sync errors if non-envy-managed file conflicts with product name."""
+    def test_sync_skips_non_envy_file_conflict(self):
+        """Sync silently skips user-owned (non-envy-managed) product scripts."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        user_content = "#!/bin/bash\necho 'user script'\n"
+        script_path.write_text(user_content)
+
+        result = self.run_sync(manifest=manifest)
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertEqual(script_path.read_text(), user_content)
+
+    def test_sync_strict_errors_on_non_envy_file_conflict(self):
+        """Sync --strict errors if non-envy-managed file conflicts with product name."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
         manifest = self.create_manifest(f"""
@@ -544,7 +574,7 @@ PACKAGES = {{
         script_path = bin_dir / script_name
         script_path.write_text("#!/bin/bash\necho 'user script'\n")
 
-        result = self.run_sync(manifest=manifest)
+        result = self.run_sync(manifest=manifest, strict=True)
 
         self.assertNotEqual(result.returncode, 0, "Expected non-zero exit code")
         self.assertIn("not envy-managed", result.stderr.lower())
