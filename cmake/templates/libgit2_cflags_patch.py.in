@@ -6,10 +6,13 @@ import pathlib
 
 path = pathlib.Path(r"@LIBGIT2_DEFAULT_CFLAGS@")
 text = path.read_text()
-updated = text.replace(
-    'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O2 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")',
-    'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O1 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")',
-)
-if updated == text:
-    raise SystemExit("libgit2 DefaultCFlags.cmake: /O2 Release line not found")
-path.write_text(updated)
+
+old = 'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O2 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")'
+new = 'set(CMAKE_C_FLAGS_RELEASE "/DNDEBUG /O1 /Oy /GL /Gy ${CRT_FLAG_RELEASE}")'
+
+if new in text:
+    pass  # already patched (cached source tree)
+elif old in text:
+    path.write_text(text.replace(old, new))
+else:
+    raise SystemExit("libgit2 DefaultCFlags.cmake: neither /O2 nor /O1 Release line found")
