@@ -18,6 +18,7 @@ class cmd_sync : public cmd {
     std::vector<std::string> identities;  // Optional: if empty, sync all manifest packages
     std::optional<std::filesystem::path> manifest_path;
     bool install_all = false;  // If true, install packages; otherwise only deploy scripts
+    bool strict = false;  // If true, error on non-envy-managed product script conflicts
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

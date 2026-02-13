@@ -38,6 +38,9 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_flag("--install-all",
                 cfg_ptr->install_all,
                 "Install all packages (not just create product scripts)");
+  sub->add_flag("--strict",
+                cfg_ptr->strict,
+                "Error on non-envy-managed product script conflicts");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -91,7 +94,8 @@ fs::path product_script_path(fs::path const &bin_dir, std::string_view product_n
 
 void deploy_product_scripts(engine &eng,
                             fs::path const &bin_dir,
-                            std::vector<product_info> const &products) {
+                            std::vector<product_info> const &products,
+                            bool strict) {
   std::set<std::string> const current_products{ [&] {
     std::set<std::string> s;
     for (auto const &p : products) {
@@ -109,9 +113,12 @@ void deploy_product_scripts(engine &eng,
     fs::path const script_path{ product_script_path(bin_dir, product.product_name) };
 
     if (fs::exists(script_path) && !has_envy_marker(script_path)) {
-      throw std::runtime_error(
-          "sync: file '" + script_path.string() +
-          "' exists but is not envy-managed. Remove manually or rename product.");
+      if (strict) {
+        throw std::runtime_error(
+            "sync: file '" + script_path.string() +
+            "' exists but is not envy-managed. Remove manually or rename product.");
+      }
+      continue;
     }
 
     std::string const new_content{ stamp_product_script(product.product_name) };
@@ -288,7 +295,7 @@ void cmd_sync::execute() {
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
 
   if (deploy_enabled) {
-    deploy_product_scripts(eng, bin_dir, products);
+    deploy_product_scripts(eng, bin_dir, products, cfg_.strict);
   } else if (!cfg_.install_all) {
     // Naked sync with deploy disabled: warn user
     tui::warn("sync was requested but deployment is disabled in %s",
