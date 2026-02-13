@@ -23,7 +23,15 @@ if(NOT TARGET blake3::blake3)
         "${blake3_SOURCE_DIR}/c/blake3_dispatch.c"
         "${blake3_SOURCE_DIR}/c/blake3_portable.c"
     )
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)")
+    # Detect target architecture: MSVC cross-compiles report the host in
+    # CMAKE_SYSTEM_PROCESSOR, so prefer CMAKE_C_COMPILER_ARCHITECTURE_ID
+    # which always reflects the *target* (matching official BLAKE3 CMake).
+    set(_blake3_arch "${CMAKE_SYSTEM_PROCESSOR}")
+    if(MSVC AND DEFINED CMAKE_C_COMPILER_ARCHITECTURE_ID)
+        set(_blake3_arch "${CMAKE_C_COMPILER_ARCHITECTURE_ID}")
+    endif()
+
+    if(_blake3_arch MATCHES "([Xx]86_64|AMD64|amd64|[Xx]64)")
         if(MSVC)
             enable_language(ASM_MASM)
             if(NOT CMAKE_ASM_MASM_FLAGS MATCHES "/nologo")
@@ -52,9 +60,10 @@ if(NOT TARGET blake3::blake3)
                 "${blake3_SOURCE_DIR}/c/blake3_avx512_x86-64_unix.S"
             )
         endif()
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
+    elseif(_blake3_arch MATCHES "([Aa][Rr][Mm]64|aarch64)")
         list(APPEND BLAKE3_SOURCES "${blake3_SOURCE_DIR}/c/blake3_neon.c")
     endif()
+    unset(_blake3_arch)
     add_library(blake3 STATIC ${BLAKE3_SOURCES})
     target_include_directories(blake3 PUBLIC "${blake3_SOURCE_DIR}/c")
     target_compile_features(blake3 PUBLIC c_std_99)
