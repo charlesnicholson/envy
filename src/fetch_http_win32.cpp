@@ -101,7 +101,7 @@ std::optional<std::uint64_t> query_content_length(HINTERNET request) {
   if (HttpQueryInfoA(request, HTTP_QUERY_CONTENT_LENGTH, buf, &buf_len, &header_index)) {
     char *end{ nullptr };
     auto const val{ std::strtoull(buf, &end, 10) };
-    if (end != buf && val > 0) { return val; }
+    if (end != buf && *end == '\0') { return val; }
   }
   return std::nullopt;
 }
@@ -186,7 +186,7 @@ std::filesystem::path download_with_post(
 
   std::string url_str{ url };
   if (!InternetCrackUrlA(url_str.c_str(), static_cast<DWORD>(url_str.size()), 0, &uc)) {
-    throw_wininet_error("InternetCrackUrl failed");
+    throw_wininet_error("InternetCrackUrl failed (URL may exceed buffer capacity)");
   }
 
   DWORD flags{ kCommonFlags };
@@ -223,7 +223,7 @@ std::filesystem::path download_with_post(
   if (!HttpSendRequestA(request.get(),
                         content_type,
                         static_cast<DWORD>(strlen(content_type)),
-                        const_cast<char *>(post_body.c_str()),
+                        const_cast<char *>(post_body.c_str()),  // NOLINT: HttpSendRequestA takes non-const LPVOID but doesn't modify it
                         static_cast<DWORD>(post_body.size()))) {
     throw_wininet_error("HttpSendRequest failed");
   }

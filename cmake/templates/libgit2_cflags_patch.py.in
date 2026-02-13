@@ -12,5 +12,4 @@ updated = text.replace(
 )
 if updated == text:
     raise SystemExit("libgit2 DefaultCFlags.cmake: /O2 Release line not found")
-if updated != text:
-    path.write_text(updated)
+path.write_text(updated)

@@ -77,7 +77,7 @@ Rename/refactor `libcurl_util.cpp`:
 
 Implement `fetch_http_download()` using WinINet. Guard with `#if defined(_WIN32)`.
 
-**Session handling:** Per-call `InternetOpen`/`InternetCloseHandle`—thread-safe by construction, negligible cost.
+**Session handling:** Process-wide singleton via `std::once_flag`—created on first download, reused for all subsequent calls. Avoids repeated WPAD proxy auto-detection that serializes concurrent downloads.
 
 **Download flow:**
 - `InternetOpen` — session with `INTERNET_OPEN_TYPE_PRECONFIG` (respects system proxy)
