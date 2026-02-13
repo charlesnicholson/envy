@@ -7,7 +7,8 @@ set "FALLBACK_VERSION=@@ENVY_VERSION@@"
 
 set "MANIFEST="
 set "CANDIDATE="
-set "DIR=%CD%"
+set "DIR=%~dp0"
+if "!DIR:~-1!"=="\" set "DIR=!DIR:~0,-1!"
 :findloop
 if exist "!DIR!\envy.lua" (
     set "IS_ROOT=true"
