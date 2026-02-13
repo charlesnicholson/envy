@@ -5,7 +5,8 @@ import re
 # and avoid injecting raw '$' tokens into Ninja try_compile invocations.
 
 s2n_cmakelists = pathlib.Path(r"@S2N_CMAKELISTS@")
-text = s2n_cmakelists.read_text()
+original = s2n_cmakelists.read_text()
+text = original
 
 helper_markers = ("# envy s2n probe helpers", "# envy s2n probe helpers v1")
 for marker in helper_markers[1:]:
@@ -14,7 +15,8 @@ for marker in helper_markers[1:]:
 
 helper_marker = helper_markers[0]
 if helper_marker in text and "envy_s2n_prepare_probe(" in text:
-    s2n_cmakelists.write_text(text)
+    if text != original:
+        s2n_cmakelists.write_text(text)
     raise SystemExit(0)
 
 if helper_marker not in text:
