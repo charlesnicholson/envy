@@ -5,8 +5,18 @@ set -euo pipefail
 ENVY_MIRROR="${ENVY_MIRROR:-https://github.com/charlesnicholson/envy/releases/download}"
 FALLBACK_VERSION="0.0.17"
 
+resolve_script_dir() {
+    local src="${BASH_SOURCE[0]}"
+    while [[ -L "$src" ]]; do
+        local dir; dir="$(cd -P "$(dirname "$src")" && pwd -P)"
+        src="$(readlink "$src")"
+        [[ "$src" != /* ]] && src="$dir/$src"
+    done
+    cd -P "$(dirname "$src")" && pwd -P
+}
+
 find_manifest() {
-    local d="$PWD"
+    local d; d="$(resolve_script_dir)"
     local candidates=()
     while [[ "$d" != / ]]; do
         if [[ -f "$d/envy.lua" ]]; then

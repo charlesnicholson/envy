@@ -46,12 +46,26 @@ def _make_manifest(root_value: str | None) -> str:
 
 
 def _get_bash_find_manifest_script() -> str:
-    """Return a bash script that implements find_manifest and prints result."""
+    """Return a bash script that implements find_manifest and prints result.
+
+    Takes an optional argument to override the starting directory (used by tests
+    to simulate the script living inside a project tree).
+    """
     return """#!/usr/bin/env bash
 set -euo pipefail
 
+resolve_script_dir() {
+    local src="${BASH_SOURCE[0]}"
+    while [[ -L "$src" ]]; do
+        local dir; dir="$(cd -P "$(dirname "$src")" && pwd -P)"
+        src="$(readlink "$src")"
+        [[ "$src" != /* ]] && src="$dir/$src"
+    done
+    cd -P "$(dirname "$src")" && pwd -P
+}
+
 find_manifest() {
-    local d="$PWD"
+    local d="${1:-$(resolve_script_dir)}"
     local candidates=()
     while [[ "$d" != / ]]; do
         if [[ -f "$d/envy.lua" ]]; then
@@ -72,7 +86,7 @@ find_manifest() {
     return 1
 }
 
-find_manifest
+find_manifest "$@"
 """
 
 
@@ -102,11 +116,10 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
         manifest = directory / "envy.lua"
         manifest.write_text(_make_manifest(root_value))
 
-    def _run_find_manifest(self, cwd: Path) -> Path | None:
+    def _run_find_manifest(self, start_dir: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
         result = test_config.run(
-            [str(self._script)],
-            cwd=str(cwd),
+            [str(self._script), str(start_dir)],
             capture_output=True,
             text=True,
         )
@@ -114,11 +127,13 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
             return None
         return Path(result.stdout.strip())
 
-    def _assert_manifest_at(self, expected_dir: Path, cwd: Path | None = None) -> None:
+    def _assert_manifest_at(
+        self, expected_dir: Path, start_dir: Path | None = None
+    ) -> None:
         """Assert find_manifest returns manifest in expected directory."""
-        if cwd is None:
-            cwd = self._child
-        found = self._run_find_manifest(cwd)
+        if start_dir is None:
+            start_dir = self._child
+        found = self._run_find_manifest(start_dir)
         self.assertIsNotNone(found, "find_manifest should find a manifest")
         expected = expected_dir / "envy.lua"
         self.assertEqual(
@@ -250,13 +265,21 @@ class TestBatchLauncherRootDiscovery(unittest.TestCase):
             shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     def _get_batch_find_manifest_script(self) -> str:
-        """Return a batch script that implements find_manifest and prints result."""
-        return '''@echo off
+        """Return a batch script that implements find_manifest and prints result.
+
+        Takes an optional argument to override the starting directory.
+        """
+        return """@echo off
 setlocal EnableDelayedExpansion
 
 set "MANIFEST="
 set "CANDIDATE="
-set "DIR=%CD%"
+if "%~1"=="" (
+    set "DIR=%~dp0"
+    if "!DIR:~-1!"=="\\" set "DIR=!DIR:~0,-1!"
+) else (
+    set "DIR=%~1"
+)
 :findloop
 if exist "!DIR!\\envy.lua" (
     set "IS_ROOT=true"
@@ -287,18 +310,17 @@ set "DIR=!PARENT!"
 goto :findloop
 :found
 echo !MANIFEST!
-'''
+"""
 
     def _write_manifest(self, directory: Path, root_value: str | None) -> None:
         """Write a manifest to the given directory."""
         manifest = directory / "envy.lua"
         manifest.write_text(_make_manifest(root_value))
 
-    def _run_find_manifest(self, cwd: Path) -> Path | None:
+    def _run_find_manifest(self, start_dir: Path) -> Path | None:
         """Run find_manifest from given directory, return discovered manifest path."""
         result = test_config.run(
-            ["cmd", "/c", str(self._script)],
-            cwd=str(cwd),
+            ["cmd", "/c", str(self._script), str(start_dir)],
             capture_output=True,
             text=True,
         )
@@ -306,11 +328,13 @@ echo !MANIFEST!
             return None
         return Path(result.stdout.strip())
 
-    def _assert_manifest_at(self, expected_dir: Path, cwd: Path | None = None) -> None:
+    def _assert_manifest_at(
+        self, expected_dir: Path, start_dir: Path | None = None
+    ) -> None:
         """Assert find_manifest returns manifest in expected directory."""
-        if cwd is None:
-            cwd = self._child
-        found = self._run_find_manifest(cwd)
+        if start_dir is None:
+            start_dir = self._child
+        found = self._run_find_manifest(start_dir)
         self.assertIsNotNone(found, "find_manifest should find a manifest")
         expected = expected_dir / "envy.lua"
         self.assertEqual(
