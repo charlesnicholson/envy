@@ -35,8 +35,8 @@ function _envy_set_prompt
             printf '🦝 '
             _envy_original_fish_prompt
         end
+        set -g _ENVY_PROMPT_ACTIVE 1
     end
-    set -g _ENVY_PROMPT_ACTIVE 1
 end
 
 function _envy_unset_prompt
