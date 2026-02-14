@@ -93,5 +93,6 @@ if errorlevel 1 (echo ERROR: Failed to extract envy >&2 & del "!TEMP_ZIP!" 2>nul
 del "!TEMP_ZIP!" 2>nul
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 
+REM envy sync may rewrite this script; single line ensures cmd.exe never reads past here.
 :run
 "!ENVY_BIN!" %* & exit /b !ERRORLEVEL!
