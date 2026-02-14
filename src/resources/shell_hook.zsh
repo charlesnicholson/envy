@@ -61,7 +61,11 @@ _envy_unset_prompt() {
 
 # Runs before each prompt: re-applies raccoon if a theme overwrote PROMPT
 _envy_precmd() {
-  if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ] && [[ "$PROMPT" != *"🦝"* ]]; then
+  if [ "${ENVY_NO_PROMPT:-}" = "1" ] || [ "${_ENVY_UTF8:-}" != "1" ]; then
+    _envy_unset_prompt
+    return
+  fi
+  if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ] && [[ "$PROMPT" != "🦝 "* ]]; then
     PROMPT="🦝 $PROMPT"
     # Another precmd overwrote PROMPT — ensure we run last next time
     if [[ "${precmd_functions[-1]}" != "_envy_precmd" ]]; then
