@@ -222,7 +222,7 @@ class TestShellHookDeployment(unittest.TestCase):
         self._bin_dir = self._temp_dir / "bin2"
         self._trigger_self_deploy()
 
-        content = hook.read_text()
+        content = hook.read_text(encoding="utf-8")
         self.assertNotIn("stale content", content)
         self.assertIn("_envy_hook", content)
 

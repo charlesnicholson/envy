@@ -714,11 +714,11 @@ class TestFishHook(unittest.TestCase):
     def test_raccoon_removed_on_leave(self) -> None:
         project = self._make_envy_project("fish-raccoon-rm")
         result = self._run_fish_hook_test(
-            f'function fish_prompt; echo "> "; end\n'
-            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\nfish_prompt'
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\n'
+            f"echo $_ENVY_PROMPT_ACTIVE"
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
-        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertNotIn("1", result.stdout.strip())
 
     def test_raccoon_disabled_via_env_var(self) -> None:
         project = self._make_envy_project("fish-raccoon-off")
