@@ -40,9 +40,7 @@ class TestShellCommand(unittest.TestCase):
 
     def _trigger_self_deploy(self) -> None:
         """Run init to trigger self-deploy (which writes hook files)."""
-        result = self._run_envy(
-            "init", str(self._project_dir), str(self._bin_dir)
-        )
+        result = self._run_envy("init", str(self._project_dir), str(self._bin_dir))
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
     def test_shell_bash_prints_source_line(self) -> None:
@@ -130,9 +128,7 @@ class TestShellHookDeployment(unittest.TestCase):
         return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
 
     def _trigger_self_deploy(self) -> None:
-        result = self._run_envy(
-            "init", str(self._project_dir), str(self._bin_dir)
-        )
+        result = self._run_envy("init", str(self._project_dir), str(self._bin_dir))
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
     def test_self_deploy_creates_all_hook_files(self) -> None:
@@ -148,7 +144,7 @@ class TestShellHookDeployment(unittest.TestCase):
         shell_dir = self._cache_dir / "shell"
         for ext in ("bash", "zsh", "fish", "ps1"):
             hook = shell_dir / f"hook.{ext}"
-            content = hook.read_text()
+            content = hook.read_text(encoding="utf-8")
             self.assertIn("_ENVY_HOOK_VERSION", content)
 
     def test_hook_files_contain_managed_comment(self) -> None:
@@ -156,7 +152,7 @@ class TestShellHookDeployment(unittest.TestCase):
         shell_dir = self._cache_dir / "shell"
         for ext in ("bash", "zsh", "fish", "ps1"):
             hook = shell_dir / f"hook.{ext}"
-            content = hook.read_text()
+            content = hook.read_text(encoding="utf-8")
             self.assertIn("managed by envy", content)
 
     @unittest.skipUnless(
@@ -219,9 +215,7 @@ class TestShellHookDeployment(unittest.TestCase):
         self.assertTrue(hook.exists())
 
         # Write a stale hook with version 0
-        hook.write_text(
-            "# envy shell hook v0\n_ENVY_HOOK_VERSION=0\n# stale content\n"
-        )
+        hook.write_text("# envy shell hook v0\n_ENVY_HOOK_VERSION=0\n# stale content\n")
 
         # Run envy again — should update
         self._project_dir = self._temp_dir / "project2"

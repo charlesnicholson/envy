@@ -714,6 +714,7 @@ class TestFishHook(unittest.TestCase):
     def test_raccoon_removed_on_leave(self) -> None:
         project = self._make_envy_project("fish-raccoon-rm")
         result = self._run_fish_hook_test(
+            f'function fish_prompt; echo "> "; end\n'
             f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\nfish_prompt'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
