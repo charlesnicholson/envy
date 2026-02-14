@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=2
+_ENVY_HOOK_VERSION=3
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
@@ -49,16 +49,25 @@ _envy_set_prompt() {
   if [ "${ENVY_NO_PROMPT:-}" = "1" ]; then return; fi
   if [ "${_ENVY_UTF8:-}" != "1" ]; then return; fi
   if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]; then return; fi
-  _ENVY_ORIG_PROMPT="$PROMPT"
   PROMPT="🦝 $PROMPT"
   _ENVY_PROMPT_ACTIVE=1
 }
 
 _envy_unset_prompt() {
   if [ "${_ENVY_PROMPT_ACTIVE:-}" != "1" ]; then return; fi
-  PROMPT="$_ENVY_ORIG_PROMPT"
-  unset _ENVY_ORIG_PROMPT
+  PROMPT="${PROMPT#🦝 }"
   unset _ENVY_PROMPT_ACTIVE
+}
+
+# Runs before each prompt: re-applies raccoon if a theme overwrote PROMPT
+_envy_precmd() {
+  if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ] && [[ "$PROMPT" != *"🦝"* ]]; then
+    PROMPT="🦝 $PROMPT"
+    # Another precmd overwrote PROMPT — ensure we run last next time
+    if [[ "${precmd_functions[-1]}" != "_envy_precmd" ]]; then
+      precmd_functions=("${(@)precmd_functions:#_envy_precmd}" _envy_precmd)
+    fi
+  fi
 }
 
 _envy_hook() {
@@ -110,6 +119,9 @@ _envy_hook() {
 # Register via chpwd (fires only on directory change — more efficient than precmd)
 if [[ -z "${chpwd_functions[(r)_envy_hook]}" ]]; then
   chpwd_functions+=(_envy_hook)
+fi
+if [[ -z "${precmd_functions[(r)_envy_precmd]}" ]]; then
+  precmd_functions+=(_envy_precmd)
 fi
 
 # Activate for current directory
