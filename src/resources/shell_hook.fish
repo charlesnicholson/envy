@@ -52,6 +52,7 @@ end
 function _envy_unset_prompt
     test "$_ENVY_PROMPT_ACTIVE" != 1; and return
     if functions -q _envy_original_fish_prompt
+        functions -e fish_prompt
         functions -c _envy_original_fish_prompt fish_prompt
         functions -e _envy_original_fish_prompt
     end
@@ -69,7 +70,7 @@ function _envy_hook --on-variable PWD
     if test -n "$manifest_dir"
         set -l bin_val (_envy_parse_bin "$manifest_dir")
         if test -n "$bin_val"
-            set -l bin_dir (cd "$manifest_dir/$bin_val" 2>/dev/null; and pwd)
+            set -l bin_dir (realpath "$manifest_dir/$bin_val" 2>/dev/null)
             if test -n "$bin_dir"
                 if test "$bin_dir" != "$_ENVY_BIN_DIR"
                     # Leaving old project (switching)?
