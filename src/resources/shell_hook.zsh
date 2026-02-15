@@ -1,11 +1,21 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=3
+_ENVY_HOOK_VERSION=4
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
   *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) _ENVY_UTF8=1; _ENVY_DASH="—" ;;
   *) _ENVY_UTF8=; _ENVY_DASH="--" ;;
 esac
+
+# Prompt prefix with zsh width hint: %{...%} marks non-printing region,
+# %2G declares 2-column display width for the emoji.
+_ENVY_PROMPT_PREFIX="%{🦝%2G%} "
+
+# p10k custom segment — called by p10k if registered; harmless when p10k absent.
+prompt_envy() {
+  [[ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]] || return
+  p10k segment -f 208 -t '🦝'
+}
 
 _envy_find_manifest() {
   local d="$PWD"
@@ -49,13 +59,17 @@ _envy_set_prompt() {
   if [ "${ENVY_NO_PROMPT:-}" = "1" ]; then return; fi
   if [ "${_ENVY_UTF8:-}" != "1" ]; then return; fi
   if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]; then return; fi
-  PROMPT="🦝 $PROMPT"
   _ENVY_PROMPT_ACTIVE=1
+  # p10k renders via prompt_envy() segment — skip PROMPT manipulation
+  (( ${+functions[p10k]} )) && return
+  PROMPT="${_ENVY_PROMPT_PREFIX}${PROMPT}"
 }
 
 _envy_unset_prompt() {
   if [ "${_ENVY_PROMPT_ACTIVE:-}" != "1" ]; then return; fi
-  PROMPT="${PROMPT#🦝 }"
+  if ! (( ${+functions[p10k]} )); then
+    PROMPT="${PROMPT#"${_ENVY_PROMPT_PREFIX}"}"
+  fi
   unset _ENVY_PROMPT_ACTIVE
 }
 
@@ -65,8 +79,11 @@ _envy_precmd() {
     _envy_unset_prompt
     return
   fi
-  if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ] && [[ "$PROMPT" != "🦝 "* ]]; then
-    PROMPT="🦝 $PROMPT"
+  if [ "${_ENVY_PROMPT_ACTIVE:-}" != "1" ]; then return; fi
+  # p10k renders via prompt_envy() segment — no PROMPT fixup needed
+  (( ${+functions[p10k]} )) && return
+  if [[ "$PROMPT" != "${_ENVY_PROMPT_PREFIX}"* ]]; then
+    PROMPT="${_ENVY_PROMPT_PREFIX}${PROMPT}"
     # Another precmd overwrote PROMPT — ensure we run last next time
     if [[ "${precmd_functions[-1]}" != "_envy_precmd" ]]; then
       precmd_functions=("${(@)precmd_functions:#_envy_precmd}" _envy_precmd)
@@ -126,6 +143,15 @@ if [[ -z "${chpwd_functions[(r)_envy_hook]}" ]]; then
 fi
 if [[ -z "${precmd_functions[(r)_envy_precmd]}" ]]; then
   precmd_functions+=(_envy_precmd)
+fi
+
+# Auto-register p10k segment if available (raccoon appears in p10k's prompt)
+if [ "${ENVY_NO_PROMPT:-}" != "1" ] && [ "${_ENVY_UTF8:-}" = "1" ] && \
+   (( ${+functions[p10k]} )) && [[ -n "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS+x}" ]]; then
+  if [[ -z "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[(r)envy]}" ]]; then
+    POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(envy "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[@]}")
+    p10k reload 2>/dev/null || true
+  fi
 fi
 
 # Activate for current directory
