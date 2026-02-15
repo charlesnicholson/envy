@@ -545,6 +545,130 @@ class TestZshHook(unittest.TestCase):
         self.assertNotIn("\U0001f99d", result.stdout)
         self.assertIn("$", result.stdout)
 
+    def test_raccoon_prompt_when_switching_projects(self) -> None:
+        proj_a = self._make_envy_project("zsh-raccoon-sw-A")
+        proj_b = self._make_envy_project("zsh-raccoon-sw-B")
+        result = self._run_zsh_hook_test(
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{proj_a}"\ncd "{proj_b}"\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_envy_project_root_updated_on_switch(self) -> None:
+        proj_a = self._make_envy_project("zsh-root-sw-A")
+        proj_b = self._make_envy_project("zsh-root-sw-B")
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{proj_a}"\ncd "{proj_b}"\n'
+            f'echo "$ENVY_PROJECT_ROOT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(proj_b), result.stdout.strip())
+
+    def test_raccoon_survives_theme_overwrite(self) -> None:
+        """Raccoon is re-applied when a theme's precmd overwrites PROMPT."""
+        project = self._make_envy_project("zsh-raccoon-theme")
+        result = self._run_zsh_hook_test(
+            # Register a fake theme precmd that rebuilds PROMPT (like OMZ themes)
+            f'_fake_theme_precmd() {{ PROMPT="THEME> " }}\n'
+            f"precmd_functions+=(_fake_theme_precmd)\n"
+            # Source envy hook (appends _envy_precmd after fake theme)
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            # Simulate a precmd cycle (non-interactive zsh doesn't auto-fire)
+            f'for f in "${{precmd_functions[@]}}"; do "$f"; done\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+        self.assertIn("THEME>", result.stdout)
+
+    # --- p10k integration ---
+
+    def test_p10k_segment_registered(self) -> None:
+        """When p10k is detected, envy auto-registers its segment."""
+        project = self._make_envy_project("zsh-p10k-reg")
+        result = self._run_zsh_hook_test(
+            # Minimal p10k mock: define p10k function and elements array
+            f"p10k() {{ : }}\n"
+            f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(os_icon dir vcs)\n"
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'echo "elements=${{POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[*]}}"\n'
+            f'echo "active=$_ENVY_PROMPT_ACTIVE"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        elements = result.stdout.split("elements=")[1].split("\n")[0]
+        self.assertIn("envy", elements)
+        self.assertTrue(elements.startswith("envy "), "envy should be first element")
+        self.assertIn("active=1", result.stdout)
+
+    def test_p10k_no_prompt_modification(self) -> None:
+        """With p10k present, PROMPT is not modified by envy."""
+        project = self._make_envy_project("zsh-p10k-noprompt")
+        result = self._run_zsh_hook_test(
+            f'PROMPT="$ "\n'
+            f"p10k() {{ : }}\n"
+            f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir)\n"
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+        self.assertEqual("$", result.stdout.strip())
+
+    def test_p10k_segment_function_renders(self) -> None:
+        """prompt_envy() calls p10k segment with raccoon when active."""
+        project = self._make_envy_project("zsh-p10k-render")
+        result = self._run_zsh_hook_test(
+            # p10k mock that echoes -t value
+            f"p10k() {{\n"
+            f'  if [ "$1" = "segment" ]; then\n'
+            f"    shift\n"
+            f"    while [ $# -gt 0 ]; do\n"
+            f'      case "$1" in -t) echo "$2"; return ;; *) shift ;; esac\n'
+            f"    done\n"
+            f"  fi\n"
+            f"}}\n"
+            f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir)\n"
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f"prompt_envy"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_p10k_segment_hidden_when_inactive(self) -> None:
+        """prompt_envy() produces no output when not in a project."""
+        result = self._run_zsh_hook_test(
+            # Mock that only echoes for segment calls (reload is silent)
+            f'p10k() {{ [ "$1" = "segment" ] && echo "SHOULD_NOT_APPEAR" }}\n'
+            f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(dir)\n"
+            f'source "{self._hook_path}"\n'
+            f"prompt_envy\n"
+            f'echo "done"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("SHOULD_NOT_APPEAR", result.stdout)
+        self.assertIn("done", result.stdout)
+
+    def test_p10k_segment_not_registered_when_prompt_disabled(self) -> None:
+        """ENVY_NO_PROMPT=1 prevents p10k segment registration."""
+        result = self._run_zsh_hook_test(
+            f"export ENVY_NO_PROMPT=1\n"
+            f"p10k() {{ : }}\n"
+            f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(os_icon dir vcs)\n"
+            f'source "{self._hook_path}"\n'
+            f'echo "elements=${{POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[*]}}"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        elements = result.stdout.split("elements=")[1].split("\n")[0]
+        self.assertNotIn("envy", elements)
+
 
 @unittest.skipUnless(shutil.which("fish"), "fish not installed")
 @unittest.skipIf(sys.platform == "win32", "fish hook tests require Unix")
