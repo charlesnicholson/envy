@@ -67,9 +67,7 @@ class TestRunErrors(_RunTestBase):
     def test_no_bin_directive_errors(self) -> None:
         nobin = self._temp_dir / "nobin"
         nobin.mkdir()
-        (nobin / "envy.lua").write_text(
-            '-- @envy version "0.0.0"\nPACKAGES = {}\n'
-        )
+        (nobin / "envy.lua").write_text('-- @envy version "0.0.0"\nPACKAGES = {}\n')
         result = self._run_envy(["run", "echo", "hi"], cwd=nobin)
         self.assertNotEqual(0, result.returncode)
 
@@ -134,9 +132,7 @@ class TestRunWindows(_RunTestBase):
         return bat
 
     def test_bin_dir_on_path(self) -> None:
-        result = self._run_envy(
-            ["run", "cmd", "/c", "echo %PATH%"], cwd=self._project
-        )
+        result = self._run_envy(["run", "cmd", "/c", "echo %PATH%"], cwd=self._project)
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         entries = result.stdout.strip().split(";")
         self.assertEqual(str(self._bin_dir), entries[0])
@@ -149,9 +145,7 @@ class TestRunWindows(_RunTestBase):
         self.assertEqual(str(self._project), result.stdout.strip())
 
     def test_exit_code_forwarded(self) -> None:
-        result = self._run_envy(
-            ["run", "cmd", "/c", "exit /b 42"], cwd=self._project
-        )
+        result = self._run_envy(["run", "cmd", "/c", "exit /b 42"], cwd=self._project)
         self.assertEqual(42, result.returncode)
 
     def test_run_bat_from_project_root(self) -> None:
@@ -175,6 +169,45 @@ class TestRunWindows(_RunTestBase):
         result = self._run_envy(["run", unique_name], cwd=self._project)
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual("found-me", result.stdout.strip())
+
+
+@unittest.skipIf(sys.platform == "win32", "POSIX sentinel tests")
+class TestRunSentinelPosix(_RunTestBase):
+    """Tests for `--` sentinel manifest discovery from script location."""
+
+    def _make_script(self, path: Path, body: str) -> Path:
+        path.write_text(f"#!/bin/sh\n{body}\n")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return path
+
+    def test_sentinel_discovers_manifest_from_script_dir(self) -> None:
+        script = self._make_script(
+            self._project / "helper.sh",
+            'echo "root=$ENVY_PROJECT_ROOT"',
+        )
+        result = self._run_envy(["run", "sh", "--", str(script)], cwd=self._outside)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(f"root={self._project}", result.stdout.strip())
+
+    def test_sentinel_sets_project_root(self) -> None:
+        script = self._make_script(
+            self._project / "check-root.sh",
+            'echo "$ENVY_PROJECT_ROOT"',
+        )
+        result = self._run_envy(["run", "sh", "--", str(script)], cwd=self._outside)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(self._project), result.stdout.strip())
+
+    def test_sentinel_missing_script_errors(self) -> None:
+        result = self._run_envy(["run", "sh", "--"], cwd=self._project)
+        self.assertNotEqual(0, result.returncode)
+
+    def test_sentinel_nonexistent_script_errors(self) -> None:
+        result = self._run_envy(
+            ["run", "sh", "--", "/nonexistent/script.sh"], cwd=self._project
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("script not found", result.stderr)
 
 
 if __name__ == "__main__":

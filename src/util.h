@@ -118,9 +118,4 @@ class scoped_path_cleanup : public unmovable {
   std::filesystem::path path_;
 };
 
-struct manifest;
-
-std::unique_ptr<manifest> util_load_manifest(
-    std::optional<std::filesystem::path> const &manifest_path);
-
 }  // namespace envy

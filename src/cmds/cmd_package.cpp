@@ -7,7 +7,6 @@
 #include "pkg_cfg.h"
 #include "pkg_key.h"
 #include "tui.h"
-#include "util.h"
 
 #include "CLI11.hpp"
 
@@ -34,7 +33,7 @@ cmd_package::cmd_package(cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_package::execute() {
-  auto const m{ util_load_manifest(cfg_.manifest_path) };
+  auto const m{ manifest::find_and_load(cfg_.manifest_path) };
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 

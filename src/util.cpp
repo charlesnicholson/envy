@@ -1,6 +1,5 @@
 #include "util.h"
 
-#include "manifest.h"
 #include "platform.h"
 
 #include <array>
@@ -428,14 +427,6 @@ void scoped_path_cleanup::cleanup() {
   std::error_code ec;
   std::filesystem::remove(path_, ec);
   path_.clear();
-}
-
-std::unique_ptr<manifest> util_load_manifest(
-    std::optional<std::filesystem::path> const &manifest_path) {
-  auto const path{ manifest::find_manifest_path(manifest_path, false) };
-  auto m{ manifest::load(path) };
-  if (!m) { throw std::runtime_error("could not load manifest"); }
-  return m;
 }
 
 }  // namespace envy

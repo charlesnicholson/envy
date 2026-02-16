@@ -108,7 +108,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 }  // namespace
 
 void cmd_product::execute() {
-  auto const m{ util_load_manifest(cfg_.manifest_path) };
+  auto const m{ manifest::find_and_load(cfg_.manifest_path) };
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
   engine eng{ *c, m.get() };
 

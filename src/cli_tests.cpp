@@ -753,6 +753,21 @@ TEST_CASE("cli_parse: cmd_run") {
     CHECK(cfg->command[0] == "grep");
     CHECK(cfg->command[1] == "--version");
   }
+
+  SUBCASE("double-dash sentinel preserved in command vector") {
+    std::vector<std::string> args{ "envy", "run", "python3", "--", "script.py" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_run::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->command.size() == 3);
+    CHECK(cfg->command[0] == "python3");
+    CHECK(cfg->command[1] == "--");
+    CHECK(cfg->command[2] == "script.py");
+  }
 }
 
 TEST_CASE("cli_parse: cmd_sync --platform") {
