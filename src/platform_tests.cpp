@@ -99,4 +99,23 @@ TEST_CASE("platform::expand_path with braced env var expands correctly") {
 }
 #endif
 
+TEST_CASE("platform::native returns expected value") {
+  auto const id{ platform::native() };
+#ifdef _WIN32
+  CHECK(id == platform_id::WINDOWS);
+#else
+  CHECK(id == platform_id::POSIX);
+#endif
+}
+
+TEST_CASE("platform::native is consistent with platform::os_name") {
+  auto const id{ platform::native() };
+  auto const os{ platform::os_name() };
+  if (os == "windows") {
+    CHECK(id == platform_id::WINDOWS);
+  } else {
+    CHECK(id == platform_id::POSIX);
+  }
+}
+
 }  // namespace envy

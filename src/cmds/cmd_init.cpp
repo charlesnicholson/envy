@@ -72,6 +72,10 @@ void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_option("--mirror", cfg_ptr->mirror, "Override download mirror URL");
   sub->add_option("--deploy", cfg_ptr->deploy, "Set @envy deploy directive (true/false)");
   sub->add_option("--root", cfg_ptr->root, "Set @envy root directive (true/false)");
+  sub->add_option("--platform",
+                  cfg_ptr->platform_flag,
+                  "Script platform: posix, windows, or all (default: current OS)")
+      ->check(CLI::IsMember({ "posix", "windows", "all" }));
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -236,12 +240,12 @@ void cmd_init::execute() {
     }
   }
 
-  bootstrap_write_script(cfg_.bin_dir, cfg_.mirror);
-#ifdef _WIN32
-  tui::info("Created %s", (cfg_.bin_dir / "envy.bat").string().c_str());
-#else
-  tui::info("Created %s", (cfg_.bin_dir / "envy").string().c_str());
-#endif
+  auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
+  for (auto const plat : platforms) {
+    bootstrap_write_script(cfg_.bin_dir, cfg_.mirror, plat);
+    auto const name{ (plat == platform_id::WINDOWS) ? "envy.bat" : "envy" };
+    tui::info("Created %s", (cfg_.bin_dir / name).string().c_str());
+  }
 
   write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.deploy, cfg_.root);
   write_luarc(cfg_.project_dir, extract_lua_ls_types());
@@ -251,11 +255,9 @@ void cmd_init::execute() {
   tui::info("Next steps:");
   tui::info("  1. Edit %s to add packages",
             (cfg_.project_dir / "envy.lua").string().c_str());
-#ifdef _WIN32
-  tui::info("  2. Run %s sync", (cfg_.bin_dir / "envy.bat").string().c_str());
-#else
-  tui::info("  2. Run %s sync", (cfg_.bin_dir / "envy").string().c_str());
-#endif
+  auto const native_name{ (platform::native() == platform_id::WINDOWS) ? "envy.bat"
+                                                                       : "envy" };
+  tui::info("  2. Run %s sync", (cfg_.bin_dir / native_name).string().c_str());
 }
 
 }  // namespace envy

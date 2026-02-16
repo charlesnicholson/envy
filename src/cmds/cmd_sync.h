@@ -19,6 +19,7 @@ class cmd_sync : public cmd {
     std::optional<std::filesystem::path> manifest_path;
     bool install_all = false;  // If true, install packages; otherwise only deploy scripts
     bool strict = false;  // If true, error on non-envy-managed product script conflicts
+    std::string platform_flag;  // "posix", "windows", "all", or empty (current OS)
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

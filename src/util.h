@@ -79,6 +79,11 @@ std::string util_flatten_script_with_semicolons(std::string_view script);
 // Ensures Lua expressions like `dir .. "filename"` produce correct paths.
 std::string util_path_with_separator(std::filesystem::path const &path);
 
+// Forward-declared from platform.h (can't include here — platform.h includes util.h).
+enum class platform_id;
+
+std::vector<platform_id> util_parse_platform_flag(std::string const &value);
+
 // Product mapping: pairs of (product_name, relative_path)
 // Example: {"cmake", "bin/cmake.exe"} or {"python", "bin/python3"}
 using product_map_t = std::vector<std::pair<std::string, std::string>>;

@@ -1,5 +1,7 @@
 #include "util.h"
 
+#include "platform.h"
+
 #include "doctest.h"
 
 #include <atomic>
@@ -951,4 +953,36 @@ TEST_CASE("util_escape_json_string all control chars below 0x20 are escaped") {
     CHECK(result.size() >= 2);
     CHECK(result[0] == '\\');
   }
+}
+
+TEST_CASE("util_parse_platform_flag empty string returns native platform") {
+  auto const result{ envy::util_parse_platform_flag("") };
+  REQUIRE(result.size() == 1);
+  CHECK(result[0] == envy::platform::native());
+}
+
+TEST_CASE("util_parse_platform_flag posix") {
+  auto const result{ envy::util_parse_platform_flag("posix") };
+  REQUIRE(result.size() == 1);
+  CHECK(result[0] == envy::platform_id::POSIX);
+}
+
+TEST_CASE("util_parse_platform_flag windows") {
+  auto const result{ envy::util_parse_platform_flag("windows") };
+  REQUIRE(result.size() == 1);
+  CHECK(result[0] == envy::platform_id::WINDOWS);
+}
+
+TEST_CASE("util_parse_platform_flag all returns both platforms") {
+  auto const result{ envy::util_parse_platform_flag("all") };
+  REQUIRE(result.size() == 2);
+  CHECK(result[0] == envy::platform_id::POSIX);
+  CHECK(result[1] == envy::platform_id::WINDOWS);
+}
+
+TEST_CASE("util_parse_platform_flag invalid value throws") {
+  CHECK_THROWS_WITH(envy::util_parse_platform_flag("linux"),
+                    doctest::Contains("invalid --platform value"));
+  CHECK_THROWS_WITH(envy::util_parse_platform_flag("macos"),
+                    doctest::Contains("invalid --platform value"));
 }

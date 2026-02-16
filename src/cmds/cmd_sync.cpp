@@ -6,11 +6,13 @@
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_cfg.h"
+#include "platform.h"
 #include "tui.h"
 #include "util.h"
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -41,6 +43,10 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Error on non-envy-managed product script conflicts");
+  sub->add_option("--platform",
+                  cfg_ptr->platform_flag,
+                  "Script platform: posix, windows, or all (default: current OS)")
+      ->check(CLI::IsMember({ "posix", "windows", "all" }));
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -50,9 +56,17 @@ cmd_sync::cmd_sync(cfg cfg, std::optional<std::filesystem::path> const &cli_cach
 
 namespace {
 
-std::string_view get_product_script_template() {
-  return { reinterpret_cast<char const *>(embedded::kProductScript),
-           embedded::kProductScriptSize };
+std::string_view get_product_script_template(platform_id platform) {
+  switch (platform) {
+    case platform_id::POSIX:
+      return { reinterpret_cast<char const *>(embedded::kProductScriptPosix),
+               embedded::kProductScriptPosixSize };
+    case platform_id::WINDOWS:
+      return { reinterpret_cast<char const *>(embedded::kProductScriptWindows),
+               embedded::kProductScriptWindowsSize };
+    default:
+      throw std::logic_error("unhandled platform_id in get_product_script_template");
+  }
 }
 
 void replace_all(std::string &s, std::string_view from, std::string_view to) {
@@ -63,8 +77,8 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
   }
 }
 
-std::string stamp_product_script(std::string_view product_name) {
-  std::string result{ get_product_script_template() };
+std::string stamp_product_script(std::string_view product_name, platform_id platform) {
+  std::string result{ get_product_script_template(platform) };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@PRODUCT_NAME@@", product_name);
   return result;
@@ -84,18 +98,37 @@ bool has_envy_marker(fs::path const &path) {
   return content.find("envy-managed") != std::string::npos;
 }
 
-fs::path product_script_path(fs::path const &bin_dir, std::string_view product_name) {
-#ifdef _WIN32
-  return bin_dir / (std::string(product_name) + ".bat");
+fs::path product_script_path(fs::path const &bin_dir,
+                             std::string_view product_name,
+                             platform_id platform) {
+  return (platform == platform_id::WINDOWS)
+             ? bin_dir / (std::string(product_name) + ".bat")
+             : bin_dir / product_name;
+}
+
+void set_product_executable(fs::path const &path, platform_id platform) {
+  if (platform == platform_id::WINDOWS) { return; }
+#ifndef _WIN32
+  std::error_code ec;
+  fs::permissions(path,
+                  fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+                  fs::perm_options::add,
+                  ec);
+  if (ec) {
+    tui::warn("Failed to set executable bit on %s: %s",
+              path.string().c_str(),
+              ec.message().c_str());
+  }
 #else
-  return bin_dir / product_name;
+  (void)path;
 #endif
 }
 
 void deploy_product_scripts(engine &eng,
                             fs::path const &bin_dir,
                             std::vector<product_info> const &products,
-                            bool strict) {
+                            bool strict,
+                            std::vector<platform_id> const &platforms) {
   std::set<std::string> const current_products{ [&] {
     std::set<std::string> s;
     for (auto const &p : products) {
@@ -110,48 +143,48 @@ void deploy_product_scripts(engine &eng,
 
   for (auto const &product : products) {
     if (!product.script) { continue; }
-    fs::path const script_path{ product_script_path(bin_dir, product.product_name) };
+    for (auto const plat : platforms) {
+      fs::path const script_path{
+        product_script_path(bin_dir, product.product_name, plat)
+      };
 
-    if (fs::exists(script_path) && !has_envy_marker(script_path)) {
-      if (strict) {
-        throw std::runtime_error(
-            "sync: file '" + script_path.string() +
-            "' exists but is not envy-managed. Remove manually or rename product.");
+      if (fs::exists(script_path) && !has_envy_marker(script_path)) {
+        if (strict) {
+          throw std::runtime_error(
+              "sync: file '" + script_path.string() +
+              "' exists but is not envy-managed. Remove manually or rename product.");
+        }
+        continue;
       }
-      continue;
-    }
 
-    std::string const new_content{ stamp_product_script(product.product_name) };
-    std::string const existing_content{ read_file_content(script_path) };
-    if (new_content == existing_content) {
-      ++unchanged;
-      continue;
-    }
+      std::string const new_content{ stamp_product_script(product.product_name, plat) };
+      std::string const existing_content{ read_file_content(script_path) };
+      if (new_content == existing_content) {
+        ++unchanged;
+        continue;
+      }
 
-    bool const is_new{ existing_content.empty() };
-    util_write_file(script_path, new_content);
+      bool const is_new{ existing_content.empty() };
+      util_write_file(script_path, new_content);
+      set_product_executable(script_path, plat);
 
-#ifndef _WIN32
-    std::error_code ec;
-    fs::permissions(script_path,
-                    fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-                    fs::perm_options::add,
-                    ec);
-    if (ec) {
-      tui::warn("Failed to set executable bit on %s: %s",
-                script_path.string().c_str(),
-                ec.message().c_str());
-    }
-#endif
-
-    if (is_new) {
-      ++created;
-      tui::debug("Created product script: %s", script_path.string().c_str());
-    } else {
-      ++updated;
-      tui::debug("Updated product script: %s", script_path.string().c_str());
+      if (is_new) {
+        ++created;
+        tui::debug("Created product script: %s", script_path.string().c_str());
+      } else {
+        ++updated;
+        tui::debug("Updated product script: %s", script_path.string().c_str());
+      }
     }
   }
+
+  // Build set of platform-relevant extensions for cleanup
+  bool const clean_posix{
+    std::find(platforms.begin(), platforms.end(), platform_id::POSIX) != platforms.end()
+  };
+  bool const clean_windows{
+    std::find(platforms.begin(), platforms.end(), platform_id::WINDOWS) != platforms.end()
+  };
 
   size_t removed{ 0 };
   std::error_code ec;
@@ -163,13 +196,12 @@ void deploy_product_scripts(engine &eng,
 
     bool const is_batch{ filename.size() > 4 &&
                          filename.substr(filename.size() - 4) == ".bat" };
-#ifdef _WIN32
-    if (!is_batch) { continue; }
-    std::string const product_name{ filename.substr(0, filename.size() - 4) };
-#else
-    if (is_batch) { continue; }
-    std::string const product_name{ filename };
-#endif
+
+    if (is_batch && !clean_windows) { continue; }
+    if (!is_batch && !clean_posix) { continue; }
+
+    std::string const product_name{ is_batch ? filename.substr(0, filename.size() - 4)
+                                             : filename };
 
     if (!current_products.contains(product_name) && has_envy_marker(entry.path())) {
       std::error_code rm_ec;
@@ -215,6 +247,8 @@ void cmd_sync::execute() {
     throw std::runtime_error(
         "sync: manifest missing '@envy bin' directive (required for sync)");
   }
+
+  auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 
@@ -273,15 +307,17 @@ void cmd_sync::execute() {
   auto const products{ eng.collect_all_products() };
 
   // Update bootstrap script (always, regardless of deploy setting)
-  if (bootstrap_write_script(bin_dir, m->meta.mirror)) {
-    tui::info("Updated bootstrap script");
+  for (auto const plat : platforms) {
+    if (bootstrap_write_script(bin_dir, m->meta.mirror, plat)) {
+      tui::info("Updated bootstrap script");
+    }
   }
 
   // Check deploy directive: absent or false means deployment disabled
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
 
   if (deploy_enabled) {
-    deploy_product_scripts(eng, bin_dir, products, cfg_.strict);
+    deploy_product_scripts(eng, bin_dir, products, cfg_.strict, platforms);
   } else if (!cfg_.install_all) {
     // Naked sync with deploy disabled: warn user
     tui::warn("sync was requested but deployment is disabled in %s",

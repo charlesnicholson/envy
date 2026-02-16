@@ -1,6 +1,7 @@
 #include "bootstrap.h"
 
 #include "embedded_init_resources.h"
+#include "platform.h"
 #include "tui.h"
 #include "util.h"
 
@@ -28,9 +29,16 @@ constexpr std::string_view kEnvyDownloadUrl{
 
 constexpr std::string_view kEnvyManagedMarker{ "envy-managed" };
 
-std::string_view get_bootstrap_template() {
-  return { reinterpret_cast<char const *>(embedded::kBootstrap),
-           embedded::kBootstrapSize };
+std::string_view get_bootstrap_template(platform_id platform) {
+  switch (platform) {
+    case platform_id::POSIX:
+      return { reinterpret_cast<char const *>(embedded::kBootstrapPosix),
+               embedded::kBootstrapPosixSize };
+    case platform_id::WINDOWS:
+      return { reinterpret_cast<char const *>(embedded::kBootstrapWindows),
+               embedded::kBootstrapWindowsSize };
+    default: throw std::logic_error("unhandled platform_id in get_bootstrap_template");
+  }
 }
 
 void replace_all(std::string &s, std::string_view from, std::string_view to) {
@@ -41,8 +49,8 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
   }
 }
 
-std::string stamp_bootstrap(std::string_view download_url) {
-  std::string result{ get_bootstrap_template() };
+std::string stamp_bootstrap(std::string_view download_url, platform_id platform) {
+  std::string result{ get_bootstrap_template(platform) };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@DOWNLOAD_URL@@", download_url);
   return result;
@@ -57,16 +65,12 @@ std::string read_file_content(fs::path const &path) {
   return ss.str();
 }
 
-
-fs::path bootstrap_script_path(fs::path const &bin_dir) {
-#ifdef _WIN32
-  return bin_dir / "envy.bat";
-#else
-  return bin_dir / "envy";
-#endif
+fs::path bootstrap_script_path(fs::path const &bin_dir, platform_id platform) {
+  return (platform == platform_id::WINDOWS) ? bin_dir / "envy.bat" : bin_dir / "envy";
 }
 
-void set_executable(fs::path const &path) {
+void set_executable(fs::path const &path, platform_id platform) {
+  if (platform == platform_id::WINDOWS) { return; }
 #ifndef _WIN32
   std::error_code ec;
   fs::permissions(path,
@@ -91,8 +95,9 @@ bool bootstrap_is_envy_managed(fs::path const &path) {
 }
 
 bool bootstrap_write_script(fs::path const &bin_dir,
-                            std::optional<std::string> const &mirror) {
-  fs::path const script_path{ bootstrap_script_path(bin_dir) };
+                            std::optional<std::string> const &mirror,
+                            platform_id platform) {
+  fs::path const script_path{ bootstrap_script_path(bin_dir, platform) };
 
   // Check if existing file is envy-managed
   if (fs::exists(script_path) && !bootstrap_is_envy_managed(script_path)) {
@@ -103,7 +108,7 @@ bool bootstrap_write_script(fs::path const &bin_dir,
 
   // Generate new content
   std::string_view const url{ mirror ? std::string_view{ *mirror } : kEnvyDownloadUrl };
-  std::string const new_content{ stamp_bootstrap(url) };
+  std::string const new_content{ stamp_bootstrap(url, platform) };
 
   // Compare with existing
   std::string const existing_content{ read_file_content(script_path) };
@@ -111,7 +116,7 @@ bool bootstrap_write_script(fs::path const &bin_dir,
 
   // Write atomically
   util_write_file(script_path, new_content);
-  set_executable(script_path);
+  set_executable(script_path, platform);
 
   return true;
 }
