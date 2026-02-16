@@ -178,6 +178,8 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }
 
+platform_id native() { return platform_id::WINDOWS; }
+
 std::string_view os_name() { return "windows"; }
 
 std::string_view arch_name() {

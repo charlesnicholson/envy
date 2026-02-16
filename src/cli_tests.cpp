@@ -2,11 +2,13 @@
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
+#include "cmds/cmd_init.h"
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_run.h"
 #include "cmds/cmd_shell.h"
+#include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
 
 #include "doctest.h"
@@ -703,5 +705,129 @@ TEST_CASE("cli_parse: cmd_run") {
     REQUIRE(cfg->command.size() == 2);
     CHECK(cfg->command[0] == "grep");
     CHECK(cfg->command[1] == "--version");
+  }
+}
+
+TEST_CASE("cli_parse: cmd_sync --platform") {
+  SUBCASE("default (no --platform)") {
+    std::vector<std::string> args{ "envy", "sync" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag.empty());
+  }
+
+  SUBCASE("--platform posix") {
+    std::vector<std::string> args{ "envy", "sync", "--platform", "posix" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "posix");
+  }
+
+  SUBCASE("--platform windows") {
+    std::vector<std::string> args{ "envy", "sync", "--platform", "windows" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "windows");
+  }
+
+  SUBCASE("--platform all") {
+    std::vector<std::string> args{ "envy", "sync", "--platform", "all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "all");
+  }
+
+  SUBCASE("invalid --platform value rejected") {
+    std::vector<std::string> args{ "envy", "sync", "--platform", "linux" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_init --platform") {
+  SUBCASE("default (no --platform)") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag.empty());
+  }
+
+  SUBCASE("--platform posix") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
+                                   "--platform", "posix" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "posix");
+  }
+
+  SUBCASE("--platform windows") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
+                                   "--platform", "windows" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "windows");
+  }
+
+  SUBCASE("--platform all") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
+                                   "--platform", "all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "all");
+  }
+
+  SUBCASE("invalid --platform value rejected") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
+                                   "--platform", "macos" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }

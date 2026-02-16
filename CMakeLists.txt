@@ -145,36 +145,22 @@ endif()
 include(cmake/Dependencies.cmake)
 include(cmake/EmbedResource.cmake)
 
-# Generate embedded resource header (platform-specific)
-if(WIN32)
-    embed_resources(envy_embedded_resources
-        OUTPUT embedded_init_resources.h
-        RESOURCES
-            bootstrap=src/resources/envy.bat
-            manifest_template=src/resources/manifest_template.lua
-            type_definitions=src/resources/envy.lua
-            luarc_template=src/resources/luarc_template.json
-            product_script=src/resources/product_script.bat
-            shell_hook_bash=src/resources/shell_hook.bash
-            shell_hook_zsh=src/resources/shell_hook.zsh
-            shell_hook_fish=src/resources/shell_hook.fish
-            shell_hook_ps1=src/resources/shell_hook.ps1
-    )
-else()
-    embed_resources(envy_embedded_resources
-        OUTPUT embedded_init_resources.h
-        RESOURCES
-            bootstrap=src/resources/envy
-            manifest_template=src/resources/manifest_template.lua
-            type_definitions=src/resources/envy.lua
-            luarc_template=src/resources/luarc_template.json
-            product_script=src/resources/product_script
-            shell_hook_bash=src/resources/shell_hook.bash
-            shell_hook_zsh=src/resources/shell_hook.zsh
-            shell_hook_fish=src/resources/shell_hook.fish
-            shell_hook_ps1=src/resources/shell_hook.ps1
-    )
-endif()
+# Generate embedded resource header (all platform variants unconditionally)
+embed_resources(envy_embedded_resources
+    OUTPUT embedded_init_resources.h
+    RESOURCES
+        bootstrap_posix=src/resources/envy
+        bootstrap_windows=src/resources/envy.bat
+        manifest_template=src/resources/manifest_template.lua
+        type_definitions=src/resources/envy.lua
+        luarc_template=src/resources/luarc_template.json
+        product_script_posix=src/resources/product_script
+        product_script_windows=src/resources/product_script.bat
+        shell_hook_bash=src/resources/shell_hook.bash
+        shell_hook_zsh=src/resources/shell_hook.zsh
+        shell_hook_fish=src/resources/shell_hook.fish
+        shell_hook_ps1=src/resources/shell_hook.ps1
+)
 
 # Discover and compress third-party licenses for embedding
 include(cmake/FindLicenses.cmake)

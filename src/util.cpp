@@ -1,5 +1,7 @@
 #include "util.h"
 
+#include "platform.h"
+
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -399,6 +401,15 @@ std::string util_simplify_cache_paths(std::string_view command,
   }
 
   return result;
+}
+
+std::vector<platform_id> util_parse_platform_flag(std::string const &value) {
+  if (value.empty()) { return { platform::native() }; }
+  if (value == "posix") { return { platform_id::POSIX }; }
+  if (value == "windows") { return { platform_id::WINDOWS }; }
+  if (value == "all") { return { platform_id::POSIX, platform_id::WINDOWS }; }
+  throw std::runtime_error("invalid --platform value '" + value +
+                           "': expected posix, windows, or all");
 }
 
 scoped_path_cleanup::scoped_path_cleanup(std::filesystem::path path)

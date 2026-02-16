@@ -185,6 +185,8 @@ bool file_exists(std::filesystem::path const &path) {
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 
+platform_id native() { return platform_id::POSIX; }
+
 std::string_view os_name() {
 #if defined(__APPLE__) && defined(__MACH__)
   return "darwin";

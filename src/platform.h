@@ -29,6 +29,12 @@
 #include <ws2tcpip.h>
 #endif
 
+namespace envy {
+
+enum class platform_id { POSIX, WINDOWS };
+
+}  // namespace envy
+
 namespace envy::platform {
 
 class file_lock : uncopyable {
@@ -67,6 +73,7 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target);
 
 bool is_tty();
 
+platform_id native();
 std::string_view os_name();
 std::string_view arch_name();
 

@@ -22,6 +22,7 @@ class cmd_init : public cmd {
     std::optional<std::string> mirror;
     std::optional<bool> deploy{ true };  // @envy deploy directive value
     std::optional<bool> root{ true };    // @envy root directive value
+    std::string platform_flag;  // "posix", "windows", "all", or empty (current OS)
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
