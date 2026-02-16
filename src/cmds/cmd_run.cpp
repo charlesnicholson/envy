@@ -53,10 +53,11 @@ void cmd_run::execute() {
                              manifest_path.string());
   }
 
-  auto const bin_dir{ fs::canonical(manifest_path.parent_path() / *meta.bin) };
-  if (!fs::is_directory(bin_dir)) {
-    throw std::runtime_error("run: bin directory does not exist: " + bin_dir.string());
+  auto const bin_dir_raw{ manifest_path.parent_path() / *meta.bin };
+  if (!fs::exists(bin_dir_raw) || !fs::is_directory(bin_dir_raw)) {
+    throw std::runtime_error("run: bin directory does not exist: " + bin_dir_raw.string());
   }
+  auto const bin_dir{ fs::canonical(bin_dir_raw) };
 
   auto const manifest_dir{ manifest_path.parent_path().string() };
 
