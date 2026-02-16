@@ -233,6 +233,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_init.cpp
     src/cmds/cmd_lua.cpp
     src/cmds/cmd_product.cpp
+    src/cmds/cmd_run.cpp
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_shell.cpp
     src/cmds/cmd_version.cpp

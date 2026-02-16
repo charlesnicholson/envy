@@ -5,6 +5,7 @@
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
+#include "cmds/cmd_run.h"
 #include "cmds/cmd_shell.h"
 #include "cmds/cmd_version.h"
 
@@ -646,5 +647,61 @@ TEST_CASE("cli_parse: cmd_shell") {
 
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_run") {
+  SUBCASE("basic command") {
+    std::vector<std::string> args{ "envy", "run", "ls" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_run::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->command.size() == 1);
+    CHECK(cfg->command[0] == "ls");
+  }
+
+  SUBCASE("command with arguments") {
+    std::vector<std::string> args{ "envy", "run", "python3", "-c", "print(1)" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_run::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->command.size() == 3);
+    CHECK(cfg->command[0] == "python3");
+    CHECK(cfg->command[1] == "-c");
+    CHECK(cfg->command[2] == "print(1)");
+  }
+
+  SUBCASE("no command") {
+    std::vector<std::string> args{ "envy", "run" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_run::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->command.empty());
+  }
+
+  SUBCASE("child flags not intercepted") {
+    std::vector<std::string> args{ "envy", "run", "grep", "--version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_run::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->command.size() == 2);
+    CHECK(cfg->command[0] == "grep");
+    CHECK(cfg->command[1] == "--version");
   }
 }
