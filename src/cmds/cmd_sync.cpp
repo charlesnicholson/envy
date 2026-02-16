@@ -35,13 +35,16 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_option("identities",
                   cfg_ptr->identities,
                   "Spec identities to sync (sync all if omitted)");
-  sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  auto *manifest_opt{
+    sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest")
+  };
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Error on non-envy-managed product script conflicts");
   sub->add_flag("--subproject",
                 cfg_ptr->subproject,
-                "Use nearest manifest instead of walking to root");
+                "Use nearest manifest instead of walking to root")
+      ->excludes(manifest_opt);
   sub->add_option("--platform",
                   cfg_ptr->platform_flag,
                   "Script platform: posix, windows, or all (default: current OS)")

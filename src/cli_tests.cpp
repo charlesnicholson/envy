@@ -516,10 +516,7 @@ TEST_CASE("cli_parse: cmd_install") {
   }
 
   SUBCASE("with --manifest") {
-    std::vector<std::string> args{ "envy",
-                                   "install",
-                                   "--manifest",
-                                   "/path/to/envy.lua" };
+    std::vector<std::string> args{ "envy", "install", "--manifest", "/path/to/envy.lua" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -605,10 +602,7 @@ TEST_CASE("cli_parse: cmd_sync flags") {
   }
 
   SUBCASE("--manifest flag") {
-    std::vector<std::string> args{ "envy",
-                                   "sync",
-                                   "--manifest",
-                                   "/path/to/envy.lua" };
+    std::vector<std::string> args{ "envy", "sync", "--manifest", "/path/to/envy.lua" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -618,6 +612,20 @@ TEST_CASE("cli_parse: cmd_sync flags") {
     REQUIRE(cfg != nullptr);
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+
+  SUBCASE("--subproject with --manifest rejected") {
+    std::vector<std::string> args{ "envy",
+                                   "sync",
+                                   "--subproject",
+                                   "--manifest",
+                                   "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }
 
@@ -821,8 +829,8 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   }
 
   SUBCASE("--platform posix") {
-    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
-                                   "--platform", "posix" };
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj",
+                                   "/tmp/bin", "--platform", "posix" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -834,8 +842,8 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   }
 
   SUBCASE("--platform windows") {
-    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
-                                   "--platform", "windows" };
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj",
+                                   "/tmp/bin", "--platform", "windows" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -847,8 +855,8 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   }
 
   SUBCASE("--platform all") {
-    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
-                                   "--platform", "all" };
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj",
+                                   "/tmp/bin", "--platform", "all" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
@@ -860,8 +868,8 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   }
 
   SUBCASE("invalid --platform value rejected") {
-    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin",
-                                   "--platform", "macos" };
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj",
+                                   "/tmp/bin", "--platform", "macos" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
