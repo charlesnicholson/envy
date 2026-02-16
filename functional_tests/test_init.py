@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,8 @@ class TestEnvyInit(unittest.TestCase):
             cmd.append(f"--deploy={kwargs['deploy']}")
         if "root" in kwargs:
             cmd.append(f"--root={kwargs['root']}")
+        if "platform" in kwargs:
+            cmd.append(f"--platform={kwargs['platform']}")
 
         env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
@@ -265,6 +268,48 @@ class TestEnvyInit(unittest.TestCase):
         content = manifest.read_text()
         self.assertIn('@envy deploy "true"', content)
         self.assertIn('@envy root "false"', content)
+
+    def test_init_platform_posix_creates_only_posix_bootstrap(self) -> None:
+        """--platform=posix creates only POSIX bootstrap script."""
+        result = self._run_init(platform="posix")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        self.assertTrue((self._bin_dir / "envy").exists())
+        self.assertFalse((self._bin_dir / "envy.bat").exists())
+
+    def test_init_platform_windows_creates_only_windows_bootstrap(self) -> None:
+        """--platform=windows creates only Windows bootstrap script."""
+        result = self._run_init(platform="windows")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        self.assertTrue((self._bin_dir / "envy.bat").exists())
+        self.assertFalse((self._bin_dir / "envy").exists())
+
+    def test_init_platform_all_creates_both_bootstraps(self) -> None:
+        """--platform=all creates both POSIX and Windows bootstrap scripts."""
+        result = self._run_init(platform="all")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        self.assertTrue((self._bin_dir / "envy").exists())
+        self.assertTrue((self._bin_dir / "envy.bat").exists())
+
+    @unittest.skipIf(sys.platform == "win32", "Unix permissions test")
+    def test_init_platform_all_posix_script_is_executable(self) -> None:
+        """--platform=all sets executable bit on POSIX script."""
+        result = self._run_init(platform="all")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        self.assertTrue(os.access(self._bin_dir / "envy", os.X_OK))
+
+    def test_init_platform_all_both_contain_envy_managed(self) -> None:
+        """--platform=all produces scripts that both contain envy-managed marker."""
+        result = self._run_init(platform="all")
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        posix_content = (self._bin_dir / "envy").read_text()
+        windows_content = (self._bin_dir / "envy.bat").read_text()
+        self.assertIn("envy-managed", posix_content)
+        self.assertIn("envy-managed", windows_content)
 
 
 class TestSelfDeployment(unittest.TestCase):

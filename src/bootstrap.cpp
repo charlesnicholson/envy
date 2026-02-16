@@ -37,8 +37,8 @@ std::string_view get_bootstrap_template(platform_id platform) {
     case platform_id::WINDOWS:
       return { reinterpret_cast<char const *>(embedded::kBootstrapWindows),
                embedded::kBootstrapWindowsSize };
+    default: throw std::logic_error("unhandled platform_id in get_bootstrap_template");
   }
-  return {};
 }
 
 void replace_all(std::string &s, std::string_view from, std::string_view to) {

@@ -12,6 +12,7 @@
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -63,8 +64,9 @@ std::string_view get_product_script_template(platform_id platform) {
     case platform_id::WINDOWS:
       return { reinterpret_cast<char const *>(embedded::kProductScriptWindows),
                embedded::kProductScriptWindowsSize };
+    default:
+      throw std::logic_error("unhandled platform_id in get_product_script_template");
   }
-  return {};
 }
 
 void replace_all(std::string &s, std::string_view from, std::string_view to) {
@@ -177,12 +179,12 @@ void deploy_product_scripts(engine &eng,
   }
 
   // Build set of platform-relevant extensions for cleanup
-  bool const clean_posix{ std::find(platforms.begin(),
-                                    platforms.end(),
-                                    platform_id::POSIX) != platforms.end() };
-  bool const clean_windows{ std::find(platforms.begin(),
-                                      platforms.end(),
-                                      platform_id::WINDOWS) != platforms.end() };
+  bool const clean_posix{
+    std::find(platforms.begin(), platforms.end(), platform_id::POSIX) != platforms.end()
+  };
+  bool const clean_windows{
+    std::find(platforms.begin(), platforms.end(), platform_id::WINDOWS) != platforms.end()
+  };
 
   size_t removed{ 0 };
   std::error_code ec;

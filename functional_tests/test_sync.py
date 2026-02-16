@@ -471,10 +471,13 @@ class TestSyncProductScripts(unittest.TestCase):
         manifest: Path,
         identities: Optional[List[str]] = None,
         strict: bool = False,
+        platform: Optional[str] = None,
     ):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
         if strict:
             cmd.append("--strict")
+        if platform:
+            cmd.extend(["--platform", platform])
         if identities:
             cmd.extend(identities)
         cmd.extend(["--manifest", str(manifest)])
@@ -881,6 +884,122 @@ PACKAGES = {{
             "library script should NOT be created (script=false)",
         )
 
+    def test_sync_platform_posix_creates_only_posix_scripts(self):
+        """--platform posix creates only POSIX product scripts and bootstrap."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="posix")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue((bin_dir / "tool").exists(), "POSIX product script missing")
+        self.assertFalse(
+            (bin_dir / "tool.bat").exists(), "Windows product script should not exist"
+        )
+        self.assertTrue((bin_dir / "envy").exists(), "POSIX bootstrap missing")
+        self.assertFalse(
+            (bin_dir / "envy.bat").exists(), "Windows bootstrap should not exist"
+        )
+
+    def test_sync_platform_windows_creates_only_windows_scripts(self):
+        """--platform windows creates only Windows product scripts and bootstrap."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="windows")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue(
+            (bin_dir / "tool.bat").exists(), "Windows product script missing"
+        )
+        self.assertFalse(
+            (bin_dir / "tool").exists(), "POSIX product script should not exist"
+        )
+        self.assertTrue((bin_dir / "envy.bat").exists(), "Windows bootstrap missing")
+        self.assertFalse(
+            (bin_dir / "envy").exists(), "POSIX bootstrap should not exist"
+        )
+
+    def test_sync_platform_all_creates_both_platform_scripts(self):
+        """--platform all creates both POSIX and Windows product scripts."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue((bin_dir / "tool").exists(), "POSIX product script missing")
+        self.assertTrue(
+            (bin_dir / "tool.bat").exists(), "Windows product script missing"
+        )
+        self.assertTrue((bin_dir / "envy").exists(), "POSIX bootstrap missing")
+        self.assertTrue((bin_dir / "envy.bat").exists(), "Windows bootstrap missing")
+
+        # Both should be envy-managed
+        self.assertIn("envy-managed", (bin_dir / "tool").read_text())
+        self.assertIn("envy-managed", (bin_dir / "tool.bat").read_text())
+        self.assertIn("envy-managed", (bin_dir / "envy").read_text())
+        self.assertIn("envy-managed", (bin_dir / "envy.bat").read_text())
+
+    @unittest.skipIf(sys.platform == "win32", "Unix permissions test")
+    def test_sync_platform_all_posix_scripts_are_executable(self):
+        """--platform all sets executable bit on POSIX scripts only."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue(os.access(bin_dir / "tool", os.X_OK))
+        self.assertTrue(os.access(bin_dir / "envy", os.X_OK))
+
+    def test_sync_platform_all_cleanup_removes_obsolete_for_both(self):
+        """--platform all removes obsolete envy-managed scripts for both platforms."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        # Plant obsolete scripts for both platforms
+        (bin_dir / "old_tool").write_text("# envy-managed v1.0.0\nold posix\n")
+        (bin_dir / "old_tool.bat").write_text("REM envy-managed v1.0.0\nold windows\n")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        self.assertFalse((bin_dir / "old_tool").exists())
+        self.assertFalse((bin_dir / "old_tool.bat").exists())
+
     def test_product_command_returns_noscript_value(self):
         """envy product command returns full path for noscript products."""
         mixed_path = self.write_spec("mixed_products", SPEC_MIXED_PRODUCTS)
@@ -1104,8 +1223,10 @@ class TestSyncBootstrap(unittest.TestCase):
         )
         return manifest_path
 
-    def run_sync(self, manifest: Path):
+    def run_sync(self, manifest: Path, platform: Optional[str] = None):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if platform:
+            cmd.extend(["--platform", platform])
         cmd.extend(["--manifest", str(manifest)])
         return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
@@ -1301,6 +1422,28 @@ PACKAGES = {{
         else:
             old_version_token = 'FALLBACK_VERSION="0.0.1"'
         self.assertNotIn(old_version_token, new_content)
+
+    def test_sync_platform_all_creates_both_bootstraps(self):
+        """--platform all creates both POSIX and Windows bootstrap scripts."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue((bin_dir / "envy").exists(), "POSIX bootstrap missing")
+        self.assertTrue((bin_dir / "envy.bat").exists(), "Windows bootstrap missing")
+
+        posix_content = (bin_dir / "envy").read_text()
+        windows_content = (bin_dir / "envy.bat").read_text()
+        self.assertIn("envy-managed", posix_content)
+        self.assertIn("envy-managed", windows_content)
 
     def test_init_then_sync_preserves_bootstrap_mtime(self):
         """Init creates bootstrap, sync preserves it when unchanged (mtime test)."""

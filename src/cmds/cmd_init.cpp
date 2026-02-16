@@ -4,7 +4,6 @@
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "platform.h"
-#include "platform.h"
 #include "tui.h"
 #include "util.h"
 
@@ -256,9 +255,8 @@ void cmd_init::execute() {
   tui::info("Next steps:");
   tui::info("  1. Edit %s to add packages",
             (cfg_.project_dir / "envy.lua").string().c_str());
-  auto const native_name{ (platform::native() == platform_id::WINDOWS)
-                              ? "envy.bat"
-                              : "envy" };
+  auto const native_name{ (platform::native() == platform_id::WINDOWS) ? "envy.bat"
+                                                                       : "envy" };
   tui::info("  2. Run %s sync", (cfg_.bin_dir / native_name).string().c_str());
 }
 
