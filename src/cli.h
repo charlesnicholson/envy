@@ -7,6 +7,7 @@
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
+#include "cmds/cmd_run.h"
 #include "cmds/cmd_shell.h"
 #include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
@@ -31,6 +32,7 @@ struct cli_args {
                                  cmd_init::cfg,
                                  cmd_lua::cfg,
                                  cmd_product::cfg,
+                                 cmd_run::cfg,
                                  cmd_shell::cfg,
                                  cmd_sync::cfg,
                                  cmd_version::cfg

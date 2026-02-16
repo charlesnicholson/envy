@@ -39,6 +39,8 @@ int main(int argc, char *argv[]) {
 
   try {
     cmd->execute();
+  } catch (envy::subprocess_exit const &se) {
+    return se.code;
   } catch (std::exception const &ex) {
     envy::tui::error("%s", ex.what());
     return EXIT_FAILURE;

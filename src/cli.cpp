@@ -57,6 +57,7 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_product,
                            cmd_shell,
                            cmd_sync,
+                           cmd_run,
                            cmd_extract,
                            cmd_fetch,
                            cmd_hash,
