@@ -6,6 +6,7 @@
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_cfg.h"
+#include "pkg_key.h"
 #include "platform.h"
 #include "tui.h"
 #include "util.h"
@@ -29,20 +30,21 @@ namespace envy {
 namespace fs = std::filesystem;
 
 void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
-  auto *sub{
-    app.add_subcommand("sync", "Deploy product scripts (or install with --install-all)")
-  };
+  auto *sub{ app.add_subcommand("sync", "Deploy product scripts") };
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identities",
                   cfg_ptr->identities,
                   "Spec identities to sync (sync all if omitted)");
-  sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
-  sub->add_flag("--install-all",
-                cfg_ptr->install_all,
-                "Install all packages (not just create product scripts)");
+  auto *manifest_opt{
+    sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest")
+  };
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Error on non-envy-managed product script conflicts");
+  sub->add_flag("--subproject",
+                cfg_ptr->subproject,
+                "Use nearest manifest instead of walking to root")
+      ->excludes(manifest_opt);
   sub->add_option("--platform",
                   cfg_ptr->platform_flag,
                   "Script platform: posix, windows, or all (default: current OS)")
@@ -240,7 +242,8 @@ void deploy_product_scripts(engine &eng,
 }  // namespace
 
 void cmd_sync::execute() {
-  auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path)) };
+  auto const m{ manifest::load(
+      manifest::find_manifest_path(cfg_.manifest_path, cfg_.subproject)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
 
   if (!m->meta.bin) {
@@ -269,18 +272,18 @@ void cmd_sync::execute() {
   if (cfg_.identities.empty()) {
     for (auto const *pkg : m->packages) { targets.push_back(pkg); }
   } else {
-    for (auto const &identity : cfg_.identities) {
+    for (auto const &query : cfg_.identities) {
       bool found{ false };
       for (auto const *pkg : m->packages) {
-        if (pkg->identity == identity) {
+        pkg_key const key{ *pkg };
+        if (key.matches(query)) {
           targets.push_back(pkg);
           found = true;
           break;
         }
       }
       if (!found) {
-        throw std::runtime_error("sync: identity '" + identity +
-                                 "' not found in manifest");
+        throw std::runtime_error("sync: query '" + query + "' not found in manifest");
       }
     }
   }
@@ -288,21 +291,7 @@ void cmd_sync::execute() {
   if (targets.empty()) { return; }
 
   engine eng{ *c, m.get() };
-
-  if (cfg_.install_all) {
-    auto result{ eng.run_full(targets) };
-
-    size_t failed{ 0 };
-    for (auto const &[key, outcome] : result) {
-      if (outcome.type == pkg_type::UNKNOWN) { ++failed; }
-    }
-
-    if (failed > 0) {
-      throw std::runtime_error("sync: " + std::to_string(failed) + " package(s) failed");
-    }
-  } else {
-    eng.resolve_graph(targets);
-  }
+  eng.resolve_graph(targets);
 
   auto const products{ eng.collect_all_products() };
 
@@ -318,8 +307,7 @@ void cmd_sync::execute() {
 
   if (deploy_enabled) {
     deploy_product_scripts(eng, bin_dir, products, cfg_.strict, platforms);
-  } else if (!cfg_.install_all) {
-    // Naked sync with deploy disabled: warn user
+  } else {
     tui::warn("sync was requested but deployment is disabled in %s",
               m->manifest_path.string().c_str());
     tui::info("Add '-- @envy deploy \"true\"' to enable product script deployment");

@@ -212,11 +212,11 @@ set(ENVY_BASE_SOURCES
     src/cli.cpp
     src/cmd.cpp
     src/cmds/cmd_package.cpp
-    src/cmds/cmd_common.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
     src/cmds/cmd_hash.cpp
     src/cmds/cmd_init.cpp
+    src/cmds/cmd_install.cpp
     src/cmds/cmd_lua.cpp
     src/cmds/cmd_product.cpp
     src/cmds/cmd_run.cpp

@@ -88,17 +88,15 @@ class TestBundleFetchLocal(unittest.TestCase):
         return manifest_path
 
     def run_sync(self, manifest: Path, install_all: bool = True):
-        """Run 'envy sync' command and return result."""
+        """Run 'envy sync' or 'envy install' command and return result."""
         cmd = [
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
+            "install" if install_all else "sync",
             "--manifest",
             str(manifest),
         ]
-        if install_all:
-            cmd.append("--install-all")
         return test_config.run(
             cmd,
             cwd=self.project_root,
@@ -249,8 +247,7 @@ end
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]
@@ -397,8 +394,7 @@ class TestBundleAliasResolution(unittest.TestCase):
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]
@@ -514,8 +510,7 @@ end
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]

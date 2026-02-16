@@ -7,7 +7,6 @@ verifying spec SHA256, and checking basic structure requirements.
 import hashlib
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -661,8 +660,7 @@ PACKAGES = {
                     str(self.envy),
                     f"--cache-root={self.cache_root}",
                     *self.trace_flag,
-                    "sync",
-                    "--install-all",
+                    "install",
                     "--manifest",
                     manifest_path,
                 ],

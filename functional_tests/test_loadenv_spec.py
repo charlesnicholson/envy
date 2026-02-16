@@ -96,12 +96,10 @@ end
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
+            "install" if install_all else "sync",
             "--manifest",
             str(manifest),
         ]
-        if install_all:
-            cmd.append("--install-all")
         return test_config.run(
             cmd,
             cwd=self.project_root,
@@ -320,12 +318,10 @@ class TestRequireInBundle(unittest.TestCase):
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
+            "install" if install_all else "sync",
             "--manifest",
             str(manifest),
         ]
-        if install_all:
-            cmd.append("--install-all")
         return test_config.run(
             cmd,
             cwd=self.project_root,

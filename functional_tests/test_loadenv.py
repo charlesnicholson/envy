@@ -7,7 +7,6 @@ Tests loading Lua files into sandboxed environments at various scopes:
 """
 
 import shutil
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,12 +42,10 @@ class TestLoadenvBasic(unittest.TestCase):
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
+            "install" if install_all else "sync",
             "--manifest",
             str(manifest),
         ]
-        if install_all:
-            cmd.append("--install-all")
         return test_config.run(
             cmd,
             cwd=self.project_root,
@@ -325,8 +322,7 @@ class TestLoadenvErrors(unittest.TestCase):
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]

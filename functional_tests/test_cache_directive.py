@@ -94,7 +94,7 @@ end
         cmd = [str(self.envy)]
         if cache_root:
             cmd.extend(["--cache-root", cache_root])
-        cmd.extend(["sync", "--install-all", "--manifest", str(manifest)])
+        cmd.extend(["install", "--manifest", str(manifest)])
 
         env = env_override if env_override else test_config.get_test_env()
 

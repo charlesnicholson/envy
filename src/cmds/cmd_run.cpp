@@ -42,7 +42,7 @@ cmd_run::cmd_run(cmd_run::cfg cfg, std::optional<fs::path> const & /*cli_cache_r
 void cmd_run::execute() {
   if (cfg_.command.empty()) { throw std::runtime_error("run: no command specified"); }
 
-  auto const manifest_path{ manifest::find_manifest_path(std::nullopt) };
+  auto const manifest_path{ manifest::find_manifest_path(std::nullopt, false) };
   auto const content{ util_load_file(manifest_path) };
   std::string_view const sv{ reinterpret_cast<char const *>(content.data()),
                              content.size() };
