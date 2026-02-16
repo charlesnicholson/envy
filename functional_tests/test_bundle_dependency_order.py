@@ -101,12 +101,10 @@ end
             "--cache-root",
             str(self.cache_root),
             f"--trace=file:{self.trace_file}",
-            "sync",
+            "install" if install_all else "sync",
             "--manifest",
             str(manifest),
         ]
-        if install_all:
-            cmd.append("--install-all")
 
         return test_config.run(
             cmd,

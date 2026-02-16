@@ -177,12 +177,9 @@ class TestSyncCommand(unittest.TestCase):
         self,
         identities: Optional[List[str]] = None,
         manifest: Optional[Path] = None,
-        install_all: bool = False,
     ):
         """Run 'envy sync' command and return result."""
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
-        if install_all:
-            cmd.append("--install-all")
         if identities:
             cmd.extend(identities)
         if manifest:
@@ -196,8 +193,28 @@ class TestSyncCommand(unittest.TestCase):
         )
         return result
 
-    def test_sync_install_all_installs_packages(self):
-        """Sync --install-all installs entire manifest."""
+    def run_install(
+        self,
+        queries: Optional[List[str]] = None,
+        manifest: Optional[Path] = None,
+    ):
+        """Run 'envy install' command and return result."""
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "install"]
+        if queries:
+            cmd.extend(queries)
+        if manifest:
+            cmd.extend(["--manifest", str(manifest)])
+
+        result = test_config.run(
+            cmd,
+            cwd=self.project_root,
+            capture_output=True,
+            text=True,
+        )
+        return result
+
+    def test_install_installs_packages(self):
+        """Install installs entire manifest."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
         build_dep_path = self.write_spec("build_dep", SPEC_BUILD_DEP)
 
@@ -208,7 +225,7 @@ PACKAGES = {{
 }}
 """)
 
-        result = self.run_sync(manifest=manifest, install_all=True)
+        result = self.run_install(manifest=manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -217,8 +234,8 @@ PACKAGES = {{
         self.assertTrue(build_dep_cache.exists())
         self.assertTrue(simple_cache.exists())
 
-    def test_sync_install_all_single_identity(self):
-        """Sync --install-all with single identity installs only that package."""
+    def test_install_single_query(self):
+        """Install with single query installs only that package."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
         build_dep_path = self.write_spec("build_dep", SPEC_BUILD_DEP)
 
@@ -229,9 +246,7 @@ PACKAGES = {{
 }}
 """)
 
-        result = self.run_sync(
-            identities=["local.simple@v1"], manifest=manifest, install_all=True
-        )
+        result = self.run_install(queries=["local.simple@v1"], manifest=manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -240,8 +255,8 @@ PACKAGES = {{
         self.assertTrue(simple_cache.exists())
         self.assertFalse(build_dep_cache.exists())
 
-    def test_sync_install_all_multiple_identities(self):
-        """Sync --install-all with multiple identities installs all specified."""
+    def test_install_multiple_queries(self):
+        """Install with multiple queries installs all specified."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
         build_dep_path = self.write_spec("build_dep", SPEC_BUILD_DEP)
 
@@ -252,10 +267,9 @@ PACKAGES = {{
 }}
 """)
 
-        result = self.run_sync(
-            identities=["local.simple@v1", "local.build_dependency@v1"],
+        result = self.run_install(
+            queries=["local.simple@v1", "local.build_dependency@v1"],
             manifest=manifest,
-            install_all=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -301,8 +315,8 @@ PACKAGES = {{
         simple_cache = self.cache_root / "packages" / "local.simple@v1"
         self.assertFalse(simple_cache.exists(), "Nothing should be installed on error")
 
-    def test_sync_install_all_second_run_is_noop(self):
-        """Second sync --install-all run is a no-op (cache hits)."""
+    def test_install_second_run_is_noop(self):
+        """Second install run is a no-op (cache hits)."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
 
         manifest = self.create_manifest(f"""
@@ -311,15 +325,14 @@ PACKAGES = {{
 }}
 """)
 
-        # First sync - cache miss
+        # First install - cache miss
         trace_file1 = self.cache_root / "trace1.jsonl"
         cmd1 = [
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
             f"--trace=file:{trace_file1}",
-            "sync",
-            "--install-all",
+            "install",
             "local.simple@v1",
             "--manifest",
             str(manifest),
@@ -333,15 +346,14 @@ PACKAGES = {{
         cache_misses1 = parser1.filter_by_event("cache_miss")
         self.assertGreater(len(cache_misses1), 0, "Expected cache misses on first run")
 
-        # Second sync - should be cache hits
+        # Second install - should be cache hits
         trace_file2 = self.cache_root / "trace2.jsonl"
         cmd2 = [
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
             f"--trace=file:{trace_file2}",
-            "sync",
-            "--install-all",
+            "install",
             "local.simple@v1",
             "--manifest",
             str(manifest),
@@ -372,8 +384,8 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertEqual(result.stdout, "", "Expected no stdout output from sync")
 
-    def test_sync_install_all_respects_cache_root(self):
-        """Sync --install-all respects --cache-root flag."""
+    def test_install_respects_cache_root(self):
+        """Install respects --cache-root flag."""
         custom_cache = Path(tempfile.mkdtemp(prefix="envy-sync-custom-cache-"))
         try:
             simple_path = self.write_spec("simple", SPEC_SIMPLE)
@@ -388,8 +400,7 @@ PACKAGES = {{
                 str(self.envy),
                 "--cache-root",
                 str(custom_cache),
-                "sync",
-                "--install-all",
+                "install",
                 "--manifest",
                 str(manifest),
             ]
@@ -412,8 +423,8 @@ PACKAGES = {{
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-    def test_sync_install_all_transitive_dependencies(self):
-        """Sync --install-all installs transitive dependencies."""
+    def test_install_transitive_dependencies(self):
+        """Install installs transitive dependencies."""
         self.write_spec("diamond_d", SPEC_DIAMOND_D)
         diamond_c_path = self.write_spec("diamond_c", SPEC_DIAMOND_C)
 
@@ -423,9 +434,7 @@ PACKAGES = {{
 }}
 """)
 
-        result = self.run_sync(
-            identities=["local.diamond_c@v1"], manifest=manifest, install_all=True
-        )
+        result = self.run_install(queries=["local.diamond_c@v1"], manifest=manifest)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -635,8 +644,8 @@ PACKAGES = {{
             mtime_after, jan_1_2000, "Bootstrap should not be rewritten when unchanged"
         )
 
-    def test_sync_install_all_does_full_install(self):
-        """Sync --install-all installs packages then deploys scripts."""
+    def test_install_then_sync_deploys_scripts(self):
+        """Install installs packages, then sync deploys scripts."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
         manifest = self.create_manifest(f"""
@@ -645,23 +654,26 @@ PACKAGES = {{
 }}
 """)
 
+        # Install packages first
         cmd = [
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]
         result = test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
-
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         pkg_path = self.cache_root / "packages" / "local.product_provider@v1"
         self.assertTrue(pkg_path.exists())
+
+        # Then sync to deploy scripts
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         bin_dir = self.test_dir / "envy-bin"
         script_name = "tool.bat" if sys.platform == "win32" else "tool"
@@ -1103,10 +1115,15 @@ class TestSyncDeployDirective(unittest.TestCase):
         manifest_path.write_text(header + content, encoding="utf-8")
         return manifest_path
 
-    def run_sync(self, manifest: Path, install_all: bool = False):
+    def run_sync(self, manifest: Path):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
-        if install_all:
-            cmd.append("--install-all")
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def run_install(self, manifest: Path):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "install"]
         cmd.extend(["--manifest", str(manifest)])
         return test_config.run(
             cmd, cwd=self.project_root, capture_output=True, text=True
@@ -1170,8 +1187,8 @@ PACKAGES = {{
         self.assertIn("deployment is disabled", result.stderr)
         self.assertIn("@envy deploy", result.stderr)
 
-    def test_sync_install_all_no_deploy_warning(self):
-        """Sync --install-all does not warn about deploy directive."""
+    def test_install_no_deploy_warning(self):
+        """Install does not warn about deploy directive."""
         simple_path = self.write_spec("simple", SPEC_SIMPLE)
 
         manifest = self.create_manifest(f"""
@@ -1180,7 +1197,7 @@ PACKAGES = {{
 }}
 """)  # No deploy directive
 
-        result = self.run_sync(manifest=manifest, install_all=True)
+        result = self.run_install(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertNotIn("deployment is disabled", result.stderr)
 

@@ -35,11 +35,15 @@ struct manifest : unmovable {
   manifest() = default;
 
   // Find manifest path: use provided path if given, otherwise discover from current
-  // directory. Returns absolute path or throws if not found
+  // directory. When nearest=true, return the first envy.lua found (subproject mode).
+  // Returns absolute path or throws if not found
   static std::filesystem::path find_manifest_path(
-      std::optional<std::filesystem::path> const &explicit_path);
+      std::optional<std::filesystem::path> const &explicit_path,
+      bool nearest);
 
-  static std::optional<std::filesystem::path> discover();
+  // Discover manifest by walking up from CWD. When nearest=true, return the first
+  // envy.lua found immediately instead of walking to the root manifest.
+  static std::optional<std::filesystem::path> discover(bool nearest);
 
   static std::unique_ptr<manifest> load(std::filesystem::path const &manifest_path);
   static std::unique_ptr<manifest> load(std::vector<unsigned char> const &content,

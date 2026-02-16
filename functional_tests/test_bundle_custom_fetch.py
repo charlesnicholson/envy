@@ -82,9 +82,9 @@ PACKAGES = {{
             with open(manifest_path, "w") as f:
                 f.write(manifest)
 
-            # Run sync
+            # Run install
             result = self.run_envy(
-                ["sync", "--install-all", "--manifest", manifest_path], tmpdir
+                ["install", "--manifest", manifest_path], tmpdir
             )
 
             # Should succeed - bundle custom fetch creates the bundle, then spec resolves
@@ -175,9 +175,9 @@ PACKAGES = {{
             with open(manifest_path, "w") as f:
                 f.write(manifest)
 
-            # Run sync
+            # Run install
             result = self.run_envy(
-                ["sync", "--install-all", "--manifest", manifest_path], tmpdir
+                ["install", "--manifest", manifest_path], tmpdir
             )
 
             # Should succeed - dependency installs first, then custom fetch runs

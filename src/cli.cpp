@@ -53,6 +53,7 @@ cli_args cli_parse(int argc, char **argv) {
 
   register_cmds.operator()<cmd_version,
                            cmd_init,
+                           cmd_install,
                            cmd_package,
                            cmd_product,
                            cmd_shell,

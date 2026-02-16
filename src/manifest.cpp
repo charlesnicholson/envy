@@ -249,7 +249,7 @@ envy_meta parse_envy_meta(std::string_view content) {
   return result;
 }
 
-std::optional<std::filesystem::path> manifest::discover() {
+std::optional<std::filesystem::path> manifest::discover(bool nearest) {
   namespace fs = std::filesystem;
 
   std::vector<fs::path> candidates;  // non-root manifests encountered during search
@@ -258,6 +258,9 @@ std::optional<std::filesystem::path> manifest::discover() {
   for (;;) {
     auto const manifest_path{ cur / "envy.lua" };
     if (fs::exists(manifest_path)) {
+      // In nearest (subproject) mode, return the first envy.lua found
+      if (nearest) { return manifest_path; }
+
       // Parse meta to check root directive
       auto content{ util_load_file(manifest_path) };
       auto meta{ parse_envy_meta(
@@ -290,7 +293,8 @@ std::optional<std::filesystem::path> manifest::discover() {
 }
 
 std::filesystem::path manifest::find_manifest_path(
-    std::optional<std::filesystem::path> const &explicit_path) {
+    std::optional<std::filesystem::path> const &explicit_path,
+    bool nearest) {
   if (explicit_path) {
     auto const path{ std::filesystem::absolute(*explicit_path) };
     if (!std::filesystem::exists(path)) {
@@ -298,7 +302,7 @@ std::filesystem::path manifest::find_manifest_path(
     }
     return path;
   } else {
-    if (auto const discovered{ discover() }) { return *discovered; }
+    if (auto const discovered{ discover(nearest) }) { return *discovered; }
     throw std::runtime_error("manifest not found (discovery failed)");
   }
 }

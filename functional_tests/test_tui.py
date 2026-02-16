@@ -87,13 +87,12 @@ class TestTUIRendering(unittest.TestCase):
         return manifest_path
 
     def run_sync(self, manifest: Path, env: dict | None = None):
-        """Run 'envy sync' and return result."""
+        """Run 'envy install' and return result."""
         cmd = [
             str(self.envy),
             "--cache-root",
             str(self.cache_root),
-            "sync",
-            "--install-all",
+            "install",
             "--manifest",
             str(manifest),
         ]

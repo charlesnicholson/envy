@@ -2,7 +2,6 @@
 
 #include "blake3_util.h"
 #include "cache.h"
-#include "cmd_common.h"
 #include "engine.h"
 #include "manifest.h"
 #include "pkg.h"
@@ -109,7 +108,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 }  // namespace
 
 void cmd_product::execute() {
-  auto const m{ load_manifest_or_throw(cfg_.manifest_path) };
+  auto const m{ util_load_manifest(cfg_.manifest_path) };
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
   engine eng{ *c, m.get() };
 
