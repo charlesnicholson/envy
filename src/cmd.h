@@ -8,6 +8,10 @@
 
 namespace envy {
 
+struct subprocess_exit {  // for commands that proxy subprocess exit codes
+  int code;
+};
+
 class cmd : unmovable {
  public:
   using ptr_t = std::unique_ptr<cmd>;
@@ -15,7 +19,6 @@ class cmd : unmovable {
   virtual ~cmd() = default;
   virtual void execute() = 0;
 
-  // Create command with CLI cache root override (for commands that may need cache)
   template <typename config>
   static ptr_t create(config const &cfg,
                       std::optional<std::filesystem::path> const &cli_cache_root);
