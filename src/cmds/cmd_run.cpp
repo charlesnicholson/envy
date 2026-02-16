@@ -85,12 +85,17 @@ void cmd_run::execute() {
   argv.push_back(nullptr);
 
 #ifdef _WIN32
-  _execvp(argv[0], argv.data());
+  // _execvp on Windows doesn't reliably propagate exit codes; use _spawnvp
+  // which waits for the child and returns its exit code.
+  intptr_t const rc{ _spawnvp(_P_WAIT, argv[0], argv.data()) };
+  if (rc == -1) {
+    throw std::runtime_error(std::string{ "run: spawn failed: " } + std::strerror(errno));
+  }
+  std::exit(static_cast<int>(rc));
 #else
   execvp(argv[0], argv.data());
-#endif
-
   throw std::runtime_error(std::string{ "run: exec failed: " } + std::strerror(errno));
+#endif
 }
 
 }  // namespace envy
