@@ -2,6 +2,12 @@
 
 #include "doctest.h"
 
+#ifdef _WIN32
+#define EXT ".zip"
+#else
+#define EXT ".tar.gz"
+#endif
+
 // --- reexec_should decision logic ---
 
 TEST_CASE("reexec_should: no @envy version returns PROCEED") {
@@ -110,7 +116,7 @@ TEST_CASE("reexec_download_url: default mirror darwin arm64") {
       "arm64") };
   CHECK(url ==
         "https://github.com/charlesnicholson/envy/releases/download"
-        "/v1.2.3/envy-darwin-arm64.tar.gz");
+        "/v1.2.3/envy-darwin-arm64" EXT);
 }
 
 TEST_CASE("reexec_download_url: linux x86_64") {
@@ -121,7 +127,7 @@ TEST_CASE("reexec_download_url: linux x86_64") {
       "x86_64") };
   CHECK(url ==
         "https://github.com/charlesnicholson/envy/releases/download"
-        "/v2.0.0/envy-linux-x86_64.tar.gz");
+        "/v2.0.0/envy-linux-x86_64" EXT);
 }
 
 TEST_CASE("reexec_download_url: custom mirror") {
@@ -129,21 +135,21 @@ TEST_CASE("reexec_download_url: custom mirror") {
                                             "2.0.0",
                                             "linux",
                                             "x86_64") };
-  CHECK(url == "https://my-mirror.example.com/envy/v2.0.0/envy-linux-x86_64.tar.gz");
+  CHECK(url == "https://my-mirror.example.com/envy/v2.0.0/envy-linux-x86_64" EXT);
 }
 
 TEST_CASE("reexec_download_url: file mirror") {
   auto const url{
     envy::reexec_download_url("file:///tmp/releases", "1.0.0", "darwin", "arm64")
   };
-  CHECK(url == "file:///tmp/releases/v1.0.0/envy-darwin-arm64.tar.gz");
+  CHECK(url == "file:///tmp/releases/v1.0.0/envy-darwin-arm64" EXT);
 }
 
 TEST_CASE("reexec_download_url: s3 mirror") {
   auto const url{
     envy::reexec_download_url("s3://my-bucket/envy-releases", "3.1.0", "linux", "arm64")
   };
-  CHECK(url == "s3://my-bucket/envy-releases/v3.1.0/envy-linux-arm64.tar.gz");
+  CHECK(url == "s3://my-bucket/envy-releases/v3.1.0/envy-linux-arm64" EXT);
 }
 
 TEST_CASE("reexec_download_url: trailing slash on mirror produces double slash") {
@@ -151,5 +157,5 @@ TEST_CASE("reexec_download_url: trailing slash on mirror produces double slash")
   auto const url{
     envy::reexec_download_url("https://mirror.example.com/", "1.0.0", "darwin", "arm64")
   };
-  CHECK(url == "https://mirror.example.com//v1.0.0/envy-darwin-arm64.tar.gz");
+  CHECK(url == "https://mirror.example.com//v1.0.0/envy-darwin-arm64" EXT);
 }
