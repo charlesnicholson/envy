@@ -33,8 +33,8 @@ _OS_NAME = (
     else "linux"
 )
 _ARCH = plat.machine().lower()
-if _ARCH == "aarch64":
-    _ARCH = "arm64"
+if _ARCH == "amd64":
+    _ARCH = "x86_64"
 _EXT = ".zip" if sys.platform == "win32" else ".tar.gz"
 _BINARY_NAME = "envy.exe" if sys.platform == "win32" else "envy"
 
@@ -476,9 +476,7 @@ class TestReexecAcrossCommands(_ReexecTestBase):
         """
         self._setup_reexec_project("1.2.3")
         env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
-        result = self._run_envy(
-            ["package", "nonexistent"], cwd=self._project, env=env
-        )
+        result = self._run_envy(["package", "nonexistent"], cwd=self._project, env=env)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("no package matching", result.stderr)
 

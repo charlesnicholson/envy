@@ -25,6 +25,8 @@ reexec_decision reexec_should(std::string_view self_version,
                               bool reexec_env_set,
                               bool no_reexec_env_set);
 
+bool reexec_is_valid_version(std::string_view version);
+
 std::string reexec_download_url(std::string_view mirror_base,
                                 std::string_view version,
                                 std::string_view os,

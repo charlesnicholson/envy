@@ -71,7 +71,9 @@ void env_var_set(char const *name, char const *value) {
 
 void env_var_unset(char const *name) {
   if (name == nullptr) { throw std::invalid_argument("env_var_unset: null name"); }
-  ::_putenv_s(name, "");
+  if (::_putenv_s(name, "") != 0) {
+    throw std::runtime_error(std::string("env_var_unset: failed to unset ") + name);
+  }
 }
 
 file_lock::file_lock(std::filesystem::path const &path) {

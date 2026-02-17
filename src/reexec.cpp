@@ -7,6 +7,7 @@
 #include "tui.h"
 #include "uri.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#include "cmd.h"
 #include <process.h>
 #else
 #include <unistd.h>
@@ -166,6 +168,16 @@ reexec_decision reexec_should(std::string_view self_version,
   return reexec_decision::REEXEC;
 }
 
+bool reexec_is_valid_version(std::string_view version) {
+  if (version.empty()) { return false; }
+  for (char c : version) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' && c != '_') {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string reexec_download_url(std::string_view mirror_base,
                                 std::string_view version,
                                 std::string_view os,
@@ -190,6 +202,10 @@ void reexec_if_needed(envy_meta const &meta,
   }
 
   auto const &version{ *meta.version };
+
+  if (!reexec_is_valid_version(version)) {
+    throw std::runtime_error("reexec: invalid version string: " + version);
+  }
 
   // Fast path: check if the requested version is already in cache
   auto const cache_root{ resolve_cache_root(cli_cache_root, meta.cache) };
@@ -221,12 +237,13 @@ void reexec_if_needed(envy_meta const &meta,
   auto const archive_path{ tmp_dir / archive_name };
 
   auto const results{ fetch({ make_fetch_request(url, archive_path) }) };
-  if (results.empty() || std::holds_alternative<std::string>(results[0])) {
-    auto const &err{ std::holds_alternative<std::string>(results[0])
-                         ? std::get<std::string>(results[0])
-                         : "unknown error" };
+  if (results.empty()) {
     throw std::runtime_error("reexec: failed to download envy " + version + " from " +
-                             url + ": " + err);
+                             url + ": unknown error");
+  }
+  if (std::holds_alternative<std::string>(results[0])) {
+    throw std::runtime_error("reexec: failed to download envy " + version + " from " +
+                             url + ": " + std::get<std::string>(results[0]));
   }
 
   extract(archive_path, tmp_dir);
