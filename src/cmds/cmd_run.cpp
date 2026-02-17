@@ -59,6 +59,10 @@ void cmd_run::execute() {
     if (!fs::exists(script_path)) {
       throw std::runtime_error("run: script not found: " + script_path.string());
     }
+    if (!fs::is_regular_file(script_path)) {
+      throw std::runtime_error("run: script is not a regular file: " +
+                               script_path.string());
+    }
     start_dir = script_path.parent_path();
     // Strip sentinel only; keep script path and everything else
     exec_command.reserve(cfg_.command.size() - 1);
