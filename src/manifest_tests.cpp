@@ -19,17 +19,6 @@ fs::path test_data_root() {
   return fs::absolute(root);
 }
 
-// Helper to change directory for a test scope
-struct scoped_chdir {
-  fs::path original;
-
-  explicit scoped_chdir(fs::path const &target) : original(fs::current_path()) {
-    fs::current_path(target);
-  }
-
-  ~scoped_chdir() { fs::current_path(original); }
-};
-
 }  // namespace
 
 TEST_CASE("manifest::discover finds envy.lua in current directory") {
@@ -37,8 +26,7 @@ TEST_CASE("manifest::discover finds envy.lua in current directory") {
   auto repo_root{ test_root / "repo" };
   REQUIRE(fs::exists(repo_root / "envy.lua"));
 
-  scoped_chdir cd{ repo_root };
-  auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, repo_root) };
 
   REQUIRE(result.has_value());
   CHECK(result->filename() == "envy.lua");
@@ -50,8 +38,7 @@ TEST_CASE("manifest::discover searches upward from subdirectory") {
   auto nested{ test_root / "repo" / "sibling" };
   REQUIRE(fs::exists(nested));
 
-  scoped_chdir cd{ nested };
-  auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, nested) };
 
   REQUIRE(result.has_value());
   CHECK(result->filename() == "envy.lua");
@@ -74,8 +61,7 @@ TEST_CASE("manifest::discover traverses through submodule (.git file)") {
   REQUIRE(fs::exists(git_file));
   REQUIRE(fs::is_regular_file(git_file));
 
-  scoped_chdir cd{ submodule_nested };
-  auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, submodule_nested) };
 
   REQUIRE(result.has_value());
   CHECK(result->filename() == "envy.lua");
@@ -89,14 +75,11 @@ TEST_CASE("manifest::discover stops at .git directory boundary") {
   auto temp_root{ fs::temp_directory_path() / "envy-test-git-boundary" };
   fs::create_directories(temp_root / "test_repo" / ".git");
   fs::create_directories(temp_root / "test_repo" / "subdir");
-  std::optional<std::optional<fs::path>> result_opt;  // wrapper to capture inside scope
-  {
-    scoped_chdir cd{ temp_root / "test_repo" / "subdir" };
-    auto result{ envy::manifest::discover(false) };
-    // Should stop at .git directory, not find anything
-    CHECK_FALSE(result.has_value());
-    result_opt = result;  // ensure scope ends (chdir restored) before removal
-  }
+
+  auto result{ envy::manifest::discover(false, temp_root / "test_repo" / "subdir") };
+  // Should stop at .git directory, not find anything
+  CHECK_FALSE(result.has_value());
+
   fs::remove_all(temp_root);
 }
 
@@ -105,8 +88,7 @@ TEST_CASE("manifest::discover finds envy.lua in non-git directory") {
   auto non_git{ test_root / "non_git_dir" };
   REQUIRE(fs::exists(non_git / "envy.lua"));
 
-  scoped_chdir cd{ non_git };
-  auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, non_git) };
 
   REQUIRE(result.has_value());
   CHECK(result->filename() == "envy.lua");
@@ -118,8 +100,7 @@ TEST_CASE("manifest::discover searches upward in non-git directory") {
   auto deeply_nested{ test_root / "non_git_dir" / "deeply" / "nested" / "path" };
   REQUIRE(fs::exists(deeply_nested));
 
-  scoped_chdir cd{ deeply_nested };
-  auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, deeply_nested) };
 
   REQUIRE(result.has_value());
   CHECK(result->filename() == "envy.lua");
@@ -130,13 +111,10 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
   // Use a system temp directory that's guaranteed to not have envy.lua
   auto temp_root{ fs::temp_directory_path() / "envy-test-no-manifest" };
   fs::create_directories(temp_root);
-  std::optional<std::optional<fs::path>> result_opt;
-  {
-    scoped_chdir cd{ temp_root };
-    auto result{ envy::manifest::discover(false) };
-    CHECK_FALSE(result.has_value());
-    result_opt = result;
-  }
+
+  auto result{ envy::manifest::discover(false, temp_root) };
+  CHECK_FALSE(result.has_value());
+
   fs::remove_all(temp_root);
 }
 
@@ -890,14 +868,11 @@ TEST_CASE("manifest::discover with root=false continues search upward") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should find parent (root=true) instead of child (root=false)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == parent_dir);
-  }
+  // Should find parent (root=true) instead of child (root=false)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -919,14 +894,11 @@ TEST_CASE("manifest::discover with root=true stops immediately") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"true\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should stop at child (root=true)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == child_dir);
-  }
+  // Should stop at child (root=true)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -954,14 +926,11 @@ TEST_CASE("manifest::discover with all root=false uses closest to filesystem roo
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should use grandparent (closest to filesystem root among non-roots)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == grandparent_dir);
-  }
+  // Should use grandparent (closest to filesystem root among non-roots)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == grandparent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -988,14 +957,11 @@ TEST_CASE("manifest::discover F-T-F uses middle (root=true) manifest") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should stop at parent (root=true)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == parent_dir);
-  }
+  // Should stop at parent (root=true)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1017,14 +983,11 @@ TEST_CASE("manifest::discover F-F with no grandparent uses parent") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should use parent (closest to root among non-roots, no grandparent manifest exists)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == parent_dir);
-  }
+  // Should use parent (closest to root among non-roots, no grandparent manifest exists)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1050,14 +1013,11 @@ TEST_CASE("manifest::discover F with no parent skips to grandparent") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should use grandparent (closest to root, skipping parent which has no manifest)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == grandparent_dir);
-  }
+  // Should use grandparent (closest to root, skipping parent which has no manifest)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == grandparent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1074,14 +1034,11 @@ TEST_CASE("manifest::discover with only child manifest (root=false) uses child")
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(false) };
+  auto result{ envy::manifest::discover(false, child_dir) };
 
-    // Should use child even though root=false (only manifest in tree)
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == child_dir);
-  }
+  // Should use child even though root=false (only manifest in tree)
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1106,18 +1063,15 @@ TEST_CASE("manifest::discover nearest returns first envy.lua found") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    // Normal discover walks up to parent (root=true)
-    auto normal_result{ envy::manifest::discover(false) };
-    REQUIRE(normal_result.has_value());
-    CHECK(normal_result->parent_path() == parent_dir);
+  // Normal discover walks up to parent (root=true)
+  auto normal_result{ envy::manifest::discover(false, child_dir) };
+  REQUIRE(normal_result.has_value());
+  CHECK(normal_result->parent_path() == parent_dir);
 
-    // Nearest discover returns child immediately
-    auto nearest_result{ envy::manifest::discover(true) };
-    REQUIRE(nearest_result.has_value());
-    CHECK(nearest_result->parent_path() == child_dir);
-  }
+  // Nearest discover returns child immediately
+  auto nearest_result{ envy::manifest::discover(true, child_dir) };
+  REQUIRE(nearest_result.has_value());
+  CHECK(nearest_result->parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1139,12 +1093,9 @@ TEST_CASE("manifest::discover nearest ignores root directive") {
   child_manifest << "-- @envy bin \"tools\"\n-- @envy root \"true\"\nPACKAGES = {}\n";
   child_manifest.close();
 
-  {
-    scoped_chdir cd{ child_dir };
-    auto result{ envy::manifest::discover(true) };
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == child_dir);
-  }
+  auto result{ envy::manifest::discover(true, child_dir) };
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1161,12 +1112,9 @@ TEST_CASE("manifest::discover nearest from subdirectory without manifest") {
   parent_manifest << "-- @envy bin \"tools\"\n-- @envy root \"false\"\nPACKAGES = {}\n";
   parent_manifest.close();
 
-  {
-    scoped_chdir cd{ sub_dir };
-    auto result{ envy::manifest::discover(true) };
-    REQUIRE(result.has_value());
-    CHECK(result->parent_path() == parent_dir);
-  }
+  auto result{ envy::manifest::discover(true, sub_dir) };
+  REQUIRE(result.has_value());
+  CHECK(result->parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }

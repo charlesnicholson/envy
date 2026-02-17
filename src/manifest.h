@@ -41,9 +41,16 @@ struct manifest : unmovable {
       std::optional<std::filesystem::path> const &explicit_path,
       bool nearest);
 
-  // Discover manifest by walking up from CWD. When nearest=true, return the first
+  // Discover manifest by walking up from start_dir. When nearest=true, return the first
   // envy.lua found immediately instead of walking to the root manifest.
-  static std::optional<std::filesystem::path> discover(bool nearest);
+  static std::optional<std::filesystem::path> discover(
+      bool nearest,
+      std::filesystem::path const &start_dir);
+
+  // Discover + load in one step. Uses explicit_path if given, otherwise discovers from CWD.
+  static std::unique_ptr<manifest> find_and_load(
+      std::optional<std::filesystem::path> const &explicit_path,
+      bool nearest = false);
 
   static std::unique_ptr<manifest> load(std::filesystem::path const &manifest_path);
   static std::unique_ptr<manifest> load(std::vector<unsigned char> const &content,

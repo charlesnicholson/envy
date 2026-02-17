@@ -249,11 +249,13 @@ envy_meta parse_envy_meta(std::string_view content) {
   return result;
 }
 
-std::optional<std::filesystem::path> manifest::discover(bool nearest) {
+std::optional<std::filesystem::path> manifest::discover(
+    bool nearest,
+    std::filesystem::path const &start_dir) {
   namespace fs = std::filesystem;
 
   std::vector<fs::path> candidates;  // non-root manifests encountered during search
-  auto cur{ fs::current_path() };
+  auto cur{ start_dir };
 
   for (;;) {
     auto const manifest_path{ cur / "envy.lua" };
@@ -302,9 +304,17 @@ std::filesystem::path manifest::find_manifest_path(
     }
     return path;
   } else {
-    if (auto const discovered{ discover(nearest) }) { return *discovered; }
+    if (auto const discovered{ discover(nearest, std::filesystem::current_path()) }) {
+      return *discovered;
+    }
     throw std::runtime_error("manifest not found (discovery failed)");
   }
+}
+
+std::unique_ptr<manifest> manifest::find_and_load(
+    std::optional<std::filesystem::path> const &explicit_path,
+    bool nearest) {
+  return load(find_manifest_path(explicit_path, nearest));
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {

@@ -6,6 +6,7 @@
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -42,7 +43,53 @@ cmd_run::cmd_run(cmd_run::cfg cfg, std::optional<fs::path> const & /*cli_cache_r
 void cmd_run::execute() {
   if (cfg_.command.empty()) { throw std::runtime_error("run: no command specified"); }
 
-  auto const manifest_path{ manifest::find_manifest_path(std::nullopt, false) };
+  // Determine start_dir for manifest discovery and build the exec command.
+  // If `--` is present, the next arg is the script path used to anchor discovery.
+  fs::path start_dir;
+  std::vector<std::string> exec_command;
+
+  auto const sentinel{ std::find(cfg_.command.begin(), cfg_.command.end(), "--") };
+  if (sentinel != cfg_.command.end()) {
+    auto const sentinel_pos{ static_cast<size_t>(
+        std::distance(cfg_.command.begin(), sentinel)) };
+    if (sentinel_pos + 1 >= cfg_.command.size()) {
+      throw std::runtime_error("run: '--' must be followed by a script path");
+    }
+    auto const script_path{ fs::absolute(cfg_.command[sentinel_pos + 1]) };
+    if (!fs::exists(script_path)) {
+      throw std::runtime_error("run: script not found: " + script_path.string());
+    }
+    if (!fs::is_regular_file(script_path)) {
+      throw std::runtime_error("run: script is not a regular file: " +
+                               script_path.string());
+    }
+    start_dir = script_path.parent_path();
+    // Strip sentinel only; keep script path and everything else
+    exec_command.reserve(cfg_.command.size() - 1);
+    for (size_t i{ 0 }; i < cfg_.command.size(); ++i) {
+      if (i != sentinel_pos) { exec_command.push_back(std::move(cfg_.command[i])); }
+    }
+  } else if (fs::path const first_arg{ fs::absolute(cfg_.command[0]) };
+             fs::exists(first_arg) && fs::is_regular_file(first_arg)) {
+    // No sentinel; command[0] is an existing file — use its directory
+    start_dir = first_arg.parent_path();
+    exec_command = std::move(cfg_.command);
+  } else {
+    // No sentinel, command[0] not a file — use CWD
+    start_dir = fs::current_path();
+    exec_command = std::move(cfg_.command);
+  }
+
+  auto const discovered{ manifest::discover(false, start_dir) };
+  if (!discovered) {
+    std::string msg{ "run: manifest not found (discovery from " + start_dir.string() +
+                     ")" };
+    if (exec_command.size() > 1) {
+      msg += "\nhint: use '--' to specify script location for manifest discovery";
+    }
+    throw std::runtime_error(msg);
+  }
+  auto const &manifest_path{ *discovered };
   auto const content{ util_load_file(manifest_path) };
   std::string_view const sv{ reinterpret_cast<char const *>(content.data()),
                              content.size() };
@@ -80,8 +127,8 @@ void cmd_run::execute() {
   platform::set_env_var("ENVY_PROJECT_ROOT", manifest_dir.c_str());
 
   std::vector<char *> argv;
-  argv.reserve(cfg_.command.size() + 1);
-  for (auto &arg : cfg_.command) { argv.push_back(arg.data()); }
+  argv.reserve(exec_command.size() + 1);
+  for (auto &arg : exec_command) { argv.push_back(arg.data()); }
   argv.push_back(nullptr);
 
 #ifdef _WIN32
