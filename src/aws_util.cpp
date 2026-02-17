@@ -61,7 +61,7 @@ s3_uri_parts parse_s3_uri(std::string_view uri) {
 
 void aws_init() {
   std::call_once(g_init_once, [] {
-    platform::set_env_var("AWS_SDK_LOAD_CONFIG", "1");
+    platform::env_var_set("AWS_SDK_LOAD_CONFIG", "1");
     configure_options(g_options);
     Aws::InitAPI(g_options);
     std::lock_guard<std::mutex> lock{ g_state_mutex };

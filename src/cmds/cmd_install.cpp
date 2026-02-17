@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_key.h"
+#include "reexec.h"
 
 #include "CLI11.hpp"
 
@@ -34,6 +35,8 @@ cmd_install::cmd_install(cfg cfg, std::optional<fs::path> const &cli_cache_root)
 void cmd_install::execute() {
   auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path, false)) };
   if (!m) { throw std::runtime_error("install: could not load manifest"); }
+
+  reexec_if_needed(m->meta, cli_cache_root_);
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 

@@ -26,6 +26,7 @@ class cmd_run : public cmd {
 
  private:
   cfg cfg_;
+  std::optional<std::filesystem::path> cli_cache_root_;
 };
 
 }  // namespace envy

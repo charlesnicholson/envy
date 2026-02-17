@@ -6,6 +6,7 @@
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
+#include "reexec.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -34,6 +35,8 @@ cmd_package::cmd_package(cfg cfg,
 
 void cmd_package::execute() {
   auto const m{ manifest::find_and_load(cfg_.manifest_path) };
+
+  reexec_if_needed(m->meta, cli_cache_root_);
 
   auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
 

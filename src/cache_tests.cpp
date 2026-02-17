@@ -576,3 +576,4 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy is idempotent") {
 
   CHECK(dir1 == dir2);
 }
+

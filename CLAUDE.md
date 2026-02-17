@@ -30,7 +30,7 @@ Naming: functions/types snake_case, constants kPascalCase, enum values SCREAMING
 Initialization & includes: brace-init new vars; use `=` only for reassignment; `<>` for STL/OS headers, `""` for envy/third-party; order local → third-party → STL with blank lines.
 Structure: favor value types over heap; keep headers self-contained; declare inline members in-class, define out-of-line right below; avoid ad-hoc FetchContent.
 Atomics: default to `memory_order_seq_cst`; only tighten semantics when correctness demands it.
-Formatting: prefer stdio-style (`snprintf`, `fprintf`) over iostream/stringstream unless streaming APIs are mandatory.
+Formatting: prefer stdio-style (`snprintf`, `fprintf`) over iostream for output; `std::ostringstream` is fine for building strings.
 Control flow: consolidate cleanup paths—extract once, clean once. Ternaries over branched returns when cleanup is identical. Prefer `switch` on variant index over cascading type checks; guard indices with `static_assert`. Golf judiciously: compress when clarity improves, expand when debugging suffers.
 Encapsulation: **NEVER use the `friend` keyword without explicit user permission.** Design proper public interfaces instead—move implementation into methods, use accessor patterns, or restructure classes to avoid circumventing access control.
 

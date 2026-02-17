@@ -237,6 +237,7 @@ set(ENVY_BASE_SOURCES
     src/lua_ctx/lua_envy_run.cpp
     src/lua_ctx/lua_phase_context.cpp
     src/product_util.cpp
+    src/reexec.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
@@ -446,6 +447,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_envy_tests.cpp
     src/platform_tests.cpp
     src/product_util_tests.cpp
+    src/reexec_tests.cpp
     src/sha256_tests.cpp
     src/sol_util_tests.cpp
     src/shell_hooks_tests.cpp

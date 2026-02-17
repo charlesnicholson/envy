@@ -29,11 +29,7 @@
 #include <ws2tcpip.h>
 #endif
 
-namespace envy {
-
-enum class platform_id { POSIX, WINDOWS };
-
-}  // namespace envy
+namespace envy { enum class platform_id { POSIX, WINDOWS }; }  // namespace envy
 
 namespace envy::platform {
 
@@ -62,7 +58,8 @@ char const *get_default_cache_root_env_vars();
 std::filesystem::path get_exe_path();
 std::filesystem::path expand_path(std::string_view path);
 
-void set_env_var(char const *name, char const *value);
+void env_var_set(char const *name, char const *value);
+void env_var_unset(char const *name);
 
 // Remove directory recursively with retry logic for Windows file locking issues.
 // On Windows, antivirus/indexer may hold file handles briefly after creation.

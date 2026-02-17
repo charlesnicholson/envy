@@ -59,14 +59,19 @@ std::filesystem::path get_exe_path() {
   return std::filesystem::path{ buf.data() };
 }
 
-void set_env_var(char const *name, char const *value) {
+void env_var_set(char const *name, char const *value) {
   if (name == nullptr || value == nullptr) {
-    throw std::invalid_argument("set_env_var: null name or value");
+    throw std::invalid_argument("env_var_set: null name or value");
   }
 
   if (::_putenv_s(name, value) != 0) {
-    throw std::runtime_error(std::string("set_env_var: failed to set ") + name);
+    throw std::runtime_error(std::string("env_var_set: failed to set ") + name);
   }
+}
+
+void env_var_unset(char const *name) {
+  if (name == nullptr) { throw std::invalid_argument("env_var_unset: null name"); }
+  ::_putenv_s(name, "");
 }
 
 file_lock::file_lock(std::filesystem::path const &path) {

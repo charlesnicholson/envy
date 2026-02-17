@@ -8,6 +8,7 @@
 #include "pkg_cfg.h"
 #include "pkg_key.h"
 #include "platform.h"
+#include "reexec.h"
 #include "tui.h"
 #include "util.h"
 
@@ -245,6 +246,8 @@ void cmd_sync::execute() {
   auto const m{ manifest::load(
       manifest::find_manifest_path(cfg_.manifest_path, cfg_.subproject)) };
   if (!m) { throw std::runtime_error("sync: could not load manifest"); }
+
+  reexec_if_needed(m->meta, cli_cache_root_);
 
   if (!m->meta.bin) {
     throw std::runtime_error(
