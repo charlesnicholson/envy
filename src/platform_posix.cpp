@@ -254,6 +254,8 @@ std::filesystem::path expand_path(std::string_view p) {
   throw std::runtime_error("path expansion failed: " + path_str);
 }
 
+int get_process_id() { return static_cast<int>(getpid()); }
+
 std::vector<std::string> get_environment() {
   std::vector<std::string> result;
   for (char **ep = environ; *ep; ++ep) { result.emplace_back(*ep); }

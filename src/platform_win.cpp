@@ -277,6 +277,8 @@ std::filesystem::path expand_path(std::string_view p) {
   return result;
 }
 
+int get_process_id() { return static_cast<int>(GetCurrentProcessId()); }
+
 std::vector<std::string> get_environment() {
   std::vector<std::string> result;
   if (char *block{ GetEnvironmentStringsA() }; block) {

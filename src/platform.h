@@ -77,6 +77,8 @@ std::string_view arch_name();
 // Read the current process environment as a list of "KEY=VALUE" strings.
 std::vector<std::string> get_environment();
 
+int get_process_id();
+
 // Execute a child process with explicit environment.
 int exec_process(std::filesystem::path const &binary,
                  char **argv,

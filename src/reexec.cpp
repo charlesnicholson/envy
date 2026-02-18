@@ -17,10 +17,6 @@
 #include <string>
 #include <vector>
 
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
 #ifndef ENVY_VERSION_STR
 #error "ENVY_VERSION_STR must be defined by the build system"
 #endif
@@ -61,12 +57,9 @@ void make_executable([[maybe_unused]] std::filesystem::path const &path) {
 
 void remove_quarantine([[maybe_unused]] std::filesystem::path const &path) {
 #ifdef __APPLE__
-  std::string cmd{ "xattr -d com.apple.quarantine " };
-  cmd += '\'';
-  cmd += path.string();
-  cmd += '\'';
-  cmd += " 2>/dev/null";
-  std::system(cmd.c_str());
+  std::ostringstream cmd;
+  cmd << "xattr -d com.apple.quarantine '" << path.string() << "' 2>/dev/null";
+  std::system(cmd.str().c_str());
 #endif
 }
 
@@ -188,13 +181,7 @@ void reexec_if_needed(envy_meta const &meta,
   };
   tui::info("reexec: downloading envy %s from %s", version.c_str(), url.c_str());
 
-  auto const pid{ static_cast<int>(
-#ifdef _WIN32
-      GetCurrentProcessId()
-#else
-      getpid()
-#endif
-          ) };
+  auto const pid{ platform::get_process_id() };
   auto const tmp_dir{ std::filesystem::temp_directory_path() /
                       ("envy-reexec-" + version + "-" + std::to_string(pid)) };
   std::filesystem::create_directories(tmp_dir);
