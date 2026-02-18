@@ -1,9 +1,9 @@
 #include "cmd_init.h"
 
 #include "bootstrap.h"
-#include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "platform.h"
+#include "self_deploy.h"
 #include "tui.h"
 #include "util.h"
 
@@ -217,7 +217,7 @@ cmd_init::cmd_init(cmd_init::cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_init::execute() {
-  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
   std::error_code ec;
 
   if (!fs::exists(cfg_.project_dir)) {

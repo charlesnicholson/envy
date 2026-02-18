@@ -63,7 +63,7 @@ class TestBashHook(unittest.TestCase):
         (project / "tools").mkdir(exist_ok=True)
         manifest = project / "envy.lua"
         manifest.write_text(
-            f'-- @envy bin "{bin_val}"\n-- @envy version "0.0.0"\nPACKAGES = {{}}\n'
+            f'-- @envy bin "{bin_val}"\nPACKAGES = {{}}\n'
         )
         return project
 
@@ -158,7 +158,7 @@ class TestBashHook(unittest.TestCase):
     def test_missing_bin_directive_no_path_change(self) -> None:
         project = self._temp_dir / "no-bin"
         project.mkdir(parents=True)
-        (project / "envy.lua").write_text('-- @envy version "0.0.0"\nPACKAGES = {}\n')
+        (project / "envy.lua").write_text('PACKAGES = {}\n')
         original_path = "/usr/bin:/bin"
         result = self._run_bash_hook_test(
             f'export PATH="{original_path}"\n'
@@ -193,7 +193,7 @@ class TestBashHook(unittest.TestCase):
         (child / "envy.lua").write_text(
             '-- @envy root "false"\n'
             '-- @envy bin "tools"\n'
-            '-- @envy version "0.0.0"\n'
+            ''
             "PACKAGES = {}\n"
         )
         result = self._run_bash_hook_test(
@@ -212,7 +212,7 @@ class TestBashHook(unittest.TestCase):
         project.mkdir(parents=True, exist_ok=True)
         (project / "my tools").mkdir(exist_ok=True)
         (project / "envy.lua").write_text(
-            '-- @envy bin "my tools"\n-- @envy version "0.0.0"\nPACKAGES = {}\n'
+            '-- @envy bin "my tools"\nPACKAGES = {}\n'
         )
         result = self._run_bash_hook_test(
             f'source "{self._hook_path}"\n'
@@ -416,7 +416,7 @@ class TestZshHook(unittest.TestCase):
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
         (project / "envy.lua").write_text(
-            '-- @envy bin "tools"\n-- @envy version "0.0.0"\nPACKAGES = {}\n'
+            '-- @envy bin "tools"\nPACKAGES = {}\n'
         )
         return project
 
@@ -702,7 +702,7 @@ class TestFishHook(unittest.TestCase):
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
         (project / "envy.lua").write_text(
-            '-- @envy bin "tools"\n-- @envy version "0.0.0"\nPACKAGES = {}\n'
+            '-- @envy bin "tools"\nPACKAGES = {}\n'
         )
         return project
 
@@ -907,7 +907,7 @@ class TestPowerShellHook(unittest.TestCase):
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
         (project / "envy.lua").write_text(
-            f'-- @envy bin "{bin_val}"\n-- @envy version "0.0.0"\nPACKAGES = {{}}\n'
+            f'-- @envy bin "{bin_val}"\nPACKAGES = {{}}\n'
         )
         return project
 
@@ -1003,7 +1003,7 @@ class TestPowerShellHook(unittest.TestCase):
     def test_missing_bin_directive_no_path_change(self) -> None:
         project = self._temp_dir / "ps-no-bin"
         project.mkdir(parents=True)
-        (project / "envy.lua").write_text('-- @envy version "0.0.0"\nPACKAGES = {}\n')
+        (project / "envy.lua").write_text('PACKAGES = {}\n')
         sep = os.pathsep
         result = self._run_pwsh_hook_test(
             f'$env:PATH = "/usr/bin{sep}/bin"\n'
@@ -1039,7 +1039,7 @@ class TestPowerShellHook(unittest.TestCase):
         (child / "envy.lua").write_text(
             '-- @envy root "false"\n'
             '-- @envy bin "tools"\n'
-            '-- @envy version "0.0.0"\n'
+            ''
             "PACKAGES = {}\n"
         )
         result = self._run_pwsh_hook_test(

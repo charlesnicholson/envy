@@ -1,7 +1,7 @@
 #include "cmd_cache_functional_test.h"
 
-#include "cache.h"
 #include "platform.h"
+#include "self_deploy.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -46,7 +46,7 @@ void cmd_cache_ensure_package::register_cli(CLI::App &parent,
 }
 
 void cmd_cache_ensure_spec::register_cli(CLI::App &parent,
-                                           std::function<void(cfg)> on_selected) {
+                                         std::function<void(cfg)> on_selected) {
   auto *sub{ parent.add_subcommand("ensure-spec", "Test spec cache entry") };
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("identity", cfg_ptr->identity, "Spec identity")->required();
@@ -118,7 +118,7 @@ cmd_cache_ensure_package::cmd_cache_ensure_package(
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_package::execute() {
-  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
 
   // Emit initial state so tests always have locked key even if we crash before output
   // later.
@@ -137,9 +137,7 @@ void cmd_cache_ensure_package::execute() {
   barrier.wait(cfg_.barrier_wait);
 
   // Ensure pkg
-  auto result{
-    c->ensure_pkg(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix)
-  };
+  auto result{ c->ensure_pkg(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix) };
 
   // Construct lock file path for reporting
   std::string entry_name{ cfg_.identity + "." + cfg_.platform + "-" + cfg_.arch +
@@ -205,7 +203,7 @@ cmd_cache_ensure_spec::cmd_cache_ensure_spec(
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_spec::execute() {
-  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
 
   tui::print_stdout("locked=false\nfast_path=false\n");
   // Set up barrier coordination

@@ -1,8 +1,6 @@
 #include "cache.h"
 
-#include "embedded_init_resources.h"
 #include "platform.h"
-#include "shell_hooks.h"
 #include "trace.h"
 #include "tui.h"
 
@@ -13,43 +11,9 @@
 #include <string_view>
 #include <system_error>
 
-#ifndef ENVY_VERSION_STR
-#error "ENVY_VERSION_STR must be defined by the build system"
-#endif
-
 using path = std::filesystem::path;
 
 namespace envy {
-
-namespace {
-
-bool copy_binary(path const &src, path const &dst) {
-  std::error_code ec;
-  std::filesystem::copy_file(src,
-                             dst,
-                             std::filesystem::copy_options::overwrite_existing,
-                             ec);
-  if (ec) {
-    tui::warn("cache: failed to copy binary: %s", ec.message().c_str());
-    return false;
-  }
-
-#ifndef _WIN32
-  std::filesystem::permissions(dst,
-                               std::filesystem::perms::owner_exec |
-                                   std::filesystem::perms::group_exec |
-                                   std::filesystem::perms::others_exec,
-                               std::filesystem::perm_options::add,
-                               ec);
-  if (ec) {
-    tui::warn("cache: failed to set executable permissions: %s", ec.message().c_str());
-  }
-#endif
-
-  return true;
-}
-
-}  // namespace
 
 path resolve_cache_root(std::optional<path> const &cli_override,
                         std::optional<std::string> const &manifest_cache) {
@@ -59,23 +23,6 @@ path resolve_cache_root(std::optional<path> const &cli_override,
   if (auto def{ platform::get_default_cache_root() }) { return *def; }
 
   throw std::runtime_error("cannot determine cache root");
-}
-
-std::unique_ptr<cache> cache::ensure(std::optional<path> const &cli_cache_root,
-                                     std::optional<std::string> const &manifest_cache) {
-  auto const root{ resolve_cache_root(cli_cache_root, manifest_cache) };
-  auto c{ std::make_unique<cache>(root) };
-
-  try {
-    std::string_view const types{ reinterpret_cast<char const *>(
-                                      embedded::kTypeDefinitions),
-                                  embedded::kTypeDefinitionsSize };
-    c->ensure_envy(ENVY_VERSION_STR, platform::get_exe_path(), types);
-  } catch (std::exception const &e) {
-    tui::warn("cache: self-deploy failed: %s", e.what());
-  }
-
-  return c;
 }
 
 struct cache_impl {
@@ -393,42 +340,30 @@ cache::ensure_result cache::ensure_spec(std::string_view identity) {
                       id);
 }
 
-cache::path cache::ensure_envy(std::string_view version,
-                               path const &exe_path,
-                               std::string_view type_definitions) {
+cache::envy_ensure_result cache::ensure_envy(std::string_view version) {
   path const envy_dir{ m->root_ / "envy" / std::string{ version } };
-#ifdef _WIN32
-  path const binary_path{ envy_dir / "envy.exe" };
-#else
-  path const binary_path{ envy_dir / "envy" };
-#endif
+  path const binary_path{ envy_dir / platform::exe_name("envy") };
   path const types_path{ envy_dir / "envy.lua" };
 
   if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
-    shell_hooks::ensure(m->root_);
-    return envy_dir;
+    return { envy_dir, binary_path, types_path, true, std::nullopt };
   }
 
   std::filesystem::create_directories(m->locks_dir());
   platform::file_lock lock{ m->locks_dir() /
                             ("envy." + std::string{ version } + ".lock") };
-  if (!lock) { return envy_dir; }
+  if (!lock) { return { envy_dir, binary_path, types_path, true, std::nullopt }; }
 
   // Re-check after lock (another process may have completed)
   if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
-    shell_hooks::ensure(m->root_);
-    return envy_dir;
+    return { envy_dir, binary_path, types_path, true, std::nullopt };
   }
 
   std::error_code ec;
   std::filesystem::create_directories(envy_dir, ec);
-  if (ec) { return envy_dir; }
+  if (ec) { return { envy_dir, binary_path, types_path, true, std::nullopt }; }
 
-  if (!copy_binary(exe_path, binary_path)) { return envy_dir; }
-  util_write_file(types_path, type_definitions);
-  shell_hooks::ensure(m->root_);
-
-  return envy_dir;
+  return { envy_dir, binary_path, types_path, false, std::move(lock) };
 }
 
 }  // namespace envy

@@ -118,4 +118,30 @@ TEST_CASE("platform::native is consistent with platform::os_name") {
   }
 }
 
+TEST_CASE("platform::exe_suffix returns platform-correct suffix") {
+#ifdef _WIN32
+  CHECK(platform::exe_suffix() == ".exe");
+#else
+  CHECK(platform::exe_suffix() == "");
+#endif
+}
+
+TEST_CASE("platform::exe_name appends suffix to base name") {
+  auto const name{ platform::exe_name("envy") };
+#ifdef _WIN32
+  CHECK(name == std::filesystem::path{ "envy.exe" });
+#else
+  CHECK(name == std::filesystem::path{ "envy" });
+#endif
+}
+
+TEST_CASE("platform::exe_name works with arbitrary base names") {
+  auto const name{ platform::exe_name("cmake") };
+#ifdef _WIN32
+  CHECK(name == std::filesystem::path{ "cmake.exe" });
+#else
+  CHECK(name == std::filesystem::path{ "cmake" });
+#endif
+}
+
 }  // namespace envy

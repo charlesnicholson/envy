@@ -92,6 +92,12 @@ set(ENVY_CLI11_VERSION "2.5.0")
 set(ENVY_CLI11_URL "https://github.com/CLIUtils/CLI11/releases/download/v${ENVY_CLI11_VERSION}/CLI11.hpp")
 set(ENVY_CLI11_SHA256 4bf0a9490aa7209176ccda70544f95413e594d2207cca33c9cd18ded189a63a6)
 
+set(ENVY_SEMVER_VERSION "1.0.0-rc")
+set(ENVY_SEMVER_URL "https://raw.githubusercontent.com/Neargye/semver/v${ENVY_SEMVER_VERSION}/include/semver.hpp")
+set(ENVY_SEMVER_SHA256 af2c0c53124dc7f52c58a7205e458ad3efbac2f61ce55addf9c8f94338a04182)
+set(ENVY_SEMVER_LICENSE_URL "https://raw.githubusercontent.com/Neargye/semver/v${ENVY_SEMVER_VERSION}/LICENSE")
+set(ENVY_SEMVER_LICENSE_SHA256 9cc0e3435da3c8bdff3bb984929759a6018b5f3eae666c9424be90fe27cffa5a)
+
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
     set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt wininet)
@@ -126,6 +132,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/Blake3.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Lua.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Sol2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/CLI11.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Semver.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Doctest.cmake")
 
 # Aggregate -----------------------------------------------------------------
@@ -149,6 +156,7 @@ target_link_libraries(envy_thirdparty
         sol2::sol2
         blake3::blake3
         CLI11::CLI11
+        semver::semver
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc

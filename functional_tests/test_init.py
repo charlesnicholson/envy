@@ -194,7 +194,7 @@ class TestEnvyInit(unittest.TestCase):
         self.assertTrue(envy_cache.exists(), f"Envy cache not created at {envy_cache}")
 
         # Find the version directory (0.0.0 for dev builds)
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
         self.assertGreater(len(version_dirs), 0, "No version directories in cache")
 
         types_file = version_dirs[0] / "envy.lua"
@@ -351,7 +351,7 @@ class TestSelfDeployment(unittest.TestCase):
         envy_cache = self._cache_dir / "envy"
         self.assertTrue(envy_cache.exists())
 
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
         self.assertGreater(len(version_dirs), 0)
 
         if sys.platform == "win32":
@@ -367,7 +367,7 @@ class TestSelfDeployment(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         envy_cache = self._cache_dir / "envy"
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
         types_file = version_dirs[0] / "envy.lua"
 
         self.assertTrue(types_file.exists(), f"Types not at {types_file}")
@@ -384,7 +384,7 @@ class TestSelfDeployment(unittest.TestCase):
 
         # Verify binary exists after first run
         envy_cache = self._cache_dir / "envy"
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
         if sys.platform == "win32":
             cached_binary = version_dirs[0] / "envy.exe"
         else:
@@ -415,7 +415,7 @@ class TestSelfDeployment(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         envy_cache = self._cache_dir / "envy"
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
         cached_binary = version_dirs[0] / "envy"
 
         self.assertTrue(os.access(cached_binary, os.X_OK))
@@ -430,7 +430,7 @@ class TestSelfDeployment(unittest.TestCase):
 
         # Find and run the cached binary
         envy_cache = self._cache_dir / "envy"
-        version_dirs = list(envy_cache.iterdir())
+        version_dirs = [d for d in envy_cache.iterdir() if d.is_dir()]
 
         if sys.platform == "win32":
             cached_binary = version_dirs[0] / "envy.exe"
@@ -449,6 +449,64 @@ class TestSelfDeployment(unittest.TestCase):
         )
         self.assertEqual(0, result2.returncode, f"stderr: {result2.stderr}")
         self.assertIn("envy version", result2.stderr)
+
+
+class TestLatestFileGuarding(unittest.TestCase):
+    """Test that the 'latest' pointer only advances forward."""
+
+    def setUp(self) -> None:
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-latest-test-"))
+        self._cache_dir = self._temp_dir / "cache"
+        self._project_dir = self._temp_dir / "project"
+        self._bin_dir = self._temp_dir / "bin"
+        self._envy = _get_envy_binary()
+
+    def tearDown(self) -> None:
+        if hasattr(self, "_temp_dir") and self._temp_dir.exists():
+            shutil.rmtree(self._temp_dir, ignore_errors=True)
+
+    def _run_envy_init(self) -> subprocess.CompletedProcess[str]:
+        """Run envy init to trigger self-deployment."""
+        env = test_config.get_test_env()
+        env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
+        cmd = [str(self._envy), "init", str(self._project_dir), str(self._bin_dir)]
+        return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+
+    def test_latest_not_downgraded_by_older_version(self) -> None:
+        """Pre-populated latest with higher version is not overwritten by 0.0.0."""
+        # Pre-populate cache with a fake higher version in latest
+        envy_dir = self._cache_dir / "envy"
+        envy_dir.mkdir(parents=True)
+        latest = envy_dir / "latest"
+        latest.write_text("1.0.0")
+
+        result = self._run_envy_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        # 0.0.0 < 1.0.0, so latest must remain 1.0.0
+        self.assertEqual("1.0.0", latest.read_text())
+
+    def test_latest_written_when_no_file_exists(self) -> None:
+        """With no pre-existing latest file, self-deploy writes it."""
+        result = self._run_envy_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        latest = self._cache_dir / "envy" / "latest"
+        self.assertTrue(latest.exists(), "latest file should be created")
+        self.assertEqual("0.0.0", latest.read_text())
+
+    def test_latest_overwritten_when_corrupt(self) -> None:
+        """Corrupt latest file is overwritten (unparseable current -> write)."""
+        envy_dir = self._cache_dir / "envy"
+        envy_dir.mkdir(parents=True)
+        latest = envy_dir / "latest"
+        latest.write_text("not-a-version")
+
+        result = self._run_envy_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        # Corrupt current -> overwrite with 0.0.0
+        self.assertEqual("0.0.0", latest.read_text())
 
 
 if __name__ == "__main__":

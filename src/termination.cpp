@@ -56,6 +56,11 @@ void termination_handler_install() {
 
   sigaction(SIGINT, &sa, nullptr);
   sigaction(SIGTERM, &sa, nullptr);
+
+  // Ignore SIGPIPE: libgit2/libcurl/libssh2 can write to broken sockets
+  // during network operations; the default SIGPIPE kills the process.
+  sa.sa_handler = SIG_IGN;
+  sigaction(SIGPIPE, &sa, nullptr);
 }
 
 }  // namespace envy

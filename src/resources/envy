@@ -55,11 +55,6 @@ while read -r key val; do
     esac
 done < <(parse_directives)
 
-if [[ -z "$VERSION" ]]; then
-    echo "WARNING: @envy version not found in $MANIFEST, using fallback $FALLBACK_VERSION" >&2
-    VERSION="$FALLBACK_VERSION"
-fi
-
 [[ -n "$MANIFEST_MIRROR" ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
 
 if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
@@ -75,6 +70,22 @@ elif [[ -n "$MANIFEST_CACHE" ]]; then
     done
 elif [[ $(uname) == Darwin ]]; then CACHE="$HOME/Library/Caches/envy"
 else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
+
+if [[ -z "$VERSION" ]]; then
+    if [[ -f "$CACHE/envy/latest" ]]; then
+        LATEST_VER="$(cat "$CACHE/envy/latest" 2>/dev/null)"
+        LATEST_VER="${LATEST_VER%%[[:space:]]}"
+        [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
+    fi
+    if [[ -z "$VERSION" ]]; then
+        REDIR="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
+            "https://github.com/charlesnicholson/envy/releases/latest" 2>/dev/null)" || true
+        [[ -n "$REDIR" ]] && { GH="${REDIR##*/}"; VERSION="${GH#v}"; }
+    fi
+    if [[ -z "$VERSION" ]]; then
+        VERSION="$FALLBACK_VERSION"
+    fi
+fi
 
 case "$(uname -s)" in
     Darwin) PLATFORM=darwin ;; Linux) PLATFORM=linux ;;

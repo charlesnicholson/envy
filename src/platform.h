@@ -74,6 +74,11 @@ platform_id native();
 std::string_view os_name();
 std::string_view arch_name();
 
+// Platform-correct executable suffix: ".exe" on Windows, "" otherwise.
+std::string_view exe_suffix();
+// Platform-correct executable filename: base + exe_suffix().
+std::filesystem::path exe_name(std::string_view base);
+
 // Read the current process environment as a list of "KEY=VALUE" strings.
 std::vector<std::string> get_environment();
 

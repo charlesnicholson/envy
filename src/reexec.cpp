@@ -27,10 +27,8 @@ namespace {
 
 #ifdef _WIN32
 constexpr std::string_view kArchiveExt{ ".zip" };
-constexpr std::string_view kBinaryName{ "envy.exe" };
 #else
 constexpr std::string_view kArchiveExt{ ".tar.gz" };
-constexpr std::string_view kBinaryName{ "envy" };
 #endif
 
 char **g_argv{};
@@ -163,7 +161,7 @@ void reexec_if_needed(envy_meta const &meta,
 
   // Fast path: check if the requested version is already in cache
   auto const cache_root{ resolve_cache_root(cli_cache_root, meta.cache) };
-  auto const cached_binary{ cache_root / "envy" / version / kBinaryName };
+  auto const cached_binary{ cache_root / "envy" / version / platform::exe_name("envy") };
   if (std::filesystem::exists(cached_binary)) { do_reexec(cached_binary); }
 
   // Slow path: download to temp dir, re-exec from there.
@@ -206,7 +204,7 @@ void reexec_if_needed(envy_meta const &meta,
   std::error_code ec;
   std::filesystem::remove(archive_path, ec);
 
-  auto const binary_path{ tmp_dir / kBinaryName };
+  auto const binary_path{ tmp_dir / platform::exe_name("envy") };
   if (!std::filesystem::exists(binary_path)) {
     throw std::runtime_error("reexec: archive did not contain expected binary: " +
                              binary_path.string());

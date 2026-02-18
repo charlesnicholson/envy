@@ -646,7 +646,6 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
             mode="w", suffix=".lua", delete=False, dir=self.cache_root
         ) as tmp:
             tmp.write("""
--- @envy version "0.0.0"
 -- @envy bin-dir "tools"
 PACKAGES = {
   { spec = "local.missing@v1", source = "nonexistent_source.lua" }

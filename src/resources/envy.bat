@@ -61,11 +61,6 @@ for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
 )
 :done_parse
 
-if "!VERSION!"=="" (
-    echo WARNING: @envy version not found in !MANIFEST!, using fallback !FALLBACK_VERSION! >&2
-    set "VERSION=!FALLBACK_VERSION!"
-)
-
 if defined MANIFEST_MIRROR set "ENVY_MIRROR=!MANIFEST_MIRROR!"
 
 if defined ENVY_CACHE_ROOT (
@@ -75,6 +70,20 @@ if defined ENVY_CACHE_ROOT (
     if "!CACHE:~0,1!"=="~" set "CACHE=!USERPROFILE!!CACHE:~1!"
 ) else (
     set "CACHE=!LOCALAPPDATA!\envy"
+)
+
+if "!VERSION!"=="" (
+    set "LATEST_FILE=!CACHE!\envy\latest"
+    if exist "!LATEST_FILE!" (
+        set /p LATEST_VER=<"!LATEST_FILE!"
+        if defined LATEST_VER (
+            if exist "!CACHE!\envy\!LATEST_VER!\envy.exe" set "VERSION=!LATEST_VER!"
+        )
+    )
+    if "!VERSION!"=="" (
+        for /f "tokens=*" %%u in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $r=[System.Net.WebRequest]::Create('https://github.com/charlesnicholson/envy/releases/latest'); $r.AllowAutoRedirect=$false; $h=$r.GetResponse().Headers['Location']; if($h){($h -split '/')[-1] -replace '^v',''} } catch {}" 2^>nul') do set "VERSION=%%u"
+    )
+    if "!VERSION!"=="" set "VERSION=!FALLBACK_VERSION!"
 )
 
 set "ENVY_BIN=!CACHE!\envy\!VERSION!\envy.exe"

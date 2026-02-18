@@ -1,7 +1,7 @@
 #include "cmd_shell.h"
 
-#include "cache.h"
 #include "cmd_init.h"
+#include "self_deploy.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -48,10 +48,9 @@ bool is_custom_cache(std::optional<fs::path> const &cli_cache_root) {
 
 }  // namespace
 
-void cmd_shell::register_cli(CLI::App &app,
-                              std::function<void(cfg)> on_selected) {
-  auto *sub{ app.add_subcommand(
-      "shell", "Print shell hook source line for your profile") };
+void cmd_shell::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("shell",
+                                "Print shell hook source line for your profile") };
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("shell", cfg_ptr->shell, "Shell name (bash, zsh, fish, powershell)")
       ->required()
@@ -60,25 +59,22 @@ void cmd_shell::register_cli(CLI::App &app,
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
 
-cmd_shell::cmd_shell(cmd_shell::cfg cfg,
-                      std::optional<fs::path> const &cli_cache_root)
+cmd_shell::cmd_shell(cmd_shell::cfg cfg, std::optional<fs::path> const &cli_cache_root)
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_shell::execute() {
   auto const *si{ find_shell(cfg_.shell) };
   if (!si) {
-    throw std::runtime_error(
-        "shell: unsupported shell '" + cfg_.shell +
-        "'. Use: bash, zsh, fish, powershell");
+    throw std::runtime_error("shell: unsupported shell '" + cfg_.shell +
+                             "'. Use: bash, zsh, fish, powershell");
   }
 
   // Trigger self-deploy (which writes hook files)
-  auto c{ cache::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
 
   fs::path const hook_path{ c->root() / "shell" / ("hook." + std::string{ si->ext }) };
   if (!fs::exists(hook_path)) {
-    throw std::runtime_error("shell: hook file not found at " +
-                             hook_path.string() +
+    throw std::runtime_error("shell: hook file not found at " + hook_path.string() +
                              ". Run any envy command to trigger self-deploy.");
   }
 
@@ -93,9 +89,7 @@ void cmd_shell::execute() {
     constexpr std::string_view kEnvUserProfile{ "${env:USERPROFILE}" };
 
     auto pos{ display_path.find(kEnvHome) };
-    if (pos != std::string::npos) {
-      display_path.replace(pos, kEnvHome.size(), "$HOME");
-    }
+    if (pos != std::string::npos) { display_path.replace(pos, kEnvHome.size(), "$HOME"); }
     pos = display_path.find(kEnvUserProfile);
     if (pos != std::string::npos) {
       display_path.replace(pos, kEnvUserProfile.size(), "$HOME");

@@ -374,4 +374,10 @@ int exec_process(std::filesystem::path const &binary,
   return static_cast<int>(exit_code);
 }
 
+std::string_view exe_suffix() { return ".exe"; }
+
+std::filesystem::path exe_name(std::string_view base) {
+  return std::filesystem::path{ std::string{ base } + ".exe" };
+}
+
 }  // namespace envy::platform

@@ -1,7 +1,6 @@
 #include "cmd_sync.h"
 
 #include "bootstrap.h"
-#include "cache.h"
 #include "embedded_init_resources.h"
 #include "engine.h"
 #include "manifest.h"
@@ -9,6 +8,7 @@
 #include "pkg_key.h"
 #include "platform.h"
 #include "reexec.h"
+#include "self_deploy.h"
 #include "tui.h"
 #include "util.h"
 
@@ -256,7 +256,7 @@ void cmd_sync::execute() {
 
   auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
 
-  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
 
   fs::path const manifest_dir{ m->manifest_path.parent_path() };
   fs::path const bin_dir{ manifest_dir / *m->meta.bin };
