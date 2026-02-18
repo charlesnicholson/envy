@@ -5,8 +5,13 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace envy {
+
+inline constexpr std::string_view kEnvyDownloadUrl{
+  "https://github.com/charlesnicholson/envy/releases/download"
+};
 
 // Check if file contains "envy-managed" marker
 bool bootstrap_is_envy_managed(std::filesystem::path const &path);

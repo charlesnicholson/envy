@@ -1,5 +1,6 @@
 #include "reexec.h"
 
+#include "bootstrap.h"
 #include "cache.h"
 #include "extract.h"
 #include "fetch.h"
@@ -19,9 +20,7 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
+#ifndef _WIN32
 #include <unistd.h>
 #endif
 
@@ -37,10 +36,6 @@ namespace envy {
 
 namespace {
 
-constexpr std::string_view kDefaultMirror{
-  "https://github.com/charlesnicholson/envy/releases/download"
-};
-
 #ifdef _WIN32
 constexpr std::string_view kArchiveExt{ ".zip" };
 constexpr std::string_view kBinaryName{ "envy.exe" };
@@ -51,7 +46,7 @@ constexpr std::string_view kBinaryName{ "envy" };
 
 int current_pid() {
 #ifdef _WIN32
-  return _getpid();
+  return static_cast<int>(GetCurrentProcessId());
 #else
   return getpid();
 #endif
@@ -108,8 +103,114 @@ fetch_request make_fetch_request(std::string const &url,
 }
 
 // Build child env: copy current env, add ENVY_REEXEC=1, strip ENVY_TEST_SELF_VERSION.
-// Parent env is never modified; the returned storage + pointer array are passed to
-// execve (POSIX) or _spawnve (Windows).
+// Parent env is never modified; the returned storage is passed to
+// execve (POSIX) or CreateProcessA (Windows).
+
+#ifdef _WIN32
+
+// Build a double-null-terminated environment block for CreateProcessA.
+// Reads via GetEnvironmentStringsA (authoritative; CRT's environ can be stale).
+std::string build_child_env_block() {
+  std::string block;
+  bool found_reexec{ false };
+
+  if (char *src{ GetEnvironmentStringsA() }; src) {
+    for (char const *p = src; *p; p += std::strlen(p) + 1) {
+      std::string_view entry{ p };
+      if (entry.starts_with("ENVY_TEST_SELF_VERSION=")) { continue; }
+      if (entry.starts_with("ENVY_REEXEC=")) {
+        found_reexec = true;
+        block.append("ENVY_REEXEC=1");
+      } else {
+        block.append(entry);
+      }
+      block.push_back('\0');
+    }
+    FreeEnvironmentStringsA(src);
+  }
+
+  if (!found_reexec) {
+    block.append("ENVY_REEXEC=1");
+    block.push_back('\0');
+  }
+
+  block.push_back('\0');  // double-null terminator
+  return block;
+}
+
+// Build a flat command line string from argv for CreateProcessA.
+std::string build_cmdline() {
+  std::string cmdline;
+  for (int i = 0; g_argv[i]; ++i) {
+    if (i > 0) { cmdline += ' '; }
+    std::string_view arg{ g_argv[i] };
+    bool const needs_quote{ arg.empty() ||
+                            arg.find_first_of(" \t\"") != std::string_view::npos };
+    if (!needs_quote) {
+      cmdline += arg;
+      continue;
+    }
+
+    cmdline += '"';
+    for (auto it = arg.begin();;) {
+      int n_bs{ 0 };
+      while (it != arg.end() && *it == '\\') {
+        ++it;
+        ++n_bs;
+      }
+
+      if (it == arg.end()) {
+        cmdline.append(static_cast<size_t>(n_bs * 2), '\\');
+        break;
+      }
+
+      if (*it == '"') {
+        cmdline.append(static_cast<size_t>(n_bs * 2 + 1), '\\');
+      } else {
+        cmdline.append(static_cast<size_t>(n_bs), '\\');
+      }
+      cmdline += *it++;
+    }
+    cmdline += '"';
+  }
+  return cmdline;
+}
+
+[[noreturn]] void do_reexec(std::filesystem::path const &binary) {
+  tui::info("reexec: switching to envy at %s", binary.string().c_str());
+
+  auto env_block{ build_child_env_block() };
+  auto cmdline{ build_cmdline() };
+
+  STARTUPINFOA si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+
+  if (!CreateProcessA(binary.string().c_str(),
+                      cmdline.data(),
+                      nullptr,
+                      nullptr,
+                      TRUE,
+                      0,
+                      env_block.data(),
+                      nullptr,
+                      &si,
+                      &pi)) {
+    throw std::runtime_error("reexec: CreateProcess failed: " +
+                             std::to_string(GetLastError()));
+  }
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  DWORD exit_code{};
+  GetExitCodeProcess(pi.hProcess, &exit_code);
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+
+  throw subprocess_exit{ static_cast<int>(exit_code) };
+}
+
+#else
+
 struct child_env {
   std::vector<std::string> storage;
   std::vector<char *> envp;
@@ -119,24 +220,6 @@ child_env build_child_envp() {
   child_env result;
   bool found_reexec{ false };
 
-#ifdef _WIN32
-  // Use the Win32 API to get the authoritative environment block.
-  // The CRT's extern "environ" symbol can become stale after _putenv_s calls.
-  char *block{ GetEnvironmentStringsA() };
-  if (block) {
-    for (char const *p = block; *p; p += std::strlen(p) + 1) {
-      std::string_view entry{ p };
-      if (entry.starts_with("ENVY_TEST_SELF_VERSION=")) { continue; }
-      if (entry.starts_with("ENVY_REEXEC=")) {
-        found_reexec = true;
-        result.storage.emplace_back("ENVY_REEXEC=1");
-      } else {
-        result.storage.emplace_back(p);
-      }
-    }
-    FreeEnvironmentStringsA(block);
-  }
-#else
   for (char **ep = environ; *ep; ++ep) {
     std::string_view entry{ *ep };
     if (entry.starts_with("ENVY_TEST_SELF_VERSION=")) { continue; }
@@ -147,7 +230,6 @@ child_env build_child_envp() {
       result.storage.emplace_back(*ep);
     }
   }
-#endif
 
   if (!found_reexec) { result.storage.emplace_back("ENVY_REEXEC=1"); }
 
@@ -161,20 +243,11 @@ child_env build_child_envp() {
   tui::info("reexec: switching to envy at %s", binary.string().c_str());
 
   auto env{ build_child_envp() };
-
-#ifdef _WIN32
-  // _spawnve: explicit envp, no PATH search (we always pass full paths).
-  intptr_t const rc{ _spawnve(_P_WAIT, binary.string().c_str(), g_argv, env.envp.data()) };
-  if (rc == -1) {
-    throw std::runtime_error(std::string{ "reexec: spawn failed: " } +
-                             std::strerror(errno));
-  }
-  throw subprocess_exit{ static_cast<int>(rc) };
-#else
   execve(binary.c_str(), g_argv, env.envp.data());
   throw std::runtime_error(std::string{ "reexec: exec failed: " } + std::strerror(errno));
-#endif
 }
+
+#endif
 
 }  // namespace
 
@@ -239,7 +312,7 @@ void reexec_if_needed(envy_meta const &meta,
   // Slow path: download to temp dir, re-exec from there.
   // The re-exec'd binary's own cache::ensure_envy() will install itself into cache.
 
-  std::string_view mirror{ kDefaultMirror };
+  std::string_view mirror{ kEnvyDownloadUrl };
   if (char const *env_mirror = std::getenv("ENVY_MIRROR"); env_mirror) {
     mirror = env_mirror;
   } else if (meta.mirror) {

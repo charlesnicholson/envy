@@ -23,10 +23,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr std::string_view kEnvyDownloadUrl{
-  "https://github.com/charlesnicholson/envy/releases/download"
-};
-
 constexpr std::string_view kEnvyManagedMarker{ "envy-managed" };
 
 std::string_view get_bootstrap_template(platform_id platform) {
