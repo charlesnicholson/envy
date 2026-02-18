@@ -22,6 +22,21 @@ def _get_envy_binary() -> Path:
     return root / "envy"
 
 
+def _get_envy_version() -> str:
+    """Get the baked-in version from the envy binary."""
+    result = subprocess.run(
+        [str(_get_envy_binary()), "version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    # First line: "envy version X.Y.Z (...)"
+    for line in result.stderr.splitlines():
+        if line.startswith("envy version "):
+            return line.split()[2]
+    raise RuntimeError("Could not parse envy version from: " + result.stderr)
+
+
 class TestEnvyInit(unittest.TestCase):
     """Test the envy init command."""
 
@@ -460,6 +475,7 @@ class TestLatestFileGuarding(unittest.TestCase):
         self._project_dir = self._temp_dir / "project"
         self._bin_dir = self._temp_dir / "bin"
         self._envy = _get_envy_binary()
+        self._version = _get_envy_version()
 
     def tearDown(self) -> None:
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():
@@ -473,18 +489,18 @@ class TestLatestFileGuarding(unittest.TestCase):
         return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
 
     def test_latest_not_downgraded_by_older_version(self) -> None:
-        """Pre-populated latest with higher version is not overwritten by 0.0.0."""
-        # Pre-populate cache with a fake higher version in latest
+        """Pre-populated latest with higher version is not overwritten."""
+        # Pre-populate cache with a fake version higher than the binary's
         envy_dir = self._cache_dir / "envy"
         envy_dir.mkdir(parents=True)
         latest = envy_dir / "latest"
-        latest.write_text("1.0.0")
+        latest.write_text("999.0.0")
 
         result = self._run_envy_init()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
-        # 0.0.0 < 1.0.0, so latest must remain 1.0.0
-        self.assertEqual("1.0.0", latest.read_text())
+        # Binary version < 999.0.0, so latest must remain 999.0.0
+        self.assertEqual("999.0.0", latest.read_text())
 
     def test_latest_written_when_no_file_exists(self) -> None:
         """With no pre-existing latest file, self-deploy writes it."""
@@ -493,7 +509,7 @@ class TestLatestFileGuarding(unittest.TestCase):
 
         latest = self._cache_dir / "envy" / "latest"
         self.assertTrue(latest.exists(), "latest file should be created")
-        self.assertEqual("0.0.0", latest.read_text())
+        self.assertEqual(self._version, latest.read_text())
 
     def test_latest_overwritten_when_corrupt(self) -> None:
         """Corrupt latest file is overwritten (unparseable current -> write)."""
@@ -505,8 +521,8 @@ class TestLatestFileGuarding(unittest.TestCase):
         result = self._run_envy_init()
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
-        # Corrupt current -> overwrite with 0.0.0
-        self.assertEqual("0.0.0", latest.read_text())
+        # Corrupt current -> overwrite with binary's version
+        self.assertEqual(self._version, latest.read_text())
 
 
 if __name__ == "__main__":
