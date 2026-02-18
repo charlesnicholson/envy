@@ -20,9 +20,6 @@ class cache : unmovable {
  public:
   using path = std::filesystem::path;
 
-  static std::unique_ptr<cache> ensure(std::optional<path> const &cli_cache_root,
-                                       std::optional<std::string> const &manifest_cache);
-
   class scoped_entry_lock : unmovable {
    public:
     using ptr_t = std::unique_ptr<scoped_entry_lock>;
@@ -80,12 +77,19 @@ class cache : unmovable {
 
   ensure_result ensure_spec(std::string_view identity);
 
-  // Ensure envy binary and type definitions are deployed to cache.
-  // Copies exe_path to $CACHE/envy/$VERSION/envy and writes type_definitions.
-  // Uses file locking for concurrent safety. Returns the envy directory.
-  path ensure_envy(std::string_view version,
-                   path const &exe_path,
-                   std::string_view type_definitions);
+  struct envy_ensure_result {
+    path envy_dir;       // $CACHE/envy/$VERSION/
+    path binary_path;    // envy_dir / "envy" (or "envy.exe")
+    path types_path;     // envy_dir / "envy.lua"
+    bool already_cached; // true if binary+types already exist
+    std::optional<platform::file_lock> lock;  // held while !already_cached
+  };
+
+  // Check/prepare envy version directory in cache.
+  // If binary+types already exist, returns already_cached=true.
+  // Otherwise acquires lock, creates directories, returns already_cached=false
+  // with lock held so caller can deploy.
+  envy_ensure_result ensure_envy(std::string_view version);
 
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 

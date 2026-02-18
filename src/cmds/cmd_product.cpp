@@ -1,7 +1,6 @@
 #include "cmd_product.h"
 
 #include "blake3_util.h"
-#include "cache.h"
 #include "engine.h"
 #include "manifest.h"
 #include "pkg.h"
@@ -9,6 +8,7 @@
 #include "platform.h"
 #include "product_util.h"
 #include "reexec.h"
+#include "self_deploy.h"
 #include "tui.h"
 #include "util.h"
 
@@ -111,7 +111,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 void cmd_product::execute() {
   auto const m{ manifest::find_and_load(cfg_.manifest_path) };
   reexec_if_needed(m->meta, cli_cache_root_);
-  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
   engine eng{ *c, m.get() };
 
   std::vector<pkg_cfg const *> roots;

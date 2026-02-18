@@ -263,15 +263,87 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertIn("envy version", result2.stderr)
 
     def test_bootstrap_uses_fallback_when_version_missing(self) -> None:
-        """Test that bootstrap uses FALLBACK_VERSION when @envy version is missing."""
+        """Test that bootstrap resolves a version when @envy version is missing.
+
+        Without a latest file or GitHub access, falls through to FALLBACK_VERSION.
+        The mock server serves any .tar.gz path, so whichever version is resolved works.
+        """
         bootstrap = self._setup_test_project(
             "missing_version.lua", fallback_version="9.9.9"
         )
         result = self._run_bootstrap(bootstrap, ["version"])
 
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
-        self.assertIn("WARNING", result.stderr)
-        self.assertIn("fallback", result.stderr.lower())
+        self.assertIn("envy version", result.stderr)
+
+    def test_bootstrap_uses_latest_file_when_version_missing(self) -> None:
+        """Test that bootstrap reads $CACHE/envy/latest when @envy version is absent."""
+        bootstrap = self._setup_test_project(
+            "missing_version.lua", fallback_version="9.9.9"
+        )
+        cache_dir = self._temp_dir / "cache"
+
+        # Pre-populate the latest pointer and binary
+        latest_ver = "5.5.5"
+        (cache_dir / "envy").mkdir(parents=True, exist_ok=True)
+        (cache_dir / "envy" / "latest").write_text(latest_ver)
+        cached_binary = (
+            cache_dir
+            / "envy"
+            / latest_ver
+            / ("envy.exe" if sys.platform == "win32" else "envy")
+        )
+        cached_binary.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self._envy_binary, cached_binary)
+        if sys.platform != "win32":
+            cached_binary.chmod(cached_binary.stat().st_mode | stat.S_IXUSR)
+
+        result = self._run_bootstrap(bootstrap, ["version"], cache_dir)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("Downloading", result.stderr)
+        self.assertIn("envy version", result.stderr)
+
+    def test_bootstrap_ignores_latest_when_version_present(self) -> None:
+        """Test that @envy version in manifest takes precedence over latest file."""
+        bootstrap = self._setup_test_project("simple.lua")
+        cache_dir = self._temp_dir / "cache"
+
+        # Pre-populate latest pointing to a different version
+        (cache_dir / "envy").mkdir(parents=True, exist_ok=True)
+        (cache_dir / "envy" / "latest").write_text("7.7.7")
+
+        # Pre-populate the cache binary at the manifest version (1.2.3)
+        cached_binary = (
+            cache_dir
+            / "envy"
+            / "1.2.3"
+            / ("envy.exe" if sys.platform == "win32" else "envy")
+        )
+        cached_binary.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(self._envy_binary, cached_binary)
+        if sys.platform != "win32":
+            cached_binary.chmod(cached_binary.stat().st_mode | stat.S_IXUSR)
+
+        result = self._run_bootstrap(bootstrap, ["version"], cache_dir)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("Downloading", result.stderr)
+        self.assertIn("envy version", result.stderr)
+
+    def test_bootstrap_falls_through_stale_latest(self) -> None:
+        """Test that bootstrap falls through when latest points to missing binary."""
+        bootstrap = self._setup_test_project(
+            "missing_version.lua", fallback_version="9.9.9"
+        )
+        cache_dir = self._temp_dir / "cache"
+
+        # Write latest pointing to a version whose binary doesn't exist
+        (cache_dir / "envy").mkdir(parents=True, exist_ok=True)
+        (cache_dir / "envy" / "latest").write_text("0.0.1")
+
+        result = self._run_bootstrap(bootstrap, ["version"], cache_dir)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        # Should have fallen through and downloaded
+        self.assertIn("Downloading", result.stderr)
         self.assertIn("envy version", result.stderr)
 
     def test_bootstrap_parses_version_with_escapes(self) -> None:

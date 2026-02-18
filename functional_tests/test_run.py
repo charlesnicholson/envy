@@ -24,7 +24,7 @@ class _RunTestBase(unittest.TestCase):
         self._bin_dir.mkdir()
 
         (self._project / "envy.lua").write_text(
-            '-- @envy bin "tools"\n-- @envy version "0.0.0"\nPACKAGES = {}\n'
+            '-- @envy bin "tools"\nPACKAGES = {}\n'
         )
 
         self._outside = self._temp_dir / "outside"
@@ -59,7 +59,7 @@ class TestRunErrors(_RunTestBase):
         broken = self._temp_dir / "broken"
         broken.mkdir()
         (broken / "envy.lua").write_text(
-            '-- @envy bin "nonexistent"\n-- @envy version "0.0.0"\nPACKAGES = {}\n'
+            '-- @envy bin "nonexistent"\nPACKAGES = {}\n'
         )
         result = self._run_envy(["run", "echo", "hi"], cwd=broken)
         self.assertNotEqual(0, result.returncode)
@@ -67,7 +67,7 @@ class TestRunErrors(_RunTestBase):
     def test_no_bin_directive_errors(self) -> None:
         nobin = self._temp_dir / "nobin"
         nobin.mkdir()
-        (nobin / "envy.lua").write_text('-- @envy version "0.0.0"\nPACKAGES = {}\n')
+        (nobin / "envy.lua").write_text('PACKAGES = {}\n')
         result = self._run_envy(["run", "echo", "hi"], cwd=nobin)
         self.assertNotEqual(0, result.returncode)
 

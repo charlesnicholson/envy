@@ -1,7 +1,6 @@
 #include "cache.h"
 
 #include "doctest.h"
-#include "embedded_init_resources.h"
 #include "platform.h"
 
 #include <filesystem>
@@ -545,35 +544,31 @@ TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
 
 // Tests for ensure_envy()
 
-TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy deploys binary and types to cache") {
-  std::string_view const types{ reinterpret_cast<char const *>(
-                                    envy::embedded::kTypeDefinitions),
-                                envy::embedded::kTypeDefinitionsSize };
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "ensure_envy returns paths and lock for cold cache") {
+  auto result{ cache->ensure_envy(ENVY_VERSION_STR) };
 
-  auto const envy_dir{
-    cache->ensure_envy(ENVY_VERSION_STR, envy::platform::get_exe_path(), types)
-  };
+  CHECK_FALSE(result.already_cached);
+  CHECK(result.lock.has_value());
+  CHECK(std::filesystem::exists(result.envy_dir));
+  CHECK(result.types_path == result.envy_dir / "envy.lua");
 
-  CHECK(std::filesystem::exists(envy_dir));
-
-#ifdef _WIN32
-  CHECK(std::filesystem::exists(envy_dir / "envy.exe"));
-#else
-  CHECK(std::filesystem::exists(envy_dir / "envy"));
-#endif
-
-  CHECK(std::filesystem::exists(envy_dir / "envy.lua"));
+  CHECK(result.binary_path == result.envy_dir / envy::platform::exe_name("envy"));
 }
 
-TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy is idempotent") {
-  std::string_view const types{ reinterpret_cast<char const *>(
-                                    envy::embedded::kTypeDefinitions),
-                                envy::embedded::kTypeDefinitionsSize };
-  auto const exe{ envy::platform::get_exe_path() };
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy returns already_cached after deploy") {
+  // First call: cold cache
+  {
+    auto result{ cache->ensure_envy(ENVY_VERSION_STR) };
+    CHECK_FALSE(result.already_cached);
 
-  auto const dir1{ cache->ensure_envy(ENVY_VERSION_STR, exe, types) };
-  auto const dir2{ cache->ensure_envy(ENVY_VERSION_STR, exe, types) };
+    // Simulate deployment: create the binary and types files
+    std::ofstream{ result.binary_path } << "fake-binary";
+    std::ofstream{ result.types_path } << "fake-types";
+  }
 
-  CHECK(dir1 == dir2);
+  // Second call: should be cached
+  auto result{ cache->ensure_envy(ENVY_VERSION_STR) };
+  CHECK(result.already_cached);
+  CHECK_FALSE(result.lock.has_value());
 }
-

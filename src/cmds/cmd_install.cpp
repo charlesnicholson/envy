@@ -1,10 +1,10 @@
 #include "cmd_install.h"
 
-#include "cache.h"
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_key.h"
 #include "reexec.h"
+#include "self_deploy.h"
 
 #include "CLI11.hpp"
 
@@ -38,7 +38,7 @@ void cmd_install::execute() {
 
   reexec_if_needed(m->meta, cli_cache_root_);
 
-  auto c{ cache::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
 
   std::vector<pkg_cfg const *> targets;
 

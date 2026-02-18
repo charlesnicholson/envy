@@ -178,6 +178,7 @@ set(ENVY_LICENSE_SOURCES
     "libssh2=${libssh2_SOURCE_DIR}"
     "libzstd=${envy_libzstd_SOURCE_DIR}"
     "Lua=${lua_SOURCE_DIR}"
+    "Semver=${SEMVER_CACHE_DIR}"
     "Sol2=${sol2_SOURCE_DIR}"
     "zlib=${envy_zlib_SOURCE_DIR}"
 )
@@ -238,6 +239,7 @@ set(ENVY_BASE_SOURCES
     src/lua_ctx/lua_phase_context.cpp
     src/product_util.cpp
     src/reexec.cpp
+    src/self_deploy.cpp
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
@@ -275,6 +277,7 @@ set(ENVY_BASE_SOURCES
     src/tui_actions.cpp
     src/uri.cpp
     src/util.cpp
+    src/version.cpp
 )
 
 # Add main for production/functional binaries
@@ -457,6 +460,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/uri_tests.cpp
     src/tui_tests.cpp
     src/util_tests.cpp
+    src/version_tests.cpp
 )
 
 add_executable(envy_unit_tests)

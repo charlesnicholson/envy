@@ -275,4 +275,10 @@ int exec_process(std::filesystem::path const &binary,
                            std::strerror(errno));
 }
 
+std::string_view exe_suffix() { return ""; }
+
+std::filesystem::path exe_name(std::string_view base) {
+  return std::filesystem::path{ std::string{ base } };
+}
+
 }  // namespace envy::platform
