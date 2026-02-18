@@ -6,6 +6,9 @@
 #include "platform.h"
 #include "tui.h"
 #include "uri.h"
+#ifdef _WIN32
+#include "cmd.h"
+#endif
 
 #include <cctype>
 #include <cstdlib>
@@ -17,7 +20,6 @@
 #include <vector>
 
 #ifdef _WIN32
-#include "cmd.h"
 #include <process.h>
 #else
 #include <unistd.h>
@@ -27,7 +29,9 @@
 #error "ENVY_VERSION_STR must be defined by the build system"
 #endif
 
+#ifndef _WIN32
 extern "C" char **environ;
+#endif
 
 namespace envy {
 
@@ -115,6 +119,24 @@ child_env build_child_envp() {
   child_env result;
   bool found_reexec{ false };
 
+#ifdef _WIN32
+  // Use the Win32 API to get the authoritative environment block.
+  // The CRT's extern "environ" symbol can become stale after _putenv_s calls.
+  char *block{ GetEnvironmentStringsA() };
+  if (block) {
+    for (char const *p = block; *p; p += std::strlen(p) + 1) {
+      std::string_view entry{ p };
+      if (entry.starts_with("ENVY_TEST_SELF_VERSION=")) { continue; }
+      if (entry.starts_with("ENVY_REEXEC=")) {
+        found_reexec = true;
+        result.storage.emplace_back("ENVY_REEXEC=1");
+      } else {
+        result.storage.emplace_back(p);
+      }
+    }
+    FreeEnvironmentStringsA(block);
+  }
+#else
   for (char **ep = environ; *ep; ++ep) {
     std::string_view entry{ *ep };
     if (entry.starts_with("ENVY_TEST_SELF_VERSION=")) { continue; }
@@ -125,6 +147,8 @@ child_env build_child_envp() {
       result.storage.emplace_back(*ep);
     }
   }
+#endif
+
   if (!found_reexec) { result.storage.emplace_back("ENVY_REEXEC=1"); }
 
   result.envp.reserve(result.storage.size() + 1);
@@ -140,9 +164,7 @@ child_env build_child_envp() {
 
 #ifdef _WIN32
   // _spawnve: explicit envp, no PATH search (we always pass full paths).
-  intptr_t const rc{
-    _spawnve(_P_WAIT, binary.string().c_str(), g_argv, env.envp.data())
-  };
+  intptr_t const rc{ _spawnve(_P_WAIT, binary.string().c_str(), g_argv, env.envp.data()) };
   if (rc == -1) {
     throw std::runtime_error(std::string{ "reexec: spawn failed: " } +
                              std::strerror(errno));
