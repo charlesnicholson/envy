@@ -4,7 +4,7 @@
 set(DOCTEST_VERSION "2.4.12")
 set(DOCTEST_URL "https://github.com/doctest/doctest/releases/download/v${DOCTEST_VERSION}/doctest.h")
 set(DOCTEST_SHA256 "2a31654ead2a6e5ef93086ca97659b701710c80275207b3bdb12676c012daceb")
-set(DOCTEST_CACHE_DIR "${CMAKE_BINARY_DIR}/../cache/doctest-src")
+set(DOCTEST_CACHE_DIR "${ENVY_CACHE_DIR}/doctest-src")
 
 # Ensure cache directory exists
 file(MAKE_DIRECTORY "${DOCTEST_CACHE_DIR}")
