@@ -29,11 +29,7 @@
 #include <ws2tcpip.h>
 #endif
 
-namespace envy {
-
-enum class platform_id { POSIX, WINDOWS };
-
-}  // namespace envy
+namespace envy { enum class platform_id { POSIX, WINDOWS }; }  // namespace envy
 
 namespace envy::platform {
 
@@ -62,7 +58,8 @@ char const *get_default_cache_root_env_vars();
 std::filesystem::path get_exe_path();
 std::filesystem::path expand_path(std::string_view path);
 
-void set_env_var(char const *name, char const *value);
+void env_var_set(char const *name, char const *value);
+void env_var_unset(char const *name);
 
 // Remove directory recursively with retry logic for Windows file locking issues.
 // On Windows, antivirus/indexer may hold file handles briefly after creation.
@@ -76,5 +73,15 @@ bool is_tty();
 platform_id native();
 std::string_view os_name();
 std::string_view arch_name();
+
+// Read the current process environment as a list of "KEY=VALUE" strings.
+std::vector<std::string> get_environment();
+
+int get_process_id();
+
+// Execute a child process with explicit environment.
+int exec_process(std::filesystem::path const &binary,
+                 char **argv,
+                 std::vector<std::string> env);
 
 }  // namespace envy::platform

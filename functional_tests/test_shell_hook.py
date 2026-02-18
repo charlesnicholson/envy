@@ -858,6 +858,15 @@ class TestFishHook(unittest.TestCase):
 class TestPowerShellHook(unittest.TestCase):
     """Test PowerShell shell hook behavior."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Warm up pwsh to avoid cold-start timeouts on resource-constrained runners."""
+        subprocess.run(
+            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", "$null"],
+            capture_output=True,
+            timeout=60,
+        )
+
     def setUp(self) -> None:
         # .resolve() converts Windows 8.3 short names (RUNNER~1) to long names
         # (runneradmin) so Python paths match PowerShell's Resolve-Path output.

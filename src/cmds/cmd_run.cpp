@@ -2,6 +2,7 @@
 
 #include "manifest.h"
 #include "platform.h"
+#include "reexec.h"
 #include "util.h"
 
 #include "CLI11.hpp"
@@ -37,8 +38,8 @@ void cmd_run::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) 
   });
 }
 
-cmd_run::cmd_run(cmd_run::cfg cfg, std::optional<fs::path> const & /*cli_cache_root*/)
-    : cfg_{ std::move(cfg) } {}
+cmd_run::cmd_run(cmd_run::cfg cfg, std::optional<fs::path> const &cli_cache_root)
+    : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_run::execute() {
   if (cfg_.command.empty()) { throw std::runtime_error("run: no command specified"); }
@@ -95,6 +96,8 @@ void cmd_run::execute() {
                              content.size() };
   auto const meta{ parse_envy_meta(sv) };
 
+  reexec_if_needed(meta, cli_cache_root_);
+
   if (!meta.bin) {
     throw std::runtime_error("run: manifest has no @envy bin directive: " +
                              manifest_path.string());
@@ -123,8 +126,8 @@ void cmd_run::execute() {
     new_path += existing_path;
   }
 
-  platform::set_env_var("PATH", new_path.c_str());
-  platform::set_env_var("ENVY_PROJECT_ROOT", manifest_dir.c_str());
+  platform::env_var_set("PATH", new_path.c_str());
+  platform::env_var_set("ENVY_PROJECT_ROOT", manifest_dir.c_str());
 
   std::vector<char *> argv;
   argv.reserve(exec_command.size() + 1);

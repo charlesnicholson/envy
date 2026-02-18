@@ -25,10 +25,6 @@ namespace envy {
 
 namespace fs = std::filesystem;
 
-constexpr std::string_view kEnvyDownloadUrl{
-  "https://github.com/charlesnicholson/envy/releases/download"
-};
-
 std::string make_portable_path(fs::path const &path) {
 #ifdef _WIN32
   char const *home{ std::getenv("USERPROFILE") };

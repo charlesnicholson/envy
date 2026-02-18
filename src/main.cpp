@@ -1,6 +1,7 @@
 #include "aws_util.h"
 #include "cli.h"
 #include "libgit2_util.h"
+#include "reexec.h"
 #include "shell.h"
 #include "termination.h"
 #include "tui.h"
@@ -15,6 +16,7 @@ int main(int argc, char *argv[]) {
   envy::tui::test::g_isatty = false;  // Disable ANSI output during functional tests
 #endif
   envy::shell_init();
+  envy::reexec_init(argv);
 
   auto args{ envy::cli_parse(argc, argv) };
   envy::tui::configure_trace_outputs(args.trace_outputs);

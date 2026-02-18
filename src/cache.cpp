@@ -239,7 +239,7 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     // fetch_dir cleanup is best-effort: the install is already complete, so a
     // lingering fetch dir only wastes disk space.  On Windows, Defender or Search
     // Indexer may still be scanning recently-downloaded archives.
-    if (auto ec{platform::remove_all_with_retry(fetch_dir())}) {
+    if (auto ec{ platform::remove_all_with_retry(fetch_dir()) }) {
       tui::warn("cache: could not remove %s: %s",
                 fetch_dir().string().c_str(),
                 ec.message().c_str());

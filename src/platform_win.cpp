@@ -1,8 +1,10 @@
 #include "platform.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -59,13 +61,20 @@ std::filesystem::path get_exe_path() {
   return std::filesystem::path{ buf.data() };
 }
 
-void set_env_var(char const *name, char const *value) {
+void env_var_set(char const *name, char const *value) {
   if (name == nullptr || value == nullptr) {
-    throw std::invalid_argument("set_env_var: null name or value");
+    throw std::invalid_argument("env_var_set: null name or value");
   }
 
   if (::_putenv_s(name, value) != 0) {
-    throw std::runtime_error(std::string("set_env_var: failed to set ") + name);
+    throw std::runtime_error(std::string("env_var_set: failed to set ") + name);
+  }
+}
+
+void env_var_unset(char const *name) {
+  if (name == nullptr) { throw std::invalid_argument("env_var_unset: null name"); }
+  if (::_putenv_s(name, "") != 0) {
+    throw std::runtime_error(std::string("env_var_unset: failed to unset ") + name);
   }
 }
 
@@ -266,6 +275,103 @@ std::filesystem::path expand_path(std::string_view p) {
   }
 
   return result;
+}
+
+int get_process_id() { return static_cast<int>(GetCurrentProcessId()); }
+
+std::vector<std::string> get_environment() {
+  std::vector<std::string> result;
+  if (char *block{ GetEnvironmentStringsA() }; block) {
+    for (char const *p = block; *p; p += std::strlen(p) + 1) { result.emplace_back(p); }
+    FreeEnvironmentStringsA(block);
+  }
+  return result;
+}
+
+namespace {
+
+// Build a flat command line string from argv with proper Windows quoting.
+std::string build_cmdline(char **argv) {
+  std::string cmdline;
+  for (int i = 0; argv[i]; ++i) {
+    if (i > 0) { cmdline += ' '; }
+    std::string_view arg{ argv[i] };
+    bool const needs_quote{ arg.empty() ||
+                            arg.find_first_of(" \t\"") != std::string_view::npos };
+    if (!needs_quote) {
+      cmdline += arg;
+      continue;
+    }
+
+    cmdline += '"';
+    for (auto it = arg.begin();;) {
+      int n_bs{ 0 };
+      while (it != arg.end() && *it == '\\') {
+        ++it;
+        ++n_bs;
+      }
+
+      if (it == arg.end()) {
+        cmdline.append(static_cast<size_t>(n_bs * 2), '\\');
+        break;
+      }
+
+      if (*it == '"') {
+        cmdline.append(static_cast<size_t>(n_bs * 2 + 1), '\\');
+      } else {
+        cmdline.append(static_cast<size_t>(n_bs), '\\');
+      }
+      cmdline += *it++;
+    }
+    cmdline += '"';
+  }
+  return cmdline;
+}
+
+// Build a double-null-terminated environment block for CreateProcessA.
+std::string build_env_block(std::vector<std::string> const &env) {
+  std::string block;
+  for (auto const &e : env) {
+    block.append(e);
+    block.push_back('\0');
+  }
+  block.push_back('\0');  // double-null terminator
+  return block;
+}
+
+}  // namespace
+
+int exec_process(std::filesystem::path const &binary,
+                 char **argv,
+                 std::vector<std::string> env) {
+  auto cmdline{ build_cmdline(argv) };
+  auto env_block{ build_env_block(env) };
+
+  STARTUPINFOA si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+
+  if (!CreateProcessA(binary.string().c_str(),
+                      cmdline.data(),
+                      nullptr,
+                      nullptr,
+                      TRUE,
+                      0,
+                      env_block.data(),
+                      nullptr,
+                      &si,
+                      &pi)) {
+    throw std::runtime_error("exec_process: CreateProcess failed: " +
+                             std::to_string(GetLastError()));
+  }
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  DWORD exit_code{};
+  GetExitCodeProcess(pi.hProcess, &exit_code);
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+
+  return static_cast<int>(exit_code);
 }
 
 }  // namespace envy::platform

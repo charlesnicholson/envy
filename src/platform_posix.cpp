@@ -10,12 +10,15 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <unordered_map>
 #include <vector>
+
+extern "C" char **environ;
 
 namespace envy::platform {
 
@@ -103,14 +106,19 @@ std::filesystem::path get_exe_path() {
 #endif
 }
 
-void set_env_var(char const *name, char const *value) {
+void env_var_set(char const *name, char const *value) {
   if (name == nullptr || value == nullptr) {
-    throw std::invalid_argument("set_env_var: null name or value");
+    throw std::invalid_argument("env_var_set: null name or value");
   }
 
   if (::setenv(name, value, 1) != 0) {
-    throw std::runtime_error(std::string("set_env_var: failed to set ") + name);
+    throw std::runtime_error(std::string("env_var_set: failed to set ") + name);
   }
+}
+
+void env_var_unset(char const *name) {
+  if (name == nullptr) { throw std::invalid_argument("env_var_unset: null name"); }
+  ::unsetenv(name);
 }
 
 file_lock::file_lock(std::filesystem::path const &path) {
@@ -244,6 +252,27 @@ std::filesystem::path expand_path(std::string_view p) {
     throw std::runtime_error("undefined variable in path: " + path_str);
   }
   throw std::runtime_error("path expansion failed: " + path_str);
+}
+
+int get_process_id() { return static_cast<int>(getpid()); }
+
+std::vector<std::string> get_environment() {
+  std::vector<std::string> result;
+  for (char **ep = environ; *ep; ++ep) { result.emplace_back(*ep); }
+  return result;
+}
+
+int exec_process(std::filesystem::path const &binary,
+                 char **argv,
+                 std::vector<std::string> env) {
+  std::vector<char *> envp;
+  envp.reserve(env.size() + 1);
+  for (auto &e : env) { envp.push_back(e.data()); }
+  envp.push_back(nullptr);
+
+  execve(binary.c_str(), argv, envp.data());
+  throw std::runtime_error(std::string{ "exec_process: execve failed: " } +
+                           std::strerror(errno));
 }
 
 }  // namespace envy::platform
