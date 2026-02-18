@@ -352,16 +352,13 @@ cache::envy_ensure_result cache::ensure_envy(std::string_view version) {
   std::filesystem::create_directories(m->locks_dir());
   platform::file_lock lock{ m->locks_dir() /
                             ("envy." + std::string{ version } + ".lock") };
-  if (!lock) { return { envy_dir, binary_path, types_path, true, std::nullopt }; }
 
   // Re-check after lock (another process may have completed)
   if (std::filesystem::exists(binary_path) && std::filesystem::exists(types_path)) {
     return { envy_dir, binary_path, types_path, true, std::nullopt };
   }
 
-  std::error_code ec;
-  std::filesystem::create_directories(envy_dir, ec);
-  if (ec) { return { envy_dir, binary_path, types_path, true, std::nullopt }; }
+  std::filesystem::create_directories(envy_dir);
 
   return { envy_dir, binary_path, types_path, false, std::move(lock) };
 }

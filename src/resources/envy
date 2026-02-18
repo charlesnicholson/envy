@@ -74,7 +74,7 @@ else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/envy"; fi
 if [[ -z "$VERSION" ]]; then
     if [[ -f "$CACHE/envy/latest" ]]; then
         LATEST_VER="$(cat "$CACHE/envy/latest" 2>/dev/null)"
-        LATEST_VER="${LATEST_VER%%[[:space:]]}"
+        LATEST_VER="${LATEST_VER%%[[:space:]]*}"
         [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
     fi
     if [[ -z "$VERSION" ]]; then

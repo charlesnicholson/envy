@@ -1,7 +1,7 @@
 # Semver - Semantic Versioning library (single-header)
 # https://github.com/Neargye/semver
 
-set(SEMVER_CACHE_DIR "${CMAKE_BINARY_DIR}/../cache/semver-src")
+set(SEMVER_CACHE_DIR "${ENVY_CACHE_DIR}/semver-src")
 file(MAKE_DIRECTORY "${SEMVER_CACHE_DIR}")
 
 set(_semver_local_file "${SEMVER_CACHE_DIR}/semver.hpp")

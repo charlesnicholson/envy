@@ -18,6 +18,7 @@
 #include "mbedtls/version.h"
 #endif
 #include "libssh2.h"
+#include "semver.hpp"
 #include "sol/sol.hpp"
 #include "tui.h"
 #include "zlib.h"
@@ -157,6 +158,10 @@ void cmd_version::execute() {
             static_cast<unsigned>(crt_version.minor),
             static_cast<unsigned>(crt_version.patch));
 
+  tui::info("  Semver: %d.%d.%d",
+            SEMVER_VERSION_MAJOR,
+            SEMVER_VERSION_MINOR,
+            SEMVER_VERSION_PATCH);
   tui::info("  CLI11: %s", CLI11_VERSION);
 }
 
