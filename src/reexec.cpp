@@ -104,7 +104,8 @@ fetch_request make_fetch_request(std::string const &url,
 }
 
 // Build child env: copy current env, add ENVY_REEXEC=1, strip ENVY_TEST_SELF_VERSION.
-// Parent env is never modified; the returned storage + pointer array are passed to execve.
+// Parent env is never modified; the returned storage + pointer array are passed to
+// execve (POSIX) or _spawnve (Windows).
 struct child_env {
   std::vector<std::string> storage;
   std::vector<char *> envp;
@@ -138,8 +139,9 @@ child_env build_child_envp() {
   auto env{ build_child_envp() };
 
 #ifdef _WIN32
+  // _spawnve: explicit envp, no PATH search (we always pass full paths).
   intptr_t const rc{
-    _spawnvpe(_P_WAIT, binary.string().c_str(), g_argv, env.envp.data())
+    _spawnve(_P_WAIT, binary.string().c_str(), g_argv, env.envp.data())
   };
   if (rc == -1) {
     throw std::runtime_error(std::string{ "reexec: spawn failed: " } +
