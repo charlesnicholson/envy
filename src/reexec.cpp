@@ -110,10 +110,7 @@ std::vector<std::string> build_child_env() {
 
 [[noreturn]] void do_reexec(std::filesystem::path const &binary) {
   tui::info("reexec: switching to envy at %s", binary.string().c_str());
-
-  auto child_env{ build_child_env() };
-  int const rc{ platform::exec_process(binary, g_argv, std::move(child_env)) };
-  throw subprocess_exit{ rc };
+  throw subprocess_exit{ platform::exec_process(binary, g_argv, build_child_env()) };
 }
 
 }  // namespace
@@ -197,7 +194,7 @@ void reexec_if_needed(envy_meta const &meta,
 #else
       getpid()
 #endif
-      ) };
+          ) };
   auto const tmp_dir{ std::filesystem::temp_directory_path() /
                       ("envy-reexec-" + version + "-" + std::to_string(pid)) };
   std::filesystem::create_directories(tmp_dir);
