@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "cmds/cmd_deploy.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
@@ -549,52 +550,52 @@ TEST_CASE("cli_parse: cmd_install") {
   }
 }
 
-TEST_CASE("cli_parse: cmd_sync flags") {
+TEST_CASE("cli_parse: cmd_deploy flags") {
   SUBCASE("default flags") {
-    std::vector<std::string> args{ "envy", "sync" };
+    std::vector<std::string> args{ "envy", "deploy" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK_FALSE(cfg->strict);
     CHECK_FALSE(cfg->subproject);
   }
 
   SUBCASE("--strict flag") {
-    std::vector<std::string> args{ "envy", "sync", "--strict" };
+    std::vector<std::string> args{ "envy", "deploy", "--strict" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK(cfg->strict);
   }
 
   SUBCASE("--subproject flag") {
-    std::vector<std::string> args{ "envy", "sync", "--subproject" };
+    std::vector<std::string> args{ "envy", "deploy", "--subproject" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK(cfg->subproject);
   }
 
   SUBCASE("with identities") {
-    std::vector<std::string> args{ "envy", "sync", "pkg1", "pkg2" };
+    std::vector<std::string> args{ "envy", "deploy", "pkg1", "pkg2" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     REQUIRE(cfg->identities.size() == 2);
     CHECK(cfg->identities[0] == "pkg1");
@@ -602,13 +603,13 @@ TEST_CASE("cli_parse: cmd_sync flags") {
   }
 
   SUBCASE("--manifest flag") {
-    std::vector<std::string> args{ "envy", "sync", "--manifest", "/path/to/envy.lua" };
+    std::vector<std::string> args{ "envy", "deploy", "--manifest", "/path/to/envy.lua" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     REQUIRE(parsed.cmd_cfg.has_value());
-    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
@@ -616,7 +617,7 @@ TEST_CASE("cli_parse: cmd_sync flags") {
 
   SUBCASE("--subproject with --manifest rejected") {
     std::vector<std::string> args{ "envy",
-                                   "sync",
+                                   "deploy",
                                    "--subproject",
                                    "--manifest",
                                    "/path/to/envy.lua" };
@@ -770,8 +771,8 @@ TEST_CASE("cli_parse: cmd_run") {
   }
 }
 
-TEST_CASE("cli_parse: cmd_sync --platform") {
-  SUBCASE("default (no --platform)") {
+TEST_CASE("cli_parse: cmd_sync") {
+  SUBCASE("no arguments (sync all)") {
     std::vector<std::string> args{ "envy", "sync" };
     auto argv{ make_argv(args) };
 
@@ -780,7 +781,75 @@ TEST_CASE("cli_parse: cmd_sync --platform") {
     REQUIRE(parsed.cmd_cfg.has_value());
     auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
+    CHECK(cfg->queries.empty());
+    CHECK_FALSE(cfg->strict);
+    CHECK_FALSE(cfg->subproject);
     CHECK(cfg->platform_flag.empty());
+  }
+
+  SUBCASE("with queries") {
+    std::vector<std::string> args{ "envy", "sync", "gcc", "binutils" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 2);
+    CHECK(cfg->queries[0] == "gcc");
+    CHECK(cfg->queries[1] == "binutils");
+  }
+
+  SUBCASE("--manifest flag") {
+    std::vector<std::string> args{ "envy", "sync", "--manifest", "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+
+  SUBCASE("--strict flag") {
+    std::vector<std::string> args{ "envy", "sync", "--strict" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+  }
+
+  SUBCASE("--subproject flag") {
+    std::vector<std::string> args{ "envy", "sync", "--subproject" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->subproject);
+  }
+
+  SUBCASE("--subproject with --manifest rejected") {
+    std::vector<std::string> args{ "envy",
+                                   "sync",
+                                   "--subproject",
+                                   "--manifest",
+                                   "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 
   SUBCASE("--platform posix") {
@@ -821,6 +890,66 @@ TEST_CASE("cli_parse: cmd_sync --platform") {
 
   SUBCASE("invalid --platform value rejected") {
     std::vector<std::string> args{ "envy", "sync", "--platform", "linux" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_deploy --platform") {
+  SUBCASE("default (no --platform)") {
+    std::vector<std::string> args{ "envy", "deploy" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag.empty());
+  }
+
+  SUBCASE("--platform posix") {
+    std::vector<std::string> args{ "envy", "deploy", "--platform", "posix" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "posix");
+  }
+
+  SUBCASE("--platform windows") {
+    std::vector<std::string> args{ "envy", "deploy", "--platform", "windows" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "windows");
+  }
+
+  SUBCASE("--platform all") {
+    std::vector<std::string> args{ "envy", "deploy", "--platform", "all" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_deploy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->platform_flag == "all");
+  }
+
+  SUBCASE("invalid --platform value rejected") {
+    std::vector<std::string> args{ "envy", "deploy", "--platform", "linux" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };

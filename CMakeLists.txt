@@ -212,6 +212,7 @@ set(ENVY_BASE_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
+    src/cmds/cmd_deploy.cpp
     src/cmds/cmd_package.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
@@ -224,6 +225,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_sync.cpp
     src/cmds/cmd_shell.cpp
     src/cmds/cmd_version.cpp
+    src/deploy.cpp
     src/engine.cpp
     src/pkg_phase.cpp
     src/pkg_key.cpp

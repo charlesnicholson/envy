@@ -1,7 +1,7 @@
-"""Functional tests for 'envy sync' command.
+"""Functional tests for 'envy sync' and 'envy deploy' commands.
 
-Tests syncing entire manifest, specific identities, error handling,
-and transitive dependencies.
+Tests syncing (install + deploy), deploy-only, specific identities,
+error handling, and transitive dependencies.
 """
 
 import hashlib
@@ -494,6 +494,25 @@ class TestSyncProductScripts(unittest.TestCase):
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
+    def run_deploy(
+        self,
+        manifest: Path,
+        identities: Optional[List[str]] = None,
+        strict: bool = False,
+        platform: Optional[str] = None,
+    ):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "deploy"]
+        if strict:
+            cmd.append("--strict")
+        if platform:
+            cmd.extend(["--platform", platform])
+        if identities:
+            cmd.extend(identities)
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
     def test_sync_creates_product_scripts(self):
         """Default sync creates product scripts in bin directory."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
@@ -644,8 +663,8 @@ PACKAGES = {{
             mtime_after, jan_1_2000, "Bootstrap should not be rewritten when unchanged"
         )
 
-    def test_install_then_sync_deploys_scripts(self):
-        """Install installs packages, then sync deploys scripts."""
+    def test_install_then_deploy_deploys_scripts(self):
+        """Install installs packages, then deploy deploys scripts standalone."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
         manifest = self.create_manifest(f"""
@@ -671,14 +690,41 @@ PACKAGES = {{
         pkg_path = self.cache_root / "packages" / "local.product_provider@v1"
         self.assertTrue(pkg_path.exists())
 
-        # Then sync to deploy scripts
-        result = self.run_sync(manifest=manifest)
+        # Then deploy to deploy scripts (standalone deploy, no install)
+        result = self.run_deploy(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         bin_dir = self.test_dir / "envy-bin"
         script_name = "tool.bat" if sys.platform == "win32" else "tool"
         script_path = bin_dir / script_name
         self.assertTrue(script_path.exists())
+
+    def test_sync_installs_and_deploys_in_one_shot(self):
+        """Sync installs packages AND deploys product scripts in one invocation."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        # Single sync: should install packages and deploy scripts
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Verify packages were installed
+        pkg_path = self.cache_root / "packages" / "local.product_provider@v1"
+        self.assertTrue(pkg_path.exists(), "Package not installed by sync")
+
+        # Verify product scripts were deployed
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists(), "Product script not deployed by sync")
+
+        content = script_path.read_text()
+        self.assertIn("envy-managed", content)
 
     def test_sync_timestamp_preserved_when_content_unchanged(self):
         """Sync preserves file timestamps when content is unchanged."""
@@ -1122,6 +1168,13 @@ class TestSyncDeployDirective(unittest.TestCase):
             cmd, cwd=self.project_root, capture_output=True, text=True
         )
 
+    def run_deploy(self, manifest: Path):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "deploy"]
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
     def run_install(self, manifest: Path):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "install"]
         cmd.extend(["--manifest", str(manifest)])
@@ -1201,6 +1254,42 @@ PACKAGES = {{
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertNotIn("deployment is disabled", result.stderr)
 
+    def test_deploy_deploy_true_creates_scripts(self):
+        """Deploy standalone with deploy=true creates product scripts."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""",
+            deploy="true",
+        )
+
+        result = self.run_deploy(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        self.assertTrue(script_path.exists())
+
+    def test_deploy_deploy_absent_warns(self):
+        """Deploy standalone with deploy absent warns user."""
+        simple_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+}}
+""")  # No deploy directive
+
+        result = self.run_deploy(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("deployment is disabled", result.stderr)
+        self.assertIn("@envy deploy", result.stderr)
+
 
 class TestSyncBootstrap(unittest.TestCase):
     """Tests for bootstrap script update via 'envy sync'."""
@@ -1242,6 +1331,15 @@ class TestSyncBootstrap(unittest.TestCase):
 
     def run_sync(self, manifest: Path, platform: Optional[str] = None):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if platform:
+            cmd.extend(["--platform", platform])
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def run_deploy(self, manifest: Path, platform: Optional[str] = None):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "deploy"]
         if platform:
             cmd.extend(["--platform", platform])
         cmd.extend(["--manifest", str(manifest)])
