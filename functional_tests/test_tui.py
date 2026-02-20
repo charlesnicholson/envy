@@ -40,6 +40,22 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
 
+# Fast-completing spec (instant install)
+SPEC_FAST = """IDENTITY = "local.fast@v1"
+function CHECK(project_root, options) return false end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("echo fast-install-done", { quiet = true })
+end
+"""
+
+# Slow spec (sleeps to keep renderer active)
+SPEC_SLOW = """IDENTITY = "local.slow@v1"
+function CHECK(project_root, options) return false end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  envy.run("sleep 2")
+end
+"""
+
 # Minimal spec for ANSI/fallback mode tests
 SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
@@ -70,6 +86,8 @@ class TestTUIRendering(unittest.TestCase):
         (self.specs_dir / "build_function.lua").write_text(SPEC_BUILD_FUNCTION)
         (self.specs_dir / "build_dependency.lua").write_text(SPEC_BUILD_DEPENDENCY)
         (self.specs_dir / "simple.lua").write_text(SPEC_SIMPLE)
+        (self.specs_dir / "fast.lua").write_text(SPEC_FAST)
+        (self.specs_dir / "slow.lua").write_text(SPEC_SLOW)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -165,6 +183,44 @@ PACKAGES = {{
         # Check that no ANSI codes are present in piped output
         self.assertNotIn(
             "\x1b[", result.stderr, "Expected no ANSI codes when stderr is piped"
+        )
+
+
+    def test_completed_sections_not_repeated_in_dumb_mode(self):
+        """Completed sections don't repeat in fallback output."""
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.fast@v1", source = "{self.lua_path(self.specs_dir)}/fast.lua" }},
+    {{ spec = "local.slow@v1", source = "{self.lua_path(self.specs_dir)}/slow.lua" }},
+}}
+"""
+        )
+
+        result = self.run_sync(
+            manifest,
+            env={
+                "TERM": "dumb",
+                "ENVY_TEST_FALLBACK_THROTTLE_MS": "200",
+            },
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        lines = result.stderr.splitlines()
+        slow_lines = [l for l in lines if "local.slow@v1" in l]
+        fast_done_lines = [
+            l for l in lines if "local.fast@v1" in l and "done" in l.lower()
+        ]
+
+        # Slow package should have multiple progress updates (renderer is active)
+        self.assertGreater(
+            len(slow_lines), 1, f"Expected multiple slow lines, got: {slow_lines}"
+        )
+        # Fast package's "done" should appear at most once
+        self.assertLessEqual(
+            len(fast_done_lines),
+            1,
+            f"Expected at most 1 fast-done line, got: {fast_done_lines}",
         )
 
 
