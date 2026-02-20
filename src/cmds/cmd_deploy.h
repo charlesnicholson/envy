@@ -12,10 +12,10 @@ namespace CLI { class App; }
 
 namespace envy {
 
-class cmd_sync : public cmd {
+class cmd_deploy : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_sync> {
-    std::vector<std::string> queries;  // Package filter (install all if empty)
+  struct cfg : cmd_cfg<cmd_deploy> {
+    std::vector<std::string> identities;  // If empty, deploy all manifest packages
     std::optional<std::filesystem::path> manifest_path;
     bool strict = false;  // If true, error on non-envy-managed product script conflicts
     bool subproject = false;    // If true, use nearest manifest instead of root
@@ -24,9 +24,10 @@ class cmd_sync : public cmd {
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
 
-  cmd_sync(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
+  cmd_deploy(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
+  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
