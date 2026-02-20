@@ -31,6 +31,7 @@ void run_completion_phase(pkg *p, engine &eng) {
         p->tui_section,
         tui::section_frame{ .label = "[" + p->cfg->identity + "]",
                             .content = tui::static_text_data{ .text = "done" } });
+    tui::section_set_complete(p->tui_section);
   }
 }
 

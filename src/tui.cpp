@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
@@ -71,7 +72,8 @@ struct tui {
 struct section_state {
   unsigned handle;
   envy::tui::section_frame cached_frame;
-  bool has_content{ false };  // True after first set_content call
+  bool has_content{ false };   // True after first set_content call
+  bool complete{ false };      // Suppresses fallback rendering
 
   std::string last_fallback_output;
   std::chrono::steady_clock::time_point last_fallback_print_time;
@@ -584,7 +586,14 @@ int render_progress_sections_ansi(std::vector<section_state> const &sections,
 void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
                                     std::chrono::steady_clock::time_point now) {
   // Throttle: print only if changed and >= 2s elapsed
-  constexpr auto kFallbackThrottle{ std::chrono::seconds{ 2 } };
+  static auto const kFallbackThrottle = [] {
+#if defined(ENVY_FUNCTIONAL_TESTER)
+    if (auto const *val = std::getenv("ENVY_TEST_FALLBACK_THROTTLE_MS")) {
+      return std::chrono::milliseconds{ std::atoi(val) };
+    }
+#endif
+    return std::chrono::milliseconds{ 2000 };
+  }();
 
   struct update_info {
     unsigned handle;
@@ -593,7 +602,7 @@ void render_fallback_frame_unlocked(std::vector<section_state> const &sections,
   std::vector<update_info> updates;
 
   for (auto const &sec : sections) {
-    if (!sec.has_content) { continue; }
+    if (!sec.has_content || sec.complete) { continue; }
 
     std::string const output{ render_section_frame_fallback(sec.cached_frame, now) };
 
@@ -1093,6 +1102,18 @@ void section_set_content(section_handle h, section_frame const &frame) {
     it->has_content = true;
     s_progress.max_label_width =
         std::max(s_progress.max_label_width, measure_label_width(frame));
+  }
+}
+
+void section_set_complete(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return; }
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  if (auto it{ std::ranges::find_if(s_progress.sections,
+                                    [h](auto const &sec) { return sec.handle == h; }) };
+      it != s_progress.sections.end()) {
+    it->complete = true;
   }
 }
 
