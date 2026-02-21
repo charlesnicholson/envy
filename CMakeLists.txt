@@ -310,6 +310,9 @@ set(ENVY_COMMON_COMPILE_OPTIONS
 
 # Function to configure an envy executable (base configuration, no sanitizers)
 function(configure_envy_executable TARGET_NAME)
+    if(MSVC)
+        target_precompile_headers(${TARGET_NAME} PRIVATE src/pch.h)
+    endif()
     target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
     target_include_directories(${TARGET_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
