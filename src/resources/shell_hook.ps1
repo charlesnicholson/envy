@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-$global:_ENVY_HOOK_VERSION = 4
+$global:_ENVY_HOOK_VERSION = 5
 
 # Detect UTF-8 locale for emoji/unicode output
 $global:_ENVY_UTF8 = (($env:LC_ALL + $env:LC_CTYPE + $env:LANG) -match '[Uu][Tt][Ff]-?8') -or
@@ -58,7 +58,9 @@ function _envy_hook {
                     # Leaving old project (switching)?
                     if ($global:_ENVY_BIN_DIR) {
                         $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
-                        [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
+                        if ($env:ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE -ne "1") {
+                            [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
+                        }
                         $parts = $env:PATH -split [regex]::Escape($sep)
                         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
                         $env:PATH = $parts -join $sep
@@ -66,7 +68,9 @@ function _envy_hook {
                     $env:PATH = "$binDir$sep$env:PATH"
                     $global:_ENVY_BIN_DIR = $binDir
                     $newName = Split-Path $manifestDir -Leaf
-                    [Console]::Error.WriteLine("envy: entering $newName $($global:_ENVY_DASH) tools added to PATH")
+                    if ($env:ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE -ne "1") {
+                        [Console]::Error.WriteLine("envy: entering $newName $($global:_ENVY_DASH) tools added to PATH")
+                    }
                     $global:_ENVY_PROMPT_ACTIVE = $true
                 }
                 $env:ENVY_PROJECT_ROOT = $manifestDir
@@ -78,7 +82,9 @@ function _envy_hook {
     # Left all projects or no bin — clean up
     if ($global:_ENVY_BIN_DIR) {
         $oldName = Split-Path $env:ENVY_PROJECT_ROOT -Leaf
-        [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
+        if ($env:ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE -ne "1") {
+            [Console]::Error.WriteLine("envy: leaving $oldName $($global:_ENVY_DASH) PATH restored")
+        }
         $parts = $env:PATH -split [regex]::Escape($sep)
         $parts = $parts | Where-Object { $_ -ne $global:_ENVY_BIN_DIR }
         $env:PATH = $parts -join $sep
@@ -97,7 +103,7 @@ if (-not (Test-Path Function:\global:_envy_original_prompt)) {
     Copy-Item Function:\prompt Function:\global:_envy_original_prompt
     function global:prompt {
         _envy_hook
-        if ($global:_ENVY_PROMPT_ACTIVE -and $global:_ENVY_UTF8 -and $env:ENVY_NO_PROMPT -ne "1") {
+        if ($global:_ENVY_PROMPT_ACTIVE -and $global:_ENVY_UTF8 -and $env:ENVY_SHELL_NO_ICON -ne "1") {
             Write-Host "`u{1F99D} " -NoNewline
         }
         _envy_original_prompt

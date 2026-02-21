@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=4
+_ENVY_HOOK_VERSION=5
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
@@ -56,7 +56,7 @@ _envy_remove_from_path() {
 }
 
 _envy_set_prompt() {
-  if [ "${ENVY_NO_PROMPT:-}" = "1" ]; then return; fi
+  if [ "${ENVY_SHELL_NO_ICON:-}" = "1" ]; then return; fi
   if [ "${_ENVY_UTF8:-}" != "1" ]; then return; fi
   if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]; then return; fi
   _ENVY_PROMPT_ACTIVE=1
@@ -75,7 +75,7 @@ _envy_unset_prompt() {
 
 # Runs before each prompt: re-applies raccoon if a theme overwrote PROMPT
 _envy_precmd() {
-  if [ "${ENVY_NO_PROMPT:-}" = "1" ] || [ "${_ENVY_UTF8:-}" != "1" ]; then
+  if [ "${ENVY_SHELL_NO_ICON:-}" = "1" ] || [ "${_ENVY_UTF8:-}" != "1" ]; then
     _envy_unset_prompt
     return
   fi
@@ -110,13 +110,17 @@ _envy_hook() {
         if [ "$bin_dir" != "${_ENVY_BIN_DIR:-}" ]; then
           # Leaving old project (switching)?
           if [ -n "${_ENVY_BIN_DIR:-}" ]; then
-            printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
+            if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
+              printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
+            fi
             PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
           fi
           PATH="$bin_dir:$PATH"
           export PATH
           _ENVY_BIN_DIR="$bin_dir"
-          printf 'envy: entering %s %s tools added to PATH\n' "${manifest_dir##*/}" "$_ENVY_DASH" >&2
+          if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
+            printf 'envy: entering %s %s tools added to PATH\n' "${manifest_dir##*/}" "$_ENVY_DASH" >&2
+          fi
           _envy_set_prompt
         fi
         ENVY_PROJECT_ROOT="$manifest_dir"
@@ -128,7 +132,9 @@ _envy_hook() {
 
   # Left all projects or no bin — clean up
   if [ -n "${_ENVY_BIN_DIR:-}" ]; then
-    printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
+    if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
+      printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
+    fi
     PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
     export PATH
     unset _ENVY_BIN_DIR
@@ -146,7 +152,7 @@ if [[ -z "${precmd_functions[(r)_envy_precmd]}" ]]; then
 fi
 
 # Auto-register p10k segment if available (raccoon appears in p10k's prompt)
-if [ "${ENVY_NO_PROMPT:-}" != "1" ] && [ "${_ENVY_UTF8:-}" = "1" ] && \
+if [ "${ENVY_SHELL_NO_ICON:-}" != "1" ] && [ "${_ENVY_UTF8:-}" = "1" ] && \
    (( ${+functions[p10k]} )) && [[ -n "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS+x}" ]]; then
   if [[ -z "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[(r)envy]}" ]]; then
     POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(envy "${POWERLEVEL9K_LEFT_PROMPT_ELEMENTS[@]}")
