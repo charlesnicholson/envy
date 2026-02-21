@@ -62,9 +62,7 @@ class TestBashHook(unittest.TestCase):
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
         manifest = project / "envy.lua"
-        manifest.write_text(
-            f'-- @envy bin "{bin_val}"\nPACKAGES = {{}}\n'
-        )
+        manifest.write_text(f'-- @envy bin "{bin_val}"\nPACKAGES = {{}}\n')
         return project
 
     def test_cd_into_project_adds_bin_to_path(self) -> None:
@@ -158,7 +156,7 @@ class TestBashHook(unittest.TestCase):
     def test_missing_bin_directive_no_path_change(self) -> None:
         project = self._temp_dir / "no-bin"
         project.mkdir(parents=True)
-        (project / "envy.lua").write_text('PACKAGES = {}\n')
+        (project / "envy.lua").write_text("PACKAGES = {}\n")
         original_path = "/usr/bin:/bin"
         result = self._run_bash_hook_test(
             f'export PATH="{original_path}"\n'
@@ -191,10 +189,7 @@ class TestBashHook(unittest.TestCase):
         child.mkdir(parents=True, exist_ok=True)
         (child / "tools").mkdir(exist_ok=True)
         (child / "envy.lua").write_text(
-            '-- @envy root "false"\n'
-            '-- @envy bin "tools"\n'
-            ''
-            "PACKAGES = {}\n"
+            '-- @envy root "false"\n-- @envy bin "tools"\nPACKAGES = {}\n'
         )
         result = self._run_bash_hook_test(
             f'source "{self._hook_path}"\n'
@@ -211,9 +206,7 @@ class TestBashHook(unittest.TestCase):
         project = self._temp_dir / "space proj"
         project.mkdir(parents=True, exist_ok=True)
         (project / "my tools").mkdir(exist_ok=True)
-        (project / "envy.lua").write_text(
-            '-- @envy bin "my tools"\nPACKAGES = {}\n'
-        )
+        (project / "envy.lua").write_text('-- @envy bin "my tools"\nPACKAGES = {}\n')
         result = self._run_bash_hook_test(
             f'source "{self._hook_path}"\n'
             f'cd "{project}"\n'
@@ -354,7 +347,7 @@ class TestBashHook(unittest.TestCase):
     def test_raccoon_disabled_via_env_var(self) -> None:
         project = self._make_envy_project("proj-raccoon-off")
         result = self._run_bash_hook_test(
-            f"export ENVY_NO_PROMPT=1\n"
+            f"export ENVY_SHELL_NO_ICON=1\n"
             f'PS1="$ "\n'
             f'source "{self._hook_path}"\n'
             f'cd "{project}"\n'
@@ -382,6 +375,61 @@ class TestBashHook(unittest.TestCase):
         self.assertNotIn("\U0001f99d", result.stdout)
         self.assertIn("--", result.stderr)
         self.assertNotIn("\u2014", result.stderr)
+
+    # --- v5: display control env vars ---
+
+    def test_messages_suppressed_via_env_var(self) -> None:
+        """ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1 suppresses enter/leave text."""
+        project = self._make_envy_project("proj-no-announce")
+        result = self._run_bash_hook_test(
+            f"export ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1\n"
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PATH"\n'
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        # PATH still modified
+        self.assertIn(str(project / "tools"), result.stdout)
+        # Raccoon still shown
+        self.assertIn("\U0001f99d", result.stdout)
+        # No entering/leaving messages
+        self.assertNotIn("envy: entering", result.stderr)
+
+    def test_messages_suppressed_but_icon_shown(self) -> None:
+        """Messages suppressed, icon still shown — vars are independent."""
+        project = self._make_envy_project("proj-ann-no-icon-yes")
+        result = self._run_bash_hook_test(
+            f"export ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1\n"
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("envy: entering", result.stderr)
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_icon_suppressed_but_messages_shown(self) -> None:
+        """Icon suppressed, messages still shown — vars are independent."""
+        project = self._make_envy_project("proj-icon-no-ann-yes")
+        result = self._run_bash_hook_test(
+            f"export ENVY_SHELL_NO_ICON=1\n"
+            f'PS1="$ "\n'
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PS1"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering", result.stderr)
+        self.assertNotIn("\U0001f99d", result.stdout)
 
 
 @unittest.skipUnless(shutil.which("zsh"), "zsh not installed")
@@ -415,9 +463,7 @@ class TestZshHook(unittest.TestCase):
         project = self._temp_dir / name
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
-        (project / "envy.lua").write_text(
-            '-- @envy bin "tools"\nPACKAGES = {}\n'
-        )
+        (project / "envy.lua").write_text('-- @envy bin "tools"\nPACKAGES = {}\n')
         return project
 
     def _run_zsh_hook_test(self, script: str) -> subprocess.CompletedProcess[str]:
@@ -536,7 +582,7 @@ class TestZshHook(unittest.TestCase):
     def test_raccoon_disabled_via_env_var(self) -> None:
         project = self._make_envy_project("zsh-raccoon-off")
         result = self._run_zsh_hook_test(
-            f"export ENVY_NO_PROMPT=1\n"
+            f"export ENVY_SHELL_NO_ICON=1\n"
             f'PROMPT="$ "\n'
             f'source "{self._hook_path}"\ncd "{project}"\n'
             f'echo "$PROMPT"'
@@ -657,9 +703,9 @@ class TestZshHook(unittest.TestCase):
         self.assertIn("done", result.stdout)
 
     def test_p10k_segment_not_registered_when_prompt_disabled(self) -> None:
-        """ENVY_NO_PROMPT=1 prevents p10k segment registration."""
+        """ENVY_SHELL_NO_ICON=1 prevents p10k segment registration."""
         result = self._run_zsh_hook_test(
-            f"export ENVY_NO_PROMPT=1\n"
+            f"export ENVY_SHELL_NO_ICON=1\n"
             f"p10k() {{ : }}\n"
             f"typeset -ga POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(os_icon dir vcs)\n"
             f'source "{self._hook_path}"\n'
@@ -668,6 +714,46 @@ class TestZshHook(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         elements = result.stdout.split("elements=")[1].split("\n")[0]
         self.assertNotIn("envy", elements)
+
+    # --- v5: display control env vars ---
+
+    def test_messages_suppressed_via_env_var(self) -> None:
+        """ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1 suppresses enter/leave text."""
+        project = self._make_envy_project("zsh-no-announce")
+        result = self._run_zsh_hook_test(
+            f"export ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1\n"
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f'echo "$PATH"\necho "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertIn("\U0001f99d", result.stdout)
+        self.assertNotIn("envy: entering", result.stderr)
+
+    def test_messages_suppressed_but_icon_shown(self) -> None:
+        project = self._make_envy_project("zsh-ann-no-icon-yes")
+        result = self._run_zsh_hook_test(
+            f"export ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1\n"
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("envy: entering", result.stderr)
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_icon_suppressed_but_messages_shown(self) -> None:
+        project = self._make_envy_project("zsh-icon-no-ann-yes")
+        result = self._run_zsh_hook_test(
+            f"export ENVY_SHELL_NO_ICON=1\n"
+            f'PROMPT="$ "\n'
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f'echo "$PROMPT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering", result.stderr)
+        self.assertNotIn("\U0001f99d", result.stdout)
 
 
 @unittest.skipUnless(shutil.which("fish"), "fish not installed")
@@ -701,9 +787,7 @@ class TestFishHook(unittest.TestCase):
         project = self._temp_dir / name
         project.mkdir(parents=True, exist_ok=True)
         (project / "tools").mkdir(exist_ok=True)
-        (project / "envy.lua").write_text(
-            '-- @envy bin "tools"\nPACKAGES = {}\n'
-        )
+        (project / "envy.lua").write_text('-- @envy bin "tools"\nPACKAGES = {}\n')
         return project
 
     def test_cd_into_project_adds_bin_to_path(self) -> None:
@@ -847,10 +931,47 @@ class TestFishHook(unittest.TestCase):
     def test_raccoon_disabled_via_env_var(self) -> None:
         project = self._make_envy_project("fish-raccoon-off")
         result = self._run_fish_hook_test(
-            f"set -gx ENVY_NO_PROMPT 1\n"
+            f"set -gx ENVY_SHELL_NO_ICON 1\n"
             f'source "{self._hook_path}"\ncd "{project}"\nfish_prompt'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("\U0001f99d", result.stdout)
+
+    # --- v5: display control env vars ---
+
+    def test_messages_suppressed_via_env_var(self) -> None:
+        """ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1 suppresses enter/leave text."""
+        project = self._make_envy_project("fish-no-announce")
+        result = self._run_fish_hook_test(
+            f"set -gx ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE 1\n"
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f"echo $PATH\nfish_prompt"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertIn("\U0001f99d", result.stdout)
+        self.assertNotIn("envy: entering", result.stderr)
+
+    def test_messages_suppressed_but_icon_shown(self) -> None:
+        project = self._make_envy_project("fish-ann-no-icon-yes")
+        result = self._run_fish_hook_test(
+            f"set -gx ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE 1\n"
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f"fish_prompt"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertNotIn("envy: entering", result.stderr)
+        self.assertIn("\U0001f99d", result.stdout)
+
+    def test_icon_suppressed_but_messages_shown(self) -> None:
+        project = self._make_envy_project("fish-icon-no-ann-yes")
+        result = self._run_fish_hook_test(
+            f"set -gx ENVY_SHELL_NO_ICON 1\n"
+            f'source "{self._hook_path}"\ncd "{project}"\n'
+            f"fish_prompt"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy: entering", result.stderr)
         self.assertNotIn("\U0001f99d", result.stdout)
 
 
@@ -1003,7 +1124,7 @@ class TestPowerShellHook(unittest.TestCase):
     def test_missing_bin_directive_no_path_change(self) -> None:
         project = self._temp_dir / "ps-no-bin"
         project.mkdir(parents=True)
-        (project / "envy.lua").write_text('PACKAGES = {}\n')
+        (project / "envy.lua").write_text("PACKAGES = {}\n")
         sep = os.pathsep
         result = self._run_pwsh_hook_test(
             f'$env:PATH = "/usr/bin{sep}/bin"\n'
@@ -1037,10 +1158,7 @@ class TestPowerShellHook(unittest.TestCase):
         child.mkdir(parents=True, exist_ok=True)
         (child / "tools").mkdir(exist_ok=True)
         (child / "envy.lua").write_text(
-            '-- @envy root "false"\n'
-            '-- @envy bin "tools"\n'
-            ''
-            "PACKAGES = {}\n"
+            '-- @envy root "false"\n-- @envy bin "tools"\nPACKAGES = {}\n'
         )
         result = self._run_pwsh_hook_test(
             f'. "{self._hook_path}"\n'
@@ -1169,7 +1287,7 @@ class TestPowerShellHook(unittest.TestCase):
     def test_raccoon_disabled_via_env_var(self) -> None:
         project = self._make_envy_project("ps-raccoon-off")
         result = self._run_pwsh_hook_test(
-            f'$env:ENVY_NO_PROMPT = "1"\n'
+            f'$env:ENVY_SHELL_NO_ICON = "1"\n'
             f'. "{self._hook_path}"\n'
             f'Set-Location "{project}"\n'
             f"$global:_ENVY_LAST_PWD = $null\n"
@@ -1178,6 +1296,56 @@ class TestPowerShellHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         combined = result.stdout + result.stderr
+        self.assertNotIn("\U0001f99d", combined)
+
+    # --- v5: display control env vars ---
+
+    def test_messages_suppressed_via_env_var(self) -> None:
+        """ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1 suppresses enter/leave text."""
+        project = self._make_envy_project("ps-no-announce")
+        result = self._run_pwsh_hook_test(
+            f'$env:ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE = "1"\n'
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:PATH\n"
+            f"Write-Output $global:_ENVY_PROMPT_ACTIVE"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertIn("True", result.stdout)
+        combined = result.stdout + result.stderr
+        self.assertNotIn("envy: entering", combined)
+
+    def test_messages_suppressed_but_icon_shown(self) -> None:
+        project = self._make_envy_project("ps-ann-no-icon-yes")
+        result = self._run_pwsh_hook_test(
+            f'$env:ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE = "1"\n'
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $global:_ENVY_PROMPT_ACTIVE"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertNotIn("envy: entering", combined)
+        self.assertIn("True", result.stdout)
+
+    def test_icon_suppressed_but_messages_shown(self) -> None:
+        project = self._make_envy_project("ps-icon-no-ann-yes")
+        result = self._run_pwsh_hook_test(
+            f'$env:ENVY_SHELL_NO_ICON = "1"\n'
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"prompt"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertIn("envy: entering", combined)
         self.assertNotIn("\U0001f99d", combined)
 
 

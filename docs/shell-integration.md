@@ -37,6 +37,16 @@ On every directory change:
 
 Hook files carry `_ENVY_HOOK_VERSION=N`. Any envy command checks the stamp and refreshes stale hooks automatically. Restart your shell after an update.
 
+## Environment Variables
+
+| Variable | Effect |
+|---|---|
+| `ENVY_SHELL_HOOK_DISABLE=1` | Disable the hook entirely—no PATH changes, no messages, no icon |
+| `ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE=1` | Suppress "entering/leaving" status messages; PATH and icon still work |
+| `ENVY_SHELL_NO_ICON=1` | Suppress the raccoon prompt icon; messages and PATH still work |
+
+All three are independent—combine as needed.
+
 ## Troubleshooting
 
 **Verify hook is loaded:** `type _envy_hook` (bash/zsh) or `functions _envy_hook` (fish).

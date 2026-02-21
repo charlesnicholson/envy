@@ -5,7 +5,7 @@
 
 namespace envy::shell_hooks {
 
-inline constexpr int kVersion = 4;
+inline constexpr int kVersion = 5;
 
 // Parse _ENVY_HOOK_VERSION from the first 5 lines of a hook file.
 // Returns 0 if file is missing, unreadable, or has no valid stamp.
