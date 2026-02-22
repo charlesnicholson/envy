@@ -214,7 +214,7 @@ class TestStagingAndCommit(CacheTestBase):
         )
 
     def test_staging_auto_created(self):
-        """Lock returned, staging directory created and then renamed on completion."""
+        """Lock returned, pkg/ created for install, work/ cleaned on completion."""
         # Run command that will create staging and complete
         proc = self.run_cache_cmd(
             "ensure-package", "gcc", "darwin", "arm64", "staging1"
@@ -224,25 +224,14 @@ class TestStagingAndCommit(CacheTestBase):
 
         self.assertEqual(result["locked"], "true")
 
-        # After completion, staging should be renamed to final directory
-        final_dir = (
-            self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-staging1"
-        )
-        staging = (
-            self.cache_root
-            / "packages"
-            / "gcc"
-            / "darwin-arm64-blake3-staging1"
-            / "install"
-        )
+        entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-staging1"
 
-        self.assertTrue((final_dir / "envy-complete").exists())
-        self.assertFalse(staging.exists())
-        self.assertTrue((final_dir / "pkg").exists())
-        self.assertFalse((final_dir / "work").exists())
+        self.assertTrue((entry / "envy-complete").exists())
+        self.assertTrue((entry / "pkg").exists())
+        self.assertFalse((entry / "work").exists())
 
     def test_mark_complete_commits_on_exit(self):
-        """Call mark_complete(), verify staging renamed and marker written."""
+        """Call mark_complete(), verify pkg/ exists and marker written."""
         proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "commit1")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
@@ -252,14 +241,6 @@ class TestStagingAndCommit(CacheTestBase):
         # Verify committed
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-commit1"
         self.assertTrue((entry / "envy-complete").exists())
-        staging = (
-            self.cache_root
-            / "packages"
-            / "gcc"
-            / "darwin-arm64-blake3-commit1"
-            / "install"
-        )
-        self.assertFalse(staging.exists())
         self.assertTrue((entry / "pkg").exists())
         self.assertFalse((entry / "work").exists())
 
@@ -309,7 +290,10 @@ class TestCrashRecovery(CacheTestBase):
         )
 
     def test_stale_inprogress_cleaned(self):
-        """Kill process mid-staging, next ensure removes stale .install."""
+        """Kill process mid-install, next ensure wipes stale pkg/ and reinstalls."""
+        entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-crash1"
+        pkg_dir = entry / "pkg"
+
         # Process A crashes after acquiring lock
         proc_a = self.run_cache_cmd(
             "ensure-package",
@@ -325,11 +309,12 @@ class TestCrashRecovery(CacheTestBase):
         proc_a.communicate()
         self.assertNotEqual(proc_a.returncode, 0)
 
-        # Verify stale staging exists
-        staging = (
-            self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-crash1" / "pkg"
-        )
-        self.assertTrue(staging.exists())
+        # Verify stale pkg/ exists from crashed process
+        self.assertTrue(pkg_dir.exists())
+
+        # Plant a sentinel to prove process B wipes stale content
+        sentinel = pkg_dir / "stale_sentinel.txt"
+        sentinel.write_text("stale")
 
         # Process B cleans up and succeeds
         proc_b = self.run_cache_cmd(
@@ -339,10 +324,9 @@ class TestCrashRecovery(CacheTestBase):
         result_b = parse_keyvalue(stdout_b)
 
         self.assertEqual(result_b["locked"], "true")
-        # pkg/ now persists after successful install (install writes directly to pkg/)
-        self.assertTrue(staging.exists())
-
-        entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-crash1"
+        # pkg/ exists (successful install) but stale sentinel is gone
+        self.assertTrue(pkg_dir.exists())
+        self.assertFalse(sentinel.exists())
         self.assertTrue((entry / "envy-complete").exists())
 
     def test_lock_released_on_crash(self):
@@ -737,8 +721,10 @@ class TestSubprocessConcurrency(CacheTestBase):
         self.assertLessEqual(fast_path_count, 4)
 
     def test_sigkill_recovery(self):
-        """Start staging, SIGKILL process, verify next process cleans up and succeeds."""
-        # Same as test_stale_inprogress_cleaned but explicit SIGKILL
+        """SIGKILL process mid-install, verify next process wipes stale pkg/ and succeeds."""
+        entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-sigkill1"
+        pkg_dir = entry / "pkg"
+
         proc_a = self.run_cache_cmd(
             "cache",
             "ensure-package",
@@ -752,15 +738,12 @@ class TestSubprocessConcurrency(CacheTestBase):
         proc_a.communicate()
         self.assertNotEqual(proc_a.returncode, 0)
 
-        # Verify stale staging
-        staging = (
-            self.cache_root
-            / "packages"
-            / "gcc"
-            / "darwin-arm64-blake3-sigkill1"
-            / "pkg"
-        )
-        self.assertTrue(staging.exists())
+        # Verify stale pkg/ exists from killed process
+        self.assertTrue(pkg_dir.exists())
+
+        # Plant a sentinel to prove recovery wipes stale content
+        sentinel = pkg_dir / "stale_sentinel.txt"
+        sentinel.write_text("stale")
 
         # Recovery
         proc_b = self.run_cache_cmd(
@@ -770,10 +753,9 @@ class TestSubprocessConcurrency(CacheTestBase):
         result_b = parse_keyvalue(stdout_b)
 
         self.assertEqual(result_b["locked"], "true")
-        # pkg/ now persists after successful install (install writes directly to pkg/)
-        self.assertTrue(staging.exists())
-
-        entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-sigkill1"
+        # pkg/ exists (successful install) but stale sentinel is gone
+        self.assertTrue(pkg_dir.exists())
+        self.assertFalse(sentinel.exists())
         self.assertTrue((entry / "envy-complete").exists())
 
 

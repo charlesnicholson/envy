@@ -2,7 +2,7 @@ IDENTITY = "local.aws@r0"
 
 VALIDATE = function(opts)
   if envy.PLATFORM ~= "linux" then
-    return "fi.aws is only supported on linux"
+    return "local.aws@r0 is only supported on Linux"
   end
   if opts.version == nil then
     return "'version' is a required option"

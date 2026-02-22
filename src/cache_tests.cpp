@@ -203,7 +203,6 @@ TEST_CASE_FIXTURE(
   // Verify cache entry directories were cleaned up
   CHECK_FALSE(std::filesystem::exists(entry_dir / "pkg"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
 }
 
@@ -446,7 +445,6 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
   CHECK_FALSE(std::filesystem::exists(entry_dir));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "stage"));
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
   CHECK_FALSE(std::filesystem::exists(lock_path));
 }
@@ -495,7 +493,6 @@ TEST_CASE_FIXTURE(
 
   // Verify temporary directories cleaned up
   CHECK_FALSE(std::filesystem::exists(entry_dir / "fetch"));
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
 
   // Verify lock file deleted

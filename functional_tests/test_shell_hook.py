@@ -812,30 +812,16 @@ class TestFishHook(unittest.TestCase):
 
     def test_cd_into_project_adds_bin_to_path(self) -> None:
         project = self._make_envy_project("fish-proj1")
-        result = test_config.run(
-            [
-                "fish",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{project}"\necho $PATH',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho $PATH'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
 
     def test_cd_out_removes_path(self) -> None:
         project = self._make_envy_project("fish-proj2")
-        result = test_config.run(
-            [
-                "fish",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\necho $PATH',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\ncd /tmp\necho $PATH'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertNotIn(str(project / "tools"), result.stdout)
@@ -843,15 +829,8 @@ class TestFishHook(unittest.TestCase):
     def test_cd_between_projects_swaps_path(self) -> None:
         proj_a = self._make_envy_project("fish-projA")
         proj_b = self._make_envy_project("fish-projB")
-        result = test_config.run(
-            [
-                "fish",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{proj_a}"\ncd "{proj_b}"\necho $PATH',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{proj_a}"\ncd "{proj_b}"\necho $PATH'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(proj_b / "tools"), result.stdout)
@@ -859,15 +838,8 @@ class TestFishHook(unittest.TestCase):
 
     def test_envy_project_root_set(self) -> None:
         project = self._make_envy_project("fish-proj-root")
-        result = test_config.run(
-            [
-                "fish",
-                "-c",
-                f'source "{self._hook_path}"\ncd "{project}"\necho $ENVY_PROJECT_ROOT',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho $ENVY_PROJECT_ROOT'
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
