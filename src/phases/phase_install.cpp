@@ -200,7 +200,7 @@ void run_install_phase(pkg *p, engine &eng) {
   }
 
   cache::scoped_entry_lock::ptr_t lock{ std::move(p->lock) };
-  std::filesystem::path const final_pkg_path{ lock->install_dir().parent_path() / "pkg" };
+  std::filesystem::path const final_pkg_path{ lock->install_dir() };
 
   sol::state_view lua_view{ *p->lua };
   sol::object install_obj{ lua_view["INSTALL"] };

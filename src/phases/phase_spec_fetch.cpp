@@ -305,10 +305,11 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
 
             [&](pkg_cfg::git_source const &git) {  // git source
               auto const git_info{ uri_classify(git.url) };
-              auto const results{ fetch({ fetch_request_git{ .source = git.url,
-                                                             .destination = install_dir,
-                                                             .ref = git.ref,
-                                                             .scheme = git_info.scheme } }) };
+              auto const results{ fetch(
+                  { fetch_request_git{ .source = git.url,
+                                       .destination = install_dir,
+                                       .ref = git.ref,
+                                       .scheme = git_info.scheme } }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
@@ -406,8 +407,7 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
     }
 
     // Custom fetch creates spec.lua in fetch_dir via envy.commit_fetch.
-    // The lock destructor will clean up fetch_dir, so move spec.lua to install_dir
-    // which gets renamed to pkg_dir on successful completion.
+    // The lock destructor will clean up fetch_dir, so move spec.lua to install_dir.
     std::filesystem::path const fetch_dir{ cache_result.lock->fetch_dir() };
     std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
     std::filesystem::path const spec_src{ fetch_dir / "spec.lua" };
@@ -1089,10 +1089,11 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
             },
             [&](pkg_cfg::git_source const &git) {
               auto const git_info{ uri_classify(git.url) };
-              auto const results{ fetch({ fetch_request_git{ .source = git.url,
-                                                             .destination = install_dir,
-                                                             .ref = git.ref,
-                                                             .scheme = git_info.scheme } }) };
+              auto const results{ fetch(
+                  { fetch_request_git{ .source = git.url,
+                                       .destination = install_dir,
+                                       .ref = git.ref,
+                                       .scheme = git_info.scheme } }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +

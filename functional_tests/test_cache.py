@@ -88,11 +88,11 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
         install_path = Path(result["install_path"])
         stage_path = Path(result["stage_path"])
         pkg_path = Path(result["pkg_path"])
-        self.assertEqual(install_path.name, "install")
+        self.assertEqual(install_path.name, "pkg")
         self.assertEqual(stage_path.name, "stage")
         self.assertEqual(stage_path.parent.name, "work")
         self.assertEqual(pkg_path.name, "pkg")
-        self.assertFalse(install_path.exists())
+        self.assertEqual(install_path, pkg_path)
         self.assertFalse(stage_path.exists())
         self.assertEqual(proc.returncode, 0)
 
@@ -327,11 +327,7 @@ class TestCrashRecovery(CacheTestBase):
 
         # Verify stale staging exists
         staging = (
-            self.cache_root
-            / "packages"
-            / "gcc"
-            / "darwin-arm64-blake3-crash1"
-            / "install"
+            self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-crash1" / "pkg"
         )
         self.assertTrue(staging.exists())
 
@@ -343,7 +339,8 @@ class TestCrashRecovery(CacheTestBase):
         result_b = parse_keyvalue(stdout_b)
 
         self.assertEqual(result_b["locked"], "true")
-        self.assertFalse(staging.exists())  # Cleaned
+        # pkg/ now persists after successful install (install writes directly to pkg/)
+        self.assertTrue(staging.exists())
 
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-crash1"
         self.assertTrue((entry / "envy-complete").exists())
@@ -761,7 +758,7 @@ class TestSubprocessConcurrency(CacheTestBase):
             / "packages"
             / "gcc"
             / "darwin-arm64-blake3-sigkill1"
-            / "install"
+            / "pkg"
         )
         self.assertTrue(staging.exists())
 
@@ -773,7 +770,8 @@ class TestSubprocessConcurrency(CacheTestBase):
         result_b = parse_keyvalue(stdout_b)
 
         self.assertEqual(result_b["locked"], "true")
-        self.assertFalse(staging.exists())
+        # pkg/ now persists after successful install (install writes directly to pkg/)
+        self.assertTrue(staging.exists())
 
         entry = self.cache_root / "packages" / "gcc" / "darwin-arm64-blake3-sigkill1"
         self.assertTrue((entry / "envy-complete").exists())

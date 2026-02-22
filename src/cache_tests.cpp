@@ -255,8 +255,8 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
   }
   // Lock destructor cleans install_dir but not the entry
 
-  // Verify install_dir was cleaned
-  CHECK_FALSE(std::filesystem::exists(entry_dir / "install"));
+  // Verify install_dir (pkg/) was cleaned
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "pkg"));
   CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
 
   // Entry itself should still exist (for retry)
@@ -479,7 +479,7 @@ TEST_CASE_FIXTURE(
     // Mark as successfully installed (NOT user-managed)
     result.lock->mark_install_complete();
   }
-  // scoped_entry_lock destructor runs success path: rename install -> pkg
+  // scoped_entry_lock destructor runs success path: install writes directly to pkg/
   // Then file_lock destructor runs: deletes lock file
 
   // Verify entry_dir is preserved

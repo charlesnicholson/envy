@@ -1157,11 +1157,11 @@ end
             "BUILD and INSTALL should receive the same install_dir",
         )
 
-        # The install_dir should end with /install or \install (working dir, later promoted to /pkg)
+        # install_dir is now pkg/ directly (no rename step)
         normalized = build_install_dir.rstrip("/").rstrip("\\").replace("\\", "/")
         self.assertTrue(
-            normalized.endswith("/install"),
-            f"install_dir should end with /install, got: {build_install_dir}",
+            normalized.endswith("/pkg"),
+            f"install_dir should end with /pkg, got: {build_install_dir}",
         )
 
     def test_build_install_dir_usable_for_prefix(self):
@@ -1230,24 +1230,19 @@ PRODUCTS = {{ mytool = "bin/mytool.txt" }}
         self.assertTrue(prefix_file.exists(), "Prefix file should exist")
         configured_prefix = prefix_file.read_text().strip().rstrip("/").rstrip("\\")
 
-        # install_dir during BUILD ends with /install or \install, pkg_path ends with /pkg
-        # They should be siblings in the same variant directory
+        # install_dir is now pkg/ directly (no rename step)
         normalized_prefix = configured_prefix.replace("\\", "/")
         self.assertTrue(
-            normalized_prefix.endswith("/install"),
-            f"Configured prefix should end with /install, got: {configured_prefix}",
+            normalized_prefix.endswith("/pkg"),
+            f"Configured prefix should end with /pkg, got: {configured_prefix}",
         )
 
-        # Verify they share the same parent (variant directory)
-        # Normalize to forward slashes for comparison
-        prefix_parent = normalized_prefix.rsplit("/", 1)[0]
-        pkg_parent = (
-            str(pkg_path).rstrip("/").rstrip("\\").replace("\\", "/").rsplit("/", 1)[0]
-        )
+        # install_dir and pkg_path should be the same directory
+        normalized_pkg = str(pkg_path).rstrip("/").rstrip("\\").replace("\\", "/")
         self.assertEqual(
-            prefix_parent,
-            pkg_parent,
-            f"install and pkg should be in same variant dir: {prefix_parent} vs {pkg_parent}",
+            normalized_prefix,
+            normalized_pkg,
+            f"install_dir and pkg_path should match: {normalized_prefix} vs {normalized_pkg}",
         )
 
     # =========================================================================
