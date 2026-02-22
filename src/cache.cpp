@@ -55,7 +55,6 @@ struct cache::scoped_entry_lock::impl {
         pkg_identity_{ std::move(pkg_identity) },
         lock_acquired_time{ lock_acquired_at } {}
 
-  path pkg_dir() const { return entry_dir_ / "pkg"; }
 };
 
 }  // namespace envy
@@ -176,12 +175,7 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
              m->user_managed_ ? "true" : "false");
 
   if (m->completed_) {
-    tui::debug("  DTOR: SUCCESS PATH - renaming install_dir -> pkg_dir");
-    remove_all_noexcept(m->pkg_dir());
-    tui::debug("    from: %s", install_dir().string().c_str());
-    tui::debug("    to:   %s", m->pkg_dir().string().c_str());
-    platform::atomic_rename(install_dir(), m->pkg_dir());
-    tui::debug("  DTOR: cleaning up work/fetch dirs");
+    tui::debug("  DTOR: SUCCESS PATH - cleaning up work/fetch dirs");
     remove_all_noexcept(work_dir());
     // fetch_dir cleanup is best-effort: the install is already complete, so a
     // lingering fetch dir only wastes disk space.  On Windows, Defender or Search
@@ -232,7 +226,6 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
     if (install_dir_empty && fetch_dir_empty) {
       tui::debug("  DTOR: both empty, wiping entry");
       remove_all_noexcept(fetch_dir());
-      remove_all_noexcept(m->pkg_dir());
     }
   }
 
@@ -258,7 +251,7 @@ cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
 }
 
 cache::path cache::scoped_entry_lock::install_dir() const {
-  return m->entry_dir_ / "install";
+  return m->entry_dir_ / "pkg";
 }
 
 void cache::scoped_entry_lock::mark_install_complete() { m->completed_ = true; }
