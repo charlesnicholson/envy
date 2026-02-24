@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-set -g _ENVY_HOOK_VERSION 5
+set -g _ENVY_HOOK_VERSION 6
 
 # Detect UTF-8 locale for emoji/unicode output
 if string match -qi '*utf-8*' -- $LC_ALL $LC_CTYPE $LANG
