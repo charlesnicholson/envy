@@ -237,11 +237,15 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   // our probe.
   if (ec) {
     std::error_code probe_ec;
-    if (!std::filesystem::exists(target, probe_ec)) { return {}; }
+    bool const exists{ std::filesystem::exists(target, probe_ec) };
+    if (!probe_ec && !exists) { return {}; }
+
     // Target still exists but might be an empty dir whose children were all
     // removed.  One non-recursive remove is cheap and handles that case.
-    std::filesystem::remove(target, probe_ec);
-    if (!probe_ec) { return {}; }
+    if (!probe_ec && exists) {
+      std::filesystem::remove(target, probe_ec);
+      if (!probe_ec) { return {}; }
+    }
   }
 
   return ec;
