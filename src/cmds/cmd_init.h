@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cmd.h"
+#include "luarc.h"
 
 #include <filesystem>
 #include <functional>
@@ -10,9 +11,6 @@
 namespace CLI { class App; }
 
 namespace envy {
-
-// Convert absolute path to use $HOME for portability in .luarc.json
-std::string make_portable_path(std::filesystem::path const &path);
 
 class cmd_init : public cmd {
  public:
