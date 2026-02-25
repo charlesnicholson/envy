@@ -8,7 +8,7 @@
 
 ---@class envy
 ---@field PLATFORM "darwin"|"linux"|"windows" Current operating system
----@field ARCH "arm64"|"x86_64"|"aarch64" CPU architecture
+---@field ARCH "arm64"|"x86_64" CPU architecture
 ---@field PLATFORM_ARCH string Platform-architecture pair (e.g., "darwin-arm64")
 ---@field EXE_EXT ""|".exe" Executable extension ("" on Unix, ".exe" on Windows)
 envy = {}

@@ -32,7 +32,9 @@ _OS_NAME = (
     else "linux"
 )
 _ARCH = plat.machine().lower()
-if _ARCH == "amd64":
+if _ARCH in ("aarch64", "arm64"):
+    _ARCH = "arm64"
+elif _ARCH == "amd64":
     _ARCH = "x86_64"
 _EXT = ".zip" if sys.platform == "win32" else ".tar.gz"
 

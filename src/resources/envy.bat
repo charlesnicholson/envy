@@ -89,7 +89,7 @@ if "!VERSION!"=="" (
 set "ENVY_BIN=!CACHE!\envy\!VERSION!\envy.exe"
 if exist "!ENVY_BIN!" goto :run
 
-if /i "!PROCESSOR_ARCHITECTURE!"=="ARM64" (set "ARCH=arm64") else (set "ARCH=x86_64")
+if /i "!PROCESSOR_ARCHITEW6432!"=="ARM64" (set "ARCH=arm64") else if /i "!PROCESSOR_ARCHITECTURE!"=="ARM64" (set "ARCH=arm64") else (set "ARCH=x86_64")
 
 echo Downloading envy !VERSION!... >&2
 set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"

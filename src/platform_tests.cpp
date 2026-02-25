@@ -4,12 +4,8 @@
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <random>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <thread>
 
 namespace envy {
 
@@ -61,10 +57,8 @@ TEST_CASE("platform::os_name returns expected value") {
 TEST_CASE("platform::arch_name returns expected value") {
   auto const arch{ platform::arch_name() };
   CHECK(!arch.empty());
-#if defined(__arm64__) || defined(_M_ARM64)
-  CHECK((arch == "arm64" || arch == "aarch64"));
-#elif defined(__aarch64__)
-  CHECK(arch == "aarch64");
+#if defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
+  CHECK(arch == "arm64");
 #elif defined(__x86_64__) || defined(_M_X64)
   CHECK(arch == "x86_64");
 #endif
@@ -186,8 +180,9 @@ TEST_CASE("remove_all_with_retry: removes a normal directory tree") {
   CHECK(!std::filesystem::exists(target));
 }
 
-TEST_CASE("remove_all_with_retry: returns success when locked file is "
-          "released before probe") {
+TEST_CASE(
+    "remove_all_with_retry: returns success when locked file is "
+    "released before probe") {
   // Simulate: lock a file inside target, call remove_all_with_retry (which
   // will fail on the locked file during retries), release the lock while
   // retries are still running, and verify it eventually returns success.
@@ -199,12 +194,12 @@ TEST_CASE("remove_all_with_retry: returns success when locked file is "
 
   // Open with exclusive access (no sharing) to simulate Defender lock.
   HANDLE h{ ::CreateFileW(locked_file.c_str(),
-                           GENERIC_READ | GENERIC_WRITE,
-                           0,  // no sharing — exclusive
-                           nullptr,
-                           OPEN_EXISTING,
-                           FILE_ATTRIBUTE_NORMAL,
-                           nullptr) };
+                          GENERIC_READ | GENERIC_WRITE,
+                          0,  // no sharing — exclusive
+                          nullptr,
+                          OPEN_EXISTING,
+                          FILE_ATTRIBUTE_NORMAL,
+                          nullptr) };
   REQUIRE(h != INVALID_HANDLE_VALUE);
 
   // Release after 150ms — within the retry window (~3.5s) but after the
