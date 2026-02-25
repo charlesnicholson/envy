@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.brew@r0"
 
 CHECK = "brew --version"

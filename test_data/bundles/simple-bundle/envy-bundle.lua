@@ -1,4 +1,5 @@
 -- Test bundle with two specs
+-- @envy schema "1"
 BUNDLE = "test.simple-bundle@v1"
 
 SPECS = {

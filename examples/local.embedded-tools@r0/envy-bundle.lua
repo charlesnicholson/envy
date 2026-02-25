@@ -1,3 +1,4 @@
+-- @envy schema "1"
 BUNDLE = "local.embedded-tools@r0"
 
 SPECS = {

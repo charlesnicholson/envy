@@ -48,11 +48,19 @@ sol_state_ptr create_lua_state() {
   return lua;
 }
 
-void load_spec_script(sol::state &lua,
-                      std::filesystem::path const &spec_path,
-                      std::string const &identity) {
-  sol::protected_function_result result{ lua.safe_script_file(spec_path.string(),
-                                                              sol::script_pass_on_error) };
+int load_spec_script(sol::state &lua,
+                     std::filesystem::path const &spec_path,
+                     std::string const &identity) {
+  auto const content{ util_load_file(spec_path) };
+  auto const meta{ parse_envy_meta(
+      { reinterpret_cast<char const *>(content.data()), content.size() }) };
+
+  std::string const script{ reinterpret_cast<char const *>(content.data()),
+                            content.size() };
+  std::string const chunk_name{ "@" + spec_path.string() };
+  sol::protected_function_result result{
+    lua.safe_script(script, sol::script_pass_on_error, chunk_name)
+  };
   if (!result.valid()) {
     sol::error err = result;
     throw std::runtime_error("Failed to load spec: " + identity + ": " + err.what());
@@ -93,6 +101,8 @@ void load_spec_script(sol::state &lua,
           "Remove CHECK verb or remove BUILD phase.");
     }
   }
+
+  return meta.schema;
 }
 
 std::filesystem::path get_cached_spec_path(pkg const *p) {
@@ -1254,7 +1264,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     }
   }
 
-  load_spec_script(*lua, spec_path, cfg.identity);
+  p->schema = load_spec_script(*lua, spec_path, cfg.identity);
 
   // Store spec file path for error reporting
   p->spec_file_path = spec_path;

@@ -66,6 +66,7 @@ struct pkg {
   std::optional<std::filesystem::path> spec_file_path;
   std::string result_hash;
   pkg_type type;
+  int schema{ 0 };
 
   // Dependency state
   std::vector<std::string> declared_dependencies;

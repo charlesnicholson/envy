@@ -1,5 +1,6 @@
 #include "bundle.h"
 
+#include "manifest.h"
 #include "sol_util.h"
 #include "spec_util.h"
 #include "uri.h"
@@ -165,9 +166,16 @@ bundle bundle::from_path(std::filesystem::path const &cache_path) {
     throw std::runtime_error("Bundle manifest not found: " + manifest_path.string());
   }
 
+  auto const content{ util_load_file(manifest_path) };
+  auto const meta{ parse_envy_meta(
+      { reinterpret_cast<char const *>(content.data()), content.size() }) };
+
   auto lua{ sol_util_make_lua_state() };
+  std::string const script{ reinterpret_cast<char const *>(content.data()),
+                            content.size() };
+  std::string const chunk_name{ "@" + manifest_path.string() };
   sol::protected_function_result result{
-    lua->safe_script_file(manifest_path.string(), sol::script_pass_on_error)
+    lua->safe_script(script, sol::script_pass_on_error, chunk_name)
   };
 
   if (!result.valid()) {
@@ -178,6 +186,7 @@ bundle bundle::from_path(std::filesystem::path const &cache_path) {
 
   bundle b;
   b.cache_path = cache_path;
+  b.schema = meta.schema;
 
   // Required: BUNDLE identity
   sol::object bundle_obj{ (*lua)["BUNDLE"] };

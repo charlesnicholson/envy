@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.aws@r0"
 
 VALIDATE = function(opts)
