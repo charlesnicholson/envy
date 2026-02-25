@@ -230,6 +230,24 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target) {
     }
   }
 
+  // remove_all is progressive — each retry removes more entries.  The last
+  // call may error on the directory itself (Defender holding a dir handle)
+  // yet the target is effectively gone by the time we check.  Also handles
+  // the race where the handle is released between remove_all returning and
+  // our probe.
+  if (ec) {
+    std::error_code probe_ec;
+    bool const exists{ std::filesystem::exists(target, probe_ec) };
+    if (!probe_ec && !exists) { return {}; }
+
+    // Target still exists but might be an empty dir whose children were all
+    // removed.  One non-recursive remove is cheap and handles that case.
+    if (!probe_ec && exists) {
+      std::filesystem::remove(target, probe_ec);
+      if (!probe_ec) { return {}; }
+    }
+  }
+
   return ec;
 }
 

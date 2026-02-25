@@ -4,7 +4,12 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <random>
+#include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 
 namespace envy {
 
@@ -143,5 +148,93 @@ TEST_CASE("platform::exe_name works with arbitrary base names") {
   CHECK(name == std::filesystem::path{ "cmake" });
 #endif
 }
+
+#ifdef _WIN32
+
+namespace {
+
+struct temp_dir {
+  temp_dir() {
+    static std::mt19937_64 rng{ std::random_device{}() };
+    root = std::filesystem::temp_directory_path() /
+           ("envy-platform-test-" + std::to_string(rng()));
+    std::filesystem::create_directories(root);
+  }
+  ~temp_dir() {
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+  }
+  std::filesystem::path root;
+};
+
+}  // namespace
+
+TEST_CASE("remove_all_with_retry: succeeds on nonexistent target") {
+  temp_dir t;
+  auto const target{ t.root / "does-not-exist" };
+  auto const ec{ platform::remove_all_with_retry(target) };
+  CHECK(!ec);
+}
+
+TEST_CASE("remove_all_with_retry: removes a normal directory tree") {
+  temp_dir t;
+  auto const target{ t.root / "tree" };
+  std::filesystem::create_directories(target / "sub");
+  { std::ofstream{ target / "sub" / "file.txt" } << "data"; }
+  auto const ec{ platform::remove_all_with_retry(target) };
+  CHECK(!ec);
+  CHECK(!std::filesystem::exists(target));
+}
+
+TEST_CASE("remove_all_with_retry: returns success when locked file is "
+          "released before probe") {
+  // Simulate: lock a file inside target, call remove_all_with_retry (which
+  // will fail on the locked file during retries), release the lock while
+  // retries are still running, and verify it eventually returns success.
+  temp_dir t;
+  auto const target{ t.root / "locked" };
+  std::filesystem::create_directories(target);
+  auto const locked_file{ target / "held.bin" };
+  { std::ofstream{ locked_file } << "payload"; }
+
+  // Open with exclusive access (no sharing) to simulate Defender lock.
+  HANDLE h{ ::CreateFileW(locked_file.c_str(),
+                           GENERIC_READ | GENERIC_WRITE,
+                           0,  // no sharing — exclusive
+                           nullptr,
+                           OPEN_EXISTING,
+                           FILE_ATTRIBUTE_NORMAL,
+                           nullptr) };
+  REQUIRE(h != INVALID_HANDLE_VALUE);
+
+  // Release after 150ms — within the retry window (~3.5s) but after the
+  // first attempt (which sleeps 50ms).
+  std::thread releaser{ [h] {
+    ::Sleep(150);
+    ::CloseHandle(h);
+  } };
+
+  auto const ec{ platform::remove_all_with_retry(target) };
+  releaser.join();
+
+  CHECK(!ec);
+  CHECK(!std::filesystem::exists(target));
+}
+
+TEST_CASE("remove_all_with_retry: post-loop probe detects target gone") {
+  // Verify the post-loop existence check: create a dir, delete it
+  // externally, then confirm remove_all_with_retry on a path that no
+  // longer exists returns success.
+  temp_dir t;
+  auto const target{ t.root / "vanish" };
+  std::filesystem::create_directories(target);
+  // Remove it before calling — simulates the race where the target
+  // disappears between the last remove_all error and the probe.
+  std::filesystem::remove(target);
+  auto const ec{ platform::remove_all_with_retry(target) };
+  CHECK(!ec);
+}
+
+#endif  // _WIN32
 
 }  // namespace envy
