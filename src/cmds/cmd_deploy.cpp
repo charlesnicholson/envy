@@ -3,6 +3,7 @@
 #include "bootstrap.h"
 #include "deploy.h"
 #include "engine.h"
+#include "luarc.h"
 #include "manifest.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
@@ -65,6 +66,8 @@ void cmd_deploy::execute() {
   auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
 
   fs::path const manifest_dir{ m->manifest_path.parent_path() };
+  update_luarc_types_path(manifest_dir, c->root());
+
   fs::path const bin_dir{ manifest_dir / *m->meta.bin };
 
   if (!fs::exists(bin_dir)) {

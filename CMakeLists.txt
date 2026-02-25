@@ -178,6 +178,7 @@ set(ENVY_LICENSE_SOURCES
     "libssh2=${libssh2_SOURCE_DIR}"
     "libzstd=${envy_libzstd_SOURCE_DIR}"
     "Lua=${lua_SOURCE_DIR}"
+    "picojson=${PICOJSON_CACHE_DIR}"
     "Semver=${SEMVER_CACHE_DIR}"
     "Sol2=${sol2_SOURCE_DIR}"
     "zlib=${envy_zlib_SOURCE_DIR}"
@@ -249,6 +250,7 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_install.cpp
     src/phases/phase_spec_fetch.cpp
     src/phases/phase_stage.cpp
+    src/luarc.cpp
     src/extract.cpp
     src/aws_util.cpp
     src/blake3_util.cpp
@@ -435,7 +437,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
-    src/cmds/cmd_init_tests.cpp
+    src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
     src/bundle_tests.cpp

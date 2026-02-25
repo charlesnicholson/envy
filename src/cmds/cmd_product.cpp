@@ -13,6 +13,7 @@
 #include "util.h"
 
 #include "CLI11.hpp"
+#include "picojson.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -43,13 +44,8 @@ namespace {
 void print_products_json(engine &eng, cache &c) {
   auto const products{ eng.collect_all_products() };
 
-  std::ostringstream oss;
-  oss << "{";
-  bool first{ true };
+  picojson::object obj;
   for (auto const &pi : products) {
-    if (!first) { oss << ","; }
-    first = false;
-
     std::string resolved;
     if (pi.type == pkg_type::USER_MANAGED) {
       resolved = pi.value;
@@ -67,13 +63,11 @@ void print_products_json(engine &eng, cache &c) {
                                               hash_prefix) };
       resolved = (pkg_path / pi.value).generic_string();
     }
-
-    oss << "\n  \"" << util_escape_json_string(pi.product_name) << "\": \""
-        << util_escape_json_string(resolved) << "\"";
+    obj[pi.product_name] = picojson::value(resolved);
   }
-  if (!products.empty()) { oss << "\n"; }
-  oss << "}\n";
-  tui::print_stdout("%s", oss.str().c_str());
+
+  std::string const output{ picojson::value(obj).serialize(true) };
+  tui::print_stdout("%s", output.c_str());
 }
 
 void print_products_aligned(std::vector<product_info> const &products) {

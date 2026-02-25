@@ -95,11 +95,6 @@ cmd_version::cmd_version(cmd_version::cfg cfg,
     : cfg_{ std::move(cfg) } {}
 
 void cmd_version::execute() {
-  if (cfg_.show_licenses) {
-    print_licenses();
-    return;
-  }
-
   tui::info("envy version %s (%s)",
             ENVY_VERSION_STR,
             platform::get_exe_path().string().c_str());
@@ -162,7 +157,13 @@ void cmd_version::execute() {
             SEMVER_VERSION_MAJOR,
             SEMVER_VERSION_MINOR,
             SEMVER_VERSION_PATCH);
+  tui::info("  picojson: %s", ENVY_PICOJSON_VERSION);
   tui::info("  CLI11: %s", CLI11_VERSION);
+
+  if (cfg_.show_licenses) {
+    tui::info("");
+    print_licenses();
+  }
 }
 
 }  // namespace envy

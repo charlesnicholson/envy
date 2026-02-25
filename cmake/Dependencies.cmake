@@ -98,6 +98,12 @@ set(ENVY_SEMVER_SHA256 af2c0c53124dc7f52c58a7205e458ad3efbac2f61ce55addf9c8f9433
 set(ENVY_SEMVER_LICENSE_URL "https://raw.githubusercontent.com/Neargye/semver/v${ENVY_SEMVER_VERSION}/LICENSE")
 set(ENVY_SEMVER_LICENSE_SHA256 9cc0e3435da3c8bdff3bb984929759a6018b5f3eae666c9424be90fe27cffa5a)
 
+set(ENVY_PICOJSON_VERSION "1.3.0")
+set(ENVY_PICOJSON_URL "https://raw.githubusercontent.com/kazuho/picojson/v${ENVY_PICOJSON_VERSION}/picojson.h")
+set(ENVY_PICOJSON_SHA256 5ddf7276d04926da7be243e7af49258e78cc27278ee9097ba45b942c7a6b5f9d)
+set(ENVY_PICOJSON_LICENSE_URL "https://raw.githubusercontent.com/kazuho/picojson/v${ENVY_PICOJSON_VERSION}/LICENSE")
+set(ENVY_PICOJSON_LICENSE_SHA256 5585fe141cc7bb08c953f3859db608852968d0bbc625b9b6d95c0bd6349bacb6)
+
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
     set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt wininet)
@@ -133,6 +139,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/deps/Lua.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Sol2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/CLI11.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Semver.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/deps/Picojson.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/deps/Doctest.cmake")
 
 # Aggregate -----------------------------------------------------------------
@@ -157,6 +164,7 @@ target_link_libraries(envy_thirdparty
         blake3::blake3
         CLI11::CLI11
         semver::semver
+        picojson::picojson
         AWS::aws-cpp-sdk-s3
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc
