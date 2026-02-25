@@ -89,8 +89,11 @@ if "!VERSION!"=="" (
 set "ENVY_BIN=!CACHE!\envy\!VERSION!\envy.exe"
 if exist "!ENVY_BIN!" goto :run
 
+set "ARCH=x86_64"
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE 2>nul | findstr /i "ARM64" >nul 2>&1 && set "ARCH=arm64"
+
 echo Downloading envy !VERSION!... >&2
-set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-x86_64.zip"
+set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"
 REM Escape single quotes for PowerShell (replace ' with '')
 set "SAFE_URL=!URL:'=''!"
 for /f %%i in ('powershell -NoProfile -Command "[System.IO.Path]::GetRandomFileName()"') do set "TEMP_DIR=!TEMP!\envy-%%i"

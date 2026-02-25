@@ -465,7 +465,7 @@ Specs run only on host platform—no cross-deployment. Single spec file adapts v
 
 **Envy-provided globals:**
 - `ENVY_PLATFORM` — `"darwin"`, `"linux"`, `"windows"`
-- `ENVY_ARCH` — `"arm64"`, `"x86_64"`, `"aarch64"`, etc.
+- `ENVY_ARCH` — `"arm64"`, `"x86_64"`
 - `ENVY_PLATFORM_ARCH` — Combined: `"darwin-arm64"`, `"linux-x86_64"`
 - `ENVY_OS_VERSION` — `"14.0"` (macOS), `"22.04"` (Ubuntu)
 

@@ -207,12 +207,7 @@ std::string_view os_name() {
 
 std::string_view arch_name() {
 #if defined(__aarch64__) || defined(__arm64__)
-  return
-#if defined(__APPLE__)
-      "arm64";
-#else
-      "aarch64";
-#endif
+  return "arm64";
 #elif defined(__x86_64__)
   return "x86_64";
 #else

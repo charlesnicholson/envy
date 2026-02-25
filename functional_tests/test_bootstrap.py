@@ -9,18 +9,34 @@ from __future__ import annotations
 import http.server
 import io
 import os
+import platform as plat
 import shutil
 import socketserver
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
 import threading
 import unittest
-
-from . import test_config
 import zipfile
 from pathlib import Path
+
+from . import test_config
+
+_OS_NAME = (
+    "windows"
+    if sys.platform == "win32"
+    else "darwin"
+    if sys.platform == "darwin"
+    else "linux"
+)
+_ARCH = plat.machine().lower()
+if _ARCH in ("aarch64", "arm64"):
+    _ARCH = "arm64"
+elif _ARCH == "amd64":
+    _ARCH = "x86_64"
+_EXT = ".zip" if sys.platform == "win32" else ".tar.gz"
 
 # Inline fixture contents
 FIXTURES = {
@@ -71,6 +87,7 @@ class EnvyServer:
         self.server: socketserver.TCPServer | None = None
         self.thread: threading.Thread | None = None
         self.port: int = 0
+        self.request_paths: list[str] = []
 
         # Pre-create tar.gz archive for Unix
         tar_buffer = io.BytesIO()
@@ -93,6 +110,7 @@ class EnvyServer:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
+                parent.request_paths.append(self.path)
                 match self.path.rsplit(".", 1)[-1]:
                     case "gz" if self.path.endswith(".tar.gz"):
                         content, content_type = (
@@ -353,6 +371,18 @@ class BootstrapIntegrationTest(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn("envy version", result.stderr)
+
+    def test_bootstrap_requests_correct_architecture(self) -> None:
+        """Test that bootstrap constructs the download URL with the correct arch."""
+        bootstrap = self._setup_test_project("simple.lua")
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        expected = f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"
+        self.assertEqual(1, len(self._server.request_paths))
+        self.assertEqual(expected, self._server.request_paths[0])
 
     def test_bootstrap_fails_without_manifest(self) -> None:
         """Test that bootstrap fails gracefully when envy.lua is not found."""

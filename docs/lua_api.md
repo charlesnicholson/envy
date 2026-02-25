@@ -6,7 +6,7 @@ Complete reference for the `envy.*` namespace available to spec scripts.
 
 ```lua
 envy.PLATFORM      -- "darwin" | "linux" | "windows"
-envy.ARCH          -- "arm64" | "aarch64" | "x86_64"
+envy.ARCH          -- "arm64" | "x86_64"
 envy.PLATFORM_ARCH -- e.g., "darwin-arm64", "linux-x86_64"
 envy.EXE_EXT       -- "" on Unix, ".exe" on Windows
 ```
