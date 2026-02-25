@@ -89,8 +89,8 @@ if "!VERSION!"=="" (
 set "ENVY_BIN=!CACHE!\envy\!VERSION!\envy.exe"
 if exist "!ENVY_BIN!" goto :run
 
-for /f %%a in ('powershell -NoProfile -Command "[Runtime.InteropServices.RuntimeInformation]::OSArchitecture"') do set "OS_ARCH=%%a"
-if /i "!OS_ARCH!"=="Arm64" (set "ARCH=arm64") else (set "ARCH=x86_64")
+set "ARCH=x86_64"
+reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE 2>nul | findstr /i "ARM64" >nul 2>&1 && set "ARCH=arm64"
 
 echo Downloading envy !VERSION!... >&2
 set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"
