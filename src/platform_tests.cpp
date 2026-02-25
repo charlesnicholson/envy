@@ -4,8 +4,12 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <random>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 
 namespace envy {
 
