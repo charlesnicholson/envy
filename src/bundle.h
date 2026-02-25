@@ -14,6 +14,7 @@ namespace envy {
 // Immutable after construction, shared across all specs from this bundle
 struct bundle {
   std::string identity;                                // "namespace.name@revision"
+  int schema{ 0 };                                     // @envy schema (0 = absent)
   std::unordered_map<std::string, std::string> specs;  // spec identity -> relative path
   std::filesystem::path cache_path;  // e.g., ~/.envy/specs/acme.toolchain@v1/
 

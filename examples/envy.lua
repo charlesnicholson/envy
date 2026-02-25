@@ -1,3 +1,4 @@
+-- @envy schema "1"
 -- @envy version "0.0.17"
 -- @envy bin "bin"
 -- @envy deploy "true"

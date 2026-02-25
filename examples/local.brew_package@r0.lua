@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.brew_package@r0"
 
 DEPENDENCIES = { spec = "local.brew@r0", source = "local.brew@r0.lua" }

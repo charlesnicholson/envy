@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.taplo@r0"
 
 VALIDATE = function(opts)

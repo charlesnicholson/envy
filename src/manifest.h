@@ -16,6 +16,7 @@ namespace envy {
 
 // @envy metadata parsed from comment headers in manifest
 struct envy_meta {
+  int schema{ 0 };                      // @envy schema "N" (0 = absent)
   std::optional<std::string> version;  // @envy version "x.y.z"
   std::optional<std::string> cache;    // @envy cache-posix or cache-win
   std::optional<std::string> mirror;   // @envy mirror "https://..."
@@ -47,7 +48,7 @@ struct manifest : unmovable {
       bool nearest,
       std::filesystem::path const &start_dir);
 
-  // Discover + load in one step. Uses explicit_path if given, otherwise discovers from CWD.
+  // Discover + load. Uses explicit_path if given, otherwise discovers from CWD.
   static std::unique_ptr<manifest> find_and_load(
       std::optional<std::filesystem::path> const &explicit_path,
       bool nearest = false);

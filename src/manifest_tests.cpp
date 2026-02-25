@@ -548,6 +548,78 @@ TEST_CASE("manifest::load errors on Lua runtime error") {
 
 // @envy directive parsing tests -------------------------------------------
 
+// ============================================================================
+// @envy schema directive tests
+// ============================================================================
+
+TEST_CASE("parse_envy_meta extracts schema") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy schema "2"
+-- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  CHECK(meta.schema == 2);
+}
+
+TEST_CASE("parse_envy_meta schema defaults to 0 when absent") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  CHECK(meta.schema == 0);
+}
+
+TEST_CASE("parse_envy_meta ignores invalid schema") {
+  // Non-numeric
+  auto meta1{ envy::parse_envy_meta("-- @envy schema \"abc\"\n") };
+  CHECK(meta1.schema == 0);
+
+  // Zero
+  auto meta2{ envy::parse_envy_meta("-- @envy schema \"0\"\n") };
+  CHECK(meta2.schema == 0);
+
+  // Negative
+  auto meta3{ envy::parse_envy_meta("-- @envy schema \"-1\"\n") };
+  CHECK(meta3.schema == 0);
+}
+
+TEST_CASE("manifest::load populates schema field") {
+  char const *script{ R"(
+-- @envy schema "3"
+-- @envy bin "tools"
+PACKAGES = {}
+)" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  CHECK(m->meta.schema == 3);
+}
+
+TEST_CASE("manifest::load schema is 1 with directive") {
+  char const *script{ R"(
+-- @envy schema "1"
+-- @envy bin "tools"
+PACKAGES = {}
+)" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  CHECK(m->meta.schema == 1);
+}
+
+TEST_CASE("manifest::load schema defaults to 0 when absent") {
+  char const *script{ R"(
+-- @envy bin "tools"
+PACKAGES = {}
+)" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  CHECK(m->meta.schema == 0);
+}
+
 TEST_CASE("parse_envy_meta extracts version") {
   auto directives{ envy::parse_envy_meta(R"(
 -- @envy version "1.2.3"

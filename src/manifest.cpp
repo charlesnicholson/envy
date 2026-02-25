@@ -235,6 +235,10 @@ envy_meta parse_envy_meta(std::string_view content) {
         result.mirror = value;
       } else if (key == "bin" || key == "bin-dir") {
         result.bin = value;
+      } else if (key == "schema") {
+        try {
+          if (int const v{std::stoi(value)}; v >= 1) { result.schema = v; }
+        } catch (...) {}
       } else if (key == "deploy") {
         result.deploy = parse_bool_value(value);
       } else if (key == "root") {

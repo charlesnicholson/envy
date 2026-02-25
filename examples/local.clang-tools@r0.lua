@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.clang-tools@r0"
 
 if envy.PLATFORM == "darwin" then

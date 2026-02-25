@@ -258,6 +258,7 @@ TEST_CASE("bundle::from_path parses valid bundle") {
 
   CHECK(b.identity == "test.simple-bundle@v1");
   CHECK(b.cache_path == fs::path("test_data/bundles/simple-bundle"));
+  CHECK(b.schema == 1);
   REQUIRE(b.specs.size() == 2);
   CHECK(b.specs.at("test.spec_a@v1") == "specs/spec_a.lua");
   CHECK(b.specs.at("test.spec_b@v1") == "specs/spec_b.lua");

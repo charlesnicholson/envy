@@ -1,3 +1,4 @@
+-- @envy schema "1"
 IDENTITY = "local.apt@r0"
 
 local missing_packages = {}
