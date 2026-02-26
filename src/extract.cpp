@@ -11,7 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
-#include <functional>
+#include <fstream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -165,10 +165,10 @@ struct extract_tui_state {
     if (grouped) {
       tui::section_set_content(
           section,
-          tui::section_frame{ .label = label,
-                              .content = tui::progress_data{ .percent = percent,
-                                                             .status = status.str() },
-                              .children = children });
+          tui::section_frame{
+              .label = label,
+              .content = tui::progress_data{ .percent = percent, .status = status.str() },
+              .children = children });
     } else {
       std::string item{ children.empty() ? "" : children.front().label };
       tui::section_set_content(
@@ -215,6 +215,94 @@ struct extract_tui_state {
 };
 
 }  // namespace
+
+std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
+                                     std::filesystem::path const &source_dir,
+                                     std::string const &prefix) {
+  archive *a{ archive_write_new() };
+  if (!a) { throw std::runtime_error("archive_write_new failed"); }
+
+  archive_write_set_format_pax_restricted(a);
+  archive_write_add_filter_zstd(a);
+
+  if (archive_write_open_filename(a, output_path.string().c_str()) != ARCHIVE_OK) {
+    std::string msg{ std::string("Failed to open output: ") + archive_error_string(a) };
+    archive_write_free(a);
+    throw std::runtime_error(msg);
+  }
+
+  archive_entry *entry{ archive_entry_new() };
+  std::uint64_t files_archived{ 0 };
+  std::vector<char> buffer(1024 * 1024);
+
+  for (auto const &dir_entry : std::filesystem::recursive_directory_iterator(source_dir)) {
+    std::filesystem::path const rel{ dir_entry.path().lexically_relative(source_dir) };
+    std::string const archived_path{ prefix + "/" + rel.string() };
+
+    archive_entry_clear(entry);
+    archive_entry_set_pathname(entry, archived_path.c_str());
+
+    if (dir_entry.is_symlink()) {
+      archive_entry_set_filetype(entry, AE_IFLNK);
+      auto const target{ std::filesystem::read_symlink(dir_entry.path()) };
+      archive_entry_set_symlink(entry, target.string().c_str());
+      archive_entry_set_size(entry, 0);
+    } else if (dir_entry.is_directory()) {
+      archive_entry_set_filetype(entry, AE_IFDIR);
+      archive_entry_set_size(entry, 0);
+    } else if (dir_entry.is_regular_file()) {
+      archive_entry_set_filetype(entry, AE_IFREG);
+      auto const sz{ std::filesystem::file_size(dir_entry.path()) };
+      archive_entry_set_size(entry, static_cast<la_int64_t>(sz));
+    } else {
+      continue;
+    }
+
+    // Preserve permissions
+    std::error_code ec;
+    auto const perms{ std::filesystem::status(dir_entry.path(), ec).permissions() };
+    if (!ec) { archive_entry_set_perm(entry, static_cast<mode_t>(perms)); }
+
+    if (archive_write_header(a, entry) != ARCHIVE_OK) {
+      std::string msg{ std::string("Failed to write header: ") + archive_error_string(a) };
+      archive_entry_free(entry);
+      archive_write_close(a);
+      archive_write_free(a);
+      throw std::runtime_error(msg);
+    }
+
+    if (dir_entry.is_regular_file()) {
+      std::ifstream in{ dir_entry.path(), std::ios::binary };
+      if (!in) {
+        archive_entry_free(entry);
+        archive_write_close(a);
+        archive_write_free(a);
+        throw std::runtime_error("Failed to open file: " + dir_entry.path().string());
+      }
+
+      while (in) {
+        in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        auto const bytes_read{ in.gcount() };
+        if (bytes_read > 0) {
+          if (archive_write_data(a, buffer.data(), static_cast<size_t>(bytes_read)) < 0) {
+            std::string msg{ std::string("Failed to write data: ") +
+                             archive_error_string(a) };
+            archive_entry_free(entry);
+            archive_write_close(a);
+            archive_write_free(a);
+            throw std::runtime_error(msg);
+          }
+        }
+      }
+      ++files_archived;
+    }
+  }
+
+  archive_entry_free(entry);
+  archive_write_close(a);
+  archive_write_free(a);
+  return files_archived;
+}
 
 std::uint64_t extract(std::filesystem::path const &archive_path,
                       std::filesystem::path const &destination,
@@ -467,18 +555,17 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
       auto const archive_base{ processed_bytes };
       std::uint64_t last_archive_bytes{ 0 };
 
-      extract_options opts{
-        .strip_components = strip_components,
-        .progress = [&](extract_progress const &p) -> bool {
-          last_archive_bytes = p.bytes_processed;
-          if (tui_state) {
-            return tui_state->on_progress(archive_base + p.bytes_processed,
-                                          p.current_entry,
-                                          p.is_regular_file);
-          }
-          return true;
-        }
-      };
+      extract_options opts{ .strip_components = strip_components,
+                            .progress = [&](extract_progress const &p) -> bool {
+                              last_archive_bytes = p.bytes_processed;
+                              if (tui_state) {
+                                return tui_state->on_progress(
+                                    archive_base + p.bytes_processed,
+                                    p.current_entry,
+                                    p.is_regular_file);
+                              }
+                              return true;
+                            } };
 
       std::uint64_t const files{ extract(path, dest_dir, opts) };
       total_files_extracted += files;

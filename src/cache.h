@@ -34,6 +34,7 @@ class cache : unmovable {
     void mark_install_complete();
     void mark_user_managed();
     void mark_fetch_complete();
+    void mark_preserve_fetch();
     bool is_install_complete() const;
     bool is_fetch_complete() const;
 
@@ -78,10 +79,10 @@ class cache : unmovable {
   ensure_result ensure_spec(std::string_view identity);
 
   struct envy_ensure_result {
-    path envy_dir;       // $CACHE/envy/$VERSION/
-    path binary_path;    // envy_dir / "envy" (or "envy.exe")
-    path types_path;     // envy_dir / "envy.lua"
-    bool already_cached; // true if binary+types already exist
+    path envy_dir;                            // $CACHE/envy/$VERSION/
+    path binary_path;                         // envy_dir / "envy" (or "envy.exe")
+    path types_path;                          // envy_dir / "envy.lua"
+    bool already_cached;                      // true if binary+types already exist
     std::optional<platform::file_lock> lock;  // held while !already_cached
   };
 
