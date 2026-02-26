@@ -283,7 +283,7 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
     // Preserve permissions
     std::error_code ec;
     auto const perms{ std::filesystem::status(dir_entry.path(), ec).permissions() };
-    if (!ec) { archive_entry_set_perm(entry, static_cast<mode_t>(perms)); }
+    if (!ec) { archive_entry_set_perm(entry, static_cast<__LA_MODE_T>(perms)); }
 
     if (archive_write_header(a, entry) != ARCHIVE_OK) {
       std::string msg{ std::string("Failed to write header: ") + archive_error_string(a) };
