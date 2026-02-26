@@ -117,9 +117,9 @@ void cmd_import::execute() {
   if (directory_has_entries(result.lock->install_dir())) {  // Full import, complete
     result.lock->mark_install_complete();
     tui::print_stdout("%s\n", result.pkg_path.string().c_str());
-  } else if (result.lock->is_fetch_complete()) {
-    // Fetch-only import — don't mark install complete.
-    // Destructor failure path preserves non-empty fetch/.
+  } else if (directory_has_entries(result.lock->fetch_dir())) {
+    // Fetch-only import — mark fetch complete so cache state is consistent.
+    result.lock->mark_fetch_complete();
     tui::print_stdout("fetch-only import: %s\n", result.entry_path.string().c_str());
   } else {
     throw std::runtime_error(

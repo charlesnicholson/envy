@@ -69,6 +69,26 @@ void ensure_directory(std::filesystem::path const &path) {
   }
 }
 
+bool is_safe_archive_path(char const *path) {
+  if (!path || path[0] == '\0') { return false; }
+  if (path[0] == '/' || path[0] == '\\') { return false; }
+#ifdef _WIN32
+  if (std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
+    return false;
+  }
+#endif
+  std::string_view sv{ path };
+  // Reject paths containing ".." components
+  for (std::size_t pos{ 0 }; pos < sv.size();) {
+    auto const sep{ sv.find_first_of("/\\", pos) };
+    auto const component{ sv.substr(pos,
+                                    sep == std::string_view::npos ? sep : sep - pos) };
+    if (component == "..") { return false; }
+    pos = (sep == std::string_view::npos) ? sv.size() : sep + 1;
+  }
+  return true;
+}
+
 std::optional<std::string> strip_path_components(char const *path, int strip_count) {
   if (!path) { return std::nullopt; }
   if (strip_count <= 0) { return std::string(path); }
@@ -225,6 +245,8 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
   archive_write_set_format_pax_restricted(a);
   archive_write_add_filter_zstd(a);
 
+  ensure_directory(output_path);
+
   if (archive_write_open_filename(a, output_path.string().c_str()) != ARCHIVE_OK) {
     std::string msg{ std::string("Failed to open output: ") + archive_error_string(a) };
     archive_write_free(a);
@@ -237,7 +259,7 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
 
   for (auto const &dir_entry : std::filesystem::recursive_directory_iterator(source_dir)) {
     std::filesystem::path const rel{ dir_entry.path().lexically_relative(source_dir) };
-    std::string const archived_path{ prefix + "/" + rel.string() };
+    std::string const archived_path{ prefix + "/" + rel.generic_string() };
 
     archive_entry_clear(entry);
     archive_entry_set_pathname(entry, archived_path.c_str());
@@ -340,6 +362,11 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       if (!stripped) { continue; }
       stripped_path = *stripped;
       entry_path = stripped_path.c_str();
+    }
+
+    if (!is_safe_archive_path(entry_path)) {
+      throw std::runtime_error(std::string("extract: unsafe archive entry path: ") +
+                               entry_path);
     }
 
     std::filesystem::path const full_path{ destination / entry_path };

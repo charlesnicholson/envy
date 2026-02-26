@@ -123,6 +123,15 @@ void cmd_export::execute() {
                                               ? *cfg_.output_dir
                                               : std::filesystem::current_path() };
 
+  {
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    if (ec) {
+      throw std::runtime_error("export: failed to create output directory " +
+                               output_dir.string() + ": " + ec.message());
+    }
+  }
+
   for (auto const *cfg : targets) {
     pkg_key const key{ *cfg };
     pkg *p{ eng.find_exact(key) };
