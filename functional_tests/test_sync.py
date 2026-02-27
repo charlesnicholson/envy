@@ -809,7 +809,11 @@ PACKAGES = {{
         envy_name = "envy.exe" if sys.platform == "win32" else "envy"
         tmp = bin_dir / (envy_name + ".tmp")
         shutil.copy(self.envy, tmp)
-        os.rename(str(tmp), str(bin_dir / envy_name))
+        try:
+            os.rename(str(tmp), str(bin_dir / envy_name))
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            raise
 
         # Test 1: Execute product script without arguments
         script_name = "echotool.bat" if sys.platform == "win32" else "echotool"
@@ -896,7 +900,11 @@ PACKAGES = {{
         envy_name = "envy.exe" if sys.platform == "win32" else "envy"
         tmp = bin_dir / (envy_name + ".tmp")
         shutil.copy(self.envy, tmp)
-        os.rename(str(tmp), str(bin_dir / envy_name))
+        try:
+            os.rename(str(tmp), str(bin_dir / envy_name))
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            raise
 
         script_name = "failtool.bat" if sys.platform == "win32" else "failtool"
         script_path = bin_dir / script_name
