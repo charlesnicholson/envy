@@ -37,9 +37,13 @@ void update_latest_if_newer(path const &envy_dir, std::string_view version) {
 }
 
 bool copy_binary(path const &src, path const &dst) {
+  // Atomic deploy: copy to temp, set permissions, then rename. Avoids ETXTBSY on
+  // Linux when another process is executing the destination binary concurrently.
+  auto const tmp{ dst.parent_path() / (".envy-tmp-" + dst.filename().string()) };
   std::error_code ec;
+
   std::filesystem::copy_file(src,
-                             dst,
+                             tmp,
                              std::filesystem::copy_options::overwrite_existing,
                              ec);
   if (ec) {
@@ -48,7 +52,7 @@ bool copy_binary(path const &src, path const &dst) {
   }
 
 #ifndef _WIN32
-  std::filesystem::permissions(dst,
+  std::filesystem::permissions(tmp,
                                std::filesystem::perms::owner_exec |
                                    std::filesystem::perms::group_exec |
                                    std::filesystem::perms::others_exec,
@@ -59,6 +63,13 @@ bool copy_binary(path const &src, path const &dst) {
               ec.message().c_str());
   }
 #endif
+
+  std::filesystem::rename(tmp, dst, ec);
+  if (ec) {
+    std::filesystem::remove(tmp);
+    tui::warn("self-deploy: failed to install binary: %s", ec.message().c_str());
+    return false;
+  }
 
   return true;
 }
