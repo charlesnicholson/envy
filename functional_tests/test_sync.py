@@ -803,10 +803,13 @@ PACKAGES = {{
         result = self.run_sync(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Copy envy executable to bin dir so product script can find it
+        # Copy envy executable to bin dir so product script can find it.
+        # Atomic copy (temp + rename) avoids ETXTBSY on Linux.
         bin_dir = self.test_dir / "envy-bin"
         envy_name = "envy.exe" if sys.platform == "win32" else "envy"
-        shutil.copy(self.envy, bin_dir / envy_name)
+        tmp = bin_dir / (envy_name + ".tmp")
+        shutil.copy(self.envy, tmp)
+        os.rename(str(tmp), str(bin_dir / envy_name))
 
         # Test 1: Execute product script without arguments
         script_name = "echotool.bat" if sys.platform == "win32" else "echotool"
@@ -888,9 +891,12 @@ PACKAGES = {{
         result = self.run_sync(manifest=manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
+        # Atomic copy (temp + rename) avoids ETXTBSY on Linux.
         bin_dir = self.test_dir / "envy-bin"
         envy_name = "envy.exe" if sys.platform == "win32" else "envy"
-        shutil.copy(self.envy, bin_dir / envy_name)
+        tmp = bin_dir / (envy_name + ".tmp")
+        shutil.copy(self.envy, tmp)
+        os.rename(str(tmp), str(bin_dir / envy_name))
 
         script_name = "failtool.bat" if sys.platform == "win32" else "failtool"
         script_path = bin_dir / script_name
