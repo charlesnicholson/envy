@@ -214,9 +214,11 @@ set(ENVY_BASE_SOURCES
     src/cli.cpp
     src/cmd.cpp
     src/cmds/cmd_deploy.cpp
-    src/cmds/cmd_package.cpp
+    src/cmds/cmd_export.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
+    src/cmds/cmd_import.cpp
+    src/cmds/cmd_package.cpp
     src/cmds/cmd_hash.cpp
     src/cmds/cmd_init.cpp
     src/cmds/cmd_install.cpp
@@ -437,6 +439,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
+    src/cmds/cmd_import_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp

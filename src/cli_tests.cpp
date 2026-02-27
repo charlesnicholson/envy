@@ -1,8 +1,10 @@
 #include "cli.h"
 #include "cmds/cmd_deploy.h"
+#include "cmds/cmd_export.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
 #include "cmds/cmd_hash.h"
+#include "cmds/cmd_import.h"
 #include "cmds/cmd_init.h"
 #include "cmds/cmd_install.h"
 #include "cmds/cmd_lua.h"
@@ -1014,6 +1016,127 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   SUBCASE("invalid --platform value rejected") {
     std::vector<std::string> args{ "envy",     "init",       "/tmp/proj",
                                    "/tmp/bin", "--platform", "macos" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_export") {
+  SUBCASE("no arguments (export all)") {
+    std::vector<std::string> args{ "envy", "export" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->queries.empty());
+    CHECK_FALSE(cfg->output_dir.has_value());
+    CHECK_FALSE(cfg->manifest_path.has_value());
+  }
+
+  SUBCASE("single query") {
+    std::vector<std::string> args{ "envy", "export", "arm.gcc@r2" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 1);
+    CHECK(cfg->queries[0] == "arm.gcc@r2");
+  }
+
+  SUBCASE("multiple queries") {
+    std::vector<std::string> args{ "envy", "export", "gcc", "binutils" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 2);
+    CHECK(cfg->queries[0] == "gcc");
+    CHECK(cfg->queries[1] == "binutils");
+  }
+
+  SUBCASE("with -o output directory") {
+    std::vector<std::string> args{ "envy", "export", "arm.gcc@r2", "-o", "/tmp/out" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 1);
+    CHECK(cfg->queries[0] == "arm.gcc@r2");
+    REQUIRE(cfg->output_dir.has_value());
+    CHECK(*cfg->output_dir == std::filesystem::path("/tmp/out"));
+  }
+
+  SUBCASE("with --manifest") {
+    std::vector<std::string> args{ "envy",
+                                   "export",
+                                   "arm.gcc@r2",
+                                   "--manifest",
+                                   "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 1);
+    CHECK(cfg->queries[0] == "arm.gcc@r2");
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+}
+
+TEST_CASE("cli_parse: cmd_import") {
+  SUBCASE("valid archive path") {
+    // Create temporary test archive
+    auto temp_archive{ std::filesystem::temp_directory_path() /
+                       "arm.gcc@r2-darwin-arm64-blake3-abcdef01.tar.zst" };
+    {
+      std::ofstream temp_file{ temp_archive };
+      temp_file << "fake archive\n";
+    }
+
+    std::vector<std::string> args{ "envy", "import", temp_archive.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_archive);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->archive_path == temp_archive);
+  }
+
+  SUBCASE("missing archive rejected") {
+    std::vector<std::string> args{ "envy", "import" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("nonexistent archive rejected") {
+    std::vector<std::string> args{ "envy", "import", "/nonexistent/archive.tar.zst" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };

@@ -43,6 +43,7 @@ struct cache::scoped_entry_lock::impl {
   std::chrono::steady_clock::time_point lock_acquired_time{};
   bool completed_{ false };
   bool user_managed_{ false };
+  bool preserve_fetch_{ false };
 
   impl(path entry_dir,
        platform::file_lock lock,
@@ -54,7 +55,6 @@ struct cache::scoped_entry_lock::impl {
         lock_path_{ std::move(lock_path) },
         pkg_identity_{ std::move(pkg_identity) },
         lock_acquired_time{ lock_acquired_at } {}
-
 };
 
 }  // namespace envy
@@ -177,13 +177,15 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
   if (m->completed_) {
     tui::debug("  DTOR: SUCCESS PATH - cleaning up work/fetch dirs");
     remove_all_noexcept(work_dir());
-    // fetch_dir cleanup is best-effort: the install is already complete, so a
-    // lingering fetch dir only wastes disk space.  On Windows, Defender or Search
-    // Indexer may still be scanning recently-downloaded archives.
-    if (auto ec{ platform::remove_all_with_retry(fetch_dir()) }) {
-      tui::warn("cache: could not remove %s: %s",
-                fetch_dir().string().c_str(),
-                ec.message().c_str());
+    if (!m->preserve_fetch_) {
+      // fetch_dir cleanup is best-effort: the install is already complete, so a
+      // lingering fetch dir only wastes disk space.  On Windows, Defender or Search
+      // Indexer may still be scanning recently-downloaded archives.
+      if (auto ec{ platform::remove_all_with_retry(fetch_dir()) }) {
+        tui::warn("cache: could not remove %s: %s",
+                  fetch_dir().string().c_str(),
+                  ec.message().c_str());
+      }
     }
     tui::debug("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
@@ -250,12 +252,11 @@ cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
                                        lock_acquired_at } };
 }
 
-cache::path cache::scoped_entry_lock::install_dir() const {
-  return m->entry_dir_ / "pkg";
-}
+cache::path cache::scoped_entry_lock::install_dir() const { return m->entry_dir_ / "pkg"; }
 
 void cache::scoped_entry_lock::mark_install_complete() { m->completed_ = true; }
 void cache::scoped_entry_lock::mark_user_managed() { m->user_managed_ = true; }
+void cache::scoped_entry_lock::mark_preserve_fetch() { m->preserve_fetch_ = true; }
 
 void cache::scoped_entry_lock::mark_fetch_complete() {
   std::filesystem::create_directories(fetch_dir());

@@ -37,6 +37,12 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 // Check if path has archive extension
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
+// Create tar.zst archive from source_dir contents, stored under prefix/ (e.g., "pkg/").
+// Returns number of files archived.
+std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
+                                     std::filesystem::path const &source_dir,
+                                     std::string const &prefix);
+
 // Extract all archives in fetch_dir to dest_dir.
 // If section != kInvalidSection, shows spinner during totals computation and progress bar
 // during extraction. Pass kInvalidSection for silent extraction.

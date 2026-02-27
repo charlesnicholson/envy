@@ -227,3 +227,87 @@ TEST_CASE("extract different archive formats with strip") {
     std::filesystem::remove_all(dest);
   }
 }
+
+TEST_CASE("archive_create_tar_zst round-trip with files and directories") {
+  auto const source{ make_temp_dir() };
+  auto const dest{ make_temp_dir() };
+
+  // Create source tree
+  std::filesystem::create_directories(source / "subdir");
+  { std::ofstream{ source / "file1.txt" } << "hello"; }
+  { std::ofstream{ source / "subdir" / "file2.txt" } << "world"; }
+
+  auto const archive{ make_temp_dir() / "test.tar.zst" };
+  auto const files_archived{ envy::archive_create_tar_zst(archive, source, "pkg") };
+  CHECK(files_archived == 2);
+  CHECK(std::filesystem::exists(archive));
+  CHECK(std::filesystem::file_size(archive) > 0);
+
+  // Extract and verify contents under prefix
+  envy::extract(archive, dest);
+
+  auto const files{ collect_files_recursive(dest) };
+  CHECK(files.size() == 2);
+  CHECK(files[0] == "pkg/file1.txt");
+  CHECK(files[1] == "pkg/subdir/file2.txt");
+
+  // Verify file contents survived round-trip
+  {
+    std::ifstream in{ dest / "pkg" / "file1.txt" };
+    std::string content{ std::istreambuf_iterator<char>{ in }, {} };
+    CHECK(content == "hello");
+  }
+  {
+    std::ifstream in{ dest / "pkg" / "subdir" / "file2.txt" };
+    std::string content{ std::istreambuf_iterator<char>{ in }, {} };
+    CHECK(content == "world");
+  }
+
+  std::filesystem::remove_all(source);
+  std::filesystem::remove_all(dest);
+  std::filesystem::remove_all(archive.parent_path());
+}
+
+#ifndef _WIN32
+TEST_CASE("archive_create_tar_zst preserves symlinks") {
+  auto const source{ make_temp_dir() };
+  auto const dest{ make_temp_dir() };
+
+  // Create source with a symlink
+  { std::ofstream{ source / "real.txt" } << "content"; }
+  std::filesystem::create_symlink("real.txt", source / "link.txt");
+
+  auto const archive{ make_temp_dir() / "symlink.tar.zst" };
+  envy::archive_create_tar_zst(archive, source, "fetch");
+
+  envy::extract(archive, dest);
+
+  auto const link_path{ dest / "fetch" / "link.txt" };
+  CHECK(std::filesystem::is_symlink(link_path));
+  CHECK(std::filesystem::read_symlink(link_path) == "real.txt");
+
+  std::filesystem::remove_all(source);
+  std::filesystem::remove_all(dest);
+  std::filesystem::remove_all(archive.parent_path());
+}
+#endif
+
+TEST_CASE("archive_create_tar_zst with fetch prefix") {
+  auto const source{ make_temp_dir() };
+  auto const dest{ make_temp_dir() };
+
+  { std::ofstream{ source / "archive.tar.gz" } << "fake archive data"; }
+
+  auto const archive{ make_temp_dir() / "test.tar.zst" };
+  envy::archive_create_tar_zst(archive, source, "fetch");
+
+  envy::extract(archive, dest);
+
+  auto const files{ collect_files_recursive(dest) };
+  CHECK(files.size() == 1);
+  CHECK(files[0] == "fetch/archive.tar.gz");
+
+  std::filesystem::remove_all(source);
+  std::filesystem::remove_all(dest);
+  std::filesystem::remove_all(archive.parent_path());
+}

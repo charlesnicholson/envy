@@ -499,6 +499,67 @@ TEST_CASE_FIXTURE(
   CHECK_FALSE(std::filesystem::exists(lock_path));
 }
 
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "mark_preserve_fetch keeps fetch_dir on success path") {
+  std::filesystem::path entry_dir;
+  std::filesystem::path fetch_file;
+
+  {
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
+    REQUIRE(result.lock != nullptr);
+
+    entry_dir = result.entry_path;
+
+    // Populate both fetch/ and pkg/
+    fetch_file = result.lock->fetch_dir() / "downloaded.tar.gz";
+    std::ofstream{ fetch_file } << "big payload";
+    std::ofstream{ result.lock->install_dir() / "binary.so" } << "installed";
+
+    result.lock->mark_preserve_fetch();
+    result.lock->mark_install_complete();
+  }
+
+  // Verify envy-complete marker created (success path ran)
+  CHECK(std::filesystem::exists(entry_dir / "envy-complete"));
+
+  // Verify pkg/ preserved
+  CHECK(std::filesystem::exists(entry_dir / "pkg" / "binary.so"));
+
+  // Verify fetch/ preserved (not cleaned up)
+  CHECK(std::filesystem::exists(fetch_file));
+
+  // Verify work/ cleaned up
+  CHECK_FALSE(std::filesystem::exists(entry_dir / "work"));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture,
+                  "success path without mark_preserve_fetch deletes fetch_dir") {
+  std::filesystem::path entry_dir;
+  std::filesystem::path fetch_file;
+
+  {
+    auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef02");
+    REQUIRE(result.lock != nullptr);
+
+    entry_dir = result.entry_path;
+
+    // Populate both fetch/ and pkg/
+    fetch_file = result.lock->fetch_dir() / "downloaded.tar.gz";
+    std::ofstream{ fetch_file } << "big payload";
+    std::ofstream{ result.lock->install_dir() / "binary.so" } << "installed";
+
+    // Do NOT call mark_preserve_fetch
+    result.lock->mark_install_complete();
+  }
+
+  // Verify success path ran
+  CHECK(std::filesystem::exists(entry_dir / "envy-complete"));
+  CHECK(std::filesystem::exists(entry_dir / "pkg" / "binary.so"));
+
+  // Verify fetch/ was cleaned up (default behavior)
+  CHECK_FALSE(std::filesystem::exists(fetch_file));
+}
+
 // Tests for resolve_cache_root()
 
 TEST_CASE("resolve_cache_root CLI override takes precedence") {

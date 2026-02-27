@@ -243,6 +243,14 @@ void run_install_phase(pkg *p, engine &eng) {
   // Cache-managed packages are auto-marked complete on successful INSTALL return
   // User-managed packages are never marked complete (ephemeral workspace)
 
+  if (marked_complete && lock) {
+    sol::object exportable_obj{ lua_view["EXPORTABLE"] };
+    bool const exportable{ exportable_obj.valid() &&
+                           exportable_obj.get_type() == sol::type::boolean &&
+                           exportable_obj.as<bool>() };
+    if (!exportable) { lock->mark_preserve_fetch(); }
+  }
+
   if (marked_complete) { p->pkg_path = final_pkg_path; }
 }
 
