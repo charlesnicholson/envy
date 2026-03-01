@@ -6,6 +6,7 @@
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
 #include "phases/phase_fetch.h"
+#include "phases/phase_import.h"
 #include "phases/phase_install.h"
 #include "phases/phase_spec_fetch.h"
 #include "phases/phase_stage.h"
@@ -31,6 +32,7 @@ using phase_func_t = void (*)(pkg *, engine &);
 constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_spec_fetch_phase,  // pkg_phase::spec_fetch
   run_check_phase,       // pkg_phase::pkg_check
+  run_import_phase,      // pkg_phase::pkg_import
   run_fetch_phase,       // pkg_phase::pkg_fetch
   run_stage_phase,       // pkg_phase::pkg_stage
   run_build_phase,       // pkg_phase::pkg_build
@@ -483,7 +485,12 @@ std::filesystem::path const &engine::cache_root() const { return cache_.root(); 
 
 manifest const *engine::get_manifest() const { return manifest_; }
 
+void engine::set_depot_index(package_depot_index idx) { depot_index_ = std::move(idx); }
+
 package_depot_index const *engine::depot_index() const {
+  // Return pre-set index if available
+  if (depot_index_) { return &*depot_index_; }
+
   if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
 
   std::call_once(depot_init_flag_, [this] {

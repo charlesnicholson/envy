@@ -142,6 +142,33 @@ package_depot_index package_depot_index::build_from_contents(
   return index;
 }
 
+package_depot_index package_depot_index::build_from_directory(
+    std::filesystem::path const &dir) {
+  namespace fs = std::filesystem;
+
+  std::unordered_map<std::string, std::string> entries;
+
+  for (auto const &e : fs::directory_iterator(dir)) {
+    if (!e.is_regular_file()) { continue; }
+    auto const &p{ e.path() };
+    if (p.extension() != ".zst") { continue; }
+    auto stem_path{ p.stem() };  // strips .zst
+    if (stem_path.extension() != ".tar") { continue; }
+    std::string const stem{ stem_path.stem().string() };
+
+    if (!util_parse_archive_filename(stem)) {
+      tui::warn("depot: skipping unrecognized file %s", p.filename().string().c_str());
+      continue;
+    }
+
+    entries.try_emplace(stem, fs::absolute(p).string());
+  }
+
+  package_depot_index index;
+  if (!entries.empty()) { index.manifests_.push_back(std::move(entries)); }
+  return index;
+}
+
 std::optional<std::string> package_depot_index::find(std::string_view identity,
                                                      std::string_view platform,
                                                      std::string_view arch,

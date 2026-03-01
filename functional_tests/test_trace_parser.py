@@ -77,7 +77,7 @@ class TestTraceParser(unittest.TestCase):
                     "parent": "parent@v1",
                     "dependency": "child@v2",
                     "needed_by": "fetch",
-                    "needed_by_num": 2,
+                    "needed_by_num": 3,
                 },
                 {
                     "ts": "2025-01-15T10:30:01.789Z",
@@ -201,7 +201,7 @@ class TestTraceParser(unittest.TestCase):
                     "event": "phase_start",
                     "spec": "test@v1",
                     "phase": "fetch",
-                    "phase_num": 2,
+                    "phase_num": 3,
                 },
             ]
         )
@@ -229,7 +229,7 @@ class TestTraceParser(unittest.TestCase):
                     "parent": "parent@v1",
                     "dependency": "child@v1",
                     "needed_by": "fetch",
-                    "needed_by_num": 2,
+                    "needed_by_num": 3,
                 }
             ]
         )
@@ -250,7 +250,7 @@ class TestTraceParser(unittest.TestCase):
                     "parent": "parent@v1",
                     "dependency": "child@v1",
                     "needed_by": "fetch",
-                    "needed_by_num": 2,
+                    "needed_by_num": 3,
                 }
             ]
         )

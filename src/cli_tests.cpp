@@ -1174,9 +1174,10 @@ TEST_CASE("cli_parse: cmd_import") {
     auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     CHECK(cfg->archive_path == temp_archive);
+    CHECK_FALSE(cfg->dir.has_value());
   }
 
-  SUBCASE("missing archive rejected") {
+  SUBCASE("neither archive nor --dir rejected") {
     std::vector<std::string> args{ "envy", "import" };
     auto argv{ make_argv(args) };
 
@@ -1194,5 +1195,81 @@ TEST_CASE("cli_parse: cmd_import") {
 
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("--dir parses") {
+    auto temp_dir{ std::filesystem::temp_directory_path() / "envy-import-test-dir" };
+    std::filesystem::create_directories(temp_dir);
+
+    std::vector<std::string> args{ "envy", "import", "--dir", temp_dir.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_dir);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->dir.has_value());
+    CHECK(*cfg->dir == temp_dir);
+    CHECK(cfg->archive_path.empty());
+  }
+
+  SUBCASE("--dir and archive rejected") {
+    auto temp_dir{ std::filesystem::temp_directory_path() / "envy-import-test-dir2" };
+    std::filesystem::create_directories(temp_dir);
+    auto temp_archive{ std::filesystem::temp_directory_path() /
+                       "arm.gcc@r2-darwin-arm64-blake3-abcdef01.tar.zst" };
+    {
+      std::ofstream temp_file{ temp_archive };
+      temp_file << "fake archive\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "import",
+                                   "--dir",
+                                   temp_dir.string(),
+                                   temp_archive.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_dir);
+    std::filesystem::remove(temp_archive);
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("--dir with nonexistent directory rejected") {
+    std::vector<std::string> args{ "envy", "import", "--dir", "/nonexistent/dir" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("--manifest parses") {
+    auto temp_dir{ std::filesystem::temp_directory_path() / "envy-import-test-dir3" };
+    std::filesystem::create_directories(temp_dir);
+
+    std::vector<std::string> args{ "envy",       "import",
+                                   "--dir",      temp_dir.string(),
+                                   "--manifest", "/path/to/envy.lua" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_dir);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->dir.has_value());
+    REQUIRE(cfg->manifest_path.has_value());
+    CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
   }
 }

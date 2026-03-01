@@ -23,6 +23,10 @@ class package_depot_index {
   static package_depot_index build_from_contents(
       std::vector<std::string> const &manifest_contents);
 
+  // Build index from a local directory of .tar.zst archives.
+  // Scans dir for .tar.zst files, maps filename stems → absolute file paths.
+  static package_depot_index build_from_directory(std::filesystem::path const &dir);
+
   // Returns archive URL if an exact match is found.
   // Searches manifests in order; stops at first manifest with a match.
   std::optional<std::string> find(std::string_view identity,

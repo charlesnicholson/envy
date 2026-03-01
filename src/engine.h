@@ -118,6 +118,7 @@ class engine : unmovable {
   bundle *find_bundle(std::string const &identity) const;
 
   manifest const *get_manifest() const;
+  void set_depot_index(package_depot_index idx);
   package_depot_index const *depot_index() const;
 
 #ifdef ENVY_UNIT_TEST

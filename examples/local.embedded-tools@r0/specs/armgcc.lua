@@ -1,5 +1,6 @@
 -- @envy schema "1"
 IDENTITY = "local.armgcc@r0"
+EXPORTABLE = true
 
 local sha256  -- populated at end of file
 local win_x86_64 = { ["14.2.rel1"] = true, ["14.3.rel1"] = true }

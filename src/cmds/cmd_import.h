@@ -14,6 +14,8 @@ class cmd_import : public cmd {
  public:
   struct cfg : cmd_cfg<cmd_import> {
     std::filesystem::path archive_path;
+    std::optional<std::filesystem::path> dir;
+    std::optional<std::filesystem::path> manifest_path;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

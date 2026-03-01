@@ -1,5 +1,6 @@
 -- @envy schema "1"
 IDENTITY = "local.clang-tools@r0"
+EXPORTABLE = true
 
 if envy.PLATFORM == "darwin" then
   DEPENDENCIES = {
