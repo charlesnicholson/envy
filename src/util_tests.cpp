@@ -955,6 +955,163 @@ TEST_CASE("util_escape_json_string all control chars below 0x20 are escaped") {
   }
 }
 
+// --- util_parse_archive_filename tests ---
+
+TEST_CASE("util_parse_archive_filename: basic valid filenames") {
+  SUBCASE("standard darwin arm64") {
+    auto const r{ envy::util_parse_archive_filename(
+        "local.pkg@v1-darwin-arm64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "local.pkg@v1");
+    CHECK(r->platform == "darwin");
+    CHECK(r->arch == "arm64");
+    CHECK(r->hash_prefix == "abcdef0123456789");
+  }
+
+  SUBCASE("linux x86_64") {
+    auto const r{ envy::util_parse_archive_filename(
+        "arm.gcc@r2-linux-x86_64-blake3-1234567890abcdef") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "arm.gcc@r2");
+    CHECK(r->platform == "linux");
+    CHECK(r->arch == "x86_64");
+    CHECK(r->hash_prefix == "1234567890abcdef");
+  }
+
+  SUBCASE("windows x86_64") {
+    auto const r{ envy::util_parse_archive_filename(
+        "local.uv@r0-windows-x86_64-blake3-deadbeef12345678") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "local.uv@r0");
+    CHECK(r->platform == "windows");
+    CHECK(r->arch == "x86_64");
+    CHECK(r->hash_prefix == "deadbeef12345678");
+  }
+}
+
+TEST_CASE("util_parse_archive_filename: identity edge cases") {
+  SUBCASE("multi-segment namespace") {
+    auto const r{ envy::util_parse_archive_filename(
+        "org.team.tool@v3-darwin-arm64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "org.team.tool@v3");
+  }
+
+  SUBCASE("revision with digits") {
+    auto const r{ envy::util_parse_archive_filename(
+        "tool@r123-linux-x86_64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "tool@r123");
+  }
+
+  SUBCASE("single-char namespace") {
+    auto const r{ envy::util_parse_archive_filename(
+        "a.b@r0-darwin-arm64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "a.b@r0");
+  }
+
+  SUBCASE("hyphenated names") {
+    auto const r{ envy::util_parse_archive_filename(
+        "my-tool.sub-pkg@v1-darwin-arm64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->identity == "my-tool.sub-pkg@v1");
+  }
+}
+
+TEST_CASE("util_parse_archive_filename: platform/arch variants") {
+  SUBCASE("unknown platform (forward compatibility)") {
+    auto const r{ envy::util_parse_archive_filename(
+        "tool@r0-freebsd-arm64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->platform == "freebsd");
+  }
+
+  SUBCASE("unknown arch (forward compatibility)") {
+    auto const r{ envy::util_parse_archive_filename(
+        "tool@r0-linux-riscv64-blake3-abcdef0123456789") };
+    REQUIRE(r.has_value());
+    CHECK(r->arch == "riscv64");
+  }
+}
+
+TEST_CASE("util_parse_archive_filename: invalid filenames return nullopt") {
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("local.pkg-darwin-arm64-blake3-hash").has_value());
+
+  CHECK_FALSE(envy::util_parse_archive_filename("local.pkg@v1").has_value());
+
+  CHECK_FALSE(envy::util_parse_archive_filename("local.pkg@v1-darwin-arm64-sha256-hash")
+                  .has_value());
+
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("local.pkg@v1--arm64-blake3-hash").has_value());
+
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("local.pkg@v1-darwin--blake3-hash").has_value());
+
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("local.pkg@v1-darwin-arm64-blake3-").has_value());
+
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("local.pkg@v1-darwin-arm64-blake3").has_value());
+
+  CHECK_FALSE(envy::util_parse_archive_filename("").has_value());
+
+  CHECK_FALSE(envy::util_parse_archive_filename("@").has_value());
+
+  CHECK_FALSE(envy::util_parse_archive_filename("garbage-nonsense").has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: empty revision after @") {
+  // pkg@-darwin-arm64-blake3-hash: empty revision, first dash is delimiter
+  auto const r{ envy::util_parse_archive_filename(
+      "pkg@-darwin-arm64-blake3-abcdef0123456789") };
+  // The parser treats everything up to the first '-' after '@' as revision.
+  // With "pkg@-..." the revision is empty, identity = "pkg@".
+  // This is a valid parse — the identity is unusual but parseable.
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "pkg@");
+  CHECK(r->platform == "darwin");
+}
+
+TEST_CASE("util_parse_archive_filename: multiple @ signs") {
+  // First '@' is the identity delimiter; second '@' is part of revision chars
+  auto const r{ envy::util_parse_archive_filename(
+      "a@b@v1-darwin-arm64-blake3-abcdef0123456789") };
+  // Parser finds first '@' at position 1, then looks for '-' after 'b@v1'.
+  // 'b@v1' contains no '-', so it scans to the first '-' which separates revision from
+  // platform.
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "a@b@v1");
+  CHECK(r->platform == "darwin");
+  CHECK(r->arch == "arm64");
+}
+
+TEST_CASE("util_parse_archive_filename: no content before @") {
+  auto const r{ envy::util_parse_archive_filename(
+      "@v1-darwin-arm64-blake3-abcdef0123456789") };
+  // Empty namespace before '@', but the parser doesn't reject it
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "@v1");
+  CHECK(r->platform == "darwin");
+}
+
+TEST_CASE("util_parse_archive_filename: revision with hyphen") {
+  // Revision "rc-1" contains a hyphen — parser stops at first '-' after '@'
+  auto const r{ envy::util_parse_archive_filename(
+      "tool@rc-1-darwin-arm64-blake3-abcdef0123456789") };
+  // Parser finds '@' then first '-' after it: identity = "tool@rc"
+  // remaining = "1-darwin-arm64-blake3-abcdef0123456789"
+  // platform = "1", arch = "darwin", tag = "arm64" → tag != "blake3" → nullopt
+  // Actually: let's check what happens
+  // After @: "rc-1-darwin-arm64-blake3-abcdef0123456789"
+  // First dash: pos=2, so identity = "tool@rc", remaining = "1-darwin-arm64-blake3-..."
+  // split_next: platform="1", arch="darwin", tag="arm64", hash="blake3-abcdef0123456789"
+  // tag != "blake3" → nullopt
+  CHECK_FALSE(r.has_value());
+}
+
 TEST_CASE("util_parse_platform_flag empty string returns native platform") {
   auto const result{ envy::util_parse_platform_flag("") };
   REQUIRE(result.size() == 1);
@@ -985,4 +1142,63 @@ TEST_CASE("util_parse_platform_flag invalid value throws") {
                     doctest::Contains("invalid --platform value"));
   CHECK_THROWS_WITH(envy::util_parse_platform_flag("macos"),
                     doctest::Contains("invalid --platform value"));
+}
+
+TEST_CASE("util_parse_archive_filename: simple identity") {
+  auto const r{ envy::util_parse_archive_filename(
+      "arm.gcc@r2-darwin-arm64-blake3-abcdef0123456789") };
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "arm.gcc@r2");
+  CHECK(r->platform == "darwin");
+  CHECK(r->arch == "arm64");
+  CHECK(r->hash_prefix == "abcdef0123456789");
+}
+
+TEST_CASE("util_parse_archive_filename: hyphenated name") {
+  auto const r{ envy::util_parse_archive_filename(
+      "ns.my-tool@r10-linux-x86_64-blake3-0123456789abcdef") };
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "ns.my-tool@r10");
+  CHECK(r->platform == "linux");
+  CHECK(r->arch == "x86_64");
+  CHECK(r->hash_prefix == "0123456789abcdef");
+}
+
+TEST_CASE("util_parse_archive_filename: windows platform") {
+  auto const r{ envy::util_parse_archive_filename(
+      "core.python@r1-windows-x86_64-blake3-deadbeef") };
+  REQUIRE(r.has_value());
+  CHECK(r->identity == "core.python@r1");
+  CHECK(r->platform == "windows");
+  CHECK(r->arch == "x86_64");
+  CHECK(r->hash_prefix == "deadbeef");
+}
+
+TEST_CASE("util_parse_archive_filename: missing @ returns nullopt") {
+  CHECK_FALSE(envy::util_parse_archive_filename("arm.gcc-r2-darwin-arm64-blake3-abcdef")
+                  .has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: missing variant returns nullopt") {
+  CHECK_FALSE(envy::util_parse_archive_filename("arm.gcc@r2").has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: wrong hash tag returns nullopt") {
+  CHECK_FALSE(envy::util_parse_archive_filename("arm.gcc@r2-darwin-arm64-sha256-abcdef")
+                  .has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: empty hash prefix returns nullopt") {
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("arm.gcc@r2-darwin-arm64-blake3-").has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: empty platform returns nullopt") {
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("arm.gcc@r2--arm64-blake3-abcdef").has_value());
+}
+
+TEST_CASE("util_parse_archive_filename: empty arch returns nullopt") {
+  CHECK_FALSE(
+      envy::util_parse_archive_filename("arm.gcc@r2-darwin--blake3-abcdef").has_value());
 }

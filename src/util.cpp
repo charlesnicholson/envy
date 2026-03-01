@@ -403,6 +403,44 @@ std::string util_simplify_cache_paths(std::string_view command,
   return result;
 }
 
+std::optional<parsed_archive_filename> util_parse_archive_filename(std::string_view stem) {
+  auto const at_pos{ stem.find('@') };
+  if (at_pos == std::string_view::npos) { return std::nullopt; }
+
+  // From '@', find the next '-' after the revision
+  auto const after_at{ stem.substr(at_pos + 1) };
+  auto const dash_pos{ after_at.find('-') };
+  if (dash_pos == std::string_view::npos) { return std::nullopt; }
+
+  auto const identity_end{ at_pos + 1 + dash_pos };
+  std::string const identity{ stem.substr(0, identity_end) };
+  std::string_view remaining{ stem.substr(identity_end + 1) };
+
+  // remaining = platform-arch-blake3-hash_prefix
+  auto split_next = [&]() -> std::string {
+    auto const pos{ remaining.find('-') };
+    if (pos == std::string_view::npos) {
+      std::string result{ remaining };
+      remaining = {};
+      return result;
+    }
+    std::string result{ remaining.substr(0, pos) };
+    remaining = remaining.substr(pos + 1);
+    return result;
+  };
+
+  std::string const platform{ split_next() };
+  std::string const arch{ split_next() };
+  std::string const blake3_tag{ split_next() };
+  std::string const hash_prefix{ std::string(remaining) };
+
+  if (platform.empty() || arch.empty() || blake3_tag != "blake3" || hash_prefix.empty()) {
+    return std::nullopt;
+  }
+
+  return parsed_archive_filename{ identity, platform, arch, hash_prefix };
+}
+
 std::vector<platform_id> util_parse_platform_flag(std::string const &value) {
   if (value.empty()) { return { platform::native() }; }
   if (value == "posix") { return { platform_id::POSIX }; }

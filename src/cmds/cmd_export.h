@@ -18,6 +18,7 @@ class cmd_export : public cmd {
     std::vector<std::string> queries;  // Optional: if empty, export all manifest packages
     std::optional<std::filesystem::path> output_dir;
     std::optional<std::filesystem::path> manifest_path;
+    std::optional<std::string> depot_prefix;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

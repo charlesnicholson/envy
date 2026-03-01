@@ -919,6 +919,45 @@ PACKAGES = {}
 }
 
 // ============================================================================
+// parse_envy_meta: package-depot directive tests
+// ============================================================================
+
+TEST_CASE("parse_envy_meta: single package-depot") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy package-depot "https://example.com/depot.txt"
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.package_depots.size() == 1);
+  CHECK(meta.package_depots[0] == "https://example.com/depot.txt");
+}
+
+TEST_CASE("parse_envy_meta: multiple package-depots accumulate") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+-- @envy package-depot "https://example.com/darwin-arm64.txt"
+-- @envy package-depot "https://example.com/linux-x86_64.txt"
+-- @envy package-depot "s3://bucket/depot.txt"
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.package_depots.size() == 3);
+  CHECK(meta.package_depots[0] == "https://example.com/darwin-arm64.txt");
+  CHECK(meta.package_depots[1] == "https://example.com/linux-x86_64.txt");
+  CHECK(meta.package_depots[2] == "s3://bucket/depot.txt");
+}
+
+TEST_CASE("parse_envy_meta: no package-depot yields empty vector") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  CHECK(meta.package_depots.empty());
+}
+
+// ============================================================================
 // manifest::discover() with root directive tests
 // ============================================================================
 

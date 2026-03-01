@@ -238,7 +238,8 @@ struct extract_tui_state {
 
 std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
                                      std::filesystem::path const &source_dir,
-                                     std::string const &prefix) {
+                                     std::string const &prefix,
+                                     extract_progress_cb_t const &progress) {
   archive *a{ archive_write_new() };
   if (!a) { throw std::runtime_error("archive_write_new failed"); }
 
@@ -255,6 +256,7 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
 
   archive_entry *entry{ archive_entry_new() };
   std::uint64_t files_archived{ 0 };
+  std::uint64_t bytes_processed{ 0 };
   std::vector<char> buffer(1024 * 1024);
 
   for (auto const &dir_entry : std::filesystem::recursive_directory_iterator(source_dir)) {
@@ -264,6 +266,8 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
     archive_entry_clear(entry);
     archive_entry_set_pathname(entry, archived_path.c_str());
 
+    bool const is_regular{ dir_entry.is_regular_file() };
+
     if (dir_entry.is_symlink()) {
       archive_entry_set_filetype(entry, AE_IFLNK);
       auto const target{ std::filesystem::read_symlink(dir_entry.path()) };
@@ -272,7 +276,7 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
     } else if (dir_entry.is_directory()) {
       archive_entry_set_filetype(entry, AE_IFDIR);
       archive_entry_set_size(entry, 0);
-    } else if (dir_entry.is_regular_file()) {
+    } else if (is_regular) {
       archive_entry_set_filetype(entry, AE_IFREG);
       auto const sz{ std::filesystem::file_size(dir_entry.path()) };
       archive_entry_set_size(entry, static_cast<la_int64_t>(sz));
@@ -285,6 +289,13 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
     auto const perms{ std::filesystem::status(dir_entry.path(), ec).permissions() };
     if (!ec) { archive_entry_set_perm(entry, static_cast<__LA_MODE_T>(perms)); }
 
+    if (progress) {
+      progress({ .bytes_processed = bytes_processed,
+                 .files_processed = files_archived,
+                 .current_entry = rel,
+                 .is_regular_file = is_regular });
+    }
+
     if (archive_write_header(a, entry) != ARCHIVE_OK) {
       std::string msg{ std::string("Failed to write header: ") + archive_error_string(a) };
       archive_entry_free(entry);
@@ -293,7 +304,7 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
       throw std::runtime_error(msg);
     }
 
-    if (dir_entry.is_regular_file()) {
+    if (is_regular) {
       std::ifstream in{ dir_entry.path(), std::ios::binary };
       if (!in) {
         archive_entry_free(entry);
@@ -313,6 +324,13 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
             archive_write_close(a);
             archive_write_free(a);
             throw std::runtime_error(msg);
+          }
+          bytes_processed += static_cast<std::uint64_t>(bytes_read);
+          if (progress) {
+            progress({ .bytes_processed = bytes_processed,
+                       .files_processed = files_archived,
+                       .current_entry = rel,
+                       .is_regular_file = true });
           }
         }
       }

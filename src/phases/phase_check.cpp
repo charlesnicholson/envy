@@ -3,9 +3,12 @@
 #include "blake3_util.h"
 #include "cache.h"
 #include "engine.h"
+#include "extract.h"
+#include "fetch.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
+#include "package_depot.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "shell.h"
@@ -197,14 +200,105 @@ void run_check_phase_user_managed(pkg *p, engine &eng, sol::state_view lua) {
   }
 }
 
+// Try to import a package from a depot archive.
+// Returns true if successful (lock consumed, pkg_path set).
+bool try_depot_import(pkg *p,
+                      cache::ensure_result &cache_result,
+                      std::string const &archive_url) {
+  namespace fs = std::filesystem;
+
+  tui::debug("phase check: [%s] depot hit, fetching %s",
+             p->cfg->identity.c_str(),
+             archive_url.c_str());
+
+  try {
+    fs::path const tmp_dir{ cache_result.lock->tmp_dir() };
+    fs::path const depot_fetch_dir{ tmp_dir / "depot-fetch" };
+    fs::create_directory(depot_fetch_dir);
+    fs::path const archive_dest{ depot_fetch_dir / "depot-archive.tar.zst" };
+
+    // Build fetch request from URL
+    std::vector<fetch_request> requests;
+    requests.push_back(fetch_request_from_url(archive_url, archive_dest));
+
+    auto const results{ fetch(requests) };
+    if (results.empty() || !std::holds_alternative<fetch_result>(results[0])) {
+      auto const *error{ results.empty() ? nullptr
+                                         : std::get_if<std::string>(&results[0]) };
+      tui::warn("depot: failed to download archive %s: %s",
+                archive_url.c_str(),
+                error ? error->c_str() : "unknown error");
+      return false;
+    }
+
+    // Extract archive to entry_path (reuses stage/extract TUI progress)
+    extract_all_archives(depot_fetch_dir,
+                         cache_result.entry_path,
+                         0,
+                         p->cfg->identity,
+                         p->tui_section);
+
+    // Check what we got: pkg/ (full install) or fetch/ (fetch-only)
+    bool const has_install{ [&] {
+      std::error_code ec;
+      fs::directory_iterator it{ cache_result.lock->install_dir(), ec };
+      return !ec && it != fs::directory_iterator{};
+    }() };
+
+    bool const has_fetch{ [&] {
+      std::error_code ec;
+      fs::directory_iterator it{ cache_result.lock->fetch_dir(), ec };
+      return !ec && it != fs::directory_iterator{};
+    }() };
+
+    if (has_install) {
+      cache_result.lock->mark_install_complete();
+      p->pkg_path = cache_result.pkg_path;
+      p->lock.reset();
+      tui::debug("phase check: [%s] depot import complete at %s",
+                 p->cfg->identity.c_str(),
+                 cache_result.pkg_path.string().c_str());
+      return true;
+    }
+
+    if (has_fetch) {
+      // Fetch-only archive — mark fetch complete; subsequent phases will build
+      cache_result.lock->mark_fetch_complete();
+      tui::debug("phase check: [%s] depot fetch-only import, build phases will continue",
+                 p->cfg->identity.c_str());
+      // Don't consume the lock — phases will continue from fetch
+      return false;
+    }
+
+    tui::warn("depot: archive %s did not populate pkg/ or fetch/ directories",
+              archive_url.c_str());
+    return false;
+  } catch (std::exception const &e) {
+    tui::warn("depot: failed to import archive %s: %s", archive_url.c_str(), e.what());
+    return false;
+  }
+}
+
 // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-void run_check_phase_cache_managed(pkg *p) {
+void run_check_phase_cache_managed(pkg *p, engine &eng) {
   std::string const key{ p->cfg->format_key() };
   sol::state_view lua{ *p->lua };
 
   auto cache_result{ compute_hash_and_lookup_cache(p, lua) };
 
-  if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
+  if (cache_result.lock) {  // Cache miss
+    // Try depot lookup before falling through to normal build
+    if (auto const *depot{ eng.depot_index() }; depot && !depot->empty()) {
+      std::string const platform{ lua["envy"]["PLATFORM"].get<std::string>() };
+      std::string const arch{ lua["envy"]["ARCH"].get<std::string>() };
+      std::string const hash_prefix{ p->canonical_identity_hash.substr(0, 16) };
+
+      if (auto const url{ depot->find(p->cfg->identity, platform, arch, hash_prefix) }) {
+        if (try_depot_import(p, cache_result, *url)) { return; }
+        // Depot import failed — fall through to normal build
+      }
+    }
+
     p->lock = std::move(cache_result.lock);
     tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
   } else {  // Cache hit - store pkg_path, no lock means subsequent phases skip
@@ -228,7 +322,7 @@ void run_check_phase(pkg *p, engine &eng) {
   if (has_check) {
     run_check_phase_user_managed(p, eng, lua);
   } else {
-    run_check_phase_cache_managed(p);
+    run_check_phase_cache_managed(p, eng);
   }
 }
 

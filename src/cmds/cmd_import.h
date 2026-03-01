@@ -5,8 +5,6 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
-#include <string>
-#include <string_view>
 
 namespace CLI { class App; }
 
@@ -28,16 +26,5 @@ class cmd_import : public cmd {
   cfg cfg_;
   std::optional<std::filesystem::path> cli_cache_root_;
 };
-
-#ifdef ENVY_UNIT_TEST
-struct parsed_export_filename {
-  std::string identity;
-  std::string platform;
-  std::string arch;
-  std::string hash_prefix;
-};
-
-parsed_export_filename parse_export_filename(std::string_view stem);
-#endif
 
 }  // namespace envy

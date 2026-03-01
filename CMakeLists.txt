@@ -262,6 +262,7 @@ set(ENVY_BASE_SOURCES
     src/lua_envy.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
+    src/package_depot.cpp
     src/pkg_cfg.cpp
     src/bundle.cpp
     src/spec_util.cpp
@@ -439,7 +440,6 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
-    src/cmds/cmd_import_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
@@ -453,6 +453,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_error_formatter_tests.cpp
     src/lua_shell_tests.cpp
     src/manifest_tests.cpp
+    src/package_depot_tests.cpp
     src/pkg_cfg_tests.cpp
     src/pkg_cfg_custom_source_tests.cpp
     src/pkg_key_tests.cpp

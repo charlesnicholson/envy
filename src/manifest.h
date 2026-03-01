@@ -16,13 +16,14 @@ namespace envy {
 
 // @envy metadata parsed from comment headers in manifest
 struct envy_meta {
-  int schema{ 0 };                      // @envy schema "N" (0 = absent)
-  std::optional<std::string> version;  // @envy version "x.y.z"
-  std::optional<std::string> cache;    // @envy cache-posix or cache-win
-  std::optional<std::string> mirror;   // @envy mirror "https://..."
-  std::optional<std::string> bin;      // @envy bin "relative/path/to/bin"
-  std::optional<bool> deploy;          // @envy deploy "true"/"false"
-  std::optional<bool> root;            // @envy root "true"/"false"
+  int schema{ 0 };                          // @envy schema "N" (0 = absent)
+  std::optional<std::string> version;       // @envy version "x.y.z"
+  std::optional<std::string> cache;         // @envy cache-posix or cache-win
+  std::optional<std::string> mirror;        // @envy mirror "https://..."
+  std::optional<std::string> bin;           // @envy bin "relative/path/to/bin"
+  std::optional<bool> deploy;               // @envy deploy "true"/"false"
+  std::optional<bool> root;                 // @envy root "true"/"false"
+  std::vector<std::string> package_depots;  // @envy package-depot "url" (repeatable)
 };
 
 // Parse @envy metadata from manifest content

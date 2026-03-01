@@ -308,4 +308,21 @@ std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {
   return results;
 }
 
+fetch_request fetch_request_from_url(std::string const &url,
+                                     std::filesystem::path const &dest) {
+  auto const info{ uri_classify(url) };
+  switch (info.scheme) {
+    case uri_scheme::HTTP: return fetch_request_http{ .source = url, .destination = dest };
+    case uri_scheme::HTTPS:
+      return fetch_request_https{ .source = url, .destination = dest };
+    case uri_scheme::FTP: return fetch_request_ftp{ .source = url, .destination = dest };
+    case uri_scheme::FTPS: return fetch_request_ftps{ .source = url, .destination = dest };
+    case uri_scheme::S3: return fetch_request_s3{ .source = url, .destination = dest };
+    case uri_scheme::LOCAL_FILE_ABSOLUTE:
+    case uri_scheme::LOCAL_FILE_RELATIVE:
+      return fetch_request_file{ .source = url, .destination = dest };
+    default: throw std::runtime_error("Unsupported URL scheme: " + url);
+  }
+}
+
 }  // namespace envy

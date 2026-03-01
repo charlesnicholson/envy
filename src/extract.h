@@ -38,10 +38,11 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
 // Create tar.zst archive from source_dir contents, stored under prefix/ (e.g., "pkg/").
-// Returns number of files archived.
+// Returns number of files archived. Optional progress callback invoked per-header and per-chunk.
 std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
                                      std::filesystem::path const &source_dir,
-                                     std::string const &prefix);
+                                     std::string const &prefix,
+                                     extract_progress_cb_t const &progress = {});
 
 // Extract all archives in fetch_dir to dest_dir.
 // If section != kInvalidSection, shows spinner during totals computation and progress bar

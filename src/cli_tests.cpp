@@ -1100,6 +1100,57 @@ TEST_CASE("cli_parse: cmd_export") {
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
   }
+
+  SUBCASE("with --depot-prefix") {
+    std::vector<std::string> args{ "envy",
+                                   "export",
+                                   "--depot-prefix",
+                                   "s3://my-bucket/cache/" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->depot_prefix.has_value());
+    CHECK(*cfg->depot_prefix == "s3://my-bucket/cache/");
+  }
+
+  SUBCASE("without --depot-prefix") {
+    std::vector<std::string> args{ "envy", "export" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->depot_prefix.has_value());
+  }
+
+  SUBCASE("--depot-prefix with -o and queries") {
+    std::vector<std::string> args{ "envy",
+                                   "export",
+                                   "arm.gcc@r2",
+                                   "-o",
+                                   "/tmp/out",
+                                   "--depot-prefix",
+                                   "https://cdn.example.com/" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->queries.size() == 1);
+    CHECK(cfg->queries[0] == "arm.gcc@r2");
+    REQUIRE(cfg->output_dir.has_value());
+    CHECK(*cfg->output_dir == std::filesystem::path("/tmp/out"));
+    REQUIRE(cfg->depot_prefix.has_value());
+    CHECK(*cfg->depot_prefix == "https://cdn.example.com/");
+  }
 }
 
 TEST_CASE("cli_parse: cmd_import") {

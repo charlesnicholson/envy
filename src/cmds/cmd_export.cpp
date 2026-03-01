@@ -9,17 +9,25 @@
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
+#include "util.h"
 
 #include "CLI11.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <memory>
+#include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace envy {
 namespace {
 
-void export_one_package(pkg *p, std::filesystem::path const &output_dir) {
+void export_one_package(pkg *p,
+                        std::filesystem::path const &output_dir,
+                        std::optional<std::string> const &depot_prefix) {
   if (p->type != pkg_type::CACHE_MANAGED) {
     tui::warn("export: skipping non-cache-managed package %s",
               std::string(p->key.identity()).c_str());
@@ -47,14 +55,74 @@ void export_one_package(pkg *p, std::filesystem::path const &output_dir) {
     }
   }
 
-  std::string const variant{ entry_dir.filename().string() };
-  std::string const filename{ std::string(p->key.identity()) + "-" + variant +
-                              ".tar.zst" };
-
+  std::string const filename{ entry_dir.filename().string() + ".tar.zst" };
   std::filesystem::path const output_path{ output_dir / filename };
 
-  archive_create_tar_zst(output_path, source_dir, prefix);
-  tui::print_stdout("%s\n", output_path.string().c_str());
+  auto const section{ tui::section_create() };
+  std::string const label{ "[" + std::string(p->key.identity()) + "]" };
+
+  // Scan source to compute totals
+  tui::section_set_content(
+      section,
+      tui::section_frame{ .label = label,
+                          .content = tui::spinner_data{
+                              .text = "scanning...",
+                              .start_time = std::chrono::steady_clock::now() } });
+
+  std::uint64_t total_bytes{ 0 };
+  std::uint64_t total_files{ 0 };
+  for (auto const &e : std::filesystem::recursive_directory_iterator(source_dir)) {
+    if (e.is_regular_file()) {
+      total_bytes += e.file_size();
+      ++total_files;
+    }
+  }
+
+  // Compress with progress
+  archive_create_tar_zst(
+      output_path,
+      source_dir,
+      prefix,
+      [&](extract_progress const &ep) -> bool {
+        double percent{ 0.0 };
+        if (total_bytes > 0) {
+          percent =
+              std::min(100.0,
+                       (ep.bytes_processed / static_cast<double>(total_bytes)) * 100.0);
+        } else if (total_files > 0) {
+          percent =
+              std::min(100.0,
+                       (ep.files_processed / static_cast<double>(total_files)) * 100.0);
+        }
+
+        std::ostringstream status;
+        status << ep.files_processed;
+        if (total_files > 0) { status << "/" << total_files; }
+        status << " files";
+        if (total_bytes > 0) {
+          status << " " << util_format_bytes(ep.bytes_processed) << "/"
+                 << util_format_bytes(total_bytes);
+        }
+
+        tui::section_set_content(
+            section,
+            tui::section_frame{ .label = label,
+                                .content = tui::progress_data{ .percent = percent,
+                                                               .status = status.str() } });
+        return true;
+      });
+
+  tui::section_set_content(
+      section,
+      tui::section_frame{ .label = label,
+                          .content = tui::static_text_data{ .text = "done" } });
+  tui::section_set_complete(section);
+
+  if (depot_prefix) {
+    tui::print_stdout("%s%s\n", depot_prefix->c_str(), filename.c_str());
+  } else {
+    tui::print_stdout("%s\n", output_path.string().c_str());
+  }
 }
 
 }  // namespace
@@ -67,6 +135,9 @@ void cmd_export::register_cli(CLI::App &app, std::function<void(cfg)> on_selecte
                   "Package queries to export (export all if omitted)");
   sub->add_option("-o,--output-dir", cfg_ptr->output_dir, "Output directory for archives");
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->add_option("--depot-prefix",
+                  cfg_ptr->depot_prefix,
+                  "URL prefix for depot manifest output");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -132,6 +203,12 @@ void cmd_export::execute() {
     }
   }
 
+  std::vector<std::thread> workers;
+  std::atomic_bool had_error{ false };
+  std::mutex error_mutex;
+  std::string first_error;
+
+  workers.reserve(targets.size());
   for (auto const *cfg : targets) {
     pkg_key const key{ *cfg };
     pkg *p{ eng.find_exact(key) };
@@ -139,8 +216,18 @@ void cmd_export::execute() {
       throw std::runtime_error("export: spec not found in graph for " +
                                std::string(key.identity()));
     }
-    export_one_package(p, output_dir);
+    workers.emplace_back([p, &output_dir, &had_error, &error_mutex, &first_error, this] {
+      try {
+        export_one_package(p, output_dir, cfg_.depot_prefix);
+      } catch (std::exception const &e) {
+        std::lock_guard lock{ error_mutex };
+        if (!had_error.exchange(true)) { first_error = e.what(); }
+      }
+    });
   }
+
+  for (auto &w : workers) { w.join(); }
+  if (had_error) { throw std::runtime_error(first_error); }
 }
 
 }  // namespace envy
