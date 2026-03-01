@@ -401,6 +401,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
+target_link_options(envy PRIVATE
+    $<$<PLATFORM_ID:Darwin>:-Wl,-map,$<TARGET_FILE_DIR:envy>/envy.map>
+    $<$<PLATFORM_ID:Linux>:-Wl,-Map,$<TARGET_FILE_DIR:envy>/envy.map>
+    $<$<PLATFORM_ID:Windows>:/MAP:$<TARGET_FILE_DIR:envy>/envy.map>
+)
+
 if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     if(NOT CMAKE_STRIP)

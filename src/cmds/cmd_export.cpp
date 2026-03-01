@@ -185,9 +185,15 @@ void cmd_export::execute() {
 
   eng.resolve_graph(roots);
 
-  // Ensure all target packages are fully installed
-  for (auto const *cfg : targets) {
-    pkg_key const key{ *cfg };
+  // Extend all targets to completion in parallel, then wait for all
+  std::vector<pkg_key> target_keys;
+  target_keys.reserve(targets.size());
+  for (auto const *cfg : targets) { target_keys.emplace_back(*cfg); }
+
+  for (auto const &key : target_keys) {
+    eng.get_execution_ctx(key).set_target_phase(pkg_phase::completion);
+  }
+  for (auto const &key : target_keys) {
     eng.ensure_pkg_at_phase(key, pkg_phase::completion);
   }
 
