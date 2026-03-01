@@ -310,8 +310,9 @@ path cache::compute_pkg_path(std::string_view identity,
                              std::string_view platform,
                              std::string_view arch,
                              std::string_view hash_prefix) const {
-  return m->packages_dir() / std::string(identity) /
-         key(identity, platform, arch, hash_prefix) / "pkg";
+  std::ostringstream oss;
+  oss << platform << '-' << arch << "-blake3-" << hash_prefix;
+  return m->packages_dir() / std::string(identity) / oss.str() / "pkg";
 }
 
 cache::ensure_result cache::ensure_pkg(std::string_view identity,
@@ -322,13 +323,9 @@ cache::ensure_result cache::ensure_pkg(std::string_view identity,
   path const entry_dir{ pkg_path.parent_path() };
   auto const k{ key(identity, platform, arch, hash_prefix) };
 
-  std::string lock_name;
-  lock_name.reserve(9 + identity.size() + 1 + k.size() + 5);
-  lock_name += "packages.";
-  lock_name += identity;
-  lock_name += '.';
-  lock_name += k;
-  lock_name += ".lock";
+  std::ostringstream lock_oss;
+  lock_oss << "packages." << k << ".lock";
+  std::string const lock_name{ lock_oss.str() };
 
   return ensure_entry(*m, entry_dir, m->locks_dir() / lock_name, identity, k);
 }

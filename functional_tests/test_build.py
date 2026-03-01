@@ -1066,10 +1066,7 @@ end
         )
 
         variant_name = variant_dirs[0].name
-        self.assertTrue(
-            variant_name.startswith("local.build_cache_test@v1-"),
-            f"Variant dir should start with identity: {variant_name}",
-        )
+        self.assertNotIn("/", variant_name)
         self.assertIn("-blake3-", variant_name)
 
     # =========================================================================

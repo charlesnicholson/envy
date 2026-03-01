@@ -106,7 +106,8 @@ std::string util_simplify_cache_paths(std::string_view command,
                                       product_map_t const &products = {});
 
 // Parsed fields from an exported archive filename stem.
-// Stem format: <identity>@<revision>-<platform>-<arch>-blake3-<hash_prefix>
+// Stem format: <name>@<revision>-<platform>-<arch>-blake3-<hash_prefix>
+// '@' is required; content before/after '@' is not strictly validated.
 struct parsed_archive_filename {
   std::string identity;     // e.g. "arm.gcc@r2"
   std::string platform;     // e.g. "darwin"

@@ -79,6 +79,10 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
   std::vector<fetch_request> requests;
   requests.reserve(depot_urls.size());
 
+  // Maps each request index back to its download index (skipped URLs produce no request).
+  std::vector<size_t> request_to_download;
+  request_to_download.reserve(depot_urls.size());
+
   for (size_t i{ 0 }; i < depot_urls.size(); ++i) {
     auto &dl{ downloads.emplace_back() };
     dl.url = depot_urls[i];
@@ -86,6 +90,7 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
 
     try {
       requests.push_back(fetch_request_from_url(dl.url, dl.dest));
+      request_to_download.push_back(i);
     } catch (std::exception const &) {
       tui::warn("depot: unsupported scheme for depot manifest: %s", dl.url.c_str());
     }
@@ -94,31 +99,25 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
   if (!requests.empty()) {
     auto const results{ fetch(requests) };
 
-    size_t req_idx{ 0 };
-    for (size_t i{ 0 }; i < downloads.size(); ++i) {
-      if (req_idx >= results.size()) { break; }
+    for (size_t req_idx{ 0 }; req_idx < results.size(); ++req_idx) {
+      auto const dl_idx{ request_to_download[req_idx] };
+      auto &dl{ downloads[dl_idx] };
 
-      // Match downloads to results (skipped unsupported schemes don't produce results)
       auto const *result{ std::get_if<fetch_result>(&results[req_idx]) };
       if (result) {
-        // Read downloaded content
         try {
-          auto const data{ util_load_file(downloads[i].dest) };
-          downloads[i].content.assign(reinterpret_cast<char const *>(data.data()),
-                                      data.size());
-          downloads[i].ok = true;
+          auto const data{ util_load_file(dl.dest) };
+          dl.content.assign(reinterpret_cast<char const *>(data.data()), data.size());
+          dl.ok = true;
         } catch (std::exception const &e) {
-          tui::warn("depot: failed to read manifest %s: %s",
-                    downloads[i].url.c_str(),
-                    e.what());
+          tui::warn("depot: failed to read manifest %s: %s", dl.url.c_str(), e.what());
         }
       } else {
         auto const *error{ std::get_if<std::string>(&results[req_idx]) };
         tui::warn("depot: failed to fetch manifest %s: %s",
-                  downloads[i].url.c_str(),
+                  dl.url.c_str(),
                   error ? error->c_str() : "unknown error");
       }
-      ++req_idx;
     }
   }
 

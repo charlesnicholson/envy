@@ -55,7 +55,8 @@ void export_one_package(pkg *p,
     }
   }
 
-  std::string const filename{ entry_dir.filename().string() + ".tar.zst" };
+  std::string const filename{ std::string(p->key.identity()) + "-" +
+                              entry_dir.filename().string() + ".tar.zst" };
   std::filesystem::path const output_path{ output_dir / filename };
 
   auto const section{ tui::section_create() };

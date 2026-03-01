@@ -52,7 +52,7 @@ void cmd_import::execute() {
   if (!parsed) {
     throw std::runtime_error(
         "import: invalid archive filename, expected "
-        "<identity>-<platform>-<arch>-blake3-<hash>.tar.zst");
+        "<identity>@<revision>-<platform>-<arch>-blake3-<hash_prefix>.tar.zst");
   }
 
   cache c{ cli_cache_root_ };

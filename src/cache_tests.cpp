@@ -14,7 +14,7 @@
 
 namespace {
 
-std::string make_entry_name() { return "foo.foo-darwin-arm64-blake3-deadbeef"; }
+std::string make_entry_name() { return "foo.darwin-arm64-blake3-deadbeef"; }
 
 }  // namespace
 
@@ -109,7 +109,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 }
 
 TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_pkg fast path when marker present") {
-  auto entry_dir = temp_root / "packages" / "foo" / "foo-darwin-arm64-blake3-deadbeef";
+  auto entry_dir = temp_root / "packages" / "foo" / "darwin-arm64-blake3-deadbeef";
   auto pkg_dir = entry_dir / "pkg";
   std::filesystem::create_directories(pkg_dir);
   std::ofstream{ pkg_dir / "existing.txt" } << "cached";
@@ -373,7 +373,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     REQUIRE(result.lock != nullptr);
 
     // Capture lock path (not exposed via public API, but we can infer it)
-    lock_path = temp_root / "locks" / "packages.foo.foo-darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -396,7 +396,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
-    lock_path = temp_root / "locks" / "packages.foo.foo-darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -420,7 +420,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     REQUIRE(result.lock != nullptr);
 
     entry_dir = result.entry_path;
-    lock_path = temp_root / "locks" / "packages.foo.foo-darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify both exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));
@@ -463,7 +463,7 @@ TEST_CASE_FIXTURE(
 
     entry_dir = result.entry_path;
     pkg_dir = result.pkg_path;
-    lock_path = temp_root / "locks" / "packages.foo.foo-darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify entry_dir and lock file exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));

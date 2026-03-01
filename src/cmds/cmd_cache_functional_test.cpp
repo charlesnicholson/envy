@@ -142,9 +142,8 @@ void cmd_cache_ensure_package::execute() {
   // Construct lock file path for reporting
   auto const k{
       cache::key(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix) };
-  std::string entry_name{ cfg_.identity + "." + k };
   std::filesystem::path lock_file{ c->root() / "locks" /
-                                   ("packages." + entry_name + ".lock") };
+                                   ("packages." + k + ".lock") };
 
   // Determine result state
   bool locked{ result.lock != nullptr };
