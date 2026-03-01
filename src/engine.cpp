@@ -484,6 +484,23 @@ std::filesystem::path const &engine::cache_root() const { return cache_.root(); 
 manifest const *engine::get_manifest() const { return manifest_; }
 
 package_depot_index const *engine::depot_index() const {
+  if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
+
+  std::call_once(depot_init_flag_, [this] {
+    namespace fs = std::filesystem;
+    auto const depot_tmp{ fs::temp_directory_path() /
+                          ("envy-depot-" + std::to_string(platform::get_process_id())) };
+    try {
+      std::error_code ec;
+      fs::create_directories(depot_tmp, ec);
+      depot_index_ = package_depot_index::build(manifest_->meta.package_depots, depot_tmp);
+    } catch (std::exception const &e) {
+      tui::warn("failed to build depot index: %s", e.what());
+    }
+    std::error_code ec;
+    fs::remove_all(depot_tmp, ec);
+  });
+
   return depot_index_ ? &*depot_index_ : nullptr;
 }
 
@@ -841,22 +858,6 @@ bool engine::pkg_provides_product_transitively(pkg *p,
 }
 
 void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
-  // Build depot index once, before any package threads launch.
-  if (!depot_index_ && manifest_ && !manifest_->meta.package_depots.empty()) {
-    namespace fs = std::filesystem;
-    auto const depot_tmp{ fs::temp_directory_path() /
-                          ("envy-depot-" + std::to_string(platform::get_process_id())) };
-    try {
-      std::error_code ec;
-      fs::create_directories(depot_tmp, ec);
-      depot_index_ = package_depot_index::build(manifest_->meta.package_depots, depot_tmp);
-    } catch (std::exception const &e) {
-      tui::warn("failed to build depot index: %s", e.what());
-    }
-    std::error_code ec;
-    fs::remove_all(depot_tmp, ec);
-  }
-
   for (auto const *cfg : roots) {
     pkg *const p{ ensure_pkg(cfg) };
     tui::debug("engine: resolve_graph start thread for %s", cfg->identity.c_str());

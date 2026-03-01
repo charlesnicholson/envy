@@ -129,8 +129,9 @@ class engine : unmovable {
 
   cache &cache_;
   default_shell_cfg_t default_shell_;
-  manifest const *manifest_{ nullptr };             // For bundle fetch function lookup
-  std::optional<package_depot_index> depot_index_;  // Built from manifest depot directives
+  manifest const *manifest_{ nullptr };  // For bundle fetch function lookup
+  mutable std::once_flag depot_init_flag_;
+  mutable std::optional<package_depot_index> depot_index_;  // Lazy
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point
