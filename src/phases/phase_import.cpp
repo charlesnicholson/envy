@@ -76,7 +76,8 @@ void run_import_phase(pkg *p, engine &eng) {
       }
     }
 
-    // SHA256 verification: mandatory for remote, skip for local files without hash
+    // SHA256 verification when present (text manifests always supply it;
+    // only build_from_directory without checksums omits it).
     if (location->sha256) {
       tui::section_set_content(
           p->tui_section,
@@ -94,9 +95,6 @@ void run_import_phase(pkg *p, engine &eng) {
                   actual_hex.c_str());
         return;  // Fall through to fetch/build
       }
-    } else if (!fs::exists(fs::path{ location->url })) {
-      tui::warn("depot: no SHA256 for remote %s, skipping", location->url.c_str());
-      return;
     }
 
     // entry_path is lock->install_dir().parent_path()

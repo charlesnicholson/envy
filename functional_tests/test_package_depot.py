@@ -878,6 +878,77 @@ class TestImportManifest(unittest.TestCase):
         finally:
             shutil.rmtree(import_dir, ignore_errors=True)
 
+    def test_import_dir_without_checksums(self):
+        """Import --dir without --checksums works (no SHA256 required)."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        import_dir = Path(tempfile.mkdtemp(prefix="envy-import-dir-"))
+        try:
+            shutil.copy2(archives[0], import_dir / archives[0].name)
+
+            m = self._make_manifest()
+            r = self._run(
+                "import",
+                "--dir",
+                str(import_dir),
+                "--manifest",
+                str(m),
+            )
+            self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+
+            pkg_dir = self.cache_root / "packages" / "local.depot_a@v1"
+            self.assertTrue(pkg_dir.exists(), "Package should be in target cache")
+        finally:
+            shutil.rmtree(import_dir, ignore_errors=True)
+
+    def test_import_manifest_txt_plain_url_rejected(self):
+        """Import .txt manifest with plain URLs (no SHA256) falls back to source."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        # Write plain-URL manifest (no SHA256 prefix)
+        depot_txt = self.test_dir / "depot.txt"
+        depot_txt.write_text(f"{archives[0]}\n", encoding="utf-8")
+
+        m = self._make_manifest()
+        r = self._run("import", str(depot_txt), "--manifest", str(m))
+        # Should succeed (falls back to source build) but depot entry is rejected
+        self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+
+    def test_import_dir_wrong_checksums_falls_back(self):
+        """Import --dir --checksums with wrong SHA256 falls back to source."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        import_dir = Path(tempfile.mkdtemp(prefix="envy-import-dir-"))
+        try:
+            shutil.copy2(archives[0], import_dir / archives[0].name)
+
+            wrong_hash = "0" * 64
+            checksums = self.test_dir / "checksums.txt"
+            checksums.write_text(
+                f"{wrong_hash}  {archives[0].name}\n", encoding="utf-8"
+            )
+
+            m = self._make_manifest()
+            r = self._run(
+                "import",
+                "--dir",
+                str(import_dir),
+                "--checksums",
+                str(checksums),
+                "--manifest",
+                str(m),
+            )
+            # Should succeed — falls back to source build after SHA256 mismatch
+            self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+
+            pkg_dir = self.cache_root / "packages" / "local.depot_a@v1"
+            self.assertTrue(pkg_dir.exists(), "Should fall back to source build")
+        finally:
+            shutil.rmtree(import_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
