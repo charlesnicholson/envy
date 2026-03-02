@@ -5,6 +5,7 @@
 #include "tui.h"
 #include "util.h"
 
+#include <cctype>
 #include <filesystem>
 #include <sstream>
 #include <string>

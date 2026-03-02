@@ -76,20 +76,15 @@ void run_import_phase(pkg *p, engine &eng) {
       }
     }
 
-    // Post-download SHA256 verification (mandatory)
-    if (!location->sha256) {
-      tui::warn("depot: no SHA256 for %s, skipping", location->url.c_str());
-      return;
-    }
+    // SHA256 verification: mandatory for remote, skip for local files without hash
+    if (location->sha256) {
+      tui::section_set_content(
+          p->tui_section,
+          tui::section_frame{ .label = "[" + p->cfg->identity + "]",
+                              .content = tui::spinner_data{
+                                  .text = "verifying SHA256...",
+                                  .start_time = std::chrono::steady_clock::now() } });
 
-    tui::section_set_content(
-        p->tui_section,
-        tui::section_frame{ .label = "[" + p->cfg->identity + "]",
-                            .content = tui::spinner_data{
-                                .text = "verifying SHA256...",
-                                .start_time = std::chrono::steady_clock::now() } });
-
-    {
       auto const actual{ sha256(archive_dest) };
       auto const actual_hex{ util_bytes_to_hex(actual.data(), actual.size()) };
       if (actual_hex != *location->sha256) {
@@ -99,6 +94,9 @@ void run_import_phase(pkg *p, engine &eng) {
                   actual_hex.c_str());
         return;  // Fall through to fetch/build
       }
+    } else if (!fs::exists(fs::path{ location->url })) {
+      tui::warn("depot: no SHA256 for remote %s, skipping", location->url.c_str());
+      return;
     }
 
     // entry_path is lock->install_dir().parent_path()

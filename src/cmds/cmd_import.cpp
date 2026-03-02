@@ -13,6 +13,7 @@
 
 #include "CLI11.hpp"
 
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -281,7 +282,7 @@ void cmd_import::execute() {
 
     throw std::runtime_error(
         "import: unrecognized file extension '" + ext +
-        "' (expected .tar.zst for archives or .txt for checksums manifests)");
+        "' (expected .tar.zst for archives or .txt for depot manifests)");
   }
 
   // Directory import — build depot index from directory, let engine handle everything
