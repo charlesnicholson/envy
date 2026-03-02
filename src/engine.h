@@ -133,6 +133,7 @@ class engine : unmovable {
   manifest const *manifest_{ nullptr };  // For bundle fetch function lookup
   mutable std::once_flag depot_init_flag_;
   mutable std::optional<package_depot_index> depot_index_;  // Lazy
+  std::atomic_bool depot_pre_set_{ false };
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point

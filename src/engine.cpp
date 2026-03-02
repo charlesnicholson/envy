@@ -485,11 +485,14 @@ std::filesystem::path const &engine::cache_root() const { return cache_.root(); 
 
 manifest const *engine::get_manifest() const { return manifest_; }
 
-void engine::set_depot_index(package_depot_index idx) { depot_index_ = std::move(idx); }
+void engine::set_depot_index(package_depot_index idx) {
+  depot_index_ = std::move(idx);
+  depot_pre_set_ = true;
+}
 
 package_depot_index const *engine::depot_index() const {
-  // Return pre-set index if available
-  if (depot_index_) { return &*depot_index_; }
+  // Pre-set index (set before thread creation, safe to read without synchronization)
+  if (depot_pre_set_) { return &*depot_index_; }
 
   if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
 
