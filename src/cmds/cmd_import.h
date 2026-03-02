@@ -16,6 +16,7 @@ class cmd_import : public cmd {
     std::filesystem::path archive_path;
     std::optional<std::filesystem::path> dir;
     std::optional<std::filesystem::path> manifest_path;
+    std::optional<std::filesystem::path> checksums_path;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

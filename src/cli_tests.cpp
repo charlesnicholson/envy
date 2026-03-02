@@ -184,8 +184,7 @@ TEST_CASE("cli_parse: cmd_fetch") {
 }
 
 TEST_CASE("cli_parse: cmd_hash") {
-  SUBCASE("with valid file") {
-    // Create temporary test file
+  SUBCASE("single file") {
     auto temp_path{ std::filesystem::temp_directory_path() / "cli_test_hash.txt" };
     {
       std::ofstream temp_file{ temp_path };
@@ -197,39 +196,77 @@ TEST_CASE("cli_parse: cmd_hash") {
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
-    // Clean up temp file
     std::filesystem::remove(temp_path);
 
     REQUIRE(parsed.cmd_cfg.has_value());
     auto const *cfg{ std::get_if<envy::cmd_hash::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
-    CHECK(cfg->file_path == temp_path);
+    REQUIRE(cfg->paths.size() == 1);
+    CHECK(cfg->paths[0] == temp_path);
+    CHECK_FALSE(cfg->prefix.has_value());
   }
 
-  SUBCASE("missing file path rejected") {
+  SUBCASE("multiple files") {
+    auto temp_a{ std::filesystem::temp_directory_path() / "cli_test_hash_a.txt" };
+    auto temp_b{ std::filesystem::temp_directory_path() / "cli_test_hash_b.txt" };
+    {
+      std::ofstream fa{ temp_a };
+      fa << "a\n";
+      std::ofstream fb{ temp_b };
+      fb << "b\n";
+    }
+
+    std::vector<std::string> args{ "envy", "hash", temp_a.string(), temp_b.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_a);
+    std::filesystem::remove(temp_b);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_hash::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->paths.size() == 2);
+  }
+
+  SUBCASE("missing paths rejected") {
     std::vector<std::string> args{ "envy", "hash" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
-    // Should fail when file argument is missing
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
   }
 
-  SUBCASE("nonexistent file rejected") {
-    std::vector<std::string> args{ "envy", "hash", "/nonexistent/file.txt" };
+  SUBCASE("with --prefix") {
+    auto temp_path{ std::filesystem::temp_directory_path() / "cli_test_hash_pfx.txt" };
+    {
+      std::ofstream temp_file{ temp_path };
+      temp_file << "test\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "hash",
+                                   "--prefix",
+                                   "s3://bucket/",
+                                   temp_path.string() };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
-    // CLI11's ExistingFile check should reject nonexistent files
-    CHECK_FALSE(parsed.cmd_cfg.has_value());
-    CHECK_FALSE(parsed.cli_output.empty());
+    std::filesystem::remove(temp_path);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_hash::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->prefix.has_value());
+    CHECK(*cfg->prefix == "s3://bucket/");
+    CHECK(cfg->paths.size() == 1);
   }
 
-  SUBCASE("directory rejected") {
-    // Use temp directory which we know exists and is a directory
+  SUBCASE("directory accepted as path") {
     auto temp_dir{ std::filesystem::temp_directory_path() };
 
     std::vector<std::string> args{ "envy", "hash", temp_dir.string() };
@@ -237,9 +274,11 @@ TEST_CASE("cli_parse: cmd_hash") {
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
-    // CLI11's ExistingFile check should reject directories
-    CHECK_FALSE(parsed.cmd_cfg.has_value());
-    CHECK_FALSE(parsed.cli_output.empty());
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_hash::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->paths.size() == 1);
+    CHECK(cfg->paths[0] == temp_dir);
   }
 }
 
@@ -1271,5 +1310,73 @@ TEST_CASE("cli_parse: cmd_import") {
     REQUIRE(cfg->dir.has_value());
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+
+  SUBCASE(".txt manifest file accepted") {
+    auto temp_txt{ std::filesystem::temp_directory_path() /
+                   "envy-import-test-manifest.txt" };
+    {
+      std::ofstream f{ temp_txt };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+           "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy", "import", temp_txt.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_txt);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->archive_path == temp_txt);
+    CHECK_FALSE(cfg->dir.has_value());
+  }
+
+  SUBCASE("--checksums with --dir parses") {
+    auto temp_dir{ std::filesystem::temp_directory_path() / "envy-import-test-dir4" };
+    std::filesystem::create_directories(temp_dir);
+    auto temp_cksum{ std::filesystem::temp_directory_path() / "envy-import-test-ck.txt" };
+    {
+      std::ofstream f{ temp_cksum };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+           "pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",        "import",
+                                   "--dir",       temp_dir.string(),
+                                   "--checksums", temp_cksum.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_dir);
+    std::filesystem::remove(temp_cksum);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_import::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->dir.has_value());
+    REQUIRE(cfg->checksums_path.has_value());
+    CHECK(*cfg->checksums_path == temp_cksum);
+  }
+
+  SUBCASE("--checksums with nonexistent file rejected") {
+    auto temp_dir{ std::filesystem::temp_directory_path() / "envy-import-test-dir5" };
+    std::filesystem::create_directories(temp_dir);
+
+    std::vector<std::string> args{ "envy",        "import",
+                                   "--dir",       temp_dir.string(),
+                                   "--checksums", "/nonexistent/file.txt" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_dir);
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }

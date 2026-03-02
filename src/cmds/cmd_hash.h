@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace CLI { class App; }
 
@@ -13,7 +15,8 @@ namespace envy {
 class cmd_hash : public cmd {
  public:
   struct cfg : cmd_cfg<cmd_hash> {
-    std::filesystem::path file_path;
+    std::vector<std::filesystem::path> paths;
+    std::optional<std::string> prefix;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

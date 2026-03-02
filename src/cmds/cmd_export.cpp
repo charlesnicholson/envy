@@ -8,6 +8,7 @@
 #include "pkg_key.h"
 #include "reexec.h"
 #include "self_deploy.h"
+#include "sha256.h"
 #include "tui.h"
 #include "util.h"
 
@@ -120,7 +121,9 @@ void export_one_package(pkg *p,
   tui::section_set_complete(section);
 
   if (depot_prefix) {
-    tui::print_stdout("%s%s\n", depot_prefix->c_str(), filename.c_str());
+    auto const hash{ sha256(output_path) };
+    auto const hex{ util_bytes_to_hex(hash.data(), hash.size()) };
+    tui::print_stdout("%s  %s%s\n", hex.c_str(), depot_prefix->c_str(), filename.c_str());
   } else {
     tui::print_stdout("%s\n", output_path.string().c_str());
   }

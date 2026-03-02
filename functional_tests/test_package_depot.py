@@ -122,48 +122,64 @@ class TestExportDepotPrefix(unittest.TestCase):
         )
         return path
 
-    def test_export_depot_prefix(self):
-        """Export with --depot-prefix outputs prefixed URLs."""
+    def test_export_depot_prefix_always_sha256(self):
+        """Export with --depot-prefix always outputs SHA256 + prefixed URLs."""
         m = self._make_manifest([("local.depot_a@v1", "pkg_a.lua")])
         r = self._run("install", "--manifest", str(m))
         self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
 
         r = self._run(
-            "export", "local.depot_a@v1",
-            "-o", str(self.output_dir),
-            "--depot-prefix", "s3://bucket/cache/",
-            "--manifest", str(m),
+            "export",
+            "local.depot_a@v1",
+            "-o",
+            str(self.output_dir),
+            "--depot-prefix",
+            "s3://bucket/cache/",
+            "--manifest",
+            str(m),
         )
         self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
 
         lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
         self.assertEqual(len(lines), 1)
-        self.assertTrue(lines[0].startswith("s3://bucket/cache/"))
-        self.assertTrue(lines[0].endswith(".tar.zst"))
-        self.assertIn("local.depot_a@v1-", lines[0])
+        # Format: <64hex>  <prefix><filename>
+        parts = lines[0].split("  ", 1)
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(len(parts[0]), 64)
+        self.assertTrue(parts[1].startswith("s3://bucket/cache/"))
+        self.assertTrue(parts[1].endswith(".tar.zst"))
+        self.assertIn("local.depot_a@v1-", parts[1])
 
     def test_export_depot_prefix_multiple_packages(self):
-        """Export multiple packages with --depot-prefix."""
-        m = self._make_manifest([
-            ("local.depot_a@v1", "pkg_a.lua"),
-            ("local.depot_b@v1", "pkg_b.lua"),
-        ])
+        """Export multiple packages with --depot-prefix, all with SHA256."""
+        m = self._make_manifest(
+            [
+                ("local.depot_a@v1", "pkg_a.lua"),
+                ("local.depot_b@v1", "pkg_b.lua"),
+            ]
+        )
         r = self._run("install", "--manifest", str(m))
         self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
 
         r = self._run(
             "export",
-            "-o", str(self.output_dir),
-            "--depot-prefix", "https://cdn.example.com/pkgs/",
-            "--manifest", str(m),
+            "-o",
+            str(self.output_dir),
+            "--depot-prefix",
+            "https://cdn.example.com/pkgs/",
+            "--manifest",
+            str(m),
         )
         self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
 
         lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
         self.assertEqual(len(lines), 2)
         for line in lines:
-            self.assertTrue(line.startswith("https://cdn.example.com/pkgs/"))
-            self.assertTrue(line.endswith(".tar.zst"))
+            parts = line.split("  ", 1)
+            self.assertEqual(len(parts), 2)
+            self.assertEqual(len(parts[0]), 64)
+            self.assertTrue(parts[1].startswith("https://cdn.example.com/pkgs/"))
+            self.assertTrue(parts[1].endswith(".tar.zst"))
 
 
 class TestPackageDepot(unittest.TestCase):
@@ -194,8 +210,11 @@ class TestPackageDepot(unittest.TestCase):
 
     def tearDown(self):
         for d in [
-            self.source_cache, self.target_cache,
-            self.test_dir, self.output_dir, self.serve_dir,
+            self.source_cache,
+            self.target_cache,
+            self.test_dir,
+            self.output_dir,
+            self.serve_dir,
         ]:
             shutil.rmtree(d, ignore_errors=True)
 
@@ -211,8 +230,7 @@ class TestPackageDepot(unittest.TestCase):
     def _make_source_manifest(self, identities):
         """Create manifest for initial install/export (no depot directives)."""
         packages = ", ".join(
-            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}'
-            for i in identities
+            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
         )
         path = self.test_dir / "source.lua"
         path.write_text(
@@ -239,14 +257,13 @@ class TestPackageDepot(unittest.TestCase):
         return srv, srv.server_address[1]
 
     def _make_depot_manifest(self, archive_paths, port, name="depot.txt"):
-        """Copy archives to serve_dir, write depot manifest. Returns URL."""
+        """Copy archives to serve_dir, write SHA256 depot manifest. Returns URL."""
         lines = []
         for ap in archive_paths:
             shutil.copy2(ap, self.serve_dir / ap.name)
-            lines.append(f"http://127.0.0.1:{port}/{ap.name}")
-        (self.serve_dir / name).write_text(
-            "\n".join(lines) + "\n", encoding="utf-8"
-        )
+            h = hashlib.sha256(ap.read_bytes()).hexdigest()
+            lines.append(f"{h}  http://127.0.0.1:{port}/{ap.name}")
+        (self.serve_dir / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
         return f"http://127.0.0.1:{port}/{name}"
 
     def _make_target_manifest(self, identities, depot_urls):
@@ -255,8 +272,7 @@ class TestPackageDepot(unittest.TestCase):
         for u in depot_urls:
             header += f'-- @envy package-depot "{u}"\n'
         packages = ", ".join(
-            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}'
-            for i in identities
+            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
         )
         path = self.test_dir / "target.lua"
         path.write_text(
@@ -277,9 +293,7 @@ class TestPackageDepot(unittest.TestCase):
             depot_url = self._make_depot_manifest(archives, port)
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -290,9 +304,7 @@ class TestPackageDepot(unittest.TestCase):
 
     def test_depot_hit_multiple_packages(self):
         """Multiple packages all served from depot."""
-        archives = self._install_and_export(
-            ["local.depot_a@v1", "local.depot_b@v1"]
-        )
+        archives = self._install_and_export(["local.depot_a@v1", "local.depot_b@v1"])
         self.assertEqual(len(archives), 2)
 
         srv, port = self._start_server()
@@ -302,9 +314,7 @@ class TestPackageDepot(unittest.TestCase):
                 ["local.depot_a@v1", "local.depot_b@v1"], [depot_url]
             )
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             for pkg in ["local.depot_a@v1", "local.depot_b@v1"]:
@@ -322,9 +332,7 @@ class TestPackageDepot(unittest.TestCase):
             [f"http://127.0.0.1:{dead_port}/depot.txt"],
         )
 
-        r = self._run(
-            "sync", "--manifest", str(m), cache_root=self.target_cache
-        )
+        r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
         self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
         pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -338,9 +346,7 @@ class TestPackageDepot(unittest.TestCase):
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -355,17 +361,16 @@ class TestPackageDepot(unittest.TestCase):
 
         srv, port = self._start_server()
         try:
-            # Write depot manifest referencing archive, but don't copy it to serve_dir
+            # Write SHA256 depot manifest but don't copy archive to serve_dir
+            h = hashlib.sha256(archives[0].read_bytes()).hexdigest()
             (self.serve_dir / "depot.txt").write_text(
-                f"http://127.0.0.1:{port}/{archives[0].name}\n",
+                f"{h}  http://127.0.0.1:{port}/{archives[0].name}\n",
                 encoding="utf-8",
             )
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -376,9 +381,7 @@ class TestPackageDepot(unittest.TestCase):
 
     def test_depot_mixed_hit_and_miss(self):
         """One package from depot, the other from source. Both succeed."""
-        archives = self._install_and_export(
-            ["local.depot_a@v1", "local.depot_b@v1"]
-        )
+        archives = self._install_and_export(["local.depot_a@v1", "local.depot_b@v1"])
         self.assertEqual(len(archives), 2)
 
         srv, port = self._start_server()
@@ -392,9 +395,7 @@ class TestPackageDepot(unittest.TestCase):
                 ["local.depot_a@v1", "local.depot_b@v1"], [depot_url]
             )
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             for pkg in ["local.depot_a@v1", "local.depot_b@v1"]:
@@ -406,9 +407,7 @@ class TestPackageDepot(unittest.TestCase):
 
     def test_multiple_depots_merged(self):
         """Two depot manifests with disjoint packages both contribute."""
-        archives = self._install_and_export(
-            ["local.depot_a@v1", "local.depot_b@v1"]
-        )
+        archives = self._install_and_export(["local.depot_a@v1", "local.depot_b@v1"])
         a_archives = [a for a in archives if "depot_a" in a.name]
         b_archives = [a for a in archives if "depot_b" in a.name]
 
@@ -422,9 +421,7 @@ class TestPackageDepot(unittest.TestCase):
                 [depot_a_url, depot_b_url],
             )
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             for pkg in ["local.depot_a@v1", "local.depot_b@v1"]:
@@ -445,22 +442,29 @@ class TestPackageDepot(unittest.TestCase):
             prefix = f"http://127.0.0.1:{port}/"
             r = self._run(
                 "export",
-                "-o", str(self.serve_dir),
-                "--depot-prefix", prefix,
-                "--manifest", str(source_m),
+                "-o",
+                str(self.serve_dir),
+                "--depot-prefix",
+                prefix,
+                "--manifest",
+                str(source_m),
             )
             self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
 
-            # stdout lines are depot manifest content
+            # stdout lines are SHA256 depot manifest content (always now)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1)
+            parts = lines[0].split("  ", 1)
+            self.assertEqual(len(parts), 2, "Export must produce SHA256 format")
+            self.assertEqual(len(parts[0]), 64)
+
             (self.serve_dir / "depot.txt").write_text(
                 r.stdout.strip() + "\n", encoding="utf-8"
             )
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
 
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -478,39 +482,98 @@ class TestPackageDepot(unittest.TestCase):
         m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
         try:
-            # First sync: depot hit
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"first sync failed: {r.stderr}")
         finally:
             srv.shutdown()
             srv.server_close()
 
-        # Second sync with server down: local cache hit (no depot needed)
-        r = self._run(
-            "sync", "--manifest", str(m), cache_root=self.target_cache
-        )
+        # Second sync with server down: local cache hit
+        r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
         self.assertEqual(r.returncode, 0, f"second sync failed: {r.stderr}")
 
-    def test_depot_archive_corrupt(self):
-        """Sync falls back to source when depot archive is corrupt (not valid tar.zst)."""
+    def test_sha256_wrong_hash_falls_back(self):
+        """SHA256 mismatch -> fallback to source build."""
         archives = self._install_and_export(["local.depot_a@v1"])
 
         srv, port = self._start_server()
         try:
-            # Write depot manifest, but replace the archive with garbage bytes
-            (self.serve_dir / "depot.txt").write_text(
-                f"http://127.0.0.1:{port}/{archives[0].name}\n",
-                encoding="utf-8",
-            )
-            (self.serve_dir / archives[0].name).write_bytes(b"this is not a valid tar.zst")
+            shutil.copy2(archives[0], self.serve_dir / archives[0].name)
+            wrong_hash = "0" * 64
+            content = f"{wrong_hash}  http://127.0.0.1:{port}/{archives[0].name}\n"
+            (self.serve_dir / "depot.txt").write_text(content, encoding="utf-8")
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+
+            pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
+            self.assertTrue(pkg_dir.exists(), "Should fall back to source build")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_plain_url_depot_manifest_rejected(self):
+        """Plain-URL depot manifest entries are rejected; falls back to source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+
+        srv, port = self._start_server()
+        try:
+            # Write plain-URL manifest (no SHA256) — should be rejected
+            shutil.copy2(archives[0], self.serve_dir / archives[0].name)
+            content = f"http://127.0.0.1:{port}/{archives[0].name}\n"
+            (self.serve_dir / "depot.txt").write_text(content, encoding="utf-8")
+            depot_url = f"http://127.0.0.1:{port}/depot.txt"
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+
+            # Should fall back to source build since plain URL was rejected
+            pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
+            self.assertTrue(pkg_dir.exists(), "Should fall back to source build")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_sha256_multiple_packages(self):
+        """Multiple packages with SHA256 manifest all succeed."""
+        archives = self._install_and_export(["local.depot_a@v1", "local.depot_b@v1"])
+
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(
+                ["local.depot_a@v1", "local.depot_b@v1"], [depot_url]
             )
+
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+
+            for pkg in ["local.depot_a@v1", "local.depot_b@v1"]:
+                pkg_dir = self.target_cache / "packages" / pkg
+                self.assertTrue(pkg_dir.exists(), f"{pkg} should be cached")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_sha256_corrupt_archive_falls_back(self):
+        """Corrupt archive with valid-looking hash -> SHA256 mismatch -> fallback."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+
+        srv, port = self._start_server()
+        try:
+            real_hash = hashlib.sha256(archives[0].read_bytes()).hexdigest()
+            corrupt_data = b"this is corrupt data"
+            (self.serve_dir / archives[0].name).write_bytes(corrupt_data)
+
+            content = f"{real_hash}  http://127.0.0.1:{port}/{archives[0].name}\n"
+            (self.serve_dir / "depot.txt").write_text(content, encoding="utf-8")
+            depot_url = f"http://127.0.0.1:{port}/depot.txt"
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -520,17 +583,17 @@ class TestPackageDepot(unittest.TestCase):
             srv.server_close()
 
     def test_depot_manifest_comments_and_blank_lines(self):
-        """Depot manifest with comments and blank lines works end-to-end."""
+        """Depot manifest with comments, blank lines, and SHA256 works."""
         archives = self._install_and_export(["local.depot_a@v1"])
 
         srv, port = self._start_server()
         try:
-            # Write depot manifest with comments and blank lines
             shutil.copy2(archives[0], self.serve_dir / archives[0].name)
+            h = hashlib.sha256(archives[0].read_bytes()).hexdigest()
             content = (
                 "# Depot manifest for CI\n"
                 "\n"
-                f"http://127.0.0.1:{port}/{archives[0].name}\n"
+                f"{h}  http://127.0.0.1:{port}/{archives[0].name}\n"
                 "\n"
                 "# End of manifest\n"
             )
@@ -538,9 +601,7 @@ class TestPackageDepot(unittest.TestCase):
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
             m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
 
-            r = self._run(
-                "sync", "--manifest", str(m), cache_root=self.target_cache
-            )
+            r = self._run("sync", "--manifest", str(m), cache_root=self.target_cache)
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
@@ -550,24 +611,272 @@ class TestPackageDepot(unittest.TestCase):
             srv.server_close()
 
     def test_export_depot_prefix_no_trailing_slash(self):
-        """Export with --depot-prefix without trailing slash still produces valid URLs."""
+        """Export with --depot-prefix without trailing slash produces SHA256 format."""
         m = self._make_source_manifest(["local.depot_a@v1"])
         r = self._run("install", "--manifest", str(m))
         self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
 
         r = self._run(
-            "export", "local.depot_a@v1",
-            "-o", str(self.output_dir),
-            "--depot-prefix", "s3://bucket/cache",
-            "--manifest", str(m),
+            "export",
+            "local.depot_a@v1",
+            "-o",
+            str(self.output_dir),
+            "--depot-prefix",
+            "s3://bucket/cache",
+            "--manifest",
+            str(m),
         )
         self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
 
         lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
         self.assertEqual(len(lines), 1)
-        # Without trailing slash, prefix is concatenated directly with filename
-        self.assertTrue(lines[0].startswith("s3://bucket/cache"))
-        self.assertTrue(lines[0].endswith(".tar.zst"))
+        parts = lines[0].split("  ", 1)
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(len(parts[0]), 64)
+        self.assertTrue(parts[1].startswith("s3://bucket/cache"))
+        self.assertTrue(parts[1].endswith(".tar.zst"))
+
+
+class TestHashCommand(unittest.TestCase):
+    """Tests for 'envy hash' multi-file and --prefix support."""
+
+    def setUp(self):
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-hash-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def _run(self, *args):
+        cmd = [str(self.envy), *args]
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def test_hash_single_file(self):
+        """Hash single file produces sha256sum-compatible format."""
+        f = self.test_dir / "test.tar.zst"
+        f.write_bytes(b"test data")
+        expected = hashlib.sha256(b"test data").hexdigest()
+
+        r = self._run("hash", str(f))
+        self.assertEqual(r.returncode, 0, f"hash failed: {r.stderr}")
+
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 1)
+        parts = lines[0].split("  ", 1)
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[0], expected)
+        self.assertEqual(parts[1], "test.tar.zst")
+
+    def test_hash_with_prefix(self):
+        """Hash with --prefix prepends prefix to filename."""
+        f = self.test_dir / "test.tar.zst"
+        f.write_bytes(b"test data")
+        expected = hashlib.sha256(b"test data").hexdigest()
+
+        r = self._run("hash", "--prefix", "s3://bucket/", str(f))
+        self.assertEqual(r.returncode, 0, f"hash failed: {r.stderr}")
+
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 1)
+        parts = lines[0].split("  ", 1)
+        self.assertEqual(parts[0], expected)
+        self.assertEqual(parts[1], "s3://bucket/test.tar.zst")
+
+    def test_hash_directory(self):
+        """Hash directory processes all .tar.zst files."""
+        for name in ["a.tar.zst", "b.tar.zst", "c.txt"]:
+            (self.test_dir / name).write_bytes(b"data")
+
+        r = self._run("hash", str(self.test_dir))
+        self.assertEqual(r.returncode, 0, f"hash failed: {r.stderr}")
+
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        # Only .tar.zst files, not .txt
+        self.assertEqual(len(lines), 2)
+        filenames = [l.split("  ", 1)[1] for l in lines]
+        self.assertIn("a.tar.zst", filenames)
+        self.assertIn("b.tar.zst", filenames)
+
+    def test_hash_directory_with_prefix(self):
+        """Hash directory with --prefix applies to all files."""
+        (self.test_dir / "pkg.tar.zst").write_bytes(b"pkg data")
+
+        r = self._run("hash", "--prefix", "https://cdn/", str(self.test_dir))
+        self.assertEqual(r.returncode, 0, f"hash failed: {r.stderr}")
+
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 1)
+        parts = lines[0].split("  ", 1)
+        self.assertEqual(parts[1], "https://cdn/pkg.tar.zst")
+
+    def test_hash_multiple_files(self):
+        """Hash multiple individual files."""
+        f1 = self.test_dir / "a.tar.zst"
+        f2 = self.test_dir / "b.tar.zst"
+        f1.write_bytes(b"aaa")
+        f2.write_bytes(b"bbb")
+
+        r = self._run("hash", str(f1), str(f2))
+        self.assertEqual(r.returncode, 0, f"hash failed: {r.stderr}")
+
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 2)
+
+
+class TestImportManifest(unittest.TestCase):
+    """Tests for 'envy import <manifest.txt>' and 'envy import --dir --checksums'."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-import-m-"))
+        self.source_cache = Path(tempfile.mkdtemp(prefix="envy-import-src-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-import-specs-"))
+        self.output_dir = Path(tempfile.mkdtemp(prefix="envy-import-out-"))
+        self.serve_dir = Path(tempfile.mkdtemp(prefix="envy-import-http-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        self.archive_path = self.test_dir / "test.tar.gz"
+        self.archive_hash = _create_test_archive(self.archive_path)
+
+        self.spec_lua = {}
+        for name, identity in [
+            ("pkg_a.lua", "local.depot_a@v1"),
+        ]:
+            (self.test_dir / name).write_text(
+                _spec_content(identity, self.archive_path, self.archive_hash),
+                encoding="utf-8",
+            )
+            self.spec_lua[identity] = f"{self.test_dir.as_posix()}/{name}"
+
+    def tearDown(self):
+        for d in [
+            self.cache_root,
+            self.source_cache,
+            self.test_dir,
+            self.output_dir,
+            self.serve_dir,
+        ]:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def _run(self, *args, cache_root=None):
+        cache = cache_root or self.cache_root
+        cmd = [str(self.envy), "--cache-root", str(cache), *args]
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def _install_and_export(self):
+        """Install + export local.depot_a@v1. Returns archive path."""
+        packages = f'{{ spec = "local.depot_a@v1", source = "{self.spec_lua["local.depot_a@v1"]}" }}'
+        m = self.test_dir / "source.lua"
+        m.write_text(
+            make_manifest(f"\nPACKAGES = {{\n    {packages}\n}}\n"),
+            encoding="utf-8",
+        )
+        r = self._run("install", "--manifest", str(m), cache_root=self.source_cache)
+        self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+
+        r = self._run(
+            "export",
+            "-o",
+            str(self.output_dir),
+            "--manifest",
+            str(m),
+            cache_root=self.source_cache,
+        )
+        self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
+        return [Path(l.strip()) for l in r.stdout.strip().split("\n") if l.strip()]
+
+    def _make_manifest(self):
+        """Create envy.lua manifest referencing local.depot_a@v1."""
+        packages = f'{{ spec = "local.depot_a@v1", source = "{self.spec_lua["local.depot_a@v1"]}" }}'
+        m = self.test_dir / "import.lua"
+        m.write_text(
+            make_manifest(f"\nPACKAGES = {{\n    {packages}\n}}\n"),
+            encoding="utf-8",
+        )
+        return m
+
+    def test_import_manifest_txt_local_files(self):
+        """Import .txt manifest with local file paths goes through engine."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        h = hashlib.sha256(archives[0].read_bytes()).hexdigest()
+        depot_txt = self.test_dir / "depot.txt"
+        depot_txt.write_text(f"{h}  {archives[0]}\n", encoding="utf-8")
+
+        m = self._make_manifest()
+        r = self._run("import", str(depot_txt), "--manifest", str(m))
+        self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+
+        pkg_dir = self.cache_root / "packages" / "local.depot_a@v1"
+        self.assertTrue(pkg_dir.exists(), "Package should be in target cache")
+
+    def test_import_manifest_txt_http(self):
+        """Import .txt manifest with HTTP URLs goes through engine."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        handler = partial(_QuietHandler, directory=str(self.output_dir))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        try:
+            h = hashlib.sha256(archives[0].read_bytes()).hexdigest()
+            depot_txt = self.test_dir / "depot.txt"
+            depot_txt.write_text(
+                f"{h}  http://127.0.0.1:{port}/{archives[0].name}\n",
+                encoding="utf-8",
+            )
+
+            m = self._make_manifest()
+            r = self._run("import", str(depot_txt), "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+
+            pkg_dir = self.cache_root / "packages" / "local.depot_a@v1"
+            self.assertTrue(pkg_dir.exists(), "Package should be in target cache")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_import_dir_with_checksums(self):
+        """Import --dir --checksums populates SHA256 from checksums file."""
+        archives = self._install_and_export()
+        self.assertEqual(len(archives), 1)
+
+        # Copy archive to a serve dir
+        import_dir = Path(tempfile.mkdtemp(prefix="envy-import-dir-"))
+        try:
+            shutil.copy2(archives[0], import_dir / archives[0].name)
+
+            h = hashlib.sha256(archives[0].read_bytes()).hexdigest()
+            checksums = self.test_dir / "checksums.txt"
+            checksums.write_text(f"{h}  {archives[0].name}\n", encoding="utf-8")
+
+            packages = f'{{ spec = "local.depot_a@v1", source = "{self.spec_lua["local.depot_a@v1"]}" }}'
+            m = self.test_dir / "import.lua"
+            m.write_text(
+                make_manifest(f"\nPACKAGES = {{\n    {packages}\n}}\n"),
+                encoding="utf-8",
+            )
+
+            r = self._run(
+                "import",
+                "--dir",
+                str(import_dir),
+                "--checksums",
+                str(checksums),
+                "--manifest",
+                str(m),
+            )
+            self.assertEqual(r.returncode, 0, f"import failed: {r.stderr}")
+        finally:
+            shutil.rmtree(import_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

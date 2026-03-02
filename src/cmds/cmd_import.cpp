@@ -15,14 +15,20 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace envy {
 namespace {
+
+bool is_hex_char(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
 
 bool directory_has_entries(std::filesystem::path const &dir) {
   std::error_code ec;
@@ -137,16 +143,79 @@ import_result import_one_archive(cache &c,
   throw std::runtime_error("import: archive did not populate pkg/ or fetch/ directories");
 }
 
+// Parse a checksums file (<64hex>  <path-or-url> per line).
+// Returns entries with sha256 + url.
+std::vector<depot_entry> parse_checksums_file(std::filesystem::path const &path) {
+  std::vector<depot_entry> entries;
+
+  std::ifstream in{ path };
+  if (!in) {
+    throw std::runtime_error("import: cannot open checksums file: " + path.string());
+  }
+
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+    if (line.empty() || line[0] == '#') { continue; }
+
+    // Require SHA256 prefix: 64 hex chars + two spaces
+    if (line.size() <= 66 || line[64] != ' ' || line[65] != ' ') {
+      tui::warn("import: skipping non-checksums line: %s", line.c_str());
+      continue;
+    }
+
+    bool all_hex{ true };
+    for (size_t i{ 0 }; i < 64; ++i) {
+      if (!is_hex_char(line[i])) {
+        all_hex = false;
+        break;
+      }
+    }
+    if (!all_hex) {
+      tui::warn("import: skipping non-checksums line: %s", line.c_str());
+      continue;
+    }
+
+    std::string hash{ line.substr(0, 64) };
+    for (auto &c : hash) {
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    std::string url{ line.substr(66) };
+
+    entries.push_back(depot_entry{ std::move(url), std::move(hash) });
+  }
+
+  return entries;
+}
+
+// Parse a checksums file into a filename → sha256 map (for --dir --checksums).
+std::unordered_map<std::string, std::string> parse_checksums_map(
+    std::filesystem::path const &path) {
+  auto const entries{ parse_checksums_file(path) };
+  std::unordered_map<std::string, std::string> result;
+  for (auto const &e : entries) {
+    // Extract filename from URL/path
+    std::string_view sv{ e.url };
+    auto const slash{ sv.rfind('/') };
+    std::string_view filename{ slash != std::string_view::npos ? sv.substr(slash + 1)
+                                                               : sv };
+    if (e.sha256) { result.try_emplace(std::string(filename), *e.sha256); }
+  }
+  return result;
+}
+
 }  // namespace
 
 void cmd_import::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("import", "Import package archive into cache") };
   auto cfg_ptr{ std::make_shared<cfg>() };
-  sub->add_option("archive", cfg_ptr->archive_path, "Path to .tar.zst archive")
+  sub->add_option("archive", cfg_ptr->archive_path, "Path to .tar.zst or .txt manifest")
       ->check(CLI::ExistingFile);
   sub->add_option("--dir", cfg_ptr->dir, "Directory of .tar.zst archives to import")
       ->check(CLI::ExistingDirectory);
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->add_option("--checksums", cfg_ptr->checksums_path, "Path to checksums .txt file")
+      ->check(CLI::ExistingFile);
   sub->callback([cfg_ptr, on_selected = std::move(on_selected)] {
     bool const has_archive{ !cfg_ptr->archive_path.empty() };
     bool const has_dir{ cfg_ptr->dir.has_value() };
@@ -154,7 +223,7 @@ void cmd_import::register_cli(CLI::App &app, std::function<void(cfg)> on_selecte
       throw CLI::ValidationError("Cannot specify both archive and --dir");
     }
     if (!has_archive && !has_dir) {
-      throw CLI::ValidationError("Must specify either archive or --dir");
+      throw CLI::ValidationError("Must specify either archive/manifest or --dir");
     }
     on_selected(*cfg_ptr);
   });
@@ -165,16 +234,54 @@ cmd_import::cmd_import(cfg cfg, std::optional<std::filesystem::path> const &cli_
 
 void cmd_import::execute() {
   if (!cfg_.dir) {
-    // Single-file import
-    cache c{ cli_cache_root_ };
-    auto const section{ tui::section_create() };
-    auto result{ import_one_archive(c, cfg_.archive_path, section) };
-    if (result.is_fetch_only) {
-      tui::print_stdout("fetch-only import: %s\n", result.pkg_path.string().c_str());
-    } else {
-      tui::print_stdout("%s\n", result.pkg_path.string().c_str());
+    // Positional arg mode: detect by extension
+    auto const ext{ cfg_.archive_path.extension().string() };
+
+    if (ext == ".txt") {
+      // Depot manifest import — build index from file, let engine handle everything
+      auto const m{ manifest::find_and_load(cfg_.manifest_path) };
+      if (!m) { throw std::runtime_error("import: could not load manifest"); }
+
+      reexec_if_needed(m->meta, cli_cache_root_);
+
+      auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+
+      auto const data{ util_load_file(cfg_.archive_path) };
+      std::string contents(reinterpret_cast<char const *>(data.data()), data.size());
+
+      auto depot{ package_depot_index::build_from_contents({ contents }) };
+      if (depot.empty()) {
+        tui::warn("import: no valid entries in %s", cfg_.archive_path.string().c_str());
+        return;
+      }
+
+      engine eng{ *c, m.get() };
+      eng.set_depot_index(std::move(depot));
+
+      std::vector<pkg_cfg const *> roots;
+      roots.reserve(m->packages.size());
+      for (auto *pkg : m->packages) { roots.push_back(pkg); }
+
+      eng.run_full(roots);
+      return;
     }
-    return;
+
+    if (ext == ".zst") {
+      // Single archive import
+      cache c{ cli_cache_root_ };
+      auto const section{ tui::section_create() };
+      auto result{ import_one_archive(c, cfg_.archive_path, section) };
+      if (result.is_fetch_only) {
+        tui::print_stdout("fetch-only import: %s\n", result.pkg_path.string().c_str());
+      } else {
+        tui::print_stdout("%s\n", result.pkg_path.string().c_str());
+      }
+      return;
+    }
+
+    throw std::runtime_error(
+        "import: unrecognized file extension '" + ext +
+        "' (expected .tar.zst for archives or .txt for checksums manifests)");
   }
 
   // Directory import — build depot index from directory, let engine handle everything
@@ -185,7 +292,14 @@ void cmd_import::execute() {
 
   auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
 
-  auto depot{ package_depot_index::build_from_directory(*cfg_.dir) };
+  package_depot_index depot;
+  if (cfg_.checksums_path) {
+    auto checksums{ parse_checksums_map(*cfg_.checksums_path) };
+    depot = package_depot_index::build_from_directory(*cfg_.dir, checksums);
+  } else {
+    depot = package_depot_index::build_from_directory(*cfg_.dir);
+  }
+
   if (depot.empty()) {
     tui::warn("import: no .tar.zst files found in %s", cfg_.dir->string().c_str());
     return;

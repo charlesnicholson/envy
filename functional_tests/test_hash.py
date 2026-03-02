@@ -2,7 +2,6 @@
 
 import base64
 import hashlib
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -51,7 +50,11 @@ class TestHash(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, f"Hash command failed: {result.stderr}")
-        envy_hash = result.stdout.strip()
+        # Output format: <64hex>  <filename>
+        line = result.stdout.strip()
+        parts = line.split("  ", 1)
+        self.assertEqual(len(parts), 2, f"Expected sha256sum format, got: {line}")
+        envy_hash = parts[0]
 
         # Verify envy hash matches Python hashlib (ground truth)
         self.assertEqual(
@@ -71,16 +74,22 @@ class TestHash(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, "Should fail on nonexistent file")
         self.assertIn("not exist", result.stderr.lower())
 
-    def test_hash_directory_fails(self):
-        """Hash command fails gracefully on directory."""
+    def test_hash_directory_processes_tar_zst(self):
+        """Hash command on directory iterates .tar.zst files."""
+        # Create a .tar.zst file in the temp dir
+        test_file = Path(self.tmpdir) / "test.tar.zst"
+        test_file.write_bytes(b"test archive data")
+
         result = test_config.run(
             [str(self.envy), "hash", self.tmpdir],
             capture_output=True,
             text=True,
         )
 
-        self.assertNotEqual(result.returncode, 0, "Should fail on directory")
-        self.assertIn("directory", result.stderr.lower())
+        self.assertEqual(result.returncode, 0, f"Hash command failed: {result.stderr}")
+        lines = [l for l in result.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("test.tar.zst", lines[0])
 
     def test_hash_missing_argument_fails(self):
         """Hash command fails when file argument is missing."""
