@@ -17,7 +17,7 @@ enum class pkg_phase : int {
   completion = 7,  // All phases complete
 };
 
-constexpr int pkg_phase_count = 9;  // none through completion
+constexpr int pkg_phase_count = static_cast<int>(pkg_phase::completion) + 1;
 
 std::string_view pkg_phase_name(pkg_phase p);
 std::optional<pkg_phase> pkg_phase_parse(std::string_view name);

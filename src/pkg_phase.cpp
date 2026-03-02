@@ -8,7 +8,7 @@ namespace envy {
 namespace {
 
 // Enum-to-string mapping (order must match pkg_phase enum in pkg_phase.h)
-// Index = enum value, so none (-1) and completion (6) handled specially
+// Index = enum value, so none (-1) and completion (7) handled specially
 constinit std::array<std::string_view, 7> const pkg_phase_name_table{ {
     "spec_fetch",  // pkg_phase::spec_fetch (0)
     "check",       // pkg_phase::pkg_check (1)
