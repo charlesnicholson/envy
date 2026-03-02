@@ -42,7 +42,7 @@ class TestEnginePhases(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_phase_execution_check_false(self):
         """Engine executes check() and install() phases with structured trace."""

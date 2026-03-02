@@ -53,7 +53,7 @@ class TestEngineFetchCaching(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_declarative_fetch_partial_failure_then_complete(self):
         """Partial failure caches successful files, completion reuses them (no intrusive code)."""

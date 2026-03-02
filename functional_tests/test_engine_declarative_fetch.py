@@ -52,7 +52,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_declarative_fetch_string(self):
         """Spec with declarative fetch (string format) downloads file."""

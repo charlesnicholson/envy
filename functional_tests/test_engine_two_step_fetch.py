@@ -50,7 +50,7 @@ class TestEngineTwoStepFetch(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_two_step_with_sha256(self):
         """Fetch → inspect → commit with SHA256 verification."""

@@ -50,7 +50,7 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_fetch_single_string(self):
         """envy.fetch("url") returns scalar string basename."""
