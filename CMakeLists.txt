@@ -249,6 +249,7 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
     src/phases/phase_fetch.cpp
+    src/phases/phase_import.cpp
     src/phases/phase_install.cpp
     src/phases/phase_spec_fetch.cpp
     src/phases/phase_stage.cpp
@@ -262,6 +263,7 @@ set(ENVY_BASE_SOURCES
     src/lua_envy.cpp
     src/lua_error_formatter.cpp
     src/manifest.cpp
+    src/package_depot.cpp
     src/pkg_cfg.cpp
     src/bundle.cpp
     src/spec_util.cpp
@@ -400,6 +402,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
+target_link_options(envy PRIVATE
+    $<$<PLATFORM_ID:Darwin>:-Wl,-map,$<TARGET_FILE_DIR:envy>/envy.map>
+    $<$<PLATFORM_ID:Linux>:-Wl,-Map,$<TARGET_FILE_DIR:envy>/envy.map>
+    $<$<PLATFORM_ID:Windows>:/MAP:$<TARGET_FILE_DIR:envy>/envy.map>
+)
+
 if((CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     if(NOT CMAKE_STRIP)
@@ -439,7 +447,6 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
-    src/cmds/cmd_import_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp
@@ -453,6 +460,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/lua_error_formatter_tests.cpp
     src/lua_shell_tests.cpp
     src/manifest_tests.cpp
+    src/package_depot_tests.cpp
     src/pkg_cfg_tests.cpp
     src/pkg_cfg_custom_source_tests.cpp
     src/pkg_key_tests.cpp

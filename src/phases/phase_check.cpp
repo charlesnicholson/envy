@@ -198,13 +198,13 @@ void run_check_phase_user_managed(pkg *p, engine &eng, sol::state_view lua) {
 }
 
 // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-void run_check_phase_cache_managed(pkg *p) {
+void run_check_phase_cache_managed(pkg *p, engine &eng) {
   std::string const key{ p->cfg->format_key() };
   sol::state_view lua{ *p->lua };
 
   auto cache_result{ compute_hash_and_lookup_cache(p, lua) };
 
-  if (cache_result.lock) {  // Cache miss - acquire lock, subsequent phases will do work
+  if (cache_result.lock) {  // Cache miss
     p->lock = std::move(cache_result.lock);
     tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
   } else {  // Cache hit - store pkg_path, no lock means subsequent phases skip
@@ -228,7 +228,7 @@ void run_check_phase(pkg *p, engine &eng) {
   if (has_check) {
     run_check_phase_user_managed(p, eng, lua);
   } else {
-    run_check_phase_cache_managed(p);
+    run_check_phase_cache_managed(p, eng);
   }
 }
 

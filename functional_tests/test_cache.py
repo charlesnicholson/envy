@@ -409,7 +409,7 @@ class TestLockFileLifecycle(CacheTestBase):
         lock_file = (
             self.cache_root
             / "locks"
-            / "packages.gcc.darwin-arm64-blake3-lockfile1.lock"
+            / "packages.gcc-darwin-arm64-blake3-lockfile1.lock"
         )
         self.assertTrue(lock_file.exists())
 
@@ -421,12 +421,12 @@ class TestLockFileLifecycle(CacheTestBase):
         self.assertFalse(lock_file.exists())
 
     def test_lock_file_naming_asset(self):
-        """Verify package lock path matches assets.{identity}.{platform}-{arch}-blake3-{hash}.lock."""
+        """Verify package lock path matches packages.{identity}-{platform}-{arch}-blake3-{hash}.lock."""
         proc = self.run_cache_cmd("ensure-package", "gcc", "darwin", "arm64", "abc123")
         stdout, _ = proc.communicate()
         result = parse_keyvalue(stdout)
 
-        expected_lock = "packages.gcc.darwin-arm64-blake3-abc123.lock"
+        expected_lock = "packages.gcc-darwin-arm64-blake3-abc123.lock"
         self.assertIn(expected_lock, result.get("lock_file", ""))
 
     def test_lock_file_naming_spec(self):

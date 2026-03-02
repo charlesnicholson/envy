@@ -122,34 +122,7 @@ std::filesystem::path fetch_remote_source(pkg_cfg const &cfg, pkg *p) {
     tui::debug("fetch spec %s from %s", cfg.identity.c_str(), remote_src->url.c_str());
     std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "spec.lua" };
 
-    // Determine fetch request type based on URL scheme
-    auto const info{ uri_classify(remote_src->url) };
-    fetch_request req;
-    switch (info.scheme) {
-      case uri_scheme::HTTP:
-        req = fetch_request_http{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      case uri_scheme::HTTPS:
-        req = fetch_request_https{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      case uri_scheme::FTP:
-        req = fetch_request_ftp{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      case uri_scheme::FTPS:
-        req = fetch_request_ftps{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      case uri_scheme::S3:
-        req = fetch_request_s3{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      case uri_scheme::LOCAL_FILE_ABSOLUTE:
-      case uri_scheme::LOCAL_FILE_RELATIVE:
-        req = fetch_request_file{ .source = remote_src->url, .destination = fetch_dest };
-        break;
-      default:
-        throw std::runtime_error("Unsupported URL scheme for spec fetch: " +
-                                 remote_src->url);
-    }
-
+    auto req{ fetch_request_from_url(remote_src->url, fetch_dest) };
     auto const results{ fetch({ req }) };
     if (results.empty() || std::holds_alternative<std::string>(results[0])) {
       throw std::runtime_error(
@@ -256,34 +229,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
               std::filesystem::path fetch_dest{ cache_result.lock->fetch_dir() /
                                                 uri_extract_filename(remote.url) };
 
-              auto const info{ uri_classify(remote.url) };
-              fetch_request req;
-              switch (info.scheme) {
-                case uri_scheme::HTTP:
-                  req = fetch_request_http{ .source = remote.url,
-                                            .destination = fetch_dest };
-                  break;
-                case uri_scheme::HTTPS:
-                  req = fetch_request_https{ .source = remote.url,
-                                             .destination = fetch_dest };
-                  break;
-                case uri_scheme::FTP:
-                  req =
-                      fetch_request_ftp{ .source = remote.url, .destination = fetch_dest };
-                  break;
-                case uri_scheme::FTPS:
-                  req = fetch_request_ftps{ .source = remote.url,
-                                            .destination = fetch_dest };
-                  break;
-                case uri_scheme::S3:
-                  req =
-                      fetch_request_s3{ .source = remote.url, .destination = fetch_dest };
-                  break;
-                default:
-                  throw std::runtime_error("Unsupported URL scheme for bundle fetch: " +
-                                           remote.url);
-              }
-
+              auto req{ fetch_request_from_url(remote.url, fetch_dest) };
               auto const results{ fetch({ req }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
@@ -1045,34 +991,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
               std::filesystem::path fetch_dest{ cache_result.lock->fetch_dir() /
                                                 uri_extract_filename(remote.url) };
 
-              auto const info{ uri_classify(remote.url) };
-              fetch_request req;
-              switch (info.scheme) {
-                case uri_scheme::HTTP:
-                  req = fetch_request_http{ .source = remote.url,
-                                            .destination = fetch_dest };
-                  break;
-                case uri_scheme::HTTPS:
-                  req = fetch_request_https{ .source = remote.url,
-                                             .destination = fetch_dest };
-                  break;
-                case uri_scheme::FTP:
-                  req =
-                      fetch_request_ftp{ .source = remote.url, .destination = fetch_dest };
-                  break;
-                case uri_scheme::FTPS:
-                  req = fetch_request_ftps{ .source = remote.url,
-                                            .destination = fetch_dest };
-                  break;
-                case uri_scheme::S3:
-                  req =
-                      fetch_request_s3{ .source = remote.url, .destination = fetch_dest };
-                  break;
-                default:
-                  throw std::runtime_error("Unsupported URL scheme for bundle fetch: " +
-                                           remote.url);
-              }
-
+              auto req{ fetch_request_from_url(remote.url, fetch_dest) };
               auto const results{ fetch({ req }) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(

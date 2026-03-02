@@ -7,7 +7,6 @@
 #include "fetch.h"
 #include "platform.h"
 #include "tui.h"
-#include "uri.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -59,23 +58,6 @@ void remove_quarantine([[maybe_unused]] std::filesystem::path const &path) {
   cmd << "xattr -d com.apple.quarantine '" << path.string() << "' 2>/dev/null";
   std::system(cmd.str().c_str());
 #endif
-}
-
-fetch_request make_fetch_request(std::string const &url,
-                                 std::filesystem::path const &dest) {
-  auto const info{ uri_classify(url) };
-  switch (info.scheme) {
-    case uri_scheme::HTTP: return fetch_request_http{ .source = url, .destination = dest };
-    case uri_scheme::HTTPS:
-      return fetch_request_https{ .source = url, .destination = dest };
-    case uri_scheme::FTP: return fetch_request_ftp{ .source = url, .destination = dest };
-    case uri_scheme::FTPS: return fetch_request_ftps{ .source = url, .destination = dest };
-    case uri_scheme::S3: return fetch_request_s3{ .source = url, .destination = dest };
-    case uri_scheme::LOCAL_FILE_ABSOLUTE:
-    case uri_scheme::LOCAL_FILE_RELATIVE:
-      return fetch_request_file{ .source = url, .destination = dest };
-    default: throw std::runtime_error("reexec: unsupported URL scheme: " + url);
-  }
 }
 
 // Build child env: copy current env, add ENVY_REEXEC=1, strip ENVY_TEST_SELF_VERSION.
@@ -189,7 +171,7 @@ void reexec_if_needed(envy_meta const &meta,
                            std::string{ kArchiveExt } };
   auto const archive_path{ tmp_dir / archive_name };
 
-  auto const results{ fetch({ make_fetch_request(url, archive_path) }) };
+  auto const results{ fetch({ fetch_request_from_url(url, archive_path) }) };
   if (results.empty()) {
     throw std::runtime_error("reexec: failed to download envy " + version + " from " +
                              url + ": unknown error");

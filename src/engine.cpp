@@ -1,20 +1,24 @@
 #include "engine.h"
 
 #include "manifest.h"
+#include "package_depot.h"
 #include "phases/phase_build.h"
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
 #include "phases/phase_fetch.h"
+#include "phases/phase_import.h"
 #include "phases/phase_install.h"
 #include "phases/phase_spec_fetch.h"
 #include "phases/phase_stage.h"
 #include "pkg.h"
 #include "pkg_key.h"
 #include "pkg_phase.h"
+#include "platform.h"
 #include "tui.h"
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <sstream>
 #include <unordered_set>
 #include <vector>
@@ -28,6 +32,7 @@ using phase_func_t = void (*)(pkg *, engine &);
 constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_spec_fetch_phase,  // pkg_phase::spec_fetch
   run_check_phase,       // pkg_phase::pkg_check
+  run_import_phase,      // pkg_phase::pkg_import
   run_fetch_phase,       // pkg_phase::pkg_fetch
   run_stage_phase,       // pkg_phase::pkg_stage
   run_build_phase,       // pkg_phase::pkg_build
@@ -477,6 +482,37 @@ void engine::extend_dependencies_to_completion(pkg *p) {
 }
 
 std::filesystem::path const &engine::cache_root() const { return cache_.root(); }
+
+manifest const *engine::get_manifest() const { return manifest_; }
+
+void engine::set_depot_index(package_depot_index idx) {
+  depot_index_ = std::move(idx);
+  depot_pre_set_ = true;
+}
+
+package_depot_index const *engine::depot_index() const {
+  // Pre-set index (set before thread creation, safe to read without synchronization)
+  if (depot_pre_set_) { return &*depot_index_; }
+
+  if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
+
+  std::call_once(depot_init_flag_, [this] {
+    namespace fs = std::filesystem;
+    auto const depot_tmp{ fs::temp_directory_path() /
+                          ("envy-depot-" + std::to_string(platform::get_process_id())) };
+    try {
+      std::error_code ec;
+      fs::create_directories(depot_tmp, ec);
+      depot_index_ = package_depot_index::build(manifest_->meta.package_depots, depot_tmp);
+    } catch (std::exception const &e) {
+      tui::warn("failed to build depot index: %s", e.what());
+    }
+    std::error_code ec;
+    fs::remove_all(depot_tmp, ec);
+  });
+
+  return depot_index_ ? &*depot_index_ : nullptr;
+}
 
 bundle *engine::register_bundle(std::string const &identity,
                                 std::unordered_map<std::string, std::string> specs,

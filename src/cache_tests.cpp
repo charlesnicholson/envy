@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 #include "platform.h"
+#include "util.h"
 
 #include <filesystem>
 #include <fstream>
@@ -372,7 +373,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     REQUIRE(result.lock != nullptr);
 
     // Capture lock path (not exposed via public API, but we can infer it)
-    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -395,7 +396,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
     REQUIRE(result.lock != nullptr);
 
-    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify lock file exists while lock is held
     CHECK(std::filesystem::exists(lock_path));
@@ -419,7 +420,7 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
     REQUIRE(result.lock != nullptr);
 
     entry_dir = result.entry_path;
-    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify both exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));
@@ -462,7 +463,7 @@ TEST_CASE_FIXTURE(
 
     entry_dir = result.entry_path;
     pkg_dir = result.pkg_path;
-    lock_path = temp_root / "locks" / "packages.foo.darwin-arm64-blake3-deadbeef.lock";
+    lock_path = temp_root / "locks" / "packages.foo-darwin-arm64-blake3-deadbeef.lock";
 
     // Verify entry_dir and lock file exist while lock is held
     CHECK(std::filesystem::exists(entry_dir));
@@ -629,4 +630,24 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_envy returns already_cached after 
   auto result{ cache->ensure_envy(ENVY_VERSION_STR) };
   CHECK(result.already_cached);
   CHECK_FALSE(result.lock.has_value());
+}
+
+// --- cache key format tests ---
+
+TEST_CASE("cache::key") {
+  CHECK(envy::cache::key("arm.gcc@r2", "darwin", "arm64", "abcdef0123456789") ==
+        "arm.gcc@r2-darwin-arm64-blake3-abcdef0123456789");
+  CHECK(envy::cache::key("llvm.clang@18.1.8", "windows", "x86_64", "ff00") ==
+        "llvm.clang@18.1.8-windows-x86_64-blake3-ff00");
+  CHECK(envy::cache::key("foo", "posix", "riscv", "0") == "foo-posix-riscv-blake3-0");
+}
+
+TEST_CASE("cache::key round-trips with util_parse_archive_filename") {
+  auto const k{ envy::cache::key("arm.gcc@r2", "darwin", "arm64", "abcdef") };
+  auto const parsed{ envy::util_parse_archive_filename(k) };
+  REQUIRE(parsed.has_value());
+  CHECK(parsed->identity == "arm.gcc@r2");
+  CHECK(parsed->platform == "darwin");
+  CHECK(parsed->arch == "arm64");
+  CHECK(parsed->hash_prefix == "abcdef");
 }

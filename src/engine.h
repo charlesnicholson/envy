@@ -2,6 +2,7 @@
 
 #include "bundle.h"
 #include "cache.h"
+#include "package_depot.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
 #include "pkg_phase.h"
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -115,7 +117,9 @@ class engine : unmovable {
 
   bundle *find_bundle(std::string const &identity) const;
 
-  manifest const *get_manifest() const { return manifest_; }
+  manifest const *get_manifest() const;
+  void set_depot_index(package_depot_index idx);
+  package_depot_index const *depot_index() const;
 
 #ifdef ENVY_UNIT_TEST
   pkg_phase get_pkg_target_phase(pkg_key const &key) const;
@@ -127,6 +131,9 @@ class engine : unmovable {
   cache &cache_;
   default_shell_cfg_t default_shell_;
   manifest const *manifest_{ nullptr };  // For bundle fetch function lookup
+  mutable std::once_flag depot_init_flag_;
+  mutable std::optional<package_depot_index> depot_index_;  // Lazy
+  std::atomic_bool depot_pre_set_{ false };
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point

@@ -1,5 +1,6 @@
 -- @envy schema "1"
 IDENTITY = "local.cmake@r0"
+EXPORTABLE = true
 
 VALIDATE = function(opts)
   if opts.version == nil then

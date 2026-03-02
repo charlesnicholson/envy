@@ -1,5 +1,6 @@
 -- @envy schema "1"
 IDENTITY = "local.gn@r0"
+EXPORTABLE = true
 
 VALIDATE = function(opts)
   if opts.ref == nil then

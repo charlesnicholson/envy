@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace envy {
@@ -103,6 +104,20 @@ std::filesystem::path util_absolute_path(std::filesystem::path const &relative,
 std::string util_simplify_cache_paths(std::string_view command,
                                       std::filesystem::path const &cache_root,
                                       product_map_t const &products = {});
+
+// Parsed fields from an exported archive filename stem.
+// Stem format: <name>@<revision>-<platform>-<arch>-blake3-<hash_prefix>
+// '@' is required; content before/after '@' is not strictly validated.
+struct parsed_archive_filename {
+  std::string identity;     // e.g. "arm.gcc@r2"
+  std::string platform;     // e.g. "darwin"
+  std::string arch;         // e.g. "arm64"
+  std::string hash_prefix;  // e.g. "abcdef0123456789"
+};
+
+// Parse exported archive filename stem (without .tar.zst extension).
+// Returns nullopt on invalid format.
+std::optional<parsed_archive_filename> util_parse_archive_filename(std::string_view stem);
 
 class scoped_path_cleanup : public unmovable {
  public:

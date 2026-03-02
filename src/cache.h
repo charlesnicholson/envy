@@ -94,6 +94,12 @@ class cache : unmovable {
 
   static bool is_entry_complete(std::filesystem::path const &entry_dir);
 
+  // Canonical cache key: identity-platform-arch-blake3-hash_prefix
+  static std::string key(std::string_view identity,
+                         std::string_view platform,
+                         std::string_view arch,
+                         std::string_view hash_prefix);
+
  private:
   struct impl;
   std::unique_ptr<impl> m;

@@ -237,12 +237,14 @@ envy_meta parse_envy_meta(std::string_view content) {
         result.bin = value;
       } else if (key == "schema") {
         try {
-          if (int const v{std::stoi(value)}; v >= 1) { result.schema = v; }
+          if (int const v{ std::stoi(value) }; v >= 1) { result.schema = v; }
         } catch (...) {}
       } else if (key == "deploy") {
         result.deploy = parse_bool_value(value);
       } else if (key == "root") {
         result.root = parse_bool_value(value);
+      } else if (key == "package-depot") {
+        result.package_depots.push_back(value);
       }
     }
 

@@ -16,11 +16,12 @@ class PkgPhase(IntEnum):
 
     SPEC_FETCH = 0
     PKG_CHECK = 1
-    PKG_FETCH = 2
-    PKG_STAGE = 3
-    PKG_BUILD = 4
-    PKG_INSTALL = 5
-    COMPLETION = 6
+    PKG_IMPORT = 2
+    PKG_FETCH = 3
+    PKG_STAGE = 4
+    PKG_BUILD = 5
+    PKG_INSTALL = 6
+    COMPLETION = 7
 
 
 # Type aliases for event types

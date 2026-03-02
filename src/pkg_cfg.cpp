@@ -267,6 +267,8 @@ pkg_cfg *pkg_cfg::parse(sol::object const &lua_val,
     std::string const &nb{ *needed_by_str };
     if (nb == "check") {
       needed_by = pkg_phase::pkg_check;
+    } else if (nb == "import") {
+      needed_by = pkg_phase::pkg_import;
     } else if (nb == "fetch") {
       needed_by = pkg_phase::pkg_fetch;
     } else if (nb == "stage") {
@@ -277,8 +279,8 @@ pkg_cfg *pkg_cfg::parse(sol::object const &lua_val,
       needed_by = pkg_phase::pkg_install;
     } else {
       throw std::runtime_error(
-          "Spec 'needed_by' must be one of: check, fetch, stage, "
-          "build, install (got: " +
+          "Spec 'needed_by' must be one of: check, import, fetch, "
+          "stage, build, install (got: " +
           nb + ")");
     }
   }

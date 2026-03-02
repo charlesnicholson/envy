@@ -1,5 +1,6 @@
 -- @envy schema "1"
 IDENTITY = "local.jlink@r0"
+EXPORTABLE = envy.PLATFORM == "windows"
 
 VALIDATE = function(opts)
   if opts.version == nil then

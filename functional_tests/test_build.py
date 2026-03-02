@@ -1066,18 +1066,7 @@ end
         )
 
         variant_name = variant_dirs[0].name
-        self.assertNotIn(
-            variant_name.startswith("--blake3-"),
-            [True],
-            f"Variant dir should not start with '--blake3-': {variant_name}",
-        )
-
-        valid_platforms = ("darwin-", "linux-", "windows-")
-        self.assertTrue(
-            any(variant_name.startswith(p) for p in valid_platforms),
-            f"Variant dir should start with platform prefix: {variant_name}",
-        )
-
+        self.assertNotIn("/", variant_name)
         self.assertIn("-blake3-", variant_name)
 
     # =========================================================================

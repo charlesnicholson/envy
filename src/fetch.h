@@ -100,4 +100,9 @@ using fetch_result_t = std::variant<fetch_result, std::string>;  // string on er
 
 std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests);
 
+// Build a fetch_request from a URL + destination. Handles HTTP, HTTPS, FTP, FTPS, S3,
+// and local files. Throws on git, SSH, or unknown schemes.
+fetch_request fetch_request_from_url(std::string const &url,
+                                     std::filesystem::path const &dest);
+
 }  // namespace envy
