@@ -7,8 +7,10 @@
 #include "package_depot.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
+#include "sha256.h"
 #include "trace.h"
 #include "tui.h"
+#include "util.h"
 
 #include <chrono>
 #include <filesystem>
@@ -48,7 +50,7 @@ void run_import_phase(pkg *p, engine &eng) {
 
   tui::debug("phase import: [%s] depot hit: %s",
              p->cfg->identity.c_str(),
-             location->c_str());
+             location->url.c_str());
 
   try {
     fs::path const tmp_dir{ p->lock->tmp_dir() };
@@ -57,20 +59,41 @@ void run_import_phase(pkg *p, engine &eng) {
     fs::path const archive_dest{ depot_fetch_dir / "depot-archive.tar.zst" };
 
     // Local file: symlink into depot-fetch dir; remote URL: download
-    if (fs::path const local_path{ *location }; fs::exists(local_path)) {
+    if (fs::path const local_path{ location->url }; fs::exists(local_path)) {
       fs::create_symlink(local_path, archive_dest);
     } else {
       std::vector<fetch_request> requests;
-      requests.push_back(fetch_request_from_url(*location, archive_dest));
+      requests.push_back(fetch_request_from_url(location->url, archive_dest));
 
       auto const results{ fetch(requests) };
       if (results.empty() || !std::holds_alternative<fetch_result>(results[0])) {
         auto const *error{ results.empty() ? nullptr
                                            : std::get_if<std::string>(&results[0]) };
         tui::warn("depot: failed to download archive %s: %s",
-                  location->c_str(),
+                  location->url.c_str(),
                   error ? error->c_str() : "unknown error");
         return;  // Fall through to fetch phase
+      }
+    }
+
+    // SHA256 verification when present (text manifests always supply it;
+    // only build_from_directory without checksums omits it).
+    if (location->sha256) {
+      tui::section_set_content(
+          p->tui_section,
+          tui::section_frame{ .label = "[" + p->cfg->identity + "]",
+                              .content = tui::spinner_data{
+                                  .text = "verifying SHA256...",
+                                  .start_time = std::chrono::steady_clock::now() } });
+
+      auto const actual{ sha256(archive_dest) };
+      auto const actual_hex{ util_bytes_to_hex(actual.data(), actual.size()) };
+      if (actual_hex != *location->sha256) {
+        tui::warn("depot: SHA256 mismatch for %s (expected %s, got %s)",
+                  location->url.c_str(),
+                  location->sha256->c_str(),
+                  actual_hex.c_str());
+        return;  // Fall through to fetch/build
       }
     }
 
@@ -95,10 +118,10 @@ void run_import_phase(pkg *p, engine &eng) {
                  p->cfg->identity.c_str());
     } else {
       tui::warn("depot: archive %s did not populate pkg/ or fetch/ directories",
-                location->c_str());
+                location->url.c_str());
     }
   } catch (std::exception const &e) {
-    tui::warn("depot: failed to import archive %s: %s", location->c_str(), e.what());
+    tui::warn("depot: failed to import archive %s: %s", location->url.c_str(), e.what());
   }
 }
 

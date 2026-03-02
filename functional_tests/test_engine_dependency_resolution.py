@@ -74,7 +74,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_recipe_with_one_dependency(self):
         """Engine loads spec and its dependency."""

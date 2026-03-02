@@ -43,7 +43,7 @@ class TestEngineSpecLoading(unittest.TestCase):
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        return result.stdout.strip().split("  ", 1)[0]
 
     def test_single_local_spec_no_deps(self):
         """Engine loads single local spec with no dependencies."""

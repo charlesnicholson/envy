@@ -9,6 +9,11 @@
 
 namespace envy {
 
+struct depot_entry {
+  std::string url;
+  std::optional<std::string> sha256;  // lowercase 64-char hex, or nullopt
+};
+
 // Index of pre-built package archives available from remote depots.
 // Depot manifests are searched in order; the first manifest containing
 // a match for a given package wins (subsequent manifests are not consulted).
@@ -27,9 +32,14 @@ class package_depot_index {
   // Scans dir for .tar.zst files, maps filename stems → absolute file paths.
   static package_depot_index build_from_directory(std::filesystem::path const &dir);
 
-  // Returns archive URL if an exact match is found.
+  // Build from directory with accompanying checksums (filename → sha256 hex).
+  static package_depot_index build_from_directory(
+      std::filesystem::path const &dir,
+      std::unordered_map<std::string, std::string> const &checksums);
+
+  // Returns depot entry if an exact match is found.
   // Searches manifests in order; stops at first manifest with a match.
-  std::optional<std::string> find(std::string_view identity,
+  std::optional<depot_entry> find(std::string_view identity,
                                   std::string_view platform,
                                   std::string_view arch,
                                   std::string_view hash_prefix) const;
@@ -37,8 +47,8 @@ class package_depot_index {
   bool empty() const;
 
  private:
-  // Each manifest's entries: filename stem → archive URL
-  std::vector<std::unordered_map<std::string, std::string>> manifests_;
+  // Each manifest's entries: filename stem → depot entry (URL + optional SHA256)
+  std::vector<std::unordered_map<std::string, depot_entry>> manifests_;
 };
 
 }  // namespace envy
