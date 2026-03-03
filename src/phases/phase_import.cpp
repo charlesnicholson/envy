@@ -53,17 +53,19 @@ void run_import_phase(pkg *p, engine &eng) {
              location->url.c_str());
 
   try {
-    fs::path const tmp_dir{ p->lock->tmp_dir() };
-    fs::path const depot_fetch_dir{ tmp_dir / "depot-fetch" };
-    fs::create_directory(depot_fetch_dir);
-    fs::path const archive_dest{ depot_fetch_dir / "depot-archive.tar.zst" };
+    fs::path archive_path;
 
-    // Local file: symlink into depot-fetch dir; remote URL: download
+    // Local file: use directly; remote URL: download to temp dir
     if (fs::path const local_path{ location->url }; fs::exists(local_path)) {
-      fs::create_symlink(local_path, archive_dest);
+      archive_path = fs::absolute(local_path);
     } else {
+      fs::path const tmp_dir{ p->lock->tmp_dir() };
+      fs::path const depot_fetch_dir{ tmp_dir / "depot-fetch" };
+      fs::create_directory(depot_fetch_dir);
+      archive_path = depot_fetch_dir / "depot-archive.tar.zst";
+
       std::vector<fetch_request> requests;
-      requests.push_back(fetch_request_from_url(location->url, archive_dest));
+      requests.push_back(fetch_request_from_url(location->url, archive_path));
 
       auto const results{ fetch(requests) };
       if (results.empty() || !std::holds_alternative<fetch_result>(results[0])) {
@@ -86,7 +88,7 @@ void run_import_phase(pkg *p, engine &eng) {
                                   .text = "verifying SHA256...",
                                   .start_time = std::chrono::steady_clock::now() } });
 
-      auto const actual{ sha256(archive_dest) };
+      auto const actual{ sha256(archive_path) };
       auto const actual_hex{ util_bytes_to_hex(actual.data(), actual.size()) };
       if (actual_hex != *location->sha256) {
         tui::warn("depot: SHA256 mismatch for %s (expected %s, got %s)",
@@ -100,7 +102,7 @@ void run_import_phase(pkg *p, engine &eng) {
     // entry_path is lock->install_dir().parent_path()
     fs::path const entry_path{ p->lock->install_dir().parent_path() };
 
-    extract_all_archives(depot_fetch_dir, entry_path, 0, p->cfg->identity, p->tui_section);
+    extract(archive_path, entry_path);
 
     bool const has_install{ directory_has_entries(p->lock->install_dir()) };
     bool const has_fetch{ directory_has_entries(p->lock->fetch_dir()) };

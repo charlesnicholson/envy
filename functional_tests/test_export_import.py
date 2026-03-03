@@ -44,6 +44,13 @@ def snapshot_tree(root: Path) -> dict[str, bytes]:
     return tree
 
 
+def parse_export_line(line):
+    """Parse an export output line '<hash>  <path>' -> (hash, Path)."""
+    parts = line.strip().split("  ", 1)
+    assert len(parts) == 2, f"Expected '<hash>  <path>', got: {line}"
+    return parts[0], Path(parts[1])
+
+
 class TestExportImport(unittest.TestCase):
     """Tests for 'envy export' and 'envy import' commands."""
 
@@ -157,7 +164,8 @@ PACKAGES = {{
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
 
         # Verify archive was created
-        archive_path = Path(export.stdout.strip())
+        sha_hex, archive_path = parse_export_line(export.stdout)
+        self.assertEqual(len(sha_hex), 64, f"Expected 64-char SHA256, got: {sha_hex}")
         self.assertTrue(archive_path.exists(), f"Archive not found: {archive_path}")
         self.assertTrue(
             archive_path.name.startswith("local.exportable_pkg@v1-"),
@@ -183,7 +191,7 @@ PACKAGES = {{
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
 
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
         self.assertTrue(archive_path.exists())
         self.assertTrue(archive_path.name.startswith("local.default_pkg@v1-"))
 
@@ -229,7 +237,7 @@ PACKAGES = {{
         )
         self.assertEqual(export.returncode, 0)
 
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
         self.assertEqual(
             archive_path.parent,
             self.output_dir,
@@ -272,7 +280,7 @@ PACKAGES = {{
             "exportable_pkg.lua", "local.exportable_pkg@v1", manifest
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
 
         # Delete cache and reimport
         import_cache = Path(tempfile.mkdtemp(prefix="envy-import-test-"))
@@ -338,7 +346,7 @@ PACKAGES = {{
             str(manifest),
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
 
         # Import into fresh cache
         import_cache = Path(tempfile.mkdtemp(prefix="envy-roundtrip-test-"))
@@ -416,7 +424,7 @@ PACKAGES = {{
             str(manifest),
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
 
         # Import into fresh cache
         import_cache = Path(tempfile.mkdtemp(prefix="envy-roundtrip-fetch-test-"))
@@ -471,7 +479,7 @@ PACKAGES = {{
             "exportable_pkg.lua", "local.exportable_pkg@v1", manifest
         )
         self.assertEqual(export.returncode, 0)
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
 
         # Import into the SAME cache (already has the package)
         result = self.run_envy("import", str(archive_path))
@@ -513,7 +521,7 @@ PACKAGES = {{
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
 
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
         self.assertTrue(archive_path.exists())
 
     def test_import_fetch_only_package(self):
@@ -530,7 +538,7 @@ PACKAGES = {{
             "default_pkg.lua", "local.default_pkg@v1", manifest
         )
         self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
-        archive_path = Path(export.stdout.strip())
+        _, archive_path = parse_export_line(export.stdout)
 
         # Import into fresh cache
         import_cache = Path(tempfile.mkdtemp(prefix="envy-import-fetch-test-"))
@@ -920,6 +928,144 @@ PACKAGES = {{
 
             # The bogus file should have been skipped (warning in stderr)
             self.assertIn("skipping", result.stderr.lower())
+        finally:
+            shutil.rmtree(import_cache, ignore_errors=True)
+
+    def test_export_sha256_correctness(self):
+        """Exported SHA256 in stdout matches actual archive file hash."""
+        manifest = self.create_manifest(
+            f'''
+PACKAGES = {{
+    {{ spec = "local.exportable_pkg@v1", source = "{self.lua_path(self.test_dir)}/exportable_pkg.lua" }}
+}}
+'''
+        )
+
+        _, export = self._install_and_export(
+            "exportable_pkg.lua", "local.exportable_pkg@v1", manifest
+        )
+        self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
+
+        sha_hex, archive_path = parse_export_line(export.stdout)
+        actual_hash = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+        self.assertEqual(
+            sha_hex,
+            actual_hash,
+            f"SHA256 mismatch: stdout={sha_hex}, file={actual_hash}",
+        )
+
+    def test_export_deterministic_order(self):
+        """Multi-package export outputs lines in manifest order."""
+        manifest = self.create_manifest(
+            f'''
+PACKAGES = {{
+    {{ spec = "local.exportable_pkg@v1", source = "{self.lua_path(self.test_dir)}/exportable_pkg.lua" }},
+    {{ spec = "local.default_pkg@v1", source = "{self.lua_path(self.test_dir)}/default_pkg.lua" }}
+}}
+'''
+        )
+
+        install = self.run_envy("install", "--manifest", str(manifest))
+        self.assertEqual(install.returncode, 0, f"install failed: {install.stderr}")
+
+        # Run export multiple times — order must be stable
+        for _ in range(3):
+            export = self.run_envy(
+                "export",
+                "-o",
+                str(self.output_dir),
+                "--manifest",
+                str(manifest),
+            )
+            self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
+
+            lines = [l for l in export.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, f"Expected 2 lines, got: {lines}")
+
+            _, first_path = parse_export_line(lines[0])
+            _, second_path = parse_export_line(lines[1])
+            self.assertIn(
+                "local.exportable_pkg@v1",
+                first_path.name,
+                f"First line should be exportable_pkg, got: {first_path.name}",
+            )
+            self.assertIn(
+                "local.default_pkg@v1",
+                second_path.name,
+                f"Second line should be default_pkg, got: {second_path.name}",
+            )
+
+    def test_export_stdout_as_import_checksums(self):
+        """Export stdout (without --depot-prefix) works as import --checksums file."""
+        manifest = self.create_manifest(
+            f'''
+PACKAGES = {{
+    {{ spec = "local.exportable_pkg@v1", source = "{self.lua_path(self.test_dir)}/exportable_pkg.lua" }}
+}}
+'''
+        )
+
+        _, export = self._install_and_export(
+            "exportable_pkg.lua", "local.exportable_pkg@v1", manifest
+        )
+        self.assertEqual(export.returncode, 0, f"export failed: {export.stderr}")
+
+        # Write export stdout directly as a checksums file
+        # Replace absolute path with just the filename for checksums format
+        sha_hex, archive_path = parse_export_line(export.stdout)
+        checksums_path = self.test_dir / "checksums.txt"
+        checksums_path.write_text(f"{sha_hex}  {archive_path.name}\n", encoding="utf-8")
+
+        # Import into fresh cache using --dir + --checksums
+        import_cache = Path(tempfile.mkdtemp(prefix="envy-export-checksums-test-"))
+        try:
+            result = test_config.run(
+                [
+                    str(self.envy),
+                    "--cache-root",
+                    str(import_cache),
+                    "import",
+                    "--dir",
+                    str(self.output_dir),
+                    "--checksums",
+                    str(checksums_path),
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                result.returncode,
+                0,
+                f"import --dir --checksums failed: {result.stderr}",
+            )
+
+            pkg_result = test_config.run(
+                [
+                    str(self.envy),
+                    "--cache-root",
+                    str(import_cache),
+                    "package",
+                    "local.exportable_pkg@v1",
+                    "--manifest",
+                    str(manifest),
+                ],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                pkg_result.returncode,
+                0,
+                f"package lookup failed after import: {pkg_result.stderr}",
+            )
+            pkg_path = Path(pkg_result.stdout.strip())
+            self.assertTrue(
+                pkg_path.exists(),
+                f"Imported package path should exist: {pkg_path}",
+            )
         finally:
             shutil.rmtree(import_cache, ignore_errors=True)
 

@@ -247,7 +247,15 @@ class TestPackageDepot(unittest.TestCase):
 
         r = self._run("export", "-o", str(self.output_dir), "--manifest", str(m))
         self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
-        return [Path(l.strip()) for l in r.stdout.strip().split("\n") if l.strip()]
+        paths = []
+        for line in r.stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("  ", 1)
+            self.assertEqual(len(parts), 2, f"Expected '<hash>  <path>', got: {line}")
+            paths.append(Path(parts[1]))
+        return paths
 
     def _start_server(self):
         """Start HTTP server on self.serve_dir. Returns (server, port)."""
@@ -769,7 +777,7 @@ class TestImportManifest(unittest.TestCase):
         )
 
     def _install_and_export(self):
-        """Install + export local.depot_a@v1. Returns archive path."""
+        """Install + export local.depot_a@v1. Returns archive paths."""
         packages = f'{{ spec = "local.depot_a@v1", source = "{self.spec_lua["local.depot_a@v1"]}" }}'
         m = self.test_dir / "source.lua"
         m.write_text(
@@ -788,7 +796,15 @@ class TestImportManifest(unittest.TestCase):
             cache_root=self.source_cache,
         )
         self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
-        return [Path(l.strip()) for l in r.stdout.strip().split("\n") if l.strip()]
+        paths = []
+        for line in r.stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("  ", 1)
+            self.assertEqual(len(parts), 2, f"Expected '<hash>  <path>', got: {line}")
+            paths.append(Path(parts[1]))
+        return paths
 
     def _make_manifest(self):
         """Create envy.lua manifest referencing local.depot_a@v1."""

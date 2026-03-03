@@ -95,6 +95,7 @@ std::size_t measure_label_width(section_frame const &frame);
 section_handle section_create();
 void section_set_content(section_handle h, section_frame const &frame);
 void section_set_complete(section_handle h);
+void section_delete(section_handle h);
 bool section_has_content(section_handle h);
 
 // Interactive mode API
