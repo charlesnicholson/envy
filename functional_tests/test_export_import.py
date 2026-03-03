@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
-from .test_config import make_manifest
+from .test_config import make_manifest, parse_export_line
 
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Root file content\n",
@@ -42,13 +42,6 @@ def snapshot_tree(root: Path) -> dict[str, bytes]:
             rel = full.relative_to(root)
             tree[str(rel)] = full.read_bytes()
     return tree
-
-
-def parse_export_line(line):
-    """Parse an export output line '<hash>  <path>' -> (hash, Path)."""
-    parts = line.strip().split("  ", 1)
-    assert len(parts) == 2, f"Expected '<hash>  <path>', got: {line}"
-    return parts[0], Path(parts[1])
 
 
 class TestExportImport(unittest.TestCase):

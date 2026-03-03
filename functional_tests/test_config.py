@@ -71,6 +71,14 @@ def make_manifest(packages_content: str, deploy: bool = False) -> str:
     return header + packages_content
 
 
+def parse_export_line(line):
+    """Parse an export output line '<hash>  <path>' -> (hash, Path)."""
+    parts = line.strip().split("  ", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Expected '<hash>  <path>', got: {line}")
+    return parts[0], Path(parts[1])
+
+
 _cached_executable: Path | None = None
 
 
