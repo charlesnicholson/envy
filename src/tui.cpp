@@ -72,8 +72,8 @@ struct tui {
 struct section_state {
   unsigned handle;
   envy::tui::section_frame cached_frame;
-  bool has_content{ false };   // True after first set_content call
-  bool complete{ false };      // Suppresses fallback rendering
+  bool has_content{ false };  // True after first set_content call
+  bool complete{ false };     // Suppresses fallback rendering
 
   std::string last_fallback_output;
   std::chrono::steady_clock::time_point last_fallback_print_time;
@@ -1115,6 +1115,16 @@ void section_set_complete(section_handle h) {
       it != s_progress.sections.end()) {
     it->complete = true;
   }
+}
+
+void section_delete(section_handle h) {
+  if (h == 0 || !s_progress.enabled) { return; }
+
+  std::lock_guard lock{ s_tui.mutex };
+
+  auto it{ std::ranges::find_if(s_progress.sections,
+                                [h](auto const &sec) { return sec.handle == h; }) };
+  if (it != s_progress.sections.end()) { s_progress.sections.erase(it); }
 }
 
 bool section_has_content(section_handle h) {

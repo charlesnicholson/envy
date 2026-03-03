@@ -431,8 +431,8 @@ TEST_CASE("trace_event_to_json escapes special characters") {
   // Test control character escaping (control character \x01 represented as \u0001)
   json = envy::trace_event_to_json(envy::trace_events::cache_hit{
       .spec = std::string("r\x01"
-                            "ctrl",
-                            6),
+                          "ctrl",
+                          6),
       .cache_key = "key",
       .pkg_path = "path",
   });
@@ -1262,6 +1262,87 @@ TEST_CASE("pad_to_width - handles tabs") {
   std::string result = envy::tui::test::pad_to_width(s, 5);
   CHECK(result == "a    ");  // 'a' + 4 spaces = 5 visible chars
   CHECK(envy::tui::test::calculate_visible_length(result) == 5);
+}
+
+// ============================================================================
+// section_delete tests
+// ============================================================================
+
+TEST_CASE("section_delete removes section") {
+  auto const h{ envy::tui::section_create() };
+  CHECK(h != envy::tui::kInvalidSection);
+
+  envy::tui::section_set_content(
+      h,
+      envy::tui::section_frame{ .label = "test",
+                                .content =
+                                    envy::tui::static_text_data{ .text = "hello" } });
+  CHECK(envy::tui::section_has_content(h));
+
+  envy::tui::section_delete(h);
+  CHECK_FALSE(envy::tui::section_has_content(h));
+}
+
+TEST_CASE("section_delete with invalid handle is a no-op") {
+  // Should not crash or throw
+  envy::tui::section_delete(envy::tui::kInvalidSection);
+}
+
+TEST_CASE("section_delete with nonexistent handle is a no-op") {
+  envy::tui::section_delete(99999);
+}
+
+TEST_CASE("section_delete does not affect other sections") {
+  auto const h1{ envy::tui::section_create() };
+  auto const h2{ envy::tui::section_create() };
+
+  envy::tui::section_set_content(
+      h1,
+      envy::tui::section_frame{ .label = "first",
+                                .content = envy::tui::static_text_data{ .text = "a" } });
+  envy::tui::section_set_content(
+      h2,
+      envy::tui::section_frame{ .label = "second",
+                                .content = envy::tui::static_text_data{ .text = "b" } });
+
+  CHECK(envy::tui::section_has_content(h1));
+  CHECK(envy::tui::section_has_content(h2));
+
+  envy::tui::section_delete(h1);
+  CHECK_FALSE(envy::tui::section_has_content(h1));
+  CHECK(envy::tui::section_has_content(h2));
+
+  envy::tui::section_delete(h2);
+  CHECK_FALSE(envy::tui::section_has_content(h2));
+}
+
+TEST_CASE("section_delete after set_complete") {
+  auto const h{ envy::tui::section_create() };
+  envy::tui::section_set_content(
+      h,
+      envy::tui::section_frame{ .label = "done",
+                                .content =
+                                    envy::tui::static_text_data{ .text = "finished" } });
+  envy::tui::section_set_complete(h);
+  CHECK(envy::tui::section_has_content(h));
+
+  envy::tui::section_delete(h);
+  CHECK_FALSE(envy::tui::section_has_content(h));
+}
+
+TEST_CASE("section_delete double delete is a no-op") {
+  auto const h{ envy::tui::section_create() };
+  envy::tui::section_set_content(
+      h,
+      envy::tui::section_frame{ .label = "test",
+                                .content = envy::tui::static_text_data{ .text = "x" } });
+
+  envy::tui::section_delete(h);
+  CHECK_FALSE(envy::tui::section_has_content(h));
+
+  // Second delete should be a no-op
+  envy::tui::section_delete(h);
+  CHECK_FALSE(envy::tui::section_has_content(h));
 }
 
 #endif  // ENVY_UNIT_TEST

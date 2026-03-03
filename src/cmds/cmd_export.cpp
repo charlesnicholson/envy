@@ -14,6 +14,7 @@
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -22,18 +23,20 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace envy {
 namespace {
 
-void export_one_package(pkg *p,
-                        std::filesystem::path const &output_dir,
-                        std::optional<std::string> const &depot_prefix) {
-  if (p->type != pkg_type::CACHE_MANAGED) {
-    tui::warn("export: skipping non-cache-managed package %s",
-              std::string(p->key.identity()).c_str());
-    return;
-  }
+struct export_result {
+  tui::section_handle section;
+  std::string output_line;
+};
+
+export_result export_one_package(pkg *p,
+                                 std::filesystem::path const &output_dir,
+                                 std::optional<std::string> const &depot_prefix) {
+  if (p->type != pkg_type::CACHE_MANAGED) { return export_result{}; }
 
   sol::state_view lua{ *p->lua };
   sol::object exportable_obj{ lua["EXPORTABLE"] };
@@ -114,19 +117,27 @@ void export_one_package(pkg *p,
         return true;
       });
 
+  // Hash the archive (always — output format is always <hash>  <path>)
+  tui::section_set_content(
+      section,
+      tui::section_frame{ .label = label,
+                          .content = tui::spinner_data{
+                              .text = "hashing...",
+                              .start_time = std::chrono::steady_clock::now() } });
+
+  auto const hash{ sha256(output_path) };
+  auto const hex{ util_bytes_to_hex(hash.data(), hash.size()) };
+
   tui::section_set_content(
       section,
       tui::section_frame{ .label = label,
                           .content = tui::static_text_data{ .text = "done" } });
   tui::section_set_complete(section);
 
-  if (depot_prefix) {
-    auto const hash{ sha256(output_path) };
-    auto const hex{ util_bytes_to_hex(hash.data(), hash.size()) };
-    tui::print_stdout("%s  %s%s\n", hex.c_str(), depot_prefix->c_str(), filename.c_str());
-  } else {
-    tui::print_stdout("%s\n", output_path.string().c_str());
-  }
+  std::string const path_part{ depot_prefix ? (*depot_prefix + filename)
+                                            : output_path.string() };
+
+  return export_result{ .section = section, .output_line = hex + "  " + path_part + "\n" };
 }
 
 }  // namespace
@@ -213,31 +224,57 @@ void cmd_export::execute() {
     }
   }
 
+  struct indexed_result {
+    std::size_t index;
+    export_result result;
+  };
+
   std::vector<std::thread> workers;
   std::atomic_bool had_error{ false };
-  std::mutex error_mutex;
+  std::mutex result_mutex;
   std::string first_error;
+  std::vector<indexed_result> results;
 
   workers.reserve(targets.size());
-  for (auto const *cfg : targets) {
-    pkg_key const key{ *cfg };
+  for (std::size_t i{ 0 }; i < targets.size(); ++i) {
+    pkg_key const key{ *targets[i] };
     pkg *p{ eng.find_exact(key) };
     if (!p) {
       throw std::runtime_error("export: spec not found in graph for " +
                                std::string(key.identity()));
     }
-    workers.emplace_back([p, &output_dir, &had_error, &error_mutex, &first_error, this] {
-      try {
-        export_one_package(p, output_dir, cfg_.depot_prefix);
-      } catch (std::exception const &e) {
-        std::lock_guard lock{ error_mutex };
-        if (!had_error.exchange(true)) { first_error = e.what(); }
-      }
-    });
+    workers.emplace_back(
+        [p, i, &output_dir, &had_error, &result_mutex, &first_error, &results, this] {
+          try {
+            auto r{ export_one_package(p, output_dir, cfg_.depot_prefix) };
+            std::lock_guard lock{ result_mutex };
+            results.push_back(indexed_result{ .index = i, .result = std::move(r) });
+          } catch (std::exception const &e) {
+            std::lock_guard lock{ result_mutex };
+            if (!had_error.exchange(true)) { first_error = e.what(); }
+          }
+        });
   }
 
   for (auto &w : workers) { w.join(); }
   if (had_error) { throw std::runtime_error(first_error); }
+
+  // Sort by original index for deterministic output order
+  std::sort(results.begin(), results.end(), [](auto const &a, auto const &b) {
+    return a.index < b.index;
+  });
+
+  // Delete all sections, then print all output lines
+  for (auto const &ir : results) {
+    if (ir.result.section != tui::kInvalidSection) {
+      tui::section_delete(ir.result.section);
+    }
+  }
+  for (auto const &ir : results) {
+    if (!ir.result.output_line.empty()) {
+      tui::print_stdout("%s", ir.result.output_line.c_str());
+    }
+  }
 }
 
 }  // namespace envy
