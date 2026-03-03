@@ -47,7 +47,8 @@ def snapshot_tree(root: Path) -> dict[str, bytes]:
 def parse_export_line(line):
     """Parse an export output line '<hash>  <path>' -> (hash, Path)."""
     parts = line.strip().split("  ", 1)
-    assert len(parts) == 2, f"Expected '<hash>  <path>', got: {line}"
+    if len(parts) != 2:
+        raise ValueError(f"Expected '<hash>  <path>', got: {line}")
     return parts[0], Path(parts[1])
 
 

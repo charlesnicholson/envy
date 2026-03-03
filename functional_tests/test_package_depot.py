@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
+from .test_export_import import parse_export_line
 
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Test file content\n",
@@ -252,9 +253,8 @@ class TestPackageDepot(unittest.TestCase):
             line = line.strip()
             if not line:
                 continue
-            parts = line.split("  ", 1)
-            self.assertEqual(len(parts), 2, f"Expected '<hash>  <path>', got: {line}")
-            paths.append(Path(parts[1]))
+            _, p = parse_export_line(line)
+            paths.append(p)
         return paths
 
     def _start_server(self):
@@ -801,9 +801,8 @@ class TestImportManifest(unittest.TestCase):
             line = line.strip()
             if not line:
                 continue
-            parts = line.split("  ", 1)
-            self.assertEqual(len(parts), 2, f"Expected '<hash>  <path>', got: {line}")
-            paths.append(Path(parts[1]))
+            _, p = parse_export_line(line)
+            paths.append(p)
         return paths
 
     def _make_manifest(self):
