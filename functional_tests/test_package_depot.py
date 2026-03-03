@@ -17,8 +17,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import test_config
-from .test_config import make_manifest
-from .test_export_import import parse_export_line
+from .test_config import make_manifest, parse_export_line
 
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Test file content\n",

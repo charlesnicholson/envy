@@ -146,6 +146,8 @@ export_result export_one_package(pkg *p,
                           .output_line = hex + "  " + path_part + "\n" };
   } catch (...) {
     tui::section_delete(section);
+    std::error_code ec;
+    std::filesystem::remove(output_path, ec);
     throw;
   }
 }
