@@ -28,13 +28,19 @@ std::once_flag g_init_once;
 std::mutex g_state_mutex;
 bool g_initialized{ false };
 
-std::once_flag g_transfer_once;
-std::shared_ptr<Aws::S3::S3Client> g_s3_client;
-std::shared_ptr<Aws::Transfer::TransferManager> g_transfer_manager;
+// Per-region TransferManager cache.
+struct transfer_context {
+  std::shared_ptr<Aws::S3::S3Client> client;
+  std::shared_ptr<Aws::Transfer::TransferManager> manager;
+};
+
+std::mutex g_transfer_mutex;
+std::unordered_map<std::string, transfer_context> g_transfer_contexts;
 
 struct progress_entry {  // Per-download progress state, keyed by destination file path.
   fetch_progress_cb_t cb;
   std::uint64_t last_reported{ 0 };
+  bool cancelled{ false };
 };
 
 std::mutex g_progress_mutex;
@@ -70,23 +76,34 @@ void on_download_progress(
   if (total > 0) { content_length = total; }
   fetch_progress_t payload{ std::in_place_type<fetch_transfer_progress>,
                             fetch_transfer_progress{ transferred, content_length } };
-  cb(payload);
+  if (!cb(payload)) {
+    std::lock_guard<std::mutex> lock{ g_progress_mutex };
+    auto const it{ g_progress_map.find(dest) };
+    if (it != g_progress_map.end()) { it->second.cancelled = true; }
+  }
 }
 
-void ensure_transfer_manager() {
-  std::call_once(g_transfer_once, [] {
-    Aws::Client::ClientConfiguration config;
-    g_s3_client = Aws::MakeShared<Aws::S3::S3Client>(kAllocationTag, config);
+transfer_context &get_transfer_context(std::string const &region) {
+  std::lock_guard<std::mutex> lock{ g_transfer_mutex };
+  auto const it{ g_transfer_contexts.find(region) };
+  if (it != g_transfer_contexts.end()) { return it->second; }
 
-    Aws::Transfer::TransferManagerConfiguration tm_config(nullptr);
-    tm_config.s3Client = g_s3_client;
-    tm_config.downloadProgressCallback = on_download_progress;
-    tm_config.executorCreateFn = [] {
-      return Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(kAllocationTag,
-                                                                          8);
-    };
-    g_transfer_manager = Aws::Transfer::TransferManager::Create(tm_config);
-  });
+  Aws::Client::ClientConfiguration config;
+  if (!region.empty()) { config.region = Aws::String(region.c_str()); }
+  auto client{ Aws::MakeShared<Aws::S3::S3Client>(kAllocationTag, config) };
+
+  Aws::Transfer::TransferManagerConfiguration tm_config(nullptr);
+  tm_config.s3Client = client;
+  tm_config.downloadProgressCallback = on_download_progress;
+  tm_config.executorCreateFn = [] {
+    return Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(kAllocationTag, 8);
+  };
+  auto manager{ Aws::Transfer::TransferManager::Create(tm_config) };
+
+  auto [inserted, _] = g_transfer_contexts.emplace(
+      region,
+      transfer_context{ std::move(client), std::move(manager) });
+  return inserted->second;
 }
 
 struct s3_uri_parts {
@@ -125,8 +142,10 @@ void aws_init() {
 void aws_shutdown() {
   std::lock_guard<std::mutex> lock{ g_state_mutex };
   if (!g_initialized) { return; }
-  g_transfer_manager.reset();
-  g_s3_client.reset();
+  {
+    std::lock_guard<std::mutex> tl{ g_transfer_mutex };
+    g_transfer_contexts.clear();
+  }
   g_initialized = false;
   Aws::ShutdownAPI(g_options);
 }
@@ -157,7 +176,9 @@ std::filesystem::path aws_s3_download(s3_download_request const &request) {
   }
 
   aws_init();
-  ensure_transfer_manager();
+
+  std::string const region{ request.region.value_or("") };
+  auto &ctx{ get_transfer_context(region) };
 
   std::string const dest_str{ resolved_destination.string() };
 
@@ -166,16 +187,22 @@ std::filesystem::path aws_s3_download(s3_download_request const &request) {
     g_progress_map.insert_or_assign(dest_str, progress_entry{ request.progress });
   }
 
-  auto handle{ g_transfer_manager->DownloadFile(Aws::String(parts.bucket.c_str()),
-                                                Aws::String(parts.key.c_str()),
-                                                Aws::String(dest_str.c_str())) };
+  auto handle{ ctx.manager->DownloadFile(Aws::String(parts.bucket.c_str()),
+                                         Aws::String(parts.key.c_str()),
+                                         Aws::String(dest_str.c_str())) };
 
   handle->WaitUntilFinished();
 
-  // Deregister progress callback.
-  {
-    std::lock_guard<std::mutex> lock{ g_progress_mutex };
-    g_progress_map.erase(dest_str);
+  if (auto const was_cancelled{ [&] {  // Deregister callback and check cancellation.
+        std::lock_guard<std::mutex> lock{ g_progress_mutex };
+        auto const it{ g_progress_map.find(dest_str) };
+        if (it == g_progress_map.end()) { return false; }
+        bool const c{ it->second.cancelled };
+        g_progress_map.erase(it);
+        return c;
+      }() }) {
+    handle->Cancel();
+    throw std::runtime_error("aws_s3_download: transfer cancelled by progress callback");
   }
 
   auto const status{ handle->GetStatus() };

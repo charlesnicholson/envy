@@ -35,9 +35,14 @@ struct export_result {
 
 export_result export_one_package(pkg *p,
                                  std::filesystem::path const &output_dir,
-                                 std::optional<std::string> const &depot_prefix) {
+                                 std::optional<std::string> const &depot_prefix,
+                                 bool explicitly_requested) {
   if (p->type != pkg_type::CACHE_MANAGED) {
-    return export_result{ .section = tui::kInvalidSection, .output_line = {} };
+    std::string msg;
+    if (explicitly_requested) {
+      msg = "skipped non-cache-managed package " + std::string(p->key.identity());
+    }
+    return export_result{ .section = tui::kInvalidSection, .output_line = std::move(msg) };
   }
 
   sol::state_view lua{ *p->lua };
@@ -253,17 +258,25 @@ void cmd_export::execute() {
       throw std::runtime_error("export: spec not found in graph for " +
                                std::string(key.identity()));
     }
-    workers.emplace_back(
-        [p, i, &output_dir, &had_error, &result_mutex, &first_error, &results, this] {
-          try {
-            auto r{ export_one_package(p, output_dir, cfg_.depot_prefix) };
-            std::lock_guard lock{ result_mutex };
-            results.push_back(indexed_result{ .index = i, .result = std::move(r) });
-          } catch (std::exception const &e) {
-            std::lock_guard lock{ result_mutex };
-            if (!had_error.exchange(true)) { first_error = e.what(); }
-          }
-        });
+    bool const explicit_query{ !cfg_.queries.empty() };
+    workers.emplace_back([p,
+                          i,
+                          explicit_query,
+                          &output_dir,
+                          &had_error,
+                          &result_mutex,
+                          &first_error,
+                          &results,
+                          this] {
+      try {
+        auto r{ export_one_package(p, output_dir, cfg_.depot_prefix, explicit_query) };
+        std::lock_guard lock{ result_mutex };
+        results.push_back(indexed_result{ .index = i, .result = std::move(r) });
+      } catch (std::exception const &e) {
+        std::lock_guard lock{ result_mutex };
+        if (!had_error.exchange(true)) { first_error = e.what(); }
+      }
+    });
   }
 
   for (auto &w : workers) { w.join(); }

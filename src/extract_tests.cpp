@@ -202,6 +202,22 @@ TEST_CASE("compute_extract_totals counts uncompressed archive bytes and plain fi
   std::filesystem::remove_all(dest);
 }
 
+TEST_CASE("compute_archive_totals counts files and bytes in a single archive") {
+  auto const archive{ std::filesystem::path("test_data/archives/test.tar.gz") };
+
+  // Ground truth: extract and sum uncompressed regular file sizes
+  auto const dest{ make_temp_dir() };
+  auto const files_extracted{ envy::extract(archive, dest) };
+  REQUIRE(files_extracted == 5);
+  std::uint64_t const expected_bytes{ sum_file_sizes(dest) };
+
+  envy::extract_totals const totals{ envy::compute_archive_totals(archive) };
+  CHECK(totals.files == 5);
+  CHECK(totals.bytes == expected_bytes);
+
+  std::filesystem::remove_all(dest);
+}
+
 TEST_CASE("extract different archive formats with strip") {
   auto const test_archives{ std::vector<std::string>{
       "test.tar",
