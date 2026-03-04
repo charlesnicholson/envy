@@ -166,6 +166,7 @@ target_link_libraries(envy_thirdparty
         semver::semver
         picojson::picojson
         AWS::aws-cpp-sdk-s3
+        AWS::aws-cpp-sdk-transfer
         AWS::aws-cpp-sdk-sso
         AWS::aws-cpp-sdk-sso-oidc
         aws-crt-cpp

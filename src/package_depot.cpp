@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "fetch.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "util.h"
 
 #include <cctype>
@@ -134,6 +135,21 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
   }
 
   if (!requests.empty()) {
+    auto const section{ tui::section_create() };
+
+    std::vector<std::string> labels;
+    labels.reserve(requests.size());
+    for (auto idx : request_to_download) {
+      auto const &url{ downloads[idx].url };
+      auto const slash{ url.rfind('/') };
+      labels.push_back(slash != std::string::npos ? url.substr(slash + 1) : url);
+    }
+
+    tui_actions::fetch_all_progress_tracker tracker{ section, "depot", labels };
+    for (size_t i{ 0 }; i < requests.size(); ++i) {
+      std::visit([&](auto &r) { r.progress = tracker.make_callback(i); }, requests[i]);
+    }
+
     auto const results{ fetch(requests) };
 
     for (size_t req_idx{ 0 }; req_idx < results.size(); ++req_idx) {
@@ -156,6 +172,8 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
                   error ? error->c_str() : "unknown error");
       }
     }
+
+    tui::section_delete(section);
   }
 
   // Parse all downloaded manifests

@@ -38,7 +38,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
 // Create tar.zst archive from source_dir contents, stored under prefix/ (e.g., "pkg/").
-// Returns number of files archived. Optional progress callback invoked per-header and per-chunk.
+// Returns number of files archived. Optional progress callback invoked per-header and
+// per-chunk.
 std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
                                      std::filesystem::path const &source_dir,
                                      std::string const &prefix,
@@ -53,8 +54,11 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                           std::string const &pkg_identity,
                           tui::section_handle section);
 
+// Pre-scan a single archive to count files and total uncompressed bytes.
+extract_totals compute_archive_totals(std::filesystem::path const &archive_path);
+
 #ifdef ENVY_UNIT_TEST
-// Exposed for unit tests only - computes totals by scanning archives
+// Exposed for unit tests only - computes totals by scanning archives in a directory
 extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir);
 #endif
 
