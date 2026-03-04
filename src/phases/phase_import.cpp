@@ -10,8 +10,10 @@
 #include "sha256.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "util.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -52,6 +54,8 @@ void run_import_phase(pkg *p, engine &eng) {
              p->cfg->identity.c_str(),
              location->url.c_str());
 
+  std::string const label{ "[" + p->cfg->identity + "]" };
+
   try {
     fs::path archive_path;
 
@@ -66,6 +70,11 @@ void run_import_phase(pkg *p, engine &eng) {
 
       std::vector<fetch_request> requests;
       requests.push_back(fetch_request_from_url(location->url, archive_path));
+
+      tui_actions::fetch_progress_tracker tracker{ p->tui_section,
+                                                   p->cfg->identity,
+                                                   location->url };
+      std::visit([&](auto &r) { r.progress = tracker; }, requests[0]);
 
       auto const results{ fetch(requests) };
       if (results.empty() || !std::holds_alternative<fetch_result>(results[0])) {
@@ -83,7 +92,7 @@ void run_import_phase(pkg *p, engine &eng) {
     if (location->sha256) {
       tui::section_set_content(
           p->tui_section,
-          tui::section_frame{ .label = "[" + p->cfg->identity + "]",
+          tui::section_frame{ .label = label,
                               .content = tui::spinner_data{
                                   .text = "verifying SHA256...",
                                   .start_time = std::chrono::steady_clock::now() } });
@@ -102,7 +111,60 @@ void run_import_phase(pkg *p, engine &eng) {
     // entry_path is lock->install_dir().parent_path()
     fs::path const entry_path{ p->lock->install_dir().parent_path() };
 
-    extract(archive_path, entry_path);
+    // Pre-scan archive for totals, then extract with progress bar.
+    tui::section_set_content(
+        p->tui_section,
+        tui::section_frame{ .label = label,
+                            .content = tui::spinner_data{
+                                .text = "analyzing archive...",
+                                .start_time = std::chrono::steady_clock::now() } });
+
+    auto const totals{ compute_archive_totals(archive_path) };
+
+    std::uint64_t files_done{ 0 };
+    std::uint64_t bytes_done{ 0 };
+    fs::path last_file;
+
+    extract_options opts{ .progress = [&](extract_progress const &ep) -> bool {
+      bytes_done = ep.bytes_processed;
+      if (ep.is_regular_file && ep.current_entry != last_file) {
+        ++files_done;
+        last_file = ep.current_entry;
+      }
+
+      double percent{ 0.0 };
+      if (totals.files > 0) {
+        percent =
+            std::min(100.0, (files_done / static_cast<double>(totals.files)) * 100.0);
+      } else if (totals.bytes > 0) {
+        percent =
+            std::min(100.0, (bytes_done / static_cast<double>(totals.bytes)) * 100.0);
+      }
+
+      std::string status;
+      status.reserve(64);
+      status += std::to_string(files_done);
+      if (totals.files > 0) {
+        status += "/";
+        status += std::to_string(totals.files);
+      }
+      status += " files";
+      if (totals.bytes > 0) {
+        status += " ";
+        status += util_format_bytes(bytes_done);
+        status += "/";
+        status += util_format_bytes(totals.bytes);
+      }
+
+      tui::section_set_content(
+          p->tui_section,
+          tui::section_frame{
+              .label = label,
+              .content = tui::progress_data{ .percent = percent, .status = status } });
+      return true;
+    } };
+
+    extract(archive_path, entry_path, opts);
 
     bool const has_install{ directory_has_entries(p->lock->install_dir()) };
     bool const has_fetch{ directory_has_entries(p->lock->fetch_dir()) };
@@ -111,11 +173,19 @@ void run_import_phase(pkg *p, engine &eng) {
       p->lock->mark_install_complete();
       p->pkg_path = p->lock->install_dir();
       p->lock.reset();
+      tui::section_set_content(
+          p->tui_section,
+          tui::section_frame{ .label = label,
+                              .content = tui::static_text_data{ .text = "imported" } });
       tui::debug("phase import: [%s] depot import complete at %s",
                  p->cfg->identity.c_str(),
                  p->pkg_path.string().c_str());
     } else if (has_fetch) {
       p->lock->mark_fetch_complete();
+      tui::section_set_content(p->tui_section,
+                               tui::section_frame{ .label = label,
+                                                   .content = tui::static_text_data{
+                                                       .text = "imported (fetch)" } });
       tui::debug("phase import: [%s] depot fetch-only import, build phases will continue",
                  p->cfg->identity.c_str());
     } else {

@@ -490,6 +490,33 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
          archive_extensions.contains(path.stem().extension().string() + ext);
 }
 
+extract_totals compute_archive_totals(std::filesystem::path const &archive_path) {
+  extract_totals totals{};
+  archive_reader reader;
+  if (archive_read_open_filename(reader.handle, archive_path.string().c_str(), 10240) !=
+      ARCHIVE_OK) {
+    throw std::runtime_error(std::string("compute_archive_totals: failed to open ") +
+                             archive_path.string() + ": " +
+                             archive_error_string(reader.handle));
+  }
+
+  archive_entry *entry{ nullptr };
+  while (true) {
+    int const r{ archive_read_next_header(reader.handle, &entry) };
+    if (r == ARCHIVE_EOF) { break; }
+    if (r != ARCHIVE_OK) {
+      throw std::runtime_error(std::string("compute_archive_totals: header error in ") +
+                               archive_path.string() + ": " +
+                               archive_error_string(reader.handle));
+    }
+    if (archive_entry_filetype(entry) != AE_IFREG) { continue; }
+    la_int64_t const size{ archive_entry_size(entry) };
+    if (size > 0) { totals.bytes += static_cast<std::uint64_t>(size); }
+    ++totals.files;
+  }
+  return totals;
+}
+
 extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
   extract_totals totals{};
   if (!std::filesystem::exists(fetch_dir)) { return totals; }

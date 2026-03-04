@@ -37,8 +37,7 @@ export_result export_one_package(pkg *p,
                                  std::filesystem::path const &output_dir,
                                  std::optional<std::string> const &depot_prefix) {
   if (p->type != pkg_type::CACHE_MANAGED) {
-    throw std::runtime_error("export: package " + std::string(p->key.identity()) +
-                             " is not cache-managed and cannot be exported");
+    return export_result{ .section = tui::kInvalidSection, .output_line = {} };
   }
 
   sol::state_view lua{ *p->lua };
@@ -113,12 +112,11 @@ export_result export_one_package(pkg *p,
                    << util_format_bytes(total_bytes);
           }
 
-          tui::section_set_content(
-              section,
-              tui::section_frame{
-                  .label = label,
-                  .content = tui::progress_data{ .percent = percent,
-                                                 .status = status.str() } });
+          tui::section_set_content(section,
+                                   tui::section_frame{ .label = label,
+                                                       .content = tui::progress_data{
+                                                           .percent = percent,
+                                                           .status = status.str() } });
           return true;
         });
 
