@@ -148,7 +148,7 @@ void cmd_init::execute() {
   }
 
   write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.deploy, cfg_.root);
-  write_luarc(cfg_.project_dir, extract_lua_ls_types());
+  write_luarc(cfg_.project_dir, extract_lua_ls_types(c->root()));
 
   tui::info("");
   tui::info("Initialized envy project.");
