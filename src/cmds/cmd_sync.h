@@ -20,6 +20,7 @@ class cmd_sync : public cmd {
     bool strict = false;  // If true, error on non-envy-managed product script conflicts
     bool subproject = false;    // If true, use nearest manifest instead of root
     std::string platform_flag;  // "posix", "windows", "all", or empty (current OS)
+    bool ignore_depot = false;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

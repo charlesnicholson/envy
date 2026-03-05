@@ -25,6 +25,9 @@ void cmd_install::register_cli(CLI::App &app, std::function<void(cfg)> on_select
                   cfg_ptr->queries,
                   "Package queries to install (install all if omitted)");
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
+  sub->add_flag("--ignore-depot",
+                cfg_ptr->ignore_depot,
+                "Ignore package depot; rebuild from source");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -64,6 +67,7 @@ void cmd_install::execute() {
   if (targets.empty()) { return; }
 
   engine eng{ *c, m.get() };
+  if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
   auto result{ eng.run_full(targets) };
 
   size_t failed{ 0 };

@@ -16,6 +16,7 @@ class cmd_package : public cmd {
   struct cfg : cmd_cfg<cmd_package> {
     std::string identity;  // Required: "namespace.name@version"
     std::optional<std::filesystem::path> manifest_path;
+    bool ignore_depot = false;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

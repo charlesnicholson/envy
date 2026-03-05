@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <unordered_set>
@@ -490,7 +491,12 @@ void engine::set_depot_index(package_depot_index idx) {
   depot_pre_set_ = true;
 }
 
+void engine::set_ignore_depot(bool ignore) { depot_ignored_ = ignore; }
+
 package_depot_index const *engine::depot_index() const {
+  if (depot_ignored_) { return nullptr; }
+  if (std::getenv("ENVY_IGNORE_DEPOT")) { return nullptr; }
+
   // Pre-set index (set before thread creation, safe to read without synchronization)
   if (depot_pre_set_) { return &*depot_index_; }
 

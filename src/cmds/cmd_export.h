@@ -19,6 +19,7 @@ class cmd_export : public cmd {
     std::optional<std::filesystem::path> output_dir;
     std::optional<std::filesystem::path> manifest_path;
     std::optional<std::string> depot_prefix;
+    bool ignore_depot = false;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);

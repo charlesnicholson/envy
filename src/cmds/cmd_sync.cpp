@@ -44,6 +44,9 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
                   cfg_ptr->platform_flag,
                   "Script platform: posix, windows, or all (default: current OS)")
       ->check(CLI::IsMember({ "posix", "windows", "all" }));
+  sub->add_flag("--ignore-depot",
+                cfg_ptr->ignore_depot,
+                "Ignore package depot; rebuild from source");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -107,6 +110,7 @@ void cmd_sync::execute() {
 
   // Install packages (full build pipeline)
   engine eng{ *c, m.get() };
+  if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
   auto result{ eng.run_full(targets) };
 
   size_t failed{ 0 };

@@ -119,6 +119,7 @@ class engine : unmovable {
 
   manifest const *get_manifest() const;
   void set_depot_index(package_depot_index idx);
+  void set_ignore_depot(bool ignore);
   package_depot_index const *depot_index() const;
 
 #ifdef ENVY_UNIT_TEST
@@ -134,6 +135,7 @@ class engine : unmovable {
   mutable std::once_flag depot_init_flag_;
   mutable std::optional<package_depot_index> depot_index_;  // Lazy
   std::atomic_bool depot_pre_set_{ false };
+  std::atomic_bool depot_ignored_{ false };
 
   void notify_all_global_locked();
   void run_pkg_thread(pkg *p);  // Thread entry point
