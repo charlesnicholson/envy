@@ -5,14 +5,12 @@ FETCH = "https://www.colm.net/files/ragel/ragel-6.10.tar.gz"
 STAGE = { strip = 1 }
 
 BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.run(envy.template([[
+  return envy.template([[
   ./configure --prefix={{prefix}}
   make -j
-]], { prefix = install_dir }))
+]], { prefix = install_dir })
 end
 
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.run("make install", { cwd = stage_dir })
-end
+INSTALL = "make install"
 
 PRODUCTS = { ragel = "bin/ragel" }

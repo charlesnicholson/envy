@@ -100,10 +100,10 @@ bool run_programmatic_install(sol::protected_function install_func,
                               bool is_user_managed) {
   tui::debug("phase install: running programmatic install function");
 
-  // Determine run_dir: install_dir for cache-managed, project_root for user-managed
+  // Determine run_dir: stage_dir for cache-managed, project_root for user-managed
   std::filesystem::path const run_dir{ is_user_managed
                                            ? pkg_cfg::compute_project_root(p->cfg)
-                                           : install_dir };
+                                           : stage_dir };
 
   // Set up Lua registry context for envy.* functions
   phase_context_guard ctx_guard{ &eng, p, run_dir };
@@ -139,10 +139,10 @@ bool run_programmatic_install(sol::protected_function install_func,
     std::string const returned_script{ result_obj.as<std::string>() };
     tui::debug("phase install: running returned string from install function");
 
-    // User-managed packages use project_root as cwd, cache-managed use install_dir
+    // User-managed packages use project_root as cwd, cache-managed use stage_dir
     std::filesystem::path const string_cwd{ is_user_managed
                                                 ? pkg_cfg::compute_project_root(p->cfg)
-                                                : install_dir };
+                                                : stage_dir };
 
     // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
     // Cache-managed packages mark on shell exit 0
@@ -212,10 +212,10 @@ void run_install_phase(pkg *p, engine &eng) {
     marked_complete = promote_stage_to_install(lock.get());
   } else if (install_obj.is<std::string>()) {
     // String installs: run command, mark complete only if cache-managed
-    // User-managed packages use manifest dir as cwd, cache-managed use install_dir
+    // User-managed packages use project root as cwd, cache-managed use stage_dir
     std::filesystem::path const string_cwd{ is_user_managed
                                                 ? pkg_cfg::compute_project_root(p->cfg)
-                                                : lock->install_dir() };
+                                                : lock->stage_dir() };
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
                                         string_cwd,

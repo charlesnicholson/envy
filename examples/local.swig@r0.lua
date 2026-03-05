@@ -23,17 +23,17 @@ BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
     return
   end
 
-  envy.run(envy.template([[
+  return envy.template([[
   ./configure --prefix={{prefix}}
   make -j
-]], { prefix = install_dir }))
+]], { prefix = install_dir })
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
   if envy.PLATFORM == "windows" then
     envy.move(stage_dir .. "swig.exe", install_dir .. "swig.exe")
   else
-    envy.run("make install", { cwd = stage_dir })
+    return "make install"
   end
 end
 

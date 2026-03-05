@@ -1110,9 +1110,9 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 
   -- Also write INSTALL's view of install_dir
   if envy.PLATFORM == "windows" then
-    envy.run('Set-Content -Path install_install_dir.txt -Value "' .. install_dir .. '"', {{ shell = ENVY_SHELL.POWERSHELL }})
+    envy.run('Set-Content -Path "' .. install_dir .. 'install_install_dir.txt" -Value "' .. install_dir .. '"', {{ shell = ENVY_SHELL.POWERSHELL }})
   else
-    envy.run('echo "' .. install_dir .. '" > install_install_dir.txt')
+    envy.run('echo "' .. install_dir .. '" > "' .. install_dir .. 'install_install_dir.txt"')
   end
 end
 """
@@ -1191,11 +1191,11 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- Simulate make install: copy from stage to install_dir/bin
   if envy.PLATFORM == "windows" then
     envy.run([[
-      New-Item -ItemType Directory -Path bin -Force | Out-Null
-      Copy-Item -Path ]] .. stage_dir .. [[staged_bin/mytool.txt -Destination bin/mytool.txt
+      New-Item -ItemType Directory -Path "]] .. install_dir .. [[bin" -Force | Out-Null
+      Copy-Item -Path staged_bin/mytool.txt -Destination "]] .. install_dir .. [[bin/mytool.txt"
     ]], {{ shell = ENVY_SHELL.POWERSHELL }})
   else
-    envy.run("mkdir -p bin && cp " .. stage_dir .. "staged_bin/mytool.txt bin/")
+    envy.run("mkdir -p " .. install_dir .. "bin && cp staged_bin/mytool.txt " .. install_dir .. "bin/")
   end
 
   -- Copy the configured prefix for verification
