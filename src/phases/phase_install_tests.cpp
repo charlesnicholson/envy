@@ -602,4 +602,76 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK(!p->pkg_path.empty());
 }
 
+// ============================================================================
+// Install phase cwd tests (cache-managed packages use stage_dir as cwd)
+// ============================================================================
+
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "string install cwd is stage_dir for cache-managed packages") {
+  clear_check_verb();
+  acquire_lock();
+
+  auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
+  auto const cwd_file{ temp_root / "string_install_cwd.txt" };
+  set_install_string("pwd -P > " + cwd_file.string());
+
+  CHECK_NOTHROW(run_install_phase(p.get(), eng));
+
+  REQUIRE(std::filesystem::exists(cwd_file));
+  std::ifstream ifs{ cwd_file };
+  std::string cwd_output;
+  std::getline(ifs, cwd_output);
+  CHECK(cwd_output == expected_cwd);
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "function install envy.run cwd is stage_dir for cache-managed packages") {
+  clear_check_verb();
+  acquire_lock();
+
+  auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
+  auto const cwd_file{ temp_root / "func_install_cwd.txt" };
+  lua_state()["CWD_FILE"] = cwd_file.string();
+
+  set_install_function(R"(
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      envy.run("pwd -P > " .. CWD_FILE)
+    end
+  )");
+
+  CHECK_NOTHROW(run_install_phase(p.get(), eng));
+
+  REQUIRE(std::filesystem::exists(cwd_file));
+  std::ifstream ifs{ cwd_file };
+  std::string cwd_output;
+  std::getline(ifs, cwd_output);
+  CHECK(cwd_output == expected_cwd);
+}
+
+TEST_CASE_FIXTURE(
+    install_test_fixture,
+    "function install returning string cwd is stage_dir for cache-managed packages") {
+  clear_check_verb();
+  acquire_lock();
+
+  auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
+  auto const cwd_file{ temp_root / "returned_string_cwd.txt" };
+  lua_state()["CWD_FILE"] = cwd_file.string();
+
+  set_install_function(R"(
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      return "pwd -P > " .. CWD_FILE
+    end
+  )");
+
+  CHECK_NOTHROW(run_install_phase(p.get(), eng));
+
+  REQUIRE(std::filesystem::exists(cwd_file));
+  std::ifstream ifs{ cwd_file };
+  std::string cwd_output;
+  std::getline(ifs, cwd_output);
+  CHECK(cwd_output == expected_cwd);
+}
+
 }  // namespace envy

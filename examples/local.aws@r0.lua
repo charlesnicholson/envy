@@ -16,10 +16,9 @@ FETCH = function(tmp_dir, opts)
 end
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  envy.run(
-    stage_dir .. "aws/install" ..
-    " --install-dir " .. install_dir .. "aws-cli" ..
-    " --bin-dir " .. install_dir .. "bin")
+  return stage_dir .. "aws/install" ..
+      " --install-dir " .. install_dir .. "aws-cli" ..
+      " --bin-dir " .. install_dir .. "bin"
 end
 
 PRODUCTS = { aws = "bin/aws" }

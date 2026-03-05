@@ -290,8 +290,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.run_spec("check_cwd_manifest", spec, "local.check_cwd_manifest@v1")
 
     def test_install_cwd_cache_managed(self):
-        """Install cwd = install_dir for cache-managed packages."""
-        # Install cwd = install_dir for cache-managed packages
+        """Install cwd = stage_dir for cache-managed packages."""
         spec = """
 IDENTITY = "local.install_cwd_cache@v1"
 function FETCH(tmp_dir, options) end
@@ -306,12 +305,12 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
         or "test -f cwd_marker.txt"
     local res = envy.run(test_cmd, {quiet = true})
     if res.exit_code ~= 0 then error("Marker file not accessible via relative path - cwd issue") end
-    local marker_path = install_dir .. (envy.PLATFORM == "windows" and "\\\\cwd_marker.txt" or "/cwd_marker.txt")
+    local marker_path = stage_dir .. (envy.PLATFORM == "windows" and "\\\\cwd_marker.txt" or "/cwd_marker.txt")
     local test_cmd2 = envy.PLATFORM == "windows"
         and ('if (Test-Path \\'' .. marker_path .. '\\') { exit 0 } else { exit 1 }')
         or ("test -f '" .. marker_path .. "'")
     local res2 = envy.run(test_cmd2, {quiet = true})
-    if res2.exit_code ~= 0 then error("Marker file not in install_dir - cwd was not install_dir") end
+    if res2.exit_code ~= 0 then error("Marker file not in stage_dir - cwd was not stage_dir") end
 end
 """
         self.run_spec("install_cwd_cache", spec, "local.install_cwd_cache@v1")
