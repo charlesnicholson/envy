@@ -4,7 +4,7 @@
 
 #include "semver.hpp"
 
-#include <charconv>
+#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -67,11 +67,11 @@ std::vector<range_constraint> parse_numeric_range(std::string_view range_str) {
                                "'");
     }
 
-    double val;
-    auto [ptr, ec] = std::from_chars(num_str.data(), num_str.data() + num_str.size(), val);
-    if (ec != std::errc{} || ptr != num_str.data() + num_str.size()) {
-      throw std::runtime_error("invalid numeric range token '" + std::string(num_str) +
-                               "'");
+    std::string const num_s{ num_str };
+    char *end_ptr{ nullptr };
+    double const val{ std::strtod(num_s.c_str(), &end_ptr) };
+    if (end_ptr != num_s.c_str() + num_s.size()) {
+      throw std::runtime_error("invalid numeric range token '" + num_s + "'");
     }
 
     constraints.push_back({ comparison, val });
@@ -141,9 +141,9 @@ void validate_single_option(std::string const &key,
         num_val = value.as<double>();
       } else if (value.get_type() == sol::type::string) {
         std::string const val_str{ value.as<std::string>() };
-        auto [ptr, ec] =
-            std::from_chars(val_str.data(), val_str.data() + val_str.size(), num_val);
-        if (ec != std::errc{} || ptr != val_str.data() + val_str.size()) {
+        char *end_ptr{ nullptr };
+        num_val = std::strtod(val_str.c_str(), &end_ptr);
+        if (end_ptr != val_str.c_str() + val_str.size()) {
           throw std::runtime_error(ctx + " value '" + val_str + "' is not numeric for " +
                                    identity);
         }
