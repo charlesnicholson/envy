@@ -613,7 +613,11 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
   auto const cwd_file{ temp_root / "string_install_cwd.txt" };
+#ifdef _WIN32
+  set_install_string("[IO.File]::WriteAllText('" + cwd_file.string() + "', $PWD.Path)");
+#else
   set_install_string("pwd -P > " + cwd_file.string());
+#endif
 
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
@@ -634,11 +638,19 @@ TEST_CASE_FIXTURE(
   auto const cwd_file{ temp_root / "func_install_cwd.txt" };
   lua_state()["CWD_FILE"] = cwd_file.string();
 
+#ifdef _WIN32
+  set_install_function(R"(
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      envy.run("[IO.File]::WriteAllText('" .. CWD_FILE .. "', $PWD.Path)")
+    end
+  )");
+#else
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       envy.run("pwd -P > " .. CWD_FILE)
     end
   )");
+#endif
 
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
@@ -659,13 +671,19 @@ TEST_CASE_FIXTURE(
   auto const cwd_file{ temp_root / "returned_string_cwd.txt" };
   lua_state()["CWD_FILE"] = cwd_file.string();
 
+#ifdef _WIN32
+  set_install_function(R"(
+    function(install_dir, stage_dir, fetch_dir, tmp_dir)
+      return "[IO.File]::WriteAllText('" .. CWD_FILE .. "', $PWD.Path)" end) ");
+#else
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "pwd -P > " .. CWD_FILE
     end
   )");
+#endif
 
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
+      CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
   REQUIRE(std::filesystem::exists(cwd_file));
   std::ifstream ifs{ cwd_file };
