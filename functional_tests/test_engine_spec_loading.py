@@ -466,21 +466,18 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         finally:
             Path(tmp_path).unlink()
 
-    def test_validate_hook_success(self):
-        """VALIDATE nil/true succeeds."""
-        # VALIDATE function returning nil/true (valid)
-        validate_ok_spec = """IDENTITY = "test.validate_ok@v1"
+    # -- OPTIONS table form tests --
 
-VALIDATE = function(opts)
-  if opts and opts.foo then
-    assert(opts.foo == "bar")
-  end
-end
+    def test_options_table_required_present_succeeds(self):
+        """OPTIONS table with required option present succeeds."""
+        spec = """IDENTITY = "test.options_table_ok@v1"
+
+OPTIONS = { version = { required = true } }
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
-        spec_path = self.write_spec("validate_ok.lua", validate_ok_spec)
+        spec_path = self.write_spec("options_table_ok.lua", spec)
 
         result = test_config.run(
             [
@@ -488,7 +485,308 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
-                "test.validate_ok@v1",
+                "test.options_table_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "1.0" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_required_missing_fails(self):
+        """OPTIONS table with required option missing fails."""
+        spec = """IDENTITY = "test.options_table_missing@v1"
+
+OPTIONS = { version = { required = true } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_table_missing.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_table_missing@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("'version' is required", result.stderr)
+
+    def test_options_table_unknown_option_fails(self):
+        """OPTIONS table rejects unknown options."""
+        spec = """IDENTITY = "test.options_table_unknown@v1"
+
+OPTIONS = { version = {} }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_table_unknown.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_table_unknown@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "1", typo = "x" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown option", result.stderr)
+
+    def test_options_table_semver_valid_succeeds(self):
+        """OPTIONS table with semver=true and valid semver succeeds."""
+        spec = """IDENTITY = "test.options_semver_ok@v1"
+
+OPTIONS = { version = { semver = true } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_semver_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_semver_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "1.2.3" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_semver_invalid_fails(self):
+        """OPTIONS table with semver=true and invalid semver fails."""
+        spec = """IDENTITY = "test.options_semver_bad@v1"
+
+OPTIONS = { version = { semver = true } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_semver_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_semver_bad@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "not-semver" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not valid semver", result.stderr)
+
+    def test_options_table_semver_range_pass(self):
+        """OPTIONS table semver range match succeeds."""
+        spec = """IDENTITY = "test.options_range_ok@v1"
+
+OPTIONS = { version = { semver = true, range = ">=1.0.0 <2.0.0" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_range_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_range_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "1.5.0" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_semver_range_fail(self):
+        """OPTIONS table semver range mismatch fails."""
+        spec = """IDENTITY = "test.options_range_bad@v1"
+
+OPTIONS = { version = { semver = true, range = ">=1.0.0 <2.0.0" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_range_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_range_bad@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "3.0.0" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not satisfy range", result.stderr)
+
+    def test_options_table_numeric_range_pass(self):
+        """OPTIONS table numeric range match succeeds."""
+        spec = """IDENTITY = "test.options_numrange_ok@v1"
+
+OPTIONS = { count = { range = ">=1 <10" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_numrange_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_numrange_ok@v1",
+                str(spec_path),
+                "--options",
+                "{ count = 5 }",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_numeric_range_fail(self):
+        """OPTIONS table numeric range mismatch fails."""
+        spec = """IDENTITY = "test.options_numrange_bad@v1"
+
+OPTIONS = { count = { range = ">=1 <10" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_numrange_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_numrange_bad@v1",
+                str(spec_path),
+                "--options",
+                "{ count = 15 }",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not satisfy range", result.stderr)
+
+    def test_options_table_custom_validate_pass(self):
+        """OPTIONS table custom validate returning nil succeeds."""
+        spec = """IDENTITY = "test.options_cv_ok@v1"
+
+OPTIONS = { mode = { validate = function(v) end } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_cv_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_cv_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ mode = "install" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_custom_validate_fail(self):
+        """OPTIONS table custom validate returning string fails."""
+        spec = """IDENTITY = "test.options_cv_bad@v1"
+
+OPTIONS = { mode = { validate = function(v) return "bad mode: " .. v end } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_cv_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_cv_bad@v1",
+                str(spec_path),
+                "--options",
+                '{ mode = "x" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("bad mode", result.stderr)
+
+    def test_options_table_optional_missing_succeeds(self):
+        """OPTIONS table with optional (no required) and absent succeeds."""
+        spec = """IDENTITY = "test.options_opt_ok@v1"
+
+OPTIONS = { version = {} }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_opt_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_opt_ok@v1",
                 str(spec_path),
             ],
             capture_output=True,
@@ -496,19 +794,16 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-    def test_validate_hook_false(self):
-        """VALIDATE returning false fails."""
-        # VALIDATE function returning false (invalid)
-        validate_false_spec = """IDENTITY = "test.validate_false@v1"
+    def test_options_table_empty_schema_no_opts_succeeds(self):
+        """OPTIONS = {} with empty opts succeeds."""
+        spec = """IDENTITY = "test.options_empty@v1"
 
-VALIDATE = function(opts)
-  return false
-end
+OPTIONS = {}
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
-        spec_path = self.write_spec("validate_false.lua", validate_false_spec)
+        spec_path = self.write_spec("options_empty.lua", spec)
 
         result = test_config.run(
             [
@@ -516,7 +811,84 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
-                "test.validate_false@v1",
+                "test.options_empty@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    # -- OPTIONS function form tests --
+
+    def test_options_function_nil_return_succeeds(self):
+        """OPTIONS function returning nil succeeds."""
+        spec = """IDENTITY = "test.options_fn_nil@v1"
+
+OPTIONS = function(opts) end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_fn_nil.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_fn_nil@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_function_true_return_succeeds(self):
+        """OPTIONS function returning true succeeds."""
+        spec = """IDENTITY = "test.options_fn_true@v1"
+
+OPTIONS = function(opts) return true end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_fn_true.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_fn_true@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_function_false_return_fails(self):
+        """OPTIONS function returning false fails."""
+        spec = """IDENTITY = "test.options_fn_false@v1"
+
+OPTIONS = function(opts) return false end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_fn_false.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_fn_false@v1",
                 str(spec_path),
             ],
             capture_output=True,
@@ -525,19 +897,16 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("returned false", result.stderr)
 
-    def test_validate_hook_string(self):
-        """VALIDATE returning string surfaces message."""
-        # VALIDATE function returning error string
-        validate_string_spec = """IDENTITY = "test.validate_string@v1"
+    def test_options_function_string_return_fails(self):
+        """OPTIONS function returning string fails with message."""
+        spec = """IDENTITY = "test.options_fn_string@v1"
 
-VALIDATE = function(opts)
-  return "nope"
-end
+OPTIONS = function(opts) return "nope" end
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
-        spec_path = self.write_spec("validate_string.lua", validate_string_spec)
+        spec_path = self.write_spec("options_fn_string.lua", spec)
 
         result = test_config.run(
             [
@@ -545,7 +914,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
-                "test.validate_string@v1",
+                "test.options_fn_string@v1",
                 str(spec_path),
             ],
             capture_output=True,
@@ -554,19 +923,16 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("nope", result.stderr)
 
-    def test_validate_hook_invalid_return(self):
-        """VALIDATE returning invalid type errors."""
-        # VALIDATE function returning invalid type (number)
-        validate_type_spec = """IDENTITY = "test.validate_type@v1"
+    def test_options_function_invalid_return_type_fails(self):
+        """OPTIONS function returning number fails."""
+        spec = """IDENTITY = "test.options_fn_type@v1"
 
-VALIDATE = function(opts)
-  return 123
-end
+OPTIONS = function(opts) return 123 end
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
-        spec_path = self.write_spec("validate_type.lua", validate_type_spec)
+        spec_path = self.write_spec("options_fn_type.lua", spec)
 
         result = test_config.run(
             [
@@ -574,26 +940,25 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
-                "test.validate_type@v1",
+                "test.options_fn_type@v1",
                 str(spec_path),
             ],
             capture_output=True,
             text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("VALIDATE must return", result.stderr)
+        self.assertIn("OPTIONS must return", result.stderr)
 
-    def test_validate_hook_non_function(self):
-        """VALIDATE non-function errors."""
-        # VALIDATE as non-function (number)
-        validate_nonfn_spec = """IDENTITY = "test.validate_nonfn@v1"
+    def test_options_function_runtime_error_fails(self):
+        """OPTIONS function error bubbles with context."""
+        spec = """IDENTITY = "test.options_fn_error@v1"
 
-VALIDATE = 42
+OPTIONS = function(opts) error("boom") end
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
-        spec_path = self.write_spec("validate_nonfn.lua", validate_nonfn_spec)
+        spec_path = self.write_spec("options_fn_error.lua", spec)
 
         result = test_config.run(
             [
@@ -601,36 +966,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
                 "engine-test",
-                "test.validate_nonfn@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("VALIDATE must be a function", result.stderr)
-
-    def test_validate_hook_runtime_error(self):
-        """VALIDATE error bubbles with context."""
-        # VALIDATE function that raises an error
-        validate_error_spec = """IDENTITY = "test.validate_error@v1"
-
-VALIDATE = function(opts)
-  error("boom")
-end
-
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
-"""
-        spec_path = self.write_spec("validate_error.lua", validate_error_spec)
-
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "test.validate_error@v1",
+                "test.options_fn_error@v1",
                 str(spec_path),
             ],
             capture_output=True,
@@ -638,6 +974,117 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("boom", result.stderr)
+
+    def test_options_function_calls_envy_options_succeeds(self):
+        """OPTIONS function calling envy.options() with valid opts succeeds."""
+        spec = """IDENTITY = "test.options_fn_envy_ok@v1"
+
+OPTIONS = function(opts)
+  envy.options({ version = { required = true } })
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_fn_envy_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_fn_envy_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ version = "1.0" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_function_calls_envy_options_fails(self):
+        """OPTIONS function calling envy.options() with invalid opts fails."""
+        spec = """IDENTITY = "test.options_fn_envy_bad@v1"
+
+OPTIONS = function(opts)
+  envy.options({ version = { required = true } })
+end
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_fn_envy_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_fn_envy_bad@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("'version' is required", result.stderr)
+
+    # -- Error tests --
+
+    def test_options_wrong_type_rejected(self):
+        """OPTIONS = 42 is rejected."""
+        spec = """IDENTITY = "test.options_badtype@v1"
+
+OPTIONS = 42
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_badtype.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_badtype@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be a table or function", result.stderr)
+
+    def test_options_string_type_rejected(self):
+        """OPTIONS = "string" is rejected."""
+        spec = """IDENTITY = "test.options_strtype@v1"
+
+OPTIONS = "string"
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_strtype.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_strtype@v1",
+                str(spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be a table or function", result.stderr)
 
     def test_spec_source_not_found_in_manifest(self):
         """Missing spec source from manifest entry gives clear error."""

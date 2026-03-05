@@ -2,11 +2,7 @@
 IDENTITY = "local.swig@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "'version' is a required option, e.g. '4.4.1'"
-  end
-end
+OPTIONS = { version = { required = true } }
 
 FETCH = function(tmp_dir, opts)
   if envy.PLATFORM == "windows" then

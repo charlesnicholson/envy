@@ -21,6 +21,8 @@ void cmd_engine_functional_test::register_cli(CLI::App &app,
   sub->add_option("spec_path", cfg_ptr->spec_path, "Spec file path")
       ->required()
       ->check(CLI::ExistingFile);
+  sub->add_option("--options", cfg_ptr->serialized_options, "Serialized Lua options table")
+      ->default_val("{}");
   sub->add_option("--fail-after-fetch-count",
                   cfg_ptr->fail_after_fetch_count,
                   "Fail after N successful file downloads (test only)")
@@ -46,7 +48,7 @@ void cmd_engine_functional_test::execute() {
   pkg_cfg *spec_cfg{ pkg_cfg::pool()->emplace(
       cfg_.identity,
       pkg_cfg::local_source{ .file_path = cfg_.spec_path },
-      "{}",
+      cfg_.serialized_options,
       std::nullopt,
       nullptr,
       nullptr,

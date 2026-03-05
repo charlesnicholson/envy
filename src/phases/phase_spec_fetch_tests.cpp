@@ -150,62 +150,62 @@ TEST_CASE("user-managed package with check verb and install phase succeeds") {
   std::filesystem::remove_all(temp_dir);
 }
 
-TEST_CASE("VALIDATE returns nil or true succeeds and sees options") {
+TEST_CASE("OPTIONS table succeeds and sees options") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_ok" };
+                                  "envy_test_options_ok" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file_ok{ temp_dir / "validate_ok.lua" };
-  std::filesystem::path spec_file_true{ temp_dir / "validate_true.lua" };
+  std::filesystem::path spec_file_ok{ temp_dir / "options_ok.lua" };
+  std::filesystem::path spec_file_true{ temp_dir / "options_true.lua" };
   {
     std::ofstream ofs{ spec_file_ok };
-    ofs << "IDENTITY = \"test.validate_ok@v1\"\n";
-    ofs << "VALIDATE = function(opts) assert(opts.foo == \"bar\") end\n";
+    ofs << "IDENTITY = \"test.options_ok@v1\"\n";
+    ofs << "OPTIONS = { foo = {} }\n";
     ofs << "CHECK = function(project_root) return true end\n";
     ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
   }
 
-  spec_file_true.replace_filename("validate_true.lua");
+  spec_file_true.replace_filename("options_true.lua");
   {
     std::ofstream ofs{ spec_file_true };
-    ofs << "IDENTITY = \"test.validate_true@v1\"\n";
-    ofs << "VALIDATE = function(opts) return true end\n";
+    ofs << "IDENTITY = \"test.options_true@v1\"\n";
+    ofs << "OPTIONS = function(opts) return true end\n";
     ofs << "CHECK = function(project_root) return true end\n";
     ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
   }
 
-  auto *cfg{ make_local_cfg("test.validate_ok@v1", spec_file_ok, "{ foo = \"bar\" }") };
+  auto *cfg{ make_local_cfg("test.options_ok@v1", spec_file_ok, "{ foo = \"bar\" }") };
   pkg *p{ eng.ensure_pkg(cfg) };
   CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
 
-  auto *cfg_true{ make_local_cfg("test.validate_true@v1", spec_file_true) };
+  auto *cfg_true{ make_local_cfg("test.options_true@v1", spec_file_true) };
   pkg *p_true{ eng.ensure_pkg(cfg_true) };
   CHECK_NOTHROW(run_spec_fetch_phase(p_true, eng));
 }
 
-TEST_CASE("VALIDATE returns false fails") {
+TEST_CASE("OPTIONS function returns false fails") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_false" };
+                                  "envy_test_options_false" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "validate_false.lua" };
+  std::filesystem::path spec_file{ temp_dir / "options_false.lua" };
 
   std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.validate_false@v1\"\n";
-  ofs << "VALIDATE = function(opts) return false end\n";
+  ofs << "IDENTITY = \"test.options_false@v1\"\n";
+  ofs << "OPTIONS = function(opts) return false end\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
-  auto *cfg{ make_local_cfg("test.validate_false@v1", spec_file) };
+  auto *cfg{ make_local_cfg("test.options_false@v1", spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   bool threw{ false };
@@ -221,24 +221,24 @@ TEST_CASE("VALIDATE returns false fails") {
   CHECK(threw);
 }
 
-TEST_CASE("VALIDATE returns string fails with message") {
+TEST_CASE("OPTIONS function returns string fails with message") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_string" };
+                                  "envy_test_options_string" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "validate_string.lua" };
+  std::filesystem::path spec_file{ temp_dir / "options_string.lua" };
 
   std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.validate_string@v1\"\n";
-  ofs << "VALIDATE = function(opts) return \"nope\" end\n";
+  ofs << "IDENTITY = \"test.options_string@v1\"\n";
+  ofs << "OPTIONS = function(opts) return \"nope\" end\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
-  auto *cfg{ make_local_cfg("test.validate_string@v1", spec_file) };
+  auto *cfg{ make_local_cfg("test.options_string@v1", spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   bool threw{ false };
@@ -253,70 +253,70 @@ TEST_CASE("VALIDATE returns string fails with message") {
   CHECK(threw);
 }
 
-TEST_CASE("VALIDATE invalid return type errors") {
+TEST_CASE("OPTIONS function invalid return type errors") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_type" };
+                                  "envy_test_options_type" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "validate_type.lua" };
+  std::filesystem::path spec_file{ temp_dir / "options_type.lua" };
 
   std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.validate_type@v1\"\n";
-  ofs << "VALIDATE = function(opts) return 123 end\n";
+  ofs << "IDENTITY = \"test.options_type@v1\"\n";
+  ofs << "OPTIONS = function(opts) return 123 end\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
-  auto *cfg{ make_local_cfg("test.validate_type@v1", spec_file) };
+  auto *cfg{ make_local_cfg("test.options_type@v1", spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS(run_spec_fetch_phase(p, eng));
 }
 
-TEST_CASE("VALIDATE set to non-function errors") {
+TEST_CASE("OPTIONS set to non-table non-function errors") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_nonfn" };
+                                  "envy_test_options_nonfn" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "validate_nonfn.lua" };
+  std::filesystem::path spec_file{ temp_dir / "options_nonfn.lua" };
 
   std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.validate_nonfn@v1\"\n";
-  ofs << "VALIDATE = 42\n";
+  ofs << "IDENTITY = \"test.options_nonfn@v1\"\n";
+  ofs << "OPTIONS = 42\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
-  auto *cfg{ make_local_cfg("test.validate_nonfn@v1", spec_file) };
+  auto *cfg{ make_local_cfg("test.options_nonfn@v1", spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS(run_spec_fetch_phase(p, eng));
 }
 
-TEST_CASE("VALIDATE runtime error bubbles with context") {
+TEST_CASE("OPTIONS function runtime error bubbles with context") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  "envy_test_validate_error" };
+                                  "envy_test_options_error" };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
-  std::filesystem::path spec_file{ temp_dir / "validate_error.lua" };
+  std::filesystem::path spec_file{ temp_dir / "options_error.lua" };
 
   std::ofstream ofs{ spec_file };
-  ofs << "IDENTITY = \"test.validate_error@v1\"\n";
-  ofs << "VALIDATE = function(opts) error(\"boom\") end\n";
+  ofs << "IDENTITY = \"test.options_error@v1\"\n";
+  ofs << "OPTIONS = function(opts) error(\"boom\") end\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
 
-  auto *cfg{ make_local_cfg("test.validate_error@v1", spec_file) };
+  auto *cfg{ make_local_cfg("test.options_error@v1", spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   bool threw{ false };
@@ -326,7 +326,7 @@ TEST_CASE("VALIDATE runtime error bubbles with context") {
     threw = true;
     std::string const msg{ e.what() };
     INFO(msg);
-    CHECK(msg.find("Lua error in test.validate_error@v1") != std::string::npos);
+    CHECK(msg.find("Lua error in test.options_error@v1") != std::string::npos);
     CHECK(msg.find("boom") != std::string::npos);
   }
   CHECK(threw);

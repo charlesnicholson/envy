@@ -2,11 +2,7 @@
 IDENTITY = "local.gn@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.ref == nil then
-    return "'ref' is a required option (GN doesn't tag, so use a git committish)"
-  end
-end
+OPTIONS = { ref = { required = true } }
 
 FETCH = function(tmp_dir, opts)
   local platform = ({
