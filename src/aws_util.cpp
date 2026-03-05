@@ -210,9 +210,27 @@ std::filesystem::path aws_s3_download(s3_download_request const &request) {
       status == Aws::Transfer::TransferStatus::CANCELED ||
       status == Aws::Transfer::TransferStatus::ABORTED) {
     auto const &error{ handle->GetLastError() };
-    throw std::runtime_error(std::string("aws_s3_download: transfer failed: ") +
-                             error.GetExceptionName().c_str() + " - " +
-                             error.GetMessage().c_str());
+    auto const http_code{ static_cast<int>(error.GetResponseCode()) };
+    std::string msg{ "aws_s3_download: transfer failed" };
+
+    if (auto const &name{ error.GetExceptionName() }; !name.empty()) {
+      msg += ": " + std::string(name.c_str());
+    }
+
+    auto const &body{ error.GetMessage() };
+    if (!body.empty() && body != "No response body.") {
+      msg += ": " + std::string(body.c_str());
+    }
+
+    if (http_code > 0) { msg += " (HTTP " + std::to_string(http_code) + ")"; }
+
+    if (http_code == 401 || http_code == 403) {
+      msg +=
+          "\n  Hint: AWS credentials may be missing or expired."
+          " Run 'aws sso login' or check your AWS configuration.";
+    }
+
+    throw std::runtime_error(msg);
   }
 
   if (request.progress) {  // Final progress callback so the bar reaches 100%.

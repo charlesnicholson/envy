@@ -2,11 +2,7 @@
 IDENTITY = "local.taplo@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "version option is required"
-  end
-end
+OPTIONS = { version = { required = true } }
 
 FETCH = function(tmp_dir, opts)
   local arch = (envy.ARCH == "arm64") and "aarch64" or envy.ARCH

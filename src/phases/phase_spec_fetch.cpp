@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "extract.h"
 #include "fetch.h"
+#include "lua_ctx/lua_envy_options.h"
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
@@ -819,43 +820,51 @@ sol::object store_options_in_registry(sol::state &lua,
   return opts_result.get<sol::object>();
 }
 
-void run_validate(pkg *p, sol::state &lua) {
+void run_options(pkg *p, sol::state &lua) {
   sol::table globals{ lua.globals() };
-  std::optional<sol::protected_function> validate_fn;
-  try {
-    validate_fn =
-        sol_util_get_optional<sol::protected_function>(globals, "VALIDATE", "Spec");
-  } catch (std::runtime_error const &e) {
-    throw std::runtime_error(std::string(e.what()) + " in spec '" + p->cfg->identity +
-                             "'");
-  }
-  if (!validate_fn.has_value()) { return; }
+  std::string const &identity{ p->cfg->identity };
 
-  sol::object options_obj{ lua.registry()[ENVY_OPTIONS_RIDX] };
+  sol::object options_obj_raw{ globals["OPTIONS"] };
+  bool const has_options{ options_obj_raw.valid() &&
+                          options_obj_raw.get_type() != sol::type::lua_nil };
+  if (!has_options) { return; }
 
-  sol::protected_function_result result{ call_lua_function_with_enriched_errors(
-      p,
-      "validate",
-      [&]() { return (*validate_fn)(options_obj); }) };
+  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+  sol::type const options_type{ options_obj_raw.get_type() };
 
-  sol::object ret_obj{ result };
-  sol::type const ret_type{ ret_obj.get_type() };
+  if (options_type == sol::type::table) {
+    validate_options_schema(options_obj_raw.as<sol::table>(), opts, identity);
+  } else if (options_type == sol::type::function) {
+    sol::protected_function options_fn{ options_obj_raw.as<sol::protected_function>() };
 
-  auto const failure_prefix{ [&]() {
-    return "VALIDATE failed for " + p->cfg->format_key();
-  } };
+    sol::protected_function_result result{ call_lua_function_with_enriched_errors(
+        p,
+        "options",
+        [&]() { return options_fn(opts); }) };
 
-  switch (ret_type) {
-    case sol::type::lua_nil: return;
-    case sol::type::boolean:
-      if (ret_obj.as<bool>()) { return; }
-      throw std::runtime_error(failure_prefix() + " (returned false)");
-    case sol::type::string:
-      throw std::runtime_error(failure_prefix() + ": " + ret_obj.as<std::string>());
-    default:
-      throw std::runtime_error("VALIDATE must return nil/true/false/string (got " +
-                               std::string(sol::type_name(lua, ret_type)) + ") for " +
-                               p->cfg->format_key());
+    sol::object ret_obj{ result };
+    sol::type const ret_type{ ret_obj.get_type() };
+
+    auto const failure_prefix{ [&]() {
+      return "OPTIONS failed for " + p->cfg->format_key();
+    } };
+
+    switch (ret_type) {
+      case sol::type::lua_nil: return;
+      case sol::type::boolean:
+        if (ret_obj.as<bool>()) { return; }
+        throw std::runtime_error(failure_prefix() + " (returned false)");
+      case sol::type::string:
+        throw std::runtime_error(failure_prefix() + ": " + ret_obj.as<std::string>());
+      default:
+        throw std::runtime_error("OPTIONS must return nil/true/false/string (got " +
+                                 std::string(sol::type_name(lua, ret_type)) + ") for " +
+                                 p->cfg->format_key());
+    }
+  } else {
+    throw std::runtime_error("OPTIONS must be a table or function (got " +
+                             std::string(sol::type_name(lua, options_type)) + ") for " +
+                             p->cfg->format_key());
   }
 }
 
@@ -1243,7 +1252,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     throw std::runtime_error(e.what() + std::string(" for ") + cfg.identity);
   }
 
-  run_validate(p, *lua);
+  run_options(p, *lua);
 
   // Extract dependency identities for ctx.pkg() validation
   p->declared_dependencies.reserve(p->owned_dependency_cfgs.size());

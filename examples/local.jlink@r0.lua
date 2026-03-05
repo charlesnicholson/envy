@@ -2,16 +2,24 @@
 IDENTITY = "local.jlink@r0"
 EXPORTABLE = envy.PLATFORM == "windows"
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "version option is required"
-  end
-  if not opts.version:find("%.") then
-    return "version must contain a dot (e.g., '9.12' not '912')"
-  end
-  if opts.mode ~= nil and opts.mode ~= "install" and opts.mode ~= "extract" then
-    return "mode must be 'install' or 'extract'"
-  end
+OPTIONS = function(opts)
+  envy.options({
+    version = {
+      required = true,
+      validate = function(v)
+        if not v:find("%.") then
+          return "version must contain a dot (e.g., '9.12' not '912')"
+        end
+      end,
+    },
+    mode = {
+      validate = function(v)
+        if v ~= "install" and v ~= "extract" then
+          return "mode must be 'install' or 'extract'"
+        end
+      end,
+    },
+  })
   if opts.mode == "install" and envy.PLATFORM ~= "windows" then
     return "mode 'install' is only supported on Windows"
   end

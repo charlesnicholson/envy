@@ -4,6 +4,7 @@
 #include "lua_ctx/lua_envy_fetch.h"
 #include "lua_ctx/lua_envy_file_ops.h"
 #include "lua_ctx/lua_envy_loadenv_spec.h"
+#include "lua_ctx/lua_envy_options.h"
 #include "lua_ctx/lua_envy_package.h"
 #include "lua_ctx/lua_envy_path.h"
 #include "lua_ctx/lua_envy_product.h"
@@ -212,6 +213,7 @@ void lua_envy_install(sol::state &lua) {
   lua_envy_package_install(envy_table);
   lua_envy_product_install(envy_table);
   lua_envy_loadenv_spec_install(envy_table);
+  lua_envy_options_install(envy_table);
 
   lua["envy"] = envy_table;
 

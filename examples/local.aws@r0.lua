@@ -1,13 +1,11 @@
 -- @envy schema "1"
 IDENTITY = "local.aws@r0"
 
-VALIDATE = function(opts)
+OPTIONS = function(opts)
   if envy.PLATFORM ~= "linux" then
     return "local.aws@r0 is only supported on Linux"
   end
-  if opts.version == nil then
-    return "'version' is a required option"
-  end
+  envy.options({ version = { required = true } })
 end
 
 FETCH = function(tmp_dir, opts)

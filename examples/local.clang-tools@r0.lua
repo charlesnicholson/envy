@@ -9,22 +9,27 @@ if envy.PLATFORM == "darwin" then
   }
 end
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "'version' is a required option"
-  end
-  if opts.tools == nil or #opts.tools == 0 then
-    return "'tools' is a required option (array of tool names)"
-  end
-  for i, tool in ipairs(opts.tools) do
-    if type(tool) ~= "string" or tool == "" then
-      return string.format("tool name at index %d must be a non-empty string", i)
-    end
-    if not tool:match("^[%w_%-]+$") then
-      return string.format(
-          "invalid tool name '%s': only letters, digits, '_' and '-' are allowed", tool)
-    end
-  end
+OPTIONS = function(opts)
+  envy.options({
+    version = { required = true },
+    tools = {
+      required = true,
+      validate = function(v)
+        if type(v) ~= "table" or #v == 0 then
+          return "'tools' must be a non-empty array of tool names"
+        end
+        for i, tool in ipairs(v) do
+          if type(tool) ~= "string" or tool == "" then
+            return string.format("tool name at index %d must be a non-empty string", i)
+          end
+          if not tool:match("^[%w_%-]+$") then
+            return string.format(
+                "invalid tool name '%s': only letters, digits, '_' and '-' are allowed", tool)
+          end
+        end
+      end,
+    },
+  })
 end
 
 FETCH = function(tmp_dir, opts)

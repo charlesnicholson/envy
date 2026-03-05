@@ -2,11 +2,7 @@
 IDENTITY = "local.uv@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "'version' is a required option"
-  end
-end
+OPTIONS = { version = { required = true } }
 
 FETCH = function(tmp_dir, opts)
   local uri_prefix = "https://github.com/astral-sh/uv/releases/download/"

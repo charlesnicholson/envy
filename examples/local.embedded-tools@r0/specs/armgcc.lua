@@ -12,13 +12,19 @@ local function platform_suffix(version)
   else return win_x86_64[version] and "mingw-w64-x86_64" or "mingw-w64-i686" end
 end
 
-VALIDATE = function(opts)
-  if opts.version == nil then return "'version' is a required option" end
-  if envy.PLATFORM == "darwin" and envy.ARCH == "x86_64" and darwin_arm64_only[opts.version] then
-    return "version " .. opts.version .. " not available for Intel Mac (darwin-x86_64)"
-  end
-  local key = opts.version .. "-" .. platform_suffix(opts.version)
-  if not sha256[key] then return "unsupported version/platform: " .. key end
+OPTIONS = function(opts)
+  envy.options({
+    version = {
+      required = true,
+      validate = function(v)
+        if envy.PLATFORM == "darwin" and envy.ARCH == "x86_64" and darwin_arm64_only[v] then
+          return "version " .. v .. " not available for Intel Mac (darwin-x86_64)"
+        end
+        local key = v .. "-" .. platform_suffix(v)
+        if not sha256[key] then return "unsupported version/platform: " .. key end
+      end,
+    },
+  })
 end
 
 FETCH = function(tmp_dir, opts)

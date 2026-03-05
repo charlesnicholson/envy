@@ -2,11 +2,7 @@
 IDENTITY = "local.python@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "options must contain 'version', e.g. '3.13.9'"
-  end
-end
+OPTIONS = { version = { required = true }, provide_python3 = {} }
 
 FETCH = function(tmp_dir, opts)
   local uri_prefix =

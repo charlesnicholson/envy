@@ -2,11 +2,7 @@
 IDENTITY = "local.cmake@r0"
 EXPORTABLE = true
 
-VALIDATE = function(opts)
-  if opts.version == nil then
-    return "'version' is a required option"
-  end
-end
+OPTIONS = { version = { required = true } }
 
 local sha256_fingerprints = {
   ["4.2.1-macos-universal"] =
