@@ -639,11 +639,11 @@ TEST_CASE_FIXTURE(
   lua_state()["CWD_FILE"] = cwd_file.string();
 
 #ifdef _WIN32
-  set_install_function(R"(
+  set_install_function(R"lua(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       envy.run("[IO.File]::WriteAllText('" .. CWD_FILE .. "', $PWD.Path)")
     end
-  )");
+  )lua");
 #else
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
@@ -672,9 +672,11 @@ TEST_CASE_FIXTURE(
   lua_state()["CWD_FILE"] = cwd_file.string();
 
 #ifdef _WIN32
-  set_install_function(R"(
+  set_install_function(R"lua(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      return "[IO.File]::WriteAllText('" .. CWD_FILE .. "', $PWD.Path)" end) ");
+      return "[IO.File]::WriteAllText('" .. CWD_FILE .. "', $PWD.Path)"
+    end
+  )lua");
 #else
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
@@ -683,7 +685,7 @@ TEST_CASE_FIXTURE(
   )");
 #endif
 
-      CHECK_NOTHROW(run_install_phase(p.get(), eng));
+  CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
   REQUIRE(std::filesystem::exists(cwd_file));
   std::ifstream ifs{ cwd_file };
