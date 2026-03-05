@@ -20,7 +20,7 @@ std::optional<std::string> rewrite_luarc_types_path(std::string_view content,
 void update_luarc_types_path(std::filesystem::path const &project_dir,
                              std::filesystem::path const &cache_root);
 
-std::filesystem::path extract_lua_ls_types();
+std::filesystem::path extract_lua_ls_types(std::filesystem::path const &cache_root);
 
 void write_luarc(std::filesystem::path const &project_dir,
                  std::filesystem::path const &types_dir);

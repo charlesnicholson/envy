@@ -6,6 +6,7 @@ error handling, and graceful fallback to source builds.
 
 import hashlib
 import io
+import os
 import shutil
 import socket
 import tarfile
@@ -642,6 +643,457 @@ class TestPackageDepot(unittest.TestCase):
         self.assertEqual(len(parts[0]), 64)
         self.assertTrue(parts[1].startswith("s3://bucket/cache"))
         self.assertTrue(parts[1].endswith(".tar.zst"))
+
+
+class TestIgnoreDepot(unittest.TestCase):
+    """Tests for --ignore-depot flag and ENVY_IGNORE_DEPOT env var."""
+
+    def setUp(self):
+        self.source_cache = Path(tempfile.mkdtemp(prefix="envy-ign-src-"))
+        self.target_cache = Path(tempfile.mkdtemp(prefix="envy-ign-tgt-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-ign-specs-"))
+        self.output_dir = Path(tempfile.mkdtemp(prefix="envy-ign-out-"))
+        self.serve_dir = Path(tempfile.mkdtemp(prefix="envy-ign-http-"))
+        self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-ign-markers-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        self.archive_path = self.test_dir / "test.tar.gz"
+        self.archive_hash = _create_test_archive(self.archive_path)
+
+        # Write specs with build markers for detecting source vs depot
+        self.spec_lua = {}
+        self.markers = {}
+        for name, identity in [
+            ("pkg_a.lua", "local.depot_a@v1"),
+            ("pkg_b.lua", "local.depot_b@v1"),
+        ]:
+            marker = self.marker_dir / f"{identity}.marker"
+            self.markers[identity] = marker
+            (self.test_dir / name).write_text(
+                self._make_spec_with_marker(identity, marker),
+                encoding="utf-8",
+            )
+            self.spec_lua[identity] = f"{self.test_dir.as_posix()}/{name}"
+
+    def tearDown(self):
+        for d in [
+            self.source_cache,
+            self.target_cache,
+            self.test_dir,
+            self.output_dir,
+            self.serve_dir,
+            self.marker_dir,
+        ]:
+            shutil.rmtree(d, ignore_errors=True)
+
+    # -- helpers --
+
+    def _run(self, *args, cache_root=None, env_extra=None):
+        cache = cache_root or self.target_cache
+        cmd = [str(self.envy), "--cache-root", str(cache), *args]
+        env = None
+        if env_extra:
+            env = os.environ.copy()
+            env.update(env_extra)
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True, env=env
+        )
+
+    def _clear_markers(self):
+        """Remove all marker files to reset detection state."""
+        for m in self.markers.values():
+            m.unlink(missing_ok=True)
+
+    def _make_source_manifest(self, identities):
+        packages = ", ".join(
+            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
+        )
+        path = self.test_dir / "source.lua"
+        path.write_text(
+            test_config.make_manifest(f"\nPACKAGES = {{\n    {packages}\n}}\n"),
+            encoding="utf-8",
+        )
+        return path
+
+    def _install_and_export(self, identities):
+        m = self._make_source_manifest(identities)
+        r = self._run("install", "--manifest", str(m), cache_root=self.source_cache)
+        self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+
+        r = self._run(
+            "export",
+            "-o",
+            str(self.output_dir),
+            "--manifest",
+            str(m),
+            cache_root=self.source_cache,
+        )
+        self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
+        paths = []
+        for line in r.stdout.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            _, p = parse_export_line(line)
+            paths.append(p)
+        return paths
+
+    def _start_server(self):
+        handler = partial(_QuietHandler, directory=str(self.serve_dir))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return srv, srv.server_address[1]
+
+    def _make_depot_manifest(self, archive_paths, port, name="depot.txt"):
+        lines = []
+        for ap in archive_paths:
+            shutil.copy2(ap, self.serve_dir / ap.name)
+            h = hashlib.sha256(ap.read_bytes()).hexdigest()
+            lines.append(f"{h}  http://127.0.0.1:{port}/{ap.name}")
+        (self.serve_dir / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return f"http://127.0.0.1:{port}/{name}"
+
+    def _make_target_manifest(self, identities, depot_urls):
+        header = '-- @envy bin "envy-bin"\n'
+        for u in depot_urls:
+            header += f'-- @envy package-depot "{u}"\n'
+        packages = ", ".join(
+            f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
+        )
+        path = self.test_dir / "target.lua"
+        path.write_text(
+            header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def _make_spec_with_marker(self, identity, marker_path):
+        """Generate a spec whose BUILD writes a marker file to an external path."""
+        p = self.archive_path.as_posix()
+        mp = marker_path.as_posix()
+        return f'''IDENTITY = "{identity}"
+EXPORTABLE = true
+
+FETCH = {{
+  source = "{p}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  if envy.PLATFORM == "windows" then
+    envy.run([[Set-Content -Path built.txt -Value "built"]], {{ shell = ENVY_SHELL.POWERSHELL }})
+    envy.run([[Set-Content -Path "{mp}" -Value "built"]], {{ shell = ENVY_SHELL.POWERSHELL }})
+  else
+    envy.run([[echo 'built' > built.txt]])
+    envy.run([[echo 'built' > "{mp}"]])
+  end
+end
+'''
+
+    # -- CLI flag tests --
+
+    def test_sync_ignore_depot_rebuilds_from_source(self):
+        """sync --ignore-depot with depot configured builds from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run("sync", "--ignore-depot", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (source build ran)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_install_ignore_depot_rebuilds_from_source(self):
+        """install --ignore-depot with depot configured builds from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run("install", "--ignore-depot", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (source build ran)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_export_ignore_depot_rebuilds_from_source(self):
+        """export --ignore-depot with depot configured builds from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "export",
+                "--ignore-depot",
+                "-o",
+                str(self.output_dir),
+                "--manifest",
+                str(m),
+            )
+            self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (source build ran)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_package_ignore_depot_rebuilds_from_source(self):
+        """package --ignore-depot with depot configured builds from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "package",
+                "--ignore-depot",
+                "local.depot_a@v1",
+                "--manifest",
+                str(m),
+            )
+            self.assertEqual(r.returncode, 0, f"package failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (source build ran)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_sync_ignore_depot_multiple_packages(self):
+        """Both packages rebuild from source with --ignore-depot."""
+        archives = self._install_and_export(["local.depot_a@v1", "local.depot_b@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(
+                ["local.depot_a@v1", "local.depot_b@v1"],
+                [depot_url],
+            )
+            r = self._run("sync", "--ignore-depot", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            for pkg in ["local.depot_a@v1", "local.depot_b@v1"]:
+                self.assertTrue(
+                    self.markers[pkg].exists(),
+                    f"{pkg} BUILD marker should exist",
+                )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_sync_without_ignore_depot_uses_depot(self):
+        """Control: same manifest without --ignore-depot uses depot (no source build)."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run("sync", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            self.assertFalse(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should NOT exist (depot used)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    # -- Env var tests --
+
+    def test_sync_env_var_ignores_depot(self):
+        """ENVY_IGNORE_DEPOT=1 in env causes sync to build from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "sync",
+                "--manifest",
+                str(m),
+                env_extra={"ENVY_IGNORE_DEPOT": "1"},
+            )
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (env var set)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_install_env_var_ignores_depot(self):
+        """ENVY_IGNORE_DEPOT=1 in env causes install to build from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "install",
+                "--manifest",
+                str(m),
+                env_extra={"ENVY_IGNORE_DEPOT": "1"},
+            )
+            self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (env var set)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_export_env_var_ignores_depot(self):
+        """ENVY_IGNORE_DEPOT=1 in env causes export to build from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "export",
+                "-o",
+                str(self.output_dir),
+                "--manifest",
+                str(m),
+                env_extra={"ENVY_IGNORE_DEPOT": "1"},
+            )
+            self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (env var set)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_package_env_var_ignores_depot(self):
+        """ENVY_IGNORE_DEPOT=1 in env causes package to build from source."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+            r = self._run(
+                "package",
+                "local.depot_a@v1",
+                "--manifest",
+                str(m),
+                env_extra={"ENVY_IGNORE_DEPOT": "1"},
+            )
+            self.assertEqual(r.returncode, 0, f"package failed: {r.stderr}")
+            self.assertTrue(
+                self.markers["local.depot_a@v1"].exists(),
+                "BUILD marker should exist (env var set)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    # -- Edge case tests --
+
+    def test_flag_overrides_working_depot(self):
+        """Depot has valid archives, --ignore-depot forces source build anyway."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+
+            # First verify depot works without flag
+            r = self._run("install", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0)
+            self.assertFalse(
+                self.markers["local.depot_a@v1"].exists(),
+                "Without flag: depot should be used (no marker)",
+            )
+
+            # Now with flag on a fresh cache
+            fresh_cache = Path(tempfile.mkdtemp(prefix="envy-ign-fresh-"))
+            try:
+                r = self._run(
+                    "install",
+                    "--ignore-depot",
+                    "--manifest",
+                    str(m),
+                    cache_root=fresh_cache,
+                )
+                self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+                self.assertTrue(
+                    self.markers["local.depot_a@v1"].exists(),
+                    "With flag: BUILD marker should exist",
+                )
+            finally:
+                shutil.rmtree(fresh_cache, ignore_errors=True)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_env_var_overrides_working_depot(self):
+        """Depot has valid archives, ENVY_IGNORE_DEPOT forces source build anyway."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self._clear_markers()
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+
+            # First verify depot works without env var
+            r = self._run("install", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0)
+            self.assertFalse(
+                self.markers["local.depot_a@v1"].exists(),
+                "Without env var: depot should be used (no marker)",
+            )
+
+            # Now with env var on a fresh cache
+            fresh_cache = Path(tempfile.mkdtemp(prefix="envy-ign-fresh-"))
+            try:
+                r = self._run(
+                    "install",
+                    "--manifest",
+                    str(m),
+                    cache_root=fresh_cache,
+                    env_extra={"ENVY_IGNORE_DEPOT": "1"},
+                )
+                self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+                self.assertTrue(
+                    self.markers["local.depot_a@v1"].exists(),
+                    "With env var: BUILD marker should exist",
+                )
+            finally:
+                shutil.rmtree(fresh_cache, ignore_errors=True)
+        finally:
+            srv.shutdown()
+            srv.server_close()
 
 
 class TestHashCommand(unittest.TestCase):

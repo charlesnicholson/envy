@@ -490,9 +490,13 @@ void engine::set_depot_index(package_depot_index idx) {
   depot_pre_set_ = true;
 }
 
+void engine::set_ignore_depot(bool ignore) { depot_ignored_ = ignore; }
+
 package_depot_index const *engine::depot_index() const {
   // Pre-set index (set before thread creation, safe to read without synchronization)
   if (depot_pre_set_) { return &*depot_index_; }
+
+  if (depot_ignored_) { return nullptr; }
 
   if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
 

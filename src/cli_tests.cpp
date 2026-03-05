@@ -339,6 +339,30 @@ TEST_CASE("cli_parse: cmd_package") {
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(cfg->manifest_path->string() == "/path/to/envy.lua");
   }
+
+  SUBCASE("--ignore-depot flag") {
+    std::vector<std::string> args{ "envy", "package", "vendor.gcc@v2", "--ignore-depot" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_package::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->ignore_depot);
+  }
+
+  SUBCASE("ignore_depot defaults to false") {
+    std::vector<std::string> args{ "envy", "package", "vendor.gcc@v2" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_package::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->ignore_depot);
+  }
 }
 
 TEST_CASE("cli_parse: cmd_product") {
@@ -588,6 +612,30 @@ TEST_CASE("cli_parse: cmd_install") {
     CHECK(cfg->queries[0] == "gcc");
     REQUIRE(cfg->manifest_path.has_value());
     CHECK(*cfg->manifest_path == std::filesystem::path("/path/to/envy.lua"));
+  }
+
+  SUBCASE("--ignore-depot flag") {
+    std::vector<std::string> args{ "envy", "install", "--ignore-depot" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_install::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->ignore_depot);
+  }
+
+  SUBCASE("ignore_depot defaults to false") {
+    std::vector<std::string> args{ "envy", "install" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_install::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->ignore_depot);
   }
 }
 
@@ -938,6 +986,30 @@ TEST_CASE("cli_parse: cmd_sync") {
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
   }
+
+  SUBCASE("--ignore-depot flag") {
+    std::vector<std::string> args{ "envy", "sync", "--ignore-depot" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->ignore_depot);
+  }
+
+  SUBCASE("ignore_depot defaults to false") {
+    std::vector<std::string> args{ "envy", "sync" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_sync::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->ignore_depot);
+  }
 }
 
 TEST_CASE("cli_parse: cmd_deploy --platform") {
@@ -1189,6 +1261,30 @@ TEST_CASE("cli_parse: cmd_export") {
     CHECK(*cfg->output_dir == std::filesystem::path("/tmp/out"));
     REQUIRE(cfg->depot_prefix.has_value());
     CHECK(*cfg->depot_prefix == "https://cdn.example.com/");
+  }
+
+  SUBCASE("--ignore-depot flag") {
+    std::vector<std::string> args{ "envy", "export", "--ignore-depot" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->ignore_depot);
+  }
+
+  SUBCASE("ignore_depot defaults to false") {
+    std::vector<std::string> args{ "envy", "export" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_export::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->ignore_depot);
   }
 }
 

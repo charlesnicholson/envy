@@ -2,7 +2,6 @@
 
 #include "bootstrap.h"
 #include "embedded_init_resources.h"
-#include "platform.h"
 #include "tui.h"
 #include "util.h"
 
@@ -141,11 +140,8 @@ void update_luarc_types_path(fs::path const &project_dir, fs::path const &cache_
   tui::info("Updated .luarc.json types path to %s", expected.c_str());
 }
 
-fs::path extract_lua_ls_types() {
-  auto const cache_root{ platform::get_default_cache_root() };
-  if (!cache_root) { throw std::runtime_error("init: failed to determine cache root"); }
-
-  fs::path const types_dir{ *cache_root / "envy" / ENVY_VERSION_STR };
+fs::path extract_lua_ls_types(fs::path const &cache_root) {
+  fs::path const types_dir{ cache_root / "envy" / ENVY_VERSION_STR };
   fs::path const types_path{ types_dir / "envy.lua" };
 
   if (fs::exists(types_path)) { return types_dir; }

@@ -576,10 +576,6 @@ TEST_CASE("resolve_cache_root manifest used when no CLI override") {
   std::optional<std::filesystem::path> cli{ std::nullopt };
   std::optional<std::string> manifest{ "/manifest/path" };
 
-  // Only run if ENVY_CACHE_ROOT is not set
-  char const *orig_env{ std::getenv("ENVY_CACHE_ROOT") };
-  if (orig_env) { return; }
-
   auto result{ envy::resolve_cache_root(cli, manifest) };
   CHECK(result == "/manifest/path");
 }
@@ -588,10 +584,6 @@ TEST_CASE("resolve_cache_root manifest used when no CLI override") {
 TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
   char const *home{ std::getenv("HOME") };
   REQUIRE(home != nullptr);
-
-  // Only run if ENVY_CACHE_ROOT is not set
-  char const *orig_env{ std::getenv("ENVY_CACHE_ROOT") };
-  if (orig_env) { return; }
 
   std::optional<std::filesystem::path> cli{ std::nullopt };
   std::optional<std::string> manifest{ "~/.my-envy-cache" };

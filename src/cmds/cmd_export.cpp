@@ -168,6 +168,10 @@ void cmd_export::register_cli(CLI::App &app, std::function<void(cfg)> on_selecte
   sub->add_option("--depot-prefix",
                   cfg_ptr->depot_prefix,
                   "URL prefix for depot manifest output");
+  sub->add_flag("--ignore-depot",
+                cfg_ptr->ignore_depot,
+                "Ignore package depot; rebuild from source")
+      ->envname("ENVY_IGNORE_DEPOT");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }
@@ -207,6 +211,7 @@ void cmd_export::execute() {
   if (targets.empty()) { return; }
 
   engine eng{ *c, m.get() };
+  if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
 
   std::vector<pkg_cfg const *> roots;
   roots.reserve(m->packages.size());

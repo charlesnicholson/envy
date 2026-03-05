@@ -17,6 +17,7 @@ class cmd_install : public cmd {
   struct cfg : cmd_cfg<cmd_install> {
     std::vector<std::string> queries;  // Optional: if empty, install all manifest packages
     std::optional<std::filesystem::path> manifest_path;
+    bool ignore_depot = false;
   };
 
   static void register_cli(CLI::App &app, std::function<void(cfg)> on_selected);
