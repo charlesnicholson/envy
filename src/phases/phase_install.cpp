@@ -15,7 +15,6 @@
 #include "util.h"
 
 #include <filesystem>
-#include <optional>
 #include <stdexcept>
 #include <string_view>
 
@@ -47,29 +46,14 @@ bool run_shell_install(std::string_view script,
                        std::filesystem::path const &cache_root) {
   tui::debug("phase install: running shell script");
 
-  // Create run_progress tracker if TUI section is valid
-  std::optional<tui_actions::run_progress> progress;
-  if (tui_section) {
-    progress.emplace(tui_section, identity, cache_root);
-    progress->on_command_start(script);
-  }
-
   shell_env_t env{ shell_getenv() };
-  shell_run_cfg const cfg{ .on_output_line =
-                               [&](std::string_view line) {
-                                 if (progress) {
-                                   progress->on_output_line(line);
-                                 } else {
-                                   tui::info("%.*s",
-                                             static_cast<int>(line.size()),
-                                             line.data());
-                                 }
-                               },
-                           .cwd = install_dir,
-                           .env = std::move(env),
-                           .shell = shell };
+  shell_run_cfg cfg{ .cwd = install_dir,
+                     .env = std::move(env),
+                     .shell = shell };
 
-  shell_result const result{ shell_run(script, cfg) };
+  shell_result const result{
+    tui_actions::run_shell_with_progress(script, tui_section, identity, cache_root, std::move(cfg))
+  };
 
   if (result.exit_code != 0) {
     if (result.signal) {

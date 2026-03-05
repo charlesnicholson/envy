@@ -148,26 +148,10 @@ void lua_envy_run_install(sol::table &envy_table) {
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "envy.run");
     }
 
-    // Auto-manage TUI progress if in phase context (skip if quiet)
-    std::optional<tui_actions::run_progress> progress;
-    engine *eng{ ctx ? ctx->eng : nullptr };
-    if (p && p->tui_section && eng && !quiet) {
-      progress.emplace(p->tui_section, p->cfg->identity, eng->cache_root());
-      progress->on_command_start(script_view);
-    }
-
     std::string stdout_buffer;
     std::string stderr_buffer;
 
-    shell_run_cfg const inv{
-      .on_output_line =
-          [&](std::string_view line) {
-            if (progress && !quiet) {
-              progress->on_output_line(line);
-            } else if (!quiet) {
-              tui::info("%s", std::string{ line }.c_str());
-            }
-          },
+    shell_run_cfg cfg{
       .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
       .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
       .cwd = cwd,
@@ -179,7 +163,16 @@ void lua_envy_run_install(sol::table &envy_table) {
     std::optional<tui::interactive_mode_guard> guard;
     if (interactive) { guard.emplace(); }
 
-    shell_result const result{ shell_run(script_view, inv) };
+    engine *eng{ ctx ? ctx->eng : nullptr };
+    bool const use_progress{ p && p->tui_section && eng && !quiet };
+
+    shell_result const result{ use_progress ? tui_actions::run_shell_with_progress(
+                                                  script_view,
+                                                  p->tui_section,
+                                                  p->cfg->identity,
+                                                  eng->cache_root(),
+                                                  std::move(cfg))
+                                            : shell_run(script_view, cfg) };
 
     if (result.signal) {
       auto const err{ format_run_error(script_view,
