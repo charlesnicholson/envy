@@ -6,6 +6,7 @@ error handling, and graceful fallback to source builds.
 
 import hashlib
 import io
+import os
 import shutil
 import socket
 import tarfile
@@ -693,8 +694,6 @@ class TestIgnoreDepot(unittest.TestCase):
         cmd = [str(self.envy), "--cache-root", str(cache), *args]
         env = None
         if env_extra:
-            import os
-
             env = os.environ.copy()
             env.update(env_extra)
         return test_config.run(
