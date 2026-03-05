@@ -1,7 +1,6 @@
 #include "lua_envy_options.h"
 
 #include "lua_envy.h"
-#include "sol_util.h"
 
 #include "doctest.h"
 
@@ -552,6 +551,17 @@ TEST_CASE("OPTIONS: nil opts with no required fields succeeds") {
     IDENTITY = "test@v1"
     envy.options({ version = {} })
   )lua");
+}
+
+TEST_CASE("OPTIONS: nil opts with required field throws") {
+  lua_fixture f;
+  sol::object opts{ f.nil_opts() };
+  sol::table constraint{ f.lua.create_table() };
+  constraint["required"] = true;
+  f.schema["version"] = constraint;
+
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("'version' is required"));
 }
 
 }  // namespace

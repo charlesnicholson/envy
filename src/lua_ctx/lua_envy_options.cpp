@@ -136,7 +136,7 @@ void validate_single_option(std::string const &key,
       std::string const range_str{ range_obj.as<std::string>() };
       auto constraints{ parse_numeric_range(range_str) };
 
-      double num_val;
+      double num_val{ 0.0 };
       if (value.get_type() == sol::type::number) {
         num_val = value.as<double>();
       } else if (value.get_type() == sol::type::string) {

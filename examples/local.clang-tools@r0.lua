@@ -9,28 +9,27 @@ if envy.PLATFORM == "darwin" then
   }
 end
 
-OPTIONS = function(opts)
-  envy.options({
-    version = { required = true },
-    tools = {
-      required = true,
-      validate = function(v)
-        if type(v) ~= "table" or #v == 0 then
-          return "'tools' must be a non-empty array of tool names"
+OPTIONS = {
+  version = { required = true },
+  tools = {
+    required = true,
+    validate = function(v)
+      if type(v) ~= "table" or #v == 0 then
+        return "'tools' must be a non-empty array of tool names"
+      end
+      for i, tool in ipairs(v) do
+        if type(tool) ~= "string" or tool == "" then
+          return string.format("tool name at index %d must be a non-empty string", i)
         end
-        for i, tool in ipairs(v) do
-          if type(tool) ~= "string" or tool == "" then
-            return string.format("tool name at index %d must be a non-empty string", i)
-          end
-          if not tool:match("^[%w_%-]+$") then
-            return string.format(
-                "invalid tool name '%s': only letters, digits, '_' and '-' are allowed", tool)
-          end
+        if not tool:match("^[%w_%-%+]+$") then
+          return string.format(
+            "invalid tool name '%s': only letters, digits, '_', '-' and '+' are allowed",
+            tool)
         end
-      end,
-    },
-  })
-end
+      end
+    end,
+  },
+}
 
 FETCH = function(tmp_dir, opts)
   local base = "https://github.com/llvm/llvm-project/releases/download/llvmorg-" ..
