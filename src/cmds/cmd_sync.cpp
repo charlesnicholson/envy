@@ -46,7 +46,8 @@ void cmd_sync::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
       ->check(CLI::IsMember({ "posix", "windows", "all" }));
   sub->add_flag("--ignore-depot",
                 cfg_ptr->ignore_depot,
-                "Ignore package depot; rebuild from source");
+                "Ignore package depot; rebuild from source")
+      ->envname("ENVY_IGNORE_DEPOT");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }

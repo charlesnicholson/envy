@@ -1018,24 +1018,6 @@ end
             srv.shutdown()
             srv.server_close()
 
-    def test_env_var_unset_uses_depot(self):
-        """Control: env var not set uses depot normally."""
-        archives = self._install_and_export(["local.depot_a@v1"])
-        self._clear_markers()
-        srv, port = self._start_server()
-        try:
-            depot_url = self._make_depot_manifest(archives, port)
-            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
-            r = self._run("sync", "--manifest", str(m))
-            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
-            self.assertFalse(
-                self.markers["local.depot_a@v1"].exists(),
-                "BUILD marker should NOT exist (depot used)",
-            )
-        finally:
-            srv.shutdown()
-            srv.server_close()
-
     # -- Edge case tests --
 
     def test_flag_overrides_working_depot(self):

@@ -27,7 +27,8 @@ void cmd_package::register_cli(CLI::App &app, std::function<void(cfg)> on_select
   sub->add_option("--manifest", cfg_ptr->manifest_path, "Path to envy.lua manifest");
   sub->add_flag("--ignore-depot",
                 cfg_ptr->ignore_depot,
-                "Ignore package depot; rebuild from source");
+                "Ignore package depot; rebuild from source")
+      ->envname("ENVY_IGNORE_DEPOT");
   sub->callback(
       [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
 }

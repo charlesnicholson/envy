@@ -24,7 +24,8 @@ cli_args cli_parse(int argc, char **argv) {
       "Enable decorated verbose logging (prefix stdout/stderr with timestamp and level)");
 
   std::optional<std::filesystem::path> cache_root;
-  app.add_option("--cache-root", cache_root, "Cache root directory (overrides default)");
+  app.add_option("--cache-root", cache_root, "Cache root directory (overrides default)")
+      ->envname("ENVY_CACHE_ROOT");
 
   std::string trace_spec;
   auto *trace_option{ app.add_option("--trace",

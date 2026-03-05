@@ -5,7 +5,6 @@
 #include "tui.h"
 
 #include <chrono>
-#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -18,7 +17,6 @@ namespace envy {
 path resolve_cache_root(std::optional<path> const &cli_override,
                         std::optional<std::string> const &manifest_cache) {
   if (cli_override) { return *cli_override; }
-  if (char const *env{ std::getenv("ENVY_CACHE_ROOT") }) { return env; }
   if (manifest_cache) { return platform::expand_path(*manifest_cache); }
   if (auto def{ platform::get_default_cache_root() }) { return *def; }
 

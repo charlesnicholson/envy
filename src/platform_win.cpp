@@ -34,10 +34,6 @@ file_lock &file_lock::operator=(file_lock &&) noexcept = default;
 file_lock::operator bool() const { return impl_ != nullptr; }
 
 std::optional<std::filesystem::path> get_default_cache_root() {
-  if (char const *env_root{ std::getenv("ENVY_CACHE_ROOT") }) {
-    return std::filesystem::path{ env_root };
-  }
-
   if (char const *local_app_data{ std::getenv("LOCALAPPDATA") }) {
     return std::filesystem::path{ local_app_data } / "envy";
   }

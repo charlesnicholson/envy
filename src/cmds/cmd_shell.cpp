@@ -6,10 +6,9 @@
 
 #include "CLI11.hpp"
 
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -23,15 +22,15 @@ struct shell_info {
   char const *name;
   char const *ext;
   char const *profile_hint;
-  char const *source_fmt;  // printf format: %s = hook file path
+  char const *source_cmd;  // e.g. "source" or "."
 };
 
 // clang-format off
 constexpr shell_info kShells[] = {
-  {"bash",       "bash", "~/.bashrc",    "source \"%s\""},
-  {"zsh",        "zsh",  "~/.zshrc",     "source \"%s\""},
-  {"fish",       "fish", "~/.config/fish/config.fish", "source \"%s\""},
-  {"powershell", "ps1",  "$PROFILE",     ". \"%s\""},
+  {"bash",       "bash", "~/.bashrc",                  "source"},
+  {"zsh",        "zsh",  "~/.zshrc",                   "source"},
+  {"fish",       "fish", "~/.config/fish/config.fish", "source"},
+  {"powershell", "ps1",  "$PROFILE",                   "."},
 };
 // clang-format on
 
@@ -43,7 +42,7 @@ shell_info const *find_shell(std::string const &name) {
 }
 
 bool is_custom_cache(std::optional<fs::path> const &cli_cache_root) {
-  return cli_cache_root.has_value() || std::getenv("ENVY_CACHE_ROOT") != nullptr;
+  return cli_cache_root.has_value();
 }
 
 }  // namespace
@@ -96,12 +95,15 @@ void cmd_shell::execute() {
     }
   }
 
-  char buf[1024];
-  std::snprintf(buf, sizeof(buf), si->source_fmt, display_path.c_str());
+  std::string const source_line{ [&] {
+    std::ostringstream oss;
+    oss << si->source_cmd << " \"" << display_path << '"';
+    return oss.str();
+  }() };
 
   tui::info("Add this line to %s:", si->profile_hint);
   tui::info("");
-  tui::info("  %s", buf);
+  tui::info("  %s", source_line.c_str());
   tui::info("");
 
   if (is_custom_cache(cli_cache_root_)) {
