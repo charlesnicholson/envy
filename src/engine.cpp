@@ -712,9 +712,25 @@ void engine::run_pkg_thread(pkg *p) {
   }
 }
 
+std::vector<pkg_cfg const *> engine_filter_host_platform(
+    std::vector<pkg_cfg const *> const &cfgs) {
+  std::vector<pkg_cfg const *> result;
+  result.reserve(cfgs.size());
+  for (auto const *cfg : cfgs) {
+    if (util_platform_matches(cfg->platforms,
+                              platform::os_name(),
+                              platform::arch_name())) {
+      result.push_back(cfg);
+    }
+  }
+  return result;
+}
+
 pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
+  auto const filtered{ engine_filter_host_platform(roots) };
+
   try {
-    resolve_graph(roots);
+    resolve_graph(filtered);
   } catch (...) {
     fail_all_contexts();
 

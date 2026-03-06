@@ -5,9 +5,11 @@
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
+#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
+#include "util.h"
 
 #include "CLI11.hpp"
 
@@ -48,7 +50,15 @@ void cmd_package::execute() {
   std::vector<pkg_cfg const *> matches;
   for (auto const *pkg : m->packages) {
     pkg_key const key{ *pkg };
-    if (key.matches(cfg_.identity)) { matches.push_back(pkg); }
+    if (key.matches(cfg_.identity)) {
+      if (!util_platform_matches(pkg->platforms,
+                                 platform::os_name(),
+                                 platform::arch_name())) {
+        throw std::runtime_error("package: '" + cfg_.identity +
+                                 "' is not available on this platform");
+      }
+      matches.push_back(pkg);
+    }
   }
 
   if (matches.empty()) {

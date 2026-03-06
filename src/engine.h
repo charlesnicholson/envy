@@ -161,6 +161,11 @@ class engine : unmovable {
   std::unordered_map<std::string, std::unique_ptr<bundle>> bundle_registry_;
 };
 
+// Filter pkg_cfgs to those matching the current host platform.
+// Packages with empty platforms match all hosts.
+std::vector<pkg_cfg const *> engine_filter_host_platform(
+    std::vector<pkg_cfg const *> const &cfgs);
+
 // Validate that adding candidate_identity as a dependency doesn't create a cycle
 // Checks for self-loops and cycles in ancestor_chain, throws on detection
 // dependency_type used for error messages (e.g., "Dependency" or "Fetch dependency")

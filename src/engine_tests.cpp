@@ -3,6 +3,7 @@
 #include "cache.h"
 #include "doctest.h"
 #include "manifest.h"
+#include "platform.h"
 
 #include <filesystem>
 #include <vector>
@@ -202,7 +203,7 @@ TEST_CASE("process_fetch_dependencies: manifest bundle parent stays null") {
 
   // Create a bundle pkg_cfg like manifest would create it (with parent = nullptr)
   pkg_cfg *bundle_cfg = pkg_cfg::pool()->emplace(
-      "test.custom-bundle@v1",                                  // identity = bundle identity
+      "test.custom-bundle@v1",  // identity = bundle identity
       pkg_cfg::bundle_source{ .bundle_identity = "test.custom-bundle@v1",
                               .fetch_source = pkg_cfg::custom_fetch_source{} },
       "{}",
@@ -245,6 +246,233 @@ TEST_CASE("process_fetch_dependencies: manifest bundle parent stays null") {
   CHECK(bundle_cfg->parent == nullptr);
 
   fs::remove_all(cache_root);
+}
+
+// --- engine_filter_host_platform ---
+
+TEST_CASE("engine_filter_host_platform: empty platforms passes through") {
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.size() == 1);
+  CHECK(result[0] == cfg);
+}
+
+TEST_CASE("engine_filter_host_platform: current OS passes through") {
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  cfg->platforms.push_back(std::string(platform::os_name()));
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.size() == 1);
+}
+
+TEST_CASE("engine_filter_host_platform: other OS is filtered out") {
+  std::string const other{ std::string(platform::os_name()) == "darwin" ? "linux"
+                                                                        : "darwin" };
+
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  cfg->platforms.push_back(other);
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.empty());
+}
+
+TEST_CASE("engine_filter_host_platform: current os-arch passes through") {
+  std::string const exact{ std::string(platform::os_name()) + "-" +
+                           std::string(platform::arch_name()) };
+
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  cfg->platforms.push_back(exact);
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.size() == 1);
+}
+
+TEST_CASE("engine_filter_host_platform: wrong arch is filtered out") {
+  std::string const wrong{ std::string(platform::os_name()) + "-" +
+                           (std::string(platform::arch_name()) == "arm64" ? "x86_64"
+                                                                          : "arm64") };
+
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  cfg->platforms.push_back(wrong);
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.empty());
+}
+
+TEST_CASE("engine_filter_host_platform: mixed roots keeps only matching") {
+  std::string const other{ std::string(platform::os_name()) == "darwin" ? "linux"
+                                                                        : "darwin" };
+
+  pkg_cfg *good = pkg_cfg::pool()->emplace(
+      "local.good@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  good->platforms.push_back(std::string(platform::os_name()));
+
+  pkg_cfg *bad = pkg_cfg::pool()->emplace(
+      "local.bad@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  bad->platforms.push_back(other);
+
+  auto result{ engine_filter_host_platform({ good, bad }) };
+  REQUIRE(result.size() == 1);
+  CHECK(result[0] == good);
+}
+
+TEST_CASE("engine_filter_host_platform: multiple platforms one matching") {
+  pkg_cfg *cfg = pkg_cfg::pool()->emplace(
+      "local.tool@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  cfg->platforms.push_back("darwin");
+  cfg->platforms.push_back("linux");
+  cfg->platforms.push_back("windows");
+
+  auto result{ engine_filter_host_platform({ cfg }) };
+  CHECK(result.size() == 1);
+}
+
+TEST_CASE("engine_filter_host_platform: all filtered yields empty") {
+  std::string const other{ std::string(platform::os_name()) == "darwin" ? "windows"
+                                                                        : "darwin" };
+
+  pkg_cfg *a = pkg_cfg::pool()->emplace(
+      "local.a@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  a->platforms.push_back(other);
+
+  pkg_cfg *b = pkg_cfg::pool()->emplace(
+      "local.b@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+  b->platforms.push_back(other);
+
+  auto result{ engine_filter_host_platform({ a, b }) };
+  CHECK(result.empty());
+}
+
+TEST_CASE("engine_filter_host_platform: empty input yields empty output") {
+  auto result{ engine_filter_host_platform({}) };
+  CHECK(result.empty());
+}
+
+TEST_CASE("engine_filter_host_platform: preserves order of matching cfgs") {
+  pkg_cfg *a = pkg_cfg::pool()->emplace(
+      "local.a@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+
+  pkg_cfg *b = pkg_cfg::pool()->emplace(
+      "local.b@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+
+  pkg_cfg *c = pkg_cfg::pool()->emplace(
+      "local.c@r0",
+      pkg_cfg::local_source{ .file_path = std::filesystem::path("dummy.lua") },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+
+  auto result{ engine_filter_host_platform({ a, b, c }) };
+  REQUIRE(result.size() == 3);
+  CHECK(result[0] == a);
+  CHECK(result[1] == b);
+  CHECK(result[2] == c);
 }
 
 }  // namespace envy

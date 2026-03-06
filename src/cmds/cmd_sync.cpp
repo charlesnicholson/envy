@@ -15,7 +15,6 @@
 
 #include "CLI11.hpp"
 
-#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -96,8 +95,13 @@ void cmd_sync::execute() {
     for (auto const &query : cfg_.queries) {
       bool found{ false };
       for (auto const *pkg : m->packages) {
-        pkg_key const key{ *pkg };
-        if (key.matches(query)) {
+        if (pkg_key const key{ *pkg }; key.matches(query)) {
+          if (!util_platform_matches(pkg->platforms,
+                                     platform::os_name(),
+                                     platform::arch_name())) {
+            throw std::runtime_error("sync: '" + query +
+                                     "' is not available on this platform");
+          }
           targets.push_back(pkg);
           found = true;
           break;
@@ -108,12 +112,6 @@ void cmd_sync::execute() {
       }
     }
   }
-
-  std::erase_if(targets, [&](pkg_cfg const *cfg) {  // Filter out no-host packages
-    return !util_platform_matches(cfg->platforms,
-                                  platform::os_name(),
-                                  platform::arch_name());
-  });
 
   if (targets.empty()) { return; }
 

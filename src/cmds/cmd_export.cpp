@@ -6,6 +6,7 @@
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
+#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "sha256.h"
@@ -195,8 +196,13 @@ void cmd_export::execute() {
     for (auto const &query : cfg_.queries) {
       bool found{ false };
       for (auto const *pkg : m->packages) {
-        pkg_key const key{ *pkg };
-        if (key.matches(query)) {
+        if (pkg_key const key{ *pkg }; key.matches(query)) {
+          if (!util_platform_matches(pkg->platforms,
+                                     platform::os_name(),
+                                     platform::arch_name())) {
+            throw std::runtime_error("export: '" + query +
+                                     "' is not available on this platform");
+          }
           targets.push_back(pkg);
           found = true;
           break;
