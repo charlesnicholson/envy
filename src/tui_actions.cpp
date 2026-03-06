@@ -177,10 +177,24 @@ fetch_all_progress_tracker::fetch_all_progress_tracker(
       git_states_(labels.size()),
       grouped_{ labels.size() > 1 } {
   children_.reserve(labels.size());
+  auto const now{ std::chrono::steady_clock::now() };
   for (auto const &label : labels) {
     children_.push_back(tui::section_frame{
         .label = label,
-        .content = tui::progress_data{ .percent = 0.0, .status = label } });
+        .content = tui::spinner_data{ .text = label, .start_time = now } });
+  }
+
+  // Render initial state so the TUI is visible during slow setup (e.g. AWS init).
+  if (grouped_) {
+    tui::section_set_content(
+        section_,
+        tui::section_frame{ .label = label_,
+                            .content = tui::static_text_data{ .text = "fetch" },
+                            .children = children_ });
+  } else if (!children_.empty()) {
+    tui::section_frame frame{ children_[0] };
+    frame.label = label_;
+    tui::section_set_content(section_, frame);
   }
 }
 
