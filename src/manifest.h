@@ -18,12 +18,15 @@ namespace envy {
 struct envy_meta {
   int schema{ 0 };                          // @envy schema "N" (0 = absent)
   std::optional<std::string> version;       // @envy version "x.y.z"
-  std::optional<std::string> cache;         // @envy cache-posix or cache-win
+  std::optional<std::string> cache_posix;   // @envy cache-posix (always parsed)
+  std::optional<std::string> cache_win;     // @envy cache-win (always parsed)
   std::optional<std::string> mirror;        // @envy mirror "https://..."
   std::optional<std::string> bin;           // @envy bin "relative/path/to/bin"
   std::optional<bool> deploy;               // @envy deploy "true"/"false"
   std::optional<bool> root;                 // @envy root "true"/"false"
   std::vector<std::string> package_depots;  // @envy package-depot "url" (repeatable)
+
+  std::optional<std::string> const &cache_for_platform() const;
 };
 
 // Parse @envy metadata from manifest content

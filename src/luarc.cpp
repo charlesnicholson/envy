@@ -7,6 +7,7 @@
 
 #include "lua.h"
 #include "picojson.h"
+#include "semver.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -81,10 +82,55 @@ std::string stamp_placeholders(std::string_view content, std::string_view downlo
   return result;
 }
 
+// Check if a path ends with /envy/<valid-semver>
+bool is_envy_semver_path(std::string_view s) {
+  // Find last /envy/ segment
+  auto const marker{ s.rfind("/envy/") };
+  if (marker == std::string_view::npos) { return false; }
+
+  auto const ver_start{ marker + 6 };  // skip "/envy/"
+  if (ver_start >= s.size()) { return false; }
+
+  // The version part is everything after /envy/ (to end, or before trailing /)
+  auto ver_str{ s.substr(ver_start) };
+  if (!ver_str.empty() && ver_str.back() == '/') {
+    ver_str = ver_str.substr(0, ver_str.size() - 1);
+  }
+  if (ver_str.empty()) { return false; }
+
+  semver::version<> v;
+  return semver::parse(ver_str, v);
+}
+
 }  // namespace
 
-std::optional<std::string> rewrite_luarc_types_path(std::string_view content,
-                                                    std::string_view expected_path) {
+std::vector<std::string> compute_canonical_luarc_paths(envy_meta const &meta) {
+  std::vector<std::string> paths;
+  std::string const ver{ ENVY_VERSION_STR };
+
+  if (meta.cache_posix) {  // Single posix entry from override
+    std::string p{ *meta.cache_posix };
+    std::replace(p.begin(), p.end(), '\\', '/');
+    paths.push_back(p + "/envy/" + ver);
+  } else {  // macOS + Linux defaults
+    paths.push_back("~/Library/Caches/envy/envy/" + ver);
+    paths.push_back("~/.cache/envy/envy/" + ver);
+  }
+
+  if (meta.cache_win) {
+    std::string p{ *meta.cache_win };
+    std::replace(p.begin(), p.end(), '\\', '/');
+    paths.push_back(p + "/envy/" + ver);
+  } else {
+    paths.push_back("${env:USERPROFILE}/AppData/Local/envy/envy/" + ver);
+  }
+
+  return paths;
+}
+
+std::optional<std::string> rewrite_luarc_types_path(
+    std::string_view content,
+    std::vector<std::string> const &canonical_paths) {
   picojson::value root;
   std::string const json_str{ content };
   std::string err{ picojson::parse(root, json_str) };
@@ -96,48 +142,46 @@ std::optional<std::string> rewrite_luarc_types_path(std::string_view content,
 
   auto &library{ it->second.get<picojson::array>() };
 
-  // Derive prefix: expected is "<cache>/envy/<version>", prefix is "<cache>/envy/"
-  auto const last_slash{ expected_path.rfind('/') };
-  if (last_slash == std::string_view::npos) { return std::nullopt; }
-  std::string_view const prefix{ expected_path.substr(0, last_slash + 1) };
-
-  // Find the envy entry by matching the cache prefix
-  int envy_idx{ -1 };
-  for (int i{ 0 }; i < static_cast<int>(library.size()); ++i) {
-    if (!library[i].is<std::string>()) { continue; }
-    auto const &s{ library[i].get<std::string>() };
-    if (s.starts_with(prefix)) {
-      envy_idx = i;
-      break;
+  // Partition: keep non-envy entries, remove envy entries
+  std::vector<picojson::value> kept;
+  for (auto const &entry : library) {
+    if (entry.is<std::string>() && is_envy_semver_path(entry.get<std::string>())) {
+      continue;  // remove envy entry
     }
+    kept.push_back(entry);
   }
 
-  if (envy_idx < 0) {
-    library.push_back(picojson::value(std::string{ expected_path }));
-    return root.serialize(true);
+  // Append canonical paths
+  for (auto const &p : canonical_paths) { kept.push_back(picojson::value(p)); }
+
+  if ([&] {
+        if (kept.size() != library.size()) { return false; }
+        for (size_t i{ 0 }; i < kept.size(); ++i) {
+          if (kept[i].serialize() != library[i].serialize()) { return false; }
+        }
+        return true;
+      }()) {
+    return std::nullopt;
   }
 
-  auto const &current{ library[envy_idx].get<std::string>() };
-  if (current == expected_path) { return std::nullopt; }
-
-  library[envy_idx] = picojson::value(std::string{ expected_path });
+  library = std::move(kept);
   return root.serialize(true);
 }
 
-void update_luarc_types_path(fs::path const &project_dir, fs::path const &cache_root) {
+void update_luarc_types_path(fs::path const &project_dir, envy_meta const &meta) {
   fs::path const luarc_path{ project_dir / ".luarc.json" };
   if (!fs::exists(luarc_path)) { return; }
 
-  std::string const expected{ make_portable_path(cache_root / "envy" / ENVY_VERSION_STR) };
+  auto const canonical{ compute_canonical_luarc_paths(meta) };
 
   auto const bytes{ util_load_file(luarc_path) };
   std::string const content{ bytes.begin(), bytes.end() };
 
-  auto result{ rewrite_luarc_types_path(content, expected) };
+  auto result{ rewrite_luarc_types_path(content, canonical) };
   if (!result) { return; }
 
   util_write_file(luarc_path, *result);
-  tui::info("Updated .luarc.json types path to %s", expected.c_str());
+  tui::info("Updated .luarc.json types paths");
 }
 
 fs::path extract_lua_ls_types(fs::path const &cache_root) {
@@ -160,22 +204,29 @@ fs::path extract_lua_ls_types(fs::path const &cache_root) {
   return types_dir;
 }
 
-void write_luarc(fs::path const &project_dir, fs::path const &types_dir) {
+void write_luarc(fs::path const &project_dir, envy_meta const &meta) {
   fs::path const luarc_path{ project_dir / ".luarc.json" };
 
-  std::string const portable_types_dir{ make_portable_path(types_dir) };
+  auto const canonical{ compute_canonical_luarc_paths(meta) };
 
   if (fs::exists(luarc_path)) {
     tui::info("");
     tui::info(".luarc.json already exists at %s", luarc_path.string().c_str());
     tui::info("To enable envy autocompletion, add the following to workspace.library:");
-    tui::info("  \"%s\"", portable_types_dir.c_str());
+    for (auto const &p : canonical) { tui::info("  \"%s\"", p.c_str()); }
     return;
+  }
+
+  // Build comma-separated quoted entries for template substitution
+  std::string entries;
+  for (size_t i{ 0 }; i < canonical.size(); ++i) {
+    if (i > 0) { entries += ",\n    "; }
+    entries += "\"" + canonical[i] + "\"";
   }
 
   std::string content{ get_luarc_template() };
   replace_all(content, "@@LUA_VERSION@@", LUA_VERSION);
-  replace_all(content, "@@TYPES_DIR@@", portable_types_dir);
+  replace_all(content, "\"@@TYPES_DIR@@\"", entries);
 
   util_write_file(luarc_path, content);
 

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -71,108 +72,140 @@ picojson::array parse_library_raw(std::string const &json) {
   return root.get<picojson::object>().at("workspace.library").get<picojson::array>();
 }
 
+std::vector<std::string> const kCanonical{
+  "~/Library/Caches/envy/envy/1.0.0",
+  "~/.cache/envy/envy/1.0.0",
+  "${env:USERPROFILE}/AppData/Local/envy/envy/1.0.0"
+};
+
 }  // namespace
 
 TEST_CASE("rewrite_luarc_types_path") {
-  std::string const current_path{ "${env:HOME}/.cache/envy/envy/0.1.0" };
-  std::string const new_path{ "${env:HOME}/.cache/envy/envy/0.2.0" };
-
-  SUBCASE("updates old version path to new") {
-    std::string const input{ R"({"workspace.library": [")" + current_path + R"("]})" };
-    auto result{ envy::rewrite_luarc_types_path(input, new_path) };
+  SUBCASE("replaces single old-style entry with canonical set") {
+    std::string const input{
+      R"({"workspace.library": ["${env:HOME}/.cache/envy/envy/0.1.0"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     REQUIRE(result.has_value());
     auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 1);
-    CHECK(lib[0] == new_path);
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+    CHECK(lib[1] == kCanonical[1]);
+    CHECK(lib[2] == kCanonical[2]);
   }
 
-  SUBCASE("already-current path returns nullopt") {
-    std::string const input{ R"({"workspace.library": [")" + current_path + R"("]})" };
-    auto result{ envy::rewrite_luarc_types_path(input, current_path) };
+  SUBCASE("replaces multiple accumulated entries from different platforms") {
+    std::string const input{ R"({"workspace.library": [)"
+                             R"("${env:HOME}/Library/Caches/envy/envy/0.0.35",)"
+                             R"("${env:HOME}/work/firmware/.envy-cache/envy/0.0.35")"
+                             R"(]})" };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+    CHECK(lib[1] == kCanonical[1]);
+    CHECK(lib[2] == kCanonical[2]);
+  }
+
+  SUBCASE("already-correct returns nullopt") {
+    std::string input{ R"({"workspace.library": [)" };
+    for (size_t i{ 0 }; i < kCanonical.size(); ++i) {
+      if (i > 0) { input += ","; }
+      input += "\"" + kCanonical[i] + "\"";
+    }
+    input += "]}";
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     CHECK_FALSE(result.has_value());
   }
 
+  SUBCASE("non-envy entries preserved alongside canonical set") {
+    std::string const input{
+      R"({"workspace.library": ["/usr/local/lua-libs", "~/Library/Caches/envy/envy/0.1.0", "/another/lib"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 5);
+    CHECK(lib[0] == "/usr/local/lua-libs");
+    CHECK(lib[1] == "/another/lib");
+    CHECK(lib[2] == kCanonical[0]);
+    CHECK(lib[3] == kCanonical[1]);
+    CHECK(lib[4] == kCanonical[2]);
+  }
+
+  SUBCASE("empty library adds canonical set") {
+    auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": []})",
+                                                kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+  }
+
+  SUBCASE("/foo/envy/not-a-semver is NOT matched (preserved)") {
+    std::string const input{ R"({"workspace.library": ["/foo/envy/not-a-semver"]})" };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 4);
+    CHECK(lib[0] == "/foo/envy/not-a-semver");
+    CHECK(lib[1] == kCanonical[0]);
+  }
+
+  SUBCASE("pre-release semver entries are matched") {
+    std::string const input{
+      R"({"workspace.library": ["/some/path/envy/0.1.0-beta.1"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+  }
+
+  SUBCASE("library with only non-string entries adds canonical set") {
+    auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": [42, true]})",
+                                                kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library_raw(*result) };
+    REQUIRE(lib.size() == 5);
+    CHECK(lib[0].is<double>());
+    CHECK(lib[1].is<bool>());
+    CHECK(lib[2].get<std::string>() == kCanonical[0]);
+  }
+
   SUBCASE("invalid JSON returns nullopt") {
-    auto result{ envy::rewrite_luarc_types_path("{not valid json", new_path) };
+    auto result{ envy::rewrite_luarc_types_path("{not valid json", kCanonical) };
     CHECK_FALSE(result.has_value());
   }
 
   SUBCASE("empty string returns nullopt") {
-    auto result{ envy::rewrite_luarc_types_path("", new_path) };
+    auto result{ envy::rewrite_luarc_types_path("", kCanonical) };
     CHECK_FALSE(result.has_value());
   }
 
   SUBCASE("root not object returns nullopt") {
-    auto result{ envy::rewrite_luarc_types_path("[1, 2, 3]", new_path) };
+    auto result{ envy::rewrite_luarc_types_path("[1, 2, 3]", kCanonical) };
     CHECK_FALSE(result.has_value());
   }
 
   SUBCASE("missing workspace.library returns nullopt") {
-    auto result{ envy::rewrite_luarc_types_path(R"({"other.key": 42})", new_path) };
+    auto result{ envy::rewrite_luarc_types_path(R"({"other.key": 42})", kCanonical) };
     CHECK_FALSE(result.has_value());
   }
 
   SUBCASE("workspace.library not array returns nullopt") {
     auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": "not-an-array"})",
-                                                new_path) };
+                                                kCanonical) };
     CHECK_FALSE(result.has_value());
-  }
-
-  SUBCASE("expected path with no slash returns nullopt") {
-    auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": ["something"]})",
-                                                "no-slash") };
-    CHECK_FALSE(result.has_value());
-  }
-
-  SUBCASE("no envy entry — adds entry to end of library") {
-    auto result{ envy::rewrite_luarc_types_path(
-        R"({"workspace.library": ["/some/other/lib"]})",
-        new_path) };
-    REQUIRE(result.has_value());
-    auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 2);
-    CHECK(lib[0] == "/some/other/lib");
-    CHECK(lib[1] == new_path);
-  }
-
-  SUBCASE("empty library array — adds envy entry") {
-    auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": []})",
-                                                new_path) };
-    REQUIRE(result.has_value());
-    auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 1);
-    CHECK(lib[0] == new_path);
-  }
-
-  SUBCASE("library with only non-string entries — adds envy entry") {
-    auto result{ envy::rewrite_luarc_types_path(R"({"workspace.library": [42, true]})",
-                                                new_path) };
-    REQUIRE(result.has_value());
-    auto lib{ parse_library_raw(*result) };
-    REQUIRE(lib.size() == 3);
-    CHECK(lib[0].is<double>());
-    CHECK(lib[1].is<bool>());
-    CHECK(lib[2].get<std::string>() == new_path);
-  }
-
-  SUBCASE("multiple library entries — only envy entry updated, others preserved") {
-    std::string const input{ R"({"workspace.library": ["/usr/local/lua-libs", ")" +
-                             current_path + R"(", "/another/lib"]})" };
-    auto result{ envy::rewrite_luarc_types_path(input, new_path) };
-    REQUIRE(result.has_value());
-    auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 3);
-    CHECK(lib[0] == "/usr/local/lua-libs");
-    CHECK(lib[1] == new_path);
-    CHECK(lib[2] == "/another/lib");
   }
 
   SUBCASE("other JSON keys are preserved") {
     std::string const input{
-      R"({"diagnostics.globals": ["envy"], "workspace.library": [")" + current_path +
-      R"("], "completion.enable": true})"
+      R"({"diagnostics.globals": ["envy"], "workspace.library": ["~/.cache/envy/envy/0.1.0"], "completion.enable": true})"
     };
-    auto result{ envy::rewrite_luarc_types_path(input, new_path) };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     REQUIRE(result.has_value());
     picojson::value root;
     picojson::parse(root, *result);
@@ -181,31 +214,129 @@ TEST_CASE("rewrite_luarc_types_path") {
     CHECK(obj.count("completion.enable") == 1);
   }
 
-  SUBCASE("other JSON keys preserved when adding missing entry") {
-    auto result{ envy::rewrite_luarc_types_path(
-        R"({"diagnostics.globals": ["envy"], "workspace.library": [], "completion.enable": true})",
-        new_path) };
-    REQUIRE(result.has_value());
-    picojson::value root;
-    picojson::parse(root, *result);
-    auto &obj{ root.get<picojson::object>() };
-    CHECK(obj.count("diagnostics.globals") == 1);
-    CHECK(obj.count("completion.enable") == 1);
-    auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 1);
-    CHECK(lib[0] == new_path);
-  }
-
-  SUBCASE("multiple custom entries preserved when adding missing envy entry") {
+  SUBCASE("multiple custom entries preserved when adding canonical") {
     auto result{ envy::rewrite_luarc_types_path(
         R"({"workspace.library": ["/custom/lib1", "/custom/lib2", "/custom/lib3"]})",
-        new_path) };
+        kCanonical) };
     REQUIRE(result.has_value());
     auto lib{ parse_library(*result) };
-    REQUIRE(lib.size() == 4);
+    REQUIRE(lib.size() == 6);
     CHECK(lib[0] == "/custom/lib1");
     CHECK(lib[1] == "/custom/lib2");
     CHECK(lib[2] == "/custom/lib3");
-    CHECK(lib[3] == new_path);
+    CHECK(lib[3] == kCanonical[0]);
+  }
+
+  SUBCASE("trailing slash on envy path still matches") {
+    std::string const input{
+      R"({"workspace.library": ["/foo/envy/1.0.0/"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+  }
+
+  SUBCASE("/foo/envy/ with no version is not matched") {
+    std::string const input{ R"({"workspace.library": ["/foo/envy/"]})" };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 4);
+    CHECK(lib[0] == "/foo/envy/");
+  }
+
+  SUBCASE("build metadata semver is matched") {
+    std::string const input{
+      R"({"workspace.library": ["/cache/envy/1.0.0+build.123"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+  }
+
+  SUBCASE("multiple /envy/ segments matches on last") {
+    std::string const input{
+      R"({"workspace.library": ["/envy/stuff/envy/2.0.0"]})"
+    };
+    auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 3);
+    CHECK(lib[0] == kCanonical[0]);
+  }
+
+  SUBCASE("round-trip idempotency") {
+    std::string const input{
+      R"({"workspace.library": ["~/.cache/envy/envy/0.1.0", "/custom/lib"]})"
+    };
+    auto first{ envy::rewrite_luarc_types_path(input, kCanonical) };
+    REQUIRE(first.has_value());
+    auto second{ envy::rewrite_luarc_types_path(*first, kCanonical) };
+    CHECK_FALSE(second.has_value());
+  }
+
+  SUBCASE("empty canonical_paths removes envy entries and adds nothing") {
+    std::string const input{
+      R"({"workspace.library": ["/custom/lib", "~/.cache/envy/envy/0.1.0"]})"
+    };
+    std::vector<std::string> const empty;
+    auto result{ envy::rewrite_luarc_types_path(input, empty) };
+    REQUIRE(result.has_value());
+    auto lib{ parse_library(*result) };
+    REQUIRE(lib.size() == 1);
+    CHECK(lib[0] == "/custom/lib");
+  }
+}
+
+TEST_CASE("compute_canonical_luarc_paths") {
+  SUBCASE("default meta produces 3 entries") {
+    envy::envy_meta meta;
+    auto paths{ envy::compute_canonical_luarc_paths(meta) };
+    REQUIRE(paths.size() == 3);
+    CHECK(paths[0].find("~/Library/Caches/envy/envy/") == 0);
+    CHECK(paths[1].find("~/.cache/envy/envy/") == 0);
+    CHECK(paths[2].find("${env:USERPROFILE}/AppData/Local/envy/envy/") == 0);
+  }
+
+  SUBCASE("cache_posix override produces 2 entries") {
+    envy::envy_meta meta;
+    meta.cache_posix = "/custom/posix/cache";
+    auto paths{ envy::compute_canonical_luarc_paths(meta) };
+    REQUIRE(paths.size() == 2);
+    CHECK(paths[0].find("/custom/posix/cache/envy/") == 0);
+    CHECK(paths[1].find("${env:USERPROFILE}/AppData/Local/envy/envy/") == 0);
+  }
+
+  SUBCASE("cache_win override produces 3 entries") {
+    envy::envy_meta meta;
+    meta.cache_win = "D:/envy-cache";
+    auto paths{ envy::compute_canonical_luarc_paths(meta) };
+    REQUIRE(paths.size() == 3);
+    CHECK(paths[0].find("~/Library/Caches/envy/envy/") == 0);
+    CHECK(paths[1].find("~/.cache/envy/envy/") == 0);
+    CHECK(paths[2].find("D:/envy-cache/envy/") == 0);
+  }
+
+  SUBCASE("both overrides produces 2 entries") {
+    envy::envy_meta meta;
+    meta.cache_posix = "/custom/posix";
+    meta.cache_win = "D:/custom/win";
+    auto paths{ envy::compute_canonical_luarc_paths(meta) };
+    REQUIRE(paths.size() == 2);
+    CHECK(paths[0].find("/custom/posix/envy/") == 0);
+    CHECK(paths[1].find("D:/custom/win/envy/") == 0);
+  }
+
+  SUBCASE("cache_win backslashes normalized to forward slashes") {
+    envy::envy_meta meta;
+    meta.cache_win = "D:\\envy\\cache";
+    auto paths{ envy::compute_canonical_luarc_paths(meta) };
+    REQUIRE(paths.size() == 3);
+    CHECK(paths[2].find("D:/envy/cache/envy/") == 0);
+    CHECK(paths[2].find('\\') == std::string::npos);
   }
 }

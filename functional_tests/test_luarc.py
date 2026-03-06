@@ -1,6 +1,7 @@
 """Tests for .luarc.json maintenance across envy commands."""
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,16 @@ def _get_envy_version() -> str:
         if line.startswith("envy version "):
             return line.split()[2]
     raise RuntimeError("Could not parse envy version from: " + result.stderr)
+
+
+_SEMVER_RE = re.compile(
+    r"/envy/(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?)$"
+)
+
+
+def _find_envy_entries(library: list[str]) -> list[str]:
+    """Find all envy types entries in workspace.library by semver pattern."""
+    return [e for e in library if _SEMVER_RE.search(e)]
 
 
 class TestLuarcTypesPathUpdate(unittest.TestCase):
@@ -75,14 +86,6 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         stale = content.replace(self._version, "0.0.0-stale")
         luarc.write_text(stale)
 
-    def _find_envy_entry(self, library: list[str]) -> str | None:
-        """Find the envy types entry in workspace.library."""
-        cache_str = str(self._cache_dir)
-        for entry in library:
-            if cache_str in entry or "/envy/" in entry:
-                return entry
-        return None
-
     # -- stale path updates --
 
     def test_sync_updates_stale_luarc(self) -> None:
@@ -100,10 +103,13 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
 
         data = json.loads(luarc.read_text())
         library = data["workspace.library"]
-        envy_entry = self._find_envy_entry(library)
-        self.assertIsNotNone(envy_entry, f"No envy entry found in {library}")
-        self.assertIn(self._version, envy_entry)
-        self.assertNotIn("0.0.0-stale", envy_entry)
+        envy_entries = _find_envy_entries(library)
+        self.assertEqual(
+            3, len(envy_entries), f"Expected 3 canonical entries: {library}"
+        )
+        for entry in envy_entries:
+            self.assertIn(self._version, entry)
+            self.assertNotIn("0.0.0-stale", entry)
 
     def test_deploy_updates_stale_luarc(self) -> None:
         """envy deploy updates stale .luarc.json envy types path."""
@@ -118,9 +124,12 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         luarc = self._project_dir / ".luarc.json"
         data = json.loads(luarc.read_text())
         library = data["workspace.library"]
-        envy_entry = self._find_envy_entry(library)
-        self.assertIsNotNone(envy_entry, f"No envy entry found in {library}")
-        self.assertIn(self._version, envy_entry)
+        envy_entries = _find_envy_entries(library)
+        self.assertEqual(
+            3, len(envy_entries), f"Expected 3 canonical entries: {library}"
+        )
+        for entry in envy_entries:
+            self.assertIn(self._version, entry)
 
     # -- preserving custom content --
 
@@ -163,8 +172,8 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         self.assertIn("/lib/a", library)
         self.assertIn("/lib/b", library)
         self.assertIn("/lib/c", library)
-        envy_entry = self._find_envy_entry(library)
-        self.assertIsNotNone(envy_entry)
+        envy_entries = _find_envy_entries(library)
+        self.assertEqual(3, len(envy_entries))
 
     # -- file absent --
 
@@ -197,6 +206,23 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         self.assertNotIn("workspace.library", data)
         self.assertEqual(42, data["custom.key"])
 
+    # -- idempotency --
+
+    def test_sync_idempotent_no_rewrite(self) -> None:
+        """envy sync does not rewrite .luarc.json when already correct."""
+        result = self._run_init()
+        self.assertEqual(0, result.returncode, f"init stderr: {result.stderr}")
+
+        luarc = self._project_dir / ".luarc.json"
+        content_before = luarc.read_text()
+
+        result = self._run_sync()
+        self.assertEqual(0, result.returncode, f"sync stderr: {result.stderr}")
+
+        content_after = luarc.read_text()
+        self.assertEqual(content_before, content_after)
+        self.assertNotIn("Updated", result.stderr)
+
     # -- deleted envy entry re-added --
 
     def test_sync_readds_deleted_envy_entry(self) -> None:
@@ -215,9 +241,12 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         data = json.loads(luarc.read_text())
         library = data["workspace.library"]
         self.assertIn("/my/custom/lib", library)
-        envy_entry = self._find_envy_entry(library)
-        self.assertIsNotNone(envy_entry, f"Envy entry should be re-added: {library}")
-        self.assertIn(self._version, envy_entry)
+        envy_entries = _find_envy_entries(library)
+        self.assertEqual(
+            3, len(envy_entries), f"Envy entries should be re-added: {library}"
+        )
+        for entry in envy_entries:
+            self.assertIn(self._version, entry)
 
     def test_deploy_readds_deleted_envy_entry(self) -> None:
         """envy deploy re-adds envy types entry if user deleted it."""
@@ -234,8 +263,10 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
 
         data = json.loads(luarc.read_text())
         library = data["workspace.library"]
-        envy_entry = self._find_envy_entry(library)
-        self.assertIsNotNone(envy_entry, f"Envy entry should be re-added: {library}")
+        envy_entries = _find_envy_entries(library)
+        self.assertEqual(
+            3, len(envy_entries), f"Envy entries should be re-added: {library}"
+        )
 
 
 if __name__ == "__main__":

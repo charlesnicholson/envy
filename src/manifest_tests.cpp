@@ -628,32 +628,26 @@ PACKAGES = {}
 
   REQUIRE(directives.version.has_value());
   CHECK(*directives.version == "1.2.3");
-  CHECK_FALSE(directives.cache.has_value());
+  CHECK_FALSE(directives.cache_posix.has_value());
+  CHECK_FALSE(directives.cache_win.has_value());
   CHECK_FALSE(directives.mirror.has_value());
 }
 
 TEST_CASE("parse_envy_meta extracts all directives") {
-#ifdef _WIN32
   auto directives{ envy::parse_envy_meta(R"(
 -- @envy version "2.0.0"
+-- @envy cache-posix "/opt/envy-cache"
 -- @envy cache-win "C:\opt\envy-cache"
 -- @envy mirror "https://internal.corp/releases"
 PACKAGES = {}
 )") };
-  CHECK(*directives.cache == "C:\\opt\\envy-cache");
-#else
-  auto directives{ envy::parse_envy_meta(R"(
--- @envy version "2.0.0"
--- @envy cache-posix "/opt/envy-cache"
--- @envy mirror "https://internal.corp/releases"
-PACKAGES = {}
-)") };
-  CHECK(*directives.cache == "/opt/envy-cache");
-#endif
 
   REQUIRE(directives.version.has_value());
   CHECK(*directives.version == "2.0.0");
-  REQUIRE(directives.cache.has_value());
+  REQUIRE(directives.cache_posix.has_value());
+  CHECK(*directives.cache_posix == "/opt/envy-cache");
+  REQUIRE(directives.cache_win.has_value());
+  CHECK(*directives.cache_win == "C:\\opt\\envy-cache");
   REQUIRE(directives.mirror.has_value());
   CHECK(*directives.mirror == "https://internal.corp/releases");
 }
@@ -669,23 +663,15 @@ PACKAGES = {}
 }
 
 TEST_CASE("parse_envy_meta handles escaped backslash") {
-#ifdef _WIN32
   auto directives{ envy::parse_envy_meta(R"(
 -- @envy cache-win "C:\\Users\\test\\cache"
-PACKAGES = {}
-)") };
-  REQUIRE(directives.cache.has_value());
-  CHECK(*directives.cache == "C:\\Users\\test\\cache");
-#else
-  // Test backslash escaping in version string on POSIX (cache-posix wouldn't have
-  // backslashes)
-  auto directives{ envy::parse_envy_meta(R"(
 -- @envy version "1.0.0-with\\backslash"
 PACKAGES = {}
 )") };
+  REQUIRE(directives.cache_win.has_value());
+  CHECK(*directives.cache_win == "C:\\Users\\test\\cache");
   REQUIRE(directives.version.has_value());
   CHECK(*directives.version == "1.0.0-with\\backslash");
-#endif
 }
 
 TEST_CASE("parse_envy_meta handles mixed escapes") {
@@ -705,28 +691,24 @@ PACKAGES = {}
 )") };
 
   CHECK_FALSE(directives.version.has_value());
-  CHECK_FALSE(directives.cache.has_value());
+  CHECK_FALSE(directives.cache_posix.has_value());
+  CHECK_FALSE(directives.cache_win.has_value());
   CHECK_FALSE(directives.mirror.has_value());
 }
 
 TEST_CASE("parse_envy_meta handles whitespace variants") {
-#ifdef _WIN32
   auto directives{ envy::parse_envy_meta(
       "--   @envy   version   \"1.0.0\"\n"
       "--\t@envy\tcache-win\t\"C:\\path\"\n"
-      "PACKAGES = {}\n") };
-  CHECK(*directives.cache == "C:\\path");
-#else
-  auto directives{ envy::parse_envy_meta(
-      "--   @envy   version   \"1.0.0\"\n"
       "--\t@envy\tcache-posix\t\"/path\"\n"
       "PACKAGES = {}\n") };
-  CHECK(*directives.cache == "/path");
-#endif
 
   REQUIRE(directives.version.has_value());
   CHECK(*directives.version == "1.0.0");
-  REQUIRE(directives.cache.has_value());
+  REQUIRE(directives.cache_win.has_value());
+  CHECK(*directives.cache_win == "C:\\path");
+  REQUIRE(directives.cache_posix.has_value());
+  CHECK(*directives.cache_posix == "/path");
 }
 
 TEST_CASE("parse_envy_meta finds directives anywhere in file") {
@@ -755,23 +737,13 @@ PACKAGES = {}
 }
 
 TEST_CASE("manifest::load populates directives field") {
-#ifdef _WIN32
-  char const *script{ R"(
--- @envy version "1.2.3"
--- @envy bin-dir "tools"
--- @envy cache-win "C:\custom\cache"
-PACKAGES = {}
-)" };
-  char const *expected_cache{ "C:\\custom\\cache" };
-#else
   char const *script{ R"(
 -- @envy version "1.2.3"
 -- @envy bin-dir "tools"
 -- @envy cache-posix "/custom/cache"
+-- @envy cache-win "C:\custom\cache"
 PACKAGES = {}
 )" };
-  char const *expected_cache{ "/custom/cache" };
-#endif
 
   auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
 
@@ -779,8 +751,10 @@ PACKAGES = {}
   CHECK(*m->meta.version == "1.2.3");
   REQUIRE(m->meta.bin.has_value());
   CHECK(*m->meta.bin == "tools");
-  REQUIRE(m->meta.cache.has_value());
-  CHECK(*m->meta.cache == expected_cache);
+  REQUIRE(m->meta.cache_posix.has_value());
+  CHECK(*m->meta.cache_posix == "/custom/cache");
+  REQUIRE(m->meta.cache_win.has_value());
+  CHECK(*m->meta.cache_win == "C:\\custom\\cache");
   CHECK_FALSE(m->meta.mirror.has_value());
 }
 

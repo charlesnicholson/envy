@@ -142,7 +142,7 @@ void reexec_if_needed(envy_meta const &meta,
   }
 
   // Fast path: check if the requested version is already in cache
-  auto const cache_root{ resolve_cache_root(cli_cache_root, meta.cache) };
+  auto const cache_root{ resolve_cache_root(cli_cache_root, meta.cache_for_platform()) };
   auto const cached_binary{ cache_root / "envy" / version / platform::exe_name("envy") };
   if (std::filesystem::exists(cached_binary)) { do_reexec(cached_binary); }
 

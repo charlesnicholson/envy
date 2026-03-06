@@ -184,7 +184,7 @@ void cmd_export::execute() {
 
   reexec_if_needed(m->meta, cli_cache_root_);
 
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   // Collect target packages: all if no queries, matched subset otherwise
   std::vector<pkg_cfg const *> targets;

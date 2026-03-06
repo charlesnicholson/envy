@@ -105,7 +105,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 void cmd_product::execute() {
   auto const m{ manifest::find_and_load(cfg_.manifest_path) };
   reexec_if_needed(m->meta, cli_cache_root_);
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
   engine eng{ *c, m.get() };
 
   std::vector<pkg_cfg const *> roots;
