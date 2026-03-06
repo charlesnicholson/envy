@@ -7,6 +7,7 @@
 #include "manifest.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
+#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
@@ -106,6 +107,12 @@ void cmd_sync::execute() {
       }
     }
   }
+
+  std::erase_if(targets, [&](pkg_cfg const *cfg) {  // Filter out no-host packages
+    return !util_platform_matches(cfg->platforms,
+                                  platform::os_name(),
+                                  platform::arch_name());
+  });
 
   if (targets.empty()) { return; }
 

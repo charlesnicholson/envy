@@ -47,26 +47,18 @@ PACKAGES = {
 
   { spec = "local.taplo@r0", source = "local.taplo@r0.lua",
     options = { version = "0.10.0" } },
+
+  { spec = "local.ragel@r0", source = "local.ragel@r0.lua",
+    platforms = { "darwin", "linux" } },
+
+  { spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
+    options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } },
+    platforms = { "darwin" } },
+
+  { spec = "local.apt@r0", source = "local.apt@r0.lua",
+    options = {
+      packages = {
+        "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" }
+    },
+    platforms = { "linux" } },
 }
-
-if envy.PLATFORM ~= "windows" then
-  envy.extend(PACKAGES, {
-    { spec = "local.ragel@r0", source = "local.ragel@r0.lua" },
-  })
-end
-
-if envy.PLATFORM == "darwin" then
-  envy.extend(PACKAGES, {
-    { spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
-      options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } } },
-  })
-end
-
-if envy.PLATFORM == "linux" then
-  envy.extend(PACKAGES, {
-    { spec = "local.apt@r0", source = "local.apt@r0.lua",
-      options = {
-        packages = {
-          "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" }
-      } } })
-end

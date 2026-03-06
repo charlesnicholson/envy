@@ -1345,3 +1345,101 @@ TEST_CASE("manifest::load parses package with bundle and options") {
   sol::table opts = opts_result;
   CHECK(sol::object(opts["version"]).as<std::string>() == "13.2.0");
 }
+
+// --- platforms field parsing ---
+
+TEST_CASE("manifest::load parses platforms on non-bundle package") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "local.apt@v1", source = "/fake/apt.lua", platforms = { "linux" } }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->identity == "local.apt@v1");
+  REQUIRE(m->packages[0]->platforms.size() == 1);
+  CHECK(m->packages[0]->platforms[0] == "linux");
+}
+
+TEST_CASE("manifest::load parses multiple platforms") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "local.ragel@v1", source = "/fake/ragel.lua",
+        platforms = { "darwin", "linux" } }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  REQUIRE(m->packages[0]->platforms.size() == 2);
+  CHECK(m->packages[0]->platforms[0] == "darwin");
+  CHECK(m->packages[0]->platforms[1] == "linux");
+}
+
+TEST_CASE("manifest::load omitted platforms field yields empty vector") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "arm.gcc@v2", source = "/fake/r.lua" }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->platforms.empty());
+}
+
+TEST_CASE("manifest::load parses platforms on bundle package") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    BUNDLES = {
+      tc = { identity = "acme.tc@v1", source = "https://example.com/tc.tar.gz" }
+    }
+    PACKAGES = {
+      { spec = "arm.gcc@v2", bundle = "tc", platforms = { "linux", "darwin-arm64" } }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->identity == "arm.gcc@v2");
+  REQUIRE(m->packages[0]->platforms.size() == 2);
+  CHECK(m->packages[0]->platforms[0] == "linux");
+  CHECK(m->packages[0]->platforms[1] == "darwin-arm64");
+}
+
+TEST_CASE("manifest::load errors on non-string platforms entry") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "local.tool@v1", source = "/fake/tool.lua", platforms = { 42 } }
+    }
+  )" };
+
+  CHECK_THROWS_WITH(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                    "platforms entries must be strings");
+}
+
+TEST_CASE("manifest::load platforms on os-arch constraint") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "local.tool@v1", source = "/fake/tool.lua",
+        platforms = { "darwin-arm64", "linux-x86_64" } }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  REQUIRE(m->packages[0]->platforms.size() == 2);
+  CHECK(m->packages[0]->platforms[0] == "darwin-arm64");
+  CHECK(m->packages[0]->platforms[1] == "linux-x86_64");
+}

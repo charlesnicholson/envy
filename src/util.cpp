@@ -441,6 +441,48 @@ std::optional<parsed_archive_filename> util_parse_archive_filename(std::string_v
   return parsed_archive_filename{ identity, platform, arch, hash_prefix };
 }
 
+bool util_platform_matches(std::vector<std::string> const &constraints,
+                           std::string_view target_os,
+                           std::string_view target_arch) {
+  if (constraints.empty()) { return true; }
+  std::string const os_arch{ std::string(target_os) + "-" + std::string(target_arch) };
+  for (auto const &c : constraints) {
+    if (c == target_os || c == os_arch) { return true; }
+  }
+  return false;
+}
+
+std::vector<std::string> util_platform_intersect(std::vector<std::string> const &a,
+                                                 std::vector<std::string> const &b) {
+  if (a.empty()) { return b; }
+  if (b.empty()) { return a; }
+  std::vector<std::string> result;
+  for (auto const &v : a) {
+    for (auto const &w : b) {
+      if (v == w) {
+        result.push_back(v);
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+bool util_platform_matches_platform_id(std::vector<std::string> const &constraints,
+                                       platform_id plat) {
+  if (constraints.empty()) { return true; }
+  for (auto const &c : constraints) {
+    // Extract OS portion (before first '-' or entire string)
+    auto const dash{ c.find('-') };
+    std::string_view const os{ dash != std::string::npos
+                                   ? std::string_view(c).substr(0, dash)
+                                   : std::string_view(c) };
+    if (plat == platform_id::POSIX && (os == "darwin" || os == "linux")) { return true; }
+    if (plat == platform_id::WINDOWS && os == "windows") { return true; }
+  }
+  return false;
+}
+
 std::vector<platform_id> util_parse_platform_flag(std::string const &value) {
   if (value.empty()) { return { platform::native() }; }
   if (value == "posix") { return { platform_id::POSIX }; }

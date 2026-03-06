@@ -261,6 +261,11 @@ IDENTITY = ""
 ---@type envy.dependency[]
 DEPENDENCIES = {}
 
+---Spec platform constraints. Empty/absent = all platforms.
+---Values: OS names ("darwin", "linux", "windows") or OS-arch combos ("darwin-arm64").
+---@type string[]?
+PLATFORMS = nil
+
 ---Spec products - paths relative to install_dir, or function returning same
 ---@type table<string, string>|fun(options: table): table<string, string>
 PRODUCTS = {}
@@ -306,7 +311,7 @@ OPTIONS = nil
 -- Manifest Globals
 --------------------------------------------------------------------------------
 
----@alias envy.package_spec string|{ spec: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean }
+---@alias envy.package_spec string|{ spec: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean, platforms?: string[] }
 
 ---Manifest packages array
 ---@type envy.package_spec[]
