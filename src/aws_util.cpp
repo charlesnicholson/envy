@@ -2,6 +2,8 @@
 #include "platform.h"
 
 #include "aws/core/Aws.h"
+#include "aws/core/auth/AWSCredentialsProvider.h"
+#include "aws/core/auth/AWSCredentialsProviderChain.h"
 #include "aws/core/client/ClientConfiguration.h"
 #include "aws/core/utils/logging/LogLevel.h"
 #include "aws/core/utils/logging/NullLogSystem.h"
@@ -13,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -90,7 +93,23 @@ transfer_context &get_transfer_context(std::string const &region) {
 
   Aws::Client::ClientConfiguration config;
   if (!region.empty()) { config.region = Aws::String(region.c_str()); }
-  auto client{ Aws::MakeShared<Aws::S3::S3Client>(kAllocationTag, config) };
+
+  // Try the default credential chain; fall back to anonymous for public buckets.
+  auto provider{ [&]() -> std::shared_ptr<Aws::Auth::AWSCredentialsProvider> {
+    auto chain{ Aws::MakeShared<Aws::Auth::DefaultAWSCredentialsProviderChain>(
+        kAllocationTag) };
+    return chain->GetAWSCredentials().IsEmpty()
+               ? std::shared_ptr<Aws::Auth::AWSCredentialsProvider>{ Aws::MakeShared<
+                     Aws::Auth::AnonymousAWSCredentialsProvider>(kAllocationTag) }
+               : std::move(chain);
+  }() };
+
+  auto client{ Aws::MakeShared<Aws::S3::S3Client>(
+      kAllocationTag,
+      provider,
+      config,
+      Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+      /*useVirtualAddressing=*/true) };
 
   Aws::Transfer::TransferManagerConfiguration tm_config(nullptr);
   tm_config.s3Client = client;
@@ -211,26 +230,25 @@ std::filesystem::path aws_s3_download(s3_download_request const &request) {
       status == Aws::Transfer::TransferStatus::ABORTED) {
     auto const &error{ handle->GetLastError() };
     auto const http_code{ static_cast<int>(error.GetResponseCode()) };
-    std::string msg{ "aws_s3_download: transfer failed" };
+
+    std::ostringstream msg;
+    msg << "aws_s3_download: transfer failed";
 
     if (auto const &name{ error.GetExceptionName() }; !name.empty()) {
-      msg += ": " + std::string(name.c_str());
+      msg << ": " << name;
     }
 
     auto const &body{ error.GetMessage() };
-    if (!body.empty() && body != "No response body.") {
-      msg += ": " + std::string(body.c_str());
-    }
+    if (!body.empty() && body != "No response body.") { msg << ": " << body; }
 
-    if (http_code > 0) { msg += " (HTTP " + std::to_string(http_code) + ")"; }
+    if (http_code > 0) { msg << " (HTTP " << http_code << ")"; }
 
     if (http_code == 401 || http_code == 403) {
-      msg +=
-          "\n  Hint: AWS credentials may be missing or expired."
-          " Run 'aws sso login' or check your AWS configuration.";
+      msg << "\n  Hint: check that the bucket policy allows public access,"
+             " or run 'aws sso login' to authenticate.";
     }
 
-    throw std::runtime_error(msg);
+    throw std::runtime_error(msg.str());
   }
 
   if (request.progress) {  // Final progress callback so the bar reaches 100%.
