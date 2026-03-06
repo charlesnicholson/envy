@@ -1443,3 +1443,15 @@ TEST_CASE("manifest::load platforms on os-arch constraint") {
   CHECK(m->packages[0]->platforms[0] == "darwin-arm64");
   CHECK(m->packages[0]->platforms[1] == "linux-x86_64");
 }
+
+TEST_CASE("manifest::load errors on non-table platforms value") {
+  char const *script{ R"(
+    -- @envy bin "tools"
+    PACKAGES = {
+      { spec = "local.tool@v1", source = "/fake/tool.lua", platforms = "linux" }
+    }
+  )" };
+
+  CHECK_THROWS_WITH(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                    "platforms must be a table");
+}

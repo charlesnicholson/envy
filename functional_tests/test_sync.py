@@ -1349,7 +1349,7 @@ PACKAGES = {{
 }}
 """)
 
-        result = self.run_sync(manifest=manifest, platform="all")
+        result = self.run_deploy(manifest=manifest, platform="all")
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         bin_dir = self.test_dir / "envy-bin"

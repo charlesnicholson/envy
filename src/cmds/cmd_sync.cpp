@@ -15,6 +15,7 @@
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>

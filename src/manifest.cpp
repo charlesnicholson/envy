@@ -116,7 +116,10 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
     // No bundle field - use standard pkg_cfg::parse, then add platforms
     pkg_cfg *cfg{ pkg_cfg::parse(entry, manifest_path) };
     sol::object platforms_obj{ table["platforms"] };
-    if (platforms_obj.valid() && platforms_obj.get_type() == sol::type::table) {
+    if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+      if (platforms_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("platforms must be a table");
+      }
       sol::table plat_table{ platforms_obj.as<sol::table>() };
       for (size_t j{ 1 }; j <= plat_table.size(); ++j) {
         auto elem{ plat_table[j] };
@@ -220,7 +223,10 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
 
   // Parse optional platforms field
   sol::object platforms_obj{ table["platforms"] };
-  if (platforms_obj.valid() && platforms_obj.get_type() == sol::type::table) {
+  if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+    if (platforms_obj.get_type() != sol::type::table) {
+      throw std::runtime_error("platforms must be a table");
+    }
     sol::table plat_table{ platforms_obj.as<sol::table>() };
     for (size_t j{ 1 }; j <= plat_table.size(); ++j) {
       auto elem{ plat_table[j] };

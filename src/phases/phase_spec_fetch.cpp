@@ -1246,7 +1246,11 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
   {
     std::vector<std::string> spec_platforms;
     sol::object platforms_obj{ (*lua)["PLATFORMS"] };
-    if (platforms_obj.valid() && platforms_obj.get_type() == sol::type::table) {
+    if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+      if (platforms_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("PLATFORMS must be a table in spec '" + cfg.identity +
+                                 "'");
+      }
       sol::table plat_table{ platforms_obj.as<sol::table>() };
       for (size_t i{ 1 }; i <= plat_table.size(); ++i) {
         sol::object elem{ plat_table[i] };
