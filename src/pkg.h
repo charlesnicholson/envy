@@ -75,6 +75,7 @@ struct pkg {
   std::unordered_map<std::string, product_dependency> product_dependencies;
   std::vector<weak_reference> weak_references;
   std::unordered_map<std::string, product_entry> products;
+  std::vector<std::string> resolved_platforms;
   std::vector<std::string> resolved_weak_dependency_keys;
 };
 

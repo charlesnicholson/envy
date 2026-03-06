@@ -86,6 +86,20 @@ enum class platform_id;
 
 std::vector<platform_id> util_parse_platform_flag(std::string const &value);
 
+// Empty constraints = match all. Checks target_os or "target_os-target_arch" membership.
+bool util_platform_matches(std::vector<std::string> const &constraints,
+                           std::string_view target_os,
+                           std::string_view target_arch);
+
+// Empty = "all"; two non-empty lists yield set intersection.
+std::vector<std::string> util_platform_intersect(std::vector<std::string> const &a,
+                                                 std::vector<std::string> const &b);
+
+// Does constraint list produce scripts for this platform_id?
+// POSIX covers "darwin" and "linux"; WINDOWS covers "windows".
+bool util_platform_matches_platform_id(std::vector<std::string> const &constraints,
+                                       platform_id plat);
+
 // Product mapping: pairs of (product_name, relative_path)
 // Example: {"cmake", "bin/cmake.exe"} or {"python", "bin/python3"}
 using product_map_t = std::vector<std::pair<std::string, std::string>>;

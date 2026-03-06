@@ -1202,3 +1202,84 @@ TEST_CASE("util_parse_archive_filename: empty arch returns nullopt") {
   CHECK_FALSE(
       envy::util_parse_archive_filename("arm.gcc@r2-darwin--blake3-abcdef").has_value());
 }
+
+// --- util_platform_matches ---
+
+TEST_CASE("util_platform_matches: empty constraints match everything") {
+  CHECK(envy::util_platform_matches({}, "darwin", "arm64"));
+  CHECK(envy::util_platform_matches({}, "linux", "x86_64"));
+  CHECK(envy::util_platform_matches({}, "windows", "x86_64"));
+}
+
+TEST_CASE("util_platform_matches: OS-only match") {
+  CHECK(envy::util_platform_matches({ "linux" }, "linux", "x86_64"));
+  CHECK(envy::util_platform_matches({ "linux" }, "linux", "arm64"));
+  CHECK_FALSE(envy::util_platform_matches({ "linux" }, "darwin", "arm64"));
+}
+
+TEST_CASE("util_platform_matches: OS-arch match") {
+  CHECK(envy::util_platform_matches({ "darwin-arm64" }, "darwin", "arm64"));
+  CHECK_FALSE(envy::util_platform_matches({ "darwin-arm64" }, "darwin", "x86_64"));
+  CHECK_FALSE(envy::util_platform_matches({ "darwin-arm64" }, "linux", "arm64"));
+}
+
+TEST_CASE("util_platform_matches: multiple constraints") {
+  std::vector<std::string> const constraints{ "linux", "darwin-arm64" };
+  CHECK(envy::util_platform_matches(constraints, "linux", "x86_64"));
+  CHECK(envy::util_platform_matches(constraints, "darwin", "arm64"));
+  CHECK_FALSE(envy::util_platform_matches(constraints, "darwin", "x86_64"));
+  CHECK_FALSE(envy::util_platform_matches(constraints, "windows", "x86_64"));
+}
+
+// --- util_platform_intersect ---
+
+TEST_CASE("util_platform_intersect: both empty yields empty") {
+  CHECK(envy::util_platform_intersect({}, {}).empty());
+}
+
+TEST_CASE("util_platform_intersect: one empty returns the other") {
+  std::vector<std::string> const v{ "linux", "darwin" };
+  CHECK(envy::util_platform_intersect(v, {}) == v);
+  CHECK(envy::util_platform_intersect({}, v) == v);
+}
+
+TEST_CASE("util_platform_intersect: disjoint yields empty") {
+  CHECK(envy::util_platform_intersect({ "linux" }, { "darwin" }).empty());
+}
+
+TEST_CASE("util_platform_intersect: overlapping yields intersection") {
+  auto const result{ envy::util_platform_intersect({ "linux", "darwin" },
+                                                   { "darwin", "windows" }) };
+  CHECK(result.size() == 1);
+  CHECK(result[0] == "darwin");
+}
+
+// --- util_platform_matches_platform_id ---
+
+TEST_CASE("util_platform_matches_platform_id: empty constraints match all") {
+  CHECK(envy::util_platform_matches_platform_id({}, envy::platform_id::POSIX));
+  CHECK(envy::util_platform_matches_platform_id({}, envy::platform_id::WINDOWS));
+}
+
+TEST_CASE("util_platform_matches_platform_id: POSIX covers darwin and linux") {
+  CHECK(envy::util_platform_matches_platform_id({ "darwin" }, envy::platform_id::POSIX));
+  CHECK(envy::util_platform_matches_platform_id({ "linux" }, envy::platform_id::POSIX));
+  CHECK_FALSE(
+      envy::util_platform_matches_platform_id({ "windows" }, envy::platform_id::POSIX));
+}
+
+TEST_CASE("util_platform_matches_platform_id: WINDOWS covers windows") {
+  CHECK(
+      envy::util_platform_matches_platform_id({ "windows" }, envy::platform_id::WINDOWS));
+  CHECK_FALSE(
+      envy::util_platform_matches_platform_id({ "darwin" }, envy::platform_id::WINDOWS));
+  CHECK_FALSE(
+      envy::util_platform_matches_platform_id({ "linux" }, envy::platform_id::WINDOWS));
+}
+
+TEST_CASE("util_platform_matches_platform_id: OS-arch constraint extracts OS") {
+  CHECK(envy::util_platform_matches_platform_id({ "linux-x86_64" },
+                                                envy::platform_id::POSIX));
+  CHECK_FALSE(envy::util_platform_matches_platform_id({ "linux-x86_64" },
+                                                      envy::platform_id::WINDOWS));
+}

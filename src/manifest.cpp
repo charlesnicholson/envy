@@ -105,7 +105,7 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
                              std::filesystem::path const &manifest_path,
                              bundle_alias_map const &bundles,
                              bundle_pkg_map const &custom_fetch_bundle_pkgs) {
-  // For non-table entries (strings) or tables without bundle field, use standard parsing
+  // For non-table entries (strings) - use standard parsing (no platforms possible)
   if (!entry.is<sol::table>()) { return pkg_cfg::parse(entry, manifest_path); }
 
   sol::table table{ entry.as<sol::table>() };
@@ -113,8 +113,23 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
   // Check for bundle field
   sol::object bundle_obj{ table["bundle"] };
   if (!bundle_obj.valid() || bundle_obj.get_type() == sol::type::lua_nil) {
-    // No bundle field - use standard pkg_cfg::parse
-    return pkg_cfg::parse(entry, manifest_path);
+    // No bundle field - use standard pkg_cfg::parse, then add platforms
+    pkg_cfg *cfg{ pkg_cfg::parse(entry, manifest_path) };
+    sol::object platforms_obj{ table["platforms"] };
+    if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+      if (platforms_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("platforms must be a table");
+      }
+      sol::table plat_table{ platforms_obj.as<sol::table>() };
+      for (size_t j{ 1 }; j <= plat_table.size(); ++j) {
+        auto elem{ plat_table[j] };
+        if (!elem.template is<std::string>()) {
+          throw std::runtime_error("platforms entries must be strings");
+        }
+        cfg->platforms.push_back(elem.template get<std::string>());
+      }
+    }
+    return cfg;
   }
 
   // Has bundle field - need to handle bundle reference
@@ -205,6 +220,22 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
   // Set bundle-related fields
   cfg->bundle_identity = bundle_identity;
   // bundle_path will be resolved later when the bundle is fetched and parsed
+
+  // Parse optional platforms field
+  sol::object platforms_obj{ table["platforms"] };
+  if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+    if (platforms_obj.get_type() != sol::type::table) {
+      throw std::runtime_error("platforms must be a table");
+    }
+    sol::table plat_table{ platforms_obj.as<sol::table>() };
+    for (size_t j{ 1 }; j <= plat_table.size(); ++j) {
+      auto elem{ plat_table[j] };
+      if (!elem.template is<std::string>()) {
+        throw std::runtime_error("platforms entries must be strings");
+      }
+      cfg->platforms.push_back(elem.template get<std::string>());
+    }
+  }
 
   return cfg;
 }

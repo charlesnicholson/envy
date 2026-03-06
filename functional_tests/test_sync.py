@@ -137,6 +137,47 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
 
+# Product provider with spec-level PLATFORMS constraint (linux only)
+SPEC_PRODUCT_LINUX_ONLY = """IDENTITY = "local.linux_tool@v1"
+PLATFORMS = {{ "linux" }}
+PRODUCTS = {{ aptutil = "bin/aptutil" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
+# Product provider with spec-level PLATFORMS constraint (darwin only)
+SPEC_PRODUCT_DARWIN_ONLY = """IDENTITY = "local.darwin_tool@v1"
+PLATFORMS = {{ "darwin" }}
+PRODUCTS = {{ brewtool = "bin/brewtool" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
+# Product provider with no PLATFORMS (all platforms)
+SPEC_PRODUCT_ALL_PLATFORMS = """IDENTITY = "local.cross_tool@v1"
+PRODUCTS = {{ cross = "bin/cross" }}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
 
 class TestSyncCommand(unittest.TestCase):
     """Tests for 'envy sync' command."""
@@ -1135,6 +1176,388 @@ PACKAGES = {{
         # Both products should be listed (output is to stderr for human-readable format)
         self.assertIn("tool", result.stderr)
         self.assertIn("library", result.stderr)
+
+
+class TestSyncPlatformConstraints(unittest.TestCase):
+    """Tests for declarative platforms constraints on packages."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-platform-constraint-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-platform-manifest-"))
+        self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-platform-specs-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        self.archive_path = self.specs_dir / "test.tar.gz"
+        self.archive_hash = create_test_archive(self.archive_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        shutil.rmtree(self.specs_dir, ignore_errors=True)
+
+    def write_spec(self, name: str, content: str) -> str:
+        spec_content = content.format(
+            ARCHIVE_PATH=self.archive_path.as_posix(),
+            ARCHIVE_HASH=self.archive_hash,
+        )
+        path = self.specs_dir / f"{name}.lua"
+        path.write_text(spec_content, encoding="utf-8")
+        return path.as_posix()
+
+    def create_manifest(self, content: str) -> Path:
+        manifest_path = self.test_dir / "envy.lua"
+        manifest_path.write_text(make_manifest(content, deploy=True), encoding="utf-8")
+        return manifest_path
+
+    def run_sync(self, manifest: Path, platform: Optional[str] = None):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "sync"]
+        if platform:
+            cmd.extend(["--platform", platform])
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def run_deploy(self, manifest: Path, platform: Optional[str] = None):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), "deploy"]
+        if platform:
+            cmd.extend(["--platform", platform])
+        cmd.extend(["--manifest", str(manifest)])
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def test_manifest_platforms_constraint_filters_sync_targets(self):
+        """Package with platforms not matching host is skipped during sync."""
+        # Use a platform that doesn't match the current host
+        non_host = "windows" if sys.platform != "win32" else "linux"
+        spec_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{spec_path}",
+       platforms = {{ "{non_host}" }} }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+        # Should succeed (package filtered out, nothing to do)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_manifest_platforms_matching_host_runs_sync(self):
+        """Package with platforms matching host is synced normally."""
+        host_platform = (
+            "darwin"
+            if sys.platform == "darwin"
+            else ("linux" if sys.platform == "linux" else "windows")
+        )
+        spec_path = self.write_spec("simple", SPEC_SIMPLE)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.simple@v1", source = "{spec_path}",
+       platforms = {{ "{host_platform}" }} }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_deploy_platform_all_skips_scripts_for_nonmatching_spec_platforms(self):
+        """deploy --platform all with PLATFORMS=linux creates posix script but no .bat."""
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+
+        # Use deploy (not sync) to avoid host-platform target filtering.
+        # Deploy resolves all packages and filters at script generation time.
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "linux" }} }},
+    {{ spec = "local.cross_tool@v1", source = "{cross_path}" }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+
+        # linux-only product: posix script yes, .bat no
+        self.assertTrue(
+            (bin_dir / "aptutil").exists(),
+            "POSIX script for linux-only product should exist",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Windows script for linux-only product should NOT exist",
+        )
+
+        # cross-platform product: both scripts
+        self.assertTrue(
+            (bin_dir / "cross").exists(),
+            "POSIX script for unconstrained product should exist",
+        )
+        self.assertTrue(
+            (bin_dir / "cross.bat").exists(),
+            "Windows script for unconstrained product should exist",
+        )
+
+    def test_sync_platform_all_skips_nonmatching_packages_entirely(self):
+        """sync --platform all still filters non-host packages from the engine."""
+        non_host = "windows" if sys.platform != "win32" else "linux"
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "{non_host}" }} }},
+    {{ spec = "local.cross_tool@v1", source = "{cross_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+
+        # Non-host package is filtered out of sync entirely: no scripts at all
+        self.assertFalse(
+            (bin_dir / "aptutil").exists(),
+            "Non-host product should not have POSIX script after sync",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Non-host product should not have Windows script after sync",
+        )
+
+        # Cross-platform product should still get both
+        self.assertTrue((bin_dir / "cross").exists())
+        self.assertTrue((bin_dir / "cross.bat").exists())
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS-specific test")
+    def test_deploy_platform_all_darwin_only_creates_posix_not_bat(self):
+        """darwin-only spec with --platform all creates POSIX script, not .bat."""
+        darwin_path = self.write_spec("darwin_tool", SPEC_PRODUCT_DARWIN_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.darwin_tool@v1", source = "{darwin_path}",
+       platforms = {{ "darwin" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue(
+            (bin_dir / "brewtool").exists(),
+            "POSIX script for darwin-only product should exist",
+        )
+        self.assertFalse(
+            (bin_dir / "brewtool.bat").exists(),
+            "Windows script for darwin-only product should NOT exist",
+        )
+
+    def test_platform_all_cleanup_respects_constraints(self):
+        """--platform all cleanup does not remove scripts for constrained products."""
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cross_tool@v1", source = "{cross_path}" }},
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "linux" }} }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        # Plant an obsolete envy-managed script
+        (bin_dir / "obsolete").write_text("# envy-managed v1.0.0\nold\n")
+        (bin_dir / "obsolete.bat").write_text("REM envy-managed v1.0.0\nold\n")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        # Obsolete scripts should be removed
+        self.assertFalse(
+            (bin_dir / "obsolete").exists(),
+            "Obsolete POSIX script should be removed",
+        )
+        self.assertFalse(
+            (bin_dir / "obsolete.bat").exists(),
+            "Obsolete Windows script should be removed",
+        )
+
+        # linux-only product: .bat should NOT have been created and should not
+        # cause cleanup to remove something that was never there
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Windows script for linux-only product should never exist",
+        )
+
+    def test_empty_platforms_matches_all(self):
+        """Package without platforms field gets scripts on all requested platforms."""
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cross_tool@v1", source = "{cross_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue((bin_dir / "cross").exists())
+        self.assertTrue((bin_dir / "cross.bat").exists())
+
+    def test_spec_platforms_intersects_with_manifest_platforms(self):
+        """Spec PLATFORMS intersected with manifest platforms narrows constraint."""
+        # Spec declares PLATFORMS = {"linux"} (linux only)
+        # Manifest also constrains to platforms = {"linux"}
+        # Effective: linux only — no .bat should be generated
+        # Use deploy (not sync) to avoid host-platform target filtering.
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "linux" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # Should create POSIX (linux maps to posix) but not Windows
+        self.assertTrue(
+            (bin_dir / "aptutil").exists(),
+            "POSIX script for linux-only product should exist",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Windows script for linux-only product should NOT exist",
+        )
+
+    def test_spec_platforms_alone_without_manifest_platforms(self):
+        """Spec PLATFORMS constrains scripts even without manifest-level platforms."""
+        # Manifest has NO platforms field — constraint comes from spec only
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}" }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # Spec PLATFORMS = {"linux"} → posix yes, windows no
+        self.assertTrue(
+            (bin_dir / "aptutil").exists(),
+            "POSIX script should exist (spec PLATFORMS includes linux)",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Windows script should NOT exist (spec PLATFORMS is linux-only)",
+        )
+
+    def test_spec_platforms_intersection_narrows_to_empty(self):
+        """Spec PLATFORMS={linux} ∩ manifest platforms={darwin} = empty → no scripts."""
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "darwin" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # Intersection of {"linux"} and {"darwin"} is empty — no scripts
+        self.assertFalse(
+            (bin_dir / "aptutil").exists(),
+            "No POSIX script when intersection is empty",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "No Windows script when intersection is empty",
+        )
+
+    def test_constrained_package_with_unconstrained_dependency(self):
+        """Platform-constrained package can depend on unconstrained package."""
+        # cross_tool has no PLATFORMS (all platforms)
+        # darwin_dep has PLATFORMS = {"darwin"} and depends on cross_tool
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+
+        # Spec that depends on cross_tool, with darwin-only constraint.
+        # Can't use write_spec (double-brace escaping conflict), write directly.
+        dep_spec = (
+            'IDENTITY = "local.darwin_dep@v1"\n'
+            'PLATFORMS = { "darwin" }\n'
+            'PRODUCTS = { darwindep = "bin/darwindep" }\n'
+            "\n"
+            "DEPENDENCIES = {\n"
+            '    { spec = "local.cross_tool@v1", source = "' + cross_path + '" },\n'
+            "}\n"
+            "\n"
+            "FETCH = {\n"
+            '  source = "' + self.archive_path.as_posix() + '",\n'
+            '  sha256 = "' + self.archive_hash + '",\n'
+            "}\n"
+            "\n"
+            "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n"
+            "end\n"
+        )
+        dep_spec_path = self.specs_dir / "darwin_dep.lua"
+        dep_spec_path.write_text(dep_spec, encoding="utf-8")
+        dep_path = dep_spec_path.as_posix()
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.darwin_dep@v1", source = "{dep_path}",
+       platforms = {{ "darwin" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+
+        # darwin-only package: posix yes, .bat no
+        self.assertTrue(
+            (bin_dir / "darwindep").exists(),
+            "POSIX script for darwin-only package should exist",
+        )
+        self.assertFalse(
+            (bin_dir / "darwindep.bat").exists(),
+            "Windows script for darwin-only package should NOT exist",
+        )
+
+        # cross_tool (dependency): both scripts (unconstrained)
+        self.assertTrue(
+            (bin_dir / "cross").exists(),
+            "POSIX script for unconstrained dependency should exist",
+        )
+        self.assertTrue(
+            (bin_dir / "cross.bat").exists(),
+            "Windows script for unconstrained dependency should exist",
+        )
 
 
 class TestSyncDeployDirective(unittest.TestCase):

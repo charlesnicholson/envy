@@ -1241,6 +1241,35 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
                                                    .product_name = name,
                                                    .product_value = entry.value }));
   }
+
+  // Extract spec PLATFORMS and intersect with manifest-level platforms
+  {
+    std::vector<std::string> spec_platforms;
+    sol::object platforms_obj{ (*lua)["PLATFORMS"] };
+    if (platforms_obj.valid() && platforms_obj.get_type() != sol::type::lua_nil) {
+      if (platforms_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("PLATFORMS must be a table in spec '" + cfg.identity +
+                                 "'");
+      }
+      sol::table plat_table{ platforms_obj.as<sol::table>() };
+      for (size_t i{ 1 }; i <= plat_table.size(); ++i) {
+        sol::object elem{ plat_table[i] };
+        if (!elem.is<std::string>()) {
+          throw std::runtime_error("PLATFORMS entries must be strings in spec '" +
+                                   cfg.identity + "'");
+        }
+        spec_platforms.push_back(elem.as<std::string>());
+      }
+    }
+    auto intersected{ util_platform_intersect(cfg.platforms, spec_platforms) };
+    // Disjoint non-empty inputs yield empty, but empty = "all platforms" elsewhere.
+    // Use a sentinel that matches nothing so scripts are never generated.
+    if (intersected.empty() && !cfg.platforms.empty() && !spec_platforms.empty()) {
+      intersected.emplace_back("__none__");
+    }
+    p->resolved_platforms = std::move(intersected);
+  }
+
   p->owned_dependency_cfgs = parse_dependencies_table(*lua, spec_path, cfg);
 
   for (auto *dep_cfg : p->owned_dependency_cfgs) { dep_cfg->parent = p->cfg; }

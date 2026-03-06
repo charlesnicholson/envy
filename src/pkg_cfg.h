@@ -94,6 +94,9 @@ struct pkg_cfg : unmovable {
   // Provenance: manifest or parent spec file that declared this cfg
   std::filesystem::path declaring_file_path;
 
+  // Platform constraints (empty = all platforms)
+  std::vector<std::string> platforms;
+
   // Bundle-related fields (for specs that come from bundles)
   std::optional<std::string> bundle_identity;  // Which bundle contains this spec
   std::optional<std::string> bundle_path;      // Relative path within bundle to spec file
@@ -130,13 +133,15 @@ struct pkg_cfg : unmovable {
   // Look up source.fetch function for a dependency from Lua state's DEPENDENCIES global
   // Returns the fetch function if found, nullopt otherwise
   static std::optional<sol::protected_function> get_source_fetch(
-      sol::state_view lua, std::string const &dep_identity);
+      sol::state_view lua,
+      std::string const &dep_identity);
 
   // Look up bundle source.fetch function for a bundle dependency from Lua state
   // Searches DEPENDENCIES for entries with bundle=identity and source={fetch=...}
   // Returns the fetch function if found, nullopt otherwise
   static std::optional<sol::protected_function> get_bundle_fetch(
-      sol::state_view lua, std::string const &bundle_identity);
+      sol::state_view lua,
+      std::string const &bundle_identity);
 
   static void set_pool(pkg_cfg_pool *pool);
   static pkg_cfg_pool *pool();

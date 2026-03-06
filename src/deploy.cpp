@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -97,13 +96,17 @@ void deploy_product_scripts(engine &eng,
                             std::vector<product_info> const &products,
                             bool strict,
                             std::vector<platform_id> const &platforms) {
-  std::set<std::string> const current_products{ [&] {
-    std::set<std::string> s;
+  // Check if a product is expected for a given platform
+  auto const product_expected_for_platform = [&](std::string const &name,
+                                                 platform_id plat) {
     for (auto const &p : products) {
-      if (p.script) { s.insert(p.product_name); }
+      if (p.product_name == name && p.script &&
+          util_platform_matches_platform_id(p.platforms, plat)) {
+        return true;
+      }
     }
-    return s;
-  }() };
+    return false;
+  };
 
   size_t created{ 0 };
   size_t updated{ 0 };
@@ -112,6 +115,7 @@ void deploy_product_scripts(engine &eng,
   for (auto const &product : products) {
     if (!product.script) { continue; }
     for (auto const plat : platforms) {
+      if (!util_platform_matches_platform_id(product.platforms, plat)) { continue; }
       fs::path const script_path{
         product_script_path(bin_dir, product.product_name, plat)
       };
@@ -170,8 +174,10 @@ void deploy_product_scripts(engine &eng,
 
     std::string const product_name{ is_batch ? filename.substr(0, filename.size() - 4)
                                              : filename };
+    platform_id const file_plat{ is_batch ? platform_id::WINDOWS : platform_id::POSIX };
 
-    if (!current_products.contains(product_name) && has_envy_marker(entry.path())) {
+    if (!product_expected_for_platform(product_name, file_plat) &&
+        has_envy_marker(entry.path())) {
       std::error_code rm_ec;
       fs::remove(entry.path(), rm_ec);
       if (rm_ec) {

@@ -402,6 +402,7 @@ std::vector<product_info> engine::collect_all_products() const {
             .type = package->type,
             .pkg_path = package->pkg_path,
             .script = prod_entry.script,
+            .platforms = package->resolved_platforms,
         });
       }
     }

@@ -65,6 +65,7 @@ struct product_info {
   pkg_type type;
   std::filesystem::path pkg_path;
   bool script = true;
+  std::vector<std::string> platforms;  // Effective constraint (empty = all)
 };
 
 class engine : unmovable {
