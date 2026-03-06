@@ -245,7 +245,7 @@ void cmd_import::execute() {
 
       reexec_if_needed(m->meta, cli_cache_root_);
 
-      auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+      auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
       auto const data{ util_load_file(cfg_.archive_path) };
       std::string contents(reinterpret_cast<char const *>(data.data()), data.size());
@@ -291,7 +291,7 @@ void cmd_import::execute() {
 
   reexec_if_needed(m->meta, cli_cache_root_);
 
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   package_depot_index depot;
   if (cfg_.checksums_path) {

@@ -42,7 +42,7 @@ void cmd_install::execute() {
 
   reexec_if_needed(m->meta, cli_cache_root_);
 
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   std::vector<pkg_cfg const *> targets;
 

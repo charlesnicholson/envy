@@ -69,10 +69,10 @@ void cmd_sync::execute() {
 
   auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
 
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   fs::path const manifest_dir{ m->manifest_path.parent_path() };
-  update_luarc_types_path(manifest_dir, c->root());
+  update_luarc_types_path(manifest_dir, m->meta);
 
   fs::path const bin_dir{ manifest_dir / *m->meta.bin };
 

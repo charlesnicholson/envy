@@ -163,8 +163,9 @@ class TestEnvyInit(unittest.TestCase):
         data = json.loads(luarc.read_text())
 
         library_paths = data["workspace.library"]
-        self.assertEqual(1, len(library_paths))
-        self.assertIn("envy", library_paths[0])
+        self.assertEqual(3, len(library_paths))
+        for entry in library_paths:
+            self.assertIn("envy", entry)
 
     def test_init_prints_guidance_when_luarc_exists(self) -> None:
         """Init prints guidance when .luarc.json already exists."""

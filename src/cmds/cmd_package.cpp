@@ -42,7 +42,7 @@ void cmd_package::execute() {
 
   reexec_if_needed(m->meta, cli_cache_root_);
 
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache) };
+  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   // Collect all packages that match the query (supports partial matching)
   std::vector<pkg_cfg const *> matches;

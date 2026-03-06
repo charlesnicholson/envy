@@ -211,6 +211,14 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
 
 }  // namespace
 
+std::optional<std::string> const &envy_meta::cache_for_platform() const {
+#ifdef _WIN32
+  return cache_win;
+#else
+  return cache_posix;
+#endif
+}
+
 envy_meta parse_envy_meta(std::string_view content) {
   envy_meta result;
   size_t line_start{ 0 };
@@ -225,12 +233,10 @@ envy_meta parse_envy_meta(std::string_view content) {
       auto const &[key, value]{ *directive };
       if (key == "version") {
         result.version = value;
-#ifdef _WIN32
-      } else if (key == "cache-win") {
-#else
       } else if (key == "cache-posix") {
-#endif
-        result.cache = value;
+        result.cache_posix = value;
+      } else if (key == "cache-win") {
+        result.cache_win = value;
       } else if (key == "mirror") {
         result.mirror = value;
       } else if (key == "bin" || key == "bin-dir") {
