@@ -255,7 +255,7 @@ end
         if sys.platform == "win32":
             stage_body = (
                 f"function STAGE(fetch_dir, stage_dir, tmp_dir, options)\n"
-                f"  envy.run([[{script}]], {{ shell = ENVY_SHELL.POWERSHELL, check = true }})\n"
+                f"  envy.run([[{script}]], {{{{ shell = ENVY_SHELL.POWERSHELL, check = true }}}})\n"
                 f"end"
             )
         else:
@@ -313,7 +313,7 @@ FETCH = {{{{
         if sys.platform == "win32":
             install_body = (
                 f"function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n"
-                f"  envy.run([[{script}]], {{ shell = ENVY_SHELL.POWERSHELL, check = true }})\n"
+                f"  envy.run([[{script}]], {{{{ shell = ENVY_SHELL.POWERSHELL, check = true }}}})\n"
                 f"end"
             )
         else:
