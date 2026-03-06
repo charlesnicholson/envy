@@ -1448,6 +1448,117 @@ PACKAGES = {{
             "Windows script for linux-only product should NOT exist",
         )
 
+    def test_spec_platforms_alone_without_manifest_platforms(self):
+        """Spec PLATFORMS constrains scripts even without manifest-level platforms."""
+        # Manifest has NO platforms field — constraint comes from spec only
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}" }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # Spec PLATFORMS = {"linux"} → posix yes, windows no
+        self.assertTrue(
+            (bin_dir / "aptutil").exists(),
+            "POSIX script should exist (spec PLATFORMS includes linux)",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "Windows script should NOT exist (spec PLATFORMS is linux-only)",
+        )
+
+    def test_spec_platforms_intersection_narrows_to_empty(self):
+        """Spec PLATFORMS={linux} ∩ manifest platforms={darwin} = empty → no scripts."""
+        linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.linux_tool@v1", source = "{linux_path}",
+       platforms = {{ "darwin" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # Intersection of {"linux"} and {"darwin"} is empty — no scripts
+        self.assertFalse(
+            (bin_dir / "aptutil").exists(),
+            "No POSIX script when intersection is empty",
+        )
+        self.assertFalse(
+            (bin_dir / "aptutil.bat").exists(),
+            "No Windows script when intersection is empty",
+        )
+
+    def test_constrained_package_with_unconstrained_dependency(self):
+        """Platform-constrained package can depend on unconstrained package."""
+        # cross_tool has no PLATFORMS (all platforms)
+        # darwin_dep has PLATFORMS = {"darwin"} and depends on cross_tool
+        cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
+
+        # Spec that depends on cross_tool, with darwin-only constraint.
+        # Can't use write_spec (double-brace escaping conflict), write directly.
+        dep_spec = (
+            'IDENTITY = "local.darwin_dep@v1"\n'
+            'PLATFORMS = { "darwin" }\n'
+            'PRODUCTS = { darwindep = "bin/darwindep" }\n'
+            "\n"
+            "DEPENDENCIES = {\n"
+            '    { spec = "local.cross_tool@v1", source = "' + cross_path + '" },\n'
+            "}\n"
+            "\n"
+            "FETCH = {\n"
+            '  source = "' + self.archive_path.as_posix() + '",\n'
+            '  sha256 = "' + self.archive_hash + '",\n'
+            "}\n"
+            "\n"
+            "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)\n"
+            "end\n"
+        )
+        dep_spec_path = self.specs_dir / "darwin_dep.lua"
+        dep_spec_path.write_text(dep_spec, encoding="utf-8")
+        dep_path = dep_spec_path.as_posix()
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.darwin_dep@v1", source = "{dep_path}",
+       platforms = {{ "darwin" }} }},
+}}
+""")
+
+        result = self.run_deploy(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+
+        # darwin-only package: posix yes, .bat no
+        self.assertTrue(
+            (bin_dir / "darwindep").exists(),
+            "POSIX script for darwin-only package should exist",
+        )
+        self.assertFalse(
+            (bin_dir / "darwindep.bat").exists(),
+            "Windows script for darwin-only package should NOT exist",
+        )
+
+        # cross_tool (dependency): both scripts (unconstrained)
+        self.assertTrue(
+            (bin_dir / "cross").exists(),
+            "POSIX script for unconstrained dependency should exist",
+        )
+        self.assertTrue(
+            (bin_dir / "cross.bat").exists(),
+            "Windows script for unconstrained dependency should exist",
+        )
+
 
 class TestSyncDeployDirective(unittest.TestCase):
     """Tests for @envy deploy directive behavior in 'envy sync'."""

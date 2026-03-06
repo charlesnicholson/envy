@@ -1257,7 +1257,13 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
         spec_platforms.push_back(elem.as<std::string>());
       }
     }
-    p->resolved_platforms = util_platform_intersect(cfg.platforms, spec_platforms);
+    auto intersected{ util_platform_intersect(cfg.platforms, spec_platforms) };
+    // Disjoint non-empty inputs yield empty, but empty = "all platforms" elsewhere.
+    // Use a sentinel that matches nothing so scripts are never generated.
+    if (intersected.empty() && !cfg.platforms.empty() && !spec_platforms.empty()) {
+      intersected.emplace_back("__none__");
+    }
+    p->resolved_platforms = std::move(intersected);
   }
 
   p->owned_dependency_cfgs = parse_dependencies_table(*lua, spec_path, cfg);
