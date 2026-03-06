@@ -23,31 +23,27 @@ std::string format_run_error(std::string_view script,
                              std::optional<int> signal,
                              std::string const &stdout_str,
                              std::string const &stderr_str) {
-  std::string error_msg;
+  std::ostringstream oss;
 
   if (signal) {
-    error_msg = "envy.run: shell script terminated by signal " + std::to_string(*signal);
+    oss << "envy.run: shell script terminated by signal " << *signal;
   } else {
-    error_msg = "envy.run: command failed with exit code " + std::to_string(exit_code);
+    oss << "envy.run: command failed with exit code " << exit_code;
   }
 
-  error_msg += "\nCommand: ";
-  error_msg += script;
-  error_msg += "\n";
+  oss << "\nCommand: " << script << '\n';
 
   if (!stdout_str.empty()) {
-    error_msg += "\n--- stdout ---\n";
-    error_msg += stdout_str;
-    if (!stdout_str.ends_with('\n')) { error_msg += "\n"; }
+    oss << "\n--- stdout ---\n" << stdout_str;
+    if (!stdout_str.ends_with('\n')) { oss << '\n'; }
   }
 
   if (!stderr_str.empty()) {
-    error_msg += "\n--- stderr ---\n";
-    error_msg += stderr_str;
-    if (!stderr_str.ends_with('\n')) { error_msg += "\n"; }
+    oss << "\n--- stderr ---\n" << stderr_str;
+    if (!stderr_str.ends_with('\n')) { oss << '\n'; }
   }
 
-  return error_msg;
+  return oss.str();
 }
 
 // Join array of strings into single script with newlines
@@ -148,12 +144,12 @@ void lua_envy_run_install(sol::table &envy_table) {
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "envy.run");
     }
 
-    std::string stdout_buffer;
-    std::string stderr_buffer;
+    std::ostringstream stdout_stream;
+    std::ostringstream stderr_stream;
 
     shell_run_cfg cfg{
-      .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
-      .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
+      .on_stdout_line = [&](std::string_view line) { stdout_stream << line << '\n'; },
+      .on_stderr_line = [&](std::string_view line) { stderr_stream << line << '\n'; },
       .cwd = cwd,
       .env = std::move(env),
       .shell = shell,
@@ -172,14 +168,17 @@ void lua_envy_run_install(sol::table &envy_table) {
                                                   p->cfg->identity,
                                                   eng->cache_root(),
                                                   std::move(cfg))
-                                            : shell_run(script_view, cfg) };
+                                            : shell_run(script_view, std::move(cfg)) };
+
+    std::string const stdout_str{ stdout_stream.str() };
+    std::string const stderr_str{ stderr_stream.str() };
 
     if (result.signal) {
       auto const err{ format_run_error(script_view,
                                        result.exit_code,
                                        result.signal,
-                                       stdout_buffer,
-                                       stderr_buffer) };
+                                       stdout_str,
+                                       stderr_str) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }
@@ -188,8 +187,8 @@ void lua_envy_run_install(sol::table &envy_table) {
       auto const err{ format_run_error(script_view,
                                        result.exit_code,
                                        std::nullopt,
-                                       stdout_buffer,
-                                       stderr_buffer) };
+                                       stdout_str,
+                                       stderr_str) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }
@@ -198,8 +197,8 @@ void lua_envy_run_install(sol::table &envy_table) {
     sol::table return_table{ lua_view.create_table() };
     return_table["exit_code"] = result.exit_code;
     if (capture) {
-      return_table["stdout"] = stdout_buffer;
-      return_table["stderr"] = stderr_buffer;
+      return_table["stdout"] = stdout_str;
+      return_table["stderr"] = stderr_str;
     } else {
       return_table["stdout"] = sol::lua_nil;
       return_table["stderr"] = sol::lua_nil;

@@ -303,9 +303,13 @@ shell_result run_shell_with_progress(std::string_view script,
                                      std::string const &pkg_identity,
                                      std::filesystem::path const &cache_root,
                                      shell_run_cfg cfg) {
-  run_progress progress{ section, pkg_identity, cache_root };
-  progress.on_command_start(script);
-  cfg.on_output_line = [&](std::string_view line) { progress.on_output_line(line); };
+  if (section) {
+    run_progress progress{ section, pkg_identity, cache_root };
+    progress.on_command_start(script);
+    cfg.on_output_line = [&](std::string_view line) { progress.on_output_line(line); };
+    return shell_run(script, cfg);
+  }
+
   return shell_run(script, cfg);
 }
 

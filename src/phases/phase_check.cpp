@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -23,19 +24,13 @@ namespace envy {
 bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd) {
   tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
 
-  std::string stdout_capture;
-  std::string stderr_capture;
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
 
   shell_run_cfg cfg;
   cfg.env = shell_getenv();
-  cfg.on_stdout_line = [&](std::string_view line) {
-    stdout_capture += line;
-    stdout_capture += '\n';
-  };
-  cfg.on_stderr_line = [&](std::string_view line) {
-    stderr_capture += line;
-    stderr_capture += '\n';
-  };
+  cfg.on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; };
+  cfg.on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; };
   cfg.cwd = pkg_cfg::compute_project_root(p->cfg);
   cfg.shell = shell_resolve_default(p ? p->default_shell_ptr : nullptr);
 
@@ -50,12 +45,14 @@ bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd) {
   bool const check_passed{ result.exit_code == 0 };
 
   if (!check_passed) {
+    std::string const stdout_str{ stdout_capture.str() };
+    std::string const stderr_str{ stderr_capture.str() };
     tui::error("check failed for %s (exit code %d)",
                p->cfg->identity.c_str(),
                result.exit_code);
     tui::error("command: %s", std::string(check_cmd).c_str());
-    if (!stdout_capture.empty()) { tui::error("stdout:\n%s", stdout_capture.c_str()); }
-    if (!stderr_capture.empty()) { tui::error("stderr:\n%s", stderr_capture.c_str()); }
+    if (!stdout_str.empty()) { tui::error("stdout:\n%s", stdout_str.c_str()); }
+    if (!stderr_str.empty()) { tui::error("stderr:\n%s", stderr_str.c_str()); }
   }
 
   tui::debug("phase check: string check exit_code=%d (check %s)",

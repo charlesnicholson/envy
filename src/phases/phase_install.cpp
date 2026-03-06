@@ -15,6 +15,7 @@
 #include "util.h"
 
 #include <filesystem>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 
@@ -46,16 +47,29 @@ bool run_shell_install(std::string_view script,
                        std::filesystem::path const &cache_root) {
   tui::debug("phase install: running shell script");
 
-  shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{ .cwd = install_dir,
-                     .env = std::move(env),
-                     .shell = shell };
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
 
-  shell_result const result{
-    tui_actions::run_shell_with_progress(script, tui_section, identity, cache_root, std::move(cfg))
+  shell_env_t env{ shell_getenv() };
+  shell_run_cfg cfg{
+    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
+    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
+    .cwd = install_dir,
+    .env = std::move(env),
+    .shell = shell
   };
 
+  shell_result const result{ tui_actions::run_shell_with_progress(script,
+                                                                  tui_section,
+                                                                  identity,
+                                                                  cache_root,
+                                                                  std::move(cfg)) };
+
   if (result.exit_code != 0) {
+    std::string const stdout_str{ stdout_capture.str() };
+    std::string const stderr_str{ stderr_capture.str() };
+    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
+    if (!stderr_str.empty()) { tui::error("%s", stderr_str.c_str()); }
     if (result.signal) {
       throw std::runtime_error("Install shell script terminated by signal " +
                                std::to_string(*result.signal) + " for " + identity);

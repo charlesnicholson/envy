@@ -17,6 +17,7 @@
 #include <chrono>
 #include <filesystem>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -101,8 +102,17 @@ void run_shell_stage(std::string_view script,
                      std::filesystem::path const &cache_root) {
   tui::debug("phase stage: running shell script");
 
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
+
   shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{ .cwd = dest_dir, .env = std::move(env), .shell = std::move(shell) };
+  shell_run_cfg cfg{
+    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
+    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
+    .cwd = dest_dir,
+    .env = std::move(env),
+    .shell = std::move(shell)
+  };
 
   shell_result const result{ tui_actions::run_shell_with_progress(script,
                                                                   tui_section,
@@ -111,6 +121,10 @@ void run_shell_stage(std::string_view script,
                                                                   std::move(cfg)) };
 
   if (result.exit_code != 0) {
+    std::string const stdout_str{ stdout_capture.str() };
+    std::string const stderr_str{ stderr_capture.str() };
+    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
+    if (!stderr_str.empty()) { tui::error("%s", stderr_str.c_str()); }
     if (result.signal) {
       throw std::runtime_error("Stage shell script failed for " + identity +
                                " (terminated by signal " + std::to_string(*result.signal) +

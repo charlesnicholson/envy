@@ -102,9 +102,11 @@ class fetch_all_progress_tracker {
 };
 
 // Unified shell execution with TUI progress tracking.
-// Creates a run_progress tracker, shows scrubbed command header, limits output to 3 lines.
+// Creates a run_progress tracker, shows scrubbed command header; the tracker itself
+// controls how much output is displayed (e.g., limiting the visible output to 3 lines).
 // Callers set up on_stdout_line/on_stderr_line for capture; this function overwrites
-// on_output_line to route through the progress tracker.
+// on_output_line in cfg to route output through the progress tracker.
+// If section is invalid, runs without progress tracking.
 shell_result run_shell_with_progress(std::string_view script,
                                      tui::section_handle section,
                                      std::string const &pkg_identity,

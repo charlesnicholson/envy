@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -25,28 +26,29 @@ std::string format_build_error(std::string const &identity,
                                int exit_code,
                                std::optional<int> signal,
                                std::string const &stderr_capture) {
-  std::string msg{ "[" + identity + "] Build failed" };
+  std::ostringstream oss;
+  oss << "[" << identity << "] Build failed";
 
   if (signal) {
-    msg += " (terminated by signal " + std::to_string(*signal) + ")";
+    oss << " (terminated by signal " << *signal << ")";
   } else {
-    msg += " (exit code " + std::to_string(exit_code) + ")";
+    oss << " (exit code " << exit_code << ")";
   }
 
   if (!stderr_capture.empty()) {
-    msg += "\n";
-    // Include last portion of stderr for context
+    oss << '\n';
     constexpr size_t kMaxStderrBytes{ 2048 };
     if (stderr_capture.size() > kMaxStderrBytes) {
-      msg += "... (truncated)\n";
-      msg += stderr_capture.substr(stderr_capture.size() - kMaxStderrBytes);
+      oss << "... (truncated)\n"
+          << std::string_view{ stderr_capture }.substr(stderr_capture.size() -
+                                                       kMaxStderrBytes);
     } else {
-      msg += stderr_capture;
+      oss << stderr_capture;
     }
-    if (!msg.ends_with('\n')) { msg += '\n'; }
+    if (!stderr_capture.ends_with('\n')) { oss << '\n'; }
   }
 
-  return msg;
+  return oss.str();
 }
 
 // Common helper to execute a build script with proper output capture and error handling.
@@ -56,17 +58,17 @@ void execute_build_script(std::string_view script,
                           resolved_shell shell,
                           tui::section_handle tui_section,
                           std::filesystem::path const &cache_root) {
-  std::string stderr_capture;
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
 
   shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{ .on_stderr_line =
-                         [&](std::string_view line) {
-                           stderr_capture += line;
-                           stderr_capture += '\n';
-                         },
-                     .cwd = cwd,
-                     .env = std::move(env),
-                     .shell = shell };
+  shell_run_cfg cfg{
+    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
+    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
+    .cwd = cwd,
+    .env = std::move(env),
+    .shell = shell
+  };
 
   shell_result const result{ tui_actions::run_shell_with_progress(script,
                                                                   tui_section,
@@ -74,9 +76,12 @@ void execute_build_script(std::string_view script,
                                                                   cache_root,
                                                                   std::move(cfg)) };
   if (result.exit_code != 0) {
+    std::string const stdout_str{ stdout_capture.str() };
+    std::string const stderr_str{ stderr_capture.str() };
     auto const err{
-      format_build_error(identity, result.exit_code, result.signal, stderr_capture)
+      format_build_error(identity, result.exit_code, result.signal, stderr_str)
     };
+    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
     tui::error("%s", err.c_str());
     throw std::runtime_error("Build failed for " + identity);
   }
