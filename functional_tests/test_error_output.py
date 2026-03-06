@@ -55,7 +55,7 @@ def _windows_fail_script(stdout_markers, stderr_markers):
     for m in stdout_markers:
         lines.append(f'Write-Output "{m}"')
     for m in stderr_markers:
-        lines.append(f'Write-Error "{m}"')
+        lines.append(f'[Console]::Error.WriteLine("{m}")')
     lines.append("exit 1")
     return "\n".join(lines)
 
