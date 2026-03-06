@@ -35,7 +35,7 @@ def _get_envy_version() -> str:
 
 
 _SEMVER_RE = re.compile(
-    r"/envy/(\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?(?:\+[A-Za-z0-9.]+)?)$"
+    r"/envy/(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?)$"
 )
 
 
