@@ -7,6 +7,7 @@ error, and that deploy (resolve_graph only) still sees all packages.
 
 import hashlib
 import io
+import platform as py_platform
 import shutil
 import sys
 import tarfile
@@ -59,6 +60,12 @@ def _other_non_host_platform() -> str:
     host = _host_platform()
     candidates = {"darwin", "linux", "windows"} - {host}
     return sorted(candidates)[0]  # deterministic pick
+
+
+def _host_arch() -> str:
+    """Host arch normalized to match envy's platform::arch_name()."""
+    raw = py_platform.machine()
+    return {"aarch64": "arm64", "ARM64": "arm64", "AMD64": "x86_64"}.get(raw, raw)
 
 
 # --- Spec templates (double braces for .format()) ---
@@ -538,10 +545,8 @@ class TestPlatformFilterEdgeCases(PlatformFilterBase):
 
     def test_os_arch_constraint_wrong_arch_skipped(self):
         """os-arch like 'darwin-x86_64' on arm64 host is skipped."""
-        import platform as py_platform
-
         host_os = _host_platform()
-        host_arch = py_platform.machine()
+        host_arch = _host_arch()
         wrong_arch = "x86_64" if host_arch == "arm64" else "arm64"
         constraint = f"{host_os}-{wrong_arch}"
 
@@ -561,10 +566,8 @@ PACKAGES = {{
 
     def test_os_arch_constraint_correct_arch_installed(self):
         """os-arch matching host exactly is installed."""
-        import platform as py_platform
-
         host_os = _host_platform()
-        host_arch = py_platform.machine()
+        host_arch = _host_arch()
         constraint = f"{host_os}-{host_arch}"
 
         spec_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
