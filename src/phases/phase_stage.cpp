@@ -11,15 +11,15 @@
 #include "sol_util.h"
 #include "trace.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "util.h"
 
 #include <chrono>
 #include <filesystem>
-#include <functional>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace envy {
 namespace {
@@ -97,22 +97,34 @@ void run_programmatic_stage(sol::protected_function stage_func,
 void run_shell_stage(std::string_view script,
                      std::filesystem::path const &dest_dir,
                      std::string const &identity,
-                     resolved_shell shell) {
+                     resolved_shell shell,
+                     tui::section_handle tui_section,
+                     std::filesystem::path const &cache_root) {
   tui::debug("phase stage: running shell script");
 
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
+
   shell_env_t env{ shell_getenv() };
+  shell_run_cfg cfg{
+    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
+    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
+    .cwd = dest_dir,
+    .env = std::move(env),
+    .shell = std::move(shell)
+  };
 
-  shell_run_cfg inv{ .on_output_line =
-                         [&](std::string_view line) {
-                           tui::info("%.*s", static_cast<int>(line.size()), line.data());
-                         },
-                     .cwd = dest_dir,
-                     .env = std::move(env),
-                     .shell = std::move(shell) };
-
-  shell_result const result{ shell_run(script, inv) };
+  shell_result const result{ tui_actions::run_shell_with_progress(script,
+                                                                  tui_section,
+                                                                  identity,
+                                                                  cache_root,
+                                                                  std::move(cfg)) };
 
   if (result.exit_code != 0) {
+    std::string const stdout_str{ stdout_capture.str() };
+    std::string const stderr_str{ stderr_capture.str() };
+    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
+    if (!stderr_str.empty()) { tui::error("%s", stderr_str.c_str()); }
     if (result.signal) {
       throw std::runtime_error("Stage shell script failed for " + identity +
                                " (terminated by signal " + std::to_string(*result.signal) +
@@ -156,7 +168,9 @@ void run_stage_phase(pkg *p, engine &eng) {
     run_shell_stage(script_str,
                     stage_dir,
                     identity,
-                    shell_resolve_default(p->default_shell_ptr));
+                    shell_resolve_default(p->default_shell_ptr),
+                    p->tui_section,
+                    eng.cache_root());
   } else if (stage_obj.is<sol::protected_function>()) {
     run_programmatic_stage(stage_obj.as<sol::protected_function>(),
                            lock->fetch_dir(),

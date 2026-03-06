@@ -296,4 +296,21 @@ void fetch_all_progress_tracker::set_frame(std::size_t slot,
   }
 }
 
+// ==== run_shell_with_progress ====
+
+shell_result run_shell_with_progress(std::string_view script,
+                                     tui::section_handle section,
+                                     std::string const &pkg_identity,
+                                     std::filesystem::path const &cache_root,
+                                     shell_run_cfg cfg) {
+  if (section) {
+    run_progress progress{ section, pkg_identity, cache_root };
+    progress.on_command_start(script);
+    cfg.on_output_line = [&](std::string_view line) { progress.on_output_line(line); };
+    return shell_run(script, cfg);
+  }
+
+  return shell_run(script, cfg);
+}
+
 }  // namespace envy::tui_actions

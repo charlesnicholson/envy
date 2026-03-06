@@ -23,31 +23,27 @@ std::string format_run_error(std::string_view script,
                              std::optional<int> signal,
                              std::string const &stdout_str,
                              std::string const &stderr_str) {
-  std::string error_msg;
+  std::ostringstream oss;
 
   if (signal) {
-    error_msg = "envy.run: shell script terminated by signal " + std::to_string(*signal);
+    oss << "envy.run: shell script terminated by signal " << *signal;
   } else {
-    error_msg = "envy.run: command failed with exit code " + std::to_string(exit_code);
+    oss << "envy.run: command failed with exit code " << exit_code;
   }
 
-  error_msg += "\nCommand: ";
-  error_msg += script;
-  error_msg += "\n";
+  oss << "\nCommand: " << script << '\n';
 
   if (!stdout_str.empty()) {
-    error_msg += "\n--- stdout ---\n";
-    error_msg += stdout_str;
-    if (!stdout_str.ends_with('\n')) { error_msg += "\n"; }
+    oss << "\n--- stdout ---\n" << stdout_str;
+    if (!stdout_str.ends_with('\n')) { oss << '\n'; }
   }
 
   if (!stderr_str.empty()) {
-    error_msg += "\n--- stderr ---\n";
-    error_msg += stderr_str;
-    if (!stderr_str.ends_with('\n')) { error_msg += "\n"; }
+    oss << "\n--- stderr ---\n" << stderr_str;
+    if (!stderr_str.ends_with('\n')) { oss << '\n'; }
   }
 
-  return error_msg;
+  return oss.str();
 }
 
 // Join array of strings into single script with newlines
@@ -148,28 +144,12 @@ void lua_envy_run_install(sol::table &envy_table) {
       interactive = sol_util_get_or_default<bool>(opts, "interactive", false, "envy.run");
     }
 
-    // Auto-manage TUI progress if in phase context (skip if quiet)
-    std::optional<tui_actions::run_progress> progress;
-    engine *eng{ ctx ? ctx->eng : nullptr };
-    if (p && p->tui_section && eng && !quiet) {
-      progress.emplace(p->tui_section, p->cfg->identity, eng->cache_root());
-      progress->on_command_start(script_view);
-    }
+    std::ostringstream stdout_stream;
+    std::ostringstream stderr_stream;
 
-    std::string stdout_buffer;
-    std::string stderr_buffer;
-
-    shell_run_cfg const inv{
-      .on_output_line =
-          [&](std::string_view line) {
-            if (progress && !quiet) {
-              progress->on_output_line(line);
-            } else if (!quiet) {
-              tui::info("%s", std::string{ line }.c_str());
-            }
-          },
-      .on_stdout_line = [&](std::string_view line) { (stdout_buffer += line) += '\n'; },
-      .on_stderr_line = [&](std::string_view line) { (stderr_buffer += line) += '\n'; },
+    shell_run_cfg cfg{
+      .on_stdout_line = [&](std::string_view line) { stdout_stream << line << '\n'; },
+      .on_stderr_line = [&](std::string_view line) { stderr_stream << line << '\n'; },
       .cwd = cwd,
       .env = std::move(env),
       .shell = shell,
@@ -179,14 +159,26 @@ void lua_envy_run_install(sol::table &envy_table) {
     std::optional<tui::interactive_mode_guard> guard;
     if (interactive) { guard.emplace(); }
 
-    shell_result const result{ shell_run(script_view, inv) };
+    engine *eng{ ctx ? ctx->eng : nullptr };
+    bool const use_progress{ p && p->tui_section && eng && !quiet };
+
+    shell_result const result{ use_progress ? tui_actions::run_shell_with_progress(
+                                                  script_view,
+                                                  p->tui_section,
+                                                  p->cfg->identity,
+                                                  eng->cache_root(),
+                                                  std::move(cfg))
+                                            : shell_run(script_view, std::move(cfg)) };
+
+    std::string const stdout_str{ stdout_stream.str() };
+    std::string const stderr_str{ stderr_stream.str() };
 
     if (result.signal) {
       auto const err{ format_run_error(script_view,
                                        result.exit_code,
                                        result.signal,
-                                       stdout_buffer,
-                                       stderr_buffer) };
+                                       stdout_str,
+                                       stderr_str) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }
@@ -195,8 +187,8 @@ void lua_envy_run_install(sol::table &envy_table) {
       auto const err{ format_run_error(script_view,
                                        result.exit_code,
                                        std::nullopt,
-                                       stdout_buffer,
-                                       stderr_buffer) };
+                                       stdout_str,
+                                       stderr_str) };
       tui::error("%s", err.c_str());
       throw std::runtime_error(err);
     }
@@ -205,8 +197,8 @@ void lua_envy_run_install(sol::table &envy_table) {
     sol::table return_table{ lua_view.create_table() };
     return_table["exit_code"] = result.exit_code;
     if (capture) {
-      return_table["stdout"] = stdout_buffer;
-      return_table["stderr"] = stderr_buffer;
+      return_table["stdout"] = stdout_str;
+      return_table["stderr"] = stderr_str;
     } else {
       return_table["stdout"] = sol::lua_nil;
       return_table["stderr"] = sol::lua_nil;
