@@ -1304,16 +1304,17 @@ PACKAGES = {{
             "Windows script for unconstrained product should exist",
         )
 
-    def test_sync_platform_all_skips_nonmatching_packages_entirely(self):
-        """sync --platform all still filters non-host packages from the engine."""
-        non_host = "windows" if sys.platform != "win32" else "linux"
+    def test_sync_platform_all_resolves_nonhost_for_scripts(self):
+        """sync --platform all resolves non-host packages for script generation."""
         linux_path = self.write_spec("linux_tool", SPEC_PRODUCT_LINUX_ONLY)
         cross_path = self.write_spec("cross_tool", SPEC_PRODUCT_ALL_PLATFORMS)
 
+        # Manifest platforms = {"linux"}, spec PLATFORMS = {"linux"}.
+        # Intersection = {"linux"} → POSIX script, no .bat.
         manifest = self.create_manifest(f"""
 PACKAGES = {{
     {{ spec = "local.linux_tool@v1", source = "{linux_path}",
-       platforms = {{ "{non_host}" }} }},
+       platforms = {{ "linux" }} }},
     {{ spec = "local.cross_tool@v1", source = "{cross_path}" }},
 }}
 """)
@@ -1323,14 +1324,14 @@ PACKAGES = {{
 
         bin_dir = self.test_dir / "envy-bin"
 
-        # Non-host package is filtered out of sync entirely: no scripts at all
-        self.assertFalse(
+        # linux-only product: posix yes (linux maps to posix), .bat no
+        self.assertTrue(
             (bin_dir / "aptutil").exists(),
-            "Non-host product should not have POSIX script after sync",
+            "POSIX script for linux-only product should exist after sync --platform all",
         )
         self.assertFalse(
             (bin_dir / "aptutil.bat").exists(),
-            "Non-host product should not have Windows script after sync",
+            "Windows script for linux-only product should NOT exist",
         )
 
         # Cross-platform product should still get both
