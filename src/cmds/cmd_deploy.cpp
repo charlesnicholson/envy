@@ -7,6 +7,7 @@
 #include "manifest.h"
 #include "pkg_cfg.h"
 #include "pkg_key.h"
+#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
@@ -87,13 +88,19 @@ void cmd_deploy::execute() {
     for (auto const &query : cfg_.identities) {
       bool found{ false };
       for (auto const *pkg : m->packages) {
-        pkg_key const key{ *pkg };
-        if (key.matches(query)) {
+        if (pkg_key const key{ *pkg }; key.matches(query)) {
+          if (!util_platform_matches(pkg->platforms,
+                                     platform::os_name(),
+                                     platform::arch_name())) {
+            throw std::runtime_error("deploy: '" + query +
+                                     "' is not available on this platform");
+          }
           targets.push_back(pkg);
           found = true;
           break;
         }
       }
+
       if (!found) {
         throw std::runtime_error("deploy: query '" + query + "' not found in manifest");
       }
