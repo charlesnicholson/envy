@@ -166,6 +166,15 @@ class engine : unmovable {
 std::vector<pkg_cfg const *> engine_filter_host_platform(
     std::vector<pkg_cfg const *> const &cfgs);
 
+// Resolve manifest packages against optional query list.
+// Empty queries = all packages (unfiltered — callers handle platform filtering).
+// Non-empty queries = match each query, throw if not found or wrong platform.
+// cmd_name used in error messages (e.g. "deploy", "sync").
+std::vector<pkg_cfg const *> engine_resolve_targets(
+    std::vector<pkg_cfg *> const &packages,
+    std::vector<std::string> const &queries,
+    std::string const &cmd_name);
+
 // Validate that adding candidate_identity as a dependency doesn't create a cycle
 // Checks for self-loops and cycles in ancestor_chain, throws on detection
 // dependency_type used for error messages (e.g., "Dependency" or "Fetch dependency")

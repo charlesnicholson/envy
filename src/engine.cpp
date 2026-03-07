@@ -726,6 +726,36 @@ std::vector<pkg_cfg const *> engine_filter_host_platform(
   return result;
 }
 
+std::vector<pkg_cfg const *> engine_resolve_targets(
+    std::vector<pkg_cfg *> const &packages,
+    std::vector<std::string> const &queries,
+    std::string const &cmd_name) {
+  if (queries.empty()) { return { packages.begin(), packages.end() }; }
+
+  std::vector<pkg_cfg const *> targets;
+  for (auto const &query : queries) {
+    bool found{ false };
+    for (auto const *pkg : packages) {
+      if (pkg_key const key{ *pkg }; key.matches(query)) {
+        if (!util_platform_matches(pkg->platforms,
+                                   platform::os_name(),
+                                   platform::arch_name())) {
+          throw std::runtime_error(cmd_name + ": '" + query +
+                                   "' is not available on this platform");
+        }
+        targets.push_back(pkg);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw std::runtime_error(cmd_name + ": query '" + query + "' not found in manifest");
+    }
+  }
+
+  return targets;
+}
+
 pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
   auto const filtered{ engine_filter_host_platform(roots) };
 

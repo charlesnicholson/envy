@@ -5,9 +5,6 @@
 #include "engine.h"
 #include "luarc.h"
 #include "manifest.h"
-#include "pkg_cfg.h"
-#include "pkg_key.h"
-#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
@@ -80,32 +77,7 @@ void cmd_deploy::execute() {
     }
   }
 
-  std::vector<pkg_cfg const *> targets;
-
-  if (cfg_.identities.empty()) {
-    for (auto const *pkg : m->packages) { targets.push_back(pkg); }
-  } else {
-    for (auto const &query : cfg_.identities) {
-      bool found{ false };
-      for (auto const *pkg : m->packages) {
-        if (pkg_key const key{ *pkg }; key.matches(query)) {
-          if (!util_platform_matches(pkg->platforms,
-                                     platform::os_name(),
-                                     platform::arch_name())) {
-            throw std::runtime_error("deploy: '" + query +
-                                     "' is not available on this platform");
-          }
-          targets.push_back(pkg);
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        throw std::runtime_error("deploy: query '" + query + "' not found in manifest");
-      }
-    }
-  }
+  auto const targets{ engine_resolve_targets(m->packages, cfg_.identities, "deploy") };
 
   if (targets.empty()) { return; }
 
@@ -125,7 +97,7 @@ void cmd_deploy::execute() {
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
 
   if (deploy_enabled) {
-    deploy_product_scripts(eng, bin_dir, products, cfg_.strict, platforms);
+    deploy_product_scripts(bin_dir, products, cfg_.strict, platforms);
   } else {
     tui::warn("deploy was requested but deployment is disabled in %s",
               m->manifest_path.string().c_str());
