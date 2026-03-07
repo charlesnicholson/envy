@@ -106,7 +106,7 @@ TEST_CASE("OPTIONS: extra option with no schema keys") {
 TEST_CASE("OPTIONS: semver valid string") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   f.schema["version"] = constraint;
 
   sol::object opts{ f.make_opts("{ version = \"1.2.3\" }") };
@@ -116,7 +116,7 @@ TEST_CASE("OPTIONS: semver valid string") {
 TEST_CASE("OPTIONS: semver valid with prerelease") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   f.schema["version"] = constraint;
 
   sol::object opts{ f.make_opts("{ version = \"1.2.3-rc.1\" }") };
@@ -126,7 +126,7 @@ TEST_CASE("OPTIONS: semver valid with prerelease") {
 TEST_CASE("OPTIONS: semver invalid string") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   f.schema["version"] = constraint;
 
   sol::object opts{ f.make_opts("{ version = \"not.a.version\" }") };
@@ -137,18 +137,18 @@ TEST_CASE("OPTIONS: semver invalid string") {
 TEST_CASE("OPTIONS: semver rejects number") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   f.schema["version"] = constraint;
 
   sol::object opts{ f.make_opts("{ version = 123 }") };
   CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
-                    doctest::Contains("not valid semver"));
+                    doctest::Contains("must be type 'semver', got number"));
 }
 
 TEST_CASE("OPTIONS: semver not required and missing") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   f.schema["version"] = constraint;
 
   sol::object opts{ f.make_opts("{}") };
@@ -160,7 +160,7 @@ TEST_CASE("OPTIONS: semver not required and missing") {
 TEST_CASE("OPTIONS: semver range pass") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0 <2.0.0";
   f.schema["version"] = constraint;
 
@@ -171,7 +171,7 @@ TEST_CASE("OPTIONS: semver range pass") {
 TEST_CASE("OPTIONS: semver range boundary inclusive") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0 <2.0.0";
   f.schema["version"] = constraint;
 
@@ -182,7 +182,7 @@ TEST_CASE("OPTIONS: semver range boundary inclusive") {
 TEST_CASE("OPTIONS: semver range boundary exclusive") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0 <2.0.0";
   f.schema["version"] = constraint;
 
@@ -194,7 +194,7 @@ TEST_CASE("OPTIONS: semver range boundary exclusive") {
 TEST_CASE("OPTIONS: semver range below") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0 <2.0.0";
   f.schema["version"] = constraint;
 
@@ -206,7 +206,7 @@ TEST_CASE("OPTIONS: semver range below") {
 TEST_CASE("OPTIONS: semver range invalid range string") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">>>bad";
   f.schema["version"] = constraint;
 
@@ -218,7 +218,7 @@ TEST_CASE("OPTIONS: semver range invalid range string") {
 TEST_CASE("OPTIONS: semver range multiple constraints") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0 <2.0.0 >=1.2.0";
   f.schema["version"] = constraint;
 
@@ -230,7 +230,7 @@ TEST_CASE("OPTIONS: semver range multiple constraints") {
 TEST_CASE("OPTIONS: semver range with equal") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = "=1.5.0";
   f.schema["version"] = constraint;
 
@@ -241,7 +241,7 @@ TEST_CASE("OPTIONS: semver range with equal") {
 TEST_CASE("OPTIONS: semver range with equal mismatch") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = "=1.5.0";
   f.schema["version"] = constraint;
 
@@ -426,7 +426,7 @@ TEST_CASE("OPTIONS: required + semver + range all pass") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
   constraint["required"] = true;
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0";
   f.schema["version"] = constraint;
 
@@ -438,7 +438,7 @@ TEST_CASE("OPTIONS: required + semver fails on semver") {
   lua_fixture f;
   sol::table constraint{ f.lua.create_table() };
   constraint["required"] = true;
-  constraint["semver"] = true;
+  constraint["type"] = "semver";
   constraint["range"] = ">=1.0.0";
   f.schema["version"] = constraint;
 
@@ -494,6 +494,28 @@ TEST_CASE("OPTIONS: schema entry not a table") {
   sol::object opts{ f.make_opts("{ version = \"1\" }") };
   CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
                     doctest::Contains("must be a table"));
+}
+
+TEST_CASE("OPTIONS: schema type not a string throws") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = true;
+  f.schema["name"] = constraint;
+
+  sol::object opts{ f.make_opts("{ name = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("schema 'type' must be a string"));
+}
+
+TEST_CASE("OPTIONS: schema choices not a table throws") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["choices"] = "bad";
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"x\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("schema 'choices' must be a table"));
 }
 
 // -- Function form: return values (tested via run_options in phase_spec_fetch) --
@@ -562,6 +584,496 @@ TEST_CASE("OPTIONS: nil opts with required field throws") {
 
   CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
                     doctest::Contains("'version' is required"));
+}
+
+// -- Table form: type constraint --
+
+TEST_CASE("OPTIONS: type string accepts string") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  f.schema["name"] = constraint;
+
+  sol::object opts{ f.make_opts("{ name = \"hello\" }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type string rejects number") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  f.schema["name"] = constraint;
+
+  sol::object opts{ f.make_opts("{ name = 42 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'string', got number"));
+}
+
+TEST_CASE("OPTIONS: type string rejects boolean") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  f.schema["name"] = constraint;
+
+  sol::object opts{ f.make_opts("{ name = true }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'string', got boolean"));
+}
+
+TEST_CASE("OPTIONS: type int accepts integer") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "int";
+  f.schema["count"] = constraint;
+
+  sol::object opts{ f.make_opts("{ count = 42 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type int rejects float") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "int";
+  f.schema["count"] = constraint;
+
+  sol::object opts{ f.make_opts("{ count = 3.14 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'int', got float"));
+}
+
+TEST_CASE("OPTIONS: type int rejects string") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "int";
+  f.schema["count"] = constraint;
+
+  sol::object opts{ f.make_opts("{ count = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'int', got string"));
+}
+
+TEST_CASE("OPTIONS: type float accepts float") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "float";
+  f.schema["ratio"] = constraint;
+
+  sol::object opts{ f.make_opts("{ ratio = 3.14 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type float accepts integer") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "float";
+  f.schema["ratio"] = constraint;
+
+  sol::object opts{ f.make_opts("{ ratio = 42 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type float rejects string") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "float";
+  f.schema["ratio"] = constraint;
+
+  sol::object opts{ f.make_opts("{ ratio = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'float', got string"));
+}
+
+TEST_CASE("OPTIONS: type boolean accepts true") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "boolean";
+  f.schema["flag"] = constraint;
+
+  sol::object opts{ f.make_opts("{ flag = true }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type boolean rejects string true") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "boolean";
+  f.schema["flag"] = constraint;
+
+  sol::object opts{ f.make_opts("{ flag = \"true\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'boolean', got string"));
+}
+
+TEST_CASE("OPTIONS: type table accepts map") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "table";
+  f.schema["data"] = constraint;
+
+  sol::object opts{ f.make_opts("{ data = { a = 1 } }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type table accepts array") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "table";
+  f.schema["data"] = constraint;
+
+  sol::object opts{ f.make_opts("{ data = { 1, 2 } }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type table rejects string") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "table";
+  f.schema["data"] = constraint;
+
+  sol::object opts{ f.make_opts("{ data = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'table', got string"));
+}
+
+TEST_CASE("OPTIONS: type list accepts sequential array") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  f.schema["items"] = constraint;
+
+  sol::object opts{ f.make_opts("{ items = { \"a\", \"b\" } }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type list accepts empty table") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  f.schema["items"] = constraint;
+
+  sol::object opts{ f.make_opts("{ items = {} }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type list rejects non-sequential table") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  f.schema["items"] = constraint;
+
+  sol::object opts{ f.make_opts("{ items = { a = 1 } }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("non-sequential table"));
+}
+
+TEST_CASE("OPTIONS: type list rejects string") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  f.schema["items"] = constraint;
+
+  sol::object opts{ f.make_opts("{ items = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'list'"));
+}
+
+TEST_CASE("OPTIONS: invalid type string throws") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "widget";
+  f.schema["thing"] = constraint;
+
+  sol::object opts{ f.make_opts("{ thing = \"x\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("unknown type 'widget'"));
+}
+
+TEST_CASE("OPTIONS: type checked before choices") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = 42 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'string'"));
+}
+
+TEST_CASE("OPTIONS: type checked before validate") {
+  lua_fixture f;
+  f.lua.safe_script("function my_validator(v) return \"custom\" end");
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  constraint["validate"] = f.lua["my_validator"];
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = 42 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'string'"));
+}
+
+// -- Table form: choices constraint --
+
+TEST_CASE("OPTIONS: string choices accepts valid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add("install", "extract");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"install\" }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: string choices rejects invalid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add("install", "extract");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"debug\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("not in {install, extract}"));
+}
+
+TEST_CASE("OPTIONS: number choices accepts valid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add(1, 2, 3);
+  constraint["choices"] = choices;
+  f.schema["level"] = constraint;
+
+  sol::object opts{ f.make_opts("{ level = 2 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: number choices rejects invalid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add(1, 2, 3);
+  constraint["choices"] = choices;
+  f.schema["level"] = constraint;
+
+  sol::object opts{ f.make_opts("{ level = 5 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("not in {"));
+}
+
+TEST_CASE("OPTIONS: type + choices together") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"a\" }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type mismatch caught before choices") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = 42 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("must be type 'string'"));
+}
+
+TEST_CASE("OPTIONS: list + choices element-wise validation") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b", "c");
+  constraint["choices"] = choices;
+  f.schema["tools"] = constraint;
+
+  sol::object opts{ f.make_opts("{ tools = { \"a\", \"b\" } }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: list + choices element rejection with index") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b", "c");
+  constraint["choices"] = choices;
+  f.schema["tools"] = constraint;
+
+  sol::object opts{ f.make_opts("{ tools = { \"a\", \"b\", \"bad\" } }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("element 'bad' at index 3 not in {a, b, c}"));
+}
+
+TEST_CASE("OPTIONS: choices checked before validate") {
+  lua_fixture f;
+  f.lua.safe_script("function my_validator(v) return \"custom\" end");
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b");
+  constraint["choices"] = choices;
+  constraint["validate"] = f.lua["my_validator"];
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"c\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("not in {a, b}"));
+}
+
+// -- Table form: combined type + choices + required --
+
+TEST_CASE("OPTIONS: required + type + choices all pass") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["required"] = true;
+  constraint["type"] = "string";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("x", "y");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"x\" }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: optional absent with type + choices passes") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "string";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("x", "y");
+  constraint["choices"] = choices;
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{}") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type int + numeric range pass") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "int";
+  constraint["range"] = ">=1 <10";
+  f.schema["count"] = constraint;
+
+  sol::object opts{ f.make_opts("{ count = 5 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type int + numeric range fail") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "int";
+  constraint["range"] = ">=1 <10";
+  f.schema["count"] = constraint;
+
+  sol::object opts{ f.make_opts("{ count = 15 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("does not satisfy range"));
+}
+
+TEST_CASE("OPTIONS: type float + numeric range pass") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "float";
+  constraint["range"] = ">=0.0 <=1.0";
+  f.schema["ratio"] = constraint;
+
+  sol::object opts{ f.make_opts("{ ratio = 0.5 }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type float + numeric range fail") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "float";
+  constraint["range"] = ">=0.0 <=1.0";
+  f.schema["ratio"] = constraint;
+
+  sol::object opts{ f.make_opts("{ ratio = 1.5 }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("does not satisfy range"));
+}
+
+TEST_CASE("OPTIONS: boolean choices accepts valid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add(true);
+  constraint["choices"] = choices;
+  f.schema["flag"] = constraint;
+
+  sol::object opts{ f.make_opts("{ flag = true }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: boolean choices rejects invalid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  sol::table choices{ f.lua.create_table() };
+  choices.add(true);
+  constraint["choices"] = choices;
+  f.schema["flag"] = constraint;
+
+  sol::object opts{ f.make_opts("{ flag = false }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("not in {true}"));
+}
+
+TEST_CASE("OPTIONS: empty list + choices passes") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "list";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("a", "b");
+  constraint["choices"] = choices;
+  f.schema["items"] = constraint;
+
+  sol::object opts{ f.make_opts("{ items = {} }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type semver + choices accepts valid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "semver";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("1.0.0", "2.0.0");
+  constraint["choices"] = choices;
+  f.schema["version"] = constraint;
+
+  sol::object opts{ f.make_opts("{ version = \"1.0.0\" }") };
+  CHECK_NOTHROW(validate_options_schema(f.schema, opts, "test@v1"));
+}
+
+TEST_CASE("OPTIONS: type semver + choices rejects invalid") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = "semver";
+  sol::table choices{ f.lua.create_table() };
+  choices.add("1.0.0", "2.0.0");
+  constraint["choices"] = choices;
+  f.schema["version"] = constraint;
+
+  sol::object opts{ f.make_opts("{ version = \"3.0.0\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("not in {1.0.0, 2.0.0}"));
 }
 
 }  // namespace

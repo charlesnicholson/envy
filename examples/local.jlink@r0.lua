@@ -12,13 +12,7 @@ OPTIONS = function(opts)
         end
       end,
     },
-    mode = {
-      validate = function(v)
-        if v ~= "install" and v ~= "extract" then
-          return "mode must be 'install' or 'extract'"
-        end
-      end,
-    },
+    mode = { choices = { "install", "extract" } },
   })
   if opts.mode == "install" and envy.PLATFORM ~= "windows" then
     return "mode 'install' is only supported on Windows"

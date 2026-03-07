@@ -227,7 +227,7 @@ function envy.loadenv_spec(identity, module) end
 function envy.loadenv(module) end
 
 ---Validate current options against a declarative schema.
----Checks required fields, semver format, range constraints, custom validators.
+---Checks required, type (incl. semver), range, choices, then custom validators.
 ---Rejects unknown options not declared in the schema. Throws on validation failure.
 ---@param schema table<string, envy.option_constraint> Per-option constraint table
 function envy.options(schema) end
@@ -299,10 +299,10 @@ INSTALL = nil
 ---@type string|fun(project_root: string, options: table): boolean|{ shell: string }
 CHECK = nil
 
----@alias envy.option_constraint { required?: boolean, semver?: boolean, range?: string, validate?: fun(value: any): nil|boolean|string }
+---@alias envy.option_constraint { required?: boolean, type?: "string"|"int"|"float"|"boolean"|"table"|"list"|"semver", range?: string, choices?: any[], validate?: fun(value: any): nil|boolean|string }
 
 ---OPTIONS: declarative schema table or validator function
----Table form validates options against per-key constraints (required, semver, range, validate).
+---Table form validates options against per-key constraints (required, type, range, choices, validate).
 ---Function form receives opts, may call envy.options(), returns nil/true/false/string.
 ---@type table<string, envy.option_constraint>|fun(options: table): nil|boolean|string
 OPTIONS = nil
