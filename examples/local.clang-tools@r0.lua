@@ -13,8 +13,9 @@ OPTIONS = {
   version = { required = true },
   tools = {
     required = true,
+    type = "list",
     validate = function(v)
-      if type(v) ~= "table" or #v == 0 then
+      if #v == 0 then
         return "'tools' must be a non-empty array of tool names"
       end
       for i, tool in ipairs(v) do

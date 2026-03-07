@@ -92,21 +92,85 @@ bool numeric_constraint_satisfied(range_constraint const &c, double val) {
   return false;
 }
 
-void validate_single_option(std::string const &key,
-                            sol::table const &constraint,
-                            sol::object const &value,
-                            std::string const &identity) {
-  auto const ctx{ "option '" + key + "'" };
+char const *sol_type_display_name(sol::type t) {
+  switch (t) {
+    case sol::type::string: return "string";
+    case sol::type::number: return "number";
+    case sol::type::boolean: return "boolean";
+    case sol::type::table: return "table";
+    case sol::type::lua_nil: return "nil";
+    case sol::type::function: return "function";
+    case sol::type::userdata: return "userdata";
+    case sol::type::thread: return "thread";
+    case sol::type::lightuserdata: return "lightuserdata";
+    default: return "unknown";
+  }
+}
 
-  // semver check
-  bool const is_semver{ constraint["semver"].valid() &&
-                        constraint["semver"].get_type() == sol::type::boolean &&
-                        constraint["semver"].get<bool>() };
+void validate_type_constraint(std::string const &ctx,
+                              std::string const &type_str,
+                              sol::object const &value,
+                              std::string const &identity) {
+  sol::type const actual{ value.get_type() };
 
-  if (is_semver) {
-    if (value.get_type() != sol::type::string) {
-      throw std::runtime_error(ctx + " is not valid semver (must be a string) for " +
-                               identity);
+  if (type_str == "string") {
+    if (actual != sol::type::string) {
+      throw std::runtime_error(ctx + " must be type 'string', got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+  } else if (type_str == "boolean") {
+    if (actual != sol::type::boolean) {
+      throw std::runtime_error(ctx + " must be type 'boolean', got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+  } else if (type_str == "int") {
+    if (actual != sol::type::number) {
+      throw std::runtime_error(ctx + " must be type 'int', got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+    lua_State *L{ value.lua_state() };
+    int const stack_before{ lua_gettop(L) };
+    value.push();
+    bool const is_int{ lua_isinteger(L, -1) != 0 };
+    lua_settop(L, stack_before);
+    if (!is_int) {
+      throw std::runtime_error(ctx + " must be type 'int', got float for " + identity);
+    }
+  } else if (type_str == "float") {
+    if (actual != sol::type::number) {
+      throw std::runtime_error(ctx + " must be type 'float', got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+  } else if (type_str == "table") {
+    if (actual != sol::type::table) {
+      throw std::runtime_error(ctx + " must be type 'table', got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+  } else if (type_str == "list") {
+    if (actual != sol::type::table) {
+      throw std::runtime_error(ctx + " must be type 'list' (sequential array), got " +
+                               sol_type_display_name(actual) + " for " + identity);
+    }
+    sol::table const tbl{ value.as<sol::table>() };
+    lua_State *L{ value.lua_state() };
+    int const stack_before{ lua_gettop(L) };
+    value.push();
+    size_t const raw_len{ lua_rawlen(L, -1) };
+    lua_settop(L, stack_before);
+    size_t count{ 0 };
+    for (auto const &kv : tbl) {
+      (void)kv;
+      ++count;
+    }
+    if (count != raw_len) {
+      throw std::runtime_error(
+          ctx + " must be type 'list' (sequential array), got non-sequential table for " +
+          identity);
+    }
+  } else if (type_str == "semver") {
+    if (actual != sol::type::string) {
+      throw std::runtime_error(ctx + " must be type 'semver', got " +
+                               sol_type_display_name(actual) + " for " + identity);
     }
     std::string const val_str{ value.as<std::string>() };
     semver::version<> ver;
@@ -114,26 +178,124 @@ void validate_single_option(std::string const &key,
       throw std::runtime_error(ctx + " '" + val_str + "' is not valid semver for " +
                                identity);
     }
+  } else {
+    throw std::runtime_error(ctx + " has unknown type '" + type_str + "' for " + identity);
+  }
+}
 
-    // semver range check
-    sol::object range_obj{ constraint["range"] };
-    if (range_obj.valid() && range_obj.get_type() == sol::type::string) {
-      std::string const range_str{ range_obj.as<std::string>() };
+void validate_choices_constraint(std::string const &ctx,
+                                 sol::table const &choices,
+                                 sol::object const &value,
+                                 bool is_list,
+                                 std::string const &identity) {
+  // Build display string {a, b, c}
+  std::ostringstream choices_display;
+  choices_display << "{";
+  bool first{ true };
+  for (auto const &[k, v] : choices) {
+    if (!first) { choices_display << ", "; }
+    first = false;
+    if (v.get_type() == sol::type::string) {
+      choices_display << v.as<std::string>();
+    } else if (v.get_type() == sol::type::number) {
+      choices_display << v.as<double>();
+    } else if (v.get_type() == sol::type::boolean) {
+      choices_display << (v.as<bool>() ? "true" : "false");
+    }
+  }
+  choices_display << "}";
+  std::string const choices_str{ choices_display.str() };
+
+  auto check_one = [&](sol::object const &val,
+                       std::string const &val_display,
+                       std::string const &element_ctx) {
+    for (auto const &[k, choice] : choices) {
+      if (val == choice) { return; }
+    }
+    throw std::runtime_error(element_ctx + " value '" + val_display + "' not in " +
+                             choices_str + " for " + identity);
+  };
+
+  if (is_list) {
+    sol::table const tbl{ value.as<sol::table>() };
+    int idx{ 0 };
+    for (auto const &[k, elem] : tbl) {
+      ++idx;
+      std::string elem_display;
+      if (elem.get_type() == sol::type::string) {
+        elem_display = elem.as<std::string>();
+      } else if (elem.get_type() == sol::type::number) {
+        std::ostringstream oss;
+        oss << elem.as<double>();
+        elem_display = oss.str();
+      } else if (elem.get_type() == sol::type::boolean) {
+        elem_display = elem.as<bool>() ? "true" : "false";
+      }
+
+      bool found{ false };
+      for (auto const &[ck, choice] : choices) {
+        if (elem == choice) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        throw std::runtime_error(ctx + " element '" + elem_display + "' at index " +
+                                 std::to_string(idx) + " not in " + choices_str + " for " +
+                                 identity);
+      }
+    }
+  } else {
+    std::string val_display;
+    if (value.get_type() == sol::type::string) {
+      val_display = value.as<std::string>();
+    } else if (value.get_type() == sol::type::number) {
+      std::ostringstream oss;
+      oss << value.as<double>();
+      val_display = oss.str();
+    } else if (value.get_type() == sol::type::boolean) {
+      val_display = value.as<bool>() ? "true" : "false";
+    }
+    check_one(value, val_display, ctx);
+  }
+}
+
+void validate_single_option(std::string const &key,
+                            sol::table const &constraint,
+                            sol::object const &value,
+                            std::string const &identity) {
+  auto const ctx{ "option '" + key + "'" };
+
+  // 1. type check
+  sol::object type_obj{ constraint["type"] };
+  bool const has_type{ type_obj.valid() && type_obj.get_type() == sol::type::string };
+  std::string type_str;
+  if (has_type) {
+    type_str = type_obj.as<std::string>();
+    validate_type_constraint(ctx, type_str, value, identity);
+  }
+
+  // 2. range check
+  sol::object range_obj{ constraint["range"] };
+  if (range_obj.valid() && range_obj.get_type() == sol::type::string) {
+    std::string const range_str{ range_obj.as<std::string>() };
+    if (has_type && type_str == "semver") {
+      // semver range
       semver::range_set<> rs;
       if (!semver::parse(range_str, rs)) {
         throw std::runtime_error(ctx + " has invalid range '" + range_str + "' for " +
                                  identity);
       }
+      // re-parse the already-validated semver value
+      std::string const val_str{ value.as<std::string>() };
+      semver::version<> ver;
+      semver::parse(val_str, ver);
       if (!rs.contains(ver, semver::version_compare_option::include_prerelease)) {
         throw std::runtime_error(ctx + " '" + val_str + "' does not satisfy range '" +
                                  range_str + "' for " + identity);
       }
-    }
-  } else {
-    // numeric range check (non-semver)
-    sol::object range_obj{ constraint["range"] };
-    if (range_obj.valid() && range_obj.get_type() == sol::type::string) {
-      std::string const range_str{ range_obj.as<std::string>() };
+    } else {
+      // numeric range
       auto constraints{ parse_numeric_range(range_str) };
 
       double num_val{ 0.0 };
@@ -162,7 +324,18 @@ void validate_single_option(std::string const &key,
     }
   }
 
-  // custom validate function
+  // 3. choices check
+  sol::object choices_obj{ constraint["choices"] };
+  if (choices_obj.valid() && choices_obj.get_type() == sol::type::table) {
+    bool const is_list{ has_type && type_str == "list" };
+    validate_choices_constraint(ctx,
+                                choices_obj.as<sol::table>(),
+                                value,
+                                is_list,
+                                identity);
+  }
+
+  // 4. custom validate function
   sol::object validate_fn_obj{ constraint["validate"] };
   if (validate_fn_obj.valid() && validate_fn_obj.get_type() == sol::type::function) {
     sol::protected_function validate_fn{ validate_fn_obj.as<sol::protected_function>() };

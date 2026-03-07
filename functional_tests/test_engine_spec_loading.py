@@ -553,7 +553,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         """OPTIONS table with semver=true and valid semver succeeds."""
         spec = """IDENTITY = "test.options_semver_ok@v1"
 
-OPTIONS = { version = { semver = true } }
+OPTIONS = { version = { type = "semver" } }
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
@@ -580,7 +580,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         """OPTIONS table with semver=true and invalid semver fails."""
         spec = """IDENTITY = "test.options_semver_bad@v1"
 
-OPTIONS = { version = { semver = true } }
+OPTIONS = { version = { type = "semver" } }
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
@@ -608,7 +608,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         """OPTIONS table semver range match succeeds."""
         spec = """IDENTITY = "test.options_range_ok@v1"
 
-OPTIONS = { version = { semver = true, range = ">=1.0.0 <2.0.0" } }
+OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
@@ -635,7 +635,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         """OPTIONS table semver range mismatch fails."""
         spec = """IDENTITY = "test.options_range_bad@v1"
 
-OPTIONS = { version = { semver = true, range = ">=1.0.0 <2.0.0" } }
+OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
@@ -818,6 +818,173 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
             text=True,
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    # -- OPTIONS type constraint tests --
+
+    def test_options_table_type_string_pass(self):
+        """OPTIONS table with type='string' and valid string succeeds."""
+        spec = """IDENTITY = "test.options_type_str_ok@v1"
+
+OPTIONS = { name = { type = "string" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_type_str_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_type_str_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ name = "hello" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_type_string_fail(self):
+        """OPTIONS table with type='string' and number fails."""
+        spec = """IDENTITY = "test.options_type_str_bad@v1"
+
+OPTIONS = { name = { type = "string" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_type_str_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_type_str_bad@v1",
+                str(spec_path),
+                "--options",
+                "{ name = 42 }",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be type 'string'", result.stderr)
+
+    def test_options_table_type_list_pass(self):
+        """OPTIONS table with type='list' and valid list succeeds."""
+        spec = """IDENTITY = "test.options_type_list_ok@v1"
+
+OPTIONS = { items = { type = "list" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_type_list_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_type_list_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ items = { "a", "b" } }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_type_list_fail(self):
+        """OPTIONS table with type='list' and non-sequential table fails."""
+        spec = """IDENTITY = "test.options_type_list_bad@v1"
+
+OPTIONS = { items = { type = "list" } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_type_list_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_type_list_bad@v1",
+                str(spec_path),
+                "--options",
+                "{ items = { a = 1 } }",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("non-sequential table", result.stderr)
+
+    def test_options_table_choices_pass(self):
+        """OPTIONS table with choices and valid value succeeds."""
+        spec = """IDENTITY = "test.options_choices_ok@v1"
+
+OPTIONS = { mode = { choices = { "install", "extract" } } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_choices_ok.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_choices_ok@v1",
+                str(spec_path),
+                "--options",
+                '{ mode = "install" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    def test_options_table_choices_fail(self):
+        """OPTIONS table with choices and invalid value fails."""
+        spec = """IDENTITY = "test.options_choices_bad@v1"
+
+OPTIONS = { mode = { choices = { "install", "extract" } } }
+
+CHECK = function(project_root, options) return true end
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        spec_path = self.write_spec("options_choices_bad.lua", spec)
+
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *self.trace_flag,
+                "engine-test",
+                "test.options_choices_bad@v1",
+                str(spec_path),
+                "--options",
+                '{ mode = "debug" }',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not in {install, extract}", result.stderr)
 
     # -- OPTIONS function form tests --
 
