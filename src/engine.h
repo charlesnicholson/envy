@@ -166,8 +166,8 @@ class engine : unmovable {
 std::vector<pkg_cfg const *> engine_filter_host_platform(
     std::vector<pkg_cfg const *> const &cfgs);
 
-// Resolve manifest packages against optional query list with platform filtering.
-// Empty queries = all packages (filtered to host platform).
+// Resolve manifest packages against optional query list.
+// Empty queries = all packages (unfiltered — callers handle platform filtering).
 // Non-empty queries = match each query, throw if not found or wrong platform.
 // cmd_name used in error messages (e.g. "deploy", "sync").
 std::vector<pkg_cfg const *> engine_resolve_targets(
