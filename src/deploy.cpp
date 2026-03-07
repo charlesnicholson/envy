@@ -91,8 +91,7 @@ void set_product_executable(fs::path const &path, platform_id platform) {
 
 }  // namespace
 
-void deploy_product_scripts(engine &eng,
-                            fs::path const &bin_dir,
+void deploy_product_scripts(fs::path const &bin_dir,
                             std::vector<product_info> const &products,
                             bool strict,
                             std::vector<platform_id> const &platforms) {

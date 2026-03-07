@@ -5,9 +5,6 @@
 #include "engine.h"
 #include "luarc.h"
 #include "manifest.h"
-#include "pkg_cfg.h"
-#include "pkg_key.h"
-#include "platform.h"
 #include "reexec.h"
 #include "self_deploy.h"
 #include "tui.h"
@@ -15,6 +12,7 @@
 
 #include "CLI11.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -86,36 +84,11 @@ void cmd_sync::execute() {
     }
   }
 
-  // Resolve target packages
-  std::vector<pkg_cfg const *> targets;
-
-  if (cfg_.queries.empty()) {
-    for (auto const *pkg : m->packages) { targets.push_back(pkg); }
-  } else {
-    for (auto const &query : cfg_.queries) {
-      bool found{ false };
-      for (auto const *pkg : m->packages) {
-        if (pkg_key const key{ *pkg }; key.matches(query)) {
-          if (!util_platform_matches(pkg->platforms,
-                                     platform::os_name(),
-                                     platform::arch_name())) {
-            throw std::runtime_error("sync: '" + query +
-                                     "' is not available on this platform");
-          }
-          targets.push_back(pkg);
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        throw std::runtime_error("sync: query '" + query + "' not found in manifest");
-      }
-    }
-  }
+  auto const targets{ engine_resolve_targets(m->packages, cfg_.queries, "sync") };
 
   if (targets.empty()) { return; }
 
-  // Install packages (full build pipeline)
+  // Install packages (full build pipeline — filters to host platform internally)
   engine eng{ *c, m.get() };
   if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
   auto result{ eng.run_full(targets) };
@@ -129,6 +102,18 @@ void cmd_sync::execute() {
     throw std::runtime_error("sync: " + std::to_string(failed) + " package(s) failed");
   }
 
+  // Resolve non-host targets so deploy knows about their products for script generation.
+  // run_full only resolves host-platform packages; without this, deploy cleanup would
+  // remove scripts for valid non-host packages (e.g. linux-only on macOS).
+  auto const host_targets{ engine_filter_host_platform(targets) };
+  std::vector<pkg_cfg const *> non_host_targets;
+  for (auto const *t : targets) {
+    if (std::find(host_targets.begin(), host_targets.end(), t) == host_targets.end()) {
+      non_host_targets.push_back(t);
+    }
+  }
+  if (!non_host_targets.empty()) { eng.resolve_graph(non_host_targets); }
+
   // Deploy product scripts
   auto const products{ eng.collect_all_products() };
 
@@ -141,7 +126,7 @@ void cmd_sync::execute() {
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
 
   if (deploy_enabled) {
-    deploy_product_scripts(eng, bin_dir, products, cfg_.strict, platforms);
+    deploy_product_scripts(bin_dir, products, cfg_.strict, platforms);
   } else {
     tui::warn("sync: deployment is disabled in %s", m->manifest_path.string().c_str());
     tui::info("Add '-- @envy deploy \"true\"' to enable product script deployment");
