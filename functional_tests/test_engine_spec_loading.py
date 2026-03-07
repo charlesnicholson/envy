@@ -550,7 +550,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.assertIn("unknown option", result.stderr)
 
     def test_options_table_semver_valid_succeeds(self):
-        """OPTIONS table with semver=true and valid semver succeeds."""
+        """OPTIONS table with type='semver' and valid semver succeeds."""
         spec = """IDENTITY = "test.options_semver_ok@v1"
 
 OPTIONS = { version = { type = "semver" } }
@@ -577,7 +577,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_options_table_semver_invalid_fails(self):
-        """OPTIONS table with semver=true and invalid semver fails."""
+        """OPTIONS table with type='semver' and invalid semver fails."""
         spec = """IDENTITY = "test.options_semver_bad@v1"
 
 OPTIONS = { version = { type = "semver" } }

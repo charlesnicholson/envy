@@ -201,6 +201,8 @@ void validate_choices_constraint(std::string const &ctx,
       choices_display << v.as<double>();
     } else if (v.get_type() == sol::type::boolean) {
       choices_display << (v.as<bool>() ? "true" : "false");
+    } else {
+      choices_display << "<" << sol_type_display_name(v.get_type()) << ">";
     }
   }
   choices_display << "}";
@@ -230,6 +232,8 @@ void validate_choices_constraint(std::string const &ctx,
         elem_display = oss.str();
       } else if (elem.get_type() == sol::type::boolean) {
         elem_display = elem.as<bool>() ? "true" : "false";
+      } else {
+        elem_display = std::string("<") + sol_type_display_name(elem.get_type()) + ">";
       }
 
       bool found{ false };
@@ -255,6 +259,8 @@ void validate_choices_constraint(std::string const &ctx,
       val_display = oss.str();
     } else if (value.get_type() == sol::type::boolean) {
       val_display = value.as<bool>() ? "true" : "false";
+    } else {
+      val_display = std::string("<") + sol_type_display_name(value.get_type()) + ">";
     }
     check_one(value, val_display, ctx);
   }
@@ -268,6 +274,10 @@ void validate_single_option(std::string const &key,
 
   // 1. type check
   sol::object type_obj{ constraint["type"] };
+  if (type_obj.valid() && type_obj.get_type() != sol::type::lua_nil &&
+      type_obj.get_type() != sol::type::string) {
+    throw std::runtime_error(ctx + " schema 'type' must be a string for " + identity);
+  }
   bool const has_type{ type_obj.valid() && type_obj.get_type() == sol::type::string };
   std::string type_str;
   if (has_type) {
@@ -326,7 +336,10 @@ void validate_single_option(std::string const &key,
 
   // 3. choices check
   sol::object choices_obj{ constraint["choices"] };
-  if (choices_obj.valid() && choices_obj.get_type() == sol::type::table) {
+  if (choices_obj.valid() && choices_obj.get_type() != sol::type::lua_nil) {
+    if (choices_obj.get_type() != sol::type::table) {
+      throw std::runtime_error(ctx + " schema 'choices' must be a table for " + identity);
+    }
     bool const is_list{ has_type && type_str == "list" };
     validate_choices_constraint(ctx,
                                 choices_obj.as<sol::table>(),

@@ -496,6 +496,28 @@ TEST_CASE("OPTIONS: schema entry not a table") {
                     doctest::Contains("must be a table"));
 }
 
+TEST_CASE("OPTIONS: schema type not a string throws") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["type"] = true;
+  f.schema["name"] = constraint;
+
+  sol::object opts{ f.make_opts("{ name = \"hello\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("schema 'type' must be a string"));
+}
+
+TEST_CASE("OPTIONS: schema choices not a table throws") {
+  lua_fixture f;
+  sol::table constraint{ f.lua.create_table() };
+  constraint["choices"] = "bad";
+  f.schema["mode"] = constraint;
+
+  sol::object opts{ f.make_opts("{ mode = \"x\" }") };
+  CHECK_THROWS_WITH(validate_options_schema(f.schema, opts, "test@v1"),
+                    doctest::Contains("schema 'choices' must be a table"));
+}
+
 // -- Function form: return values (tested via run_options in phase_spec_fetch) --
 // These test envy.options() from Lua
 
