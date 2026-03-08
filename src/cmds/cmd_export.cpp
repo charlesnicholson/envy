@@ -192,6 +192,7 @@ void cmd_export::execute() {
 
   if (cfg_.queries.empty()) {
     for (auto const *pkg : m->packages) { targets.push_back(pkg); }
+    targets = engine_filter_host_platform(targets);
   } else {
     for (auto const &query : cfg_.queries) {
       bool found{ false };
@@ -214,16 +215,15 @@ void cmd_export::execute() {
     }
   }
 
-  if (targets.empty()) { return; }
+  if (targets.empty()) {
+    tui::info("No packages to export on this platform");
+    return;
+  }
 
   engine eng{ *c, m.get() };
   if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
 
-  std::vector<pkg_cfg const *> roots;
-  roots.reserve(m->packages.size());
-  for (auto *pkg : m->packages) { roots.push_back(pkg); }
-
-  eng.resolve_graph(roots);
+  eng.resolve_graph(targets);
 
   // Extend all targets to completion in parallel, then wait for all
   std::vector<pkg_key> target_keys;
