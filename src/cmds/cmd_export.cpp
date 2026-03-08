@@ -192,6 +192,7 @@ void cmd_export::execute() {
 
   if (cfg_.queries.empty()) {
     for (auto const *pkg : m->packages) { targets.push_back(pkg); }
+    targets = engine_filter_host_platform(targets);
   } else {
     for (auto const &query : cfg_.queries) {
       bool found{ false };
