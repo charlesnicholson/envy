@@ -2,6 +2,7 @@
 #include "cli.h"
 #include "libgit2_util.h"
 #include "reexec.h"
+#include "self_deploy.h"
 #include "shell.h"
 #include "termination.h"
 #include "tui.h"
@@ -34,6 +35,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (!args.cmd_cfg.has_value()) { return EXIT_FAILURE; }
+
+  envy::self_deploy::ensure(args.cache_root, std::nullopt);
 
   auto cmd{ std::visit(
       [&args](auto const &cfg) { return envy::cmd::create(cfg, args.cache_root); },
