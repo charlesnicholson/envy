@@ -515,12 +515,87 @@ PACKAGES = {{
 
 
 # =========================================================================
-# export: explicit query errors on platform mismatch
+# export: bulk platform filtering + explicit query errors
 # =========================================================================
 
 
 class TestExportPlatformFilter(PlatformFilterBase):
-    """envy export <query> errors when queried package is non-host."""
+    """envy export filters non-host packages and errors on non-host queries."""
+
+    def test_export_non_host_package_skipped(self):
+        """Bulk export skips non-host packages."""
+        spec_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
+        output_dir = self.test_dir / "export-out"
+        output_dir.mkdir()
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cached@v1", source = "{spec_path}",
+       platforms = {{ "{_non_host_platform()}" }} }},
+}}
+""")
+        result = self.run_cmd("export", manifest, args=["-o", str(output_dir)])
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        archives = list(output_dir.glob("*.tar.zst"))
+        self.assertEqual(archives, [], "Non-host package should not be exported")
+
+    def test_export_host_package_exported(self):
+        """Bulk export includes host-platform packages."""
+        spec_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
+        output_dir = self.test_dir / "export-out"
+        output_dir.mkdir()
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cached@v1", source = "{spec_path}",
+       platforms = {{ "{_host_platform()}" }} }},
+}}
+""")
+        result = self.run_cmd("export", manifest, args=["-o", str(output_dir)])
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        archives = list(output_dir.glob("*.tar.zst"))
+        self.assertEqual(len(archives), 1, "Host package should be exported")
+
+    def test_export_mixed_only_host_exported(self):
+        """Mix of host and non-host: only host package exported."""
+        host_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
+
+        non_host_spec = SPEC_CACHE_MANAGED.replace(
+            'IDENTITY = "local.cached@v1"',
+            'IDENTITY = "local.other@v1"',
+        )
+        non_host_path = self.write_spec("other", non_host_spec)
+
+        output_dir = self.test_dir / "export-out"
+        output_dir.mkdir()
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cached@v1", source = "{host_path}",
+       platforms = {{ "{_host_platform()}" }} }},
+    {{ spec = "local.other@v1", source = "{non_host_path}",
+       platforms = {{ "{_non_host_platform()}" }} }},
+}}
+""")
+        result = self.run_cmd("export", manifest, args=["-o", str(output_dir)])
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        archives = [a.name for a in output_dir.glob("*.tar.zst")]
+        self.assertEqual(len(archives), 1, "Only host package should be exported")
+        self.assertTrue(
+            any("local.cached@v1" in a for a in archives),
+            f"Host package missing from exports: {archives}",
+        )
+
+    def test_export_all_non_host_is_noop(self):
+        """All packages non-host: export succeeds, nothing exported."""
+        spec_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
+        output_dir = self.test_dir / "export-out"
+        output_dir.mkdir()
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.cached@v1", source = "{spec_path}",
+       platforms = {{ "{_non_host_platform()}" }} }},
+}}
+""")
+        result = self.run_cmd("export", manifest, args=["-o", str(output_dir)])
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_export_explicit_non_host_errors(self):
         spec_path = self.write_spec("cached", SPEC_CACHE_MANAGED)
