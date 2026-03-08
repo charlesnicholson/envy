@@ -108,11 +108,7 @@ void cmd_product::execute() {
   auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
   engine eng{ *c, m.get() };
 
-  std::vector<pkg_cfg const *> roots;
-  roots.reserve(m->packages.size());
-  for (auto *pkg : m->packages) { roots.push_back(pkg); }
-
-  eng.resolve_graph(roots);
+  eng.resolve_graph({ m->packages.begin(), m->packages.end() });
 
   if (cfg_.product_name.empty()) {
     if (cfg_.json) {

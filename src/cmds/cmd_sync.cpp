@@ -106,12 +106,15 @@ void cmd_sync::execute() {
   // run_full only resolves host-platform packages; without this, deploy cleanup would
   // remove scripts for valid non-host packages (e.g. linux-only on macOS).
   auto const host_targets{ engine_filter_host_platform(targets) };
-  std::vector<pkg_cfg const *> non_host_targets;
-  for (auto const *t : targets) {
-    if (std::find(host_targets.begin(), host_targets.end(), t) == host_targets.end()) {
-      non_host_targets.push_back(t);
+  auto const non_host_targets{ [&] {
+    std::vector<pkg_cfg const *> nh;
+    for (auto const *t : targets) {
+      if (std::find(host_targets.begin(), host_targets.end(), t) == host_targets.end()) {
+        nh.push_back(t);
+      }
     }
-  }
+    return nh;
+  }() };
   if (!non_host_targets.empty()) { eng.resolve_graph(non_host_targets); }
 
   // Deploy product scripts

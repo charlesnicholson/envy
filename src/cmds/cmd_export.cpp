@@ -188,32 +188,34 @@ void cmd_export::execute() {
   auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   // Collect target packages: all if no queries, matched subset otherwise
-  std::vector<pkg_cfg const *> targets;
-
-  if (cfg_.queries.empty()) {
-    for (auto const *pkg : m->packages) { targets.push_back(pkg); }
-    targets = engine_filter_host_platform(targets);
-  } else {
-    for (auto const &query : cfg_.queries) {
-      bool found{ false };
-      for (auto const *pkg : m->packages) {
-        if (pkg_key const key{ *pkg }; key.matches(query)) {
-          if (!util_platform_matches(pkg->platforms,
-                                     platform::os_name(),
-                                     platform::arch_name())) {
-            throw std::runtime_error("export: '" + query +
-                                     "' is not available on this platform");
+  auto const targets{ [&] {
+    std::vector<pkg_cfg const *> t;
+    if (cfg_.queries.empty()) {
+      for (auto const *pkg : m->packages) { t.push_back(pkg); }
+      t = engine_filter_host_platform(t);
+    } else {
+      for (auto const &query : cfg_.queries) {
+        bool found{ false };
+        for (auto const *pkg : m->packages) {
+          if (pkg_key const key{ *pkg }; key.matches(query)) {
+            if (!util_platform_matches(pkg->platforms,
+                                       platform::os_name(),
+                                       platform::arch_name())) {
+              throw std::runtime_error("export: '" + query +
+                                       "' is not available on this platform");
+            }
+            t.push_back(pkg);
+            found = true;
+            break;
           }
-          targets.push_back(pkg);
-          found = true;
-          break;
+        }
+        if (!found) {
+          throw std::runtime_error("export: no package matching '" + query + "'");
         }
       }
-      if (!found) {
-        throw std::runtime_error("export: no package matching '" + query + "'");
-      }
     }
-  }
+    return t;
+  }() };
 
   if (targets.empty()) {
     tui::info("No packages to export on this platform");
@@ -226,9 +228,12 @@ void cmd_export::execute() {
   eng.resolve_graph(targets);
 
   // Extend all targets to completion in parallel, then wait for all
-  std::vector<pkg_key> target_keys;
-  target_keys.reserve(targets.size());
-  for (auto const *cfg : targets) { target_keys.emplace_back(*cfg); }
+  auto const target_keys{ [&] {
+    std::vector<pkg_key> keys;
+    keys.reserve(targets.size());
+    for (auto const *cfg : targets) { keys.emplace_back(*cfg); }
+    return keys;
+  }() };
 
   for (auto const &key : target_keys) {
     eng.get_execution_ctx(key).set_target_phase(pkg_phase::completion);

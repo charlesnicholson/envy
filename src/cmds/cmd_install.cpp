@@ -46,31 +46,33 @@ void cmd_install::execute() {
 
   auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
-  std::vector<pkg_cfg const *> targets;
-
-  if (cfg_.queries.empty()) {
-    for (auto const *pkg : m->packages) { targets.push_back(pkg); }
-  } else {
-    for (auto const &query : cfg_.queries) {
-      bool found{ false };
-      for (auto const *pkg : m->packages) {
-        if (pkg_key const key{ *pkg }; key.matches(query)) {
-          if (!util_platform_matches(pkg->platforms,
-                                     platform::os_name(),
-                                     platform::arch_name())) {
-            throw std::runtime_error("install: '" + query +
-                                     "' is not available on this platform");
+  auto const targets{ [&] {
+    std::vector<pkg_cfg const *> t;
+    if (cfg_.queries.empty()) {
+      for (auto const *pkg : m->packages) { t.push_back(pkg); }
+    } else {
+      for (auto const &query : cfg_.queries) {
+        bool found{ false };
+        for (auto const *pkg : m->packages) {
+          if (pkg_key const key{ *pkg }; key.matches(query)) {
+            if (!util_platform_matches(pkg->platforms,
+                                       platform::os_name(),
+                                       platform::arch_name())) {
+              throw std::runtime_error("install: '" + query +
+                                       "' is not available on this platform");
+            }
+            t.push_back(pkg);
+            found = true;
+            break;
           }
-          targets.push_back(pkg);
-          found = true;
-          break;
+        }
+        if (!found) {
+          throw std::runtime_error("install: query '" + query + "' not found in manifest");
         }
       }
-      if (!found) {
-        throw std::runtime_error("install: query '" + query + "' not found in manifest");
-      }
     }
-  }
+    return t;
+  }() };
 
   if (targets.empty()) { return; }
 

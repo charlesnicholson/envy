@@ -92,20 +92,22 @@ cli_args cli_parse(int argc, char **argv) {
 
   // Handle trace logging: --trace defaults to stderr if no value provided
   bool const trace_requested{ trace_option->count() > 0 };
-  std::vector<std::string> trace_specs_tokens;
-
-  if (trace_requested) {
-    if (trace_spec.empty()) {
-      trace_specs_tokens.push_back("stderr");
-    } else {
-      for (std::string_view sv{ trace_spec }; !sv.empty();) {
-        auto const pos{ sv.find(',') };
-        auto const token{ sv.substr(0, pos) };
-        if (!token.empty()) { trace_specs_tokens.emplace_back(token); }
-        sv = (pos == std::string_view::npos) ? std::string_view{} : sv.substr(pos + 1);
+  auto const trace_specs_tokens{ [&] {
+    std::vector<std::string> tokens;
+    if (trace_requested) {
+      if (trace_spec.empty()) {
+        tokens.push_back("stderr");
+      } else {
+        for (std::string_view sv{ trace_spec }; !sv.empty();) {
+          auto const pos{ sv.find(',') };
+          auto const token{ sv.substr(0, pos) };
+          if (!token.empty()) { tokens.emplace_back(token); }
+          sv = (pos == std::string_view::npos) ? std::string_view{} : sv.substr(pos + 1);
+        }
       }
     }
-  }
+    return tokens;
+  }() };
 
   if (!trace_specs_tokens.empty()) {
     args.verbosity = tui::level::TUI_TRACE;
