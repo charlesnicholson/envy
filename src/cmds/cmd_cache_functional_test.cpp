@@ -1,7 +1,7 @@
 #include "cmd_cache_functional_test.h"
 
 #include "platform.h"
-#include "self_deploy.h"
+#include "cache.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -118,7 +118,7 @@ cmd_cache_ensure_package::cmd_cache_ensure_package(
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_package::execute() {
-  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ std::make_unique<cache>(cli_cache_root_) };
 
   // Emit initial state so tests always have locked key even if we crash before output
   // later.
@@ -203,7 +203,7 @@ cmd_cache_ensure_spec::cmd_cache_ensure_spec(
     : cfg_{ config }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache_ensure_spec::execute() {
-  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ std::make_unique<cache>(cli_cache_root_) };
 
   tui::print_stdout("locked=false\nfast_path=false\n");
   // Set up barrier coordination

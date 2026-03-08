@@ -1,7 +1,7 @@
 #include "cmd_shell.h"
 
 #include "cmd_init.h"
-#include "self_deploy.h"
+#include "cache.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -68,8 +68,7 @@ void cmd_shell::execute() {
                              "'. Use: bash, zsh, fish, powershell");
   }
 
-  // Trigger self-deploy (which writes hook files)
-  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ std::make_unique<cache>(cli_cache_root_) };
 
   fs::path const hook_path{ c->root() / "shell" / ("hook." + std::string{ si->ext }) };
   if (!fs::exists(hook_path)) {

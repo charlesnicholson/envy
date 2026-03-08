@@ -3,7 +3,7 @@
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_cfg.h"
-#include "self_deploy.h"
+#include "cache.h"
 #include "test_support.h"
 #include "tui.h"
 
@@ -37,7 +37,7 @@ cmd_engine_functional_test::cmd_engine_functional_test(
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_engine_functional_test::execute() {
-  auto c{ self_deploy::ensure(cli_cache_root_, std::nullopt) };
+  auto c{ std::make_unique<cache>(cli_cache_root_) };
 
   // Set up test fail counter
   if (cfg_.fail_after_fetch_count > 0) {
