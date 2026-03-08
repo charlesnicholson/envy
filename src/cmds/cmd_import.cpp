@@ -259,11 +259,7 @@ void cmd_import::execute() {
       engine eng{ *c, m.get() };
       eng.set_depot_index(std::move(depot));
 
-      std::vector<pkg_cfg const *> roots;
-      roots.reserve(m->packages.size());
-      for (auto *pkg : m->packages) { roots.push_back(pkg); }
-
-      eng.run_full(roots);
+      eng.run_full({ m->packages.begin(), m->packages.end() });
       return;
     }
 
@@ -309,11 +305,7 @@ void cmd_import::execute() {
   engine eng{ *c, m.get() };
   eng.set_depot_index(std::move(depot));
 
-  std::vector<pkg_cfg const *> roots;
-  roots.reserve(m->packages.size());
-  for (auto *pkg : m->packages) { roots.push_back(pkg); }
-
-  eng.run_full(roots);
+  eng.run_full({ m->packages.begin(), m->packages.end() });
 }
 
 }  // namespace envy

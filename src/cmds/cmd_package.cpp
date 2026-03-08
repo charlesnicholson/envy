@@ -66,8 +66,11 @@ void cmd_package::execute() {
   }
 
   // Check for ambiguous matches (different identities)
-  std::set<std::string> unique_identities;
-  for (auto const *pkg : matches) { unique_identities.insert(pkg->identity); }
+  auto const unique_identities{ [&] {
+    std::set<std::string> ids;
+    for (auto const *pkg : matches) { ids.insert(pkg->identity); }
+    return ids;
+  }() };
 
   if (unique_identities.size() > 1) {
     std::string msg{ "package: '" + cfg_.identity + "' is ambiguous, matches:\n" };
@@ -92,11 +95,7 @@ void cmd_package::execute() {
   engine eng{ *c, m.get() };
   if (cfg_.ignore_depot) { eng.set_ignore_depot(true); }
 
-  std::vector<pkg_cfg const *> roots;
-  roots.reserve(m->packages.size());
-  for (auto *pkg : m->packages) { roots.push_back(pkg); }
-
-  eng.resolve_graph(roots);
+  eng.resolve_graph({ m->packages.begin(), m->packages.end() });
 
   pkg_key const target_key{ *matches[0] };
   pkg *p{ eng.find_exact(target_key) };

@@ -137,13 +137,16 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
   if (!requests.empty()) {
     auto const section{ tui::section_create() };
 
-    std::vector<std::string> labels;
-    labels.reserve(requests.size());
-    for (auto idx : request_to_download) {
-      auto const &url{ downloads[idx].url };
-      auto const slash{ url.rfind('/') };
-      labels.push_back(slash != std::string::npos ? url.substr(slash + 1) : url);
-    }
+    auto const labels{ [&] {
+      std::vector<std::string> l;
+      l.reserve(requests.size());
+      for (auto idx : request_to_download) {
+        auto const &url{ downloads[idx].url };
+        auto const slash{ url.rfind('/') };
+        l.push_back(slash != std::string::npos ? url.substr(slash + 1) : url);
+      }
+      return l;
+    }() };
 
     tui_actions::fetch_all_progress_tracker tracker{ section, "depot", labels };
     for (size_t i{ 0 }; i < requests.size(); ++i) {

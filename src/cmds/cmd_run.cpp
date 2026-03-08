@@ -129,10 +129,13 @@ void cmd_run::execute() {
   platform::env_var_set("PATH", new_path.c_str());
   platform::env_var_set("ENVY_PROJECT_ROOT", manifest_dir.c_str());
 
-  std::vector<char *> argv;
-  argv.reserve(exec_command.size() + 1);
-  for (auto &arg : exec_command) { argv.push_back(arg.data()); }
-  argv.push_back(nullptr);
+  auto const argv{ [&] {
+    std::vector<char *> a;
+    a.reserve(exec_command.size() + 1);
+    for (auto &arg : exec_command) { a.push_back(arg.data()); }
+    a.push_back(nullptr);
+    return a;
+  }() };
 
 #ifdef _WIN32
   // Windows has no true execvp; spawn the child, wait, propagate its exit code.
