@@ -37,6 +37,8 @@ void run_import_phase(pkg *p, engine &eng) {
 
   if (!p->lock) { return; }  // Cache hit — no work needed
 
+  if (p->type == pkg_type::USER_MANAGED) { return; }  // User-managed — not exportable
+
   auto const *depot{ eng.depot_index() };
   if (!depot || depot->empty()) { return; }  // No depot configured
 
