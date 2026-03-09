@@ -67,7 +67,8 @@ void env_var_unset(char const *name);
 std::error_code remove_all_with_retry(std::filesystem::path const &target);
 
 // Wait until all regular files in dir are readable (no sharing violations).
-// On Windows, probes each file with CreateFileW; retries with backoff on
+// On Windows, probes each file with CreateFileW and, for ".exe" files,
+// with CreateProcessW(CREATE_SUSPENDED); retries with backoff on
 // ERROR_SHARING_VIOLATION (Defender/SmartScreen/Indexer).  POSIX: no-op.
 void await_files_accessible(std::filesystem::path const &dir);
 
