@@ -6,6 +6,7 @@
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
 #include "phase_check.h"
+#include "platform.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "shell.h"
@@ -199,6 +200,8 @@ void run_install_phase(pkg *p, engine &eng) {
 
   cache::scoped_entry_lock::ptr_t lock{ std::move(p->lock) };
   std::filesystem::path const final_pkg_path{ lock->install_dir() };
+
+  platform::await_files_accessible(lock->fetch_dir());
 
   sol::state_view lua_view{ *p->lua };
   sol::object install_obj{ lua_view["INSTALL"] };

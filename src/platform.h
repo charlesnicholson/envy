@@ -66,6 +66,16 @@ void env_var_unset(char const *name);
 // Returns default error_code on success, or the final OS error on failure.
 std::error_code remove_all_with_retry(std::filesystem::path const &target);
 
+// Wait until all regular files in dir are readable (no sharing violations).
+// On Windows, probes each file with CreateFileW; retries with backoff on
+// ERROR_SHARING_VIOLATION (Defender/SmartScreen/Indexer).  POSIX: no-op.
+void await_files_accessible(std::filesystem::path const &dir);
+
+// Mark a directory as not interesting to the Windows Search Indexer
+// (FILE_ATTRIBUTE_NOT_CONTENT_INDEXED).  Children inherit the attribute.
+// POSIX: no-op.
+void mark_not_indexed(std::filesystem::path const &dir);
+
 [[noreturn]] void terminate_process();
 
 bool is_tty();
