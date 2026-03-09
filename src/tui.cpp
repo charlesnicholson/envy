@@ -85,6 +85,7 @@ struct tui_progress_state {
   int last_line_count{ 0 };
   std::size_t max_label_width{ 0 };
   std::mutex interactive_mutex;
+  bool interactive_paused{ false };
   bool enabled{ true };
 } s_progress{};
 
@@ -803,7 +804,7 @@ void worker_thread() {
       std::size_t max_label_width{ 0 };
       int last_line_count{ 0 };
 
-      if (s_progress.enabled) {
+      if (s_progress.enabled && !s_progress.interactive_paused) {
         sections_snapshot = s_progress.sections;
         max_label_width = s_progress.max_label_width;
         last_line_count = s_progress.last_line_count;
@@ -817,7 +818,7 @@ void worker_thread() {
 
       lock.lock();
 
-      if (is_ansi_supported() && s_progress.enabled) {
+      if (is_ansi_supported() && s_progress.enabled && !s_progress.interactive_paused) {
         s_progress.last_line_count = rendered_line_count;
       }
       s_tui.cv.wait_until(lock, std::chrono::steady_clock::now() + kRefreshIntervalMs, [] {
@@ -1139,10 +1140,18 @@ bool section_has_content(section_handle h) {
 
 void acquire_interactive_mode() {
   s_progress.interactive_mutex.lock();
+  {
+    std::lock_guard lock{ s_tui.mutex };
+    s_progress.interactive_paused = true;
+  }
   pause_rendering();
 }
 
 void release_interactive_mode() {
+  {
+    std::lock_guard lock{ s_tui.mutex };
+    s_progress.interactive_paused = false;
+  }
   resume_rendering();
   s_progress.interactive_mutex.unlock();
 }

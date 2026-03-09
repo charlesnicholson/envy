@@ -8,6 +8,7 @@
 #include "sol_util.h"
 #include "tui.h"
 #include "tui_actions.h"
+#include "util.h"
 
 #include <filesystem>
 #include <optional>
@@ -157,10 +158,23 @@ void lua_envy_run_install(sol::table &envy_table) {
     };
 
     std::optional<tui::interactive_mode_guard> guard;
-    if (interactive) { guard.emplace(); }
+    if (interactive) {
+      guard.emplace();
+      if (!quiet && p) {
+        std::string const flat{ util_flatten_script_with_semicolons(script_view) };
+        std::fprintf(stderr, "[%s] %s\n", p->cfg->identity.c_str(), flat.c_str());
+        std::fflush(stderr);
+      }
+      if (!quiet) {
+        cfg.on_output_line = [&](std::string_view line) {
+          std::fprintf(stderr, "%.*s\n", static_cast<int>(line.size()), line.data());
+          std::fflush(stderr);
+        };
+      }
+    }
 
     engine *eng{ ctx ? ctx->eng : nullptr };
-    bool const use_progress{ p && p->tui_section && eng && !quiet };
+    bool const use_progress{ p && p->tui_section && eng && !quiet && !interactive };
 
     shell_result const result{ use_progress ? tui_actions::run_shell_with_progress(
                                                   script_view,

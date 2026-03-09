@@ -1416,5 +1416,154 @@ class TestImportManifest(unittest.TestCase):
             shutil.rmtree(import_dir, ignore_errors=True)
 
 
+def _make_tracking_handler(request_log, directory):
+    """Create a handler class with its own isolated request log."""
+
+    class _Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=directory, **kwargs)
+
+        def log_message(self, format, *args):
+            return
+
+        def do_GET(self):
+            request_log.append(self.path)
+            super().do_GET()
+
+    return _Handler
+
+
+class TestUserManagedSkipsDepot(unittest.TestCase):
+    """User-managed-only manifests must not fetch the package-depot manifest."""
+
+    def setUp(self):
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-um-depot-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-um-depot-specs-"))
+        self.serve_dir = Path(tempfile.mkdtemp(prefix="envy-um-depot-http-"))
+        self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-um-depot-markers-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+        self.requests = []
+
+    def tearDown(self):
+        for d in [self.cache_root, self.test_dir, self.serve_dir, self.marker_dir]:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def _run(self, *args, env_extra=None):
+        cmd = [str(self.envy), "--cache-root", str(self.cache_root), *args]
+        env = os.environ.copy()
+        if env_extra:
+            env.update(env_extra)
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True, env=env
+        )
+
+    def _start_tracking_server(self):
+        handler = _make_tracking_handler(self.requests, str(self.serve_dir))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return srv, srv.server_address[1]
+
+    def _write_user_managed_spec(self, name, identity, marker_path):
+        mp = marker_path.as_posix()
+        content = f'''IDENTITY = "{identity}"
+
+function CHECK(project_root, options)
+    local f = io.open("{mp}", "r")
+    if f then f:close(); return true end
+    return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    local f = io.open("{mp}", "w")
+    if not f then error("Failed to create marker") end
+    f:write("installed")
+    f:close()
+end
+'''
+        path = self.test_dir / f"{name}.lua"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def _make_manifest_with_depot(self, specs, depot_url):
+        header = f'-- @envy bin "envy-bin"\n-- @envy package-depot "{depot_url}"\n'
+        packages = ", ".join(
+            f'{{ spec = "{ident}", source = "{path.as_posix()}" }}'
+            for ident, path in specs
+        )
+        manifest = self.test_dir / "envy.lua"
+        manifest.write_text(
+            header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
+            encoding="utf-8",
+        )
+        return manifest
+
+    def test_only_user_managed_does_not_fetch_depot(self):
+        """Sync with only user-managed packages never contacts depot server."""
+        marker = self.marker_dir / "marker.txt"
+        spec = self._write_user_managed_spec("um_pkg", "local.um_depot_test@v1", marker)
+        (self.serve_dir / "depot.txt").write_text("", encoding="utf-8")
+
+        srv, port = self._start_tracking_server()
+        try:
+            depot_url = f"http://127.0.0.1:{port}/depot.txt"
+            m = self._make_manifest_with_depot(
+                [("local.um_depot_test@v1", spec)], depot_url
+            )
+            r = self._run("sync", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            self.assertTrue(marker.exists(), "Install should have run")
+            self.assertEqual(
+                self.requests,
+                [],
+                f"Depot manifest should not be fetched for user-managed-only "
+                f"packages, but got requests: {self.requests}",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_mixed_user_and_cache_managed_fetches_depot(self):
+        """Sync with both user-managed and cache-managed packages does fetch depot."""
+        marker = self.marker_dir / "marker.txt"
+        um_spec = self._write_user_managed_spec(
+            "um_pkg", "local.um_mixed_test@v1", marker
+        )
+
+        archive_path = self.test_dir / "test.tar.gz"
+        _create_test_archive(archive_path)
+        archive_hash = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+        cm_spec = self.test_dir / "cm_pkg.lua"
+        cm_spec.write_text(
+            _spec_content("local.cm_mixed_test@v1", archive_path, archive_hash),
+            encoding="utf-8",
+        )
+
+        (self.serve_dir / "depot.txt").write_text("", encoding="utf-8")
+
+        srv, port = self._start_tracking_server()
+        try:
+            depot_url = f"http://127.0.0.1:{port}/depot.txt"
+            m = self._make_manifest_with_depot(
+                [
+                    ("local.um_mixed_test@v1", um_spec),
+                    ("local.cm_mixed_test@v1", cm_spec),
+                ],
+                depot_url,
+            )
+            r = self._run("sync", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+
+            depot_fetches = [rq for rq in self.requests if "depot.txt" in rq]
+            self.assertGreater(
+                len(depot_fetches),
+                0,
+                "Depot manifest should be fetched when cache-managed packages exist",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()
