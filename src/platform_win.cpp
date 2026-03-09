@@ -1,5 +1,7 @@
 #include "platform.h"
 
+#include "tui.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -245,6 +247,104 @@ std::error_code remove_all_with_retry(std::filesystem::path const &target) {
   }
 
   return ec;
+}
+
+namespace {
+
+// Probe whether a file can be opened for reading.  Detects Defender's
+// on-access scan lock (ERROR_SHARING_VIOLATION at the file-handle level).
+bool probe_file_readable(std::filesystem::path const &path) {
+  HANDLE const h{ ::CreateFileW(path.c_str(),
+                                GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                nullptr,
+                                OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr) };
+  if (h != INVALID_HANDLE_VALUE) {
+    ::CloseHandle(h);
+    return true;
+  }
+  return false;
+}
+
+// Probe whether an executable can be launched.  Defender's on-execution scan
+// (WdFilter.sys) hooks NtCreateSection(SEC_IMAGE) inside CreateProcess —
+// a level that CreateFileW cannot reach regardless of access flags.  The only
+// reliable probe is to actually call CreateProcess with CREATE_SUSPENDED,
+// which exercises the full image-mapping path without running any user code.
+bool probe_exe_launchable(std::filesystem::path const &path) {
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+
+  if (!::CreateProcessW(path.c_str(),
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        FALSE,
+                        CREATE_SUSPENDED,
+                        nullptr,
+                        nullptr,
+                        &si,
+                        &pi)) {
+    return false;
+  }
+
+  ::TerminateProcess(pi.hProcess, 0);
+  ::WaitForSingleObject(pi.hProcess, 1000);
+  ::CloseHandle(pi.hProcess);
+  ::CloseHandle(pi.hThread);
+  return true;
+}
+
+}  // namespace
+
+void await_files_accessible(std::filesystem::path const &dir) {
+  std::error_code ec;
+  std::filesystem::directory_iterator it{ dir, ec };
+  if (ec) { return; }
+
+  constexpr int kMaxRetries{ 10 };
+  constexpr int kInitialDelayMs{ 100 };
+  constexpr int kMaxDelayMs{ 1500 };
+
+  for (auto const &entry : it) {
+    if (!entry.is_regular_file(ec) || ec) { continue; }
+
+    bool const is_exe{ ::_wcsicmp(entry.path().extension().c_str(), L".exe") == 0 };
+
+    for (int attempt{ 0 }; attempt < kMaxRetries; ++attempt) {
+      bool const ok{ is_exe ? probe_exe_launchable(entry.path())
+                            : probe_file_readable(entry.path()) };
+      if (ok) { break; }
+
+      DWORD const err{ ::GetLastError() };
+      if (err != ERROR_SHARING_VIOLATION && err != ERROR_LOCK_VIOLATION) { break; }
+
+      if (attempt == 0) {
+        tui::debug("await_files_accessible: %s locked, waiting",
+                   entry.path().filename().string().c_str());
+      }
+
+      if (attempt + 1 == kMaxRetries) {
+        tui::warn("await_files_accessible: %s still locked after retries, proceeding",
+                  entry.path().filename().string().c_str());
+        break;
+      }
+
+      int delay_ms{ kInitialDelayMs << attempt };
+      if (delay_ms > kMaxDelayMs) { delay_ms = kMaxDelayMs; }
+      ::Sleep(static_cast<DWORD>(delay_ms));
+    }
+  }
+}
+
+void mark_not_indexed(std::filesystem::path const &dir) {
+  DWORD const attrs{ ::GetFileAttributesW(dir.c_str()) };
+  if (attrs == INVALID_FILE_ATTRIBUTES) { return; }
+  if (attrs & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED) { return; }
+  ::SetFileAttributesW(dir.c_str(), attrs | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
 }
 
 std::filesystem::path expand_path(std::string_view p) {

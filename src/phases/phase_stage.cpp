@@ -6,6 +6,7 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
+#include "platform.h"
 #include "pkg.h"
 #include "shell.h"
 #include "sol_util.h"
@@ -159,6 +160,8 @@ void run_stage_phase(pkg *p, engine &eng) {
     tui::debug("phase stage: no files in fetch_dir, skipping");
     return;
   }
+
+  platform::await_files_accessible(lock->fetch_dir());
 
   if (!stage_obj.valid()) {
     tui::debug("phase stage: extracting (strip=0)");

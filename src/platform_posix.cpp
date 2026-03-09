@@ -184,6 +184,10 @@ bool file_exists(std::filesystem::path const &path) {
   return std::filesystem::exists(path);
 }
 
+void await_files_accessible(std::filesystem::path const &) {}
+
+void mark_not_indexed(std::filesystem::path const &) {}
+
 [[noreturn]] void terminate_process() { std::abort(); }
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }

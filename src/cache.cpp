@@ -59,12 +59,12 @@ struct cache::scoped_entry_lock::impl {
 
 namespace {
 
+// Best-effort single-shot removal — all callers tolerate failure (constructor
+// cleans up stale dirs on next run).  No retry; remove_all_with_retry's 3.5s
+// backoff is wasted on ephemeral dirs that Defender may hold briefly.
 void remove_all_noexcept(path const &target) {
-  if (auto ec{ envy::platform::remove_all_with_retry(target) }) {
-    envy::tui::error("Failed to remove %s: %s",
-                     target.string().c_str(),
-                     ec.message().c_str());
-  }
+  std::error_code ec;
+  std::filesystem::remove_all(target, ec);
 }
 
 envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
@@ -157,6 +157,8 @@ cache::scoped_entry_lock::scoped_entry_lock(
   tui::debug("  creating directories");
   std::filesystem::create_directories(fetch_dir());
   std::filesystem::create_directories(install_dir());
+  std::filesystem::create_directories(work_dir());
+  platform::mark_not_indexed(work_dir());  // prevent Indexer from holding handles
   std::filesystem::create_directories(stage_dir());
   std::filesystem::create_directories(tmp_dir());
   tui::debug("scoped_entry_lock CTOR: done");
