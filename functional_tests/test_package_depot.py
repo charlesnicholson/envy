@@ -1416,20 +1416,21 @@ class TestImportManifest(unittest.TestCase):
             shutil.rmtree(import_dir, ignore_errors=True)
 
 
-class _TrackingHandler(SimpleHTTPRequestHandler):
-    """HTTP handler that tracks request paths."""
+def _make_tracking_handler(request_log, directory):
+    """Create a handler class with its own isolated request log."""
 
-    requests = []
+    class _Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=directory, **kwargs)
 
-    def __init__(self, *args, directory=None, **kwargs):
-        super().__init__(*args, directory=directory, **kwargs)
+        def log_message(self, format, *args):
+            return
 
-    def log_message(self, format, *args):
-        return
+        def do_GET(self):
+            request_log.append(self.path)
+            super().do_GET()
 
-    def do_GET(self):
-        _TrackingHandler.requests.append(self.path)
-        super().do_GET()
+    return _Handler
 
 
 class TestUserManagedSkipsDepot(unittest.TestCase):
@@ -1442,7 +1443,7 @@ class TestUserManagedSkipsDepot(unittest.TestCase):
         self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-um-depot-markers-"))
         self.envy = test_config.get_envy_executable()
         self.project_root = Path(__file__).parent.parent
-        _TrackingHandler.requests = []
+        self.requests = []
 
     def tearDown(self):
         for d in [self.cache_root, self.test_dir, self.serve_dir, self.marker_dir]:
@@ -1458,7 +1459,7 @@ class TestUserManagedSkipsDepot(unittest.TestCase):
         )
 
     def _start_tracking_server(self):
-        handler = partial(_TrackingHandler, directory=str(self.serve_dir))
+        handler = _make_tracking_handler(self.requests, str(self.serve_dir))
         srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         return srv, srv.server_address[1]
@@ -1513,10 +1514,10 @@ end
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
             self.assertTrue(marker.exists(), "Install should have run")
             self.assertEqual(
-                _TrackingHandler.requests,
+                self.requests,
                 [],
                 f"Depot manifest should not be fetched for user-managed-only "
-                f"packages, but got requests: {_TrackingHandler.requests}",
+                f"packages, but got requests: {self.requests}",
             )
         finally:
             srv.shutdown()
@@ -1553,9 +1554,7 @@ end
             r = self._run("sync", "--manifest", str(m))
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
 
-            depot_fetches = [
-                rq for rq in _TrackingHandler.requests if "depot.txt" in rq
-            ]
+            depot_fetches = [rq for rq in self.requests if "depot.txt" in rq]
             self.assertGreater(
                 len(depot_fetches),
                 0,
