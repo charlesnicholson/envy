@@ -78,7 +78,8 @@ int ensure(std::filesystem::path const &cache_root) {
   fs::create_directories(shell_dir, ec);
   if (ec) {
     tui::warn("Failed to create shell hook directory %s: %s",
-              shell_dir.string().c_str(), ec.message().c_str());
+              shell_dir.string().c_str(),
+              ec.message().c_str());
     return 0;
   }
 
@@ -87,7 +88,13 @@ int ensure(std::filesystem::path const &cache_root) {
     if (fs::exists(hook_path) && parse_version(hook_path) >= kVersion) { continue; }
 
     bool const was_update{ fs::exists(hook_path) };
-    std::string_view const content{ reinterpret_cast<char const *>(h.data), h.size };
+    std::string content{ reinterpret_cast<char const *>(h.data), h.size };
+    constexpr std::string_view kPlaceholder{ "@@ENVY_HOOK_VERSION@@" };
+    if (auto pos{ content.find(kPlaceholder) }; pos != std::string::npos) {
+      char ver[16];
+      std::snprintf(ver, sizeof(ver), "%d", kVersion);
+      content.replace(pos, kPlaceholder.size(), ver);
+    }
     try {
       util_write_file(hook_path, content);
       ++written;

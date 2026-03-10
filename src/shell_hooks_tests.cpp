@@ -251,4 +251,17 @@ TEST_CASE_FIXTURE(temp_dir_fixture, "shell_hooks: ensure") {
                     ext);
     }
   }
+
+  SUBCASE("written hooks do not contain version placeholder") {
+    ensure(root);
+    for (auto const *ext : { "bash", "zsh", "fish", "ps1" }) {
+      auto const hook{ root / "shell" / ("hook." + std::string{ ext }) };
+      std::ifstream in{ hook };
+      std::string content{ std::istreambuf_iterator<char>{ in },
+                           std::istreambuf_iterator<char>{} };
+      CHECK_MESSAGE(content.find("@@ENVY_HOOK_VERSION@@") == std::string::npos,
+                    "placeholder not replaced in hook.",
+                    ext);
+    }
+  }
 }

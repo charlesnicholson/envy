@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=6
+_ENVY_HOOK_VERSION=@@ENVY_HOOK_VERSION@@
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
