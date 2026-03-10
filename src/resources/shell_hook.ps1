@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-$global:_ENVY_HOOK_VERSION = 6
+$global:_ENVY_HOOK_VERSION = 7
 
 # Detect UTF-8 locale for emoji/unicode output
 $global:_ENVY_UTF8 = (($env:LC_ALL + $env:LC_CTYPE + $env:LANG) -match '[Uu][Tt][Ff]-?8') -or

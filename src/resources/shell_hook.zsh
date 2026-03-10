@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=6
+_ENVY_HOOK_VERSION=7
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
@@ -18,6 +18,7 @@ prompt_envy() {
 }
 
 _envy_find_manifest() {
+  REPLY=""
   local d="$PWD"
   while [ "$d" != / ]; do
     if [ -f "$d/envy.lua" ]; then
@@ -58,7 +59,7 @@ _envy_parse_bin() {
 _envy_remove_from_path() {
   # Filter zsh path array in-place — zsh auto-syncs it to $PATH.
   # Avoids the old loop+echo pattern which required a $() subshell to capture.
-  path=("${(@)path:#$1}")
+  path=("${(@)path:#${(b)1}}")
 }
 
 _envy_set_prompt() {
