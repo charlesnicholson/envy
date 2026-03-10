@@ -106,6 +106,7 @@ def main() -> int:
             return 1
 
         data = filepath.read_bytes()
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         for pattern, replacement in substitutions.items():
             data = data.replace(pattern, replacement)
         header_parts.append(generate_resource(varname, data))
