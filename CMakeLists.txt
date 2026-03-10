@@ -145,9 +145,18 @@ endif()
 include(cmake/Dependencies.cmake)
 include(cmake/EmbedResource.cmake)
 
+# Extract shell hook version from shell_hooks.h (single source of truth)
+file(STRINGS src/shell_hooks.h _hook_ver_line REGEX "kShellHookVersion = [0-9]+")
+if(NOT _hook_ver_line)
+    message(FATAL_ERROR "Failed to extract kShellHookVersion from src/shell_hooks.h")
+endif()
+string(REGEX MATCH "[0-9]+" ENVY_SHELL_HOOK_VERSION "${_hook_ver_line}")
+
 # Generate embedded resource header (all platform variants unconditionally)
 embed_resources(envy_embedded_resources
     OUTPUT embedded_init_resources.h
+    DEFINES
+        ENVY_HOOK_VERSION=${ENVY_SHELL_HOOK_VERSION}
     RESOURCES
         bootstrap_posix=src/resources/envy
         bootstrap_windows=src/resources/envy.bat

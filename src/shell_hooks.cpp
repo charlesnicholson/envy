@@ -85,16 +85,12 @@ int ensure(std::filesystem::path const &cache_root) {
 
   for (auto const &h : kHooks) {
     fs::path const hook_path{ shell_dir / ("hook." + std::string{ h.ext }) };
-    if (fs::exists(hook_path) && parse_version(hook_path) >= kVersion) { continue; }
+    if (fs::exists(hook_path) && parse_version(hook_path) >= kShellHookVersion) {
+      continue;
+    }
 
     bool const was_update{ fs::exists(hook_path) };
-    std::string content{ reinterpret_cast<char const *>(h.data), h.size };
-    constexpr std::string_view kPlaceholder{ "@@ENVY_HOOK_VERSION@@" };
-    if (auto pos{ content.find(kPlaceholder) }; pos != std::string::npos) {
-      char ver[16];
-      std::snprintf(ver, sizeof(ver), "%d", kVersion);
-      content.replace(pos, kPlaceholder.size(), ver);
-    }
+    std::string_view const content{ reinterpret_cast<char const *>(h.data), h.size };
     try {
       util_write_file(hook_path, content);
       ++written;
