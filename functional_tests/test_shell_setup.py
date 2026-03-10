@@ -147,6 +147,31 @@ class TestShellHookDeployment(unittest.TestCase):
             content = hook.read_text(encoding="utf-8")
             self.assertIn("_ENVY_HOOK_VERSION", content)
 
+    def test_hook_version_is_numeric_not_placeholder(self) -> None:
+        """Verify the @@ENVY_HOOK_VERSION@@ placeholder was replaced."""
+        import re
+
+        self._trigger_self_deploy()
+        shell_dir = self._cache_dir / "shell"
+        versions: dict[str, int] = {}
+        for ext in ("bash", "zsh", "fish", "ps1"):
+            hook = shell_dir / f"hook.{ext}"
+            content = hook.read_text(encoding="utf-8")
+            self.assertNotIn(
+                "@@ENVY_HOOK_VERSION@@",
+                content,
+                f"Placeholder not replaced in hook.{ext}",
+            )
+            m = re.search(r"_ENVY_HOOK_VERSION\s*=?\s*(\d+)", content)
+            self.assertIsNotNone(m, f"No numeric version stamp in hook.{ext}")
+            versions[ext] = int(m.group(1))  # type: ignore[union-attr]
+            self.assertGreater(
+                versions[ext], 0, f"Version must be positive in hook.{ext}"
+            )
+        # All hooks must agree on the version
+        unique = set(versions.values())
+        self.assertEqual(len(unique), 1, f"Version mismatch across hooks: {versions}")
+
     def test_hook_files_contain_managed_comment(self) -> None:
         self._trigger_self_deploy()
         shell_dir = self._cache_dir / "shell"
