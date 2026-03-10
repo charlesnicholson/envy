@@ -56,9 +56,26 @@ def main() -> int:
         metavar="VAR=FILE",
         help="Variable name and file path pairs",
     )
+    parser.add_argument(
+        "-D",
+        dest="defines",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Text substitution: replace @@KEY@@ with VALUE in resource content",
+    )
     args = parser.parse_args()
 
     output_path = Path(args.output)
+
+    # Parse --define pairs
+    substitutions: dict[bytes, bytes] = {}
+    for d in args.defines:
+        if "=" not in d:
+            print(f"Error: invalid define '{d}', expected KEY=VALUE", file=sys.stderr)
+            return 1
+        key, value = d.split("=", 1)
+        substitutions[f"@@{key}@@".encode()] = value.encode()
 
     # Parse var=file pairs
     resources = []
@@ -89,6 +106,8 @@ def main() -> int:
             return 1
 
         data = filepath.read_bytes()
+        for pattern, replacement in substitutions.items():
+            data = data.replace(pattern, replacement)
         header_parts.append(generate_resource(varname, data))
 
     header_parts.append("}  // namespace envy::embedded")

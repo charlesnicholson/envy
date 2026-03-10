@@ -1,5 +1,5 @@
 # envy shell hook — managed by envy; do not edit
-_ENVY_HOOK_VERSION=7
+_ENVY_HOOK_VERSION=@@ENVY_HOOK_VERSION@@
 
 # Detect UTF-8 locale for emoji/unicode output
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
@@ -18,15 +18,22 @@ prompt_envy() {
 }
 
 _envy_find_manifest() {
+  REPLY=""
   local d="$PWD"
   while [ "$d" != / ]; do
     if [ -f "$d/envy.lua" ]; then
       local is_root="true"
-      if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'; then
-        is_root="false"
-      fi
+      # Pure zsh read+regex instead of head|grep — avoids fork/exec per directory
+      local line i=0
+      while (( i++ < 20 )) && IFS= read -r line; do
+        if [[ "$line" =~ '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"' ]]; then
+          is_root="false"
+          break
+        fi
+      done < "$d/envy.lua"
       if [ "$is_root" = "true" ]; then
-        echo "$d"
+        # Return via REPLY to avoid $() subshell at call site
+        REPLY="$d"
         return 0
       fi
     fi
@@ -38,21 +45,21 @@ _envy_find_manifest() {
 
 _envy_parse_bin() {
   local manifest="$1/envy.lua"
-  local bin_val
-  bin_val=$(head -20 "$manifest" | sed -nE 's/^--[[:space:]]*@envy[[:space:]]+bin[[:space:]]+"(([^"\\]|\\.)*)".*/\1/p') || true
-  if [ -n "$bin_val" ]; then echo "$bin_val"; fi
+  # Pure zsh read+regex instead of head|sed — avoids fork/exec; returns via REPLY
+  local line i=0
+  REPLY=""
+  while (( i++ < 20 )) && IFS= read -r line; do
+    if [[ "$line" =~ '^--[[:space:]]*@envy[[:space:]]+bin[[:space:]]+"(([^"\\]|\\.)*)"' ]]; then
+      REPLY="${match[1]}"
+      return
+    fi
+  done < "$manifest"
 }
 
 _envy_remove_from_path() {
-  local remove="$1"
-  # Use zsh array splitting on PATH
-  local -a parts=("${(@s.:.)PATH}")
-  local new_path=""
-  for p in "${parts[@]}"; do
-    if [ "$p" = "$remove" ]; then continue; fi
-    new_path="${new_path:+$new_path:}$p"
-  done
-  echo "$new_path"
+  # Filter zsh path array in-place — zsh auto-syncs it to $PATH.
+  # Avoids the old loop+echo pattern which required a $() subshell to capture.
+  path=("${(@)path:#${(b)1}}")
 }
 
 _envy_set_prompt() {
@@ -97,25 +104,27 @@ _envy_hook() {
   if [ -n "${_ENVY_HOOK_ACTIVE:-}" ]; then return; fi
   local _ENVY_HOOK_ACTIVE=1
 
-  local manifest_dir
-  manifest_dir=$(_envy_find_manifest 2>/dev/null) || true
-
-  if [ -n "$manifest_dir" ]; then
-    local bin_val
-    bin_val=$(_envy_parse_bin "$manifest_dir")
+  # Call helpers directly instead of via $() — each $() forks a subshell,
+  # and macOS fork() costs ~1-2ms each. Results come back through REPLY.
+  local manifest_dir bin_val bin_dir
+  if _envy_find_manifest 2>/dev/null; then
+    manifest_dir="$REPLY"
+    _envy_parse_bin "$manifest_dir"
+    bin_val="$REPLY"
     if [ -n "$bin_val" ]; then
-      local bin_dir
-      bin_dir="$(cd "$manifest_dir/$bin_val" 2>/dev/null && pwd)" || true
-      if [ -n "$bin_dir" ]; then
+      bin_dir="${manifest_dir}/${bin_val}"
+      # Resolve to real path using zsh :A modifier (no subshell)
+      bin_dir="${bin_dir:A}"
+      if [ -d "$bin_dir" ]; then
         if [ "$bin_dir" != "${_ENVY_BIN_DIR:-}" ]; then
           # Leaving old project (switching)?
           if [ -n "${_ENVY_BIN_DIR:-}" ]; then
             if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
               printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
             fi
-            PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
+            _envy_remove_from_path "$_ENVY_BIN_DIR"
           fi
-          PATH="$bin_dir:$PATH"
+          path=("$bin_dir" "${path[@]}")  # prepend via zsh path array — no subshell
           export PATH
           _ENVY_BIN_DIR="$bin_dir"
           if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
@@ -135,7 +144,7 @@ _envy_hook() {
     if [ "${ENVY_SHELL_NO_ENTER_EXIT_ANNOUNCE:-}" != "1" ]; then
       printf 'envy: leaving %s %s PATH restored\n' "${ENVY_PROJECT_ROOT##*/}" "$_ENVY_DASH" >&2
     fi
-    PATH=$(_envy_remove_from_path "$_ENVY_BIN_DIR")
+    _envy_remove_from_path "$_ENVY_BIN_DIR"
     export PATH
     unset _ENVY_BIN_DIR
     _envy_unset_prompt
