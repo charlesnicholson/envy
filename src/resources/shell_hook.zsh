@@ -7,9 +7,9 @@ case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
   *) _ENVY_UTF8=; _ENVY_DASH="--" ;;
 esac
 
-# Prompt prefix: raccoon emoji followed by %{%2G%} glitch telling zsh
-# the preceding character occupies 2 display columns.
-_ENVY_PROMPT_PREFIX="🦝%{%2G%} "
+# Prompt prefix: raccoon emoji wrapped in %{...%2G%} so zsh skips its
+# own width measurement and uses the explicit 2-column declaration.
+_ENVY_PROMPT_PREFIX="%{🦝%2G%} "
 
 # p10k custom segment — called by p10k if registered; harmless when p10k absent.
 prompt_envy() {
