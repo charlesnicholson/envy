@@ -155,6 +155,7 @@ string(REGEX MATCH "[0-9]+" ENVY_SHELL_HOOK_VERSION "${_hook_ver_line}")
 # Generate embedded resource header (all platform variants unconditionally)
 embed_resources(envy_embedded_resources
     OUTPUT embedded_init_resources.h
+    NORMALIZE_EOL
     DEFINES
         ENVY_HOOK_VERSION=${ENVY_SHELL_HOOK_VERSION}
     RESOURCES
@@ -520,6 +521,23 @@ unset(_envy_test_env_prefix)
 
 add_custom_target(run_unit_tests ALL
     DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/envy_unit_tests.timestamp"
+)
+
+# Build-script unit tests (Python)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/script_tests.timestamp"
+    COMMAND ${Python3_EXECUTABLE}
+        "${PROJECT_SOURCE_DIR}/cmake/scripts/test_embed_resource.py"
+    COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/script_tests.timestamp"
+    DEPENDS "${PROJECT_SOURCE_DIR}/cmake/scripts/embed_resource.py"
+            "${PROJECT_SOURCE_DIR}/cmake/scripts/test_embed_resource.py"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    COMMENT "Running build-script tests"
+    VERBATIM
+)
+add_custom_target(run_script_tests ALL
+    DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/script_tests.timestamp"
 )
 
 # Functional test executables are built but not run automatically

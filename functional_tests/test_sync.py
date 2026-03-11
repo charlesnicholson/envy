@@ -579,6 +579,71 @@ PACKAGES = {{
         self.assertIn("envy-managed", content)
         self.assertIn("product", content)
 
+    def test_sync_product_scripts_have_lf_line_endings(self):
+        """Deployed product scripts must use LF line endings, never CRLF."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        raw = (bin_dir / script_name).read_bytes()
+        self.assertNotIn(b"\r", raw, "Product script contains CR bytes (CRLF line endings)")
+        self.assertIn(b"\n", raw, "Product script has no line endings at all")
+
+    def test_sync_platform_all_scripts_have_lf_line_endings(self):
+        """Both POSIX and Windows scripts use LF when deployed with --platform all."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest, platform="all")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        for name in ("tool", "tool.bat", "envy", "envy.bat"):
+            path = bin_dir / name
+            self.assertTrue(path.exists(), f"{name} missing")
+            raw = path.read_bytes()
+            self.assertNotIn(
+                b"\r", raw, f"{name} contains CR bytes (CRLF line endings)"
+            )
+
+    def test_sync_replaces_crlf_script_with_lf(self):
+        """Deploy overwrites an existing CRLF envy-managed script with LF."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+        script_path.write_bytes(b"# envy-managed OLD\r\nold content\r\n")
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        raw = script_path.read_bytes()
+        self.assertNotIn(b"\r", raw, "Rewritten script still contains CR bytes")
+        self.assertIn(b"envy-managed", raw)
+
     def test_sync_updates_envy_managed_scripts(self):
         """Sync updates existing envy-managed scripts."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
