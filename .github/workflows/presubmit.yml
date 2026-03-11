@@ -12,14 +12,45 @@ concurrency:
   group: presubmit-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
+  format-code:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install clang-format
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang-format
+
+      - name: Run clang-format on src/
+        run: find src -name '*.cpp' -o -name '*.h' | xargs clang-format -i
+
+      - name: Commit and push if changed
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/
+          git commit -m "style: auto-format with clang-format"
+          git push
+
   ci:
+    needs: format-code
+    if: always() && (needs.format-code.result == 'success' || needs.format-code.result == 'skipped')
     uses: ./.github/workflows/ci.yml
 
   all-checks-pass:
-    needs: ci
+    needs: [format-code, ci]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - run: exit 1
-        if: needs.ci.result != 'success'
+        if: >-
+          needs.ci.result != 'success' ||
+          !(needs.format-code.result == 'success' || needs.format-code.result == 'skipped')
