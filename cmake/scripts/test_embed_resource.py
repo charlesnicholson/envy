@@ -76,11 +76,9 @@ class TestCRLFNormalization(unittest.TestCase):
         self.assertNotIn(b"\r", embedded)
         self.assertEqual(embedded, b"VALUE\nrest\n")
 
-    def test_binary_data_not_corrupted(self):
-        """Non-line-ending \\r-adjacent bytes aren't altered (\\r only appears in line endings)."""
-        # 0x0d (CR) only matters as line ending; this test confirms isolated \r is still normalized
-        # but actual binary payloads (images, etc.) should not be embedded via this tool
-        data = b"\x00\x01\x02\n\xff\xfe\n"
+    def test_binary_data_preserved(self):
+        """Binary files (containing NUL) skip EOL normalization — 0x0d bytes survive."""
+        data = b"\x00\x0d\x01\x02\r\n\xff\x0d\xfe\n"
         header = self._run_embed(data)
         embedded = self._extract_bytes(header)
         self.assertEqual(embedded, data)
