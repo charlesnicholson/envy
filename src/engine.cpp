@@ -395,6 +395,12 @@ std::vector<product_info> engine::collect_all_products() const {
 
     for (auto const &[key, package] : packages_) {
       for (auto const &[prod_name, prod_entry] : package->products) {
+        auto plats{ util_platform_intersect(prod_entry.platforms,
+                                            package->resolved_platforms) };
+        if (plats.empty() && !prod_entry.platforms.empty() &&
+            !package->resolved_platforms.empty()) {
+          plats.emplace_back(kPlatformNone);
+        }
         infos.push_back({
             .product_name = prod_name,
             .value = prod_entry.value,
@@ -402,7 +408,7 @@ std::vector<product_info> engine::collect_all_products() const {
             .type = package->type,
             .pkg_path = package->pkg_path,
             .script = prod_entry.script,
-            .platforms = package->resolved_platforms,
+            .platforms = std::move(plats),
         });
       }
     }

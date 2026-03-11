@@ -448,6 +448,7 @@ std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg cons
     std::string key_str{ key_obj.as<std::string>() };
     std::string val_str;
     bool script{ true };
+    std::vector<std::string> entry_platforms;
 
     if (val_obj.is<std::string>()) {
       val_str = val_obj.as<std::string>();
@@ -462,6 +463,29 @@ std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg cons
       sol::object script_field{ t["script"] };
       if (script_field.valid() && script_field.is<bool>()) {
         script = script_field.as<bool>();
+      }
+      sol::object platforms_field{ t["platforms"] };
+      if (platforms_field.valid() && platforms_field.get_type() != sol::type::lua_nil) {
+        if (platforms_field.get_type() != sol::type::table) {
+          throw std::runtime_error("PRODUCTS entry '" + key_str +
+                                   "' platforms must be a table in spec '" + id + "'");
+        }
+        sol::table plat_table{ platforms_field.as<sol::table>() };
+        for (size_t i{ 1 }; i <= plat_table.size(); ++i) {
+          sol::object elem{ plat_table[i] };
+          if (!elem.is<std::string>()) {
+            throw std::runtime_error("PRODUCTS entry '" + key_str +
+                                     "' platforms entries must be strings in spec '" + id +
+                                     "'");
+          }
+          std::string plat_str{ elem.as<std::string>() };
+          if (plat_str.empty()) {
+            throw std::runtime_error("PRODUCTS entry '" + key_str +
+                                     "' platforms entry cannot be empty in spec '" + id +
+                                     "'");
+          }
+          entry_platforms.push_back(std::move(plat_str));
+        }
       }
     } else {
       throw std::runtime_error("PRODUCTS value must be string or table in spec '" + id +
@@ -502,7 +526,8 @@ std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg cons
       }
     }
 
-    parsed_products[std::move(key_str)] = product_entry{ std::move(val_str), script };
+    parsed_products[std::move(key_str)] =
+        product_entry{ std::move(val_str), script, std::move(entry_platforms) };
   }
 
   return parsed_products;
@@ -1239,7 +1264,8 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
   for (auto const &[name, entry] : p->products) {
     ENVY_TRACE_EMIT((trace_events::product_parsed{ .spec = cfg.identity,
                                                    .product_name = name,
-                                                   .product_value = entry.value }));
+                                                   .product_value = entry.value,
+                                                   .platforms = entry.platforms }));
   }
 
   // Extract spec PLATFORMS and intersect with manifest-level platforms
@@ -1265,7 +1291,7 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     // Disjoint non-empty inputs yield empty, but empty = "all platforms" elsewhere.
     // Use a sentinel that matches nothing so scripts are never generated.
     if (intersected.empty() && !cfg.platforms.empty() && !spec_platforms.empty()) {
-      intersected.emplace_back("__none__");
+      intersected.emplace_back(kPlatformNone);
     }
     p->resolved_platforms = std::move(intersected);
   }

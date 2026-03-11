@@ -108,6 +108,23 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 end
 """
 
+SPEC_MIXED_PLATFORM_PRODUCTS = """\
+IDENTITY = "local.mixedplat@v1"
+PRODUCTS = {{
+  allplat = "bin/allplat",
+  posix_only = {{ value = "bin/posix_only", platforms = {{"darwin", "linux"}} }},
+  win_only = {{ value = "bin/win_only", platforms = {{"windows"}} }},
+}}
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+end
+"""
+
 
 class PlatformFilterBase(unittest.TestCase):
     """Shared setUp/tearDown and helpers for platform filter tests."""
@@ -728,3 +745,179 @@ PACKAGES = {{
         manifest = self.create_manifest("PACKAGES = {}")
         result = self.run_cmd("install", manifest)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+
+# =========================================================================
+# deploy: per-product platform filtering
+# =========================================================================
+
+
+class TestProductPlatformFilter(PlatformFilterBase):
+    """Per-product platforms field controls which scripts are generated."""
+
+    def _run_deploy(self, manifest: Path, platform: str = "all"):
+        cmd = [
+            str(self.envy),
+            "--cache-root",
+            str(self.cache_root),
+            "deploy",
+            "--platform",
+            platform,
+            "--manifest",
+            str(manifest),
+        ]
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def test_posix_only_product_no_bat_script(self):
+        """Product with platforms={"darwin","linux"} gets posix script but not .bat."""
+        spec_path = self.write_spec("mixedplat", SPEC_MIXED_PLATFORM_PRODUCTS)
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.mixedplat@v1", source = "{spec_path}" }},
+}}
+""",
+            deploy=True,
+        )
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # posix_only: posix script YES, .bat NO
+        self.assertTrue(
+            (bin_dir / "posix_only").exists(), "posix_only posix script missing"
+        )
+        self.assertFalse(
+            (bin_dir / "posix_only.bat").exists(),
+            "posix_only should not have .bat script",
+        )
+
+    def test_windows_only_product_no_posix_script(self):
+        """Product with platforms={"windows"} gets .bat script but not posix."""
+        spec_path = self.write_spec("mixedplat", SPEC_MIXED_PLATFORM_PRODUCTS)
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.mixedplat@v1", source = "{spec_path}" }},
+}}
+""",
+            deploy=True,
+        )
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # win_only: .bat YES, posix script NO
+        self.assertTrue(
+            (bin_dir / "win_only.bat").exists(), "win_only .bat script missing"
+        )
+        self.assertFalse(
+            (bin_dir / "win_only").exists(),
+            "win_only should not have posix script",
+        )
+
+    def test_unconstrained_product_gets_both_scripts(self):
+        """Product with no platforms field gets both posix and .bat scripts."""
+        spec_path = self.write_spec("mixedplat", SPEC_MIXED_PLATFORM_PRODUCTS)
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.mixedplat@v1", source = "{spec_path}" }},
+}}
+""",
+            deploy=True,
+        )
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # allplat: both scripts
+        self.assertTrue(
+            (bin_dir / "allplat").exists(), "allplat posix script missing"
+        )
+        self.assertTrue(
+            (bin_dir / "allplat.bat").exists(), "allplat .bat script missing"
+        )
+
+    def test_cleanup_does_not_remove_other_platform_products(self):
+        """Deploying twice doesn't delete platform-constrained products from prior deploy."""
+        spec_path = self.write_spec("mixedplat", SPEC_MIXED_PLATFORM_PRODUCTS)
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.mixedplat@v1", source = "{spec_path}" }},
+}}
+""",
+            deploy=True,
+        )
+        # Deploy once
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        self.assertTrue((bin_dir / "posix_only").exists())
+        self.assertTrue((bin_dir / "win_only.bat").exists())
+
+        # Deploy again — cleanup should NOT remove the other-platform scripts
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        self.assertTrue(
+            (bin_dir / "posix_only").exists(),
+            "posix_only removed by second deploy cleanup",
+        )
+        self.assertFalse(
+            (bin_dir / "posix_only.bat").exists(),
+            "posix_only.bat should never exist",
+        )
+        self.assertTrue(
+            (bin_dir / "win_only.bat").exists(),
+            "win_only.bat removed by second deploy cleanup",
+        )
+        self.assertFalse(
+            (bin_dir / "win_only").exists(),
+            "win_only posix script should never exist",
+        )
+
+    def test_product_platform_intersects_with_package_platform(self):
+        """Per-product platforms intersect with package-level platforms constraint."""
+        # Package constrained to windows, but product says darwin+linux → no scripts
+        spec_path = self.write_spec("mixedplat", SPEC_MIXED_PLATFORM_PRODUCTS)
+        manifest = self.create_manifest(
+            f"""
+PACKAGES = {{
+    {{ spec = "local.mixedplat@v1", source = "{spec_path}",
+       platforms = {{ "windows" }} }},
+}}
+""",
+            deploy=True,
+        )
+        result = self._run_deploy(manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        # posix_only: package=windows ∩ product={darwin,linux} = nothing
+        self.assertFalse(
+            (bin_dir / "posix_only").exists(),
+            "posix_only should not exist (disjoint platforms)",
+        )
+        self.assertFalse(
+            (bin_dir / "posix_only.bat").exists(),
+            "posix_only.bat should not exist (disjoint platforms)",
+        )
+        # win_only: package=windows ∩ product=windows = windows
+        self.assertTrue(
+            (bin_dir / "win_only.bat").exists(),
+            "win_only.bat should exist (intersection = windows)",
+        )
+        # allplat: package=windows ∩ product=all = windows
+        self.assertTrue(
+            (bin_dir / "allplat.bat").exists(),
+            "allplat.bat should exist (inherits package constraint)",
+        )
+        self.assertFalse(
+            (bin_dir / "allplat").exists(),
+            "allplat posix should not exist (package constrained to windows)",
+        )

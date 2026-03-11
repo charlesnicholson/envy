@@ -618,6 +618,16 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_spec(value.spec);
             append_kv(output, "product_name", value.product_name);
             append_kv(output, "product_value", value.product_value);
+            if (!value.platforms.empty()) {
+              output += ",\"platforms\":[";
+              for (size_t i{ 0 }; i < value.platforms.size(); ++i) {
+                if (i) { output += ','; }
+                output += '"';
+                append_json_string(output, value.platforms[i]);
+                output += '"';
+              }
+              output += ']';
+            }
           },
           [](auto const &) {},
       },

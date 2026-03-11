@@ -266,8 +266,14 @@ DEPENDENCIES = {}
 ---@type string[]?
 PLATFORMS = nil
 
----Spec products - paths relative to install_dir, or function returning same
----@type table<string, string>|fun(options: table): table<string, string>
+---@class envy.product_entry
+---@field value string Relative path to product (required)
+---@field script? boolean Generate wrapper script (default: true)
+---@field platforms? string[] Platform constraints for this product (empty/absent = all)
+
+---Spec products - paths relative to install_dir, or function returning same.
+---String values are shorthand for { value = "...", script = true }.
+---@type table<string, string|envy.product_entry>|fun(options: table): table<string, string|envy.product_entry>
 PRODUCTS = {}
 
 --------------------------------------------------------------------------------

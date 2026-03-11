@@ -263,6 +263,7 @@ struct product_parsed {
   std::string spec;
   std::string product_name;
   std::string product_value;
+  std::vector<std::string> platforms;
 };
 
 }  // namespace trace_events

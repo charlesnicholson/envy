@@ -29,7 +29,11 @@
 #include <ws2tcpip.h>
 #endif
 
-namespace envy { enum class platform_id { POSIX, WINDOWS }; }  // namespace envy
+namespace envy {
+
+enum class platform_id { POSIX, WINDOWS };
+
+}  // namespace envy
 
 namespace envy::platform {
 
