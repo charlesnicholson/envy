@@ -186,7 +186,8 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
 table_entry parse_table_entry(sol::table const &tbl, std::string const &context) {
   sol::optional<sol::object> source_obj = tbl["source"];
-  if (!source_obj || !source_obj->valid() || source_obj->get_type() == sol::type::lua_nil) {
+  if (!source_obj || !source_obj->valid() ||
+      source_obj->get_type() == sol::type::lua_nil) {
     throw std::runtime_error(context + ": FETCH table missing 'source' key; got " +
                              sol_util_dump_table(tbl));
   }

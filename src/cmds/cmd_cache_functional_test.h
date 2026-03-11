@@ -69,7 +69,7 @@ class cmd_cache_ensure_spec : public cmd {
   static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
 
   cmd_cache_ensure_spec(cfg const &config,
-                          std::optional<std::filesystem::path> const &cli_cache_root);
+                        std::optional<std::filesystem::path> const &cli_cache_root);
   void execute() override;
 
  private:

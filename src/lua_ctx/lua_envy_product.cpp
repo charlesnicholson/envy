@@ -63,11 +63,10 @@ void lua_envy_product_install(sol::table &envy_table) {
     };
 
     if (current_phase < dep.needed_by) {
-      std::string const msg{
-        "envy.product: product '" + product_name + "' needed_by '" +
-        std::string(pkg_phase_name(dep.needed_by)) + "' but accessed during '" +
-        std::string(pkg_phase_name(current_phase)) + "'"
-      };
+      std::string const msg{ "envy.product: product '" + product_name + "' needed_by '" +
+                             std::string(pkg_phase_name(dep.needed_by)) +
+                             "' but accessed during '" +
+                             std::string(pkg_phase_name(current_phase)) + "'" };
       emit_access(false, msg);
       throw std::runtime_error(msg);
     }

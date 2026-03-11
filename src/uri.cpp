@@ -232,9 +232,7 @@ bool uri_is_http_scheme(std::string_view url) {
   return istarts_with(url, "http://") || istarts_with(url, "https://");
 }
 
-bool uri_is_https_scheme(std::string_view url) {
-  return istarts_with(url, "https://");
-}
+bool uri_is_https_scheme(std::string_view url) { return istarts_with(url, "https://"); }
 
 std::string uri_extract_filename(std::string_view uri) {
   if (uri.empty()) { return {}; }

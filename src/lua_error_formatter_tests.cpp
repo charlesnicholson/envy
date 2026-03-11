@@ -287,8 +287,7 @@ TEST_CASE("format_lua_error full example with all context") {
                                  std::filesystem::path("/home/user/manifest.lua") };
   formatter_test_fixture child{ "test.ninja@r1.11.1",
                                 R"({"version":"1.11.1"})",
-                                std::filesystem::path(
-                                    "/home/user/.envy/specs/python.lua"),
+                                std::filesystem::path("/home/user/.envy/specs/python.lua"),
                                 parent.cfg };
 
   child.p->spec_file_path = std::filesystem::path("/home/user/.envy/specs/ninja.lua");

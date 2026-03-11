@@ -1,7 +1,7 @@
 #include "cmd_cache_functional_test.h"
 
-#include "platform.h"
 #include "cache.h"
+#include "platform.h"
 #include "tui.h"
 
 #include "CLI11.hpp"
@@ -140,10 +140,8 @@ void cmd_cache_ensure_package::execute() {
   auto result{ c->ensure_pkg(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix) };
 
   // Construct lock file path for reporting
-  auto const k{
-      cache::key(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix) };
-  std::filesystem::path lock_file{ c->root() / "locks" /
-                                   ("packages." + k + ".lock") };
+  auto const k{ cache::key(cfg_.identity, cfg_.platform, cfg_.arch, cfg_.hash_prefix) };
+  std::filesystem::path lock_file{ c->root() / "locks" / ("packages." + k + ".lock") };
 
   // Determine result state
   bool locked{ result.lock != nullptr };

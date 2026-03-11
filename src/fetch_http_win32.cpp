@@ -7,8 +7,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <Windows.h>
 #include <WinInet.h>
+#include <Windows.h>
 
 #include <cstdio>
 #include <fstream>
@@ -30,8 +30,7 @@ std::string win_error_message(DWORD error_code) {
   char *buf{ nullptr };
 
   // Try wininet.dll first for WinINet-specific error messages, then system.
-  DWORD len{ FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                                FORMAT_MESSAGE_FROM_SYSTEM |
+  DWORD len{ FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                                 FORMAT_MESSAGE_FROM_HMODULE |
                                 FORMAT_MESSAGE_IGNORE_INSERTS,
                             GetModuleHandleA("wininet.dll"),
@@ -41,8 +40,7 @@ std::string win_error_message(DWORD error_code) {
                             0,
                             nullptr) };
   if (!len || !buf) {
-    len = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                             FORMAT_MESSAGE_FROM_SYSTEM |
+    len = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                              FORMAT_MESSAGE_IGNORE_INSERTS,
                          nullptr,
                          error_code,
@@ -54,7 +52,9 @@ std::string win_error_message(DWORD error_code) {
   if (!len || !buf) {
     if (buf) { LocalFree(buf); }
     char code_buf[64];
-    snprintf(code_buf, sizeof(code_buf), "error code %lu",
+    snprintf(code_buf,
+             sizeof(code_buf),
+             "error code %lu",
              static_cast<unsigned long>(error_code));
     return code_buf;
   }
@@ -81,7 +81,9 @@ HINTERNET ensure_session() {
   std::call_once(g_session_once, [] {
     g_session = InternetOpenA(kDefaultUserAgent,
                               INTERNET_OPEN_TYPE_PRECONFIG,
-                              nullptr, nullptr, 0);
+                              nullptr,
+                              nullptr,
+                              0);
     if (!g_session) { throw_wininet_error("InternetOpen failed"); }
   });
   return g_session;
@@ -117,7 +119,9 @@ void check_http_status(HINTERNET request) {
                      &header_index)) {
     if (status_code >= 400) {
       char msg[128];
-      snprintf(msg, sizeof(msg), "HTTP error %lu",
+      snprintf(msg,
+               sizeof(msg),
+               "HTTP error %lu",
                static_cast<unsigned long>(status_code));
       throw std::runtime_error(msg);
     }
@@ -153,27 +157,27 @@ void read_response_to_file(HINTERNET request,
     bytes_read_total += bytes_read;
 
     if (progress) {
-      bool const should_continue{ progress(fetch_progress_t{
-          std::in_place_type<fetch_transfer_progress>,
-          fetch_transfer_progress{ .transferred = bytes_read_total,
-                                   .total = content_length } }) };
+      bool const should_continue{ progress(
+          fetch_progress_t{ std::in_place_type<fetch_transfer_progress>,
+                            fetch_transfer_progress{ .transferred = bytes_read_total,
+                                                     .total = content_length } }) };
       if (!should_continue) {
         output.close();
         std::error_code ec;
         std::filesystem::remove(dest, ec);
-        throw std::runtime_error("fetch_http_download: transfer aborted by progress callback");
+        throw std::runtime_error(
+            "fetch_http_download: transfer aborted by progress callback");
       }
     }
   }
 }
 
-std::filesystem::path download_with_post(
-    std::string_view url,
-    std::filesystem::path const &resolved_destination,
-    std::ofstream &output,
-    fetch_progress_cb_t const &progress,
-    std::string const &post_body,
-    HINTERNET session) {
+std::filesystem::path download_with_post(std::string_view url,
+                                         std::filesystem::path const &resolved_destination,
+                                         std::ofstream &output,
+                                         fetch_progress_cb_t const &progress,
+                                         std::string const &post_body,
+                                         HINTERNET session) {
   // Parse URL components for InternetConnect + HttpOpenRequest
   URL_COMPONENTSA uc{};
   uc.dwStructSize = sizeof(uc);
@@ -202,35 +206,35 @@ std::filesystem::path download_with_post(
                                                0) };
   if (!connection) { throw_wininet_error("InternetConnect failed"); }
 
-  internet_handle request{ HttpOpenRequestA(connection.get(),
-                                            "POST",
-                                            path,
-                                            nullptr,
-                                            nullptr,
-                                            nullptr,
-                                            flags,
-                                            0) };
+  internet_handle request{
+    HttpOpenRequestA(connection.get(), "POST", path, nullptr, nullptr, nullptr, flags, 0)
+  };
   if (!request) { throw_wininet_error("HttpOpenRequest failed"); }
 
   // Kick the TUI before the blocking send so the user sees immediate progress.
   if (progress) {
-    progress(fetch_progress_t{ std::in_place_type<fetch_transfer_progress>,
-                               fetch_transfer_progress{ .transferred = 0,
-                                                        .total = std::nullopt } });
+    progress(fetch_progress_t{
+        std::in_place_type<fetch_transfer_progress>,
+        fetch_transfer_progress{ .transferred = 0, .total = std::nullopt } });
   }
 
   char const *content_type{ "Content-Type: application/x-www-form-urlencoded\r\n" };
-  if (!HttpSendRequestA(request.get(),
-                        content_type,
-                        static_cast<DWORD>(strlen(content_type)),
-                        const_cast<char *>(post_body.c_str()),  // NOLINT: HttpSendRequestA takes non-const LPVOID but doesn't modify it
-                        static_cast<DWORD>(post_body.size()))) {
+  if (!HttpSendRequestA(
+          request.get(),
+          content_type,
+          static_cast<DWORD>(strlen(content_type)),
+          const_cast<char *>(post_body.c_str()),  // NOLINT: HttpSendRequestA takes
+                                                  // non-const LPVOID but doesn't modify it
+          static_cast<DWORD>(post_body.size()))) {
     throw_wininet_error("HttpSendRequest failed");
   }
 
   check_http_status(request.get());
   auto const content_length{ query_content_length(request.get()) };
-  read_response_to_file(request.get(), output, resolved_destination, progress,
+  read_response_to_file(request.get(),
+                        output,
+                        resolved_destination,
+                        progress,
                         content_length);
 
   output.flush();
@@ -247,11 +251,10 @@ std::filesystem::path download_with_post(
 
 }  // namespace
 
-std::filesystem::path fetch_http_download(
-    std::string_view url,
-    std::filesystem::path const &destination,
-    fetch_progress_cb_t const &progress,
-    std::optional<std::string> const &post_data) {
+std::filesystem::path fetch_http_download(std::string_view url,
+                                          std::filesystem::path const &destination,
+                                          fetch_progress_cb_t const &progress,
+                                          std::optional<std::string> const &post_data) {
   if (destination.empty()) {
     throw std::invalid_argument("fetch_http_download: destination is empty");
   }
@@ -267,46 +270,45 @@ std::filesystem::path fetch_http_download(
   if (!parent.empty()) {
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-      throw std::runtime_error(
-          "fetch_http_download: failed to create parent directory: " +
-          parent.string() + ": " + ec.message());
+      throw std::runtime_error("fetch_http_download: failed to create parent directory: " +
+                               parent.string() + ": " + ec.message());
     }
   }
 
   std::ofstream output{ resolved_destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
-    throw std::runtime_error(
-        "fetch_http_download: failed to open destination: " +
-        resolved_destination.string());
+    throw std::runtime_error("fetch_http_download: failed to open destination: " +
+                             resolved_destination.string());
   }
 
   HINTERNET session{ ensure_session() };
 
   // POST requires InternetConnect + HttpOpenRequest + HttpSendRequest
   if (post_data && uri_is_http_scheme(url)) {
-    return download_with_post(url, resolved_destination, output, progress,
-                              *post_data, session);
+    return download_with_post(url,
+                              resolved_destination,
+                              output,
+                              progress,
+                              *post_data,
+                              session);
   }
 
   // GET / FTP — use InternetOpenUrl (handles redirects automatically)
   // Kick the TUI immediately so the user sees progress before the blocking
   // DNS + TLS handshake inside InternetOpenUrlA.
   if (progress) {
-    progress(fetch_progress_t{ std::in_place_type<fetch_transfer_progress>,
-                               fetch_transfer_progress{ .transferred = 0,
-                                                        .total = std::nullopt } });
+    progress(fetch_progress_t{
+        std::in_place_type<fetch_transfer_progress>,
+        fetch_transfer_progress{ .transferred = 0, .total = std::nullopt } });
   }
 
   std::string url_str{ url };
   DWORD flags{ kCommonFlags };
   if (uri_is_https_scheme(url)) { flags |= INTERNET_FLAG_SECURE; }
 
-  internet_handle request{ InternetOpenUrlA(session,
-                                            url_str.c_str(),
-                                            nullptr,
-                                            0,
-                                            flags,
-                                            0) };
+  internet_handle request{
+    InternetOpenUrlA(session, url_str.c_str(), nullptr, 0, flags, 0)
+  };
   if (!request) {
     output.close();
     std::filesystem::remove(resolved_destination, ec);
@@ -316,11 +318,13 @@ std::filesystem::path fetch_http_download(
   // Check HTTP status for HTTP(S) URLs; FTP doesn't have HTTP status codes
   if (uri_is_http_scheme(url)) { check_http_status(request.get()); }
 
-  auto const content_length{ uri_is_http_scheme(url)
-                                 ? query_content_length(request.get())
-                                 : std::nullopt };
+  auto const content_length{ uri_is_http_scheme(url) ? query_content_length(request.get())
+                                                     : std::nullopt };
 
-  read_response_to_file(request.get(), output, resolved_destination, progress,
+  read_response_to_file(request.get(),
+                        output,
+                        resolved_destination,
+                        progress,
                         content_length);
 
   output.flush();

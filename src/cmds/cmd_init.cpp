@@ -1,10 +1,10 @@
 #include "cmd_init.h"
 
 #include "bootstrap.h"
+#include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "luarc.h"
 #include "platform.h"
-#include "cache.h"
 #include "tui.h"
 #include "util.h"
 

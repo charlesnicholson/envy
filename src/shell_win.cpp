@@ -207,7 +207,8 @@ bool is_powershell_line_empty_or_comment(std::wstring_view line) {
 }
 
 // Build script contents for PowerShell with optional fail-fast behavior.
-// When check=true, wraps each line with $LASTEXITCODE check to exit immediately on failure.
+// When check=true, wraps each line with $LASTEXITCODE check to exit immediately on
+// failure.
 std::wstring build_powershell_script_contents(std::string_view script, bool check) {
   std::wstring user_script{ utf8_to_wstring(script) };
   auto lines{ split_script_lines(user_script) };
@@ -293,11 +294,12 @@ std::string build_cmd_script_contents(std::string_view script, bool check) {
     bool const is_echo_off{ trimmed.size() >= 9 && (trimmed.substr(0, 9) == "@echo off" ||
                                                     trimmed.substr(0, 9) == "@ECHO OFF" ||
                                                     trimmed.substr(0, 9) == "@Echo Off") };
-    bool const is_exit{ trimmed.size() >= 4 &&
-                        (trimmed.substr(0, 4) == "exit" || trimmed.substr(0, 4) == "EXIT" ||
-                         trimmed.substr(0, 4) == "Exit") &&
-                        (trimmed.size() == 4 || trimmed[4] == ' ' || trimmed[4] == '\t' ||
-                         trimmed[4] == '/') };
+    bool const is_exit{
+      trimmed.size() >= 4 &&
+      (trimmed.substr(0, 4) == "exit" || trimmed.substr(0, 4) == "EXIT" ||
+       trimmed.substr(0, 4) == "Exit") &&
+      (trimmed.size() == 4 || trimmed[4] == ' ' || trimmed[4] == '\t' || trimmed[4] == '/')
+    };
 
     if (is_empty || is_label || is_rem || is_comment || is_echo_off || is_exit) {
       result.append(line);
@@ -380,7 +382,8 @@ std::filesystem::path create_temp_script(std::string_view script,
           [&](shell_choice const &shell_cfg) {
             if (shell_cfg == shell_choice::powershell) {
               // UTF-16 BOM + UTF-16 LE content
-              std::wstring const content{ build_powershell_script_contents(script, inv.check) };
+              std::wstring const content{ build_powershell_script_contents(script,
+                                                                           inv.check) };
               wchar_t const bom{ 0xFEFF };
               if (!::WriteFile(file_guard.get(), &bom, sizeof(bom), &written, nullptr) ||
                   written != sizeof(bom)) {
@@ -545,7 +548,10 @@ void stream_pipe_lines(HANDLE pipe,
 
     size_t newline{ 0 };
     while ((newline = pending.find('\n', offset)) != std::string::npos) {
-      dispatch_line({ pending.data() + offset, newline - offset }, stream, cfg, callback_mutex);
+      dispatch_line({ pending.data() + offset, newline - offset },
+                    stream,
+                    cfg,
+                    callback_mutex);
       offset = newline + 1;
     }
 
@@ -557,7 +563,10 @@ void stream_pipe_lines(HANDLE pipe,
   }
 
   if (offset < pending.size()) {
-    dispatch_line({ pending.data() + offset, pending.size() - offset }, stream, cfg, callback_mutex);
+    dispatch_line({ pending.data() + offset, pending.size() - offset },
+                  stream,
+                  cfg,
+                  callback_mutex);
   }
 }
 
@@ -834,13 +843,19 @@ shell_result shell_run(std::string_view script, shell_run_cfg const &cfg) {
   try {
     std::thread stdout_reader{ [&]() {
       try {
-        stream_pipe_lines(stdout_read_end.get(), shell_stream::std_out, cfg, callback_mutex);
+        stream_pipe_lines(stdout_read_end.get(),
+                          shell_stream::std_out,
+                          cfg,
+                          callback_mutex);
       } catch (...) { stdout_exception = std::current_exception(); }
     } };
 
     std::thread stderr_reader{ [&]() {
       try {
-        stream_pipe_lines(stderr_read_end.get(), shell_stream::std_err, cfg, callback_mutex);
+        stream_pipe_lines(stderr_read_end.get(),
+                          shell_stream::std_err,
+                          cfg,
+                          callback_mutex);
       } catch (...) { stderr_exception = std::current_exception(); }
     } };
 

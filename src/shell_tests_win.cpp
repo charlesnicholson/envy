@@ -121,9 +121,9 @@ TEST_CASE("shell_run powershell exits on first error (fail-fast)") {
                            .env = envy::shell_getenv(),
                            .shell = envy::shell_choice::powershell };
   // cmd.exe /c "exit 1" returns exit code 1, subsequent command should NOT run
-  auto const result{
-    envy::shell_run("Write-Output 'before'\ncmd.exe /c \"exit 1\"\nWrite-Output 'after'", inv)
-  };
+  auto const result{ envy::shell_run(
+      "Write-Output 'before'\ncmd.exe /c \"exit 1\"\nWrite-Output 'after'",
+      inv) };
   CHECK(result.exit_code == 1);
   REQUIRE(lines.size() >= 1);
   CHECK(lines[0] == "before");
@@ -139,10 +139,9 @@ TEST_CASE("shell_run powershell fails on nonexistent command") {
                            .env = envy::shell_getenv(),
                            .shell = envy::shell_choice::powershell };
   // Nonexistent command should fail
-  auto const result{
-    envy::shell_run(
-        "Write-Output 'before'\nnonexistent_command_xyz_12345\nWrite-Output 'after'", inv)
-  };
+  auto const result{ envy::shell_run(
+      "Write-Output 'before'\nnonexistent_command_xyz_12345\nWrite-Output 'after'",
+      inv) };
   CHECK(result.exit_code != 0);
   // "after" should NOT appear because fail-fast should stop execution
   for (auto const &line : lines) { CHECK(line != "after"); }

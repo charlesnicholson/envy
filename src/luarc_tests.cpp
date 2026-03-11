@@ -228,9 +228,7 @@ TEST_CASE("rewrite_luarc_types_path") {
   }
 
   SUBCASE("trailing slash on envy path still matches") {
-    std::string const input{
-      R"({"workspace.library": ["/foo/envy/1.0.0/"]})"
-    };
+    std::string const input{ R"({"workspace.library": ["/foo/envy/1.0.0/"]})" };
     auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     REQUIRE(result.has_value());
     auto lib{ parse_library(*result) };
@@ -248,9 +246,7 @@ TEST_CASE("rewrite_luarc_types_path") {
   }
 
   SUBCASE("build metadata semver is matched") {
-    std::string const input{
-      R"({"workspace.library": ["/cache/envy/1.0.0+build.123"]})"
-    };
+    std::string const input{ R"({"workspace.library": ["/cache/envy/1.0.0+build.123"]})" };
     auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     REQUIRE(result.has_value());
     auto lib{ parse_library(*result) };
@@ -259,9 +255,7 @@ TEST_CASE("rewrite_luarc_types_path") {
   }
 
   SUBCASE("multiple /envy/ segments matches on last") {
-    std::string const input{
-      R"({"workspace.library": ["/envy/stuff/envy/2.0.0"]})"
-    };
+    std::string const input{ R"({"workspace.library": ["/envy/stuff/envy/2.0.0"]})" };
     auto result{ envy::rewrite_luarc_types_path(input, kCanonical) };
     REQUIRE(result.has_value());
     auto lib{ parse_library(*result) };

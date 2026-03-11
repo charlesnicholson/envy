@@ -37,11 +37,10 @@ size_t curl_write_file(char *ptr, size_t size, size_t nmemb, void *userdata) {
 
 }  // namespace
 
-std::filesystem::path fetch_http_download(
-    std::string_view url,
-    std::filesystem::path const &destination,
-    fetch_progress_cb_t const &progress,
-    std::optional<std::string> const &post_data) {
+std::filesystem::path fetch_http_download(std::string_view url,
+                                          std::filesystem::path const &destination,
+                                          fetch_progress_cb_t const &progress,
+                                          std::optional<std::string> const &post_data) {
   ensure_curl_initialized();
 
   std::string const url_copy{ url };
@@ -61,17 +60,15 @@ std::filesystem::path fetch_http_download(
   if (!parent.empty()) {
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-      throw std::runtime_error(
-          "fetch_http_download: failed to create parent directory: " +
-          parent.string() + ": " + ec.message());
+      throw std::runtime_error("fetch_http_download: failed to create parent directory: " +
+                               parent.string() + ": " + ec.message());
     }
   }
 
   std::ofstream output{ resolved_destination, std::ios::binary | std::ios::trunc };
   if (!output.is_open()) {
-    throw std::runtime_error(
-        "fetch_http_download: failed to open destination: " +
-        resolved_destination.string());
+    throw std::runtime_error("fetch_http_download: failed to open destination: " +
+                             resolved_destination.string());
   }
 
   std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> handle{ curl_easy_init(),
