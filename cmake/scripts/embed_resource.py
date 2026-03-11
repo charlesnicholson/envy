@@ -57,6 +57,11 @@ def main() -> int:
         help="Variable name and file path pairs",
     )
     parser.add_argument(
+        "--normalize-eol",
+        action="store_true",
+        help="Normalize CR/CRLF line endings to LF in all resources",
+    )
+    parser.add_argument(
         "-D",
         dest="defines",
         action="append",
@@ -106,7 +111,7 @@ def main() -> int:
             return 1
 
         data = filepath.read_bytes()
-        if b"\0" not in data:
+        if args.normalize_eol:
             data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
         for pattern, replacement in substitutions.items():
             data = data.replace(pattern, replacement)

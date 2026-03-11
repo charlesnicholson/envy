@@ -4,14 +4,16 @@
 #     OUTPUT <header_name>
 #     RESOURCES <var1>=<file1> <var2>=<file2> ...
 #     [DEFINES <KEY1>=<VALUE1> <KEY2>=<VALUE2> ...]
+#     [NORMALIZE_EOL]
 # )
 #
 # Creates a custom target that generates ${CMAKE_CURRENT_BINARY_DIR}/generated/<header_name>
 # containing all resources as constexpr byte arrays. Re-generates when sources change.
 # DEFINES replaces @@KEY@@ with VALUE in resource content at embed time.
+# NORMALIZE_EOL converts CR/CRLF to LF in all resources (use for text resources only).
 
 function(embed_resources CUSTOM_TARGET)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "OUTPUT" "RESOURCES;DEFINES")
+    cmake_parse_arguments(PARSE_ARGV 1 ARG "NORMALIZE_EOL" "OUTPUT" "RESOURCES;DEFINES")
 
     if(NOT ARG_OUTPUT)
         message(FATAL_ERROR "embed_resources: OUTPUT required")
@@ -26,6 +28,10 @@ function(embed_resources CUSTOM_TARGET)
 
     # Build command arguments
     set(CMD_ARGS "${OUTPUT_FILE}")
+
+    if(ARG_NORMALIZE_EOL)
+        list(APPEND CMD_ARGS "--normalize-eol")
+    endif()
 
     # Add -D flags for defines
     foreach(DEF IN LISTS ARG_DEFINES)

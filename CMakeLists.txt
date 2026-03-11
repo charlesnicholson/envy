@@ -155,6 +155,7 @@ string(REGEX MATCH "[0-9]+" ENVY_SHELL_HOOK_VERSION "${_hook_ver_line}")
 # Generate embedded resource header (all platform variants unconditionally)
 embed_resources(envy_embedded_resources
     OUTPUT embedded_init_resources.h
+    NORMALIZE_EOL
     DEFINES
         ENVY_HOOK_VERSION=${ENVY_SHELL_HOOK_VERSION}
     RESOURCES

@@ -11,9 +11,10 @@ SCRIPT = Path(__file__).parent / "embed_resource.py"
 
 
 class TestCRLFNormalization(unittest.TestCase):
-    """Embedded resources must never contain \\r bytes."""
+    """--normalize-eol strips \\r from text resources; omitting it preserves bytes."""
 
-    def _run_embed(self, resource_bytes: bytes, defines=None) -> str:
+    def _run_embed(self, resource_bytes: bytes, defines=None,
+                   normalize_eol: bool = True) -> str:
         """Write resource_bytes to a temp file, run embed_resource, return header text."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -22,6 +23,8 @@ class TestCRLFNormalization(unittest.TestCase):
             out_file = tmp / "out.h"
 
             cmd = [sys.executable, str(SCRIPT), str(out_file)]
+            if normalize_eol:
+                cmd.append("--normalize-eol")
             for d in (defines or []):
                 cmd.extend(["-D", d])
             cmd.append(f"test_resource={res_file}")
@@ -76,10 +79,17 @@ class TestCRLFNormalization(unittest.TestCase):
         self.assertNotIn(b"\r", embedded)
         self.assertEqual(embedded, b"VALUE\nrest\n")
 
-    def test_binary_data_preserved(self):
-        """Binary files (containing NUL) skip EOL normalization — 0x0d bytes survive."""
+    def test_binary_data_preserved_without_flag(self):
+        """Without --normalize-eol, 0x0d bytes survive unchanged."""
         data = b"\x00\x0d\x01\x02\r\n\xff\x0d\xfe\n"
-        header = self._run_embed(data)
+        header = self._run_embed(data, normalize_eol=False)
+        embedded = self._extract_bytes(header)
+        self.assertEqual(embedded, data)
+
+    def test_no_normalization_without_flag(self):
+        """CRLF text is preserved when --normalize-eol is not passed."""
+        data = b"line1\r\nline2\r\n"
+        header = self._run_embed(data, normalize_eol=False)
         embedded = self._extract_bytes(header)
         self.assertEqual(embedded, data)
 
