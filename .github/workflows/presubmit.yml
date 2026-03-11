@@ -13,12 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   format-code:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -35,17 +41,25 @@ jobs:
         run: find src -name '*.cpp' -o -name '*.h' | xargs clang-format-20 -i
 
       - name: Commit and push if changed
+        id: push
         run: |
-          git diff --quiet && exit 0
+          if git diff --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/
           git commit -m "style: auto-format with clang-format"
           git push
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
   ci:
     needs: format-code
-    if: always() && (needs.format-code.result == 'success' || needs.format-code.result == 'skipped')
+    if: >-
+      always() &&
+      (needs.format-code.result == 'skipped' ||
+       (needs.format-code.result == 'success' && needs.format-code.outputs.pushed != 'true'))
     uses: ./.github/workflows/ci.yml
 
   all-checks-pass:
