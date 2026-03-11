@@ -25,11 +25,14 @@ jobs:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install clang-format
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang-format
+      - name: Install clang-format-19
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/llvm.asc >/dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | sudo tee /etc/apt/sources.list.d/llvm-19.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq clang-format-19
 
       - name: Run clang-format on src/
-        run: find src -name '*.cpp' -o -name '*.h' | xargs clang-format -i
+        run: find src -name '*.cpp' -o -name '*.h' | xargs clang-format-19 -i
 
       - name: Commit and push if changed
         run: |
