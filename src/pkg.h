@@ -22,6 +22,7 @@ struct pkg_execution_ctx;
 struct product_entry {
   std::string value;
   bool script = true;
+  std::vector<std::string> platforms;  // empty = inherit from package
 };
 
 struct pkg {

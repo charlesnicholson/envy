@@ -95,6 +95,10 @@ bool util_platform_matches(std::vector<std::string> const &constraints,
 std::vector<std::string> util_platform_intersect(std::vector<std::string> const &a,
                                                  std::vector<std::string> const &b);
 
+// Sentinel platform constraint that matches nothing; used when disjoint
+// non-empty platform lists intersect to an empty set (empty = "all").
+inline constexpr char const *kPlatformNone = "__none__";
+
 // Does constraint list produce scripts for this platform_id?
 // POSIX covers "darwin" and "linux"; WINDOWS covers "windows".
 bool util_platform_matches_platform_id(std::vector<std::string> const &constraints,

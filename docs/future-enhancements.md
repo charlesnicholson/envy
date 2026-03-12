@@ -344,6 +344,19 @@ specs/vendor.gcc@v2-abc123def.../
 
 **Implementation note:** Would require computing content hash during fetch and incorporating into cache path. For git sources, could use commit SHA. For local sources, would need to hash file content.
 
+## Hierarchical Platform Intersection
+
+`util_platform_intersect` uses strict string equality, so `["linux"]` ∩ `["linux-x86_64"]` yields empty—treated as "matches nothing" via `kPlatformNone`. Should subsume OS-only constraints against OS-arch entries (mirroring `util_platform_matches` semantics): `"linux"` ∩ `"linux-x86_64"` → `"linux-x86_64"`.
+
+```cpp
+// Current: strict equality (broken for mixed granularity)
+if (v == w) { result.push_back(v); }
+
+// Fix: if either is a prefix of "os-arch", keep the more specific
+if (v == w || w.starts_with(v + "-")) { result.push_back(w); }
+else if (v.starts_with(w + "-")) { result.push_back(v); }
+```
+
 ## Cross-Platform Spec Variants
 
 Higher-level abstraction for platform-specific variants within a single spec identity. Current Lua approach handles this programmatically.

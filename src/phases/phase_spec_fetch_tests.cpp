@@ -594,6 +594,192 @@ TEST_CASE("PRODUCTS table syntax") {
     CHECK(p->products.at("lib").value == "/usr/lib/libfoo.so");
     CHECK(p->products.at("lib").script == false);
   }
+
+  SUBCASE("table value with platforms field") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_platforms" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
+           "platforms = {\"darwin\", \"linux\"} } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.count("tool") == 1);
+    CHECK(p->products.at("tool").value == "/usr/bin/tool");
+    CHECK(p->products.at("tool").script == true);
+    REQUIRE(p->products.at("tool").platforms.size() == 2);
+    CHECK(p->products.at("tool").platforms[0] == "darwin");
+    CHECK(p->products.at("tool").platforms[1] == "linux");
+  }
+
+  SUBCASE("table value without platforms defaults to empty") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_no_platforms" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.at("tool").platforms.empty());
+  }
+
+  SUBCASE("string value has empty platforms") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_string_platforms" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.at("tool").platforms.empty());
+  }
+
+  SUBCASE("invalid platforms type throws") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_bad_plat_type" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
+           "platforms = \"darwin\" } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                      doctest::Contains("platforms must be a table"));
+  }
+
+  SUBCASE("invalid platforms entry type throws") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_bad_plat_entry" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
+           "platforms = {123} } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                      doctest::Contains("platforms entries must be strings"));
+  }
+
+  SUBCASE("empty platforms entry throws") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_empty_plat_entry" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
+           "platforms = {\"\"} } }\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                      doctest::Contains("platforms entry cannot be empty"));
+  }
+
+  SUBCASE("mixed products with and without platforms") {
+    cache c;
+    engine eng{ c };
+
+    std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                    "envy_test_products_mixed_plats" };
+    std::filesystem::create_directories(temp_dir);
+    temp_dir_guard guard{ temp_dir };
+    std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "CHECK = function() return true end\n";
+    ofs << "INSTALL = function() end\n";
+    ofs << "PRODUCTS = {\n";
+    ofs << "  tool = \"/usr/bin/tool\",\n";
+    ofs << "  completer = { value = \"/usr/bin/completer\", "
+           "platforms = {\"darwin\", \"linux\"} },\n";
+    ofs << "  lib = { value = \"/usr/lib/libfoo.so\", script = false },\n";
+    ofs << "}\n";
+    ofs.close();
+
+    auto *cfg{ make_local_cfg("test.products@v1", spec_file) };
+    pkg *p{ eng.ensure_pkg(cfg) };
+
+    CHECK_NOTHROW(run_spec_fetch_phase(p, eng));
+    CHECK(p->products.at("tool").platforms.empty());
+    REQUIRE(p->products.at("completer").platforms.size() == 2);
+    CHECK(p->products.at("completer").platforms[0] == "darwin");
+    CHECK(p->products.at("completer").platforms[1] == "linux");
+    CHECK(p->products.at("lib").platforms.empty());
+  }
 }
 
 }  // namespace envy
