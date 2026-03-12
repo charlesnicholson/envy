@@ -1,7 +1,7 @@
 #include "cmd_shell.h"
 
-#include "cmd_init.h"
 #include "cache.h"
+#include "cmd_init.h"
 #include "tui.h"
 
 #include "CLI11.hpp"

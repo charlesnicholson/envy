@@ -1,9 +1,9 @@
 #include "cmd_engine_functional_test.h"
 
+#include "cache.h"
 #include "engine.h"
 #include "manifest.h"
 #include "pkg_cfg.h"
-#include "cache.h"
 #include "test_support.h"
 #include "tui.h"
 

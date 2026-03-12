@@ -9,7 +9,7 @@ namespace envy {
 namespace {
 
 std::string_view trim(std::string_view s) {
-  auto const start{s.find_first_not_of(" \t\n\r")};
+  auto const start{ s.find_first_not_of(" \t\n\r") };
   if (start == std::string_view::npos) { return {}; }
   return s.substr(start, s.find_last_not_of(" \t\n\r") - start + 1);
 }

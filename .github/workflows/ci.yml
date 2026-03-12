@@ -56,11 +56,6 @@ jobs:
             os: ubuntu-24.04-arm
             shard: func-tsan
             build_args: --sanitizer=tsan
-          - name: linux-x64-valgrind
-            os: ubuntu-latest
-            shard: func-valgrind
-            test_jobs: 1
-            test_timeout: 300
           - name: linux-arm64-valgrind
             os: ubuntu-24.04-arm
             shard: func-valgrind

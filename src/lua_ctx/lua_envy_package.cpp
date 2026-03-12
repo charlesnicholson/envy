@@ -50,11 +50,10 @@ void lua_envy_package_install(sol::table &envy_table) {
     }
 
     if (current_phase < first_needed_by) {
-      std::string const msg{
-        "envy.package: dependency '" + identity + "' needed_by '" +
-        std::string(pkg_phase_name(first_needed_by)) + "' but accessed during '" +
-        std::string(pkg_phase_name(current_phase)) + "'"
-      };
+      std::string const msg{ "envy.package: dependency '" + identity + "' needed_by '" +
+                             std::string(pkg_phase_name(first_needed_by)) +
+                             "' but accessed during '" +
+                             std::string(pkg_phase_name(current_phase)) + "'" };
       emit_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
@@ -65,7 +64,8 @@ void lua_envy_package_install(sol::table &envy_table) {
     // Look up dependency in pkg's dependency map
     auto it{ consumer->dependencies.find(canonical_id) };
     if (it == consumer->dependencies.end()) {
-      std::string const msg{ "envy.package: dependency not found in map: " + canonical_id };
+      std::string const msg{ "envy.package: dependency not found in map: " +
+                             canonical_id };
       emit_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }

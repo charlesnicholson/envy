@@ -95,7 +95,8 @@ void lua_envy_extract_install(sol::table &envy_table) {
     // Get identity and section from phase context if available
     phase_context const *ctx{ lua_phase_context_get(L) };
     std::string identity{ ctx && ctx->p ? ctx->p->cfg->identity : "" };
-    tui::section_handle section{ ctx && ctx->p ? ctx->p->tui_section : tui::kInvalidSection };
+    tui::section_handle section{ ctx && ctx->p ? ctx->p->tui_section
+                                               : tui::kInvalidSection };
 
     extract_all_archives(src_dir, dest_dir, strip_components, identity, section);
   };
