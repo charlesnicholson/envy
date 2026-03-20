@@ -13,6 +13,7 @@ _ENVY_PROMPT_PREFIX="%{🦝%2G%} "
 
 # p10k custom segment — called by p10k if registered; harmless when p10k absent.
 prompt_envy() {
+  emulate -L zsh
   [[ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]] || return
   p10k segment -f 208 -t '🦝'
 }
