@@ -18,6 +18,7 @@ prompt_envy() {
 }
 
 _envy_find_manifest() {
+  emulate -L zsh
   REPLY=""
   local d="$PWD"
   while [ "$d" != / ]; do
@@ -44,6 +45,7 @@ _envy_find_manifest() {
 }
 
 _envy_parse_bin() {
+  emulate -L zsh
   local manifest="$1/envy.lua"
   # Pure zsh read+regex instead of head|sed — avoids fork/exec; returns via REPLY
   local line i=0
@@ -57,12 +59,14 @@ _envy_parse_bin() {
 }
 
 _envy_remove_from_path() {
+  emulate -L zsh
   # Filter zsh path array in-place — zsh auto-syncs it to $PATH.
   # Avoids the old loop+echo pattern which required a $() subshell to capture.
   path=("${(@)path:#${(b)1}}")
 }
 
 _envy_set_prompt() {
+  emulate -L zsh
   if [ "${ENVY_SHELL_NO_ICON:-}" = "1" ]; then return; fi
   if [ "${_ENVY_UTF8:-}" != "1" ]; then return; fi
   if [ "${_ENVY_PROMPT_ACTIVE:-}" = "1" ]; then return; fi
@@ -73,6 +77,7 @@ _envy_set_prompt() {
 }
 
 _envy_unset_prompt() {
+  emulate -L zsh
   if [ "${_ENVY_PROMPT_ACTIVE:-}" != "1" ]; then return; fi
   if ! (( ${+functions[p10k]} )); then
     PROMPT="${PROMPT#"${_ENVY_PROMPT_PREFIX}"}"
@@ -82,6 +87,7 @@ _envy_unset_prompt() {
 
 # Runs before each prompt: re-applies raccoon if a theme overwrote PROMPT
 _envy_precmd() {
+  emulate -L zsh
   if [ "${ENVY_SHELL_NO_ICON:-}" = "1" ] || [ "${_ENVY_UTF8:-}" != "1" ]; then
     _envy_unset_prompt
     return
@@ -99,6 +105,7 @@ _envy_precmd() {
 }
 
 _envy_hook() {
+  emulate -L zsh
   if [ "${ENVY_SHELL_HOOK_DISABLE:-}" = "1" ]; then return; fi
   # Guard against chpwd recursion: $(cd ...) in subshells inherits this local
   if [ -n "${_ENVY_HOOK_ACTIVE:-}" ]; then return; fi
