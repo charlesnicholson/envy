@@ -120,12 +120,14 @@ void cmd_merge_depot::execute() {
     } else {
       // Fetch remote manifest to unique temp file, read into memory, clean up, parse
       std::string tmp_pattern{
-          (std::filesystem::temp_directory_path() / "envy-merge-depot-XXXXXX").string() };
+        (std::filesystem::temp_directory_path() / "envy-merge-depot-XXXXXX").string()
+      };
       std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
       tmp_buf.push_back('\0');
       int const fd{ ::mkstemp(tmp_buf.data()) };
       if (fd == -1) {
-        throw std::system_error(errno, std::generic_category(),
+        throw std::system_error(errno,
+                                std::generic_category(),
                                 "merge-depot: mkstemp failed");
       }
       ::close(fd);
