@@ -109,8 +109,8 @@ void cmd_merge_depot::execute() {
         info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
       std::filesystem::path p{ *cfg_.existing_path };
       if (!std::filesystem::exists(p)) {
-        throw std::runtime_error(
-            "merge-depot: --existing file not found: " + *cfg_.existing_path);
+        throw std::runtime_error("merge-depot: --existing file not found: " +
+                                 *cfg_.existing_path);
       }
       existing_entries = parse_depot_manifest(p);
     } else {
