@@ -296,7 +296,8 @@ class TestMergeDepot(unittest.TestCase):
 
         handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
         try:
             port = server.server_address[1]
             url = f"http://127.0.0.1:{port}/existing.txt"
@@ -314,6 +315,7 @@ class TestMergeDepot(unittest.TestCase):
             self.assertIn("new-pkg.tar.zst", paths)
         finally:
             server.shutdown()
+            server_thread.join(timeout=5)
             server.server_close()
 
     def test_existing_http_hash_change_warns(self):
@@ -326,7 +328,8 @@ class TestMergeDepot(unittest.TestCase):
 
         handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
         try:
             port = server.server_address[1]
             url = f"http://127.0.0.1:{port}/existing.txt"
@@ -342,6 +345,7 @@ class TestMergeDepot(unittest.TestCase):
             self.assertIn("hash changed", result.stderr)
         finally:
             server.shutdown()
+            server_thread.join(timeout=5)
             server.server_close()
 
     def test_existing_http_strict_errors(self):
@@ -354,7 +358,8 @@ class TestMergeDepot(unittest.TestCase):
 
         handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
         try:
             port = server.server_address[1]
             url = f"http://127.0.0.1:{port}/existing.txt"
@@ -367,6 +372,7 @@ class TestMergeDepot(unittest.TestCase):
             self.assertIn("hash changed", result.stderr)
         finally:
             server.shutdown()
+            server_thread.join(timeout=5)
             server.server_close()
 
     def test_existing_http_unreachable_errors(self):

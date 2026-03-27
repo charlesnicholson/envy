@@ -7,6 +7,7 @@
 #include "CLI11.hpp"
 
 #include <cctype>
+#include <cerrno>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -16,8 +17,11 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
+
+#include <unistd.h>
 
 namespace envy {
 namespace {
@@ -107,32 +111,45 @@ void cmd_merge_depot::execute() {
     if (auto const info{ uri_classify(*cfg_.existing_path) };
         info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
         info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-      std::filesystem::path p{ *cfg_.existing_path };
+      std::filesystem::path p{ info.canonical };
       if (!std::filesystem::exists(p)) {
         throw std::runtime_error("merge-depot: --existing file not found: " +
                                  *cfg_.existing_path);
       }
       existing_entries = parse_depot_manifest(p);
     } else {
-      // Fetch remote manifest to temp, read into memory, delete temp, parse from memory
-      auto tmp_dir{ std::filesystem::temp_directory_path() / "envy-merge-depot-fetch" };
-      std::filesystem::create_directories(tmp_dir);
-      auto tmp_file{ tmp_dir / "existing.txt" };
+      // Fetch remote manifest to unique temp file, read into memory, clean up, parse
+      std::string tmp_pattern{
+          (std::filesystem::temp_directory_path() / "envy-merge-depot-XXXXXX").string() };
+      std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
+      tmp_buf.push_back('\0');
+      int const fd{ ::mkstemp(tmp_buf.data()) };
+      if (fd == -1) {
+        throw std::system_error(errno, std::generic_category(),
+                                "merge-depot: mkstemp failed");
+      }
+      ::close(fd);
+      std::filesystem::path tmp_file{ tmp_buf.data() };
 
       auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_file) };
       auto results{ fetch({ req }) };
       if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        std::filesystem::remove_all(tmp_dir);
+        std::filesystem::remove(tmp_file);
         throw std::runtime_error("merge-depot: failed to fetch --existing: " + *err);
       }
 
       std::string content;
       {
         std::ifstream in{ tmp_file };
+        if (!in) {
+          std::filesystem::remove(tmp_file);
+          throw std::runtime_error(
+              "merge-depot: failed to read fetched --existing manifest");
+        }
         content.assign(std::istreambuf_iterator<char>{ in },
                        std::istreambuf_iterator<char>{});
       }
-      std::filesystem::remove_all(tmp_dir);
+      std::filesystem::remove(tmp_file);
 
       std::istringstream stream{ content };
       existing_entries = parse_manifest_lines(stream);
