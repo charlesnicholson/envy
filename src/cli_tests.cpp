@@ -8,6 +8,7 @@
 #include "cmds/cmd_init.h"
 #include "cmds/cmd_install.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_merge_depot.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_run.h"
@@ -1474,5 +1475,206 @@ TEST_CASE("cli_parse: cmd_import") {
 
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_merge_depot") {
+  SUBCASE("single depot manifest") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-a.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+           "pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy", "merge-depot", temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->depot_manifests.size() == 1);
+    CHECK(cfg->depot_manifests[0] == temp);
+    CHECK_FALSE(cfg->existing_path.has_value());
+    CHECK_FALSE(cfg->strict);
+  }
+
+  SUBCASE("multiple depot manifests") {
+    auto temp_a{ std::filesystem::temp_directory_path() / "envy-merge-depot-a.txt" };
+    auto temp_b{ std::filesystem::temp_directory_path() / "envy-merge-depot-b.txt" };
+    {
+      std::ofstream f{ temp_a };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+    {
+      std::ofstream f{ temp_b };
+      f << "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  b.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "merge-depot",
+                                   temp_a.string(),
+                                   temp_b.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_a);
+    std::filesystem::remove(temp_b);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->depot_manifests.size() == 2);
+  }
+
+  SUBCASE("no arguments rejected") {
+    std::vector<std::string> args{ "envy", "merge-depot" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("nonexistent file rejected") {
+    std::vector<std::string> args{ "envy", "merge-depot", "/nonexistent/file.txt" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("with --existing") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-new.txt" };
+    auto existing{ std::filesystem::temp_directory_path() /
+                   "envy-merge-depot-existing.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+    {
+      std::ofstream f{ existing };
+      f << "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  b.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "merge-depot",
+                                   temp.string(),
+                                   "--existing",
+                                   existing.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+    std::filesystem::remove(existing);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->existing_path.has_value());
+    CHECK(*cfg->existing_path == existing);
+  }
+
+  SUBCASE("nonexistent --existing rejected") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-new2.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "merge-depot",
+                                   temp.string(),
+                                   "--existing",
+                                   "/nonexistent/file.txt" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("--strict flag") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-strict.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy", "merge-depot", "--strict", temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+  }
+
+  SUBCASE("strict defaults false") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-def.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy", "merge-depot", temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->strict);
+  }
+
+  SUBCASE("--strict and --existing combined") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-combo.txt" };
+    auto existing{ std::filesystem::temp_directory_path() /
+                   "envy-merge-depot-combo-ex.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+    {
+      std::ofstream f{ existing };
+      f << "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  b.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",       "merge-depot", "--strict",
+                                   "--existing", existing.string(),
+                                   temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+    std::filesystem::remove(existing);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+    REQUIRE(cfg->existing_path.has_value());
+    CHECK(*cfg->existing_path == existing);
+    CHECK(cfg->depot_manifests.size() == 1);
   }
 }

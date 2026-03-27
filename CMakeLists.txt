@@ -233,6 +233,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_init.cpp
     src/cmds/cmd_install.cpp
     src/cmds/cmd_lua.cpp
+    src/cmds/cmd_merge_depot.cpp
     src/cmds/cmd_product.cpp
     src/cmds/cmd_run.cpp
     src/cmds/cmd_sync.cpp
@@ -458,6 +459,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
+    src/cmds/cmd_merge_depot_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp

@@ -1,0 +1,1 @@
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  https://cdn.example.com/depot/pkg@v1-darwin-arm64.tar.zst

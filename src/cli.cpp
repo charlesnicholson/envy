@@ -66,7 +66,8 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_extract,
                            cmd_fetch,
                            cmd_hash,
-                           cmd_lua
+                           cmd_lua,
+                           cmd_merge_depot
 #ifdef ENVY_FUNCTIONAL_TESTER
                            ,
                            cmd_engine_functional_test

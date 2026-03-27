@@ -9,6 +9,7 @@
 #include "cmds/cmd_init.h"
 #include "cmds/cmd_install.h"
 #include "cmds/cmd_lua.h"
+#include "cmds/cmd_merge_depot.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_run.h"
@@ -39,6 +40,7 @@ struct cli_args {
                                  cmd_init::cfg,
                                  cmd_install::cfg,
                                  cmd_lua::cfg,
+                                 cmd_merge_depot::cfg,
                                  cmd_product::cfg,
                                  cmd_run::cfg,
                                  cmd_shell::cfg,
