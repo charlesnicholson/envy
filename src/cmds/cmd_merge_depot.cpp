@@ -17,8 +17,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <system_error>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -228,14 +228,15 @@ void cmd_merge_depot::execute() {
       }
       retain_set = parse_retain_lines(in);
     } else {
-      std::string tmp_pattern{
-          (std::filesystem::temp_directory_path() / "envy-merge-depot-retain-XXXXXX")
-              .string() };
+      std::string tmp_pattern{ (std::filesystem::temp_directory_path() /
+                                "envy-merge-depot-retain-XXXXXX")
+                                   .string() };
       std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
       tmp_buf.push_back('\0');
       int const fd{ ::mkstemp(tmp_buf.data()) };
       if (fd == -1) {
-        throw std::system_error(errno, std::generic_category(),
+        throw std::system_error(errno,
+                                std::generic_category(),
                                 "merge-depot: mkstemp failed for --retain");
       }
       ::close(fd);
@@ -253,8 +254,7 @@ void cmd_merge_depot::execute() {
         std::ifstream in{ tmp_file };
         if (!in) {
           std::filesystem::remove(tmp_file);
-          throw std::runtime_error(
-              "merge-depot: failed to read fetched --retain list");
+          throw std::runtime_error("merge-depot: failed to read fetched --retain list");
         }
         content.assign(std::istreambuf_iterator<char>{ in },
                        std::istreambuf_iterator<char>{});
