@@ -24,6 +24,7 @@ class cmd_merge_depot : public cmd {
   struct cfg : cmd_cfg<cmd_merge_depot> {
     std::vector<std::filesystem::path> depot_manifests;
     std::optional<std::string> existing_path;
+    std::optional<std::string> retain_path;
     bool strict{ false };
   };
 

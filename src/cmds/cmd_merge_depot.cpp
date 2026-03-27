@@ -17,6 +17,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -64,6 +65,17 @@ std::vector<depot_manifest_entry> parse_manifest_lines(std::istream &in) {
   return entries;
 }
 
+std::unordered_set<std::string> parse_retain_lines(std::istream &in) {
+  std::unordered_set<std::string> paths;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+    if (line.empty() || line[0] == '#') { continue; }
+    paths.insert(std::move(line));
+  }
+  return paths;
+}
+
 }  // namespace
 
 std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path const &file) {
@@ -85,6 +97,9 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
   sub->add_option("--existing",
                   cfg_ptr->existing_path,
                   "Existing merged depot manifest (local path or remote URL)");
+  sub->add_option("--retain",
+                  cfg_ptr->retain_path,
+                  "Retain list: prune entries whose path is absent");
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
@@ -194,7 +209,72 @@ void cmd_merge_depot::execute() {
     }
   }
 
-  // 3. Output sorted depot manifest
+  // 3. Apply --retain pruning
+  if (cfg_.retain_path) {
+    std::unordered_set<std::string> retain_set;
+
+    if (auto const info{ uri_classify(*cfg_.retain_path) };
+        info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
+        info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+      std::filesystem::path p{ info.canonical };
+      if (!std::filesystem::exists(p)) {
+        throw std::runtime_error("merge-depot: --retain file not found: " +
+                                 *cfg_.retain_path);
+      }
+      std::ifstream in{ p };
+      if (!in) {
+        throw std::runtime_error("merge-depot: cannot open --retain file: " +
+                                 *cfg_.retain_path);
+      }
+      retain_set = parse_retain_lines(in);
+    } else {
+      std::string tmp_pattern{
+          (std::filesystem::temp_directory_path() / "envy-merge-depot-retain-XXXXXX")
+              .string() };
+      std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
+      tmp_buf.push_back('\0');
+      int const fd{ ::mkstemp(tmp_buf.data()) };
+      if (fd == -1) {
+        throw std::system_error(errno, std::generic_category(),
+                                "merge-depot: mkstemp failed for --retain");
+      }
+      ::close(fd);
+      std::filesystem::path tmp_file{ tmp_buf.data() };
+
+      auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_file) };
+      auto results{ fetch({ req }) };
+      if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
+        std::filesystem::remove(tmp_file);
+        throw std::runtime_error("merge-depot: failed to fetch --retain: " + *err);
+      }
+
+      std::string content;
+      {
+        std::ifstream in{ tmp_file };
+        if (!in) {
+          std::filesystem::remove(tmp_file);
+          throw std::runtime_error(
+              "merge-depot: failed to read fetched --retain list");
+        }
+        content.assign(std::istreambuf_iterator<char>{ in },
+                       std::istreambuf_iterator<char>{});
+      }
+      std::filesystem::remove(tmp_file);
+
+      std::istringstream stream{ content };
+      retain_set = parse_retain_lines(stream);
+    }
+
+    for (auto it{ merged.begin() }; it != merged.end();) {
+      if (retain_set.count(it->first) == 0 && new_paths.count(it->first) == 0) {
+        it = merged.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // 4. Output sorted depot manifest
   for (auto const &[path, hash] : merged) {
     tui::print_stdout("%s  %s\n", hash.c_str(), path.c_str());
   }

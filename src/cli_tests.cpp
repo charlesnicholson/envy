@@ -1704,4 +1704,118 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
     CHECK(*cfg->existing_path == existing.string());
     CHECK(cfg->depot_manifests.size() == 1);
   }
+
+  SUBCASE("with --retain") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-retain-new.txt" };
+    auto retain{ std::filesystem::temp_directory_path() /
+                 "envy-merge-depot-retain-list.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+    {
+      std::ofstream f{ retain };
+      f << "a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",     "merge-depot",
+                                   "--retain", retain.string(), temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+    std::filesystem::remove(retain);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->retain_path.has_value());
+    CHECK(*cfg->retain_path == retain.string());
+  }
+
+  SUBCASE("remote URL --retain accepted") {
+    auto temp{ std::filesystem::temp_directory_path() /
+               "envy-merge-depot-retain-remote.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",     "merge-depot",
+                                   "--retain", "s3://bucket/retain.txt",
+                                   temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->retain_path.has_value());
+    CHECK(*cfg->retain_path == "s3://bucket/retain.txt");
+  }
+
+  SUBCASE("retain defaults empty") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-retain-def.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy", "merge-depot", temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->retain_path.has_value());
+  }
+
+  SUBCASE("--retain and --existing and --strict combined") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-all-new.txt" };
+    auto existing{ std::filesystem::temp_directory_path() /
+                   "envy-merge-depot-all-ex.txt" };
+    auto retain{ std::filesystem::temp_directory_path() /
+                 "envy-merge-depot-all-retain.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+    {
+      std::ofstream f{ existing };
+      f << "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  b.tar.zst\n";
+    }
+    {
+      std::ofstream f{ retain };
+      f << "a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",       "merge-depot",     "--strict",
+                                   "--existing", existing.string(), "--retain",
+                                   retain.string(), temp.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+    std::filesystem::remove(existing);
+    std::filesystem::remove(retain);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->strict);
+    REQUIRE(cfg->existing_path.has_value());
+    CHECK(*cfg->existing_path == existing.string());
+    REQUIRE(cfg->retain_path.has_value());
+    CHECK(*cfg->retain_path == retain.string());
+    CHECK(cfg->depot_manifests.size() == 1);
+  }
 }

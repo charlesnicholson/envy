@@ -385,3 +385,161 @@ class TestMergeDepot(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("failed to fetch", result.stderr)
+
+    # --- --retain flag ---
+
+    def _write_retain(self, name, paths):
+        """Write a retain list file (one path per line) and return its path."""
+        path = self.test_dir / name
+        path.write_text("\n".join(paths) + "\n", encoding="utf-8")
+        return path
+
+    def test_retain_prunes_stale_existing(self):
+        """--retain prunes existing entries not in retain list."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain", retain
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("old.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+        self.assertNotIn("stale.tar.zst", paths)
+
+    def test_retain_preserves_new_entries_not_in_retain(self):
+        """New manifest entries survive even if absent from retain list."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "brand-new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["something-else.tar.zst"])
+
+        result = self._run_merge(new, "--retain", retain)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1], "brand-new.tar.zst")
+
+    def test_retain_without_existing(self):
+        """--retain without --existing keeps all new entries."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "a.tar.zst"),
+            make_manifest_line(HASH_B, "b.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["a.tar.zst"])
+
+        result = self._run_merge(new, "--retain", retain)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 2)
+
+    def test_retain_empty_prunes_all_existing(self):
+        """Empty retain list prunes all existing-only entries."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "ancient.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", [])
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain", retain
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1], "new.tar.zst")
+
+    def test_retain_with_comments_and_blanks(self):
+        """Retain file comments and blank lines are skipped."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "kept.tar.zst"),
+            make_manifest_line(HASH_B, "pruned.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        retain_path = self.test_dir / "retain.txt"
+        retain_path.write_text(
+            "# comment\n\nkept.tar.zst\n# another\n\n", encoding="utf-8"
+        )
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain", retain_path
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("kept.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+
+    def test_retain_http_url(self):
+        """--retain fetches retain list from HTTP URL."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        (serve_dir / "retain.txt").write_text(
+            "old.tar.zst\n", encoding="utf-8"
+        )
+
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/retain.txt"
+
+            result = self._run_merge(
+                new, "--existing", existing, "--retain", url
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = self._parse_output(result.stdout)
+            paths = {e[1] for e in entries}
+            self.assertEqual(len(entries), 2)
+            self.assertIn("old.tar.zst", paths)
+            self.assertIn("new.tar.zst", paths)
+            self.assertNotIn("stale.tar.zst", paths)
+        finally:
+            server.shutdown()
+            server_thread.join(timeout=5)
+            server.server_close()
+
+    def test_retain_http_unreachable_errors(self):
+        """--retain with unreachable HTTP URL errors gracefully."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(
+            new, "--retain", "http://127.0.0.1:1/nonexistent.txt"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("failed to fetch", result.stderr)
+
+    def test_retain_nonexistent_local_file_errors(self):
+        """--retain with nonexistent local path errors at runtime."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(new, "--retain", "/nonexistent/retain.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not found", result.stderr)
