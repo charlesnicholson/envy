@@ -1581,10 +1581,10 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
     auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
     REQUIRE(cfg != nullptr);
     REQUIRE(cfg->existing_path.has_value());
-    CHECK(*cfg->existing_path == existing);
+    CHECK(*cfg->existing_path == existing.string());
   }
 
-  SUBCASE("nonexistent --existing rejected") {
+  SUBCASE("nonexistent --existing accepted at parse time") {
     auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-new2.txt" };
     {
       std::ofstream f{ temp };
@@ -1602,8 +1602,36 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
 
     std::filesystem::remove(temp);
 
-    CHECK_FALSE(parsed.cmd_cfg.has_value());
-    CHECK_FALSE(parsed.cli_output.empty());
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->existing_path.has_value());
+    CHECK(*cfg->existing_path == "/nonexistent/file.txt");
+  }
+
+  SUBCASE("remote URL --existing accepted") {
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-remote.txt" };
+    {
+      std::ofstream f{ temp };
+      f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
+    }
+
+    std::vector<std::string> args{ "envy",
+                                   "merge-depot",
+                                   temp.string(),
+                                   "--existing",
+                                   "s3://my-bucket/depot/existing.txt" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_merge_depot::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    REQUIRE(cfg->existing_path.has_value());
+    CHECK(*cfg->existing_path == "s3://my-bucket/depot/existing.txt");
   }
 
   SUBCASE("--strict flag") {
@@ -1673,7 +1701,7 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
     REQUIRE(cfg != nullptr);
     CHECK(cfg->strict);
     REQUIRE(cfg->existing_path.has_value());
-    CHECK(*cfg->existing_path == existing);
+    CHECK(*cfg->existing_path == existing.string());
     CHECK(cfg->depot_manifests.size() == 1);
   }
 }

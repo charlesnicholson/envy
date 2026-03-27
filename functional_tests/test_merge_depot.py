@@ -2,7 +2,10 @@
 
 import shutil
 import tempfile
+import threading
 import unittest
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import test_config
@@ -12,6 +15,14 @@ HASH_A = "a" * 64
 HASH_B = "b" * 64
 HASH_C = "c" * 64
 HASH_D = "d" * 64
+
+
+class _QuietHTTPHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, directory=None, **kwargs):
+        super().__init__(*args, directory=directory, **kwargs)
+
+    def log_message(self, format, *args):
+        return
 
 
 def make_manifest_line(sha256, path):
@@ -245,3 +256,126 @@ class TestMergeDepot(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         entries = self._parse_output(result.stdout)
         self.assertEqual(len(entries), 15)
+
+    # --- Remote --existing ---
+
+    def test_existing_local_file_path(self):
+        """--existing with a local file path works identically to before."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_B, "new.tar.zst"),
+        ])
+        result = self._run_merge(new, "--existing", existing)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 2)
+        paths = {e[1] for e in entries}
+        self.assertIn("old.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+
+    def test_existing_nonexistent_local_file_errors(self):
+        """--existing with a nonexistent local path errors at runtime."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(new, "--existing", "/nonexistent/file.txt")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not found", result.stderr)
+
+    def test_existing_http_url(self):
+        """--existing fetches manifest from HTTP URL."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        existing_content = (
+            make_manifest_line(HASH_C, "old-remote.tar.zst")
+            + make_manifest_line(HASH_D, "preserved.tar.zst")
+        )
+        (serve_dir / "existing.txt").write_text(existing_content, encoding="utf-8")
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/existing.txt"
+
+            new = self._write_manifest("new.txt", [
+                make_manifest_line(HASH_A, "new-pkg.tar.zst"),
+            ])
+            result = self._run_merge(new, "--existing", url)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = self._parse_output(result.stdout)
+            self.assertEqual(len(entries), 3)
+            paths = {e[1] for e in entries}
+            self.assertIn("old-remote.tar.zst", paths)
+            self.assertIn("preserved.tar.zst", paths)
+            self.assertIn("new-pkg.tar.zst", paths)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_existing_http_hash_change_warns(self):
+        """Hash change vs HTTP --existing emits warning, new hash wins."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        (serve_dir / "existing.txt").write_text(
+            make_manifest_line(HASH_A, "changed.tar.zst"), encoding="utf-8"
+        )
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/existing.txt"
+
+            new = self._write_manifest("new.txt", [
+                make_manifest_line(HASH_B, "changed.tar.zst"),
+            ])
+            result = self._run_merge(new, "--existing", url)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = self._parse_output(result.stdout)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0][0], HASH_B)
+            self.assertIn("hash changed", result.stderr)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_existing_http_strict_errors(self):
+        """--strict with HTTP --existing errors on hash change."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        (serve_dir / "existing.txt").write_text(
+            make_manifest_line(HASH_A, "changed.tar.zst"), encoding="utf-8"
+        )
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/existing.txt"
+
+            new = self._write_manifest("new.txt", [
+                make_manifest_line(HASH_B, "changed.tar.zst"),
+            ])
+            result = self._run_merge(new, "--existing", url, "--strict")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("hash changed", result.stderr)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_existing_http_unreachable_errors(self):
+        """--existing with unreachable HTTP URL errors gracefully."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(
+            new, "--existing", "http://127.0.0.1:1/nonexistent.txt"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("failed to fetch", result.stderr)

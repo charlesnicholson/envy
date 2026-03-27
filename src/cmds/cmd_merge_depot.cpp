@@ -1,15 +1,19 @@
 #include "cmd_merge_depot.h"
 
+#include "fetch.h"
 #include "tui.h"
+#include "uri.h"
 
 #include "CLI11.hpp"
 
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -22,16 +26,8 @@ bool is_hex_char(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-}  // namespace
-
-std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path const &file) {
+std::vector<depot_manifest_entry> parse_manifest_lines(std::istream &in) {
   std::vector<depot_manifest_entry> entries;
-
-  std::ifstream in{ file };
-  if (!in) {
-    throw std::runtime_error("merge-depot: cannot open depot manifest: " + file.string());
-  }
-
   std::string line;
   while (std::getline(in, line)) {
     if (!line.empty() && line.back() == '\r') { line.pop_back(); }
@@ -61,8 +57,17 @@ std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path con
 
     entries.push_back(depot_manifest_entry{ std::move(hash), line.substr(66) });
   }
-
   return entries;
+}
+
+}  // namespace
+
+std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path const &file) {
+  std::ifstream in{ file };
+  if (!in) {
+    throw std::runtime_error("merge-depot: cannot open depot manifest: " + file.string());
+  }
+  return parse_manifest_lines(in);
 }
 
 void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
@@ -75,8 +80,7 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
       ->check(CLI::ExistingFile);
   sub->add_option("--existing",
                   cfg_ptr->existing_path,
-                  "Existing merged depot manifest (entries always preserved)")
-      ->check(CLI::ExistingFile);
+                  "Existing merged depot manifest (local path or remote URL)");
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
@@ -98,7 +102,43 @@ void cmd_merge_depot::execute() {
 
   // 1. Load existing depot manifest if provided
   if (cfg_.existing_path) {
-    for (auto &e : parse_depot_manifest(*cfg_.existing_path)) {
+    std::vector<depot_manifest_entry> existing_entries;
+
+    if (auto const info{ uri_classify(*cfg_.existing_path) };
+        info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
+        info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+      std::filesystem::path p{ *cfg_.existing_path };
+      if (!std::filesystem::exists(p)) {
+        throw std::runtime_error(
+            "merge-depot: --existing file not found: " + *cfg_.existing_path);
+      }
+      existing_entries = parse_depot_manifest(p);
+    } else {
+      // Fetch remote manifest to temp, read into memory, delete temp, parse from memory
+      auto tmp_dir{ std::filesystem::temp_directory_path() / "envy-merge-depot-fetch" };
+      std::filesystem::create_directories(tmp_dir);
+      auto tmp_file{ tmp_dir / "existing.txt" };
+
+      auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_file) };
+      auto results{ fetch({ req }) };
+      if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
+        std::filesystem::remove_all(tmp_dir);
+        throw std::runtime_error("merge-depot: failed to fetch --existing: " + *err);
+      }
+
+      std::string content;
+      {
+        std::ifstream in{ tmp_file };
+        content.assign(std::istreambuf_iterator<char>{ in },
+                       std::istreambuf_iterator<char>{});
+      }
+      std::filesystem::remove_all(tmp_dir);
+
+      std::istringstream stream{ content };
+      existing_entries = parse_manifest_lines(stream);
+    }
+
+    for (auto &e : existing_entries) {
       if (auto [it, inserted]{ merged.emplace(e.path, e.hash) }; inserted) {
         existing_hashes.emplace(std::move(e.path), std::move(e.hash));
       } else {
