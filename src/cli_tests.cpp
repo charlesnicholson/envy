@@ -1659,9 +1659,8 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
       f << "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  b.tar.zst\n";
     }
 
-    std::vector<std::string> args{ "envy",       "merge-depot", "--strict",
-                                   "--existing", existing.string(),
-                                   temp.string() };
+    std::vector<std::string> args{ "envy",       "merge-depot",     "--strict",
+                                   "--existing", existing.string(), temp.string() };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };

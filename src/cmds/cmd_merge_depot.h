@@ -17,8 +17,7 @@ struct depot_manifest_entry {
   std::string path;
 };
 
-std::vector<depot_manifest_entry> parse_depot_manifest(
-    std::filesystem::path const &file);
+std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path const &file);
 
 class cmd_merge_depot : public cmd {
  public:

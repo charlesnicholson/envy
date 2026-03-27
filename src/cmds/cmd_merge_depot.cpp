@@ -23,14 +23,12 @@ bool is_hex_char(char c) {
 
 }  // namespace
 
-std::vector<depot_manifest_entry> parse_depot_manifest(
-    std::filesystem::path const &file) {
+std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path const &file) {
   std::vector<depot_manifest_entry> entries;
 
   std::ifstream in{ file };
   if (!in) {
-    throw std::runtime_error("merge-depot: cannot open depot manifest: " +
-                             file.string());
+    throw std::runtime_error("merge-depot: cannot open depot manifest: " + file.string());
   }
 
   std::string line;
@@ -60,17 +58,14 @@ std::vector<depot_manifest_entry> parse_depot_manifest(
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
 
-    entries.push_back(
-        depot_manifest_entry{ std::move(hash), line.substr(66) });
+    entries.push_back(depot_manifest_entry{ std::move(hash), line.substr(66) });
   }
 
   return entries;
 }
 
-void cmd_merge_depot::register_cli(CLI::App &app,
-                                   std::function<void(cfg)> on_selected) {
-  auto *sub{ app.add_subcommand("merge-depot",
-                                "Merge depot manifest files") };
+void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
+  auto *sub{ app.add_subcommand("merge-depot", "Merge depot manifest files") };
   auto cfg_ptr{ std::make_shared<cfg>() };
   sub->add_option("depot_manifests",
                   cfg_ptr->depot_manifests,
@@ -118,16 +113,15 @@ void cmd_merge_depot::execute() {
         if (was_existing) {
           // Hash changed vs existing depot manifest
           if (cfg_.strict) {
-            throw std::runtime_error(
-                "merge-depot: hash changed for " + e.path + " (existing: " +
-                it->second + ", new: " + e.hash + ")");
+            throw std::runtime_error("merge-depot: hash changed for " + e.path +
+                                     " (existing: " + it->second + ", new: " + e.hash +
+                                     ")");
           }
           tui::warn("merge-depot: hash changed for %s", e.path.c_str());
         } else {
           // Same path in two new inputs with different hashes
-          throw std::runtime_error(
-              "merge-depot: conflicting hashes for " + e.path +
-              " across input depot manifests");
+          throw std::runtime_error("merge-depot: conflicting hashes for " + e.path +
+                                   " across input depot manifests");
         }
       }
 
