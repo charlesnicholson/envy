@@ -1,14 +1,13 @@
 #include "cmd_merge_depot.h"
 
 #include "fetch.h"
+#include "platform.h"
 #include "tui.h"
 #include "uri.h"
 
 #include "CLI11.hpp"
 
-#include <atomic>
 #include <cctype>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -61,18 +60,6 @@ std::vector<depot_manifest_entry> parse_manifest_lines(std::istream &in) {
     entries.push_back(depot_manifest_entry{ std::move(hash), line.substr(66) });
   }
   return entries;
-}
-
-std::filesystem::path create_unique_temp_file(std::string_view prefix) {
-  static std::atomic<uint64_t> counter{ 0 };
-  auto const seq{ counter.fetch_add(1, std::memory_order_relaxed) };
-  auto name{ std::string{ prefix } + "-" + std::to_string(seq) };
-  auto p{ std::filesystem::temp_directory_path() / name };
-  std::ofstream touch{ p, std::ios::binary };
-  if (!touch) {
-    throw std::runtime_error("merge-depot: failed to create temp file: " + p.string());
-  }
-  return p;
 }
 
 std::unordered_set<std::string> parse_retain_lines(std::istream &in) {
@@ -144,7 +131,7 @@ void cmd_merge_depot::execute() {
       existing_entries = parse_depot_manifest(p);
     } else {
       // Fetch remote manifest to unique temp file, read into memory, clean up, parse
-      auto tmp_file{ create_unique_temp_file("envy-merge-depot") };
+      auto tmp_file{ platform::create_unique_temp_file("envy-merge-depot") };
 
       auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_file) };
       auto results{ fetch({ req }) };
@@ -226,7 +213,7 @@ void cmd_merge_depot::execute() {
       }
       retain_set = parse_retain_lines(in);
     } else {
-      auto tmp_file{ create_unique_temp_file("envy-merge-depot-retain") };
+      auto tmp_file{ platform::create_unique_temp_file("envy-merge-depot-retain") };
 
       auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_file) };
       auto results{ fetch({ req }) };

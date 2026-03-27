@@ -49,6 +49,7 @@ class file_lock : uncopyable {
 
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to);
 void touch_file(std::filesystem::path const &path);
+std::filesystem::path create_unique_temp_file(std::string_view prefix);
 void flush_directory(std::filesystem::path const &dir);
 bool file_exists(std::filesystem::path const &path);
 

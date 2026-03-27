@@ -2,6 +2,8 @@
 
 #include "tui.h"
 
+#include <atomic>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -112,6 +114,30 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
                             std::system_category(),
                             "Failed to rename " + from.string() + " to " + to.string());
   }
+}
+
+std::filesystem::path create_unique_temp_file(std::string_view prefix) {
+  static std::atomic<uint64_t> counter{ 0 };
+  auto const seq{ counter.fetch_add(1, std::memory_order_seq_cst) };
+  DWORD const pid{ ::GetCurrentProcessId() };
+  auto name{ std::string{ prefix } + "-" + std::to_string(pid) + "-" +
+             std::to_string(seq) };
+  auto p{ std::filesystem::temp_directory_path() / name };
+
+  HANDLE const h{ ::CreateFileW(p.c_str(),
+                                GENERIC_WRITE,
+                                0,
+                                nullptr,
+                                CREATE_NEW,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr) };
+  if (h == INVALID_HANDLE_VALUE) {
+    throw std::system_error(::GetLastError(),
+                            std::system_category(),
+                            "Failed to create temp file: " + p.string());
+  }
+  ::CloseHandle(h);
+  return p;
 }
 
 void touch_file(std::filesystem::path const &path) {

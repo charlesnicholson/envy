@@ -121,6 +121,29 @@ TEST_CASE("platform::native is consistent with platform::os_name") {
   }
 }
 
+TEST_CASE("platform::create_unique_temp_file creates a file") {
+  auto const p{ platform::create_unique_temp_file("envy-test") };
+  CHECK(std::filesystem::exists(p));
+  CHECK(std::filesystem::is_regular_file(p));
+  CHECK(p.filename().string().find("envy-test") != std::string::npos);
+  std::filesystem::remove(p);
+}
+
+TEST_CASE("platform::create_unique_temp_file returns unique paths") {
+  auto const a{ platform::create_unique_temp_file("envy-test-uniq") };
+  auto const b{ platform::create_unique_temp_file("envy-test-uniq") };
+  CHECK(a != b);
+  std::filesystem::remove(a);
+  std::filesystem::remove(b);
+}
+
+TEST_CASE("platform::create_unique_temp_file lives in temp directory") {
+  auto const p{ platform::create_unique_temp_file("envy-test-tmp") };
+  auto const tmp{ std::filesystem::canonical(std::filesystem::temp_directory_path()) };
+  CHECK(std::filesystem::canonical(p.parent_path()) == tmp);
+  std::filesystem::remove(p);
+}
+
 TEST_CASE("platform::exe_suffix returns platform-correct suffix") {
 #ifdef _WIN32
   CHECK(platform::exe_suffix() == ".exe");

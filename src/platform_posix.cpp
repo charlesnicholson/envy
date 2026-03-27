@@ -165,6 +165,19 @@ void atomic_rename(std::filesystem::path const &from, std::filesystem::path cons
   }
 }
 
+std::filesystem::path create_unique_temp_file(std::string_view prefix) {
+  auto pattern{ (std::filesystem::temp_directory_path() / std::string{ prefix }).string() +
+                "-XXXXXX" };
+  std::vector<char> buf(pattern.begin(), pattern.end());
+  buf.push_back('\0');
+  int const fd{ ::mkstemp(buf.data()) };
+  if (fd == -1) {
+    throw std::system_error(errno, std::generic_category(), "mkstemp failed");
+  }
+  ::close(fd);
+  return std::filesystem::path{ buf.data() };
+}
+
 void touch_file(std::filesystem::path const &path) {
   int const fd{ ::open(path.c_str(), O_CREAT | O_WRONLY, 0644) };
   if (fd == -1) {
