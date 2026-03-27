@@ -184,6 +184,21 @@ class TestMergeDepot(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("conflicting hashes", result.stderr)
 
+    def test_cross_input_conflict_with_existing(self):
+        """Cross-input conflict detected even when path exists in --existing."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        new1 = self._write_manifest("new1.txt", [
+            make_manifest_line(HASH_B, "pkg.tar.zst"),
+        ])
+        new2 = self._write_manifest("new2.txt", [
+            make_manifest_line(HASH_C, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(new1, new2, "--existing", existing)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("conflicting hashes", result.stderr)
+
     # --- Edge cases ---
 
     def test_no_arguments_fails(self):
