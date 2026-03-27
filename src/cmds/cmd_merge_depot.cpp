@@ -121,8 +121,8 @@ void cmd_merge_depot::execute() {
         }
 
         // Hash changed vs existing depot manifest
-        auto ex_it{ existing_hashes.find(e.path) };
         if (cfg_.strict) {
+          auto ex_it{ existing_hashes.find(e.path) };
           throw std::runtime_error("merge-depot: hash changed for " + e.path +
                                    " (existing: " + ex_it->second + ", new: " + e.hash +
                                    ")");
