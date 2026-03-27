@@ -70,7 +70,7 @@ jobs:
           python-version: "3.13"
 
       - name: Cache third-party downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
@@ -113,7 +113,7 @@ jobs:
           ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
 
       - name: Upload envy artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: envy-${{ matrix.name }}
           path: out/build/envy
@@ -152,7 +152,7 @@ jobs:
           python-version: "3.13"
 
       - name: Cache third-party downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
@@ -186,7 +186,7 @@ jobs:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
 
       - name: Upload envy artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: envy-${{ matrix.name }}
           path: out\build\envy.exe
