@@ -6,8 +6,9 @@
 
 #include "CLI11.hpp"
 
+#include <atomic>
 #include <cctype>
-#include <cerrno>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -17,12 +18,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <unistd.h>
 
 namespace envy {
 namespace {
@@ -63,6 +61,18 @@ std::vector<depot_manifest_entry> parse_manifest_lines(std::istream &in) {
     entries.push_back(depot_manifest_entry{ std::move(hash), line.substr(66) });
   }
   return entries;
+}
+
+std::filesystem::path create_unique_temp_file(std::string_view prefix) {
+  static std::atomic<uint64_t> counter{ 0 };
+  auto const seq{ counter.fetch_add(1, std::memory_order_relaxed) };
+  auto name{ std::string{ prefix } + "-" + std::to_string(seq) };
+  auto p{ std::filesystem::temp_directory_path() / name };
+  std::ofstream touch{ p, std::ios::binary };
+  if (!touch) {
+    throw std::runtime_error("merge-depot: failed to create temp file: " + p.string());
+  }
+  return p;
 }
 
 std::unordered_set<std::string> parse_retain_lines(std::istream &in) {
@@ -134,19 +144,7 @@ void cmd_merge_depot::execute() {
       existing_entries = parse_depot_manifest(p);
     } else {
       // Fetch remote manifest to unique temp file, read into memory, clean up, parse
-      std::string tmp_pattern{
-        (std::filesystem::temp_directory_path() / "envy-merge-depot-XXXXXX").string()
-      };
-      std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
-      tmp_buf.push_back('\0');
-      int const fd{ ::mkstemp(tmp_buf.data()) };
-      if (fd == -1) {
-        throw std::system_error(errno,
-                                std::generic_category(),
-                                "merge-depot: mkstemp failed");
-      }
-      ::close(fd);
-      std::filesystem::path tmp_file{ tmp_buf.data() };
+      auto tmp_file{ create_unique_temp_file("envy-merge-depot") };
 
       auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_file) };
       auto results{ fetch({ req }) };
@@ -228,19 +226,7 @@ void cmd_merge_depot::execute() {
       }
       retain_set = parse_retain_lines(in);
     } else {
-      std::string tmp_pattern{ (std::filesystem::temp_directory_path() /
-                                "envy-merge-depot-retain-XXXXXX")
-                                   .string() };
-      std::vector<char> tmp_buf(tmp_pattern.begin(), tmp_pattern.end());
-      tmp_buf.push_back('\0');
-      int const fd{ ::mkstemp(tmp_buf.data()) };
-      if (fd == -1) {
-        throw std::system_error(errno,
-                                std::generic_category(),
-                                "merge-depot: mkstemp failed for --retain");
-      }
-      ::close(fd);
-      std::filesystem::path tmp_file{ tmp_buf.data() };
+      auto tmp_file{ create_unique_temp_file("envy-merge-depot-retain") };
 
       auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_file) };
       auto results{ fetch({ req }) };
