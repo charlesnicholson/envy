@@ -99,8 +99,7 @@ void cmd_merge_depot::execute() {
   // 1. Load existing depot manifest if provided
   if (cfg_.existing_path) {
     for (auto &e : parse_depot_manifest(*cfg_.existing_path)) {
-      auto [it, inserted]{ merged.emplace(e.path, e.hash) };
-      if (inserted) {
+      if (auto [it, inserted]{ merged.emplace(e.path, e.hash) }; inserted) {
         existing_hashes.emplace(std::move(e.path), std::move(e.hash));
       } else {
         tui::warn("merge-depot: duplicate path in existing manifest: %s", e.path.c_str());
@@ -114,9 +113,7 @@ void cmd_merge_depot::execute() {
   // 2. Layer each new depot manifest
   for (auto const &manifest_path : cfg_.depot_manifests) {
     for (auto &e : parse_depot_manifest(manifest_path)) {
-      auto it{ merged.find(e.path) };
-
-      if (it != merged.end() && it->second != e.hash) {
+      if (auto it{ merged.find(e.path) }; it != merged.end() && it->second != e.hash) {
         if (new_paths.count(e.path) > 0) {
           // Path already modified by a prior new manifest — cross-input conflict
           throw std::runtime_error("merge-depot: conflicting hashes for " + e.path +
