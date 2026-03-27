@@ -103,8 +103,7 @@ void cmd_merge_depot::execute() {
       if (inserted) {
         existing_hashes.emplace(std::move(e.path), std::move(e.hash));
       } else {
-        tui::warn("merge-depot: duplicate path in existing manifest: %s",
-                  e.path.c_str());
+        tui::warn("merge-depot: duplicate path in existing manifest: %s", e.path.c_str());
       }
     }
   }
@@ -120,17 +119,16 @@ void cmd_merge_depot::execute() {
       if (it != merged.end() && it->second != e.hash) {
         if (new_paths.count(e.path) > 0) {
           // Path already modified by a prior new manifest — cross-input conflict
-          throw std::runtime_error(
-              "merge-depot: conflicting hashes for " + e.path +
-              " across input depot manifests");
+          throw std::runtime_error("merge-depot: conflicting hashes for " + e.path +
+                                   " across input depot manifests");
         }
 
         // Hash changed vs existing depot manifest
         auto ex_it{ existing_hashes.find(e.path) };
         if (cfg_.strict) {
-          throw std::runtime_error(
-              "merge-depot: hash changed for " + e.path + " (existing: " +
-              ex_it->second + ", new: " + e.hash + ")");
+          throw std::runtime_error("merge-depot: hash changed for " + e.path +
+                                   " (existing: " + ex_it->second + ", new: " + e.hash +
+                                   ")");
         }
         tui::warn("merge-depot: hash changed for %s", e.path.c_str());
       }
