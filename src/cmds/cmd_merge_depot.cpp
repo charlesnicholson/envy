@@ -131,30 +131,27 @@ void cmd_merge_depot::execute() {
       existing_entries = parse_depot_manifest(p);
     } else {
       // Fetch remote manifest to unique temp file, read into memory, clean up, parse
-      auto tmp_file{ platform::create_unique_temp_file("envy-merge-depot") };
+      scoped_path_cleanup tmp_guard{
+          platform::create_unique_temp_file("envy-merge-depot") };
 
-      auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_file) };
+      auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
       if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        std::filesystem::remove(tmp_file);
         throw std::runtime_error("merge-depot: failed to fetch --existing: " + *err);
       }
 
-      std::string content;
-      {
-        std::ifstream in{ tmp_file };
+      auto const content{ [&] {
+        std::ifstream in{ tmp_guard.path() };
         if (!in) {
-          std::filesystem::remove(tmp_file);
           throw std::runtime_error(
               "merge-depot: failed to read fetched --existing manifest");
         }
-        content.assign(std::istreambuf_iterator<char>{ in },
-                       std::istreambuf_iterator<char>{});
-      }
-      std::filesystem::remove(tmp_file);
+        return std::string{ std::istreambuf_iterator<char>{ in },
+                            std::istreambuf_iterator<char>{} };
+      }() };
 
-      std::istringstream stream{ content };
-      existing_entries = parse_manifest_lines(stream);
+      auto existing_stream{ std::istringstream{ content } };
+      existing_entries = parse_manifest_lines(existing_stream);
     }
 
     for (auto &e : existing_entries) {
@@ -213,29 +210,26 @@ void cmd_merge_depot::execute() {
       }
       retain_set = parse_retain_lines(in);
     } else {
-      auto tmp_file{ platform::create_unique_temp_file("envy-merge-depot-retain") };
+      scoped_path_cleanup tmp_guard{
+          platform::create_unique_temp_file("envy-merge-depot-retain") };
 
-      auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_file) };
+      auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
       if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        std::filesystem::remove(tmp_file);
         throw std::runtime_error("merge-depot: failed to fetch --retain: " + *err);
       }
 
-      std::string content;
-      {
-        std::ifstream in{ tmp_file };
+      auto const content{ [&] {
+        std::ifstream in{ tmp_guard.path() };
         if (!in) {
-          std::filesystem::remove(tmp_file);
           throw std::runtime_error("merge-depot: failed to read fetched --retain list");
         }
-        content.assign(std::istreambuf_iterator<char>{ in },
-                       std::istreambuf_iterator<char>{});
-      }
-      std::filesystem::remove(tmp_file);
+        return std::string{ std::istreambuf_iterator<char>{ in },
+                            std::istreambuf_iterator<char>{} };
+      }() };
 
-      std::istringstream stream{ content };
-      retain_set = parse_retain_lines(stream);
+      auto retain_stream{ std::istringstream{ content } };
+      retain_set = parse_retain_lines(retain_stream);
     }
 
     for (auto it{ merged.begin() }; it != merged.end();) {
