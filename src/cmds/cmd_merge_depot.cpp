@@ -94,9 +94,13 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
   sub->add_option("--existing",
                   cfg_ptr->existing_path,
                   "Existing merged depot manifest (local path or remote URL)");
-  sub->add_option("--retain",
-                  cfg_ptr->retain_path,
-                  "Retain list: prune entries whose path is absent");
+  auto *retain_opt{ sub->add_option("--retain",
+                                    cfg_ptr->retain_path,
+                                    "Retain list: prune entries whose path is absent") };
+  sub->add_option("--retain-prefix",
+                  cfg_ptr->retain_prefix,
+                  "Prefix to prepend to each --retain entry before matching")
+      ->needs(retain_opt);
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
@@ -230,6 +234,12 @@ void cmd_merge_depot::execute() {
 
       auto retain_stream{ std::istringstream{ content } };
       retain_set = parse_retain_lines(retain_stream);
+    }
+
+    if (cfg_.retain_prefix) {
+      std::unordered_set<std::string> prefixed;
+      for (auto &p : retain_set) { prefixed.insert(*cfg_.retain_prefix + p); }
+      retain_set = std::move(prefixed);
     }
 
     for (auto it{ merged.begin() }; it != merged.end();) {
