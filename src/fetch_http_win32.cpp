@@ -14,6 +14,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -99,13 +100,14 @@ std::string wininet_extended_error_info() {
   // For WinINet-specific errors, append extended server response info when
   // available (e.g. FTP server replies, HTTP auth challenge text).
   std::string const msg{ [&] {
-    auto m{ std::string(context) + ": " + win_error_message(err) };
+    std::ostringstream m;
+    m << context << ": " << win_error_message(err);
     if (err == ERROR_INTERNET_EXTENDED_ERROR) {
       if (auto const extended{ wininet_extended_error_info() }; !extended.empty()) {
-        m += " (" + extended + ")";
+        m << " (" << extended << ")";
       }
     }
-    return m;
+    return m.str();
   }() };
 
   throw std::runtime_error(msg);
