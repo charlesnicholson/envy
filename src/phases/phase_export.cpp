@@ -92,13 +92,13 @@ void run_export_phase(pkg *p, engine &eng) {
 
           double percent{ 0.0 };
           if (total_bytes > 0) {
-            percent = std::min(
-                100.0,
-                (ep.bytes_processed / static_cast<double>(total_bytes)) * 100.0);
+            percent =
+                std::min(100.0,
+                         (ep.bytes_processed / static_cast<double>(total_bytes)) * 100.0);
           } else if (total_files > 0) {
-            percent = std::min(
-                100.0,
-                (ep.files_processed / static_cast<double>(total_files)) * 100.0);
+            percent =
+                std::min(100.0,
+                         (ep.files_processed / static_cast<double>(total_files)) * 100.0);
           }
 
           std::ostringstream status;
@@ -110,12 +110,11 @@ void run_export_phase(pkg *p, engine &eng) {
                    << util_format_bytes(total_bytes);
           }
 
-          tui::section_set_content(
-              p->tui_section,
-              tui::section_frame{ .label = label,
-                                  .content = tui::progress_data{
-                                      .percent = percent,
-                                      .status = status.str() } });
+          tui::section_set_content(p->tui_section,
+                                   tui::section_frame{ .label = label,
+                                                       .content = tui::progress_data{
+                                                           .percent = percent,
+                                                           .status = status.str() } });
           return true;
         });
 
