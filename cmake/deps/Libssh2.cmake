@@ -104,4 +104,8 @@ if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
 endif()
 unset(_envy_libssh2_actual)
 
+# Disable find_package(LibSSH2) for all downstream consumers; they must
+# link the in-tree libssh2::libssh2 target directly.
+set(CMAKE_DISABLE_FIND_PACKAGE_LibSSH2 ON)
+
 set(ENV{PKG_CONFIG_PATH} "")
