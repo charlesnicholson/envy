@@ -543,3 +543,134 @@ class TestMergeDepot(unittest.TestCase):
         result = self._run_merge(new, "--retain", "/nonexistent/retain.txt")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not found", result.stderr)
+
+    # --- --retain-prefix flag ---
+
+    def test_retain_prefix_matches_prefixed_entries(self):
+        """--retain-prefix prepends to retain entries so they match depot paths."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "s3://bucket/old.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_B, "s3://bucket/new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing,
+            "--retain", retain, "--retain-prefix", "s3://bucket/"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertIn("s3://bucket/old.tar.zst", paths)
+        self.assertIn("s3://bucket/new.tar.zst", paths)
+
+    def test_retain_prefix_prunes_unmatched(self):
+        """--retain-prefix prunes existing entries not in prefixed retain list."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "s3://bucket/old.tar.zst"),
+            make_manifest_line(HASH_B, "s3://bucket/stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "s3://bucket/new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing,
+            "--retain", retain, "--retain-prefix", "s3://bucket/"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("s3://bucket/old.tar.zst", paths)
+        self.assertIn("s3://bucket/new.tar.zst", paths)
+        self.assertNotIn("s3://bucket/stale.tar.zst", paths)
+
+    def test_retain_prefix_without_retain_errors(self):
+        """--retain-prefix without --retain is rejected."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(new, "--retain-prefix", "s3://bucket/")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_retain_prefix_empty_string(self):
+        """--retain-prefix with empty string is a no-op (entries match as-is)."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing,
+            "--retain", retain, "--retain-prefix", ""
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("old.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+        self.assertNotIn("stale.tar.zst", paths)
+
+    def test_retain_prefix_preserves_new_entries(self):
+        """New manifest entries survive even when absent from prefixed retain."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "s3://bucket/brand-new.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["something-else.tar.zst"])
+
+        result = self._run_merge(
+            new, "--retain", retain, "--retain-prefix", "s3://bucket/"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1], "s3://bucket/brand-new.tar.zst")
+
+    def test_retain_prefix_with_http_retain(self):
+        """--retain-prefix works with remote retain list."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        (serve_dir / "retain.txt").write_text(
+            "old.tar.zst\n", encoding="utf-8"
+        )
+
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "s3://bucket/old.tar.zst"),
+            make_manifest_line(HASH_B, "s3://bucket/stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "s3://bucket/new.tar.zst"),
+        ])
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/retain.txt"
+
+            result = self._run_merge(
+                new, "--existing", existing,
+                "--retain", url, "--retain-prefix", "s3://bucket/"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = self._parse_output(result.stdout)
+            paths = {e[1] for e in entries}
+            self.assertEqual(len(entries), 2)
+            self.assertIn("s3://bucket/old.tar.zst", paths)
+            self.assertIn("s3://bucket/new.tar.zst", paths)
+            self.assertNotIn("s3://bucket/stale.tar.zst", paths)
+        finally:
+            server.shutdown()
+            server_thread.join(timeout=5)
+            server.server_close()

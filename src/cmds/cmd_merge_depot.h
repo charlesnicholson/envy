@@ -25,6 +25,7 @@ class cmd_merge_depot : public cmd {
     std::vector<std::filesystem::path> depot_manifests;
     std::optional<std::string> existing_path;
     std::optional<std::string> retain_path;
+    std::optional<std::string> retain_prefix;
     bool strict{ false };
   };
 
