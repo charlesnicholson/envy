@@ -237,13 +237,13 @@ std::filesystem::path download_with_post(std::string_view url,
                      (uc.nScheme == INTERNET_SCHEME_HTTPS ? INTERNET_FLAG_SECURE : 0) };
 
   internet_handle const connection{ InternetConnectA(session,
-                                               host,
-                                               uc.nPort,
-                                               nullptr,
-                                               nullptr,
-                                               INTERNET_SERVICE_HTTP,
-                                               0,
-                                               0) };
+                                                     host,
+                                                     uc.nPort,
+                                                     nullptr,
+                                                     nullptr,
+                                                     INTERNET_SERVICE_HTTP,
+                                                     0,
+                                                     0) };
   if (!connection) { throw_wininet_error("InternetConnect failed"); }
 
   internet_handle const request{
@@ -300,7 +300,7 @@ std::filesystem::path fetch_http_download(std::string_view url,
   }
 
   auto const resolved_destination{ [&] {
-    auto p{ std::filesystem::path{destination} };
+    auto p{ std::filesystem::path{ destination } };
     if (!p.is_absolute()) { p = std::filesystem::absolute(p); }
     return p.lexically_normal();
   }() };
