@@ -119,6 +119,17 @@ foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-par
     endif()
 endforeach()
 
+# Bundled libssh2 includes must appear as -I (not -isystem) so they
+# outrank any system-installed libssh2 in /usr/local/include.
+if(DEFINED libssh2_SOURCE_DIR)
+    foreach(_envy_git_target IN ITEMS libgit2 libgit2package git2)
+        if(TARGET ${_envy_git_target})
+            target_include_directories(${_envy_git_target} BEFORE PRIVATE
+                "${libssh2_SOURCE_DIR}/include")
+        endif()
+    endforeach()
+endif()
+
 if(DEFINED envy_zlib_SOURCE_DIR AND DEFINED envy_zlib_BINARY_DIR)
     foreach(_envy_git_target IN ITEMS libgit2 libgit2package git2 util)
         if(TARGET ${_envy_git_target})

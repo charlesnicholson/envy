@@ -104,4 +104,8 @@ if(_envy_libssh2_actual AND TARGET ${_envy_libssh2_actual})
 endif()
 unset(_envy_libssh2_actual)
 
+# Prevent anything downstream from discovering a system-installed libssh2;
+# all consumers must use the bundled target.
+set(CMAKE_DISABLE_FIND_PACKAGE_LibSSH2 ON)
+
 set(ENV{PKG_CONFIG_PATH} "")
