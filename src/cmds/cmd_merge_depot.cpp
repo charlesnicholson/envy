@@ -131,8 +131,8 @@ void cmd_merge_depot::execute() {
       existing_entries = parse_depot_manifest(p);
     } else {
       // Fetch remote manifest to unique temp file, read into memory, clean up, parse
-      scoped_path_cleanup tmp_guard{
-          platform::create_unique_temp_file("envy-merge-depot") };
+      scoped_path_cleanup tmp_guard{ platform::create_unique_temp_file(
+          "envy-merge-depot") };
 
       auto req{ fetch_request_from_url(*cfg_.existing_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
@@ -210,8 +210,8 @@ void cmd_merge_depot::execute() {
       }
       retain_set = parse_retain_lines(in);
     } else {
-      scoped_path_cleanup tmp_guard{
-          platform::create_unique_temp_file("envy-merge-depot-retain") };
+      scoped_path_cleanup tmp_guard{ platform::create_unique_temp_file(
+          "envy-merge-depot-retain") };
 
       auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
