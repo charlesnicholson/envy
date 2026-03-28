@@ -8,6 +8,7 @@
 #include "tui.h"
 #include "util.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <sstream>
@@ -80,59 +81,66 @@ void run_export_phase(pkg *p, engine &eng) {
     return std::pair{ bytes, files };
   }() };
 
-  // Compress with progress
-  archive_create_tar_zst(
-      output_path,
-      source_dir,
-      prefix,
-      [&](extract_progress const &ep) -> bool {
-        if (!p->tui_section) { return true; }
+  try {
+    // Compress with progress
+    archive_create_tar_zst(
+        output_path,
+        source_dir,
+        prefix,
+        [&](extract_progress const &ep) -> bool {
+          if (!p->tui_section) { return true; }
 
-        double percent{ 0.0 };
-        if (total_bytes > 0) {
-          percent =
-              std::min(100.0,
-                       (ep.bytes_processed / static_cast<double>(total_bytes)) * 100.0);
-        } else if (total_files > 0) {
-          percent =
-              std::min(100.0,
-                       (ep.files_processed / static_cast<double>(total_files)) * 100.0);
-        }
+          double percent{ 0.0 };
+          if (total_bytes > 0) {
+            percent = std::min(
+                100.0,
+                (ep.bytes_processed / static_cast<double>(total_bytes)) * 100.0);
+          } else if (total_files > 0) {
+            percent = std::min(
+                100.0,
+                (ep.files_processed / static_cast<double>(total_files)) * 100.0);
+          }
 
-        std::ostringstream status;
-        status << ep.files_processed;
-        if (total_files > 0) { status << "/" << total_files; }
-        status << " files";
-        if (total_bytes > 0) {
-          status << " " << util_format_bytes(ep.bytes_processed) << "/"
-                 << util_format_bytes(total_bytes);
-        }
+          std::ostringstream status;
+          status << ep.files_processed;
+          if (total_files > 0) { status << "/" << total_files; }
+          status << " files";
+          if (total_bytes > 0) {
+            status << " " << util_format_bytes(ep.bytes_processed) << "/"
+                   << util_format_bytes(total_bytes);
+          }
 
-        tui::section_set_content(
-            p->tui_section,
-            tui::section_frame{ .label = label,
-                                .content = tui::progress_data{ .percent = percent,
-                                                               .status = status.str() } });
-        return true;
-      });
+          tui::section_set_content(
+              p->tui_section,
+              tui::section_frame{ .label = label,
+                                  .content = tui::progress_data{
+                                      .percent = percent,
+                                      .status = status.str() } });
+          return true;
+        });
 
-  // Hash the archive
-  if (p->tui_section) {
-    tui::section_set_content(
-        p->tui_section,
-        tui::section_frame{ .label = label,
-                            .content = tui::spinner_data{
-                                .text = "hashing...",
-                                .start_time = std::chrono::steady_clock::now() } });
+    // Hash the archive
+    if (p->tui_section) {
+      tui::section_set_content(
+          p->tui_section,
+          tui::section_frame{ .label = label,
+                              .content = tui::spinner_data{
+                                  .text = "hashing...",
+                                  .start_time = std::chrono::steady_clock::now() } });
+    }
+
+    auto const hash{ sha256(output_path) };
+    auto const hex{ util_bytes_to_hex(hash.data(), hash.size()) };
+
+    std::string const path_part{ ecfg->depot_prefix ? (*ecfg->depot_prefix + filename)
+                                                    : output_path.string() };
+
+    eng.record_export_result(p->key, hex + "  " + path_part + "\n");
+  } catch (...) {
+    std::error_code ec;
+    std::filesystem::remove(output_path, ec);
+    throw;
   }
-
-  auto const hash{ sha256(output_path) };
-  auto const hex{ util_bytes_to_hex(hash.data(), hash.size()) };
-
-  std::string const path_part{ ecfg->depot_prefix ? (*ecfg->depot_prefix + filename)
-                                                  : output_path.string() };
-
-  eng.record_export_result(p->key, hex + "  " + path_part + "\n");
 }
 
 }  // namespace envy
