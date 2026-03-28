@@ -61,14 +61,54 @@ std::string win_error_message(DWORD error_code) {
 
   // Strip trailing \r\n from FormatMessage output.
   while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) { --len; }
-  std::string msg{ buf, len };
+  std::string const msg{ buf, len };
   LocalFree(buf);
   return msg;
 }
 
+std::string wininet_extended_error_info() {
+  DWORD error_code{ 0 };
+  DWORD buf_len{ 0 };
+  InternetGetLastResponseInfoA(&error_code, nullptr, &buf_len);
+  if (buf_len == 0) { return {}; }
+  ++buf_len;  // account for null terminator
+  std::string buf(buf_len, '\0');
+  if (!InternetGetLastResponseInfoA(&error_code, buf.data(), &buf_len)) { return {}; }
+  buf.resize(buf_len);
+  while (!buf.empty() && (buf.back() == '\n' || buf.back() == '\r')) { buf.pop_back(); }
+  return buf;
+}
+
 [[noreturn]] void throw_wininet_error(char const *context) {
   DWORD const err{ GetLastError() };
-  throw std::runtime_error(std::string(context) + ": " + win_error_message(err));
+
+  // GetLastError() == 0 means the Win32 error code was not set, which produces
+  // the unhelpful "The operation completed successfully".  Try to recover
+  // something useful from WinINet's per-thread extended error buffer or,
+  // failing that, emit a generic but honest message with the numeric code.
+  if (err == 0) {
+    if (auto const extended{ wininet_extended_error_info() }; !extended.empty()) {
+      throw std::runtime_error(std::string(context) + ": " + extended);
+    }
+    throw std::runtime_error(
+        std::string(context) +
+        ": unknown error (GetLastError returned 0; the server may have "
+        "refused the connection or a proxy/firewall blocked the request)");
+  }
+
+  // For WinINet-specific errors, append extended server response info when
+  // available (e.g. FTP server replies, HTTP auth challenge text).
+  std::string const msg{ [&] {
+    auto m{ std::string(context) + ": " + win_error_message(err) };
+    if (err == ERROR_INTERNET_EXTENDED_ERROR) {
+      if (auto const extended{ wininet_extended_error_info() }; !extended.empty()) {
+        m += " (" + extended + ")";
+      }
+    }
+    return m;
+  }() };
+
+  throw std::runtime_error(msg);
 }
 
 // Process-wide WinInet session.  Created once on first download; Windows
@@ -188,15 +228,15 @@ std::filesystem::path download_with_post(std::string_view url,
   uc.lpszUrlPath = path;
   uc.dwUrlPathLength = sizeof(path);
 
-  std::string url_str{ url };
+  std::string const url_str{ url };
   if (!InternetCrackUrlA(url_str.c_str(), static_cast<DWORD>(url_str.size()), 0, &uc)) {
     throw_wininet_error("InternetCrackUrl failed (URL may exceed buffer capacity)");
   }
 
-  DWORD flags{ kCommonFlags };
-  if (uc.nScheme == INTERNET_SCHEME_HTTPS) { flags |= INTERNET_FLAG_SECURE; }
+  DWORD const flags{ kCommonFlags |
+                     (uc.nScheme == INTERNET_SCHEME_HTTPS ? INTERNET_FLAG_SECURE : 0) };
 
-  internet_handle connection{ InternetConnectA(session,
+  internet_handle const connection{ InternetConnectA(session,
                                                host,
                                                uc.nPort,
                                                nullptr,
@@ -206,7 +246,7 @@ std::filesystem::path download_with_post(std::string_view url,
                                                0) };
   if (!connection) { throw_wininet_error("InternetConnect failed"); }
 
-  internet_handle request{
+  internet_handle const request{
     HttpOpenRequestA(connection.get(), "POST", path, nullptr, nullptr, nullptr, flags, 0)
   };
   if (!request) { throw_wininet_error("HttpOpenRequest failed"); }
@@ -259,11 +299,11 @@ std::filesystem::path fetch_http_download(std::string_view url,
     throw std::invalid_argument("fetch_http_download: destination is empty");
   }
 
-  std::filesystem::path resolved_destination{ destination };
-  if (!resolved_destination.is_absolute()) {
-    resolved_destination = std::filesystem::absolute(resolved_destination);
-  }
-  resolved_destination = resolved_destination.lexically_normal();
+  auto const resolved_destination{ [&] {
+    auto p{ std::filesystem::path{destination} };
+    if (!p.is_absolute()) { p = std::filesystem::absolute(p); }
+    return p.lexically_normal();
+  }() };
 
   std::error_code ec;
   auto const parent{ resolved_destination.parent_path() };
@@ -281,7 +321,7 @@ std::filesystem::path fetch_http_download(std::string_view url,
                              resolved_destination.string());
   }
 
-  HINTERNET session{ ensure_session() };
+  HINTERNET const session{ ensure_session() };
 
   // POST requires InternetConnect + HttpOpenRequest + HttpSendRequest
   if (post_data && uri_is_http_scheme(url)) {
@@ -302,11 +342,11 @@ std::filesystem::path fetch_http_download(std::string_view url,
         fetch_transfer_progress{ .transferred = 0, .total = std::nullopt } });
   }
 
-  std::string url_str{ url };
-  DWORD flags{ kCommonFlags };
-  if (uri_is_https_scheme(url)) { flags |= INTERNET_FLAG_SECURE; }
+  std::string const url_str{ url };
+  DWORD const flags{ kCommonFlags |
+                     (uri_is_https_scheme(url) ? INTERNET_FLAG_SECURE : 0) };
 
-  internet_handle request{
+  internet_handle const request{
     InternetOpenUrlA(session, url_str.c_str(), nullptr, 0, flags, 0)
   };
   if (!request) {
