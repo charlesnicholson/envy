@@ -1827,8 +1827,7 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
   }
 
   SUBCASE("--retain-prefix accepted") {
-    auto temp{ std::filesystem::temp_directory_path() /
-               "envy-merge-depot-rp-new.txt" };
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-rp-new.txt" };
     auto retain{ std::filesystem::temp_directory_path() /
                  "envy-merge-depot-rp-retain.txt" };
     {
@@ -1840,12 +1839,8 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
       f << "a.tar.zst\n";
     }
 
-    std::vector<std::string> args{ "envy",
-                                   "merge-depot",
-                                   "--retain",
-                                   retain.string(),
-                                   "--retain-prefix",
-                                   "s3://bucket/",
+    std::vector<std::string> args{ "envy",          "merge-depot",     "--retain",
+                                   retain.string(), "--retain-prefix", "s3://bucket/",
                                    temp.string() };
     auto argv{ make_argv(args) };
 
@@ -1862,8 +1857,7 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
   }
 
   SUBCASE("--retain-prefix defaults empty") {
-    auto temp{ std::filesystem::temp_directory_path() /
-               "envy-merge-depot-rp-def.txt" };
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-rp-def.txt" };
     {
       std::ofstream f{ temp };
       f << "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  a.tar.zst\n";
@@ -1906,8 +1900,7 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
   }
 
   SUBCASE("--retain-prefix combined with all flags") {
-    auto temp{ std::filesystem::temp_directory_path() /
-               "envy-merge-depot-rp-all.txt" };
+    auto temp{ std::filesystem::temp_directory_path() / "envy-merge-depot-rp-all.txt" };
     auto existing{ std::filesystem::temp_directory_path() /
                    "envy-merge-depot-rp-all-ex.txt" };
     auto retain{ std::filesystem::temp_directory_path() /
@@ -1925,11 +1918,10 @@ TEST_CASE("cli_parse: cmd_merge_depot") {
       f << "a.tar.zst\n";
     }
 
-    std::vector<std::string> args{ "envy",          "merge-depot",
-                                   "--strict",      "--existing",
-                                   existing.string(), "--retain",
-                                   retain.string(), "--retain-prefix",
-                                   "s3://bucket/",  temp.string() };
+    std::vector<std::string> args{ "envy",          "merge-depot",     "--strict",
+                                   "--existing",    existing.string(), "--retain",
+                                   retain.string(), "--retain-prefix", "s3://bucket/",
+                                   temp.string() };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
