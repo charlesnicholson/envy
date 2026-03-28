@@ -112,11 +112,12 @@ void cmd_export::execute() {
       .output_dir = output_dir,
       .depot_prefix = cfg_.depot_prefix,
       .explicitly_requested = !cfg_.queries.empty(),
-      .export_targets = [&] {
-        std::unordered_set<pkg_key> s;
-        for (auto const *cfg : targets) { s.emplace(*cfg); }
-        return s;
-      }(),
+      .export_targets =
+          [&] {
+            std::unordered_set<pkg_key> s;
+            for (auto const *cfg : targets) { s.emplace(*cfg); }
+            return s;
+          }(),
   });
 
   eng.resolve_graph(targets);

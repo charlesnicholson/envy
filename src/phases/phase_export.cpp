@@ -108,11 +108,11 @@ void run_export_phase(pkg *p, engine &eng) {
                  << util_format_bytes(total_bytes);
         }
 
-        tui::section_set_content(p->tui_section,
-                                 tui::section_frame{ .label = label,
-                                                     .content = tui::progress_data{
-                                                         .percent = percent,
-                                                         .status = status.str() } });
+        tui::section_set_content(
+            p->tui_section,
+            tui::section_frame{ .label = label,
+                                .content = tui::progress_data{ .percent = percent,
+                                                               .status = status.str() } });
         return true;
       });
 
