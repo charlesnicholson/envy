@@ -19,6 +19,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace envy {
@@ -57,6 +58,13 @@ struct pkg_result {
 };
 
 using pkg_result_map_t = std::unordered_map<std::string, pkg_result>;
+
+struct export_phase_config {
+  std::filesystem::path output_dir;
+  std::optional<std::string> depot_prefix;
+  bool explicitly_requested{ false };
+  std::unordered_set<pkg_key> export_targets;
+};
 
 struct product_info {
   std::string product_name;
@@ -123,6 +131,14 @@ class engine : unmovable {
   void set_ignore_depot(bool ignore);
   package_depot_index const *depot_index() const;
 
+  // Export phase configuration — set before resolve_graph() for pipeline export
+  void set_export_config(export_phase_config cfg);
+  export_phase_config const *export_config() const;
+
+  // Thread-safe export result collection (called by phase handler)
+  void record_export_result(pkg_key const &key, std::string output_line);
+  std::string const *get_export_result(pkg_key const &key) const;
+
 #ifdef ENVY_UNIT_TEST
   pkg_phase get_pkg_target_phase(pkg_key const &key) const;
 #endif
@@ -159,6 +175,10 @@ class engine : unmovable {
 
   // Bundle registry: maps bundle identity → bundle (populated during fetch)
   std::unordered_map<std::string, std::unique_ptr<bundle>> bundle_registry_;
+
+  // Export phase state (set before resolve_graph, read by phase handler)
+  std::optional<export_phase_config> export_config_;
+  std::unordered_map<std::string, std::string> export_results_;  // guarded by mutex_
 };
 
 // Filter pkg_cfgs to those matching the current host platform.

@@ -5,6 +5,7 @@
 #include "phases/phase_build.h"
 #include "phases/phase_check.h"
 #include "phases/phase_completion.h"
+#include "phases/phase_export.h"
 #include "phases/phase_fetch.h"
 #include "phases/phase_import.h"
 #include "phases/phase_install.h"
@@ -27,6 +28,14 @@ namespace envy {
 
 namespace {
 
+// Phase after which a dependency's artifacts are available. Dependencies are
+// waited on to this point (not completion) so that post-install phases like
+// export can overlap with dependents' builds.
+constexpr auto kDependencySatisfiedPhase =
+    static_cast<pkg_phase>(static_cast<int>(pkg_phase::pkg_install) + 1);
+static_assert(kDependencySatisfiedPhase < pkg_phase::completion,
+              "pkg_install must not be the last phase before completion");
+
 using phase_func_t = void (*)(pkg *, engine &);
 
 constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
@@ -37,6 +46,7 @@ constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_stage_phase,       // pkg_phase::pkg_stage
   run_build_phase,       // pkg_phase::pkg_build
   run_install_phase,     // pkg_phase::pkg_install
+  run_export_phase,      // pkg_phase::pkg_export
   run_completion_phase,  // pkg_phase::completion
 };
 
@@ -499,6 +509,25 @@ void engine::set_depot_index(package_depot_index idx) {
 
 void engine::set_ignore_depot(bool ignore) { depot_ignored_ = ignore; }
 
+void engine::set_export_config(export_phase_config cfg) {
+  export_config_ = std::move(cfg);
+}
+
+export_phase_config const *engine::export_config() const {
+  return export_config_ ? &*export_config_ : nullptr;
+}
+
+void engine::record_export_result(pkg_key const &key, std::string output_line) {
+  std::lock_guard const lock{ mutex_ };
+  export_results_[key.canonical()] = std::move(output_line);
+}
+
+std::string const *engine::get_export_result(pkg_key const &key) const {
+  std::lock_guard const lock{ mutex_ };
+  auto it{ export_results_.find(key.canonical()) };
+  return it != export_results_.end() ? &it->second : nullptr;
+}
+
 package_depot_index const *engine::depot_index() const {
   // Pre-set index (set before thread creation, safe to read without synchronization)
   if (depot_pre_set_) { return &*depot_index_; }
@@ -668,16 +697,16 @@ void engine::run_pkg_thread(pkg *p) {
                                  std::to_string(static_cast<int>(next)));
       }
 
-      // Wait for dependencies that are needed by this phase
-      // If dependency has needed_by=build, we must wait for it before entering build phase
+      // Wait for dependencies that are needed by this phase.
+      // Wait for install+1 (not completion) so post-install phases like export
+      // can overlap with dependents' builds.
       for (auto const &[dep_identity, dep_info] : p->dependencies) {
         if (next >= dep_info.needed_by) {
-          // Dependency is needed by this or earlier phase, ensure it's fully complete
           ENVY_TRACE_PHASE_BLOCKED(p->cfg->identity,
                                    next,
                                    dep_identity,
-                                   pkg_phase::completion);
-          ensure_pkg_at_phase(dep_info.p->key, pkg_phase::completion);
+                                   kDependencySatisfiedPhase);
+          ensure_pkg_at_phase(dep_info.p->key, kDependencySatisfiedPhase);
           ENVY_TRACE_PHASE_UNBLOCKED(p->cfg->identity, next, dep_identity);
         }
       }

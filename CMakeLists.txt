@@ -260,6 +260,7 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_build.cpp
     src/phases/phase_check.cpp
     src/phases/phase_completion.cpp
+    src/phases/phase_export.cpp
     src/phases/phase_fetch.cpp
     src/phases/phase_import.cpp
     src/phases/phase_install.cpp
