@@ -3,6 +3,9 @@ name: ci
 on:
   workflow_call:
 
+env:
+  SCCACHE_GHA_ENABLED: "true"
+
 jobs:
   build:
     name: ${{ matrix.name }}
