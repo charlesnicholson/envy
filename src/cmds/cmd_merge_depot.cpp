@@ -109,10 +109,12 @@ std::unordered_set<std::string> parse_s3_ls_lines(std::istream &in) {
       tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
       continue;
     }
-    bool size_ok{ true };
-    for (size_t j{ size_start }; j < i; ++j) {
-      if (!std::isdigit(static_cast<unsigned char>(line[j]))) { size_ok = false; break; }
-    }
+    auto const size_ok{ [&] {
+      for (size_t j{ size_start }; j < i; ++j) {
+        if (!std::isdigit(static_cast<unsigned char>(line[j]))) { return false; }
+      }
+      return true;
+    }() };
     if (!size_ok) {
       tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
       continue;
@@ -255,53 +257,56 @@ void cmd_merge_depot::execute() {
     auto const &[source_path, fmt]{ *cfg_.retain };
     auto const is_s3_ls{ fmt == retain_format::S3_LS };
     auto const *flag_name{ is_s3_ls ? "--retain-s3-ls" : "--retain" };
-    std::unordered_set<std::string> retain_set;
+    auto const retain_set{ [&]() -> std::unordered_set<std::string> {
+      std::unordered_set<std::string> set;
 
-    if (auto const info{ uri_classify(source_path) };
-        info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
-        info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-      std::filesystem::path p{ info.canonical };
-      if (!std::filesystem::exists(p)) {
-        throw std::runtime_error(std::string("merge-depot: ") + flag_name +
-                                 " file not found: " + source_path);
-      }
-      std::ifstream in{ p };
-      if (!in) {
-        throw std::runtime_error(std::string("merge-depot: cannot open ") + flag_name +
-                                 " file: " + source_path);
-      }
-      retain_set = is_s3_ls ? parse_s3_ls_lines(in) : parse_retain_lines(in);
-    } else {
-      scoped_path_cleanup tmp_guard{ platform::create_unique_temp_file(
-          "envy-merge-depot-retain") };
-
-      auto req{ fetch_request_from_url(source_path, tmp_guard.path()) };
-      auto results{ fetch({ req }) };
-      if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        throw std::runtime_error(std::string("merge-depot: failed to fetch ") + flag_name +
-                                 ": " + *err);
-      }
-
-      auto const content{ [&] {
-        std::ifstream in{ tmp_guard.path() };
-        if (!in) {
-          throw std::runtime_error(std::string("merge-depot: failed to read fetched ") +
-                                   flag_name + " list");
+      if (auto const info{ uri_classify(source_path) };
+          info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
+          info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
+        std::filesystem::path const p{ info.canonical };
+        if (!std::filesystem::exists(p)) {
+          throw std::runtime_error(std::string("merge-depot: ") + flag_name +
+                                   " file not found: " + source_path);
         }
-        return std::string{ std::istreambuf_iterator<char>{ in },
-                            std::istreambuf_iterator<char>{} };
-      }() };
+        std::ifstream in{ p };
+        if (!in) {
+          throw std::runtime_error(std::string("merge-depot: cannot open ") + flag_name +
+                                   " file: " + source_path);
+        }
+        set = is_s3_ls ? parse_s3_ls_lines(in) : parse_retain_lines(in);
+      } else {
+        scoped_path_cleanup tmp_guard{ platform::create_unique_temp_file(
+            "envy-merge-depot-retain") };
 
-      auto retain_stream{ std::istringstream{ content } };
-      retain_set =
-          is_s3_ls ? parse_s3_ls_lines(retain_stream) : parse_retain_lines(retain_stream);
-    }
+        auto req{ fetch_request_from_url(source_path, tmp_guard.path()) };
+        auto results{ fetch({ req }) };
+        if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
+          throw std::runtime_error(std::string("merge-depot: failed to fetch ") +
+                                   flag_name + ": " + *err);
+        }
 
-    if (cfg_.retain_prefix) {
-      std::unordered_set<std::string> prefixed;
-      for (auto &p : retain_set) { prefixed.insert(*cfg_.retain_prefix + p); }
-      retain_set = std::move(prefixed);
-    }
+        auto const content{ [&] {
+          std::ifstream in{ tmp_guard.path() };
+          if (!in) {
+            throw std::runtime_error(std::string("merge-depot: failed to read fetched ") +
+                                     flag_name + " list");
+          }
+          return std::string{ std::istreambuf_iterator<char>{ in },
+                              std::istreambuf_iterator<char>{} };
+        }() };
+
+        auto retain_stream{ std::istringstream{ content } };
+        set = is_s3_ls ? parse_s3_ls_lines(retain_stream)
+                       : parse_retain_lines(retain_stream);
+      }
+
+      if (cfg_.retain_prefix) {
+        std::unordered_set<std::string> prefixed;
+        for (auto &p : set) { prefixed.insert(*cfg_.retain_prefix + p); }
+        return prefixed;
+      }
+      return set;
+    }() };
 
     for (auto it{ merged.begin() }; it != merged.end();) {
       if (retain_set.count(it->first) == 0 && new_paths.count(it->first) == 0) {
