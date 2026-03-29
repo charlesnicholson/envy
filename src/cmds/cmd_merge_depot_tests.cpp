@@ -167,3 +167,14 @@ TEST_CASE("parse_s3_ls_lines: skips malformed lines") {
   CHECK(keys.size() == 1);
   CHECK(keys.count("good.tar.zst") == 1);
 }
+
+TEST_CASE("parse_s3_ls_lines: rejects non-numeric size field") {
+  auto input{ std::istringstream{
+      "2024-01-15 12:34:56    1.2MiB human-readable.tar.zst\n"
+      "2024-01-15 12:34:56       1234 good.tar.zst\n" } };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("good.tar.zst") == 1);
+}

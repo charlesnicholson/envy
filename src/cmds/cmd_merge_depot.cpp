@@ -109,6 +109,14 @@ std::unordered_set<std::string> parse_s3_ls_lines(std::istream &in) {
       tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
       continue;
     }
+    bool size_ok{ true };
+    for (size_t j{ size_start }; j < i; ++j) {
+      if (!std::isdigit(static_cast<unsigned char>(line[j]))) { size_ok = false; break; }
+    }
+    if (!size_ok) {
+      tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
+      continue;
+    }
     ++i;  // skip single space after size
     if (i >= line.size()) {
       tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
@@ -152,6 +160,7 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
   sub->callback([cfg_ptr, retain_str, on_selected = std::move(on_selected)] {
+    (void)retain_str;  // prevent -Wunused-lambda-capture; extends lifetime for CLI11
     on_selected(*cfg_ptr);
   });
 }
