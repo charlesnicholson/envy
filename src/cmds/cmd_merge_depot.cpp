@@ -83,6 +83,43 @@ std::vector<depot_manifest_entry> parse_depot_manifest(std::filesystem::path con
   return parse_manifest_lines(in);
 }
 
+std::unordered_set<std::string> parse_s3_ls_lines(std::istream &in) {
+  std::unordered_set<std::string> keys;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') { line.pop_back(); }
+    if (line.empty()) { continue; }
+
+    // Skip PRE (directory) lines: leading whitespace + "PRE " + prefix
+    auto const pos{ line.find_first_not_of(' ') };
+    if (pos != std::string::npos && line.compare(pos, 4, "PRE ") == 0) { continue; }
+
+    // Object line format: "YYYY-MM-DD HH:MM:SS <spaces> <size> <key>"
+    // Positions: 0-9 date, 10 space, 11-18 time, 19+ spaces then size then space then key
+    if (line.size() < 21) {
+      tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
+      continue;
+    }
+
+    size_t i{ 19 };
+    while (i < line.size() && line[i] == ' ') { ++i; }
+    auto const size_start{ i };
+    while (i < line.size() && line[i] != ' ') { ++i; }
+    if (i == size_start || i >= line.size()) {
+      tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
+      continue;
+    }
+    ++i;  // skip single space after size
+    if (i >= line.size()) {
+      tui::warn("merge-depot: skipping malformed s3 ls line: %s", line.c_str());
+      continue;
+    }
+
+    keys.insert(line.substr(i));
+  }
+  return keys;
+}
+
 void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("merge-depot", "Merge depot manifest files") };
   auto cfg_ptr{ std::make_shared<cfg>() };
@@ -94,18 +131,31 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
   sub->add_option("--existing",
                   cfg_ptr->existing_path,
                   "Existing merged depot manifest (local path or remote URL)");
+  auto retain_str{ std::make_shared<std::string>() };
   auto *retain_opt{ sub->add_option("--retain",
-                                    cfg_ptr->retain_path,
+                                    *retain_str,
                                     "Retain list: prune entries whose path is absent") };
+  auto *retain_s3_ls_opt{ sub->add_option(
+      "--retain-s3-ls",
+      *retain_str,
+      "Retain list in 'aws s3 ls' format") };
+  retain_opt->excludes(retain_s3_ls_opt);
+  retain_opt->each([cfg_ptr](std::string const &val) {
+    cfg_ptr->retain = retain_source{ val, retain_format::PLAIN };
+  });
+  retain_s3_ls_opt->each([cfg_ptr](std::string const &val) {
+    cfg_ptr->retain = retain_source{ val, retain_format::S3_LS };
+  });
   sub->add_option("--retain-prefix",
                   cfg_ptr->retain_prefix,
-                  "Prefix to prepend to each --retain entry before matching")
-      ->needs(retain_opt);
+                  "Prefix to prepend to each retain entry before matching");
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
   sub->callback(
-      [cfg_ptr, on_selected = std::move(on_selected)] { on_selected(*cfg_ptr); });
+      [cfg_ptr, retain_str, on_selected = std::move(on_selected)] {
+        on_selected(*cfg_ptr);
+      });
 }
 
 cmd_merge_depot::cmd_merge_depot(
@@ -114,13 +164,9 @@ cmd_merge_depot::cmd_merge_depot(
     : cfg_{ std::move(cfg) } {}
 
 void cmd_merge_depot::execute() {
-  // merged: path -> hash, using std::map for sorted iteration
-  std::map<std::string, std::string> merged;
-
-  // Track original hashes from --existing for conflict messages
+  std::map<std::string, std::string> merged;  // path -> hash, sorted
   std::map<std::string, std::string> existing_hashes;
 
-  // 1. Load existing depot manifest if provided
   if (cfg_.existing_path) {
     std::vector<depot_manifest_entry> existing_entries;
 
@@ -167,10 +213,8 @@ void cmd_merge_depot::execute() {
     }
   }
 
-  // Track paths introduced/modified by new manifests for cross-input detection
   std::set<std::string> new_paths;
 
-  // 2. Layer each new depot manifest
   for (auto const &manifest_path : cfg_.depot_manifests) {
     for (auto &e : parse_depot_manifest(manifest_path)) {
       if (auto it{ merged.find(e.path) }; it != merged.end() && it->second != e.hash) {
@@ -195,45 +239,59 @@ void cmd_merge_depot::execute() {
     }
   }
 
-  // 3. Apply --retain pruning
-  if (cfg_.retain_path) {
+  if (cfg_.retain_prefix && !cfg_.retain) {
+    throw std::runtime_error(
+        "merge-depot: --retain-prefix requires --retain or --retain-s3-ls");
+  }
+
+  if (cfg_.retain) {
+    auto const &[source_path, fmt]{ *cfg_.retain };
+    auto const is_s3_ls{ fmt == retain_format::S3_LS };
+    auto const *flag_name{ is_s3_ls ? "--retain-s3-ls" : "--retain" };
     std::unordered_set<std::string> retain_set;
 
-    if (auto const info{ uri_classify(*cfg_.retain_path) };
+    if (auto const info{ uri_classify(source_path) };
         info.scheme == uri_scheme::LOCAL_FILE_ABSOLUTE ||
         info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
       std::filesystem::path p{ info.canonical };
       if (!std::filesystem::exists(p)) {
-        throw std::runtime_error("merge-depot: --retain file not found: " +
-                                 *cfg_.retain_path);
+        throw std::runtime_error(
+            std::string("merge-depot: ") + flag_name +
+            " file not found: " + source_path);
       }
       std::ifstream in{ p };
       if (!in) {
-        throw std::runtime_error("merge-depot: cannot open --retain file: " +
-                                 *cfg_.retain_path);
+        throw std::runtime_error(
+            std::string("merge-depot: cannot open ") + flag_name +
+            " file: " + source_path);
       }
-      retain_set = parse_retain_lines(in);
+      retain_set = is_s3_ls ? parse_s3_ls_lines(in) : parse_retain_lines(in);
     } else {
       scoped_path_cleanup tmp_guard{ platform::create_unique_temp_file(
           "envy-merge-depot-retain") };
 
-      auto req{ fetch_request_from_url(*cfg_.retain_path, tmp_guard.path()) };
+      auto req{ fetch_request_from_url(source_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
       if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        throw std::runtime_error("merge-depot: failed to fetch --retain: " + *err);
+        throw std::runtime_error(
+            std::string("merge-depot: failed to fetch ") + flag_name +
+            ": " + *err);
       }
 
       auto const content{ [&] {
         std::ifstream in{ tmp_guard.path() };
         if (!in) {
-          throw std::runtime_error("merge-depot: failed to read fetched --retain list");
+          throw std::runtime_error(
+              std::string("merge-depot: failed to read fetched ") +
+              flag_name + " list");
         }
         return std::string{ std::istreambuf_iterator<char>{ in },
                             std::istreambuf_iterator<char>{} };
       }() };
 
       auto retain_stream{ std::istringstream{ content } };
-      retain_set = parse_retain_lines(retain_stream);
+      retain_set = is_s3_ls ? parse_s3_ls_lines(retain_stream)
+                            : parse_retain_lines(retain_stream);
     }
 
     if (cfg_.retain_prefix) {
@@ -250,8 +308,6 @@ void cmd_merge_depot::execute() {
       }
     }
   }
-
-  // 4. Output sorted depot manifest
   for (auto const &[path, hash] : merged) {
     tui::print_stdout("%s  %s\n", hash.c_str(), path.c_str());
   }

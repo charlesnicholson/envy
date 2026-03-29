@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 
+#include <sstream>
 #include <stdexcept>
 
 namespace { char const *const kFixtureDir = "test_data/merge_depot"; }  // namespace
@@ -67,4 +68,104 @@ TEST_CASE("parse_depot_manifest: preserves url paths with depot prefix") {
 
   REQUIRE(entries.size() == 1);
   CHECK(entries[0].path == "https://cdn.example.com/depot/pkg@v1-darwin-arm64.tar.zst");
+}
+
+TEST_CASE("parse_s3_ls_lines: extracts keys from standard output") {
+  auto input{ std::istringstream{
+      "2024-01-15 12:34:56       1234 pkg-darwin-arm64.tar.zst\n"
+      "2024-01-15 12:34:57       5678 pkg-linux-x86_64.tar.zst\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 2);
+  CHECK(keys.count("pkg-darwin-arm64.tar.zst") == 1);
+  CHECK(keys.count("pkg-linux-x86_64.tar.zst") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: skips PRE lines") {
+  auto input{ std::istringstream{
+      "                           PRE some-prefix/\n"
+      "2024-01-15 12:34:56       1234 actual-key.tar.zst\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("actual-key.tar.zst") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: skips empty lines") {
+  auto input{ std::istringstream{
+      "\n"
+      "2024-01-15 12:34:56       1234 pkg.tar.zst\n"
+      "\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("pkg.tar.zst") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: handles CRLF") {
+  auto input{ std::istringstream{
+      "2024-01-15 12:34:56       1234 pkg.tar.zst\r\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("pkg.tar.zst") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: deduplicates entries") {
+  auto input{ std::istringstream{
+      "2024-01-15 12:34:56       1234 dup.tar.zst\n"
+      "2024-01-15 12:34:57       1234 dup.tar.zst\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: handles zero-byte objects") {
+  auto input{ std::istringstream{
+      "2024-01-15 12:34:56          0 empty-object\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("empty-object") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: empty input returns empty set") {
+  auto input{ std::istringstream{ "" } };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.empty());
+}
+
+TEST_CASE("parse_s3_ls_lines: handles varying size widths") {
+  auto input{ std::istringstream{
+      "2026-03-29 01:02:49  182643143 toolchain-darwin-arm64.tar.zst\n"
+      "2026-03-29 11:17:13   67997829 sdk-linux-x86_64.tar.zst\n"
+      "2026-03-29 11:17:20       7561 packages.txt\n"
+      "2026-03-08 16:14:43   16961663 valgrind-linux-arm64.tar.zst\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 4);
+  CHECK(keys.count("toolchain-darwin-arm64.tar.zst") == 1);
+  CHECK(keys.count("sdk-linux-x86_64.tar.zst") == 1);
+  CHECK(keys.count("packages.txt") == 1);
+  CHECK(keys.count("valgrind-linux-arm64.tar.zst") == 1);
+}
+
+TEST_CASE("parse_s3_ls_lines: skips malformed lines") {
+  auto input{ std::istringstream{
+      "too short\n"
+      "2024-01-15 12:34:56       1234 good.tar.zst\n"} };
+
+  auto keys{ envy::parse_s3_ls_lines(input) };
+
+  CHECK(keys.size() == 1);
+  CHECK(keys.count("good.tar.zst") == 1);
 }
