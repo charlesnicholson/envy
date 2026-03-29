@@ -5,45 +5,63 @@ import re
 # we vend the library via FetchContent. This patch short-circuits SelectSSH to
 # consume the in-tree libssh2 target when it exists, preserving our include
 # paths and avoiding redundant pkg-config lookups.
+#
+# LIBSSH2_INCLUDE_DIRS is intentionally left empty in the bundled branch so
+# that the path does NOT enter LIBGIT2_SYSTEM_INCLUDES (which becomes
+# -isystem).  Envy adds the bundled headers as -I in Libgit2.cmake so they
+# outrank any system-installed libssh2 in /usr/local/include.
 
 select_path = pathlib.Path(r"@SELECT_PATH@")
 text = select_path.read_text()
 
-if "envy override v3" not in text:
-    updated = text.replace(
-        "find_pkglibraries(LIBSSH2 libssh2)\n",
-        "if(TARGET libssh2::libssh2) # envy override v3\n"
-        "\tset(LIBSSH2_FOUND 1)\n"
-        "\tset(LIBSSH2_INCLUDE_DIRS \"@LIBSSH2_SOURCE@/include\")\n"
-        "\tset(LIBSSH2_LIBRARY_DIRS \"@LIBSSH2_BINARY@/src\")\n"
-        "\tset(LIBSSH2_LIBRARIES \"${LIBSSH2_LIBRARY}\")\n"
-        "\tset(LIBSSH2_LDFLAGS \"\")\n"
-        "else()\n"
-        "\tfind_pkglibraries(LIBSSH2 libssh2)\n"
-        "endif()\n",
-    )
+if "envy override v4" not in text:
+    # Upgrade from v3: the source was already patched but LIBSSH2_INCLUDE_DIRS
+    # was set to the bundled path (causing it to become -isystem via
+    # LIBGIT2_SYSTEM_INCLUDES).  Clear it and bump the marker.
+    if "envy override v3" in text:
+        updated = re.sub(
+            r'\tset\(LIBSSH2_INCLUDE_DIRS "[^"]*"\)',
+            "\tset(LIBSSH2_INCLUDE_DIRS \"\")",
+            text,
+            count=1,
+        )
+        updated = updated.replace("envy override v3", "envy override v4")
+    else:
+        # Fresh patch on unmodified source.
+        updated = text.replace(
+            "find_pkglibraries(LIBSSH2 libssh2)\n",
+            "if(TARGET libssh2::libssh2) # envy override v4\n"
+            "\tset(LIBSSH2_FOUND 1)\n"
+            "\tset(LIBSSH2_INCLUDE_DIRS \"\")\n"
+            "\tset(LIBSSH2_LIBRARY_DIRS \"@LIBSSH2_BINARY@/src\")\n"
+            "\tset(LIBSSH2_LIBRARIES \"${LIBSSH2_LIBRARY}\")\n"
+            "\tset(LIBSSH2_LDFLAGS \"\")\n"
+            "else()\n"
+            "\tfind_pkglibraries(LIBSSH2 libssh2)\n"
+            "endif()\n",
+        )
 
-    updated = re.sub(
-        r"[ \t]*check_library_exists\(\"\${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"\${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n"
-        r"[ \t]*if\(HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n"
-        r"[ \t]*set\(GIT_SSH(?:_LIBSSH2)?_MEMORY_CREDENTIALS 1\)\n"
-        r"[ \t]*endif\(\)\n",
-        "if(NOT TARGET libssh2::libssh2) # envy override v3\n"
-        "\tset(_envy_libssh2_archive \"${LIBSSH2_LIBRARY}\")\n"
-        "\tcmake_path(GET _envy_libssh2_archive PARENT_PATH _envy_libssh2_dir)\n"
-        "\tcheck_library_exists(\"${_envy_libssh2_archive}\" libssh2_userauth_publickey_frommemory \"${_envy_libssh2_dir}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
-        "\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
-        "\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n"
-        "\t\tset(GIT_SSH_LIBSSH2_MEMORY_CREDENTIALS 1)\n"
-        "\tendif()\n"
-        "\tunset(_envy_libssh2_dir)\n"
-        "\tunset(_envy_libssh2_archive)\n"
-        "else()\n"
-        "\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n"
-        "\tset(GIT_SSH_LIBSSH2_MEMORY_CREDENTIALS 1)\n"
-        "endif()\n",
-        updated,
-        count=1,
-    )
+        updated = re.sub(
+            r"[ \t]*check_library_exists\(\"\${LIBSSH2_LIBRARIES}\" libssh2_userauth_publickey_frommemory \"\${LIBSSH2_LIBRARY_DIRS}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n"
+            r"[ \t]*if\(HAVE_LIBSSH2_MEMORY_CREDENTIALS\)\n"
+            r"[ \t]*set\(GIT_SSH(?:_LIBSSH2)?_MEMORY_CREDENTIALS 1\)\n"
+            r"[ \t]*endif\(\)\n",
+            "if(NOT TARGET libssh2::libssh2) # envy override v4\n"
+            "\tset(_envy_libssh2_archive \"${LIBSSH2_LIBRARY}\")\n"
+            "\tcmake_path(GET _envy_libssh2_archive PARENT_PATH _envy_libssh2_dir)\n"
+            "\tcheck_library_exists(\"${_envy_libssh2_archive}\" libssh2_userauth_publickey_frommemory \"${_envy_libssh2_dir}\" HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
+            "\tif(HAVE_LIBSSH2_MEMORY_CREDENTIALS)\n"
+            "\t\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n"
+            "\t\tset(GIT_SSH_LIBSSH2_MEMORY_CREDENTIALS 1)\n"
+            "\tendif()\n"
+            "\tunset(_envy_libssh2_dir)\n"
+            "\tunset(_envy_libssh2_archive)\n"
+            "else()\n"
+            "\tset(GIT_SSH_MEMORY_CREDENTIALS 1)\n"
+            "\tset(GIT_SSH_LIBSSH2_MEMORY_CREDENTIALS 1)\n"
+            "endif()\n",
+            updated,
+            count=1,
+        )
 
     select_path.write_text(updated)
