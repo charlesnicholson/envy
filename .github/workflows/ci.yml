@@ -78,11 +78,12 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
-      - name: Cache sccache
-        uses: actions/cache@v5
+      - name: Restore sccache cache
+        uses: actions/cache/restore@v5
         with:
           path: .sccache
-          key: sccache-${{ matrix.name }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -123,6 +124,13 @@ jobs:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
           ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
           ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
+
+      - name: Save sccache cache
+        uses: actions/cache/save@v5
+        if: always()
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v6
@@ -169,11 +177,12 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
-      - name: Cache sccache
-        uses: actions/cache@v5
+      - name: Restore sccache cache
+        uses: actions/cache/restore@v5
         with:
           path: .sccache
-          key: sccache-${{ matrix.name }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -207,6 +216,13 @@ jobs:
         run: py -3.13 -m functional_tests
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
+
+      - name: Save sccache cache
+        uses: actions/cache/save@v5
+        if: always()
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v6
