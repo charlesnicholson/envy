@@ -7,8 +7,10 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <WinInet.h>
+// clang-format off
 #include <Windows.h>
+#include <WinInet.h>
+// clang-format on
 
 #include <cstdio>
 #include <fstream>

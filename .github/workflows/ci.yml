@@ -3,6 +3,9 @@ name: ci
 on:
   workflow_call:
 
+env:
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -75,6 +78,16 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Restore sccache cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Install test dependencies
         if: startsWith(matrix.shard, 'func-')
         run: |
@@ -90,7 +103,7 @@ jobs:
           if [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
             BUILD_ARGS="$BUILD_ARGS -DENVY_VERSION=${GITHUB_REF_NAME#v}"
           fi
-          ./build.sh $BUILD_ARGS
+          ./build.sh $BUILD_ARGS -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Smoke test
         if: matrix.shard == 'main'
@@ -111,6 +124,13 @@ jobs:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
           ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
           ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
+
+      - name: Save sccache cache
+        uses: actions/cache/save@v5
+        if: always()
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v6
@@ -157,6 +177,16 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Restore sccache cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Build
         shell: powershell
         run: |
@@ -170,6 +200,8 @@ jobs:
             $Version = $env:GITHUB_REF_NAME -replace '^v', ''
             $Arguments += "-DENVY_VERSION=$Version"
           }
+          $Arguments += "-DCMAKE_C_COMPILER_LAUNCHER=sccache"
+          $Arguments += "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
           & ./build.bat @Arguments
 
       - name: Smoke test
@@ -184,6 +216,13 @@ jobs:
         run: py -3.13 -m functional_tests
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
+
+      - name: Save sccache cache
+        uses: actions/cache/save@v5
+        if: always()
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
 
       - name: Upload envy artifact
         uses: actions/upload-artifact@v6
