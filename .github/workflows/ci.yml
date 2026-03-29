@@ -4,8 +4,7 @@ on:
   workflow_call:
 
 env:
-  SCCACHE_GHA_ENABLED: "true"
-  SCCACHE_LOG: info
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
 
 jobs:
   build:
@@ -79,18 +78,15 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Cache sccache
+        uses: actions/cache@v5
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Check sccache env
-        run: |
-          echo "SCCACHE_GHA_ENABLED=$SCCACHE_GHA_ENABLED"
-          echo "ACTIONS_CACHE_SERVICE_V2=$ACTIONS_CACHE_SERVICE_V2"
-          echo "ACTIONS_RESULTS_URL set: $([ -n "$ACTIONS_RESULTS_URL" ] && echo yes || echo no)"
-          echo "ACTIONS_RUNTIME_TOKEN set: $([ -n "$ACTIONS_RUNTIME_TOKEN" ] && echo yes || echo no)"
-          echo "ACTIONS_CACHE_URL set: $([ -n "$ACTIONS_CACHE_URL" ] && echo yes || echo no)"
-          sccache --start-server 2>/dev/null || true
-          sccache --show-stats
 
       - name: Install test dependencies
         if: startsWith(matrix.shard, 'func-')
@@ -174,19 +170,15 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Cache sccache
+        uses: actions/cache@v5
+        with:
+          path: .sccache
+          key: sccache-${{ matrix.name }}-${{ github.sha }}
+          restore-keys: sccache-${{ matrix.name }}-
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Check sccache env
-        shell: bash
-        run: |
-          echo "SCCACHE_GHA_ENABLED=$SCCACHE_GHA_ENABLED"
-          echo "ACTIONS_CACHE_SERVICE_V2=$ACTIONS_CACHE_SERVICE_V2"
-          echo "ACTIONS_RESULTS_URL set: $([ -n "$ACTIONS_RESULTS_URL" ] && echo yes || echo no)"
-          echo "ACTIONS_RUNTIME_TOKEN set: $([ -n "$ACTIONS_RUNTIME_TOKEN" ] && echo yes || echo no)"
-          echo "ACTIONS_CACHE_URL set: $([ -n "$ACTIONS_CACHE_URL" ] && echo yes || echo no)"
-          sccache --start-server 2>/dev/null || true
-          sccache --show-stats
 
       - name: Build
         shell: powershell
