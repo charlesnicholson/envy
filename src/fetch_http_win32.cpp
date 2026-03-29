@@ -7,8 +7,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <WinInet.h>
 #include <Windows.h>
+#include <WinInet.h>
 
 #include <cstdio>
 #include <fstream>
