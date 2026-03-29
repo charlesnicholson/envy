@@ -73,7 +73,7 @@ TEST_CASE("parse_depot_manifest: preserves url paths with depot prefix") {
 TEST_CASE("parse_s3_ls_lines: extracts keys from standard output") {
   auto input{ std::istringstream{
       "2024-01-15 12:34:56       1234 pkg-darwin-arm64.tar.zst\n"
-      "2024-01-15 12:34:57       5678 pkg-linux-x86_64.tar.zst\n"} };
+      "2024-01-15 12:34:57       5678 pkg-linux-x86_64.tar.zst\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -85,7 +85,7 @@ TEST_CASE("parse_s3_ls_lines: extracts keys from standard output") {
 TEST_CASE("parse_s3_ls_lines: skips PRE lines") {
   auto input{ std::istringstream{
       "                           PRE some-prefix/\n"
-      "2024-01-15 12:34:56       1234 actual-key.tar.zst\n"} };
+      "2024-01-15 12:34:56       1234 actual-key.tar.zst\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -97,7 +97,7 @@ TEST_CASE("parse_s3_ls_lines: skips empty lines") {
   auto input{ std::istringstream{
       "\n"
       "2024-01-15 12:34:56       1234 pkg.tar.zst\n"
-      "\n"} };
+      "\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -106,8 +106,7 @@ TEST_CASE("parse_s3_ls_lines: skips empty lines") {
 }
 
 TEST_CASE("parse_s3_ls_lines: handles CRLF") {
-  auto input{ std::istringstream{
-      "2024-01-15 12:34:56       1234 pkg.tar.zst\r\n"} };
+  auto input{ std::istringstream{ "2024-01-15 12:34:56       1234 pkg.tar.zst\r\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -118,7 +117,7 @@ TEST_CASE("parse_s3_ls_lines: handles CRLF") {
 TEST_CASE("parse_s3_ls_lines: deduplicates entries") {
   auto input{ std::istringstream{
       "2024-01-15 12:34:56       1234 dup.tar.zst\n"
-      "2024-01-15 12:34:57       1234 dup.tar.zst\n"} };
+      "2024-01-15 12:34:57       1234 dup.tar.zst\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -126,8 +125,7 @@ TEST_CASE("parse_s3_ls_lines: deduplicates entries") {
 }
 
 TEST_CASE("parse_s3_ls_lines: handles zero-byte objects") {
-  auto input{ std::istringstream{
-      "2024-01-15 12:34:56          0 empty-object\n"} };
+  auto input{ std::istringstream{ "2024-01-15 12:34:56          0 empty-object\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -148,7 +146,7 @@ TEST_CASE("parse_s3_ls_lines: handles varying size widths") {
       "2026-03-29 01:02:49  182643143 toolchain-darwin-arm64.tar.zst\n"
       "2026-03-29 11:17:13   67997829 sdk-linux-x86_64.tar.zst\n"
       "2026-03-29 11:17:20       7561 packages.txt\n"
-      "2026-03-08 16:14:43   16961663 valgrind-linux-arm64.tar.zst\n"} };
+      "2026-03-08 16:14:43   16961663 valgrind-linux-arm64.tar.zst\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 
@@ -162,7 +160,7 @@ TEST_CASE("parse_s3_ls_lines: handles varying size widths") {
 TEST_CASE("parse_s3_ls_lines: skips malformed lines") {
   auto input{ std::istringstream{
       "too short\n"
-      "2024-01-15 12:34:56       1234 good.tar.zst\n"} };
+      "2024-01-15 12:34:56       1234 good.tar.zst\n" } };
 
   auto keys{ envy::parse_s3_ls_lines(input) };
 

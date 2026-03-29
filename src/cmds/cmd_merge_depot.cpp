@@ -135,10 +135,9 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
   auto *retain_opt{ sub->add_option("--retain",
                                     *retain_str,
                                     "Retain list: prune entries whose path is absent") };
-  auto *retain_s3_ls_opt{ sub->add_option(
-      "--retain-s3-ls",
-      *retain_str,
-      "Retain list in 'aws s3 ls' format") };
+  auto *retain_s3_ls_opt{
+    sub->add_option("--retain-s3-ls", *retain_str, "Retain list in 'aws s3 ls' format")
+  };
   retain_opt->excludes(retain_s3_ls_opt);
   retain_opt->each([cfg_ptr](std::string const &val) {
     cfg_ptr->retain = retain_source{ val, retain_format::PLAIN };
@@ -152,10 +151,9 @@ void cmd_merge_depot::register_cli(CLI::App &app, std::function<void(cfg)> on_se
   sub->add_flag("--strict",
                 cfg_ptr->strict,
                 "Treat hash changes vs existing depot manifest as errors");
-  sub->callback(
-      [cfg_ptr, retain_str, on_selected = std::move(on_selected)] {
-        on_selected(*cfg_ptr);
-      });
+  sub->callback([cfg_ptr, retain_str, on_selected = std::move(on_selected)] {
+    on_selected(*cfg_ptr);
+  });
 }
 
 cmd_merge_depot::cmd_merge_depot(
@@ -255,15 +253,13 @@ void cmd_merge_depot::execute() {
         info.scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
       std::filesystem::path p{ info.canonical };
       if (!std::filesystem::exists(p)) {
-        throw std::runtime_error(
-            std::string("merge-depot: ") + flag_name +
-            " file not found: " + source_path);
+        throw std::runtime_error(std::string("merge-depot: ") + flag_name +
+                                 " file not found: " + source_path);
       }
       std::ifstream in{ p };
       if (!in) {
-        throw std::runtime_error(
-            std::string("merge-depot: cannot open ") + flag_name +
-            " file: " + source_path);
+        throw std::runtime_error(std::string("merge-depot: cannot open ") + flag_name +
+                                 " file: " + source_path);
       }
       retain_set = is_s3_ls ? parse_s3_ls_lines(in) : parse_retain_lines(in);
     } else {
@@ -273,25 +269,23 @@ void cmd_merge_depot::execute() {
       auto req{ fetch_request_from_url(source_path, tmp_guard.path()) };
       auto results{ fetch({ req }) };
       if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
-        throw std::runtime_error(
-            std::string("merge-depot: failed to fetch ") + flag_name +
-            ": " + *err);
+        throw std::runtime_error(std::string("merge-depot: failed to fetch ") + flag_name +
+                                 ": " + *err);
       }
 
       auto const content{ [&] {
         std::ifstream in{ tmp_guard.path() };
         if (!in) {
-          throw std::runtime_error(
-              std::string("merge-depot: failed to read fetched ") +
-              flag_name + " list");
+          throw std::runtime_error(std::string("merge-depot: failed to read fetched ") +
+                                   flag_name + " list");
         }
         return std::string{ std::istreambuf_iterator<char>{ in },
                             std::istreambuf_iterator<char>{} };
       }() };
 
       auto retain_stream{ std::istringstream{ content } };
-      retain_set = is_s3_ls ? parse_s3_ls_lines(retain_stream)
-                            : parse_retain_lines(retain_stream);
+      retain_set =
+          is_s3_ls ? parse_s3_ls_lines(retain_stream) : parse_retain_lines(retain_stream);
     }
 
     if (cfg_.retain_prefix) {
