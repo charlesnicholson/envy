@@ -75,6 +75,9 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Install test dependencies
         if: startsWith(matrix.shard, 'func-')
         run: |
@@ -90,7 +93,7 @@ jobs:
           if [[ "${GITHUB_REF_NAME:-}" == v* ]]; then
             BUILD_ARGS="$BUILD_ARGS -DENVY_VERSION=${GITHUB_REF_NAME#v}"
           fi
-          ./build.sh $BUILD_ARGS
+          ./build.sh $BUILD_ARGS -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
 
       - name: Smoke test
         if: matrix.shard == 'main'
@@ -157,6 +160,9 @@ jobs:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Build
         shell: powershell
         run: |
@@ -170,6 +176,8 @@ jobs:
             $Version = $env:GITHUB_REF_NAME -replace '^v', ''
             $Arguments += "-DENVY_VERSION=$Version"
           }
+          $Arguments += "-DCMAKE_C_COMPILER_LAUNCHER=sccache"
+          $Arguments += "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
           & ./build.bat @Arguments
 
       - name: Smoke test
