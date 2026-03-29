@@ -59,8 +59,7 @@ jobs:
     needs: format-code
     if: >-
       always() &&
-      (needs.format-code.result == 'skipped' ||
-       (needs.format-code.result == 'success' && needs.format-code.outputs.pushed != 'true'))
+      (needs.format-code.result == 'skipped' || needs.format-code.result == 'success')
     uses: ./.github/workflows/ci.yml
 
   all-checks-pass:
