@@ -590,12 +590,13 @@ class TestMergeDepot(unittest.TestCase):
         self.assertNotIn("s3://bucket/stale.tar.zst", paths)
 
     def test_retain_prefix_without_retain_errors(self):
-        """--retain-prefix without --retain is rejected."""
+        """--retain-prefix without --retain or --retain-s3-ls errors at runtime."""
         new = self._write_manifest("new.txt", [
             make_manifest_line(HASH_A, "pkg.tar.zst"),
         ])
         result = self._run_merge(new, "--retain-prefix", "s3://bucket/")
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--retain-prefix requires", result.stderr)
 
     def test_retain_prefix_empty_string(self):
         """--retain-prefix with empty string is a no-op (entries match as-is)."""
@@ -670,6 +671,195 @@ class TestMergeDepot(unittest.TestCase):
             self.assertIn("s3://bucket/old.tar.zst", paths)
             self.assertIn("s3://bucket/new.tar.zst", paths)
             self.assertNotIn("s3://bucket/stale.tar.zst", paths)
+        finally:
+            server.shutdown()
+            server_thread.join(timeout=5)
+            server.server_close()
+
+    # --- --retain-s3-ls flag ---
+
+    def _write_s3_ls(self, name, keys):
+        """Write a file in 'aws s3 ls' format and return its path."""
+        path = self.test_dir / name
+        lines = [f"2024-01-15 12:34:56       1234 {key}\n" for key in keys]
+        path.write_text("".join(lines), encoding="utf-8")
+        return path
+
+    def test_retain_s3_ls_basic(self):
+        """--retain-s3-ls parses aws s3 ls format to build retain set."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        s3_ls = self._write_s3_ls("s3ls.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain-s3-ls", s3_ls
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("old.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+        self.assertNotIn("stale.tar.zst", paths)
+
+    def test_retain_s3_ls_skips_pre_lines(self):
+        """PRE lines in aws s3 ls output are ignored."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+        s3_ls_path = self.test_dir / "s3ls.txt"
+        s3_ls_path.write_text(
+            "                           PRE subdir/\n"
+            "2024-01-15 12:34:56       1234 old.tar.zst\n",
+            encoding="utf-8",
+        )
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain-s3-ls", s3_ls_path
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("old.tar.zst", paths)
+        self.assertIn("new.tar.zst", paths)
+
+    def test_retain_s3_ls_with_retain_prefix(self):
+        """--retain-s3-ls combined with --retain-prefix matches prefixed paths."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "s3://bucket/old.tar.zst"),
+            make_manifest_line(HASH_B, "s3://bucket/stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "s3://bucket/new.tar.zst"),
+        ])
+        s3_ls = self._write_s3_ls("s3ls.txt", ["old.tar.zst"])
+
+        result = self._run_merge(
+            new, "--existing", existing,
+            "--retain-s3-ls", s3_ls, "--retain-prefix", "s3://bucket/"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertIn("s3://bucket/old.tar.zst", paths)
+        self.assertIn("s3://bucket/new.tar.zst", paths)
+        self.assertNotIn("s3://bucket/stale.tar.zst", paths)
+
+    def test_retain_and_retain_s3_ls_mutually_exclusive(self):
+        """--retain and --retain-s3-ls together is rejected."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        retain = self._write_retain("retain.txt", ["pkg.tar.zst"])
+        s3_ls = self._write_s3_ls("s3ls.txt", ["pkg.tar.zst"])
+
+        result = self._run_merge(
+            new, "--retain", retain, "--retain-s3-ls", s3_ls
+        )
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_retain_s3_ls_preserves_new_entries(self):
+        """New manifest entries survive even if absent from s3 ls retain."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "brand-new.tar.zst"),
+        ])
+        s3_ls = self._write_s3_ls("s3ls.txt", ["something-else.tar.zst"])
+
+        result = self._run_merge(new, "--retain-s3-ls", s3_ls)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1], "brand-new.tar.zst")
+
+    def test_retain_s3_ls_realistic_format(self):
+        """--retain-s3-ls handles real aws s3 ls whitespace and size widths."""
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "toolchain@r0-darwin-arm64.tar.zst"),
+            make_manifest_line(HASH_B, "sdk@r0-linux-x86_64.tar.zst"),
+            make_manifest_line(HASH_C, "stale@r0-darwin-arm64.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_D, "newpkg@r0-darwin-arm64.tar.zst"),
+        ])
+        s3_ls_path = self.test_dir / "s3ls.txt"
+        # Realistic aws s3 ls output: varying size widths, right-aligned
+        s3_ls_path.write_text(
+            "2026-03-29 01:02:49  182643143 toolchain@r0-darwin-arm64.tar.zst\n"
+            "2026-03-29 11:17:13   67997829 sdk@r0-linux-x86_64.tar.zst\n"
+            "2026-03-29 11:17:20       7561 packages.txt\n",
+            encoding="utf-8",
+        )
+
+        result = self._run_merge(
+            new, "--existing", existing, "--retain-s3-ls", s3_ls_path
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entries = self._parse_output(result.stdout)
+        paths = {e[1] for e in entries}
+        self.assertEqual(len(entries), 3)
+        self.assertIn("toolchain@r0-darwin-arm64.tar.zst", paths)
+        self.assertIn("sdk@r0-linux-x86_64.tar.zst", paths)
+        self.assertIn("newpkg@r0-darwin-arm64.tar.zst", paths)
+        self.assertNotIn("stale@r0-darwin-arm64.tar.zst", paths)
+        self.assertNotIn("packages.txt", paths)
+
+    def test_retain_s3_ls_nonexistent_file_errors(self):
+        """--retain-s3-ls with nonexistent local file errors at runtime."""
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_A, "pkg.tar.zst"),
+        ])
+        result = self._run_merge(
+            new, "--retain-s3-ls", "/nonexistent/s3ls.txt"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not found", result.stderr)
+
+    def test_retain_s3_ls_http_url(self):
+        """--retain-s3-ls fetches retain list from HTTP URL."""
+        serve_dir = self.test_dir / "serve"
+        serve_dir.mkdir()
+        (serve_dir / "s3ls.txt").write_text(
+            "2024-01-15 12:34:56       1234 old.tar.zst\n",
+            encoding="utf-8",
+        )
+
+        existing = self._write_manifest("existing.txt", [
+            make_manifest_line(HASH_A, "old.tar.zst"),
+            make_manifest_line(HASH_B, "stale.tar.zst"),
+        ])
+        new = self._write_manifest("new.txt", [
+            make_manifest_line(HASH_C, "new.tar.zst"),
+        ])
+
+        handler = partial(_QuietHTTPHandler, directory=str(serve_dir))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            port = server.server_address[1]
+            url = f"http://127.0.0.1:{port}/s3ls.txt"
+
+            result = self._run_merge(
+                new, "--existing", existing, "--retain-s3-ls", url
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = self._parse_output(result.stdout)
+            paths = {e[1] for e in entries}
+            self.assertEqual(len(entries), 2)
+            self.assertIn("old.tar.zst", paths)
+            self.assertIn("new.tar.zst", paths)
+            self.assertNotIn("stale.tar.zst", paths)
         finally:
             server.shutdown()
             server_thread.join(timeout=5)
