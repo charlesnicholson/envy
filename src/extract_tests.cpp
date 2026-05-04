@@ -445,9 +445,7 @@ TEST_CASE("compute_archive_totals on corrupt .gz throws") {
   try {
     envy::compute_archive_totals(archive);
     FAIL("Expected exception for corrupt .gz");
-  } catch (std::runtime_error const &e) {
-    CHECK(std::string{ e.what() }.size() > 0);
-  }
+  } catch (std::runtime_error const &e) { CHECK(std::string{ e.what() }.size() > 0); }
 }
 
 TEST_CASE("archive_create_tar_zst with fetch prefix") {
