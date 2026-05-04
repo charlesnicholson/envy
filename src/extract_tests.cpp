@@ -317,8 +317,6 @@ TEST_CASE("extract_bare_compressed_output_name strips known suffixes") {
         std::filesystem::path{ "hello.txt" });
   CHECK(envy::extract_bare_compressed_output_name("hello.txt.zst") ==
         std::filesystem::path{ "hello.txt" });
-  CHECK(envy::extract_bare_compressed_output_name("hello.txt.lz") ==
-        std::filesystem::path{ "hello.txt" });
   CHECK(envy::extract_bare_compressed_output_name("hello.txt.lzma") ==
         std::filesystem::path{ "hello.txt" });
   CHECK(envy::extract_bare_compressed_output_name("hello.txt.lz4") ==
@@ -345,7 +343,6 @@ TEST_CASE("extract_is_archive_extension recognizes bare compression suffixes") {
   CHECK(envy::extract_is_archive_extension("hello.txt.bz2"));
   CHECK(envy::extract_is_archive_extension("hello.txt.xz"));
   CHECK(envy::extract_is_archive_extension("hello.txt.zst"));
-  CHECK(envy::extract_is_archive_extension("hello.txt.lz"));
   CHECK(envy::extract_is_archive_extension("hello.txt.lzma"));
   CHECK(envy::extract_is_archive_extension("hello.txt.lz4"));
   // tar wrappers continue to match
@@ -439,6 +436,18 @@ TEST_CASE("compute_archive_totals on bare .gz reports one file with bytes") {
   envy::extract_totals const totals{ envy::compute_archive_totals(archive) };
   CHECK(totals.files == 1);
   CHECK(totals.bytes > 0);
+}
+
+TEST_CASE("compute_archive_totals on corrupt .gz throws") {
+  // Mirror extract()'s validation: prescan must not silently report a corrupt
+  // bare-compressed file as a valid 1-file archive.
+  auto const archive{ std::filesystem::path("test_data/archives/corrupt.gz") };
+  try {
+    envy::compute_archive_totals(archive);
+    FAIL("Expected exception for corrupt .gz");
+  } catch (std::runtime_error const &e) {
+    CHECK(std::string{ e.what() }.size() > 0);
+  }
 }
 
 TEST_CASE("archive_create_tar_zst with fetch prefix") {

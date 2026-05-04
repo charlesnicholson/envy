@@ -507,8 +507,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
 bool extract_is_archive_extension(std::filesystem::path const &path) {
   static std::unordered_set<std::string> const archive_extensions{
-    ".tar", ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",  ".7z", ".rar",
-    ".iso", ".gz",  ".bz2",    ".xz",     ".zst",     ".lz",      ".lzma", ".lz4"
+    ".tar", ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip", ".7z",
+    ".rar", ".iso", ".gz",     ".bz2",    ".xz",      ".zst",     ".lzma", ".lz4"
   };
 
   std::string const ext{ path.extension().string() };
@@ -520,8 +520,8 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
 
 std::optional<std::filesystem::path> extract_bare_compressed_output_name(
     std::filesystem::path const &archive_path) {
-  static std::unordered_set<std::string> const bare_extensions{ ".gz",  ".bz2", ".xz",
-                                                                ".zst", ".lz",  ".lzma",
+  static std::unordered_set<std::string> const bare_extensions{ ".gz",   ".bz2", ".xz",
+                                                                ".zst",  ".lzma",
                                                                 ".lz4" };
 
   if (std::string const ext{ archive_path.extension().string() };
@@ -558,6 +558,14 @@ extract_totals compute_archive_totals(std::filesystem::path const &archive_path)
                                archive_error_string(reader.handle));
     }
     bool const is_raw_stream{ archive_format(reader.handle) == ARCHIVE_FORMAT_RAW };
+    // Mirror extract()'s validation: if the suffix promised compression but no
+    // decompression filter actually matched, this is corrupt or misnamed input.
+    if (is_raw_stream && enable_raw &&
+        archive_filter_code(reader.handle, 0) == ARCHIVE_FILTER_NONE) {
+      throw std::runtime_error(
+          std::string("compute_archive_totals: not a valid compressed stream: ") +
+          archive_path.string());
+    }
     if (!is_raw_stream && archive_entry_filetype(entry) != AE_IFREG) { continue; }
     la_int64_t const size{ archive_entry_size(entry) };
     if (size > 0) {
@@ -613,6 +621,12 @@ extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
       }
 
       bool const is_raw_stream{ archive_format(reader.handle) == ARCHIVE_FORMAT_RAW };
+      if (is_raw_stream && enable_raw &&
+          archive_filter_code(reader.handle, 0) == ARCHIVE_FILTER_NONE) {
+        throw std::runtime_error(
+            std::string("compute_extract_totals: not a valid compressed stream: ") +
+            entry.path().string());
+      }
       if (!is_raw_stream && archive_entry_filetype(ent) != AE_IFREG) { continue; }
 
       la_int64_t const size{ archive_entry_size(ent) };
