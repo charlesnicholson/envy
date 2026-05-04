@@ -373,9 +373,11 @@ TEST_CASE("extract bare compressed file produces stem-named output") {
     auto const out{ dest / "hello.txt" };
     CHECK(std::filesystem::exists(out));
 
-    std::ifstream in{ out };
-    std::string content{ std::istreambuf_iterator<char>{ in }, {} };
-    CHECK(content == "Bare compression test\n");
+    {
+      std::ifstream in{ out };
+      std::string content{ std::istreambuf_iterator<char>{ in }, {} };
+      CHECK(content == "Bare compression test\n");
+    }
 
     std::filesystem::remove_all(dest);
   }
