@@ -27,7 +27,6 @@ gzip  -c < source/bare/hello.txt > hello.txt.gz
 bzip2 -c < source/bare/hello.txt > hello.txt.bz2
 xz    -c < source/bare/hello.txt > hello.txt.xz
 zstd  -q -c < source/bare/hello.txt > hello.txt.zst
-lz4   -q -c source/bare/hello.txt > hello.txt.lz4
 lzma  -c < source/bare/hello.txt > hello.txt.lzma
 
 # Corrupt .gz: valid suffix, invalid stream — used by error-path tests.

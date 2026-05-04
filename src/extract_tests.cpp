@@ -319,8 +319,6 @@ TEST_CASE("extract_bare_compressed_output_name strips known suffixes") {
         std::filesystem::path{ "hello.txt" });
   CHECK(envy::extract_bare_compressed_output_name("hello.txt.lzma") ==
         std::filesystem::path{ "hello.txt" });
-  CHECK(envy::extract_bare_compressed_output_name("hello.txt.lz4") ==
-        std::filesystem::path{ "hello.txt" });
   CHECK(envy::extract_bare_compressed_output_name("foo.gz") ==
         std::filesystem::path{ "foo" });
   CHECK(envy::extract_bare_compressed_output_name("/abs/path/foo.gz") ==
@@ -344,7 +342,6 @@ TEST_CASE("extract_is_archive_extension recognizes bare compression suffixes") {
   CHECK(envy::extract_is_archive_extension("hello.txt.xz"));
   CHECK(envy::extract_is_archive_extension("hello.txt.zst"));
   CHECK(envy::extract_is_archive_extension("hello.txt.lzma"));
-  CHECK(envy::extract_is_archive_extension("hello.txt.lz4"));
   // tar wrappers continue to match
   CHECK(envy::extract_is_archive_extension("foo.tar.gz"));
   CHECK(envy::extract_is_archive_extension("foo.tgz"));
@@ -359,7 +356,6 @@ TEST_CASE("extract bare compressed file produces stem-named output") {
       "hello.txt.bz2",
       "hello.txt.xz",
       "hello.txt.zst",
-      "hello.txt.lz4",
       "hello.txt.lzma",
   } };
 

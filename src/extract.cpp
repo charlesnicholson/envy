@@ -507,8 +507,9 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
 bool extract_is_archive_extension(std::filesystem::path const &path) {
   static std::unordered_set<std::string> const archive_extensions{
-    ".tar", ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",  ".7z",
-    ".rar", ".iso", ".gz",     ".bz2",    ".xz",      ".zst",     ".lzma", ".lz4"
+    ".tar", ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",
+    ".7z",  ".rar", ".iso",    ".gz",     ".bz2",     ".xz",      ".zst",
+    ".lzma"
   };
 
   std::string const ext{ path.extension().string() };
@@ -520,8 +521,9 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
 
 std::optional<std::filesystem::path> extract_bare_compressed_output_name(
     std::filesystem::path const &archive_path) {
-  static std::unordered_set<std::string> const bare_extensions{ ".gz",  ".bz2",  ".xz",
-                                                                ".zst", ".lzma", ".lz4" };
+  static std::unordered_set<std::string> const bare_extensions{
+    ".gz", ".bz2", ".xz", ".zst", ".lzma"
+  };
 
   if (std::string const ext{ archive_path.extension().string() };
       !bare_extensions.contains(ext)) {

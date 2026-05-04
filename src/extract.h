@@ -37,9 +37,9 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 // Check if path has archive extension
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
-// If path has a single-stream compression suffix (.gz, .bz2, .xz, .zst, .lzma,
-// .lz4) AND the stem is not a tar wrapper (e.g., foo.tar.gz), returns the filename
-// with the suffix stripped (e.g., bar.txt.gz -> bar.txt). Otherwise returns nullopt.
+// If path has a single-stream compression suffix (.gz, .bz2, .xz, .zst, .lzma) AND
+// the stem is not a tar wrapper (e.g., foo.tar.gz), returns the filename with the
+// suffix stripped (e.g., bar.txt.gz -> bar.txt). Otherwise returns nullopt.
 std::optional<std::filesystem::path> extract_bare_compressed_output_name(
     std::filesystem::path const &archive_path);
 
