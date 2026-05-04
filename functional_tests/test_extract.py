@@ -81,6 +81,24 @@ def create_zip_archive(output_path: Path) -> None:
             zf.writestr(zip_name, content)
 
 
+BARE_CONTENT = b"Bare compression test\n"
+
+
+def create_bare_gz(output_path: Path) -> None:
+    with gzip.open(output_path, "wb") as f:
+        f.write(BARE_CONTENT)
+
+
+def create_bare_bz2(output_path: Path) -> None:
+    with bz2.open(output_path, "wb") as f:
+        f.write(BARE_CONTENT)
+
+
+def create_bare_xz(output_path: Path) -> None:
+    with lzma.open(output_path, "wb") as f:
+        f.write(BARE_CONTENT)
+
+
 class EnvyExtractTests(unittest.TestCase):
     def setUp(self) -> None:
         self._envy_binary = test_config.get_envy_executable()
@@ -94,6 +112,11 @@ class EnvyExtractTests(unittest.TestCase):
         create_tar_archive(self._archives_dir / "test.tar.bz2", compression="bz2")
         create_tar_archive(self._archives_dir / "test.tar.xz", compression="xz")
         create_zip_archive(self._archives_dir / "test.zip")
+
+        # Bare single-stream compressed fixtures
+        create_bare_gz(self._archives_dir / "hello.txt.gz")
+        create_bare_bz2(self._archives_dir / "hello.txt.bz2")
+        create_bare_xz(self._archives_dir / "hello.txt.xz")
 
     def tearDown(self) -> None:
         import shutil
@@ -284,6 +307,63 @@ class EnvyExtractTests(unittest.TestCase):
 
             self.assertEqual(0, result.returncode)
             self.assertIn("Extracted 5 files", result.stderr)
+
+    def _verify_bare_extraction(self, archive: Path) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._run_envy("extract", str(archive), tmpdir)
+            self.assertEqual(0, result.returncode, f"Extract failed: {result.stderr}")
+            self.assertIn("Extracted 1 files", result.stderr)
+
+            out = Path(tmpdir) / "hello.txt"
+            self.assertTrue(out.exists(), f"Expected {out} to exist")
+            self.assertEqual(BARE_CONTENT, out.read_bytes())
+
+    def test_extract_bare_gz(self) -> None:
+        """Bare .gz extracts to stem-named file."""
+        self._verify_bare_extraction(self._archives_dir / "hello.txt.gz")
+
+    def test_extract_bare_bz2(self) -> None:
+        """Bare .bz2 extracts to stem-named file."""
+        self._verify_bare_extraction(self._archives_dir / "hello.txt.bz2")
+
+    def test_extract_bare_xz(self) -> None:
+        """Bare .xz extracts to stem-named file."""
+        self._verify_bare_extraction(self._archives_dir / "hello.txt.xz")
+
+    def test_extract_bare_to_default_dest(self) -> None:
+        """Bare-compressed extracts to cwd when destination is omitted."""
+        archive = self._archives_dir / "hello.txt.gz"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._run_envy("extract", str(archive), cwd=tmpdir)
+            self.assertEqual(0, result.returncode, f"Extract failed: {result.stderr}")
+            self.assertEqual(BARE_CONTENT, (Path(tmpdir) / "hello.txt").read_bytes())
+
+    def test_extract_bare_unrecognized_suffix_errors(self) -> None:
+        """A non-archive file with no recognized suffix must error, not silently copy."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake = Path(tmpdir) / "garbage.bin"
+            fake.write_bytes(b"not an archive of any kind")
+
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            result = self._run_envy("extract", str(fake), str(dest))
+
+            self.assertNotEqual(0, result.returncode)
+            # No files should have leaked into dest
+            self.assertEqual([], list(dest.iterdir()))
+
+    def test_extract_corrupt_gz_errors(self) -> None:
+        """A file with .gz suffix but invalid stream must error cleanly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bad = Path(tmpdir) / "bad.gz"
+            bad.write_bytes(b"this is not gzip data")
+
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            result = self._run_envy("extract", str(bad), str(dest))
+
+            self.assertNotEqual(0, result.returncode)
 
 
 if __name__ == "__main__":

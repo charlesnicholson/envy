@@ -23,10 +23,14 @@ namespace envy {
 namespace {
 
 struct archive_reader : unmovable {
-  archive_reader() : handle(archive_read_new()) {
+  explicit archive_reader(bool enable_raw_format = false)
+      : handle(archive_read_new()) {
     if (!handle) { throw std::runtime_error("archive_read_new failed"); }
     archive_read_support_filter_all(handle);
     archive_read_support_format_all(handle);
+    // libarchive matches raw last; opt in only when we expect a bare compressed
+    // stream so unknown binary blobs don't silently "extract" as a copy.
+    if (enable_raw_format) { archive_read_support_format_raw(handle); }
   }
 
   ~archive_reader() {
@@ -347,7 +351,15 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
 std::uint64_t extract(std::filesystem::path const &archive_path,
                       std::filesystem::path const &destination,
                       extract_options const &options) {
-  archive_reader reader;
+  auto const bare_name{ extract_bare_compressed_output_name(archive_path) };
+  if (bare_name && options.strip_components > 0) {
+    throw std::runtime_error(
+        std::string("extract: strip_components is not valid for single-stream "
+                    "compressed file: ") +
+        archive_path.string());
+  }
+
+  archive_reader reader{ bare_name.has_value() };
   archive_writer writer;
 
   if (archive_read_open_filename(reader.handle, archive_path.string().c_str(), 10240) !=
@@ -367,6 +379,23 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
     if (r != ARCHIVE_OK) {
       throw std::runtime_error(std::string("Failed to read archive header: ") +
                                archive_error_string(reader.handle));
+    }
+
+    bool const is_raw_stream{ archive_format(reader.handle) == ARCHIVE_FORMAT_RAW };
+
+    // Raw entries carry an unhelpful pathname ("data"); substitute the derived name
+    // (e.g., bar.txt.gz -> bar.txt) and treat the entry as a regular file.
+    if (is_raw_stream && bare_name) {
+      // Suffix promised compression, but no decompression filter matched — the file
+      // is corrupt or has the wrong extension. Don't silently emit raw bytes.
+      if (archive_filter_code(reader.handle, 0) == ARCHIVE_FILTER_NONE) {
+        throw std::runtime_error(
+            std::string("extract: not a valid compressed stream: ") +
+            archive_path.string());
+      }
+      std::string const raw_pathname{ bare_name->string() };
+      archive_entry_copy_pathname(entry, raw_pathname.c_str());
+      archive_entry_set_filetype(entry, AE_IFREG);
     }
 
     char const *entry_path{ archive_entry_pathname(entry) };
@@ -421,7 +450,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
                                archive_error_string(writer.handle));
     }
 
-    if (archive_entry_size(entry) > 0) {
+    // Raw-format entries report size as -1 (unknown); read regardless.
+    if (archive_entry_size(entry) > 0 || is_raw_stream) {
       std::vector<char> buffer(1024 * 1024);
 
       la_ssize_t bytes_read{ 0 };
@@ -479,8 +509,9 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
 bool extract_is_archive_extension(std::filesystem::path const &path) {
   static std::unordered_set<std::string> const archive_extensions{
-    ".tar",     ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2",
-    ".tar.zst", ".zip", ".7z",     ".rar",    ".iso"
+    ".tar",     ".tgz",  ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",
+    ".7z",      ".rar",  ".iso",    ".gz",     ".bz2",     ".xz",      ".zst",
+    ".lz",      ".lzma", ".lz4"
   };
 
   std::string const ext{ path.extension().string() };
@@ -490,9 +521,29 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
          archive_extensions.contains(path.stem().extension().string() + ext);
 }
 
+std::optional<std::filesystem::path> extract_bare_compressed_output_name(
+    std::filesystem::path const &archive_path) {
+  static std::unordered_set<std::string> const bare_extensions{
+    ".gz", ".bz2", ".xz", ".zst", ".lz", ".lzma", ".lz4"
+  };
+
+  if (std::string const ext{ archive_path.extension().string() };
+      !bare_extensions.contains(ext)) {
+    return std::nullopt;
+  }
+
+  // Reject tar wrappers: foo.tar.gz, foo.tar.xz, etc. — those are archives, not bare
+  // single-stream compressed payloads.
+  std::filesystem::path const stem{ archive_path.filename().stem() };
+  if (stem.extension() == ".tar") { return std::nullopt; }
+
+  return stem;
+}
+
 extract_totals compute_archive_totals(std::filesystem::path const &archive_path) {
   extract_totals totals{};
-  archive_reader reader;
+  bool const enable_raw{ extract_bare_compressed_output_name(archive_path).has_value() };
+  archive_reader reader{ enable_raw };
   if (archive_read_open_filename(reader.handle, archive_path.string().c_str(), 10240) !=
       ARCHIVE_OK) {
     throw std::runtime_error(std::string("compute_archive_totals: failed to open ") +
@@ -509,9 +560,18 @@ extract_totals compute_archive_totals(std::filesystem::path const &archive_path)
                                archive_path.string() + ": " +
                                archive_error_string(reader.handle));
     }
-    if (archive_entry_filetype(entry) != AE_IFREG) { continue; }
+    bool const is_raw_stream{ archive_format(reader.handle) == ARCHIVE_FORMAT_RAW };
+    if (!is_raw_stream && archive_entry_filetype(entry) != AE_IFREG) { continue; }
     la_int64_t const size{ archive_entry_size(entry) };
-    if (size > 0) { totals.bytes += static_cast<std::uint64_t>(size); }
+    if (size > 0) {
+      totals.bytes += static_cast<std::uint64_t>(size);
+    } else if (is_raw_stream) {
+      // Raw entries report size==-1 (unknown). Use compressed source size as an
+      // approximation for progress UI.
+      std::error_code ec;
+      auto const fsize{ std::filesystem::file_size(archive_path, ec) };
+      if (!ec) { totals.bytes += fsize; }
+    }
     ++totals.files;
   }
   return totals;
@@ -536,7 +596,10 @@ extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
       continue;
     }
 
-    archive_reader reader;
+    bool const enable_raw{
+      extract_bare_compressed_output_name(entry.path()).has_value()
+    };
+    archive_reader reader{ enable_raw };
     if (archive_read_open_filename(reader.handle, entry.path().string().c_str(), 10240) !=
         ARCHIVE_OK) {
       throw std::runtime_error(std::string("compute_extract_totals: failed to open ") +
@@ -554,10 +617,17 @@ extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
                                  archive_error_string(reader.handle));
       }
 
-      if (archive_entry_filetype(ent) != AE_IFREG) { continue; }
+      bool const is_raw_stream{ archive_format(reader.handle) == ARCHIVE_FORMAT_RAW };
+      if (!is_raw_stream && archive_entry_filetype(ent) != AE_IFREG) { continue; }
 
       la_int64_t const size{ archive_entry_size(ent) };
-      if (size > 0) { totals.bytes += static_cast<std::uint64_t>(size); }
+      if (size > 0) {
+        totals.bytes += static_cast<std::uint64_t>(size);
+      } else if (is_raw_stream) {
+        std::error_code ec;
+        auto const fsize{ std::filesystem::file_size(entry.path(), ec) };
+        if (!ec) { totals.bytes += fsize; }
+      }
       ++totals.files;
     }
   }

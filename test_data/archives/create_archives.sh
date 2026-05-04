@@ -22,5 +22,16 @@ zstd -c < test.tar > test.tar.zst
 rm -f test.zip
 (cd source && zip -q -r ../test.zip root)
 
+# Bare single-stream compressed fixtures (no tar wrapper)
+gzip  -c < source/bare/hello.txt > hello.txt.gz
+bzip2 -c < source/bare/hello.txt > hello.txt.bz2
+xz    -c < source/bare/hello.txt > hello.txt.xz
+zstd  -q -c < source/bare/hello.txt > hello.txt.zst
+lz4   -q -c source/bare/hello.txt > hello.txt.lz4
+lzma  -c < source/bare/hello.txt > hello.txt.lzma
+
+# Corrupt .gz: valid suffix, invalid stream — used by error-path tests.
+printf 'this is not gzip data' > corrupt.gz
+
 echo "Done! Created:"
-ls -lh test.tar* test.zip
+ls -lh test.tar* test.zip hello.txt.* corrupt.gz
