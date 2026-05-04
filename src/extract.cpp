@@ -23,8 +23,7 @@ namespace envy {
 namespace {
 
 struct archive_reader : unmovable {
-  explicit archive_reader(bool enable_raw_format = false)
-      : handle(archive_read_new()) {
+  explicit archive_reader(bool enable_raw_format = false) : handle(archive_read_new()) {
     if (!handle) { throw std::runtime_error("archive_read_new failed"); }
     archive_read_support_filter_all(handle);
     archive_read_support_format_all(handle);
@@ -389,9 +388,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       // Suffix promised compression, but no decompression filter matched — the file
       // is corrupt or has the wrong extension. Don't silently emit raw bytes.
       if (archive_filter_code(reader.handle, 0) == ARCHIVE_FILTER_NONE) {
-        throw std::runtime_error(
-            std::string("extract: not a valid compressed stream: ") +
-            archive_path.string());
+        throw std::runtime_error(std::string("extract: not a valid compressed stream: ") +
+                                 archive_path.string());
       }
       std::string const raw_pathname{ bare_name->string() };
       archive_entry_copy_pathname(entry, raw_pathname.c_str());
@@ -509,9 +507,8 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 
 bool extract_is_archive_extension(std::filesystem::path const &path) {
   static std::unordered_set<std::string> const archive_extensions{
-    ".tar",     ".tgz",  ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",
-    ".7z",      ".rar",  ".iso",    ".gz",     ".bz2",     ".xz",      ".zst",
-    ".lz",      ".lzma", ".lz4"
+    ".tar", ".tgz", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".zip",  ".7z", ".rar",
+    ".iso", ".gz",  ".bz2",    ".xz",     ".zst",     ".lz",      ".lzma", ".lz4"
   };
 
   std::string const ext{ path.extension().string() };
@@ -523,9 +520,9 @@ bool extract_is_archive_extension(std::filesystem::path const &path) {
 
 std::optional<std::filesystem::path> extract_bare_compressed_output_name(
     std::filesystem::path const &archive_path) {
-  static std::unordered_set<std::string> const bare_extensions{
-    ".gz", ".bz2", ".xz", ".zst", ".lz", ".lzma", ".lz4"
-  };
+  static std::unordered_set<std::string> const bare_extensions{ ".gz",  ".bz2", ".xz",
+                                                                ".zst", ".lz",  ".lzma",
+                                                                ".lz4" };
 
   if (std::string const ext{ archive_path.extension().string() };
       !bare_extensions.contains(ext)) {
@@ -596,9 +593,7 @@ extract_totals compute_extract_totals(std::filesystem::path const &fetch_dir) {
       continue;
     }
 
-    bool const enable_raw{
-      extract_bare_compressed_output_name(entry.path()).has_value()
-    };
+    bool const enable_raw{ extract_bare_compressed_output_name(entry.path()).has_value() };
     archive_reader reader{ enable_raw };
     if (archive_read_open_filename(reader.handle, entry.path().string().c_str(), 10240) !=
         ARCHIVE_OK) {
