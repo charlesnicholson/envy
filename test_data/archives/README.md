@@ -5,8 +5,11 @@ This directory contains test archives used by extract unit tests and stage phase
 ## Structure
 
 - `source/root/` - Source files used to create the test archives
+- `source/bare/` - Source for bare single-stream compression fixtures
 - `*.tar*` - Various tar-based archive formats
 - `test.zip` - ZIP archive format
+- `hello.txt.{gz,bz2,xz,zst,lzma}` - Bare single-stream compressed fixtures
+- `corrupt.gz` - Garbage bytes with .gz suffix; used by error-path tests
 
 ## Regenerating Archives
 

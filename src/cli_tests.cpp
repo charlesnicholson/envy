@@ -143,6 +143,23 @@ TEST_CASE("cli_parse: cmd_extract") {
     CHECK(cfg->archive_path == temp_archive);
     CHECK(cfg->destination.empty());
   }
+
+  SUBCASE("bare single-stream compressed archive parses") {
+    auto temp_archive{ std::filesystem::temp_directory_path() / "cli_test_bare.gz" };
+    std::ofstream{ temp_archive } << "fake gz\n";
+
+    std::vector<std::string> args{ "envy", "extract", temp_archive.string() };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    std::filesystem::remove(temp_archive);
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_extract::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->archive_path == temp_archive);
+  }
 }
 
 TEST_CASE("cli_parse: cmd_fetch") {

@@ -308,6 +308,144 @@ TEST_CASE("archive_create_tar_zst preserves symlinks") {
 }
 #endif
 
+TEST_CASE("extract_bare_compressed_output_name strips known suffixes") {
+  CHECK(envy::extract_bare_compressed_output_name("hello.txt.gz") ==
+        std::filesystem::path{ "hello.txt" });
+  CHECK(envy::extract_bare_compressed_output_name("hello.txt.bz2") ==
+        std::filesystem::path{ "hello.txt" });
+  CHECK(envy::extract_bare_compressed_output_name("hello.txt.xz") ==
+        std::filesystem::path{ "hello.txt" });
+  CHECK(envy::extract_bare_compressed_output_name("hello.txt.zst") ==
+        std::filesystem::path{ "hello.txt" });
+  CHECK(envy::extract_bare_compressed_output_name("hello.txt.lzma") ==
+        std::filesystem::path{ "hello.txt" });
+  CHECK(envy::extract_bare_compressed_output_name("foo.gz") ==
+        std::filesystem::path{ "foo" });
+  CHECK(envy::extract_bare_compressed_output_name("/abs/path/foo.gz") ==
+        std::filesystem::path{ "foo" });
+}
+
+TEST_CASE("extract_bare_compressed_output_name rejects tar wrappers and unknowns") {
+  CHECK(!envy::extract_bare_compressed_output_name("foo.tar.gz").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.tar.bz2").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.tar.xz").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.tar.zst").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.tar").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.zip").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo.bin").has_value());
+  CHECK(!envy::extract_bare_compressed_output_name("foo").has_value());
+}
+
+TEST_CASE("extract_is_archive_extension recognizes bare compression suffixes") {
+  CHECK(envy::extract_is_archive_extension("hello.txt.gz"));
+  CHECK(envy::extract_is_archive_extension("hello.txt.bz2"));
+  CHECK(envy::extract_is_archive_extension("hello.txt.xz"));
+  CHECK(envy::extract_is_archive_extension("hello.txt.zst"));
+  CHECK(envy::extract_is_archive_extension("hello.txt.lzma"));
+  // tar wrappers continue to match
+  CHECK(envy::extract_is_archive_extension("foo.tar.gz"));
+  CHECK(envy::extract_is_archive_extension("foo.tgz"));
+  // non-archive still rejected
+  CHECK(!envy::extract_is_archive_extension("foo.bin"));
+  CHECK(!envy::extract_is_archive_extension("foo.txt"));
+}
+
+TEST_CASE("extract bare compressed file produces stem-named output") {
+  auto const cases{ std::vector<std::string>{
+      "hello.txt.gz",
+      "hello.txt.bz2",
+      "hello.txt.xz",
+      "hello.txt.zst",
+      "hello.txt.lzma",
+  } };
+
+  for (auto const &name : cases) {
+    auto const dest{ make_temp_dir() };
+    auto const archive{ std::filesystem::path("test_data/archives") / name };
+
+    auto const count{ envy::extract(archive, dest) };
+    CHECK(count == 1);
+
+    auto const out{ dest / "hello.txt" };
+    CHECK(std::filesystem::exists(out));
+
+    {
+      std::ifstream in{ out };
+      std::string content{ std::istreambuf_iterator<char>{ in }, {} };
+      CHECK(content == "Bare compression test\n");
+    }
+
+    std::filesystem::remove_all(dest);
+  }
+}
+
+TEST_CASE("extract bare compressed with strip_components throws") {
+  auto const dest{ make_temp_dir() };
+  auto const archive{ std::filesystem::path("test_data/archives/hello.txt.gz") };
+
+  envy::extract_options opts{ .strip_components = 1 };
+  try {
+    envy::extract(archive, dest, opts);
+    FAIL("Expected exception for strip_components on single-stream input");
+  } catch (std::runtime_error const &e) {
+    std::string const msg{ e.what() };
+    CHECK(msg.find("strip_components") != std::string::npos);
+    CHECK(msg.find("hello.txt.gz") != std::string::npos);
+  }
+
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("extract corrupt .gz throws") {
+  auto const dest{ make_temp_dir() };
+  auto const archive{ std::filesystem::path("test_data/archives/corrupt.gz") };
+
+  try {
+    envy::extract(archive, dest);
+    FAIL("Expected exception for corrupt .gz");
+  } catch (std::runtime_error const &e) {
+    // libarchive surfaces a decompression error; just confirm it threw.
+    CHECK(std::string{ e.what() }.size() > 0);
+  }
+
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("extract unrecognized suffix is not silently raw-decoded") {
+  // Regression guard: format_raw must NOT be enabled for unknown suffixes,
+  // so a random binary file should error out rather than "extract" as a copy.
+  auto const dest{ make_temp_dir() };
+  auto const fake{ make_temp_dir() / "garbage.bin" };
+  std::ofstream{ fake, std::ios::binary } << "not an archive of any kind";
+
+  try {
+    envy::extract(fake, dest);
+    FAIL("Expected exception for unrecognized binary input");
+  } catch (std::runtime_error const &) {
+    // expected
+  }
+
+  std::filesystem::remove_all(fake.parent_path());
+  std::filesystem::remove_all(dest);
+}
+
+TEST_CASE("compute_archive_totals on bare .gz reports one file with bytes") {
+  auto const archive{ std::filesystem::path("test_data/archives/hello.txt.gz") };
+  envy::extract_totals const totals{ envy::compute_archive_totals(archive) };
+  CHECK(totals.files == 1);
+  CHECK(totals.bytes > 0);
+}
+
+TEST_CASE("compute_archive_totals on corrupt .gz throws") {
+  // Mirror extract()'s validation: prescan must not silently report a corrupt
+  // bare-compressed file as a valid 1-file archive.
+  auto const archive{ std::filesystem::path("test_data/archives/corrupt.gz") };
+  try {
+    envy::compute_archive_totals(archive);
+    FAIL("Expected exception for corrupt .gz");
+  } catch (std::runtime_error const &e) { CHECK(std::string{ e.what() }.size() > 0); }
+}
+
 TEST_CASE("archive_create_tar_zst with fetch prefix") {
   auto const source{ make_temp_dir() };
   auto const dest{ make_temp_dir() };
