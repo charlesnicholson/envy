@@ -859,6 +859,110 @@ PACKAGES = {{
         mtime_after = script_path.stat().st_mtime
         self.assertEqual(mtime_after, jan_1_2000, "File timestamp should be unchanged")
 
+    def test_sync_stamp_uses_schema_version_marker(self):
+        """Stamped scripts carry _ENVY_PRODUCT_SCRIPT_VERSION=N, not a release version string."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        content = (bin_dir / script_name).read_text()
+        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", content)
+        self.assertIn("envy-managed", content)
+
+    def test_sync_rewrites_legacy_release_version_stamp(self):
+        """Pre-existing scripts in the old release-version stamp format get migrated."""
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        bin_dir = self.test_dir / "envy-bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+
+        if sys.platform == "win32":
+            legacy = "@echo off\r\nrem envy-managed 1.2.3\r\necho legacy\r\n"
+        else:
+            legacy = "#!/usr/bin/env bash\n# envy-managed 1.2.3\necho legacy\n"
+        script_path.write_text(legacy)
+
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(script_path, (jan_1_2000, jan_1_2000))
+
+        result = self.run_sync(manifest=manifest)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+        mtime_after = script_path.stat().st_mtime
+        self.assertNotEqual(
+            mtime_after, jan_1_2000,
+            "Legacy-format script should have been rewritten, but timestamp is unchanged",
+        )
+
+        new_content = script_path.read_text()
+        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", new_content)
+        self.assertIn("envy-managed", new_content)
+        self.assertNotIn("1.2.3", new_content)
+        self.assertNotIn("legacy", new_content)
+
+    def test_sync_rewrites_script_with_mismatched_schema_version(self):
+        """A stamped script whose schema version drifts gets re-stamped on next sync."""
+        import re
+
+        product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
+
+        manifest = self.create_manifest(f"""
+PACKAGES = {{
+    {{ spec = "local.product_provider@v1", source = "{product_path}" }},
+}}
+""")
+
+        result1 = self.run_sync(manifest=manifest)
+        self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
+
+        bin_dir = self.test_dir / "envy-bin"
+        script_name = "tool.bat" if sys.platform == "win32" else "tool"
+        script_path = bin_dir / script_name
+
+        canonical = script_path.read_text()
+        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", canonical)
+
+        mutated = re.sub(
+            r"_ENVY_PRODUCT_SCRIPT_VERSION=\d+",
+            "_ENVY_PRODUCT_SCRIPT_VERSION=999",
+            canonical,
+        )
+        self.assertNotEqual(canonical, mutated, "Failed to mutate version stamp")
+        script_path.write_text(mutated)
+
+        jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
+        os.utime(script_path, (jan_1_2000, jan_1_2000))
+
+        result2 = self.run_sync(manifest=manifest)
+        self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
+
+        mtime_after = script_path.stat().st_mtime
+        self.assertNotEqual(
+            mtime_after, jan_1_2000,
+            "Script with mismatched schema version should have been rewritten",
+        )
+
+        restored = script_path.read_text()
+        self.assertEqual(restored, canonical)
+        self.assertNotIn("_ENVY_PRODUCT_SCRIPT_VERSION=999", restored)
+
     def test_product_script_execution_and_arg_forwarding(self):
         """Product scripts execute correctly and forward arguments."""
         # Create archive similar to other tests
