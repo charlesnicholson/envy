@@ -124,9 +124,8 @@ void deploy_product_scripts(fs::path const &bin_dir,
         continue;
       }
 
-      std::string const new_content{
-        deploy_stamp_product_script(product.product_name, plat)
-      };
+      std::string const new_content{ deploy_stamp_product_script(product.product_name,
+                                                                 plat) };
       std::string const existing_content{ read_file_content(script_path) };
       if (new_content == existing_content) {
         ++unchanged;

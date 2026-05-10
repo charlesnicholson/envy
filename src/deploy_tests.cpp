@@ -46,9 +46,8 @@ TEST_CASE("deploy: embedded Windows template has version baked at build time") {
 }
 
 TEST_CASE("deploy: stamp_product_script substitutes product name on POSIX") {
-  std::string const stamped{
-    envy::deploy_stamp_product_script("foo", envy::platform_id::POSIX)
-  };
+  std::string const stamped{ envy::deploy_stamp_product_script("foo",
+                                                               envy::platform_id::POSIX) };
   CHECK(stamped.find("foo") != std::string::npos);
   CHECK(stamped.find("@@PRODUCT_NAME@@") == std::string::npos);
   CHECK(stamped.find("envy-managed") != std::string::npos);
@@ -66,14 +65,18 @@ TEST_CASE("deploy: stamp_product_script substitutes product name on Windows") {
 }
 
 TEST_CASE("deploy: stamp_product_script is deterministic") {
-  std::string const a{ envy::deploy_stamp_product_script("foo", envy::platform_id::POSIX) };
-  std::string const b{ envy::deploy_stamp_product_script("foo", envy::platform_id::POSIX) };
+  std::string const a{ envy::deploy_stamp_product_script("foo",
+                                                         envy::platform_id::POSIX) };
+  std::string const b{ envy::deploy_stamp_product_script("foo",
+                                                         envy::platform_id::POSIX) };
   CHECK(a == b);
 }
 
 TEST_CASE("deploy: stamp_product_script differs by product name") {
-  std::string const foo{ envy::deploy_stamp_product_script("foo", envy::platform_id::POSIX) };
-  std::string const bar{ envy::deploy_stamp_product_script("bar", envy::platform_id::POSIX) };
+  std::string const foo{ envy::deploy_stamp_product_script("foo",
+                                                           envy::platform_id::POSIX) };
+  std::string const bar{ envy::deploy_stamp_product_script("bar",
+                                                           envy::platform_id::POSIX) };
   CHECK(foo != bar);
   CHECK(foo.find("foo") != std::string::npos);
   CHECK(foo.find("bar") == std::string::npos);
@@ -82,8 +85,10 @@ TEST_CASE("deploy: stamp_product_script differs by product name") {
 }
 
 TEST_CASE("deploy: stamp_product_script differs by platform") {
-  std::string const posix{ envy::deploy_stamp_product_script("foo", envy::platform_id::POSIX) };
-  std::string const win{ envy::deploy_stamp_product_script("foo", envy::platform_id::WINDOWS) };
+  std::string const posix{ envy::deploy_stamp_product_script("foo",
+                                                             envy::platform_id::POSIX) };
+  std::string const win{ envy::deploy_stamp_product_script("foo",
+                                                           envy::platform_id::WINDOWS) };
   CHECK(posix != win);
   CHECK(posix.find("#!/usr/bin/env bash") != std::string::npos);
   CHECK(win.find("@echo off") != std::string::npos);
