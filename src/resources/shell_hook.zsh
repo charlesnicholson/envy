@@ -25,8 +25,10 @@ _envy_find_manifest() {
   while [ "$d" != / ]; do
     if [ -f "$d/envy.lua" ]; then
       local is_root="true"
-      # Pure zsh read+regex instead of head|grep — avoids fork/exec per directory
-      local line i=0
+      # Pure zsh read+regex instead of head|grep — avoids fork/exec per directory.
+      # `line=""` is explicit: without it, zsh's NO_TYPESET_SILENT default makes
+      # `local line` print the prior iteration's value when re-declared in-loop.
+      local line="" i=0
       while (( i++ < 20 )) && IFS= read -r line; do
         if [[ "$line" =~ '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"' ]]; then
           is_root="false"
