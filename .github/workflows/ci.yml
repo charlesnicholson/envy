@@ -77,6 +77,7 @@ jobs:
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-deps-
 
       - name: Restore sccache cache
         uses: actions/cache/restore@v5
@@ -86,7 +87,7 @@ jobs:
           restore-keys: sccache-${{ matrix.name }}-
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Install test dependencies
         if: startsWith(matrix.shard, 'func-')
@@ -127,7 +128,7 @@ jobs:
 
       - name: Save sccache cache
         uses: actions/cache/save@v5
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         with:
           path: .sccache
           key: sccache-${{ matrix.name }}-${{ github.sha }}
@@ -176,6 +177,7 @@ jobs:
         with:
           path: out/cache
           key: ${{ runner.os }}-${{ runner.arch }}-deps-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/deps/*.cmake', 'cmake/templates/*', 'tools/build.py') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-deps-
 
       - name: Restore sccache cache
         uses: actions/cache/restore@v5
@@ -185,7 +187,7 @@ jobs:
           restore-keys: sccache-${{ matrix.name }}-
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Build
         shell: powershell
@@ -219,7 +221,7 @@ jobs:
 
       - name: Save sccache cache
         uses: actions/cache/save@v5
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         with:
           path: .sccache
           key: sccache-${{ matrix.name }}-${{ github.sha }}

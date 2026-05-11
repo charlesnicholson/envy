@@ -152,12 +152,20 @@ if(NOT _hook_ver_line)
 endif()
 string(REGEX MATCH "[0-9]+" ENVY_SHELL_HOOK_VERSION "${_hook_ver_line}")
 
+# Extract product script version from deploy.h (single source of truth)
+file(STRINGS src/deploy.h _prod_script_ver_line REGEX "kProductScriptVersion = [0-9]+")
+if(NOT _prod_script_ver_line)
+    message(FATAL_ERROR "Failed to extract kProductScriptVersion from src/deploy.h")
+endif()
+string(REGEX MATCH "[0-9]+" ENVY_PRODUCT_SCRIPT_VERSION "${_prod_script_ver_line}")
+
 # Generate embedded resource header (all platform variants unconditionally)
 embed_resources(envy_embedded_resources
     OUTPUT embedded_init_resources.h
     NORMALIZE_EOL
     DEFINES
         ENVY_HOOK_VERSION=${ENVY_SHELL_HOOK_VERSION}
+        ENVY_PRODUCT_SCRIPT_VERSION=${ENVY_PRODUCT_SCRIPT_VERSION}
     RESOURCES
         bootstrap_posix=src/resources/envy
         bootstrap_windows=src/resources/envy.bat
@@ -458,6 +466,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
     src/cmds/cmd_merge_depot_tests.cpp
+    src/deploy_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp
     src/cmds/cmd_version_tests.cpp

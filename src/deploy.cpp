@@ -11,10 +11,6 @@
 #include <sstream>
 #include <stdexcept>
 
-#ifndef ENVY_VERSION_STR
-#error "ENVY_VERSION_STR must be defined by the build system"
-#endif
-
 namespace envy {
 
 namespace fs = std::filesystem;
@@ -40,13 +36,6 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
     s.replace(pos, from.length(), to);
     pos += to.length();
   }
-}
-
-std::string stamp_product_script(std::string_view product_name, platform_id platform) {
-  std::string result{ get_product_script_template(platform) };
-  replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
-  replace_all(result, "@@PRODUCT_NAME@@", product_name);
-  return result;
 }
 
 std::string read_file_content(fs::path const &path) {
@@ -91,6 +80,13 @@ void set_product_executable(fs::path const &path, platform_id platform) {
 
 }  // namespace
 
+std::string deploy_stamp_product_script(std::string_view product_name,
+                                        platform_id platform) {
+  std::string result{ get_product_script_template(platform) };
+  replace_all(result, "@@PRODUCT_NAME@@", product_name);
+  return result;
+}
+
 void deploy_product_scripts(fs::path const &bin_dir,
                             std::vector<product_info> const &products,
                             bool strict,
@@ -128,7 +124,8 @@ void deploy_product_scripts(fs::path const &bin_dir,
         continue;
       }
 
-      std::string const new_content{ stamp_product_script(product.product_name, plat) };
+      std::string const new_content{ deploy_stamp_product_script(product.product_name,
+                                                                 plat) };
       std::string const existing_content{ read_file_content(script_path) };
       if (new_content == existing_content) {
         ++unchanged;

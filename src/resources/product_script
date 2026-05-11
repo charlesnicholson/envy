@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# envy-managed @@ENVY_VERSION@@
+# envy-managed _ENVY_PRODUCT_SCRIPT_VERSION=@@ENVY_PRODUCT_SCRIPT_VERSION@@
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 exec "$("$SCRIPT_DIR/envy" product "@@PRODUCT_NAME@@")" "$@"
