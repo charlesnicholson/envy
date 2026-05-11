@@ -6,6 +6,16 @@ file(MAKE_DIRECTORY "${DOCTEST_CACHE_DIR}")
 
 set(_doctest_local_file "${DOCTEST_CACHE_DIR}/doctest.h")
 
+# Hash-verify any cached copy so a stale header from a previous version
+# (e.g. restored via CI's `restore-keys` fallback) is replaced instead of reused.
+if(EXISTS "${_doctest_local_file}")
+  file(SHA256 "${_doctest_local_file}" _doctest_cached_hash)
+  if(NOT _doctest_cached_hash STREQUAL ENVY_DOCTEST_SHA256)
+    file(REMOVE "${_doctest_local_file}")
+  endif()
+  unset(_doctest_cached_hash)
+endif()
+
 if(NOT EXISTS "${_doctest_local_file}")
   message(STATUS "Downloading doctest ${ENVY_DOCTEST_VERSION}...")
   file(DOWNLOAD
