@@ -860,7 +860,7 @@ PACKAGES = {{
         self.assertEqual(mtime_after, jan_1_2000, "File timestamp should be unchanged")
 
     def test_sync_stamp_uses_schema_version_marker(self):
-        """Stamped scripts carry _ENVY_PRODUCT_SCRIPT_VERSION=N, not a release version string."""
+        """Stamped scripts carry `envy-managed schema "N"`, not a release version string."""
         product_path = self.write_spec("product_provider", SPEC_PRODUCT_PROVIDER)
 
         manifest = self.create_manifest(f"""
@@ -875,8 +875,7 @@ PACKAGES = {{
         bin_dir = self.test_dir / "envy-bin"
         script_name = "tool.bat" if sys.platform == "win32" else "tool"
         content = (bin_dir / script_name).read_text()
-        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", content)
-        self.assertIn("envy-managed", content)
+        self.assertIn("envy-managed schema \"", content)
 
     def _write_legacy_stamped_script(self, script_path):
         """Plant a script in the pre-change `# envy-managed <release-version>` format."""
@@ -916,8 +915,7 @@ PACKAGES = {{
         )
 
         new_content = script_path.read_text()
-        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", new_content)
-        self.assertIn("envy-managed", new_content)
+        self.assertIn("envy-managed schema \"", new_content)
         self.assertNotIn("1.2.3", new_content)
         self.assertNotIn("legacy", new_content)
 
@@ -947,7 +945,7 @@ PACKAGES = {{
         self.assertNotIn("not envy-managed", result.stderr.lower())
 
         migrated = script_path.read_text()
-        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", migrated)
+        self.assertIn("envy-managed schema \"", migrated)
         self.assertNotIn("1.2.3", migrated)
         self.assertNotIn("legacy", migrated)
 
@@ -971,7 +969,7 @@ PACKAGES = {{
         result1 = self.run_sync(manifest=manifest)
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
         migrated = script_path.read_text()
-        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", migrated)
+        self.assertIn("envy-managed schema \"", migrated)
 
         jan_1_2000 = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, 0))
         os.utime(script_path, (jan_1_2000, jan_1_2000))
@@ -1006,11 +1004,11 @@ PACKAGES = {{
         script_path = bin_dir / script_name
 
         canonical = script_path.read_text()
-        self.assertIn("_ENVY_PRODUCT_SCRIPT_VERSION=", canonical)
+        self.assertIn("envy-managed schema \"", canonical)
 
         mutated = re.sub(
-            r"_ENVY_PRODUCT_SCRIPT_VERSION=\d+",
-            "_ENVY_PRODUCT_SCRIPT_VERSION=999",
+            r'schema "\d+"',
+            'schema "999"',
             canonical,
         )
         self.assertNotEqual(canonical, mutated, "Failed to mutate version stamp")
@@ -1030,7 +1028,7 @@ PACKAGES = {{
 
         restored = script_path.read_text()
         self.assertEqual(restored, canonical)
-        self.assertNotIn("_ENVY_PRODUCT_SCRIPT_VERSION=999", restored)
+        self.assertNotIn('schema "999"', restored)
 
     def test_product_script_execution_and_arg_forwarding(self):
         """Product scripts execute correctly and forward arguments."""
