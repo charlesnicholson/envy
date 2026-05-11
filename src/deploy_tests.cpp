@@ -27,8 +27,8 @@ TEST_CASE("deploy: kProductScriptVersion is positive") {
 
 TEST_CASE("deploy: embedded POSIX template has version baked at build time") {
   std::string_view const tmpl{ embedded_posix_template() };
-  std::string const expected_marker{ "_ENVY_PRODUCT_SCRIPT_VERSION=" +
-                                     std::to_string(envy::kProductScriptVersion) };
+  std::string const expected_marker{ "schema \"" +
+                                     std::to_string(envy::kProductScriptVersion) + "\"" };
   CHECK(tmpl.find(expected_marker) != std::string_view::npos);
   CHECK(tmpl.find("@@ENVY_PRODUCT_SCRIPT_VERSION@@") == std::string_view::npos);
   CHECK(tmpl.find("@@ENVY_VERSION@@") == std::string_view::npos);
@@ -37,8 +37,8 @@ TEST_CASE("deploy: embedded POSIX template has version baked at build time") {
 
 TEST_CASE("deploy: embedded Windows template has version baked at build time") {
   std::string_view const tmpl{ embedded_windows_template() };
-  std::string const expected_marker{ "_ENVY_PRODUCT_SCRIPT_VERSION=" +
-                                     std::to_string(envy::kProductScriptVersion) };
+  std::string const expected_marker{ "schema \"" +
+                                     std::to_string(envy::kProductScriptVersion) + "\"" };
   CHECK(tmpl.find(expected_marker) != std::string_view::npos);
   CHECK(tmpl.find("@@ENVY_PRODUCT_SCRIPT_VERSION@@") == std::string_view::npos);
   CHECK(tmpl.find("@@ENVY_VERSION@@") == std::string_view::npos);
@@ -51,7 +51,7 @@ TEST_CASE("deploy: stamp_product_script substitutes product name on POSIX") {
   CHECK(stamped.find("foo") != std::string::npos);
   CHECK(stamped.find("@@PRODUCT_NAME@@") == std::string::npos);
   CHECK(stamped.find("envy-managed") != std::string::npos);
-  CHECK(stamped.find("_ENVY_PRODUCT_SCRIPT_VERSION=") != std::string::npos);
+  CHECK(stamped.find("schema \"") != std::string::npos);
 }
 
 TEST_CASE("deploy: stamp_product_script substitutes product name on Windows") {
@@ -61,7 +61,7 @@ TEST_CASE("deploy: stamp_product_script substitutes product name on Windows") {
   CHECK(stamped.find("foo") != std::string::npos);
   CHECK(stamped.find("@@PRODUCT_NAME@@") == std::string::npos);
   CHECK(stamped.find("envy-managed") != std::string::npos);
-  CHECK(stamped.find("_ENVY_PRODUCT_SCRIPT_VERSION=") != std::string::npos);
+  CHECK(stamped.find("schema \"") != std::string::npos);
 }
 
 TEST_CASE("deploy: stamp_product_script is deterministic") {
