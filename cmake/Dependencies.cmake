@@ -104,6 +104,10 @@ set(ENVY_PICOJSON_SHA256 5ddf7276d04926da7be243e7af49258e78cc27278ee9097ba45b942
 set(ENVY_PICOJSON_LICENSE_URL "https://raw.githubusercontent.com/kazuho/picojson/v${ENVY_PICOJSON_VERSION}/LICENSE")
 set(ENVY_PICOJSON_LICENSE_SHA256 5585fe141cc7bb08c953f3859db608852968d0bbc625b9b6d95c0bd6349bacb6)
 
+set(ENVY_DOCTEST_VERSION "2.5.2")
+set(ENVY_DOCTEST_URL "https://raw.githubusercontent.com/doctest/doctest/v${ENVY_DOCTEST_VERSION}/doctest/doctest.h")
+set(ENVY_DOCTEST_SHA256 1f2978b948f5958d5b6ee8dc16d8284317715d6e4fafb47956b1578198d19f66)
+
 set(PLATFORM_NETWORK_LIBS)
 if(WIN32)
     set(PLATFORM_NETWORK_LIBS ws2_32 dnsapi iphlpapi advapi32 crypt32 wldap32 winhttp bcrypt wininet)
