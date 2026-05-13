@@ -122,21 +122,28 @@ TEST_CASE("string check without install errors") {
 
 TEST_CASE("user-managed package with check verb and FETCH function throws parse error") {
   expect_user_managed_cache_phase_error(
-      "FETCH", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
+      "FETCH",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
 }
 
 TEST_CASE("user-managed package with check verb and FETCH string throws parse error") {
-  expect_user_managed_cache_phase_error("FETCH", "\"https://example.com/x.tar.gz\"", "_str");
+  expect_user_managed_cache_phase_error("FETCH",
+                                        "\"https://example.com/x.tar.gz\"",
+                                        "_str");
 }
 
 TEST_CASE("user-managed package with check verb and FETCH table throws parse error") {
-  expect_user_managed_cache_phase_error(
-      "FETCH", "{ url = \"https://example.com/x.tar.gz\" }", "_tbl");
+  expect_user_managed_cache_phase_error("FETCH",
+                                        "{ url = \"https://example.com/x.tar.gz\" }",
+                                        "_tbl");
 }
 
 TEST_CASE("user-managed package with check verb and STAGE function throws parse error") {
   expect_user_managed_cache_phase_error(
-      "STAGE", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
+      "STAGE",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
 }
 
 TEST_CASE("user-managed package with check verb and STAGE string throws parse error") {
@@ -149,7 +156,9 @@ TEST_CASE("user-managed package with check verb and STAGE table throws parse err
 
 TEST_CASE("user-managed package with check verb and BUILD function throws parse error") {
   expect_user_managed_cache_phase_error(
-      "BUILD", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
+      "BUILD",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
 }
 
 TEST_CASE("user-managed package with check verb and BUILD string throws parse error") {
