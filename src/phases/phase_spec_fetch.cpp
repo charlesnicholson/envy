@@ -56,8 +56,7 @@ bool resolve_user_managed(sol::state_view lua, std::string const &identity) {
 
 void validate_phases(sol::state_view lua, std::string const &identity, bool user_managed) {
   bool const has_fetch{ lua["FETCH"].is<sol::protected_function>() ||
-                        lua["FETCH"].is<std::string>() ||
-                        lua["FETCH"].is<sol::table>() };
+                        lua["FETCH"].is<std::string>() || lua["FETCH"].is<sol::table>() };
   bool const has_stage{ lua["STAGE"].is<sol::protected_function>() };
   bool const has_build{ lua["BUILD"].is<sol::protected_function>() };
   bool const has_check{ lua["CHECK"].is<sol::protected_function>() ||
@@ -99,9 +98,7 @@ void validate_phases(sol::state_view lua, std::string const &identity, bool user
                                " defines CHECK but USER_MANAGED is not true; "
                                "CHECK is only valid for user-managed packages");
     }
-    if (!has_fetch) {
-      throw std::runtime_error("Spec must define 'FETCH': " + identity);
-    }
+    if (!has_fetch) { throw std::runtime_error("Spec must define 'FETCH': " + identity); }
   }
 }
 

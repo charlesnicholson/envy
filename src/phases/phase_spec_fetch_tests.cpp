@@ -819,7 +819,8 @@ struct user_managed_fixture {
   std::filesystem::path spec_file;
 
   explicit user_managed_fixture(std::string const &label) {
-    temp_dir = std::filesystem::temp_directory_path() / ("envy_test_user_managed_" + label);
+    temp_dir =
+        std::filesystem::temp_directory_path() / ("envy_test_user_managed_" + label);
     std::filesystem::create_directories(temp_dir);
     spec_file = temp_dir / "spec.lua";
   }
