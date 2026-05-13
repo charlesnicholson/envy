@@ -51,6 +51,7 @@ SPEC_PRODUCT_PROGRAMMATIC = """-- Programmatic provider (user-managed) returning
 IDENTITY = "local.product_programmatic@v1"
 PRODUCTS = {{ tool = "programmatic-tool" }}
 
+USER_MANAGED = true
 CHECK = function(project_root, options)
   return true  -- Already satisfied; no cache artifact
 end

@@ -85,6 +85,7 @@ class TestEngineDependencyResolution(unittest.TestCase):
 IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -104,6 +105,7 @@ DEPENDENCIES = {{
   {{ spec = "local.simple@v1", source = "simple.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -148,6 +150,7 @@ DEPENDENCIES = {{
   {{ spec = "local.cycle_b@v1", source = "cycle_b.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -167,6 +170,7 @@ DEPENDENCIES = {{
   {{ spec = "local.cycle_a@v1", source = "cycle_a.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -208,6 +212,7 @@ DEPENDENCIES = {{
   {{ spec = "local.self_dep@v1", source = "self_dep.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -252,6 +257,7 @@ DEPENDENCIES = {{
   {{ spec = "local.diamond_c@v1", source = "diamond_c.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -271,6 +277,7 @@ DEPENDENCIES = {{
   {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -290,6 +297,7 @@ DEPENDENCIES = {{
   {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -307,6 +315,7 @@ end
 IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -437,6 +446,7 @@ DEPENDENCIES = {{
   {{ spec = "local.independent_right@v1", source = "independent_right.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -454,6 +464,7 @@ end
 IDENTITY = "local.independent_left@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -471,6 +482,7 @@ end
 IDENTITY = "local.independent_right@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -517,6 +529,7 @@ DEPENDENCIES = {{
   {{ spec = "local.with_options@v1", source = "with_options.lua", options = {{ variant = "bar" }} }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -534,6 +547,7 @@ end
 IDENTITY = "local.with_options@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -583,6 +597,7 @@ DEPENDENCIES = {{
   {{ spec = "local.chain_b@v1", source = "chain_b.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -602,6 +617,7 @@ DEPENDENCIES = {{
   {{ spec = "local.chain_c@v1", source = "chain_c.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -621,6 +637,7 @@ DEPENDENCIES = {{
   {{ spec = "local.chain_d@v1", source = "chain_d.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -640,6 +657,7 @@ DEPENDENCIES = {{
   {{ spec = "local.chain_e@v1", source = "chain_e.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -657,6 +675,7 @@ end
 IDENTITY = "local.chain_e@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -709,6 +728,7 @@ DEPENDENCIES = {{
   {{ spec = "local.fanout_child4@v1", source = "fanout_child4.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -726,6 +746,7 @@ end
 IDENTITY = "local.fanout_child1@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -743,6 +764,7 @@ end
 IDENTITY = "local.fanout_child2@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -760,6 +782,7 @@ end
 IDENTITY = "local.fanout_child3@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -777,6 +800,7 @@ end
 IDENTITY = "local.fanout_child4@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -822,6 +846,7 @@ end
 IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -846,6 +871,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -888,6 +914,7 @@ end
 
 IDENTITY = "remote.fileuri@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -930,6 +957,7 @@ end
 
 IDENTITY = "remote.child@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -955,6 +983,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -997,6 +1026,7 @@ end
 
 IDENTITY = "remote.base@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1022,6 +1052,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1064,6 +1095,7 @@ end
 
 IDENTITY = "local.child@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1088,6 +1120,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1130,6 +1163,7 @@ end
 
 IDENTITY = "local.c@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1154,6 +1188,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1179,6 +1214,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1341,6 +1377,7 @@ DEPENDENCIES = {{
 IDENTITY = "local.simple_fetch_dep_child@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1361,6 +1398,7 @@ end
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1445,6 +1483,7 @@ DEPENDENCIES = {{
         local recipe_content_c = [[
 IDENTITY = "local.multi_level_c@v1"
 DEPENDENCIES = {{}}
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1461,6 +1500,7 @@ end
     }}
   }}
 }}
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1478,6 +1518,7 @@ end
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1570,6 +1611,7 @@ DEPENDENCIES = {{
         local recipe_content = [[
 IDENTITY = "local.multiple_fetch_deps_child@v1"
 DEPENDENCIES = {{}}
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -1587,6 +1629,7 @@ end
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

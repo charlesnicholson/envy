@@ -15,7 +15,6 @@
 namespace envy {
 
 // Extern declarations for unit testing (not in public API)
-extern bool pkg_has_check_verb(pkg *p, sol::state_view lua);
 extern bool run_check_verb(pkg *p, engine &eng, sol::state_view lua);
 extern bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd);
 extern bool run_check_function(pkg *p,
@@ -84,50 +83,6 @@ struct test_pkg_fixture {
 };
 
 }  // namespace
-
-// ============================================================================
-// pkg_has_check_verb() tests
-// ============================================================================
-
-TEST_CASE("pkg_has_check_verb detects string check") {
-  test_pkg_fixture f;
-  f.set_check_string("true");
-
-  bool has_check = pkg_has_check_verb(f.p.get(), sol::state_view{ *f.p->lua });
-  CHECK(has_check);
-}
-
-TEST_CASE("pkg_has_check_verb detects function check") {
-  test_pkg_fixture f;
-  f.set_check_function("function(project_root) return true end");
-
-  bool has_check = pkg_has_check_verb(f.p.get(), sol::state_view{ *f.p->lua });
-  CHECK(has_check);
-}
-
-TEST_CASE("pkg_has_check_verb returns false when no check verb") {
-  test_pkg_fixture f;
-  // No check verb set
-
-  bool has_check = pkg_has_check_verb(f.p.get(), sol::state_view{ *f.p->lua });
-  CHECK_FALSE(has_check);
-}
-
-TEST_CASE("pkg_has_check_verb returns false for number") {
-  test_pkg_fixture f;
-  (*f.p->lua)["CHECK"] = 42;
-
-  bool has_check{ pkg_has_check_verb(f.p.get(), sol::state_view{ *f.p->lua }) };
-  CHECK_FALSE(has_check);
-}
-
-TEST_CASE("pkg_has_check_verb returns false for invalid check type (table)") {
-  test_pkg_fixture f;
-  (*f.p->lua)["CHECK"] = f.p->lua->create_table();
-
-  bool has_check = pkg_has_check_verb(f.p.get(), sol::state_view{ *f.p->lua });
-  CHECK_FALSE(has_check);
-}
 
 // ============================================================================
 // run_check_string() tests

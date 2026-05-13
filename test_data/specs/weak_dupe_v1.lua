@@ -1,5 +1,6 @@
 -- First candidate for ambiguity tests
 IDENTITY = "local.dupe@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

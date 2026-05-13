@@ -25,22 +25,83 @@ namespace envy {
 
 namespace {
 
-void validate_phases(sol::state_view lua, std::string const &identity) {
-  sol::object fetch_obj{ lua["FETCH"] };
+bool resolve_user_managed(sol::state_view lua, std::string const &identity) {
+  sol::object obj{ lua["USER_MANAGED"] };
+  if (!obj.valid() || obj.get_type() == sol::type::lua_nil) { return false; }
 
-  if (bool const has_fetch{ fetch_obj.is<sol::protected_function>() ||
-                            fetch_obj.is<std::string>() || fetch_obj.is<sol::table>() }) {
-    return;
+  if (obj.get_type() == sol::type::boolean) { return obj.as<bool>(); }
+
+  if (obj.is<sol::protected_function>()) {
+    if (sol::protected_function_result result{ obj.as<sol::protected_function>()() };
+        !result.valid()) {
+      sol::error err = result;
+      throw std::runtime_error("USER_MANAGED function failed for " + identity + ": " +
+                               std::string{ err.what() });
+    } else {
+      sol::object ret{ result };
+      if (ret.get_type() != sol::type::boolean) {
+        throw std::runtime_error(
+            std::string{ "USER_MANAGED function must return a boolean (got " } +
+            sol::type_name(lua.lua_state(), ret.get_type()) + ") for " + identity);
+      }
+      return ret.as<bool>();
+    }
   }
 
+  throw std::runtime_error(
+      std::string{ "USER_MANAGED must be a boolean or function returning a boolean "
+                   "(got " } +
+      sol::type_name(lua.lua_state(), obj.get_type()) + ") for " + identity);
+}
+
+void validate_phases(sol::state_view lua, std::string const &identity, bool user_managed) {
+  bool const has_fetch{ lua["FETCH"].is<sol::protected_function>() ||
+                        lua["FETCH"].is<std::string>() ||
+                        lua["FETCH"].is<sol::table>() };
+  bool const has_stage{ lua["STAGE"].is<sol::protected_function>() };
+  bool const has_build{ lua["BUILD"].is<sol::protected_function>() };
   bool const has_check{ lua["CHECK"].is<sol::protected_function>() ||
                         lua["CHECK"].is<std::string>() };
   bool const has_install{ lua["INSTALL"].is<sol::protected_function>() ||
                           lua["INSTALL"].is<std::string>() };
 
-  if (!has_check || !has_install) {
-    throw std::runtime_error("Spec must define 'FETCH' or both 'CHECK' and 'INSTALL': " +
-                             identity);
+  if (user_managed) {
+    if (!has_check) {
+      throw std::runtime_error("User-managed spec must define 'CHECK': " + identity);
+    }
+    if (!has_install) {
+      throw std::runtime_error("User-managed spec must define 'INSTALL': " + identity);
+    }
+    if (has_fetch) {
+      throw std::runtime_error(
+          "Spec " + identity +
+          " is user-managed (USER_MANAGED=true) but declares FETCH phase. "
+          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
+          "Remove FETCH phase or set USER_MANAGED=false.");
+    }
+    if (has_stage) {
+      throw std::runtime_error(
+          "Spec " + identity +
+          " is user-managed (USER_MANAGED=true) but declares STAGE phase. "
+          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
+          "Remove STAGE phase or set USER_MANAGED=false.");
+    }
+    if (has_build) {
+      throw std::runtime_error(
+          "Spec " + identity +
+          " is user-managed (USER_MANAGED=true) but declares BUILD phase. "
+          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
+          "Remove BUILD phase or set USER_MANAGED=false.");
+    }
+  } else {
+    if (has_check) {
+      throw std::runtime_error("Spec " + identity +
+                               " defines CHECK but USER_MANAGED is not true; "
+                               "CHECK is only valid for user-managed packages");
+    }
+    if (!has_fetch) {
+      throw std::runtime_error("Spec must define 'FETCH': " + identity);
+    }
   }
 }
 
@@ -66,42 +127,6 @@ int load_spec_script(sol::state &lua,
   if (!result.valid()) {
     sol::error err = result;
     throw std::runtime_error("Failed to load spec: " + identity + ": " + err.what());
-  }
-
-  // Validate user-managed packages (check verb) don't use cache phases
-  sol::object check_obj{ lua["CHECK"] };
-  bool const has_check_verb{ check_obj.valid() &&
-                             (check_obj.is<std::string>() ||
-                              check_obj.is<sol::protected_function>()) };
-
-  if (has_check_verb) {
-    // User-managed packages cannot use fetch/stage/build phases
-    sol::object fetch_obj{ lua["FETCH"] };
-    if (fetch_obj.valid() && fetch_obj.is<sol::protected_function>()) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " has CHECK verb (user-managed) but declares FETCH phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove CHECK verb or remove FETCH phase.");
-    }
-
-    sol::object stage_obj{ lua["STAGE"] };
-    if (stage_obj.valid() && stage_obj.is<sol::protected_function>()) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " has CHECK verb (user-managed) but declares STAGE phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove CHECK verb or remove STAGE phase.");
-    }
-
-    sol::object build_obj{ lua["BUILD"] };
-    if (build_obj.valid() && build_obj.is<sol::protected_function>()) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " has CHECK verb (user-managed) but declares BUILD phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove CHECK verb or remove BUILD phase.");
-    }
   }
 
   return meta.schema;
@@ -1240,25 +1265,12 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
                              "' but spec declares '" + declared_identity + "'");
   }
 
-  validate_phases(sol::state_view{ *lua }, cfg.identity);
-
-  // Determine package type (user-managed or cache-managed)
+  // Determine package type (user-managed or cache-managed) and validate phases.
   {
     sol::state_view lua_view{ *lua };
-    bool const has_check{ lua_view["CHECK"].is<sol::protected_function>() ||
-                          lua_view["CHECK"].is<std::string>() };
-    bool const has_install{ lua_view["INSTALL"].is<sol::protected_function>() ||
-                            lua_view["INSTALL"].is<std::string>() };
-
-    if (has_check) {
-      if (!has_install) {
-        throw std::runtime_error("User-managed spec must define 'install' function: " +
-                                 cfg.identity);
-      }
-      p->type = pkg_type::USER_MANAGED;
-    } else {
-      p->type = pkg_type::CACHE_MANAGED;
-    }
+    bool const user_managed{ resolve_user_managed(lua_view, cfg.identity) };
+    validate_phases(lua_view, cfg.identity, user_managed);
+    p->type = user_managed ? pkg_type::USER_MANAGED : pkg_type::CACHE_MANAGED;
   }
 
   p->products = parse_products_table(cfg, *lua, p);

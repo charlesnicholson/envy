@@ -1,5 +1,6 @@
 -- Strong dependency that should satisfy weak queries
 IDENTITY = "local.existing_dep@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

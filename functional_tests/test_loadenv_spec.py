@@ -75,6 +75,7 @@ SPECS = {{
             spec_lua = f"""IDENTITY = "{spec_id}"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -131,6 +132,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
   return helper.HELPER_VERSION == "1.0.0"
@@ -176,6 +178,7 @@ DEPENDENCIES = {{
 -- This should ERROR - loadenv_spec at global scope
 local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -209,6 +212,7 @@ PACKAGES = {{
         spec_content = """IDENTITY = "local.undeclared@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   -- Error: test.helpers@v1 not declared as dependency
   local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
@@ -263,6 +267,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   -- Fuzzy match: "toolchain-helpers" matches "acme.toolchain-helpers@v2"
   local helper = envy.loadenv_spec("toolchain-helpers", "lib.helper")
@@ -366,6 +371,7 @@ DEPENDENCIES = {}
 -- This require should work because bundle root is in package.path
 local helper = require("lib.helper")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return helper.VERSION == "2.0.0"
 end

@@ -1,5 +1,6 @@
 -- Fallback that creates a shared dependency
 IDENTITY = "local.branch_one@v1"
+USER_MANAGED = true
 DEPENDENCIES = {
   { spec = "local.shared", weak = { spec = "local.shared@v1", source = "weak_shared.lua" } },
 }

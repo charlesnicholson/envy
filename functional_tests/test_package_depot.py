@@ -1468,6 +1468,7 @@ class TestUserManagedSkipsDepot(unittest.TestCase):
         mp = marker_path.as_posix()
         content = f'''IDENTITY = "{identity}"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
     local f = io.open("{mp}", "r")
     if f then f:close(); return true end

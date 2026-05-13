@@ -1,5 +1,6 @@
 -- Fallback spec used when no provider is found
 IDENTITY = "local.weak_fallback@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

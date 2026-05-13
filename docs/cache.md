@@ -76,13 +76,13 @@ This uses the same locking strategy as recipe/asset installation (see Locking & 
 - Crash recovery: next locker deletes stale `install/`, recreates `work/`, preserves `fetch/` for per-file cache reuse.
 
 ### User-Managed Packages (Ephemeral Cache)
-- Identified by presence of check verb in recipe
+- Spec declares `USER_MANAGED = true` (boolean or function-returning-boolean); resolved once during `phase_spec_fetch`
 - Lock calls `mark_user_managed()` to signal ephemeral workspace
 - Workspace created same as cache-managed: `install/`, `fetch/`, `work/` directories
-- Spec can use all phases (fetch/stage/build/install) for workspace operations
+- User-managed specs may only define `CHECK` and `INSTALL`—not FETCH/STAGE/BUILD
 - Install phase modifies system; workspace never persists to cache
 - On completion (lock destructor detects `user_managed_` flag):
-  - Entire `entry_dir` deleted (no `asset/` rename)
+  - Entire `entry_dir` deleted (no `pkg/` rename)
   - Cache entry fully purged—no persistent artifacts
   - Lock file deleted
 - Subsequent runs use check verb (not cache marker) to skip work
@@ -149,4 +149,4 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 3. **Concurrent install**: Process A checks (false) → acquires lock, marks user-managed, re-checks (false) → starts install. Process B checks (false) → blocks on lock. Process A completes install, destructor purges entry. Process B acquires lock, marks user-managed, re-checks (NOW true, A finished) → releases lock immediately without running phases.
 
-4. **User-managed with fetch**: check=false → lock acquired → fetch downloads files to `fetch/` → stage extracts to `work/stage/` → install runs system command → destructor purges ALL directories (fetch/, work/, install/) → no artifacts remain.
+4. **User-managed install only**: user-managed specs are limited to `CHECK` and `INSTALL`; FETCH/STAGE/BUILD are rejected at spec load. The install runs against `project_root` and modifies system state; destructor purges the entry_dir, leaving no artifacts.

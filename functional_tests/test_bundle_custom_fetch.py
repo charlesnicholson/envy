@@ -5,9 +5,11 @@ that have dependencies that must be installed before the fetch runs.
 """
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 from . import test_config
 
@@ -15,12 +17,21 @@ from . import test_config
 class TestBundleCustomFetch(unittest.TestCase):
     """Tests for bundles with custom fetch functions."""
 
+    def setUp(self):
+        self.cache_root = Path(
+            tempfile.mkdtemp(prefix="envy-bundle-custom-fetch-test-")
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.cache_root, ignore_errors=True)
+
     def run_envy(self, args: list[str], cwd: str = None) -> subprocess.CompletedProcess:
-        """Run envy with given arguments."""
+        """Run envy with given arguments, pinning cache_root to a per-test temp dir."""
         exe = test_config.get_envy_executable()
         env = test_config.get_test_env()
+        full_args = [str(exe), f"--cache-root={self.cache_root}"] + args
         return test_config.run(
-            [str(exe)] + args, cwd=cwd, capture_output=True, text=True, env=env
+            full_args, cwd=cwd, capture_output=True, text=True, env=env
         )
 
     def test_bundle_custom_fetch_simple(self):
@@ -42,6 +53,7 @@ SPECS = {
             # Create simple spec
             simple_spec = """
 IDENTITY = "test.simple@v1"
+USER_MANAGED = true
 CHECK = function(project_root) return true end
 INSTALL = function() end
 """
@@ -103,6 +115,7 @@ PACKAGES = {{
             # Create a user-managed tool spec that the bundle depends on
             tool_spec = """
 IDENTITY = "local.fetcher-tool@v1"
+USER_MANAGED = true
 CHECK = function(project_root)
     return true  -- Always installed
 end
@@ -129,6 +142,7 @@ SPECS = {
 
             from_dep_spec = """
 IDENTITY = "test.from-dep-bundle@v1"
+USER_MANAGED = true
 CHECK = function(project_root) return true end
 INSTALL = function() end
 """

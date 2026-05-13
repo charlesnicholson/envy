@@ -150,6 +150,7 @@ DEPENDENCIES = {
   { spec = "local.diamond_c@v1", source = "diamond_c.lua" }
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -164,6 +165,7 @@ DEPENDENCIES = {
   { spec = "local.diamond_d@v1", source = "diamond_d.lua" }
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -178,6 +180,7 @@ DEPENDENCIES = {
   { spec = "local.diamond_d@v1", source = "diamond_d.lua" }
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -190,6 +193,7 @@ end
 IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -201,6 +205,7 @@ end
             "install_programmatic.lua": """-- Test programmatic package (user-managed)
 IDENTITY = "local.programmatic@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

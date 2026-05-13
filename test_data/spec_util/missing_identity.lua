@@ -1,3 +1,4 @@
+USER_MANAGED = true
 -- Spec without IDENTITY field
 DESCRIPTION = "This spec is missing IDENTITY"
 

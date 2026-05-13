@@ -114,12 +114,6 @@ bool run_check_verb(pkg *p, engine &eng, sol::state_view lua) {
   return false;
 }
 
-// Helper: Check if package has check verb
-bool pkg_has_check_verb(pkg *p, sol::state_view lua) {
-  sol::object check_obj{ lua["CHECK"] };
-  return check_obj.is<sol::protected_function>() || check_obj.is<std::string>();
-}
-
 // Helper: Compute hash and perform cache lookup (common to both user/cache-managed)
 cache::ensure_result compute_hash_and_lookup_cache(pkg *p, sol::state_view lua) {
   // Compute hash including resolved weak/ref-only dependencies
@@ -219,10 +213,7 @@ void run_check_phase(pkg *p, engine &eng) {
 
   sol::state_view lua{ *p->lua };
 
-  // Check if package has check verb (user-managed package indicator)
-  bool const has_check{ pkg_has_check_verb(p, lua) };
-
-  if (has_check) {
+  if (p->type == pkg_type::USER_MANAGED) {
     run_check_phase_user_managed(p, eng, lua);
   } else {
     run_check_phase_cache_managed(p, eng);

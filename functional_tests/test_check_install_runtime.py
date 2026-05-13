@@ -85,6 +85,7 @@ class TestCheckInstallRuntime(unittest.TestCase):
         # Check string success is silent (no TUI output)
         spec = """
 IDENTITY = "local.check_string_success@v1"
+USER_MANAGED = true
 CHECK = "echo 'test'"
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -98,6 +99,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Check string success is silent (no TUI output)
         spec = """
 IDENTITY = "local.check_string_success@v1"
+USER_MANAGED = true
 CHECK = "echo 'test'"
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -113,6 +115,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run quiet=true on success
         spec = """
 IDENTITY = "local.check_ctx_run_quiet@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'test output'", {quiet = true})
     assert(res.exit_code ~= nil, "exit_code field should exist")
@@ -128,6 +131,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run quiet=true on failure (throws)
         spec = """
 IDENTITY = "local.check_ctx_run_quiet_fail@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("exit 1", {quiet = true})
     error("Should have thrown on non-zero exit")
@@ -147,6 +151,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run capture=true returns stdout, stderr, exit_code
         spec = """
 IDENTITY = "local.check_ctx_run_capture@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local cmd = envy.PLATFORM == "windows"
         and "Write-Output 'stdout text'; [Console]::Error.WriteLine('stderr text')"
@@ -168,6 +173,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run capture=false returns only exit_code
         spec = """
 IDENTITY = "local.check_ctx_run_no_capture@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'test'", {capture = false})
     assert(res.exit_code ~= nil, "exit_code field should exist")
@@ -185,6 +191,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run default: streams, throws on non-zero, returns exit_code
         spec = """
 IDENTITY = "local.check_ctx_run_default@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'default test'")
     assert(res.exit_code ~= nil, "exit_code field should exist")
@@ -202,6 +209,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run with neither quiet nor capture
         spec_neither = """
 IDENTITY = "local.check_combo_neither@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'combo test'")
     assert(res.exit_code == 0)
@@ -214,6 +222,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run with quiet=true only
         spec_quiet = """
 IDENTITY = "local.check_combo_quiet@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'quiet test'", {quiet = true})
     assert(res.exit_code == 0)
@@ -226,6 +235,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run with capture=true only
         spec_capture = """
 IDENTITY = "local.check_combo_capture@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'capture test'", {capture = true})
     assert(res.exit_code == 0)
@@ -239,6 +249,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # ctx.run with both quiet=true and capture=true
         spec_both = """
 IDENTITY = "local.check_combo_both@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'both test'", {quiet = true, capture = true})
     assert(res.exit_code == 0)
@@ -266,6 +277,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Check cwd = manifest directory
         spec = """
 IDENTITY = "local.check_cwd_manifest@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     if envy.PLATFORM == "windows" then
         envy.run('"cwd_test" | Out-File -FilePath cwd_check_marker.txt')
@@ -320,6 +332,7 @@ end
         # Install cwd = manifest directory for user-managed packages
         spec = """
 IDENTITY = "local.install_cwd_user@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_INSTALL_MARKER")
     if not marker then error("ENVY_TEST_INSTALL_MARKER not set") end
@@ -367,6 +380,7 @@ end
         # Manifest default_shell respected in check string
         spec = """
 IDENTITY = "local.check_default_shell@v1"
+USER_MANAGED = true
 CHECK = "echo 'shell test'"
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -389,6 +403,7 @@ INSTALL = "echo 'install shell test' > output.txt"
         # Direct table field access patterns
         spec = """
 IDENTITY = "local.check_table_fields@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'test output'", {capture = true})
     local code = res.exit_code
@@ -409,6 +424,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Chained table field access patterns
         spec = """
 IDENTITY = "local.check_table_chained@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local out = envy.run("echo 'chained'", {capture = true}).stdout
     assert(out:match("chained"), "chained stdout access should work")
@@ -427,6 +443,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Shell error: command not found
         spec = """
 IDENTITY = "local.check_error_not_found@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("nonexistent_command_12345", {quiet = true, check = true})
     error("Should have thrown on command not found")
@@ -450,6 +467,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Shell error: syntax error
         spec = """
 IDENTITY = "local.check_error_syntax@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("echo 'unclosed quote", {quiet = true})
     error("Should have thrown on syntax error")
@@ -468,6 +486,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Concurrent large stdout+stderr with capture (no deadlock)
         spec = """
 IDENTITY = "local.check_concurrent@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local cmd
     if envy.PLATFORM == "windows" then
@@ -492,6 +511,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # Empty outputs in failure messages
         spec = """
 IDENTITY = "local.check_empty_output@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local res = envy.run("exit 42", {quiet = true})
     error("Should have thrown on non-zero exit")
@@ -513,6 +533,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         # User-managed tmp_dir lifecycle
         spec = """
 IDENTITY = "local.user_tmp_lifecycle@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_TMP_MARKER")
     if not marker then error("ENVY_TEST_TMP_MARKER not set") end
@@ -559,6 +580,7 @@ end
         # User-managed entry_dir cleanup
         spec = """
 IDENTITY = "local.user_cleanup@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_CLEANUP_MARKER")
     if not marker then error("ENVY_TEST_CLEANUP_MARKER not set") end
@@ -594,6 +616,7 @@ end
         # Check phase does not expose tmp_dir
         spec = """
 IDENTITY = "local.user_check_no_tmp@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     return true
 end
@@ -608,6 +631,7 @@ end
         # User-managed: tmp_dir for workspace, cwd is manifest directory
         spec = """
 IDENTITY = "local.user_tmp_vs_cwd@v1"
+USER_MANAGED = true
 function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_TMP_CWD_MARKER")
     if not marker then error("ENVY_TEST_TMP_CWD_MARKER not set") end

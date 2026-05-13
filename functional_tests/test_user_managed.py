@@ -16,6 +16,7 @@ from . import test_config
 # Simple user-managed package: check if marker file exists, create if not
 # Simulates system package wrapper (like brew install python)
 SPEC_SIMPLE = """IDENTITY = "local.user_managed_simple@v1"
+USER_MANAGED = true
 
 function CHECK(project_root, options)
     local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
@@ -38,6 +39,7 @@ end
 # Context isolation test: verify restricted directory access for user-managed
 # Tests install_dir=nil, stage_dir access, fetch_dir access, extract_all behavior
 SPEC_CTX_FORBIDDEN = """IDENTITY = "local.user_managed_ctx_isolation_forbidden@v1"
+USER_MANAGED = true
 
 function CHECK(project_root, options)
     return false
@@ -278,6 +280,7 @@ end
         """User-managed packages cannot access install_dir (it's nil)."""
         # User-managed spec that tries to use install_dir
         spec_invalid = """IDENTITY = "local.user_managed_invalid@v1"
+USER_MANAGED = true
 
 function CHECK(project_root, options)
     return false
@@ -304,6 +307,7 @@ end
         """User-managed packages can access and use tmp_dir."""
         # Spec that verifies tmp_dir is accessible and writable
         spec_tmp_dir = """IDENTITY = "local.user_managed_ctx_isolation_tmp_dir@v1"
+USER_MANAGED = true
 
 function CHECK(project_root, options)
     return false
@@ -337,6 +341,7 @@ end
         """User-managed packages can access allowed APIs (run, package, product)."""
         # Spec that verifies envy.* APIs are accessible
         spec_allowed = """IDENTITY = "local.user_managed_ctx_isolation_allowed@v1"
+USER_MANAGED = true
 
 function CHECK(project_root, options)
     return false
@@ -397,6 +402,55 @@ end
             env_vars={"ENVY_TEST_FORBIDDEN_API": "extract_all"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+
+    # =========================================================================
+    # USER_MANAGED resolution forms (boolean / function / errors)
+    # =========================================================================
+
+    def test_user_managed_function_form_returning_true(self):
+        """USER_MANAGED = function() return true end classifies the spec as user-managed."""
+        spec = """IDENTITY = "local.um_fn_form_true@v1"
+USER_MANAGED = function() return envy.PLATFORM ~= "<<never>>" end
+
+function CHECK(project_root, options)
+    local marker = os.getenv("ENVY_TEST_MARKER_FN")
+    local f = io.open(marker, "r")
+    if f then f:close(); return true end
+    return false
+end
+
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    if install_dir ~= nil then
+        error("install_dir should be nil for user-managed packages")
+    end
+    local marker = os.getenv("ENVY_TEST_MARKER_FN")
+    local f = io.open(marker, "w")
+    f:write("installed via function-form USER_MANAGED")
+    f:close()
+end
+"""
+        marker = self.marker_dir / "marker-fn-form"
+        self.write_spec("fn_form_true", spec)
+        result = self.run_spec(
+            "fn_form_true",
+            "local.um_fn_form_true@v1",
+            env_vars={"ENVY_TEST_MARKER_FN": str(marker)},
+        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(marker.exists(), "INSTALL should have run and created the marker")
+
+    def test_user_managed_function_form_returning_non_boolean_fails(self):
+        """USER_MANAGED function returning a non-boolean errors with identity in message."""
+        spec = """IDENTITY = "local.um_fn_form_bad@v1"
+USER_MANAGED = function() return "yes" end
+
+function CHECK(project_root, options) return false end
+function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+"""
+        self.write_spec("fn_form_bad", spec)
+        result = self.run_spec("fn_form_bad", "local.um_fn_form_bad@v1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must return a boolean", result.stderr)
 
 
 if __name__ == "__main__":

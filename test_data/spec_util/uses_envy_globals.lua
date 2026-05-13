@@ -1,5 +1,6 @@
 -- Test spec that uses envy globals at parse time
 IDENTITY = "test.uses_envy_globals@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 -- This requires envy table to be available at global scope

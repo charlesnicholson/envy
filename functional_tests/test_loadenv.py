@@ -88,6 +88,7 @@ DEPENDENCIES = {}
 local helper = envy.loadenv("helper")
 LOADED_VALUE = helper.HELPER_VALUE
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -121,6 +122,7 @@ PACKAGES = {{
         spec_content = """IDENTITY = "local.phase-loadenv@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   local ver = envy.loadenv("version")
   return ver.TOOL_VERSION == "1.2.3"
@@ -169,6 +171,7 @@ assert(FOO == nil, "FOO leaked to _G")
 assert(BAR == nil, "BAR leaked to _G")
 assert(BAZ == nil, "BAZ leaked to _G")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -208,6 +211,7 @@ DEPENDENCIES = {}
 local helper = envy.loadenv("subdir.helper")
 assert(helper.SUBDIR_VALUE == "in_subdir", "Failed to load from subdir")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -277,6 +281,7 @@ assert(helper.RESULTS.str == "value: 42", "string.format failed")
 assert(helper.RESULTS.math_val == 3, "math.floor failed")
 assert(helper.RESULTS.tbl == "a,b,c", "table.concat failed")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -340,6 +345,7 @@ DEPENDENCIES = {}
 
 local helper = envy.loadenv("nonexistent")
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
