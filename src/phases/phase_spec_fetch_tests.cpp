@@ -38,26 +38,30 @@ struct temp_dir_guard {
   ~temp_dir_guard() { std::filesystem::remove_all(path); }
 };
 
-void expect_user_managed_cache_phase_error(std::string const &phase_name) {
+void expect_user_managed_cache_phase_error(std::string const &phase_name,
+                                           std::string const &phase_rhs,
+                                           std::string const &label_suffix = "") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  ("envy_test_check_" + phase_name) };
+                                  ("envy_test_check_" + phase_name + label_suffix) };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
   std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
+  std::string const identity{ "test.check_" + phase_name + label_suffix + "@v1" };
+
   {
     std::ofstream ofs{ spec_file };
-    ofs << "IDENTITY = \"test.check_" << phase_name << "@v1\"\n";
+    ofs << "IDENTITY = \"" << identity << "\"\n";
     ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = \"echo test\"\n";
     ofs << "INSTALL = \"echo install\"\n";
-    ofs << phase_name << " = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+    ofs << phase_name << " = " << phase_rhs << "\n";
   }
 
-  auto *cfg{ make_local_cfg("test.check_" + phase_name + "@v1", spec_file) };
+  auto *cfg{ make_local_cfg(identity, spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   bool exception_thrown = false;
@@ -116,16 +120,40 @@ TEST_CASE("string check without install errors") {
 // User-managed package validation tests (check verb + cache phases)
 // ============================================================================
 
-TEST_CASE("user-managed package with check verb and fetch phase throws parse error") {
-  expect_user_managed_cache_phase_error("FETCH");
+TEST_CASE("user-managed package with check verb and FETCH function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "FETCH", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
 }
 
-TEST_CASE("user-managed package with check verb and stage phase throws parse error") {
-  expect_user_managed_cache_phase_error("STAGE");
+TEST_CASE("user-managed package with check verb and FETCH string throws parse error") {
+  expect_user_managed_cache_phase_error("FETCH", "\"https://example.com/x.tar.gz\"", "_str");
 }
 
-TEST_CASE("user-managed package with check verb and build phase throws parse error") {
-  expect_user_managed_cache_phase_error("BUILD");
+TEST_CASE("user-managed package with check verb and FETCH table throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "FETCH", "{ url = \"https://example.com/x.tar.gz\" }", "_tbl");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "STAGE", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE string throws parse error") {
+  expect_user_managed_cache_phase_error("STAGE", "\"echo stage\"", "_str");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE table throws parse error") {
+  expect_user_managed_cache_phase_error("STAGE", "{ strip_components = 1 }", "_tbl");
+}
+
+TEST_CASE("user-managed package with check verb and BUILD function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "BUILD", "function(install_dir, stage_dir, fetch_dir, tmp_dir) end", "_fn");
+}
+
+TEST_CASE("user-managed package with check verb and BUILD string throws parse error") {
+  expect_user_managed_cache_phase_error("BUILD", "\"make\"", "_str");
 }
 
 TEST_CASE("user-managed package with check verb and install phase succeeds") {

@@ -451,6 +451,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
         result = self.run_spec("fn_form_bad", "local.um_fn_form_bad@v1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must return a boolean", result.stderr)
+        self.assertIn("local.um_fn_form_bad@v1", result.stderr)
 
 
 if __name__ == "__main__":

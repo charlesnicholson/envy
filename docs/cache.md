@@ -143,7 +143,7 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 ### User-Managed Package Install
 
-1. **First install with check=false**: check verb returns false (not satisfied) → lock acquired, `mark_user_managed()` called → double-check returns false → fetch/stage/build/install phases run → install modifies system (brew install, file writes, etc.) → lock destructor detects `user_managed_` flag → entire `entry_dir` deleted (fetch/, work/, install/ all purged) → lock released.
+1. **First install with check=false**: check verb returns false (not satisfied) → lock acquired, `mark_user_managed()` called → double-check returns false → install phase runs against `project_root` and modifies system (brew install, file writes, etc.; FETCH/STAGE/BUILD are rejected at spec load for user-managed specs) → lock destructor detects `user_managed_` flag → entire `entry_dir` deleted → lock released.
 
 2. **Second run with check=true**: check verb returns true (already satisfied) → no lock acquired → all phases skipped.
 

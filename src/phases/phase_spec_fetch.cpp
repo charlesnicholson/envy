@@ -57,8 +57,10 @@ bool resolve_user_managed(sol::state_view lua, std::string const &identity) {
 void validate_phases(sol::state_view lua, std::string const &identity, bool user_managed) {
   bool const has_fetch{ lua["FETCH"].is<sol::protected_function>() ||
                         lua["FETCH"].is<std::string>() || lua["FETCH"].is<sol::table>() };
-  bool const has_stage{ lua["STAGE"].is<sol::protected_function>() };
-  bool const has_build{ lua["BUILD"].is<sol::protected_function>() };
+  bool const has_stage{ lua["STAGE"].is<sol::protected_function>() ||
+                        lua["STAGE"].is<std::string>() || lua["STAGE"].is<sol::table>() };
+  bool const has_build{ lua["BUILD"].is<sol::protected_function>() ||
+                        lua["BUILD"].is<std::string>() };
   bool const has_check{ lua["CHECK"].is<sol::protected_function>() ||
                         lua["CHECK"].is<std::string>() };
   bool const has_install{ lua["INSTALL"].is<sol::protected_function>() ||
