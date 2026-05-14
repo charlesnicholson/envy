@@ -1,5 +1,6 @@
 -- Shared dependency produced by fallbacks
 IDENTITY = "local.shared@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

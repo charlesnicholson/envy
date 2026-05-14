@@ -52,6 +52,7 @@ class TestEngineSpecLoading(unittest.TestCase):
 IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -127,6 +128,7 @@ DEPENDENCIES = {}
 
 IDENTITY = "remote.child@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -154,6 +156,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -192,6 +195,7 @@ end
 
 IDENTITY = "remote.child@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -218,6 +222,7 @@ DEPENDENCIES = {{
   }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -265,6 +270,7 @@ end
 IDENTITY = "local.identity_correct@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -299,6 +305,7 @@ end
         identity_missing_spec = """-- Spec missing identity declaration (invalid)
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -343,6 +350,7 @@ end
 IDENTITY = "local.wrong_identity@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -392,6 +400,7 @@ end
 IDENTITY = { name = "wrong" }
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -436,6 +445,7 @@ end
             tmp.write("""
 -- Missing identity in local spec
 DEPENDENCIES = {}
+USER_MANAGED = true
 function CHECK(project_root, options) return false end
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """)
@@ -474,6 +484,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { required = true } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -501,6 +512,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { required = true } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -527,6 +539,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = {} }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -555,6 +568,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { type = "semver" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -582,6 +596,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { type = "semver" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -610,6 +625,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -637,6 +653,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -665,6 +682,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { count = { range = ">=1 <10" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -692,6 +710,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { count = { range = ">=1 <10" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -720,6 +739,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { mode = { validate = function(v) end } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -747,6 +767,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { mode = { validate = function(v) return "bad mode: " .. v end } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -775,6 +796,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { version = {} }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -800,6 +822,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = {}
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -827,6 +850,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { name = { type = "string" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -854,6 +878,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { name = { type = "string" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -882,6 +907,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { items = { type = "list" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -909,6 +935,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { items = { type = "list" } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -937,6 +964,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { mode = { choices = { "install", "extract" } } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -964,6 +992,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = { mode = { choices = { "install", "extract" } } }
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -994,6 +1023,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1019,6 +1049,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) return true end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1044,6 +1075,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) return false end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1070,6 +1102,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) return "nope" end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1096,6 +1129,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) return 123 end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1122,6 +1156,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = function(opts) error("boom") end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1150,6 +1185,7 @@ OPTIONS = function(opts)
   envy.options({ version = { required = true } })
 end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1179,6 +1215,7 @@ OPTIONS = function(opts)
   envy.options({ version = { required = true } })
 end
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1207,6 +1244,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = 42
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """
@@ -1233,6 +1271,7 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 
 OPTIONS = "string"
 
+USER_MANAGED = true
 CHECK = function(project_root, options) return true end
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 """

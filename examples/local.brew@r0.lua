@@ -1,6 +1,7 @@
 -- @envy schema "1"
 IDENTITY = "local.brew@r0"
 PLATFORMS = { "darwin" }
+USER_MANAGED = true
 
 CHECK = "brew --version"
 

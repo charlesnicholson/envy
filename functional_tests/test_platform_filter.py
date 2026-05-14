@@ -87,6 +87,7 @@ end
 SPEC_USER_MANAGED = """\
 IDENTITY = "local.usermanaged@v1"
 
+USER_MANAGED = true
 CHECK = function(project_root, options)
   return false
 end

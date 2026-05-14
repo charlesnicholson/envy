@@ -86,10 +86,18 @@ struct install_test_fixture {
 
   sol::state_view lua_state() { return sol::state_view{ *p->lua }; }
 
-  void clear_check_verb() { lua_state()["CHECK"] = sol::lua_nil; }
+  // Configure the fixture as cache-managed (CHECK cleared, type = CACHE_MANAGED).
+  void clear_check_verb() {
+    lua_state()["CHECK"] = sol::lua_nil;
+    p->type = pkg_type::CACHE_MANAGED;
+  }
 
+  // Configure the fixture as user-managed (CHECK set, type = USER_MANAGED).
+  // Dispatch in run_install_phase keys on p->type, but tests that exercise
+  // run_check_verb() still need CHECK populated in the Lua state.
   void set_check_verb(std::string_view check_code) {
     lua_state()["CHECK"] = std::string(check_code);
+    p->type = pkg_type::USER_MANAGED;
   }
 
   void clear_install_verb() { lua_state()["INSTALL"] = sol::lua_nil; }

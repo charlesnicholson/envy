@@ -19,6 +19,7 @@ from .trace_parser import TraceParser
 SIMPLE_SPEC = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

@@ -55,6 +55,7 @@ DEPENDENCIES = {
   { spec = "local.missing_dep", weak = { spec = "local.weak_fallback@v1", source = "weak_fallback.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -70,6 +71,7 @@ end
 IDENTITY = "local.weak_fallback@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -99,6 +101,7 @@ DEPENDENCIES = {
   { spec = "local.existing_dep", weak = { spec = "local.unused_fallback@v1", source = "weak_unused_fallback.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -114,6 +117,7 @@ end
 IDENTITY = "local.existing_dep@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -129,6 +133,7 @@ end
 IDENTITY = "local.unused_fallback@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -158,6 +163,7 @@ DEPENDENCIES = {
   { spec = "local.weak_provider" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -173,6 +179,7 @@ end
 IDENTITY = "local.weak_provider@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -202,6 +209,7 @@ DEPENDENCIES = {
   { spec = "local.dupe" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -217,6 +225,7 @@ end
 IDENTITY = "local.dupe@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -232,6 +241,7 @@ end
 IDENTITY = "local.dupe@v2"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -259,6 +269,7 @@ DEPENDENCIES = {
   { spec = "local.never_provided" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -285,6 +296,7 @@ DEPENDENCIES = {
   { spec = "local.chain_missing", weak = { spec = "local.chain_b@v1", source = "weak_chain_b.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -302,6 +314,7 @@ DEPENDENCIES = {
   { spec = "local.chain_c", weak = { spec = "local.chain_c@v1", source = "weak_chain_c.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -317,6 +330,7 @@ end
 IDENTITY = "local.chain_c@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -347,6 +361,7 @@ DEPENDENCIES = {
   { spec = "local.shared" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -364,6 +379,7 @@ DEPENDENCIES = {
   { spec = "local.shared", weak = { spec = "local.shared@v1", source = "weak_shared.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -381,6 +397,7 @@ DEPENDENCIES = {
   { spec = "local.shared", weak = { spec = "local.shared@v1", source = "weak_shared.lua" } },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -396,6 +413,7 @@ end
 IDENTITY = "local.shared@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -442,6 +460,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No-op; custom fetch dependency performs work, root install not needed.
 end
 
+USER_MANAGED = true
 function CHECK(project_root, options) return true end
 ]])
         f:close()
@@ -455,6 +474,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No-op; check returns true so install is skipped.
 end
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return true
 end
@@ -465,6 +485,7 @@ end
         weak_helper_fallback = """-- Fallback helper for weak custom fetch dependency
 IDENTITY = "local.helper.fallback@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return true
 end
@@ -515,6 +536,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No-op; custom fetch dependency performs work, root install not needed.
 end
 
+USER_MANAGED = true
 function CHECK(project_root, options) return true end
 ]])
         f:close()
@@ -528,6 +550,7 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   -- No-op; check returns true so install is skipped.
 end
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return true
 end
@@ -540,6 +563,7 @@ end
         weak_helper_strong = """-- Strong provider for helper identity
 IDENTITY = "local.helper@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return true
 end
@@ -554,6 +578,7 @@ end
         weak_helper_fallback = """-- Fallback helper for weak custom fetch dependency
 IDENTITY = "local.helper.fallback@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return true
 end
@@ -586,6 +611,7 @@ DEPENDENCIES = {
   { spec = "local.foo@v1", source = "weak_cycle_b.lua" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -603,6 +629,7 @@ DEPENDENCIES = {
   { spec = "foo" },  -- Weak ref-only, will match weak_cycle_b
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -620,6 +647,7 @@ DEPENDENCIES = {
   { spec = "local.weak_cycle_a@v1", source = "weak_cycle_a.lua" }
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

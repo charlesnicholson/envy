@@ -77,6 +77,7 @@ SPECS = {{
             spec_lua = f"""IDENTITY = "{spec_id}"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -154,6 +155,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
   return helper.compute_value() == 42
@@ -226,6 +228,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   local utils = envy.loadenv_spec("test.helpers@v1", "lib.math.utils")
   return utils.add(1, 2) == 3
@@ -282,6 +285,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   -- Fuzzy match: "toolchain" matches "acme.toolchain@v2"
   local config = envy.loadenv_spec("toolchain", "lib.config")

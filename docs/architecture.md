@@ -165,17 +165,18 @@ Specs define verbs describing how to acquire, validate, and install packages:
 
 ### User-Managed vs Cache-Managed Packages
 
-Envy supports two package models distinguished by CHECK verb presence:
+Specs declare their mode via top-level `USER_MANAGED` (boolean or function-returning-boolean; defaults to `false`). The value is resolved once at spec load and determines `p->type` for the rest of the pipeline; `CHECK` is just a phase verb.
 
-**Cache-Managed Packages** (no CHECK verb):
-- Artifacts stored in cache—hash-based lookup via `cache::ensure_asset()`
+**Cache-Managed Packages** (`USER_MANAGED = false` or absent):
+- Artifacts stored in cache—hash-based lookup via `cache::ensure_pkg()`
 - Install writes to `install_dir`; on successful return, envy auto-marks complete
-- Lock destructor renames `install/` → `asset/`, touches `envy-complete`
-- Subsequent runs: cache hit (asset exists) skips all phases
+- Lock destructor renames `install/` → `pkg/`, touches `envy-complete`
+- Subsequent runs: cache hit skips all phases
 - Full pipeline: FETCH → STAGE → BUILD → INSTALL
+- **`CHECK` is forbidden**—use `USER_MANAGED=true` if you need it
 - Example: toolchains, libraries, build tools
 
-**User-Managed Packages** (CHECK verb present):
+**User-Managed Packages** (`USER_MANAGED = true`):
 - Artifacts live outside cache (system state, environment, user directories)
 - CHECK verb tests satisfaction (string command or function returning bool)
 - Lock marked user-managed via `lock->mark_user_managed()`—destructor purges entire `entry_dir` (ephemeral workspace)
@@ -195,15 +196,17 @@ Coordinates concurrent processes, prevents duplicate work:
 Race example: Process A checks (false), waits for lock. Process B holds lock, installs Python via brew. B releases. A acquires lock, re-checks (true—Python now installed), releases, skips phases.
 
 **Implementation mechanics:**
-- Detection: `recipe_has_check_verb(r, lua)` → user vs cache path in `run_check_phase()`
-- User-managed lock: `phase_check.cpp` calls `lock->mark_user_managed()`
-- Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_asset(); }`
-- Validation: `phase_recipe_fetch.cpp` rejects FETCH/STAGE/BUILD verbs when CHECK present
+- Resolution: `resolve_user_managed()` reads `USER_MANAGED` once during `phase_spec_fetch`; sets `p->type`. Function form is called with no args and must return a boolean.
+- Dispatch: `run_check_phase()` and `run_install_phase()` branch on `p->type == pkg_type::USER_MANAGED`.
+- User-managed lock: `phase_check.cpp` calls `lock->mark_user_managed()` on lock acquisition.
+- Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_pkg(); }`
+- Validation: `phase_spec_fetch.cpp::validate_phases()` enforces the rules table above; `CHECK` is rejected when `USER_MANAGED` is not true; `FETCH/STAGE/BUILD` are rejected when it is.
 
 **Example: System Package Wrapper**
 ```lua
 -- python.interpreter@v3 (user-managed)
 IDENTITY = "python.interpreter@v3"
+USER_MANAGED = true
 
 -- Check if Python already installed
 CHECK = function(project_root, options)

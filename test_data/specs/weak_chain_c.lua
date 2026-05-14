@@ -1,5 +1,6 @@
 -- Terminal dependency for the weak chain
 IDENTITY = "local.chain_c@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

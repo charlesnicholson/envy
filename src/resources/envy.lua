@@ -313,6 +313,18 @@ CHECK = nil
 ---@type table<string, envy.option_constraint>|fun(options: table): nil|boolean|string
 OPTIONS = nil
 
+---USER_MANAGED: marks the spec as user-managed (CHECK gates install; cache holds no install output).
+---Boolean or function returning a boolean (called once at spec load). Defaults to false (cache-managed).
+---When true, CHECK and INSTALL must be defined and FETCH/STAGE/BUILD must NOT be defined.
+---When false (default), CHECK must NOT be defined and FETCH must be defined.
+---@type boolean|fun(): boolean
+USER_MANAGED = nil
+
+---EXPORTABLE: cache-managed packages with EXPORTABLE=true expose their install output for export.
+---When false, only fetched bytes are preserved in the cache.
+---@type boolean
+EXPORTABLE = nil
+
 --------------------------------------------------------------------------------
 -- Manifest Globals
 --------------------------------------------------------------------------------

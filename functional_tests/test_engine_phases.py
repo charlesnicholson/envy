@@ -50,6 +50,7 @@ class TestEnginePhases(unittest.TestCase):
         spec = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -132,6 +133,7 @@ end
         tool_spec = """IDENTITY = "local.tool@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

@@ -65,6 +65,7 @@ end
 SIMPLE_SPEC = """-- Minimal test spec
 IDENTITY = "local.simple@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
     return false
 end

@@ -1,4 +1,5 @@
 IDENTITY = "test.spec_a@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

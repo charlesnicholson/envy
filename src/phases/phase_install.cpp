@@ -5,7 +5,6 @@
 #include "lua_ctx/lua_phase_context.h"
 #include "lua_envy.h"
 #include "lua_error_formatter.h"
-#include "phase_check.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "platform.h"
@@ -207,7 +206,7 @@ void run_install_phase(pkg *p, engine &eng) {
   sol::object install_obj{ lua_view["INSTALL"] };
   bool marked_complete{ false };
 
-  bool const is_user_managed{ pkg_has_check_verb(p, lua_view) };
+  bool const is_user_managed{ p->type == pkg_type::USER_MANAGED };
 
   if (!install_obj.valid()) {
     marked_complete = promote_stage_to_install(lock.get());

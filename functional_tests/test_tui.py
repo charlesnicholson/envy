@@ -17,6 +17,7 @@ from .test_config import make_manifest
 # User-managed spec that runs shell commands during install
 SPEC_BUILD_FUNCTION = """IDENTITY = "local.build_function@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -30,6 +31,7 @@ end
 # Dependency spec for parallel execution test
 SPEC_BUILD_DEPENDENCY = """IDENTITY = "local.build_dependency@v1"
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -42,6 +44,7 @@ end
 
 # Fast-completing spec (instant install)
 SPEC_FAST = """IDENTITY = "local.fast@v1"
+USER_MANAGED = true
 function CHECK(project_root, options) return false end
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run("echo fast-install-done", { quiet = true })
@@ -50,6 +53,7 @@ end
 
 # Slow spec (sleeps to keep renderer active)
 SPEC_SLOW = """IDENTITY = "local.slow@v1"
+USER_MANAGED = true
 function CHECK(project_root, options) return false end
 function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
   envy.run("sleep 2")
@@ -60,6 +64,7 @@ end
 SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

@@ -1,5 +1,6 @@
 -- Reference-only dependency that matches multiple strong candidates
 IDENTITY = "local.weak_consumer_ambiguous@v1"
+USER_MANAGED = true
 DEPENDENCIES = {
   { spec = "local.dupe@v1", source = "weak_dupe_v1.lua" },
   { spec = "local.dupe@v2", source = "weak_dupe_v2.lua" },

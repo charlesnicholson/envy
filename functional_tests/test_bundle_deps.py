@@ -67,6 +67,7 @@ SPECS = {{
             spec_lua = f"""IDENTITY = "{spec_id}"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -109,6 +110,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -154,6 +156,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -203,6 +206,7 @@ DEPENDENCIES = {{
   {{ spec = "test.clang@v1", bundle = "tc" }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -252,6 +256,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -325,6 +330,7 @@ DEPENDENCIES = {
   { spec = "test.gcc@v1", bundle = "unknown_alias" },
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -356,6 +362,7 @@ DEPENDENCIES = {
   { bundle = "some.bundle@v1" },  -- No source, no spec - invalid
 }
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

@@ -57,6 +57,7 @@ def create_test_archive(output_path: Path) -> str:
 SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -86,6 +87,7 @@ end
 SPEC_DIAMOND_D = """IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -100,6 +102,7 @@ DEPENDENCIES = {{
   {{ spec = "local.diamond_d@v1", source = "diamond_d.lua" }}
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end

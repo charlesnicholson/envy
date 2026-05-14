@@ -32,6 +32,7 @@ SPECS = {
     spec_a_lua = """IDENTITY = "test.spec_a@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -44,6 +45,7 @@ end
     spec_b_lua = """IDENTITY = "test.spec_b@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -231,6 +233,7 @@ SPECS = {{
             spec_lua = f"""IDENTITY = "{spec_id}"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -305,6 +308,7 @@ SPECS = {
         spec_lua = """IDENTITY = "test.actual@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -494,6 +498,7 @@ SPECS = {{
             spec_lua = f"""IDENTITY = "{spec_id}"
 DEPENDENCIES = {{}}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -569,6 +574,7 @@ SPECS = {
         spec_lua = """IDENTITY = "local.marker@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -616,6 +622,7 @@ SPECS = {
         dummy_lua = """IDENTITY = "local.dummy@v1"
 DEPENDENCIES = {}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   return false
 end
@@ -639,6 +646,7 @@ DEPENDENCIES = {{
   }},
 }}
 
+USER_MANAGED = true
 function CHECK(project_root, options)
   local helper = envy.loadenv_spec("local.helpers@v1", "lib.helper")
   return helper.HELPER_VERSION == "1.0.0"

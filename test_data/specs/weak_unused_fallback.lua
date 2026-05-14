@@ -1,5 +1,6 @@
 -- Fallback that should be ignored when a strong match exists
 IDENTITY = "local.unused_fallback@v1"
+USER_MANAGED = true
 DEPENDENCIES = {}
 
 function CHECK(project_root, options)

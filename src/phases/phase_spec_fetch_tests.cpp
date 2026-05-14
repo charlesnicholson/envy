@@ -38,24 +38,30 @@ struct temp_dir_guard {
   ~temp_dir_guard() { std::filesystem::remove_all(path); }
 };
 
-void expect_user_managed_cache_phase_error(std::string const &phase_name) {
+void expect_user_managed_cache_phase_error(std::string const &phase_name,
+                                           std::string const &phase_rhs,
+                                           std::string const &label_suffix = "") {
   cache c;
   engine eng{ c };
 
   std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
-                                  ("envy_test_check_" + phase_name) };
+                                  ("envy_test_check_" + phase_name + label_suffix) };
   std::filesystem::create_directories(temp_dir);
   temp_dir_guard guard{ temp_dir };
   std::filesystem::path spec_file{ temp_dir / "spec.lua" };
 
+  std::string const identity{ "test.check_" + phase_name + label_suffix + "@v1" };
+
   {
     std::ofstream ofs{ spec_file };
-    ofs << "IDENTITY = \"test.check_" << phase_name << "@v1\"\n";
+    ofs << "IDENTITY = \"" << identity << "\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = \"echo test\"\n";
-    ofs << phase_name << " = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+    ofs << "INSTALL = \"echo install\"\n";
+    ofs << phase_name << " = " << phase_rhs << "\n";
   }
 
-  auto *cfg{ make_local_cfg("test.check_" + phase_name + "@v1", spec_file) };
+  auto *cfg{ make_local_cfg(identity, spec_file) };
   pkg *p{ eng.ensure_pkg(cfg) };
 
   bool exception_thrown = false;
@@ -70,7 +76,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name) {
   std::filesystem::remove_all(temp_dir);
 
   REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("has CHECK verb (user-managed)") != std::string::npos);
+  CHECK(exception_msg.find("is user-managed (USER_MANAGED=true)") != std::string::npos);
   CHECK(exception_msg.find("declares " + phase_name + " phase") != std::string::npos);
 }
 
@@ -114,16 +120,49 @@ TEST_CASE("string check without install errors") {
 // User-managed package validation tests (check verb + cache phases)
 // ============================================================================
 
-TEST_CASE("user-managed package with check verb and fetch phase throws parse error") {
-  expect_user_managed_cache_phase_error("FETCH");
+TEST_CASE("user-managed package with check verb and FETCH function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "FETCH",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
 }
 
-TEST_CASE("user-managed package with check verb and stage phase throws parse error") {
-  expect_user_managed_cache_phase_error("STAGE");
+TEST_CASE("user-managed package with check verb and FETCH string throws parse error") {
+  expect_user_managed_cache_phase_error("FETCH",
+                                        "\"https://example.com/x.tar.gz\"",
+                                        "_str");
 }
 
-TEST_CASE("user-managed package with check verb and build phase throws parse error") {
-  expect_user_managed_cache_phase_error("BUILD");
+TEST_CASE("user-managed package with check verb and FETCH table throws parse error") {
+  expect_user_managed_cache_phase_error("FETCH",
+                                        "{ url = \"https://example.com/x.tar.gz\" }",
+                                        "_tbl");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "STAGE",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE string throws parse error") {
+  expect_user_managed_cache_phase_error("STAGE", "\"echo stage\"", "_str");
+}
+
+TEST_CASE("user-managed package with check verb and STAGE table throws parse error") {
+  expect_user_managed_cache_phase_error("STAGE", "{ strip_components = 1 }", "_tbl");
+}
+
+TEST_CASE("user-managed package with check verb and BUILD function throws parse error") {
+  expect_user_managed_cache_phase_error(
+      "BUILD",
+      "function(install_dir, stage_dir, fetch_dir, tmp_dir) end",
+      "_fn");
+}
+
+TEST_CASE("user-managed package with check verb and BUILD string throws parse error") {
+  expect_user_managed_cache_phase_error("BUILD", "\"make\"", "_str");
 }
 
 TEST_CASE("user-managed package with check verb and install phase succeeds") {
@@ -137,6 +176,7 @@ TEST_CASE("user-managed package with check verb and install phase succeeds") {
 
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.check_install_ok@v1\"\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = \"echo test\"\n";
   ofs << "INSTALL = \"echo install\"\n";
   ofs.close();
@@ -164,6 +204,7 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     std::ofstream ofs{ spec_file_ok };
     ofs << "IDENTITY = \"test.options_ok@v1\"\n";
     ofs << "OPTIONS = { foo = {} }\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function(project_root) return true end\n";
     ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
@@ -174,6 +215,7 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     std::ofstream ofs{ spec_file_true };
     ofs << "IDENTITY = \"test.options_true@v1\"\n";
     ofs << "OPTIONS = function(opts) return true end\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function(project_root) return true end\n";
     ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
     ofs.close();
@@ -201,6 +243,7 @@ TEST_CASE("OPTIONS function returns false fails") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.options_false@v1\"\n";
   ofs << "OPTIONS = function(opts) return false end\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
@@ -234,6 +277,7 @@ TEST_CASE("OPTIONS function returns string fails with message") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.options_string@v1\"\n";
   ofs << "OPTIONS = function(opts) return \"nope\" end\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
@@ -266,6 +310,7 @@ TEST_CASE("OPTIONS function invalid return type errors") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.options_type@v1\"\n";
   ofs << "OPTIONS = function(opts) return 123 end\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
@@ -289,6 +334,7 @@ TEST_CASE("OPTIONS set to non-table non-function errors") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.options_nonfn@v1\"\n";
   ofs << "OPTIONS = 42\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
@@ -312,6 +358,7 @@ TEST_CASE("OPTIONS function runtime error bubbles with context") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.options_error@v1\"\n";
   ofs << "OPTIONS = function(opts) error(\"boom\") end\n";
+  ofs << "USER_MANAGED = true\n";
   ofs << "CHECK = function(project_root) return true end\n";
   ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
   ofs.close();
@@ -345,6 +392,7 @@ TEST_CASE("product name validation") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.product@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { [\"" << product_name << "\"] = \"/usr/bin/tool\" }\n";
@@ -370,6 +418,7 @@ TEST_CASE("product name validation") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.product@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { [\"" << lua_escaped_name << "\"] = \"/usr/bin/tool\" }\n";
@@ -423,6 +472,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
@@ -449,6 +499,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", script = true } }\n";
@@ -475,6 +526,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { lib = { value = \"/usr/lib/libfoo.so\", script = false } }\n";
@@ -501,6 +553,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
@@ -527,6 +580,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { lib = { script = false } }\n";
@@ -551,6 +605,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { lib = { value = 123 } }\n";
@@ -575,6 +630,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = {\n";
@@ -607,6 +663,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
@@ -637,6 +694,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
@@ -661,6 +719,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
@@ -685,6 +744,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
@@ -710,6 +770,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
@@ -735,6 +796,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
@@ -760,6 +822,7 @@ TEST_CASE("PRODUCTS table syntax") {
 
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
     ofs << "CHECK = function() return true end\n";
     ofs << "INSTALL = function() end\n";
     ofs << "PRODUCTS = {\n";
@@ -780,6 +843,257 @@ TEST_CASE("PRODUCTS table syntax") {
     CHECK(p->products.at("completer").platforms[1] == "linux");
     CHECK(p->products.at("lib").platforms.empty());
   }
+}
+
+// ============================================================================
+// USER_MANAGED top-level declaration tests
+// ============================================================================
+
+namespace {
+
+struct user_managed_fixture {
+  std::filesystem::path temp_dir;
+  std::filesystem::path spec_file;
+
+  explicit user_managed_fixture(std::string const &label) {
+    temp_dir =
+        std::filesystem::temp_directory_path() / ("envy_test_user_managed_" + label);
+    std::filesystem::create_directories(temp_dir);
+    spec_file = temp_dir / "spec.lua";
+  }
+
+  ~user_managed_fixture() { std::filesystem::remove_all(temp_dir); }
+
+  void write(std::string const &body) {
+    std::ofstream ofs{ spec_file };
+    ofs << body;
+  }
+};
+
+}  // namespace
+
+TEST_CASE("USER_MANAGED=true with CHECK and INSTALL classifies user-managed") {
+  user_managed_fixture f{ "true_ok" };
+  f.write(
+      "IDENTITY = \"test.um_true_ok@v1\"\n"
+      "USER_MANAGED = true\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_true_ok@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::USER_MANAGED);
+}
+
+TEST_CASE("USER_MANAGED=false with FETCH classifies cache-managed") {
+  user_managed_fixture f{ "false_fetch" };
+  f.write(
+      "IDENTITY = \"test.um_false_fetch@v1\"\n"
+      "USER_MANAGED = false\n"
+      "FETCH = function() end\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_false_fetch@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::CACHE_MANAGED);
+}
+
+TEST_CASE("USER_MANAGED absent with FETCH defaults to cache-managed") {
+  user_managed_fixture f{ "absent_fetch" };
+  f.write(
+      "IDENTITY = \"test.um_absent@v1\"\n"
+      "FETCH = function() end\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_absent@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::CACHE_MANAGED);
+}
+
+TEST_CASE("USER_MANAGED=true without CHECK throws") {
+  user_managed_fixture f{ "true_no_check" };
+  f.write(
+      "IDENTITY = \"test.um_true_no_check@v1\"\n"
+      "USER_MANAGED = true\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_true_no_check@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("must define 'CHECK'"));
+}
+
+TEST_CASE("USER_MANAGED=true without INSTALL throws") {
+  user_managed_fixture f{ "true_no_install" };
+  f.write(
+      "IDENTITY = \"test.um_true_no_install@v1\"\n"
+      "USER_MANAGED = true\n"
+      "CHECK = \"echo test\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_true_no_install@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("must define 'INSTALL'"));
+}
+
+TEST_CASE("USER_MANAGED=false with CHECK throws (forbidden combination)") {
+  user_managed_fixture f{ "false_with_check" };
+  f.write(
+      "IDENTITY = \"test.um_false_with_check@v1\"\n"
+      "USER_MANAGED = false\n"
+      "FETCH = function() end\n"
+      "CHECK = \"echo test\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_false_with_check@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("CHECK is only valid for user-managed packages"));
+}
+
+TEST_CASE("USER_MANAGED absent with CHECK throws") {
+  user_managed_fixture f{ "absent_with_check" };
+  f.write(
+      "IDENTITY = \"test.um_absent_check@v1\"\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_absent_check@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("CHECK is only valid for user-managed packages"));
+}
+
+TEST_CASE("USER_MANAGED function returning true classifies user-managed") {
+  user_managed_fixture f{ "fn_true" };
+  f.write(
+      "IDENTITY = \"test.um_fn_true@v1\"\n"
+      "USER_MANAGED = function() return true end\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_fn_true@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::USER_MANAGED);
+}
+
+TEST_CASE("USER_MANAGED function returning false classifies cache-managed") {
+  user_managed_fixture f{ "fn_false" };
+  f.write(
+      "IDENTITY = \"test.um_fn_false@v1\"\n"
+      "USER_MANAGED = function() return false end\n"
+      "FETCH = function() end\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_fn_false@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::CACHE_MANAGED);
+}
+
+TEST_CASE("USER_MANAGED function returning non-boolean throws") {
+  user_managed_fixture f{ "fn_nonbool" };
+  f.write(
+      "IDENTITY = \"test.um_fn_nonbool@v1\"\n"
+      "USER_MANAGED = function() return \"yes\" end\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_fn_nonbool@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("must return a boolean"));
+}
+
+TEST_CASE("USER_MANAGED function raising error throws with identity") {
+  user_managed_fixture f{ "fn_error" };
+  f.write(
+      "IDENTITY = \"test.um_fn_error@v1\"\n"
+      "USER_MANAGED = function() error(\"boom\") end\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_fn_error@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  bool threw{ false };
+  try {
+    run_spec_fetch_phase(p, eng);
+  } catch (std::runtime_error const &e) {
+    threw = true;
+    std::string const msg{ e.what() };
+    INFO(msg);
+    CHECK(msg.find("test.um_fn_error@v1") != std::string::npos);
+    CHECK(msg.find("boom") != std::string::npos);
+  }
+  CHECK(threw);
+}
+
+TEST_CASE("USER_MANAGED with non-boolean non-function type throws") {
+  user_managed_fixture f{ "bad_type" };
+  f.write(
+      "IDENTITY = \"test.um_bad_type@v1\"\n"
+      "USER_MANAGED = \"yes\"\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_bad_type@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("must be a boolean or function"));
+}
+
+TEST_CASE("USER_MANAGED=true with FETCH throws (cache-managed phase forbidden)") {
+  user_managed_fixture f{ "true_with_fetch" };
+  f.write(
+      "IDENTITY = \"test.um_true_fetch@v1\"\n"
+      "USER_MANAGED = true\n"
+      "CHECK = \"echo test\"\n"
+      "INSTALL = \"echo install\"\n"
+      "FETCH = function() end\n");
+
+  cache c;
+  engine eng{ c };
+  auto *cfg{ make_local_cfg("test.um_true_fetch@v1", f.spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
+                    doctest::Contains("declares FETCH phase"));
 }
 
 }  // namespace envy
