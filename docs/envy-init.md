@@ -185,15 +185,15 @@ Two platform-specific scripts—no polyglot tricks. Each is idiomatic for its pl
 
 ### Unix Script (`envy`)
 
-Location: `src/envy-init/envy`
+Location: `src/resources/envy`
 
 Bash script optimized for minimal subprocess overhead. Parses all directives in a single `head | sed` pipeline (2 subprocesses) with bash string replacement for unescaping. Downloads via `curl`.
 
 ### Windows Script (`envy.bat`)
 
-Location: `src/envy-init/envy.bat`
+Location: `src/resources/envy.bat`
 
-Pure batch implementation for directive parsing—avoids ~100-200ms PowerShell startup overhead on every invocation. Downloads via PowerShell `Invoke-WebRequest`.
+Pure batch implementation for directive parsing—avoids ~100-200ms PowerShell startup overhead on every invocation. Downloads with native `curl.exe` and extracts the `.zip` with native `tar.exe` (bsdtar); both ship in `System32` on Windows 10 1803+ and are immune to PowerShell policy. PowerShell `Invoke-WebRequest`/`Expand-Archive` are kept only as a fallback for older Windows—avoided on the primary path because `Expand-Archive`'s module (`Microsoft.PowerShell.Archive`) can be blocked by machine policy (WDAC/AppLocker constrained-language mode) even while compiled binaries still run.
 
 **Limitation:** Values containing `!` or `\"` escape sequences are not supported. Batch's delayed expansion interprets `!` as variable delimiters; `\"` escapes are difficult to process correctly. These edge cases are rare (version strings, paths, and URLs typically don't contain these characters).
 
@@ -258,7 +258,7 @@ cd my-project
 
 # What happens:
 #   - Bootstrap reads @envy version from envy.lua
-#   - Checks ~/Library/Caches/envy/bin/1.2.3/envy
+#   - Checks ~/Library/Caches/envy/1.2.3/envy
 #   - Not found → downloads from GitHub releases
 #   - Caches binary
 #   - Executes: envy sync
@@ -289,7 +289,7 @@ Alice wants to upgrade from 1.2.3 to 1.4.0:
 #   - Bootstrap reads @envy version "1.4.0"
 #   - Checks cache for 1.4.0 → not found
 #   - Downloads envy 1.4.0
-#   - Caches at ~/Library/Caches/envy/bin/1.4.0/envy
+#   - Caches at ~/Library/Caches/envy/1.4.0/envy
 #   - Old 1.2.3 remains in cache (no deletion)
 #   - Executes: envy sync
 
@@ -605,12 +605,12 @@ The fallback version is whatever envy created this bootstrap script—a reasonab
 Phase 1 delivers complete `@envy` directive parsing in both bootstrap scripts and the envy runtime. The result: new comment-metadata manifests are fully parsed by all consumers.
 
 **Bootstrap scripts:**
-- [x] Create `src/envy-init/envy` - bash script template
-- [x] Create `src/envy-init/envy.bat` - batch script template
+- [x] Create `src/resources/envy` - bash script template
+- [x] Create `src/resources/envy.bat` - batch script template
 - [x] Implement directive parsing (optimized single-pass sed for bash, pure batch for Windows)
 - [x] Implement fallback to `FALLBACK_VERSION` with warning when `@envy version` missing
 - [x] Implement cache resolution (env > manifest > default)
-- [x] Implement platform/arch detection (Unix only; Windows assumes x86_64)
+- [x] Implement platform/arch detection (Unix and Windows; both detect x86_64/arm64)
 - [x] Implement download with curl
 - [x] Implement error handling and user feedback
 
@@ -644,10 +644,10 @@ This validates the full bootstrap pipeline: parse → download → cache → exe
 
 - [x] Create `cmake/scripts/embed_resource.py`
 - [x] Create `cmake/EmbedResource.cmake`
-- [x] Embed `src/envy-init/envy.lua` (lua_ls type definitions)
-- [x] Embed `src/envy-init/manifest_template.lua`
-- [x] Embed `src/envy-init/envy` (Unix only)
-- [x] Embed `src/envy-init/envy.bat` (Windows only)
+- [x] Embed `src/resources/envy.lua` (lua_ls type definitions)
+- [x] Embed `src/resources/manifest_template.lua`
+- [x] Embed `src/resources/envy` (Unix only)
+- [x] Embed `src/resources/envy.bat` (Windows only)
 - [x] Update CMakeLists.txt (platform-conditional embedding)
 
 ### Phase 3: Runtime Support
@@ -717,7 +717,7 @@ Envy self-deploys to cache on startup (before any command runs). Uses `platform:
 ## Files to Create
 
 ```
-src/envy-init/
+src/resources/
 ├── envy                      # Bash bootstrap template ✓
 ├── envy.bat                  # Batch bootstrap template ✓
 ├── envy.lua                  # lua_ls type definitions ✓
@@ -854,9 +854,9 @@ Added 10 tests for `expand_path()` and `resolve_cache_root()` covering tilde exp
 
 **Phase E: Bootstrap script path expansion** ✓
 
-Unix (`src/envy-init/envy`): Expands `~` to `$HOME` and uses `eval` for `$VAR`/`${VAR}` expansion.
+Unix (`src/resources/envy`): Expands `~` to `$HOME` and uses `eval` for `$VAR`/`${VAR}` expansion.
 
-Windows (`src/envy-init/envy.bat`): Expands `~` to `%USERPROFILE%`. Note: `$VAR` expansion not supported on Windows; use full paths or `%VAR%` syntax.
+Windows (`src/resources/envy.bat`): Expands `~` to `%USERPROFILE%`. Note: `$VAR` expansion not supported on Windows; use full paths or `%VAR%` syntax.
 
 **Phase G: Functional tests** ✓
 
