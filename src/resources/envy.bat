@@ -106,9 +106,17 @@ echo Downloading envy !VERSION!... >&2
 set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"
 REM Escape single quotes for PowerShell (replace ' with '')
 set "SAFE_URL=!URL:'=''!"
+REM Claim a unique temp dir via atomic mkdir (cmd's %RANDOM% can collide across
+REM concurrent bootstraps; mkdir succeeds for exactly one owner of a given name).
+set /a TEMP_TRIES=0
+:mktemp
 set "TEMP_DIR=!TEMP!\envy-%RANDOM%%RANDOM%"
+mkdir "!TEMP_DIR!" 2>nul && goto :gottemp
+set /a TEMP_TRIES+=1
+if !TEMP_TRIES! LSS 10 goto :mktemp
+echo ERROR: Could not create a temp directory under !TEMP! >&2 & exit /b 1
+:gottemp
 set "TEMP_ZIP=!TEMP_DIR!.zip"
-mkdir "!TEMP_DIR!" 2>nul
 
 REM Download: prefer native curl.exe (policy-resistant), fall back to PowerShell.
 set "OK="
