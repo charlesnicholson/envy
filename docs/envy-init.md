@@ -258,7 +258,7 @@ cd my-project
 
 # What happens:
 #   - Bootstrap reads @envy version from envy.lua
-#   - Checks ~/Library/Caches/envy/1.2.3/envy
+#   - Checks ~/Library/Caches/envy/envy/1.2.3/envy
 #   - Not found → downloads from GitHub releases
 #   - Caches binary
 #   - Executes: envy sync
@@ -289,7 +289,7 @@ Alice wants to upgrade from 1.2.3 to 1.4.0:
 #   - Bootstrap reads @envy version "1.4.0"
 #   - Checks cache for 1.4.0 → not found
 #   - Downloads envy 1.4.0
-#   - Caches at ~/Library/Caches/envy/1.4.0/envy
+#   - Caches at ~/Library/Caches/envy/envy/1.4.0/envy
 #   - Old 1.2.3 remains in cache (no deletion)
 #   - Executes: envy sync
 

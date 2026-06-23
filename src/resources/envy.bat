@@ -83,6 +83,7 @@ if "!VERSION!"=="" (
     if "!VERSION!"=="" (
         REM Prefer native curl.exe (policy-resistant); parse the redirect's trailing tag.
         set "REDIR="
+        set "TAG="
         where /q curl.exe && for /f "usebackq tokens=*" %%u in (`curl.exe -fsS -o nul -w "%%{redirect_url}" "https://github.com/charlesnicholson/envy/releases/latest" 2^>nul`) do set "REDIR=%%u"
         if defined REDIR set "REDIR=!REDIR:/=\!"
         if defined REDIR for %%a in ("!REDIR!") do set "TAG=%%~nxa"
@@ -123,7 +124,7 @@ where /q tar.exe && (tar.exe -xf "!TEMP_ZIP!" -C "!TEMP_DIR!" && set "OK=1")
 if not defined OK (
     powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '!TEMP_ZIP!' -DestinationPath '!TEMP_DIR!' -Force" && set "OK=1"
 )
-if not defined OK (echo ERROR: Failed to extract envy >&2 & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+if not defined OK (echo ERROR: Failed to extract envy >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 del "!TEMP_ZIP!" 2>nul
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 
