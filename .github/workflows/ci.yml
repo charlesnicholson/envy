@@ -192,7 +192,10 @@ jobs:
       - name: Build
         shell: powershell
         run: |
-          &"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Launch-VsDevShell.ps1" -Arch ${{ matrix.arch }} -HostArch amd64
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          if (-not $vsPath) { throw "Visual Studio installation not found via vswhere" }
+          & "$vsPath\Common7\Tools\Launch-VsDevShell.ps1" -Arch ${{ matrix.arch }} -HostArch amd64
           $BuildArgs = "${{ matrix.build_args }}"
           $Arguments = @()
           if (-not [string]::IsNullOrWhiteSpace($BuildArgs)) {
