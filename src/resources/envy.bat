@@ -81,6 +81,16 @@ if "!VERSION!"=="" (
         )
     )
     if "!VERSION!"=="" (
+        REM Prefer native curl.exe (policy-resistant); parse the redirect's trailing tag.
+        set "REDIR="
+        set "TAG="
+        where /q curl.exe && for /f "usebackq tokens=*" %%u in (`curl.exe -fsS -o nul -w "%%{redirect_url}" "https://github.com/charlesnicholson/envy/releases/latest" 2^>nul`) do set "REDIR=%%u"
+        if defined REDIR set "REDIR=!REDIR:/=\!"
+        if defined REDIR for %%a in ("!REDIR!") do set "TAG=%%~nxa"
+        if defined TAG set "VERSION=!TAG!"
+        if defined TAG if "!TAG:~0,1!"=="v" set "VERSION=!TAG:~1!"
+    )
+    if "!VERSION!"=="" (
         for /f "tokens=*" %%u in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $r=[System.Net.WebRequest]::Create('https://github.com/charlesnicholson/envy/releases/latest'); $r.AllowAutoRedirect=$false; $h=$r.GetResponse().Headers['Location']; if($h){($h -split '/')[-1] -replace '^v',''} } catch {}" 2^>nul') do set "VERSION=%%u"
     )
     if "!VERSION!"=="" set "VERSION=!FALLBACK_VERSION!"
@@ -96,12 +106,33 @@ echo Downloading envy !VERSION!... >&2
 set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"
 REM Escape single quotes for PowerShell (replace ' with '')
 set "SAFE_URL=!URL:'=''!"
-for /f %%i in ('powershell -NoProfile -Command "[System.IO.Path]::GetRandomFileName()"') do set "TEMP_DIR=!TEMP!\envy-%%i"
+REM Claim a unique temp dir via atomic mkdir (cmd's %RANDOM% can collide across
+REM concurrent bootstraps; mkdir succeeds for exactly one owner of a given name).
+set /a TEMP_TRIES=0
+:mktemp
+set "TEMP_DIR=!TEMP!\envy-%RANDOM%%RANDOM%"
+mkdir "!TEMP_DIR!" 2>nul && goto :gottemp
+set /a TEMP_TRIES+=1
+if !TEMP_TRIES! LSS 10 goto :mktemp
+echo ERROR: Could not create a temp directory under !TEMP! >&2 & exit /b 1
+:gottemp
 set "TEMP_ZIP=!TEMP_DIR!.zip"
-powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '!SAFE_URL!' -OutFile '!TEMP_ZIP!' -UseBasicParsing"
-if errorlevel 1 (echo ERROR: Failed to download envy from !URL! >&2 & del "!TEMP_ZIP!" 2>nul & exit /b 1)
-powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '!TEMP_ZIP!' -DestinationPath '!TEMP_DIR!' -Force"
-if errorlevel 1 (echo ERROR: Failed to extract envy >&2 & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+
+REM Download: prefer native curl.exe (policy-resistant), fall back to PowerShell.
+set "OK="
+where /q curl.exe && (curl.exe -fsSL "!URL!" -o "!TEMP_ZIP!" && set "OK=1")
+if not defined OK (
+    powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '!SAFE_URL!' -OutFile '!TEMP_ZIP!' -UseBasicParsing" && set "OK=1"
+)
+if not defined OK (echo ERROR: Failed to download envy from !URL! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+
+REM Extract: prefer native tar.exe (bsdtar reads zip), fall back to PowerShell Expand-Archive.
+set "OK="
+where /q tar.exe && (tar.exe -xf "!TEMP_ZIP!" -C "!TEMP_DIR!" && set "OK=1")
+if not defined OK (
+    powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '!TEMP_ZIP!' -DestinationPath '!TEMP_DIR!' -Force" && set "OK=1"
+)
+if not defined OK (echo ERROR: Failed to extract envy >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 del "!TEMP_ZIP!" 2>nul
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 

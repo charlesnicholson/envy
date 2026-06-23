@@ -221,12 +221,18 @@ class BootstrapIntegrationTest(unittest.TestCase):
         return bootstrap_dest
 
     def _run_bootstrap(
-        self, bootstrap_script: Path, args: list[str], cache_dir: Path | None = None
+        self,
+        bootstrap_script: Path,
+        args: list[str],
+        cache_dir: Path | None = None,
+        env_overrides: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run the bootstrap script and return the result."""
         env = os.environ.copy()
         env["ENVY_MIRROR"] = f"http://127.0.0.1:{self._port}"
         env["ENVY_CACHE_ROOT"] = str(cache_dir or self._temp_dir / "cache")
+        if env_overrides:
+            env.update(env_overrides)
 
         if sys.platform == "win32":
             cmd = ["cmd.exe", "/c", str(bootstrap_script), *args]
@@ -250,6 +256,43 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         # envy version outputs to stderr
         self.assertIn("envy version", result.stderr)
+
+    @unittest.skipUnless(
+        sys.platform == "win32",
+        "exercises the Windows envy.bat native curl.exe/tar.exe path",
+    )
+    def test_bootstrap_succeeds_without_powershell(self) -> None:
+        """Bootstrap must not depend on PowerShell to download and extract.
+
+        Machine policy (WDAC/AppLocker constrained-language mode, disabled module
+        autoloading, a tampered PSModulePath) can block the Microsoft.PowerShell.Archive
+        script module that `Expand-Archive` lives in, while compiled binaries still run.
+        The bootstrap prefers native curl.exe/tar.exe; PowerShell is only a fallback.
+        Shadow `powershell`/`pwsh` with always-failing stubs earlier in PATH (a tripwire:
+        any PowerShell use in the happy path would fail the operation) and assert the
+        bootstrap still downloads, extracts, and execs.
+        """
+        bootstrap = self._setup_test_project("simple.lua")
+
+        sabotage = self._temp_dir / "sabotage"
+        sabotage.mkdir()
+        for name in ("powershell.bat", "pwsh.bat"):
+            (sabotage / name).write_text(
+                "@echo PowerShell blocked by policy (test) 1>&2\r\n@exit /b 1\r\n"
+            )
+        scrubbed_path = f"{sabotage}{os.pathsep}{os.environ.get('PATH', '')}"
+
+        result = self._run_bootstrap(
+            bootstrap, ["version"], env_overrides={"PATH": scrubbed_path}
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        # Confirms the download happened over the network (via curl.exe), not a cache hit.
+        self.assertTrue(
+            any(p.endswith(".zip") for p in self._server.request_paths),
+            f"expected a .zip download request, got: {self._server.request_paths}",
+        )
 
     def test_bootstrap_caches_binary(self) -> None:
         """Test that bootstrap uses cached binary when present."""
