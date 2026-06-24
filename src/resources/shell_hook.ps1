@@ -1,10 +1,14 @@
 # envy shell hook — managed by envy; do not edit
 $global:_ENVY_HOOK_VERSION = @@ENVY_HOOK_VERSION@@
 
-# Detect UTF-8 locale for emoji/unicode output
-$global:_ENVY_UTF8 = (($env:LC_ALL + $env:LC_CTYPE + $env:LANG) -match '[Uu][Tt][Ff]-?8') -or
-    $(try { [Console]::OutputEncoding.WebName -eq 'utf-8' } catch { $false })
-$global:_ENVY_DASH = if ($global:_ENVY_UTF8) { "`u{2014}" } else { "--" }
+# Detect UTF-8 capability for emoji/unicode output. Re-evaluated on every prompt
+# (cheap) so flipping the console encoding takes effect without re-sourcing.
+function _envy_detect_utf8 {
+    $global:_ENVY_UTF8 = (($env:LC_ALL + $env:LC_CTYPE + $env:LANG) -match '[Uu][Tt][Ff]-?8') -or
+        $(try { [Console]::OutputEncoding.WebName -eq 'utf-8' } catch { $false })
+    $global:_ENVY_DASH = if ($global:_ENVY_UTF8) { "`u{2014}" } else { "--" }
+}
+_envy_detect_utf8
 
 function _envy_find_manifest {
     $d = (Get-Location).Path
@@ -41,6 +45,8 @@ function _envy_parse_bin($manifestDir) {
 function _envy_hook {
     if ($env:ENVY_SHELL_HOOK_DISABLE -eq "1") { return }
 
+    _envy_detect_utf8
+
     $currentDir = (Get-Location).Path
     if ($currentDir -eq $global:_ENVY_LAST_PWD) { return }
     $global:_ENVY_LAST_PWD = $currentDir
@@ -72,6 +78,14 @@ function _envy_hook {
                         [Console]::Error.WriteLine("envy: entering $newName $($global:_ENVY_DASH) tools added to PATH")
                     }
                     $global:_ENVY_PROMPT_ACTIVE = $true
+                    # One-time nudge: the icon is wanted (NO_ICON unset) but the
+                    # console can't render it. Never shown if the user opted out.
+                    if (-not $global:_ENVY_UTF8 -and
+                        $env:ENVY_SHELL_NO_ICON -ne "1" -and
+                        -not $global:_ENVY_UTF8_HINTED) {
+                        $global:_ENVY_UTF8_HINTED = $true
+                        [Console]::Error.WriteLine("envy: raccoon icon hidden -- console is not UTF-8. Add [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() above the hook line in your profile, or set ENVY_SHELL_NO_ICON=1 to silence.")
+                    }
                 }
                 $env:ENVY_PROJECT_ROOT = $manifestDir
                 return
@@ -98,6 +112,7 @@ function _envy_hook {
 $global:_ENVY_LAST_PWD = $null
 $global:_ENVY_BIN_DIR = $null
 $global:_ENVY_PROMPT_ACTIVE = $false
+$global:_ENVY_UTF8_HINTED = $false
 
 if (-not (Test-Path Function:\global:_envy_original_prompt)) {
     Copy-Item Function:\prompt Function:\global:_envy_original_prompt

@@ -1360,6 +1360,40 @@ class TestPowerShellHook(unittest.TestCase):
         self.assertIn("envy: entering", combined)
         self.assertNotIn("\U0001f99d", combined)
 
+    # --- v6: one-time UTF-8 capability hint ---
+
+    def test_utf8_hint_shown_when_icon_wanted_but_console_not_utf8(self) -> None:
+        """Non-UTF-8 console + icon wanted: nudge once explaining why it's hidden."""
+        project = self._make_envy_project("ps-utf8-hint")
+        result = self._run_pwsh_hook_test(
+            f"$env:LANG = ''; $env:LC_ALL = ''; $env:LC_CTYPE = ''\n"
+            f"[Console]::OutputEncoding = [System.Text.Encoding]::ASCII\n"
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertIn("raccoon icon hidden", combined)
+        self.assertIn("UTF8Encoding", combined)
+
+    def test_utf8_hint_suppressed_when_icon_disabled(self) -> None:
+        """ENVY_SHELL_NO_ICON=1 means the icon is unwanted — never nudge about it."""
+        project = self._make_envy_project("ps-utf8-hint-off")
+        result = self._run_pwsh_hook_test(
+            f'$env:ENVY_SHELL_NO_ICON = "1"\n'
+            f"$env:LANG = ''; $env:LC_ALL = ''; $env:LC_CTYPE = ''\n"
+            f"[Console]::OutputEncoding = [System.Text.Encoding]::ASCII\n"
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        combined = result.stdout + result.stderr
+        self.assertNotIn("raccoon icon hidden", combined)
+
 
 if __name__ == "__main__":
     unittest.main()
