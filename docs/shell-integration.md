@@ -55,4 +55,4 @@ All three are independent—combine as needed.
 
 **Force refresh:** Delete `$CACHE/shell/` and run any envy command.
 
-**Missing raccoon (Windows/PowerShell):** The icon needs a UTF-8 console; PowerShell defaults to the legacy OEM code page (e.g. 437). Add `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()` *above* the hook `source` line in `$PROFILE`. The hook nudges once per session when the icon is wanted but the console isn't UTF-8—silenced by `ENVY_SHELL_NO_ICON=1`.
+**Missing raccoon (Windows/PowerShell):** The icon needs a UTF-8 console; PowerShell defaults to the legacy OEM code page (e.g. 437). Add `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()` *above* the line that dot-sources the hook (`. "..."`) in `$PROFILE`. The hook nudges once per session when the icon is wanted but the console isn't UTF-8—silenced by `ENVY_SHELL_NO_ICON=1`.
