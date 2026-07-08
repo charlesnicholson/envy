@@ -143,11 +143,12 @@ file_lock::file_lock(std::filesystem::path const &path) {
                               "Failed to open lock file: " + path.string());
     }
 
-    struct flock fl{ .l_type = F_WRLCK,
-                     .l_whence = SEEK_SET,
-                     .l_start = 0,
-                     .l_len = 0,
-                     .l_pid = 0 };
+    // Assign fields rather than use a designated initializer: struct flock's field
+    // order differs across platforms (Linux vs BSD/macOS), so no single designator
+    // order is portable (-Wreorder-init-list). Zero-init covers l_start/l_len/l_pid.
+    struct flock fl{};
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
 
     if (::fcntl(fd, F_SETLKW, &fl) == -1) {
       int const err{ errno };
