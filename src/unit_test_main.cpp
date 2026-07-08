@@ -16,7 +16,20 @@ namespace {
 
 // Terminate the process if any single test case runs longer than this - a hung
 // test (deadlock, missed wakeup) must fail the build, not stall it forever.
-constexpr std::chrono::seconds kTestTimeout{ 5 };
+// ENVY_TEST_TIMEOUT (seconds) overrides. The Windows default is looser: shell
+// tests spawn pwsh, whose cold .NET start on CI runners can exceed 5 seconds.
+std::chrono::seconds resolve_test_timeout() {
+  if (char const *env{ std::getenv("ENVY_TEST_TIMEOUT") }) {
+    if (int const v{ std::atoi(env) }; v > 0) { return std::chrono::seconds{ v }; }
+  }
+#ifdef _WIN32
+  return std::chrono::seconds{ 30 };
+#else
+  return std::chrono::seconds{ 5 };
+#endif
+}
+
+std::chrono::seconds g_test_timeout{ 5 };  // set in main before the watchdog starts
 
 std::mutex g_watchdog_mutex;
 std::string g_current_test;                          // guarded by g_watchdog_mutex
@@ -55,11 +68,12 @@ void watchdog_thread_main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     if (!g_test_running) { continue; }
     std::lock_guard const lock(g_watchdog_mutex);
-    if (g_test_running && std::chrono::steady_clock::now() - g_test_start > kTestTimeout) {
+    if (g_test_running &&
+        std::chrono::steady_clock::now() - g_test_start > g_test_timeout) {
       std::fprintf(stderr,
                    "\nwatchdog: test case '%s' exceeded %lld seconds; aborting\n",
                    g_current_test.c_str(),
-                   static_cast<long long>(kTestTimeout.count()));
+                   static_cast<long long>(g_test_timeout.count()));
       std::fflush(stderr);
       std::abort();
     }
@@ -84,7 +98,10 @@ int main(int argc, char **argv) {
   bool const watchdog_enabled{ std::getenv("ENVY_TEST_NO_WATCHDOG") == nullptr };
 
   std::thread watchdog;
-  if (watchdog_enabled) { watchdog = std::thread{ watchdog_thread_main }; }
+  if (watchdog_enabled) {
+    g_test_timeout = resolve_test_timeout();
+    watchdog = std::thread{ watchdog_thread_main };
+  }
   int const rc{ context.run() };
   if (watchdog.joinable()) {
     g_watchdog_shutdown = true;
