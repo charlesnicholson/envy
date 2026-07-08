@@ -117,6 +117,9 @@ jobs:
       - name: Unit tests under valgrind
         if: matrix.shard == 'main' && runner.os == 'Linux'
         run: valgrind -q --error-exitcode=1 --child-silent-after-fork=yes --leak-check=full --suppressions=valgrind.supp out/build/envy_unit_tests
+        env:
+          # Watchdog thread would make the shell tests' fork() misbehave under valgrind.
+          ENVY_TEST_NO_WATCHDOG: 1
 
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')

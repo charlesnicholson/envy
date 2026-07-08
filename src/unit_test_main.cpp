@@ -78,9 +78,17 @@ int main(int argc, char **argv) {
   envy::tui::set_output_handler([](std::string_view) {});
   envy::tui::test::g_isatty = false;
 
-  std::thread watchdog{ watchdog_thread_main };
+  // The watchdog runs as a background thread. Skip it when requested (set by the
+  // valgrind CI step): a running thread makes fork() in the shell tests misbehave
+  // under valgrind, and a 5s wall-clock limit is meaningless under its ~30x slowdown.
+  bool const watchdog_enabled{ std::getenv("ENVY_TEST_NO_WATCHDOG") == nullptr };
+
+  std::thread watchdog;
+  if (watchdog_enabled) { watchdog = std::thread{ watchdog_thread_main }; }
   int const rc{ context.run() };
-  g_watchdog_shutdown = true;
-  watchdog.join();
+  if (watchdog.joinable()) {
+    g_watchdog_shutdown = true;
+    watchdog.join();
+  }
   return rc;
 }
