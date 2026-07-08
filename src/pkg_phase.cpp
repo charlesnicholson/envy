@@ -11,7 +11,7 @@ namespace {
 
 // Enum-to-string mapping (order must match pkg_phase enum in pkg_phase.h)
 // Index = enum value, so none (-1) and completion (8) handled specially
-constinit std::array<std::string_view, 8> const pkg_phase_name_table{ {
+constinit std::array<std::string_view, 9> const pkg_phase_name_table{ {
     "spec_fetch",  // pkg_phase::spec_fetch (0)
     "check",       // pkg_phase::pkg_check (1)
     "import",      // pkg_phase::pkg_import (2)
@@ -19,7 +19,8 @@ constinit std::array<std::string_view, 8> const pkg_phase_name_table{ {
     "stage",       // pkg_phase::pkg_stage (4)
     "build",       // pkg_phase::pkg_build (5)
     "install",     // pkg_phase::pkg_install (6)
-    "export",      // pkg_phase::pkg_export (7)
+    "setup",       // pkg_phase::pkg_setup (7)
+    "export",      // pkg_phase::pkg_export (8)
 } };
 
 }  // namespace

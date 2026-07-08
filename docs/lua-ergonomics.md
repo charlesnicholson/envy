@@ -227,7 +227,7 @@ Projects include `.luarc.json`:
 {
   "runtime.version": "Lua 5.4",
   "workspace.library": [".envy/types"],
-  "diagnostics.globals": ["IDENTITY", "PACKAGES", "FETCH", "STAGE", "BUILD", "INSTALL", "CHECK", "DEPENDENCIES", "PRODUCTS", "envy"]
+  "diagnostics.globals": ["IDENTITY", "PACKAGES", "FETCH", "STAGE", "BUILD", "INSTALL", "SETUP", "DEPENDENCIES", "PRODUCTS", "envy"]
 }
 ```
 

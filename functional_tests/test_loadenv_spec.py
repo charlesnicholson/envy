@@ -76,12 +76,16 @@ SPECS = {{
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
             spec_path.write_text(spec_lua)
 
@@ -133,13 +137,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
-  return helper.HELPER_VERSION == "1.0.0"
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
+      return helper.HELPER_VERSION == "1.0.0"
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("consumer", spec_content)
 
@@ -179,12 +187,16 @@ DEPENDENCIES = {{
 local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("bad_consumer", spec_content)
 
@@ -213,14 +225,18 @@ PACKAGES = {{
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  -- Error: test.helpers@v1 not declared as dependency
-  local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      -- Error: test.helpers@v1 not declared as dependency
+      local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("undeclared", spec_content)
 
@@ -268,14 +284,18 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  -- Fuzzy match: "toolchain-helpers" matches "acme.toolchain-helpers@v2"
-  local helper = envy.loadenv_spec("toolchain-helpers", "lib.helper")
-  return helper.HELPER_VERSION == "fuzzy-test"
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      -- Fuzzy match: "toolchain-helpers" matches "acme.toolchain-helpers@v2"
+      local helper = envy.loadenv_spec("toolchain-helpers", "lib.helper")
+      return helper.HELPER_VERSION == "fuzzy-test"
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("fuzzy_consumer", spec_content)
 
@@ -372,13 +392,17 @@ DEPENDENCIES = {}
 local helper = require("lib.helper")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return helper.VERSION == "2.0.0"
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return helper.VERSION == "2.0.0"
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Helper version: " .. helper.VERSION)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Helper version: " .. helper.VERSION)
-end
 """
         (specs_dir / "main.lua").write_text(main_spec)
 

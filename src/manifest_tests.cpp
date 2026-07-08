@@ -224,6 +224,74 @@ TEST_CASE("manifest::load parses table package with options") {
   CHECK(sol::object(opts["target"]).as<std::string>() == "arm-none-eabi");
 }
 
+TEST_CASE("manifest::load parses table package with setup selection") {
+  char const *script{ R"(
+    -- @envy bin-dir "tools"
+    PACKAGES = {
+      { spec = "fi.jlink@r0", source = "/fake/r.lua", setup = { "udev_rules", "extras" } },
+      { spec = "arm.gcc@v2", source = "/fake/r.lua" }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 2);
+  REQUIRE(m->packages[0]->setup.has_value());
+  REQUIRE(m->packages[0]->setup->size() == 2);
+  CHECK((*m->packages[0]->setup)[0] == "udev_rules");
+  CHECK((*m->packages[0]->setup)[1] == "extras");
+  CHECK(!m->packages[1]->setup.has_value());
+}
+
+TEST_CASE("manifest::load parses empty setup selection as explicit empty") {
+  char const *script{ R"(
+    -- @envy bin-dir "tools"
+    PACKAGES = { { spec = "fi.jlink@r0", source = "/fake/r.lua", setup = {} } }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  REQUIRE(m->packages[0]->setup.has_value());
+  CHECK(m->packages[0]->setup->empty());
+}
+
+TEST_CASE("manifest::load errors on non-table setup field") {
+  char const *script{ R"(
+    -- @envy bin-dir "tools"
+    PACKAGES = { { spec = "fi.jlink@r0", source = "/fake/r.lua", setup = "udev" } }
+  )" };
+
+  CHECK_THROWS_WITH(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                    doctest::Contains("'setup' field must be a table"));
+}
+
+TEST_CASE("manifest::load errors on non-string setup entry") {
+  char const *script{ R"(
+    -- @envy bin-dir "tools"
+    PACKAGES = { { spec = "fi.jlink@r0", source = "/fake/r.lua", setup = { 42 } } }
+  )" };
+
+  CHECK_THROWS_WITH(envy::manifest::load(script, fs::path("/fake/envy.lua")),
+                    doctest::Contains("'setup' entries must be non-empty strings"));
+}
+
+TEST_CASE("manifest::load setup selection does not affect serialized options") {
+  char const *script{ R"(
+    -- @envy bin-dir "tools"
+    PACKAGES = {
+      { spec = "fi.jlink@r0", source = "/fake/r.lua",
+        options = { version = "9.30" }, setup = { "udev_rules" } }
+    }
+  )" };
+
+  auto m{ envy::manifest::load(script, fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->packages.size() == 1);
+  CHECK(m->packages[0]->serialized_options == "{version=\"9.30\"}");
+  CHECK(m->packages[0]->format_key() == "fi.jlink@r0{version=\"9.30\"}");
+}
+
 TEST_CASE("manifest::load parses mixed string and table packages") {
   char const *script{ R"(
     -- @envy bin-dir "tools"

@@ -393,7 +393,7 @@ Or via command line:
   ],
   "diagnostics.globals": [
     "envy", "IDENTITY", "PACKAGES", "DEPENDENCIES", "PRODUCTS",
-    "FETCH", "STAGE", "BUILD", "INSTALL", "CHECK"
+    "FETCH", "STAGE", "BUILD", "INSTALL", "SETUP"
   ]
 }
 ```
@@ -468,7 +468,7 @@ Option B: Accept per-machine paths (simpler)
   "diagnostics.severity": { "lowercase-global": "Warning" },
   "diagnostics.globals": [
     "envy", "IDENTITY", "PACKAGES", "DEPENDENCIES", "PRODUCTS",
-    "FETCH", "STAGE", "BUILD", "INSTALL", "CHECK"
+    "FETCH", "STAGE", "BUILD", "INSTALL", "SETUP"
   ]
 }
 ```

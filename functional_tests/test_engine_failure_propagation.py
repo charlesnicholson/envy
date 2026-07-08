@@ -41,8 +41,13 @@ class TestEngineFailurePropagation(unittest.TestCase):
                 f"leaf_{leaf}.lua",
                 f"""IDENTITY = "local.leaf-{leaf}@v1"
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options) end,
+  }},
+}}
+
 """,
             )
 
@@ -58,12 +63,17 @@ DEPENDENCIES = {{
   {{ spec = "local.leaf-b@v1", source = "leaf_b.lua" }},
 }}
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  local t = os.clock()
-  while os.clock() - t < 0.05 do end
-  {fail_stmt}
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+      local t = os.clock()
+      while os.clock() - t < 0.05 do end
+      {fail_stmt}
+    end,
+  }},
+}}
+
 """,
             )
 
@@ -78,8 +88,13 @@ DEPENDENCIES = {{
   {mid_deps}
 }}
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options) end,
+  }},
+}}
+
 """,
         )
 

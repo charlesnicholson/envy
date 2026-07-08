@@ -86,13 +86,17 @@ IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache interaction
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
 """,
         )
 
@@ -106,13 +110,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache interaction
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
 """,
         )
 
@@ -151,13 +159,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -171,13 +183,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -213,13 +229,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -258,13 +278,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -278,13 +302,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -298,13 +326,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -316,13 +348,17 @@ IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -447,13 +483,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -465,13 +505,17 @@ IDENTITY = "local.independent_left@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -483,13 +527,17 @@ IDENTITY = "local.independent_right@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -530,13 +578,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -548,13 +600,17 @@ IDENTITY = "local.with_options@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -598,13 +654,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -618,13 +678,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -638,13 +702,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -658,13 +726,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -676,13 +748,17 @@ IDENTITY = "local.chain_e@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -729,13 +805,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -747,13 +827,17 @@ IDENTITY = "local.fanout_child1@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -765,13 +849,17 @@ IDENTITY = "local.fanout_child2@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -783,13 +871,17 @@ IDENTITY = "local.fanout_child3@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -801,13 +893,17 @@ IDENTITY = "local.fanout_child4@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
         )
 
@@ -847,13 +943,17 @@ IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache interaction
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
 """,
         )
 
@@ -872,13 +972,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing bad recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing bad recipe")
-end
 """,
         )
 
@@ -915,13 +1019,17 @@ end
 IDENTITY = "remote.fileuri@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote fileuri recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote fileuri recipe")
-end
 """,
         )
 
@@ -958,13 +1066,17 @@ end
 IDENTITY = "remote.child@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote child recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote child recipe")
-end
 """,
         )
 
@@ -984,13 +1096,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote parent recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote parent recipe")
-end
 """,
         )
 
@@ -1027,13 +1143,17 @@ end
 IDENTITY = "remote.base@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote base recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote base recipe")
-end
 """,
         )
 
@@ -1053,13 +1173,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing local wrapper recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local wrapper recipe")
-end
 """,
         )
 
@@ -1096,13 +1220,17 @@ end
 IDENTITY = "local.child@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing local child recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local child recipe")
-end
 """,
         )
 
@@ -1121,13 +1249,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing local parent recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local parent recipe")
-end
 """,
         )
 
@@ -1164,13 +1296,17 @@ end
 IDENTITY = "local.c@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing local c recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing local c recipe")
-end
 """,
         )
 
@@ -1189,13 +1325,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote transitive b recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote transitive b recipe")
-end
 """,
         )
 
@@ -1215,13 +1355,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote transitive a recipe")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote transitive a recipe")
-end
 """,
         )
 
@@ -1378,13 +1522,16 @@ IDENTITY = "local.simple_fetch_dep_child@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 ]]
         local recipe_path = tmp_dir .. "/spec.lua"
         local f = io.open(recipe_path, "w")
@@ -1399,13 +1546,16 @@ end
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 """,
         )
 
@@ -1484,12 +1634,16 @@ DEPENDENCIES = {{
 IDENTITY = "local.multi_level_c@v1"
 DEPENDENCIES = {{}}
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 ]]
         local recipe_path_c = tmp_dir .. "/spec.lua"
         local f_c = io.open(recipe_path_c, "w")
@@ -1501,12 +1655,16 @@ end
   }}
 }}
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 ]=]
         local recipe_path = tmp_dir .. "/spec.lua"
         local f = io.open(recipe_path, "w")
@@ -1519,13 +1677,16 @@ end
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 """,
         )
 
@@ -1612,12 +1773,16 @@ DEPENDENCIES = {{
 IDENTITY = "local.multiple_fetch_deps_child@v1"
 DEPENDENCIES = {{}}
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 ]]
         local recipe_path = tmp_dir .. "/spec.lua"
         local f = io.open(recipe_path, "w")
@@ -1630,13 +1795,16 @@ end
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  }},
+}}
 """,
         )
 

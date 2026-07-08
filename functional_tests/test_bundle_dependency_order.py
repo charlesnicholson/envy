@@ -78,12 +78,16 @@ SPECS = {{
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
             spec_path.write_text(spec_lua)
 
@@ -156,13 +160,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
-  return helper.compute_value() == 42
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      local helper = envy.loadenv_spec("test.helpers@v1", "lib.helper")
+      return helper.compute_value() == 42
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("consumer", spec_content)
 
@@ -229,13 +237,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  local utils = envy.loadenv_spec("test.helpers@v1", "lib.math.utils")
-  return utils.add(1, 2) == 3
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      local utils = envy.loadenv_spec("test.helpers@v1", "lib.math.utils")
+      return utils.add(1, 2) == 3
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("consumer", spec_content)
 
@@ -286,14 +298,18 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  -- Fuzzy match: "toolchain" matches "acme.toolchain@v2"
-  local config = envy.loadenv_spec("toolchain", "lib.config")
-  return config.get_version() == "2.0"
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      -- Fuzzy match: "toolchain" matches "acme.toolchain@v2"
+      local config = envy.loadenv_spec("toolchain", "lib.config")
+      return config.get_version() == "2.0"
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("consumer", spec_content)
 

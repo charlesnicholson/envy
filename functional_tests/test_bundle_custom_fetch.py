@@ -54,8 +54,13 @@ SPECS = {
             simple_spec = """
 IDENTITY = "test.simple@v1"
 USER_MANAGED = true
-CHECK = function(project_root) return true end
-INSTALL = function() end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir) return true end,
+    INSTALL = function() end,
+  },
+}
+
 """
             with open(os.path.join(bundle_dir, "specs", "simple.lua"), "w") as f:
                 f.write(simple_spec)
@@ -116,12 +121,17 @@ PACKAGES = {{
             tool_spec = """
 IDENTITY = "local.fetcher-tool@v1"
 USER_MANAGED = true
-CHECK = function(project_root)
-    return true  -- Always installed
-end
-INSTALL = function()
-    -- Tool installs (user-managed)
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir)
+        return true  -- Always installed
+    end,
+    INSTALL = function()
+        -- Tool installs (user-managed)
+    end,
+  },
+}
+
 """
             tool_path = os.path.join(specs_dir, "fetcher-tool.lua")
             with open(tool_path, "w") as f:
@@ -143,8 +153,13 @@ SPECS = {
             from_dep_spec = """
 IDENTITY = "test.from-dep-bundle@v1"
 USER_MANAGED = true
-CHECK = function(project_root) return true end
-INSTALL = function() end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir) return true end,
+    INSTALL = function() end,
+  },
+}
+
 """
             with open(os.path.join(bundle_dir, "specs", "from-dep.lua"), "w") as f:
                 f.write(from_dep_spec)

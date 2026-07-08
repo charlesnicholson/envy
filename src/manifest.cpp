@@ -100,6 +100,27 @@ std::optional<std::pair<std::string, std::string>> parse_directive_line(
 using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>;
 using bundle_pkg_map = std::unordered_map<std::string, pkg_cfg *>;
 
+// Parse optional `setup` field: array of SETUP pair names to select.
+// Manifest package entries only — dependency entries reject this field.
+void parse_setup_field(sol::table const &table, pkg_cfg *cfg) {
+  sol::object setup_obj{ table["setup"] };
+  if (!setup_obj.valid() || setup_obj.get_type() == sol::type::lua_nil) { return; }
+  if (setup_obj.get_type() != sol::type::table) {
+    throw std::runtime_error("Package 'setup' field must be a table of pair names");
+  }
+
+  std::vector<std::string> names;
+  sol::table t{ setup_obj.as<sol::table>() };
+  for (size_t i{ 1 }; i <= t.size(); ++i) {
+    sol::object elem{ t[i] };
+    if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+      throw std::runtime_error("Package 'setup' entries must be non-empty strings");
+    }
+    names.push_back(elem.as<std::string>());
+  }
+  cfg->setup = std::move(names);
+}
+
 // Parse a single package entry that may reference a bundle
 pkg_cfg *parse_package_entry(sol::object const &entry,
                              std::filesystem::path const &manifest_path,
@@ -129,6 +150,7 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
         cfg->platforms.push_back(elem.template get<std::string>());
       }
     }
+    parse_setup_field(table, cfg);
     return cfg;
   }
 
@@ -221,6 +243,7 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
     }
   }
 
+  parse_setup_field(table, cfg);
   return cfg;
 }
 

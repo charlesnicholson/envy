@@ -35,9 +35,7 @@ void run_import_phase(pkg *p, engine &eng) {
                                        pkg_phase::pkg_import,
                                        std::chrono::steady_clock::now() };
 
-  if (!p->lock) { return; }  // Cache hit — no work needed
-
-  if (p->type == pkg_type::USER_MANAGED) { return; }  // Never imported from package depot
+  if (!p->lock) { return; }  // Cache hit or user-managed (never locks) — no work
 
   auto const *depot{ eng.depot_index() };
   if (!depot || depot->empty()) { return; }  // No depot configured

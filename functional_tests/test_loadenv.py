@@ -89,12 +89,16 @@ local helper = envy.loadenv("helper")
 LOADED_VALUE = helper.HELPER_VALUE
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -123,13 +127,17 @@ PACKAGES = {{
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  local ver = envy.loadenv("version")
-  return ver.TOOL_VERSION == "1.2.3"
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      local ver = envy.loadenv("version")
+      return ver.TOOL_VERSION == "1.2.3"
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -172,12 +180,16 @@ assert(BAR == nil, "BAR leaked to _G")
 assert(BAZ == nil, "BAZ leaked to _G")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -212,12 +224,16 @@ local helper = envy.loadenv("subdir.helper")
 assert(helper.SUBDIR_VALUE == "in_subdir", "Failed to load from subdir")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -282,12 +298,16 @@ assert(helper.RESULTS.math_val == 3, "math.floor failed")
 assert(helper.RESULTS.tbl == "a,b,c", "table.concat failed")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -346,12 +366,16 @@ DEPENDENCIES = {}
 local helper = envy.loadenv("nonexistent")
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.test_dir / "spec.lua"
         spec_path.write_text(spec_content, encoding="utf-8")

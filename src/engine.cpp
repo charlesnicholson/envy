@@ -9,6 +9,7 @@
 #include "phases/phase_fetch.h"
 #include "phases/phase_import.h"
 #include "phases/phase_install.h"
+#include "phases/phase_setup.h"
 #include "phases/phase_spec_fetch.h"
 #include "phases/phase_stage.h"
 #include "pkg.h"
@@ -28,13 +29,15 @@ namespace envy {
 
 namespace {
 
-// Phase after which a dependency's artifacts are available. Dependencies are
-// waited on to this point (not completion) so that post-install phases like
-// export can overlap with dependents' builds.
+// Phase after which a dependency's artifacts and host-side SETUP state are
+// available. Dependencies are waited on to this point (not completion) so that
+// export can overlap with dependents' builds. Setup must complete before
+// dependents proceed: user-managed packages do all their work in SETUP pairs.
 constexpr auto kDependencySatisfiedPhase =
-    static_cast<pkg_phase>(static_cast<int>(pkg_phase::pkg_install) + 1);
-static_assert(kDependencySatisfiedPhase < pkg_phase::completion,
-              "pkg_install must not be the last phase before completion");
+    static_cast<pkg_phase>(static_cast<int>(pkg_phase::pkg_setup) + 1);
+static_assert(kDependencySatisfiedPhase == pkg_phase::pkg_export &&
+                  kDependencySatisfiedPhase < pkg_phase::completion,
+              "pkg_setup must be followed by pkg_export before completion");
 
 using phase_func_t = void (*)(pkg *, engine &);
 
@@ -46,6 +49,7 @@ constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_stage_phase,       // pkg_phase::pkg_stage
   run_build_phase,       // pkg_phase::pkg_build
   run_install_phase,     // pkg_phase::pkg_install
+  run_setup_phase,       // pkg_phase::pkg_setup
   run_export_phase,      // pkg_phase::pkg_export
   run_completion_phase,  // pkg_phase::completion
 };
@@ -402,6 +406,17 @@ pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
   } else if (auto ctx_it = execution_ctxs_.find(key); ctx_it != execution_ctxs_.end()) {
     it->second->exec_ctx = ctx_it->second.get();
   }
+
+  {  // Merge SETUP selection across referrers (union; absence requests type default)
+    pkg *existing{ it->second.get() };
+    std::lock_guard const deps_lock(existing->deps_mutex);
+    if (cfg->setup.has_value()) {
+      existing->setup_selected.insert(cfg->setup->begin(), cfg->setup->end());
+    } else {
+      existing->setup_default = true;
+    }
+  }
+
   return it->second.get();
 }
 
@@ -998,10 +1013,16 @@ bool engine::pkg_provides_product_transitively(pkg *p,
 }
 
 void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
-  for (auto const *cfg : roots) {
-    pkg *const p{ ensure_pkg(cfg) };
-    tui::debug("engine: resolve_graph start thread for %s", cfg->identity.c_str());
-    start_pkg_thread(p, pkg_phase::spec_fetch);
+  // Register all roots before starting any thread so every manifest cfg's
+  // SETUP selection is merged before a dependency thread can race ensure_pkg.
+  std::vector<pkg *> root_pkgs;
+  root_pkgs.reserve(roots.size());
+  for (auto const *cfg : roots) { root_pkgs.push_back(ensure_pkg(cfg)); }
+
+  for (size_t i{ 0 }; i < root_pkgs.size(); ++i) {
+    tui::debug("engine: resolve_graph start thread for %s",
+               roots[i]->identity.c_str());
+    start_pkg_thread(root_pkgs[i], pkg_phase::spec_fetch);
   }
 
   auto const count_unresolved{ [this]() {

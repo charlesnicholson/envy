@@ -66,12 +66,16 @@ SIMPLE_SPEC = """-- Minimal test spec
 IDENTITY = "local.simple@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-    return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+        return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
 
 

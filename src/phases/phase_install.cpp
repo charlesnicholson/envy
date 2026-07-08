@@ -70,30 +70,17 @@ bool run_programmatic_install(sol::protected_function install_func,
                               std::filesystem::path const &tmp_dir,
                               std::string const &identity,
                               engine &eng,
-                              pkg *p,
-                              bool is_user_managed) {
+                              pkg *p) {
   tui::debug("phase install: running programmatic install function");
 
-  // Determine run_dir: stage_dir for cache-managed, project_root for user-managed
-  std::filesystem::path const run_dir{ is_user_managed
-                                           ? pkg_cfg::compute_project_root(p->cfg)
-                                           : stage_dir };
-
   // Set up Lua registry context for envy.* functions
-  phase_context_guard ctx_guard{ &eng, p, install_func.lua_state(), run_dir };
+  phase_context_guard ctx_guard{ &eng, p, install_func.lua_state(), stage_dir };
 
   sol::state_view lua{ install_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
-  // no install_dir for user-managed packages.
-  sol::object install_dir_arg{
-    is_user_managed
-        ? sol::object{ sol::lua_nil }
-        : sol::object{ lua, sol::in_place, util_path_with_separator(install_dir) }
-  };
-
   sol::object result_obj{ call_lua_function_with_enriched_errors(p, "INSTALL", [&]() {
-    return install_func(install_dir_arg,
+    return install_func(util_path_with_separator(install_dir),
                         util_path_with_separator(stage_dir),
                         util_path_with_separator(fetch_dir),
                         util_path_with_separator(tmp_dir),
@@ -113,24 +100,17 @@ bool run_programmatic_install(sol::protected_function install_func,
     std::string const returned_script{ result_obj.as<std::string>() };
     tui::debug("phase install: running returned string from install function");
 
-    // User-managed packages use project_root as cwd, cache-managed use stage_dir
-    std::filesystem::path const string_cwd{ is_user_managed
-                                                ? pkg_cfg::compute_project_root(p->cfg)
-                                                : stage_dir };
-
-    // Pass nullptr as lock for user-managed packages to skip mark_install_complete()
-    // Cache-managed packages mark on shell exit 0
     return run_shell_install(returned_script,
-                             string_cwd,
-                             is_user_managed ? nullptr : lock,
+                             stage_dir,
+                             lock,
                              identity,
                              shell_resolve_default(p->default_shell_ptr),
                              p->tui_section,
                              eng.cache_root());
   }
 
-  // Function returned nil/none successfully - mark complete for cache-managed
-  if (!is_user_managed && lock) {
+  // Function returned nil/none successfully - mark complete
+  if (lock) {
     lock->mark_install_complete();
     return true;
   }
@@ -183,20 +163,13 @@ void run_install_phase(pkg *p, engine &eng) {
   sol::object install_obj{ lua_view["INSTALL"] };
   bool marked_complete{ false };
 
-  bool const is_user_managed{ p->type == pkg_type::USER_MANAGED };
-
   if (!install_obj.valid()) {
     marked_complete = promote_stage_to_install(lock.get());
   } else if (install_obj.is<std::string>()) {
-    // String installs: run command, mark complete only if cache-managed
-    // User-managed packages use project root as cwd, cache-managed use stage_dir
-    std::filesystem::path const string_cwd{ is_user_managed
-                                                ? pkg_cfg::compute_project_root(p->cfg)
-                                                : lock->stage_dir() };
     std::string script{ install_obj.as<std::string>() };
     marked_complete = run_shell_install(script,
-                                        string_cwd,
-                                        is_user_managed ? nullptr : lock.get(),
+                                        lock->stage_dir(),
+                                        lock.get(),
                                         p->cfg->identity,
                                         shell_resolve_default(p->default_shell_ptr),
                                         p->tui_section,
@@ -210,15 +183,11 @@ void run_install_phase(pkg *p, engine &eng) {
                                                lock->tmp_dir(),
                                                p->cfg->identity,
                                                eng,
-                                               p,
-                                               is_user_managed);
+                                               p);
   } else {
     throw std::runtime_error("INSTALL field must be nil, string, or function for " +
                              p->cfg->identity);
   }
-
-  // Cache-managed packages are auto-marked complete on successful INSTALL return
-  // User-managed packages are never marked complete (ephemeral workspace)
 
   if (marked_complete && lock) {
     sol::object exportable_obj{ lua_view["EXPORTABLE"] };

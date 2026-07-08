@@ -272,6 +272,7 @@ set(ENVY_BASE_SOURCES
     src/phases/phase_fetch.cpp
     src/phases/phase_import.cpp
     src/phases/phase_install.cpp
+    src/phases/phase_setup.cpp
     src/phases/phase_spec_fetch.cpp
     src/phases/phase_stage.cpp
     src/luarc.cpp
@@ -459,7 +460,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/cache_tests.cpp
     src/cli_tests.cpp
     src/cmds/cmd_tests.cpp
-    src/phases/phase_check_tests.cpp
+    src/phases/phase_setup_tests.cpp
     src/phases/phase_spec_fetch_tests.cpp
     src/phases/phase_fetch_tests.cpp
     src/phases/phase_install_tests.cpp

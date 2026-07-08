@@ -3,8 +3,12 @@ IDENTITY = "local.brew@r0"
 PLATFORMS = { "darwin" }
 USER_MANAGED = true
 
-CHECK = "brew --version"
+SETUP = {
+  brew = {
+    CHECK = "brew --version",
 
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  print("installing brew")
-end
+    INSTALL = function(pkg_dir, opts)
+      print("installing brew")
+    end,
+  },
+}

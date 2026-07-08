@@ -56,8 +56,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name,
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"" << identity << "\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = \"echo test\"\n";
-    ofs << "INSTALL = \"echo install\"\n";
+    ofs << "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n";
     ofs << phase_name << " = " << phase_rhs << "\n";
   }
 
@@ -77,7 +76,7 @@ void expect_user_managed_cache_phase_error(std::string const &phase_name,
 
   REQUIRE(exception_thrown);
   CHECK(exception_msg.find("is user-managed (USER_MANAGED=true)") != std::string::npos);
-  CHECK(exception_msg.find("declares " + phase_name + " phase") != std::string::npos);
+  CHECK(exception_msg.find("declares " + phase_name) != std::string::npos);
 }
 
 }  // namespace
@@ -165,6 +164,168 @@ TEST_CASE("user-managed package with check verb and BUILD string throws parse er
   expect_user_managed_cache_phase_error("BUILD", "\"make\"", "_str");
 }
 
+TEST_CASE("user-managed package with top-level INSTALL throws parse error") {
+  expect_user_managed_cache_phase_error("INSTALL", "\"echo install\"", "_str");
+}
+
+// ============================================================================
+// SETUP schema validation tests
+// ============================================================================
+
+namespace {
+
+// Write a spec file with the given body lines and run spec_fetch; returns the
+// error message, or empty string on success.
+std::string run_spec_body(std::string const &label, std::string const &body) {
+  cache c;
+  engine eng{ c };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  ("envy_test_setup_" + label) };
+  std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+  std::string const identity{ "test.setup_" + label + "@v1" };
+  {
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"" << identity << "\"\n" << body;
+  }
+
+  auto *cfg{ make_local_cfg(identity, spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  try {
+    run_spec_fetch_phase(p, eng);
+  } catch (std::runtime_error const &e) { return e.what(); }
+  return {};
+}
+
+}  // namespace
+
+TEST_CASE("top-level CHECK is rejected for cache-managed specs") {
+  auto const msg{ run_spec_body("toplevel_check_cm",
+                                "FETCH = \"https://example.com/x.tar.gz\"\n"
+                                "CHECK = \"echo test\"\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("top-level CHECK") != std::string::npos);
+  CHECK(msg.find("SETUP") != std::string::npos);
+}
+
+TEST_CASE("top-level CHECK is rejected for user-managed specs") {
+  auto const msg{ run_spec_body(
+      "toplevel_check_um",
+      "USER_MANAGED = true\n"
+      "CHECK = \"echo test\"\n"
+      "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("top-level CHECK") != std::string::npos);
+}
+
+TEST_CASE("user-managed spec without SETUP throws") {
+  auto const msg{ run_spec_body("um_no_setup", "USER_MANAGED = true\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("at least one SETUP pair") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair missing CHECK throws") {
+  auto const msg{ run_spec_body("missing_check",
+                                "USER_MANAGED = true\n"
+                                "SETUP = { main = { INSTALL = 'echo x' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("must define CHECK") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair missing INSTALL throws") {
+  auto const msg{ run_spec_body("missing_install",
+                                "USER_MANAGED = true\n"
+                                "SETUP = { main = { CHECK = 'exit 0' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("must define INSTALL") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair with unknown field throws") {
+  auto const msg{ run_spec_body(
+      "unknown_field",
+      "USER_MANAGED = true\n"
+      "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x', BOGUS = 1 } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("unknown field 'BOGUS'") != std::string::npos);
+}
+
+TEST_CASE("SETUP with non-table entry throws") {
+  auto const msg{ run_spec_body("non_table_entry",
+                                "USER_MANAGED = true\n"
+                                "SETUP = { main = 'not a table' }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("must be a table") != std::string::npos);
+}
+
+TEST_CASE("SETUP with non-string key throws") {
+  auto const msg{ run_spec_body(
+      "non_string_key",
+      "USER_MANAGED = true\n"
+      "SETUP = { { CHECK = 'exit 0', INSTALL = 'echo x' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("keys must be non-empty strings") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair with bad PLATFORMS type throws") {
+  auto const msg{ run_spec_body(
+      "bad_platforms",
+      "USER_MANAGED = true\n"
+      "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x', PLATFORMS = 'linux' "
+      "} }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("PLATFORMS must be a table") != std::string::npos);
+}
+
+TEST_CASE("cache-managed spec with SETUP parses pairs and platforms") {
+  cache c;
+  engine eng{ c };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_setup_cm_pairs" };
+  std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+  {
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.setup_cm_pairs@v1\"\n";
+    ofs << "FETCH = \"https://example.com/x.tar.gz\"\n";
+    ofs << "SETUP = {\n";
+    ofs << "  udev_rules = { CHECK = 'exit 0', INSTALL = 'echo x', PLATFORMS = { "
+           "'linux' } },\n";
+    ofs << "  extras = { CHECK = function(pkg_dir, opts) return true end, INSTALL = "
+           "function(pkg_dir, opts) end },\n";
+    ofs << "}\n";
+  }
+
+  auto *cfg{ make_local_cfg("test.setup_cm_pairs@v1", spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  CHECK(p->type == pkg_type::CACHE_MANAGED);
+  REQUIRE(p->setup_pairs.size() == 2);
+  REQUIRE(p->setup_pairs.contains("udev_rules"));
+  REQUIRE(p->setup_pairs.contains("extras"));
+  REQUIRE(p->setup_pairs.at("udev_rules").size() == 1);
+  CHECK(p->setup_pairs.at("udev_rules")[0] == "linux");
+  CHECK(p->setup_pairs.at("extras").empty());
+}
+
+TEST_CASE("dependency entry with setup field throws") {
+  auto const msg{ run_spec_body(
+      "dep_setup_rejected",
+      "USER_MANAGED = true\n"
+      "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n"
+      "DEPENDENCIES = { { spec = 'local.other@v1', source = 'other.lua', setup = { "
+      "'main' } } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("Dependency entries cannot select 'setup'") != std::string::npos);
+}
+
 TEST_CASE("user-managed package with check verb and install phase succeeds") {
   cache c;
   engine eng{ c };
@@ -177,8 +338,7 @@ TEST_CASE("user-managed package with check verb and install phase succeeds") {
   std::ofstream ofs{ spec_file };
   ofs << "IDENTITY = \"test.check_install_ok@v1\"\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = \"echo test\"\n";
-  ofs << "INSTALL = \"echo install\"\n";
+  ofs << "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.check_install_ok@v1", spec_file) };
@@ -205,8 +365,7 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     ofs << "IDENTITY = \"test.options_ok@v1\"\n";
     ofs << "OPTIONS = { foo = {} }\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function(project_root) return true end\n";
-    ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
     ofs.close();
   }
 
@@ -216,8 +375,7 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     ofs << "IDENTITY = \"test.options_true@v1\"\n";
     ofs << "OPTIONS = function(opts) return true end\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function(project_root) return true end\n";
-    ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
     ofs.close();
   }
 
@@ -244,8 +402,7 @@ TEST_CASE("OPTIONS function returns false fails") {
   ofs << "IDENTITY = \"test.options_false@v1\"\n";
   ofs << "OPTIONS = function(opts) return false end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_false@v1", spec_file) };
@@ -278,8 +435,7 @@ TEST_CASE("OPTIONS function returns string fails with message") {
   ofs << "IDENTITY = \"test.options_string@v1\"\n";
   ofs << "OPTIONS = function(opts) return \"nope\" end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_string@v1", spec_file) };
@@ -311,8 +467,7 @@ TEST_CASE("OPTIONS function invalid return type errors") {
   ofs << "IDENTITY = \"test.options_type@v1\"\n";
   ofs << "OPTIONS = function(opts) return 123 end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_type@v1", spec_file) };
@@ -335,8 +490,7 @@ TEST_CASE("OPTIONS set to non-table non-function errors") {
   ofs << "IDENTITY = \"test.options_nonfn@v1\"\n";
   ofs << "OPTIONS = 42\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_nonfn@v1", spec_file) };
@@ -359,8 +513,7 @@ TEST_CASE("OPTIONS function runtime error bubbles with context") {
   ofs << "IDENTITY = \"test.options_error@v1\"\n";
   ofs << "OPTIONS = function(opts) error(\"boom\") end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "CHECK = function(project_root) return true end\n";
-  ofs << "INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_error@v1", spec_file) };
@@ -393,8 +546,7 @@ TEST_CASE("product name validation") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.product@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { [\"" << product_name << "\"] = \"/usr/bin/tool\" }\n";
     ofs.close();
 
@@ -419,8 +571,7 @@ TEST_CASE("product name validation") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.product@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { [\"" << lua_escaped_name << "\"] = \"/usr/bin/tool\" }\n";
     ofs.close();
 
@@ -473,8 +624,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
     ofs.close();
 
@@ -500,8 +650,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", script = true } }\n";
     ofs.close();
 
@@ -527,8 +676,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { lib = { value = \"/usr/lib/libfoo.so\", script = false } }\n";
     ofs.close();
 
@@ -554,8 +702,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
     ofs.close();
 
@@ -581,8 +728,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { lib = { script = false } }\n";
     ofs.close();
 
@@ -606,8 +752,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { lib = { value = 123 } }\n";
     ofs.close();
 
@@ -631,8 +776,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = {\n";
     ofs << "  tool = \"/usr/bin/tool\",\n";
     ofs << "  lib = { value = \"/usr/lib/libfoo.so\", script = false },\n";
@@ -664,8 +808,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
            "platforms = {\"darwin\", \"linux\"} } }\n";
     ofs.close();
@@ -695,8 +838,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\" } }\n";
     ofs.close();
 
@@ -720,8 +862,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = \"/usr/bin/tool\" }\n";
     ofs.close();
 
@@ -745,8 +886,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
            "platforms = \"darwin\" } }\n";
     ofs.close();
@@ -771,8 +911,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
            "platforms = {123} } }\n";
     ofs.close();
@@ -797,8 +936,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = { tool = { value = \"/usr/bin/tool\", "
            "platforms = {\"\"} } }\n";
     ofs.close();
@@ -823,8 +961,7 @@ TEST_CASE("PRODUCTS table syntax") {
     std::ofstream ofs{ spec_file };
     ofs << "IDENTITY = \"test.products@v1\"\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "CHECK = function() return true end\n";
-    ofs << "INSTALL = function() end\n";
+    ofs << "SETUP = { main = { CHECK = function() return true end, INSTALL = function() end } }\n";
     ofs << "PRODUCTS = {\n";
     ofs << "  tool = \"/usr/bin/tool\",\n";
     ofs << "  completer = { value = \"/usr/bin/completer\", "
@@ -872,13 +1009,12 @@ struct user_managed_fixture {
 
 }  // namespace
 
-TEST_CASE("USER_MANAGED=true with CHECK and INSTALL classifies user-managed") {
+TEST_CASE("USER_MANAGED=true with SETUP pair classifies user-managed") {
   user_managed_fixture f{ "true_ok" };
   f.write(
       "IDENTITY = \"test.um_true_ok@v1\"\n"
       "USER_MANAGED = true\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n");
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n");
 
   cache c;
   engine eng{ c };
@@ -920,7 +1056,7 @@ TEST_CASE("USER_MANAGED absent with FETCH defaults to cache-managed") {
   CHECK(p->type == pkg_type::CACHE_MANAGED);
 }
 
-TEST_CASE("USER_MANAGED=true without CHECK throws") {
+TEST_CASE("USER_MANAGED=true without SETUP throws") {
   user_managed_fixture f{ "true_no_check" };
   f.write(
       "IDENTITY = \"test.um_true_no_check@v1\"\n"
@@ -933,10 +1069,10 @@ TEST_CASE("USER_MANAGED=true without CHECK throws") {
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
-                    doctest::Contains("must define 'CHECK'"));
+                    doctest::Contains("at least one SETUP pair"));
 }
 
-TEST_CASE("USER_MANAGED=true without INSTALL throws") {
+TEST_CASE("USER_MANAGED=true with top-level CHECK throws") {
   user_managed_fixture f{ "true_no_install" };
   f.write(
       "IDENTITY = \"test.um_true_no_install@v1\"\n"
@@ -949,7 +1085,7 @@ TEST_CASE("USER_MANAGED=true without INSTALL throws") {
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
-                    doctest::Contains("must define 'INSTALL'"));
+                    doctest::Contains("defines top-level CHECK"));
 }
 
 TEST_CASE("USER_MANAGED=false with CHECK throws (forbidden combination)") {
@@ -966,7 +1102,7 @@ TEST_CASE("USER_MANAGED=false with CHECK throws (forbidden combination)") {
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
-                    doctest::Contains("CHECK is only valid for user-managed packages"));
+                    doctest::Contains("defines top-level CHECK"));
 }
 
 TEST_CASE("USER_MANAGED absent with CHECK throws") {
@@ -982,7 +1118,7 @@ TEST_CASE("USER_MANAGED absent with CHECK throws") {
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
-                    doctest::Contains("CHECK is only valid for user-managed packages"));
+                    doctest::Contains("defines top-level CHECK"));
 }
 
 TEST_CASE("USER_MANAGED function returning true classifies user-managed") {
@@ -990,8 +1126,7 @@ TEST_CASE("USER_MANAGED function returning true classifies user-managed") {
   f.write(
       "IDENTITY = \"test.um_fn_true@v1\"\n"
       "USER_MANAGED = function() return true end\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n");
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n");
 
   cache c;
   engine eng{ c };
@@ -1023,8 +1158,7 @@ TEST_CASE("USER_MANAGED function returning non-boolean throws") {
   f.write(
       "IDENTITY = \"test.um_fn_nonbool@v1\"\n"
       "USER_MANAGED = function() return \"yes\" end\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n");
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n");
 
   cache c;
   engine eng{ c };
@@ -1040,8 +1174,7 @@ TEST_CASE("USER_MANAGED function raising error throws with identity") {
   f.write(
       "IDENTITY = \"test.um_fn_error@v1\"\n"
       "USER_MANAGED = function() error(\"boom\") end\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n");
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n");
 
   cache c;
   engine eng{ c };
@@ -1066,8 +1199,7 @@ TEST_CASE("USER_MANAGED with non-boolean non-function type throws") {
   f.write(
       "IDENTITY = \"test.um_bad_type@v1\"\n"
       "USER_MANAGED = \"yes\"\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n");
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n");
 
   cache c;
   engine eng{ c };
@@ -1083,8 +1215,7 @@ TEST_CASE("USER_MANAGED=true with FETCH throws (cache-managed phase forbidden)")
   f.write(
       "IDENTITY = \"test.um_true_fetch@v1\"\n"
       "USER_MANAGED = true\n"
-      "CHECK = \"echo test\"\n"
-      "INSTALL = \"echo install\"\n"
+      "SETUP = { main = { CHECK = \"echo test\", INSTALL = \"echo install\" } }\n"
       "FETCH = function() end\n");
 
   cache c;
@@ -1093,7 +1224,7 @@ TEST_CASE("USER_MANAGED=true with FETCH throws (cache-managed phase forbidden)")
   pkg *p{ eng.ensure_pkg(cfg) };
 
   CHECK_THROWS_WITH(run_spec_fetch_phase(p, eng),
-                    doctest::Contains("declares FETCH phase"));
+                    doctest::Contains("declares FETCH"));
 }
 
 }  // namespace envy

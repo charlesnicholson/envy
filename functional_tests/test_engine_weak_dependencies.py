@@ -56,13 +56,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_consumer_fallback.lua", weak_consumer_fallback)
 
@@ -72,13 +76,17 @@ IDENTITY = "local.weak_fallback@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_fallback.lua", weak_fallback)
 
@@ -102,13 +110,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_consumer_existing.lua", weak_consumer_existing)
 
@@ -118,13 +130,17 @@ IDENTITY = "local.existing_dep@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_existing_dep.lua", weak_existing_dep)
 
@@ -134,13 +150,17 @@ IDENTITY = "local.unused_fallback@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_unused_fallback.lua", weak_unused_fallback)
 
@@ -164,13 +184,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_consumer_ref_only.lua", weak_consumer_ref_only)
 
@@ -180,13 +204,17 @@ IDENTITY = "local.weak_provider@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_provider.lua", weak_provider)
 
@@ -210,13 +238,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_consumer_ambiguous.lua", weak_consumer_ambiguous)
 
@@ -226,13 +258,17 @@ IDENTITY = "local.dupe@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_dupe_v1.lua", weak_dupe_v1)
 
@@ -242,13 +278,17 @@ IDENTITY = "local.dupe@v2"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_dupe_v2.lua", weak_dupe_v2)
 
@@ -270,13 +310,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_missing_ref.lua", weak_missing_ref)
 
@@ -297,13 +341,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_chain_root.lua", weak_chain_root)
 
@@ -315,13 +363,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_chain_b.lua", weak_chain_b)
 
@@ -331,13 +383,17 @@ IDENTITY = "local.chain_c@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_chain_c.lua", weak_chain_c)
 
@@ -362,13 +418,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_progress_flat_root.lua", weak_progress_flat_root)
 
@@ -380,13 +440,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_branch_one.lua", weak_branch_one)
 
@@ -398,13 +462,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_branch_two.lua", weak_branch_two)
 
@@ -414,13 +482,17 @@ IDENTITY = "local.shared@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install: no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install: no cache artifacts
-end
 """
         self.write_spec("weak_shared.lua", weak_shared)
 
@@ -456,12 +528,15 @@ DEPENDENCIES = {
         f:write([[
 IDENTITY = "local.custom_fetch_dep@v1"
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op; custom fetch dependency performs work, root install not needed.
-end
-
 USER_MANAGED = true
-function CHECK(project_root, options) return true end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op; custom fetch dependency performs work, root install not needed.
+    end,
+  },
+}
 ]])
         f:close()
         envy.commit_fetch("spec.lua")
@@ -470,14 +545,17 @@ function CHECK(project_root, options) return true end
   },
 }
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op; check returns true so install is skipped.
-end
-
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op; check returns true so install is skipped.
+    end,
+  },
+}
 """
         self.write_spec("weak_custom_fetch_root.lua", weak_custom_fetch_root)
 
@@ -486,13 +564,17 @@ end
 IDENTITY = "local.helper.fallback@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op for helper fallback; check returns true so install is skipped.
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op for helper fallback; check returns true so install is skipped.
-end
 """
         self.write_spec("weak_helper_fallback.lua", weak_helper_fallback)
 
@@ -532,12 +614,15 @@ DEPENDENCIES = {
         f:write([[
 IDENTITY = "local.custom_fetch_dep@v1"
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op; custom fetch dependency performs work, root install not needed.
-end
-
 USER_MANAGED = true
-function CHECK(project_root, options) return true end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op; custom fetch dependency performs work, root install not needed.
+    end,
+  },
+}
 ]])
         f:close()
         envy.commit_fetch("spec.lua")
@@ -546,14 +631,17 @@ function CHECK(project_root, options) return true end
   },
 }
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op; check returns true so install is skipped.
-end
-
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op; check returns true so install is skipped.
+    end,
+  },
+}
 """
         self.write_spec(
             "weak_custom_fetch_root_with_helper.lua", weak_custom_fetch_root_with_helper
@@ -564,13 +652,17 @@ end
 IDENTITY = "local.helper@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op; check returns true so install is skipped.
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op; check returns true so install is skipped.
-end
 """
         self.write_spec("weak_helper_strong.lua", weak_helper_strong)
 
@@ -579,13 +671,17 @@ end
 IDENTITY = "local.helper.fallback@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op for helper fallback; check returns true so install is skipped.
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op for helper fallback; check returns true so install is skipped.
-end
 """
         self.write_spec("weak_helper_fallback.lua", weak_helper_fallback)
 
@@ -612,13 +708,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install
-end
 """
         self.write_spec("weak_cycle_root.lua", weak_cycle_root)
 
@@ -630,13 +730,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install
-end
 """
         self.write_spec("weak_cycle_a.lua", weak_cycle_a)
 
@@ -648,13 +752,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic install
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic install
-end
 """
         self.write_spec("weak_cycle_b.lua", weak_cycle_b)
 

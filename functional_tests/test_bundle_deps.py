@@ -68,12 +68,16 @@ SPECS = {{
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
             spec_path.write_text(spec_lua)
 
@@ -111,12 +115,16 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("consumer", spec_content)
 
@@ -157,12 +165,16 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("app", spec_content)
 
@@ -207,12 +219,16 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("app", spec_content)
 
@@ -257,12 +273,16 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("app", spec_content)
 
@@ -331,12 +351,16 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("app", spec_content)
 
@@ -363,12 +387,16 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         spec_path = self.create_spec("app", spec_content)
 
