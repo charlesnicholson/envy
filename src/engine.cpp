@@ -742,7 +742,7 @@ void engine::run_pkg_thread(pkg *p) {
       }
 
       // Wait for dependencies that are needed by this phase.
-      // Wait for install+1 (not completion) so post-install phases like export
+      // Wait for setup+1 (not completion) so post-install phases like export
       // can overlap with dependents' builds. Snapshot under deps_mutex - the
       // resolution loop may wire weak deps into this map concurrently.
       auto const blocking_deps{ [&] {
