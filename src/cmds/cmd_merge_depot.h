@@ -44,7 +44,6 @@ class cmd_merge_depot : public cmd {
   cmd_merge_depot(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
-  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;

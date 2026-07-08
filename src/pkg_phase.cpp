@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
+#include <string>
 
 namespace envy {
 
@@ -39,6 +41,17 @@ std::optional<pkg_phase> pkg_phase_parse(std::string_view name) {
     return static_cast<pkg_phase>(std::distance(pkg_phase_name_table.begin(), it));
   }
   return std::nullopt;
+}
+
+pkg_phase pkg_phase_parse_needed_by(std::string_view name, std::string_view context) {
+  if (auto const p{ pkg_phase_parse(name) };
+      p && *p >= pkg_phase::pkg_check && *p <= pkg_phase::pkg_install) {
+    return *p;
+  }
+  throw std::runtime_error(std::string{ context } +
+                           " 'needed_by' must be one of: check, import, fetch, stage, "
+                           "build, install (got: " +
+                           std::string{ name } + ")");
 }
 
 }  // namespace envy

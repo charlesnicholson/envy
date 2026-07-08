@@ -57,8 +57,7 @@ struct pkg {
 
   pkg_execution_ctx *exec_ctx{ nullptr };  // assigned by engine
 
-  sol_state_ptr lua;
-  mutable std::mutex lua_mutex;
+  sol_state_guard lua;
   cache::scoped_entry_lock::ptr_t lock;
 
   // Single-writer fields (set during specific phases, read after)
@@ -69,7 +68,10 @@ struct pkg {
   pkg_type type;
   int schema{ 0 };
 
-  // Dependency state
+  // Dependency state — deps_mutex guards every field below. The engine's resolution
+  // loop mutates these maps while worker threads traverse them. Lock one node at a
+  // time; snapshot before recursing or blocking so no two pkg locks nest.
+  mutable std::mutex deps_mutex;
   std::vector<std::string> declared_dependencies;
   std::vector<pkg_cfg *> owned_dependency_cfgs;
   std::unordered_map<std::string, dependency_info> dependencies;

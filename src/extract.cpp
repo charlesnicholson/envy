@@ -47,7 +47,9 @@ struct archive_writer : unmovable {
     if (!handle) { throw std::runtime_error("archive_write_disk_new failed"); }
     archive_write_disk_set_options(handle,
                                    ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_PERM |
-                                       ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS);
+                                       ARCHIVE_EXTRACT_ACL | ARCHIVE_EXTRACT_FFLAGS |
+                                       ARCHIVE_EXTRACT_SECURE_SYMLINKS |
+                                       ARCHIVE_EXTRACT_SECURE_NODOTDOT);
     archive_write_disk_set_standard_lookup(handle);
   }
 
@@ -70,26 +72,6 @@ void ensure_directory(std::filesystem::path const &path) {
     throw std::runtime_error(std::string("Failed to create directory ") + dir.string() +
                              ": " + ec.message());
   }
-}
-
-bool is_safe_archive_path(char const *path) {
-  if (!path || path[0] == '\0') { return false; }
-  if (path[0] == '/' || path[0] == '\\') { return false; }
-#ifdef _WIN32
-  if (std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
-    return false;
-  }
-#endif
-  std::string_view sv{ path };
-  // Reject paths containing ".." components
-  for (std::size_t pos{ 0 }; pos < sv.size();) {
-    auto const sep{ sv.find_first_of("/\\", pos) };
-    auto const component{ sv.substr(pos,
-                                    sep == std::string_view::npos ? sep : sep - pos) };
-    if (component == "..") { return false; }
-    pos = (sep == std::string_view::npos) ? sv.size() : sep + 1;
-  }
-  return true;
 }
 
 std::optional<std::string> strip_path_components(char const *path, int strip_count) {
@@ -239,6 +221,26 @@ struct extract_tui_state {
 
 }  // namespace
 
+bool extract_is_safe_archive_path(char const *path) {
+  if (!path || path[0] == '\0') { return false; }
+  if (path[0] == '/' || path[0] == '\\') { return false; }
+#ifdef _WIN32
+  if (std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
+    return false;
+  }
+#endif
+  std::string_view sv{ path };
+  // Reject paths containing ".." components
+  for (std::size_t pos{ 0 }; pos < sv.size();) {
+    auto const sep{ sv.find_first_of("/\\", pos) };
+    if (sv.substr(pos, sep == std::string_view::npos ? sep : sep - pos) == "..") {
+      return false;
+    }
+    pos = (sep == std::string_view::npos) ? sv.size() : sep + 1;
+  }
+  return true;
+}
+
 std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
                                      std::filesystem::path const &source_dir,
                                      std::string const &prefix,
@@ -348,8 +350,13 @@ std::uint64_t archive_create_tar_zst(std::filesystem::path const &output_path,
 }
 
 std::uint64_t extract(std::filesystem::path const &archive_path,
-                      std::filesystem::path const &destination,
+                      std::filesystem::path const &destination_in,
                       extract_options const &options) {
+  // Resolve pre-existing symlinks in the destination prefix (e.g. macOS /var ->
+  // /private/var) so ARCHIVE_EXTRACT_SECURE_SYMLINKS only trips on symlinks the
+  // archive itself materializes.
+  std::filesystem::path const destination{ std::filesystem::weakly_canonical(
+      destination_in) };
   auto const bare_name{ extract_bare_compressed_output_name(archive_path) };
   if (bare_name && options.strip_components > 0) {
     throw std::runtime_error(
@@ -409,7 +416,7 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       entry_path = stripped_path.c_str();
     }
 
-    if (!is_safe_archive_path(entry_path)) {
+    if (!extract_is_safe_archive_path(entry_path)) {
       throw std::runtime_error(std::string("extract: unsafe archive entry path: ") +
                                entry_path);
     }
@@ -427,6 +434,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
       if (options.strip_components > 0) {
         auto stripped{ strip_path_components(hardlink, options.strip_components) };
         if (stripped) { hardlink_str = *stripped; }
+      }
+      if (!extract_is_safe_archive_path(hardlink_str.c_str())) {
+        throw std::runtime_error(std::string("extract: unsafe hardlink target: ") +
+                                 hardlink_str);
       }
       std::string const hardlink_full{ (destination / hardlink_str).string() };
       archive_entry_copy_hardlink(entry, hardlink_full.c_str());

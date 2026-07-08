@@ -42,9 +42,12 @@ void run_import_phase(pkg *p, engine &eng) {
   auto const *depot{ eng.depot_index() };
   if (!depot || depot->empty()) { return; }  // No depot configured
 
-  sol::state_view lua{ *p->lua };
-  std::string const platform{ lua["envy"]["PLATFORM"].get<std::string>() };
-  std::string const arch{ lua["envy"]["ARCH"].get<std::string>() };
+  auto const [platform, arch]{ [&] {
+    auto const lua_acc{ p->lua.lock() };
+    sol::state_view lua{ *lua_acc };
+    return std::pair{ lua["envy"]["PLATFORM"].get<std::string>(),
+                      lua["envy"]["ARCH"].get<std::string>() };
+  }() };
   std::string const hash_prefix{ p->canonical_identity_hash.substr(0, 16) };
 
   auto const location{ depot->find(p->cfg->identity, platform, arch, hash_prefix) };

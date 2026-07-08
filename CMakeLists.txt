@@ -316,7 +316,6 @@ set(ENVY_COMMON_SOURCES ${ENVY_BASE_SOURCES} src/main.cpp)
 set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/cmds/cmd_cache_functional_test.cpp
     src/cmds/cmd_engine_functional_test.cpp
-    src/pkg_phase.cpp
     src/test_support.cpp
 )
 
@@ -496,6 +495,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/shell_tests_common.cpp
     $<$<PLATFORM_ID:Windows>:src/shell_tests_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/shell_tests_posix.cpp>
+    src/trace_tests.cpp
     src/uri_tests.cpp
     src/tui_tests.cpp
     src/util_tests.cpp

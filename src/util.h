@@ -1,6 +1,5 @@
 #pragma once
 
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -12,9 +11,6 @@
 #include <vector>
 
 namespace envy {
-
-template <typename T, typename... Types>
-concept one_of = (std::same_as<T, Types> || ...);
 
 struct uncopyable {
   uncopyable() = default;
@@ -38,6 +34,11 @@ match(Ts...) -> match<Ts...>;
 
 // Convert bytes to lowercase hex string
 std::string util_bytes_to_hex(void const *data, size_t length);
+
+// True if s is safe to use as a single path component: non-empty, not "." / "..",
+// and every char is alnum or one of ". - _ @". Rejects path separators, drive
+// letters, and anything else that could escape a containing directory.
+bool util_is_safe_path_component(std::string_view s);
 
 // Escape a string for JSON output (RFC 8259 compliant).
 // Handles \", \\, \b, \f, \n, \r, \t, and \u00xx for other control chars < 0x20.

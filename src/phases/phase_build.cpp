@@ -22,69 +22,19 @@
 namespace envy {
 namespace {
 
-std::string format_build_error(std::string const &identity,
-                               int exit_code,
-                               std::optional<int> signal,
-                               std::string const &stderr_capture) {
-  std::ostringstream oss;
-  oss << "[" << identity << "] Build failed";
-
-  if (signal) {
-    oss << " (terminated by signal " << *signal << ")";
-  } else {
-    oss << " (exit code " << exit_code << ")";
-  }
-
-  if (!stderr_capture.empty()) {
-    oss << '\n';
-    constexpr size_t kMaxStderrBytes{ 2048 };
-    if (stderr_capture.size() > kMaxStderrBytes) {
-      oss << "... (truncated)\n"
-          << std::string_view{ stderr_capture }.substr(stderr_capture.size() -
-                                                       kMaxStderrBytes);
-    } else {
-      oss << stderr_capture;
-    }
-    if (!stderr_capture.ends_with('\n')) { oss << '\n'; }
-  }
-
-  return oss.str();
-}
-
-// Common helper to execute a build script with proper output capture and error handling.
 void execute_build_script(std::string_view script,
                           std::filesystem::path const &cwd,
                           std::string const &identity,
                           resolved_shell shell,
                           tui::section_handle tui_section,
                           std::filesystem::path const &cache_root) {
-  std::ostringstream stdout_capture;
-  std::ostringstream stderr_capture;
-
-  shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{
-    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
-    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
-    .cwd = cwd,
-    .env = std::move(env),
-    .shell = shell
-  };
-
-  shell_result const result{ tui_actions::run_shell_with_progress(script,
-                                                                  tui_section,
-                                                                  identity,
-                                                                  cache_root,
-                                                                  std::move(cfg)) };
-  if (result.exit_code != 0) {
-    std::string const stdout_str{ stdout_capture.str() };
-    std::string const stderr_str{ stderr_capture.str() };
-    auto const err{
-      format_build_error(identity, result.exit_code, result.signal, stderr_str)
-    };
-    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
-    tui::error("%s", err.c_str());
-    throw std::runtime_error("Build failed for " + identity);
-  }
+  tui_actions::run_phase_shell_script(script,
+                                      "Build",
+                                      cwd,
+                                      identity,
+                                      std::move(shell),
+                                      tui_section,
+                                      cache_root);
 }
 
 void run_programmatic_build(sol::protected_function build_func,
@@ -98,7 +48,7 @@ void run_programmatic_build(sol::protected_function build_func,
   tui::debug("phase build: running programmatic build function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
-  phase_context_guard ctx_guard{ &eng, p, stage_dir };
+  phase_context_guard ctx_guard{ &eng, p, build_func.lua_state(), stage_dir };
 
   sol::state_view lua{ build_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
@@ -156,7 +106,8 @@ void run_build_phase(pkg *p, engine &eng) {
     return;
   }
 
-  sol::state_view lua_view{ *p->lua };
+  auto const lua_acc{ p->lua.lock() };
+  sol::state_view lua_view{ *lua_acc };
   sol::object build_obj{ lua_view["BUILD"] };
 
   if (!build_obj.valid()) {

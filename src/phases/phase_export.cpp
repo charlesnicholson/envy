@@ -36,7 +36,8 @@ void run_export_phase(pkg *p, engine &eng) {
   if (!ecfg->export_targets.contains(p->key)) { return; }  // Not a target.
 
   bool const exportable{ [&] {
-    sol::object obj{ sol::state_view{ *p->lua }["EXPORTABLE"] };
+    auto const lua_acc{ p->lua.lock() };
+    sol::object obj{ sol::state_view{ *lua_acc }["EXPORTABLE"] };
     return obj.valid() && obj.get_type() == sol::type::boolean && obj.as<bool>();
   }() };
 

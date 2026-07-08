@@ -128,7 +128,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
   // Set up Lua registry context for envy.* functions (run_dir = tmp_dir, lock for
   // commit_fetch)
-  phase_context_guard ctx_guard{ &eng, p, tmp_dir, lock };
+  phase_context_guard ctx_guard{ &eng, p, fetch_func.lua_state(), tmp_dir, lock };
 
   sol::state_view lua{ fetch_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
@@ -549,7 +549,8 @@ void run_fetch_phase(pkg *p, engine &eng) {
 
   std::string const &identity{ p->cfg->identity };
 
-  sol::state_view lua_view{ *p->lua };
+  auto const lua_acc{ p->lua.lock() };
+  sol::state_view lua_view{ *lua_acc };
   sol::object fetch_obj{ lua_view["FETCH"] };
 
   bool should_mark_complete{ true };

@@ -1,6 +1,7 @@
 #include "platform.h"
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wordexp.h>
 
@@ -40,11 +41,14 @@ std::unordered_map<std::string, std::unique_ptr<std::mutex> >
 
 file_lock::~file_lock() {
   if (impl_) {
+    // Unlink while the fcntl lock is still held, then close. Unlinking after close
+    // races: a waiter can acquire the released (now-stale) inode while a third
+    // party re-creates the path and locks the fresh inode - two "holders". The
+    // constructor's inode check below rejects the stale acquisition.
+    std::error_code ec;  // Ignore errors - lock file may be deleted or inaccessible.
+    std::filesystem::remove(impl_->lock_path, ec);
     ::close(impl_->fd);
     if (impl_->path_mutex) { impl_->path_mutex->unlock(); }
-
-    std::error_code ec;  // Ignore errors - lock file may  be deleted or inaccessible.
-    std::filesystem::remove(impl_->lock_path, ec);
   }
 }
 
@@ -130,25 +134,38 @@ file_lock::file_lock(std::filesystem::path const &path) {
     return std::unique_lock<std::mutex>{ *mutex_ptr };
   }() };
 
-  int const fd{ ::open(path.c_str(), O_CREAT | O_RDWR, 0666) };
-  if (fd == -1) {
-    throw std::system_error(errno,
-                            std::system_category(),
-                            "Failed to open lock file: " + path.string());
-  }
+  int fd{ -1 };
+  for (;;) {
+    fd = ::open(path.c_str(), O_CREAT | O_RDWR, 0666);
+    if (fd == -1) {
+      throw std::system_error(errno,
+                              std::system_category(),
+                              "Failed to open lock file: " + path.string());
+    }
 
-  struct flock fl{ .l_type = F_WRLCK,
-                   .l_whence = SEEK_SET,
-                   .l_start = 0,
-                   .l_len = 0,
-                   .l_pid = 0 };
+    struct flock fl{ .l_type = F_WRLCK,
+                     .l_whence = SEEK_SET,
+                     .l_start = 0,
+                     .l_len = 0,
+                     .l_pid = 0 };
 
-  if (::fcntl(fd, F_SETLKW, &fl) == -1) {
-    int const err{ errno };
+    if (::fcntl(fd, F_SETLKW, &fl) == -1) {
+      int const err{ errno };
+      ::close(fd);
+      throw std::system_error(err,
+                              std::system_category(),
+                              "Failed to acquire exclusive lock: " + path.string());
+    }
+
+    // A previous holder may have unlinked (or unlinked+recreated) the path while we
+    // waited on its inode; a lock on an unlinked inode excludes nobody. Only accept
+    // the lock if our fd still refers to the file currently at the path.
+    struct stat fd_st{}, path_st{};
+    if (::fstat(fd, &fd_st) == 0 && ::stat(path.c_str(), &path_st) == 0 &&
+        fd_st.st_dev == path_st.st_dev && fd_st.st_ino == path_st.st_ino) {
+      break;
+    }
     ::close(fd);
-    throw std::system_error(err,
-                            std::system_category(),
-                            "Failed to acquire exclusive lock: " + path.string());
   }
 
   impl_ = std::make_unique<impl>();

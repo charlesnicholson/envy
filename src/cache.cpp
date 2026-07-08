@@ -3,6 +3,7 @@
 #include "platform.h"
 #include "trace.h"
 #include "tui.h"
+#include "util.h"
 
 #include <chrono>
 #include <sstream>
@@ -319,6 +320,10 @@ cache::ensure_result cache::ensure_pkg(std::string_view identity,
                                        std::string_view platform,
                                        std::string_view arch,
                                        std::string_view hash_prefix) {
+  if (!util_is_safe_path_component(identity)) {
+    throw std::runtime_error("cache: invalid package identity: '" +
+                             std::string{ identity } + "'");
+  }
   path const pkg_path{ compute_pkg_path(identity, platform, arch, hash_prefix) };
   path const entry_dir{ pkg_path.parent_path() };
   auto const k{ key(identity, platform, arch, hash_prefix) };
@@ -331,6 +336,10 @@ cache::ensure_result cache::ensure_pkg(std::string_view identity,
 }
 
 cache::ensure_result cache::ensure_spec(std::string_view identity) {
+  if (!util_is_safe_path_component(identity)) {
+    throw std::runtime_error("cache: invalid spec identity: '" +
+                             std::string{ identity } + "'");
+  }
   std::string const id{ identity };
   return ensure_entry(*m,
                       m->specs_dir() / id,

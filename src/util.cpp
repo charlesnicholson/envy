@@ -3,6 +3,7 @@
 #include "platform.h"
 
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -17,6 +18,17 @@
 #endif
 
 namespace envy {
+
+bool util_is_safe_path_component(std::string_view s) {
+  if (s.empty() || s == "." || s == "..") { return false; }
+  for (char const c : s) {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
+        c != '_' && c != '@') {
+      return false;
+    }
+  }
+  return true;
+}
 
 std::string util_bytes_to_hex(void const *data, size_t length) {
   static constexpr char hex_chars[] = "0123456789abcdef";

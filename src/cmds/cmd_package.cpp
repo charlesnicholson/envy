@@ -40,11 +40,7 @@ cmd_package::cmd_package(cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_package::execute() {
-  auto const m{ manifest::find_and_load(cfg_.manifest_path) };
-
-  reexec_if_needed(m->meta, cli_cache_root_);
-
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
+  auto const [m, c]{ cmd_startup_load("package", cfg_.manifest_path, cli_cache_root_) };
 
   // Collect all packages that match the query (supports partial matching)
   std::vector<pkg_cfg const *> matches;

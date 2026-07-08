@@ -29,6 +29,10 @@ def _is_macos_ci_sanitizer_build() -> bool:
 class TestFetchGit(unittest.TestCase):
     """Tests for git repository fetching via fetch command."""
 
+    # Real clones from github.com/googlesource.com; network latency exceeds the
+    # default per-test watchdog. Relaxed budget still catches true hangs.
+    envy_watchdog_timeout = 60
+
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-git-test-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-git-specs-"))

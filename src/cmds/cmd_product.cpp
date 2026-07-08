@@ -46,10 +46,8 @@ void print_products_json(engine &eng, cache &c) {
 
   picojson::object obj;
   for (auto const &pi : products) {
-    std::string resolved;
-    if (pi.type == pkg_type::USER_MANAGED) {
-      resolved = pi.value;
-    } else {
+    std::string const resolved{ [&] {
+      if (pi.type == pkg_type::USER_MANAGED) { return pi.value; }
       pkg *provider{ eng.find_product_provider(pi.product_name) };
       std::string key_for_hash{ provider->cfg->format_key() };
       for (auto const &wk : provider->resolved_weak_dependency_keys) {
@@ -61,8 +59,8 @@ void print_products_json(engine &eng, cache &c) {
                                               platform::os_name(),
                                               platform::arch_name(),
                                               hash_prefix) };
-      resolved = (pkg_path / pi.value).generic_string();
-    }
+      return (pkg_path / pi.value).generic_string();
+    }() };
     obj[pi.product_name] = picojson::value(resolved);
   }
 
@@ -103,9 +101,7 @@ void print_products_aligned(std::vector<product_info> const &products) {
 }  // namespace
 
 void cmd_product::execute() {
-  auto const m{ manifest::find_and_load(cfg_.manifest_path) };
-  reexec_if_needed(m->meta, cli_cache_root_);
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
+  auto const [m, c]{ cmd_startup_load("product", cfg_.manifest_path, cli_cache_root_) };
   engine eng{ *c, m.get() };
 
   eng.resolve_graph({ m->packages.begin(), m->packages.end() });

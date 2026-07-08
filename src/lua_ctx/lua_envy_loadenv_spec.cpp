@@ -91,14 +91,16 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     // Use canonical identity from fuzzy match for lookup
     std::string const &canonical_id{ matched_identity.value_or(identity) };
 
-    // Find the dependency package
-    auto it{ consumer->dependencies.find(canonical_id) };
-    if (it == consumer->dependencies.end()) {
+    // Find the dependency package (copy under deps_mutex)
+    pkg const *dep{ [&]() -> pkg const * {
+      std::lock_guard const deps_lock(consumer->deps_mutex);
+      auto it{ consumer->dependencies.find(canonical_id) };
+      return it == consumer->dependencies.end() ? nullptr : it->second.p;
+    }() };
+    if (!dep) {
       throw std::runtime_error("envy.loadenv_spec: dependency not found in map: " +
                                canonical_id);
     }
-
-    pkg const *dep{ it->second.p };
     if (!dep) {
       throw std::runtime_error("envy.loadenv_spec: null dependency pointer: " + identity);
     }

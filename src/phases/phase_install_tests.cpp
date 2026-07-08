@@ -62,7 +62,6 @@ struct install_test_fixture {
                                       .default_shell_ptr = nullptr,
                                       .exec_ctx = nullptr,
                                       .lua = std::move(lua_state),
-                                      // lua_mutex is default-initialized
                                       .lock = nullptr,
                                       .canonical_identity_hash = {},
                                       .pkg_path = std::filesystem::path{},
@@ -84,7 +83,7 @@ struct install_test_fixture {
     std::filesystem::remove_all(temp_root, ec);
   }
 
-  sol::state_view lua_state() { return sol::state_view{ *p->lua }; }
+  sol::state_view lua_state() { return sol::state_view{ *p->lua.lock() }; }
 
   // Configure the fixture as cache-managed (CHECK cleared, type = CACHE_MANAGED).
   void clear_check_verb() {

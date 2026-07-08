@@ -82,7 +82,7 @@ void run_programmatic_stage(sol::protected_function stage_func,
   tui::debug("phase stage: running imperative stage function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
-  phase_context_guard ctx_guard{ &eng, p, stage_dir };
+  phase_context_guard ctx_guard{ &eng, p, stage_func.lua_state(), stage_dir };
 
   sol::state_view lua{ stage_func.lua_state() };
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
@@ -102,39 +102,13 @@ void run_shell_stage(std::string_view script,
                      tui::section_handle tui_section,
                      std::filesystem::path const &cache_root) {
   tui::debug("phase stage: running shell script");
-
-  std::ostringstream stdout_capture;
-  std::ostringstream stderr_capture;
-
-  shell_env_t env{ shell_getenv() };
-  shell_run_cfg cfg{
-    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
-    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
-    .cwd = dest_dir,
-    .env = std::move(env),
-    .shell = std::move(shell)
-  };
-
-  shell_result const result{ tui_actions::run_shell_with_progress(script,
-                                                                  tui_section,
-                                                                  identity,
-                                                                  cache_root,
-                                                                  std::move(cfg)) };
-
-  if (result.exit_code != 0) {
-    std::string const stdout_str{ stdout_capture.str() };
-    std::string const stderr_str{ stderr_capture.str() };
-    if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
-    if (!stderr_str.empty()) { tui::error("%s", stderr_str.c_str()); }
-    if (result.signal) {
-      throw std::runtime_error("Stage shell script failed for " + identity +
-                               " (terminated by signal " + std::to_string(*result.signal) +
-                               ")");
-    } else {
-      throw std::runtime_error("Stage shell script failed for " + identity +
-                               " (exit code " + std::to_string(result.exit_code) + ")");
-    }
-  }
+  tui_actions::run_phase_shell_script(script,
+                                      "Stage",
+                                      dest_dir,
+                                      identity,
+                                      std::move(shell),
+                                      tui_section,
+                                      cache_root);
 }
 
 }  // namespace
@@ -151,7 +125,8 @@ void run_stage_phase(pkg *p, engine &eng) {
   }
 
   std::string const &identity{ p->cfg->identity };
-  sol::state_view lua_view{ *p->lua };
+  auto const lua_acc{ p->lua.lock() };
+  sol::state_view lua_view{ *lua_acc };
   std::filesystem::path const stage_dir{ determine_stage_destination(lua_view, lock) };
 
   sol::object stage_obj{ lua_view["STAGE"] };

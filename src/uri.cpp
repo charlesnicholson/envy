@@ -104,11 +104,6 @@ std::string strip_file_scheme(std::string_view uri) {
   return std::string{ "//" }.append(host).append(tail);
 }
 
-std::filesystem::path base_directory(std::optional<std::filesystem::path> const &root) {
-  if (root && !root->empty()) { return std::filesystem::absolute(*root); }
-  return std::filesystem::current_path();
-}
-
 }  // namespace
 
 uri_info uri_classify(std::string_view value) {
@@ -190,42 +185,6 @@ uri_info uri_classify(std::string_view value) {
                : uri_scheme::LOCAL_FILE_RELATIVE;
 #endif
   return uri_info{ scheme, std::move(local_source) };
-}
-
-std::filesystem::path uri_resolve_local_file_relative(
-    std::string_view local_file,
-    std::optional<std::filesystem::path> const &anchor) {
-  auto const trimmed{ trim(local_file) };
-  if (trimmed.empty()) { throw std::invalid_argument("resolve_local_uri: empty value"); }
-
-  auto const info{ uri_classify(trimmed) };
-  auto const scheme{ info.scheme };
-
-  if (scheme != uri_scheme::LOCAL_FILE_ABSOLUTE &&
-      scheme != uri_scheme::LOCAL_FILE_RELATIVE) {
-    throw std::invalid_argument("resolve_local_uri: value is not a local file");
-  }
-
-  if (info.canonical.empty()) {
-    throw std::invalid_argument("resolve_local_uri: resolved path is empty");
-  }
-
-  std::filesystem::path resolved{ info.canonical };
-  if (scheme == uri_scheme::LOCAL_FILE_RELATIVE) {
-    resolved = std::filesystem::absolute(base_directory(anchor) / resolved);
-  }
-#ifdef _WIN32
-  else if (scheme == uri_scheme::LOCAL_FILE_ABSOLUTE) {
-    // Path with root directory but no drive (e.g., "\tmp") - add current drive
-    if (!resolved.has_root_name() && resolved.has_root_directory()) {
-      auto drive{ std::filesystem::current_path().root_name().string() };
-      // Concatenate drive with the path that includes root directory
-      resolved = std::filesystem::path(drive + info.canonical);
-    }
-  }
-#endif
-
-  return resolved.lexically_normal();
 }
 
 bool uri_is_http_scheme(std::string_view url) {

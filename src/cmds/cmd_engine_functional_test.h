@@ -26,7 +26,6 @@ class cmd_engine_functional_test : public cmd {
                              std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
-  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;

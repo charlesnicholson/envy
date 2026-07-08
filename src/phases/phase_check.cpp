@@ -34,13 +34,14 @@ bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd) {
   cfg.cwd = pkg_cfg::compute_project_root(p->cfg);
   cfg.shell = shell_resolve_default(p ? p->default_shell_ptr : nullptr);
 
-  shell_result result;
-  try {
-    result = shell_run(check_cmd, cfg);
-  } catch (std::exception const &e) {
-    throw std::runtime_error("check command failed for " + p->cfg->identity + ": " +
-                             e.what());
-  }
+  shell_result const result{ [&] {
+    try {
+      return shell_run(check_cmd, cfg);
+    } catch (std::exception const &e) {
+      throw std::runtime_error("check command failed for " + p->cfg->identity + ": " +
+                               e.what());
+    }
+  }() };
 
   bool const check_passed{ result.exit_code == 0 };
 
@@ -71,7 +72,7 @@ bool run_check_function(pkg *p,
 
   // Set up Lua registry context for envy.* functions (run_dir = project_root)
   // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
-  phase_context_guard ctx_guard{ &eng, p, project_root };
+  phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
 
   sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
 
@@ -118,7 +119,8 @@ bool run_check_verb(pkg *p, engine &eng, sol::state_view lua) {
 cache::ensure_result compute_hash_and_lookup_cache(pkg *p, sol::state_view lua) {
   // Compute hash including resolved weak/ref-only dependencies
   std::string key_for_hash{ p->cfg->format_key() };
-  if (!p->resolved_weak_dependency_keys.empty()) {
+  {
+    std::lock_guard const deps_lock(p->deps_mutex);
     for (auto const &wk : p->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
   }
 
@@ -189,9 +191,8 @@ void run_check_phase_user_managed(pkg *p, engine &eng, sol::state_view lua) {
 }
 
 // CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-void run_check_phase_cache_managed(pkg *p, engine &eng) {
+void run_check_phase_cache_managed(pkg *p, engine &eng, sol::state_view lua) {
   std::string const key{ p->cfg->format_key() };
-  sol::state_view lua{ *p->lua };
 
   auto cache_result{ compute_hash_and_lookup_cache(p, lua) };
 
@@ -211,12 +212,13 @@ void run_check_phase(pkg *p, engine &eng) {
                                        pkg_phase::pkg_check,
                                        std::chrono::steady_clock::now() };
 
-  sol::state_view lua{ *p->lua };
+  auto const lua_acc{ p->lua.lock() };
+  sol::state_view lua{ *lua_acc };
 
   if (p->type == pkg_type::USER_MANAGED) {
     run_check_phase_user_managed(p, eng, lua);
   } else {
-    run_check_phase_cache_managed(p, eng);
+    run_check_phase_cache_managed(p, eng, lua);
   }
 }
 

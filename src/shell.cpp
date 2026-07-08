@@ -1,6 +1,8 @@
 #include "shell.h"
 #include "util.h"
 
+#include "sol/sol.hpp"
+
 #include <filesystem>
 #include <stdexcept>
 #include <variant>

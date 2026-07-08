@@ -2,6 +2,7 @@
 
 #include "sol_util.h"
 #include "uri.h"
+#include "util.h"
 
 #include <algorithm>
 #include <charconv>
@@ -20,6 +21,8 @@ bool parse_identity(std::string const &identity,
                     std::string &out_namespace,
                     std::string &out_name,
                     std::string &out_version) {
+  if (!util_is_safe_path_component(identity)) { return false; }
+
   auto const at_pos{ identity.find('@') };
   if (at_pos == std::string::npos || at_pos == 0 || at_pos == identity.size() - 1) {
     return false;
@@ -264,25 +267,7 @@ pkg_cfg *pkg_cfg::parse(sol::object const &lua_val,
 
   auto needed_by_str{ sol_util_get_optional<std::string>(table, "needed_by", "Spec") };
   if (needed_by_str.has_value()) {
-    std::string const &nb{ *needed_by_str };
-    if (nb == "check") {
-      needed_by = pkg_phase::pkg_check;
-    } else if (nb == "import") {
-      needed_by = pkg_phase::pkg_import;
-    } else if (nb == "fetch") {
-      needed_by = pkg_phase::pkg_fetch;
-    } else if (nb == "stage") {
-      needed_by = pkg_phase::pkg_stage;
-    } else if (nb == "build") {
-      needed_by = pkg_phase::pkg_build;
-    } else if (nb == "install") {
-      needed_by = pkg_phase::pkg_install;
-    } else {
-      throw std::runtime_error(
-          "Spec 'needed_by' must be one of: check, import, fetch, "
-          "stage, build, install (got: " +
-          nb + ")");
-    }
+    needed_by = pkg_phase_parse_needed_by(*needed_by_str, "Spec");
   }
 
   if (has_weak) {

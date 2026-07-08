@@ -1,5 +1,7 @@
 #include "lua_shell.h"
 
+#include "sol/sol.hpp"
+
 #include <stdexcept>
 #include <string>
 

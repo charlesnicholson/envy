@@ -111,12 +111,6 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(thread_complete),
           TRACE_NAME(spec_registered),
           TRACE_NAME(target_extended),
-          TRACE_NAME(lua_ctx_run_start),
-          TRACE_NAME(lua_ctx_run_complete),
-          TRACE_NAME(lua_ctx_fetch_start),
-          TRACE_NAME(lua_ctx_fetch_complete),
-          TRACE_NAME(lua_ctx_extract_start),
-          TRACE_NAME(lua_ctx_extract_complete),
           TRACE_NAME(lua_ctx_package_access),
           TRACE_NAME(lua_ctx_product_access),
           TRACE_NAME(lua_ctx_loadenv_spec_access),
@@ -124,23 +118,18 @@ std::string_view trace_event_name(trace_event_t const &event) {
           TRACE_NAME(cache_miss),
           TRACE_NAME(lock_acquired),
           TRACE_NAME(lock_released),
-          TRACE_NAME(fetch_file_start),
-          TRACE_NAME(fetch_file_complete),
           TRACE_NAME(spec_fetch_counter_inc),
           TRACE_NAME(spec_fetch_counter_dec),
-          TRACE_NAME(debug_marker),
+          TRACE_NAME(execute_downloads_start),
+          TRACE_NAME(execute_downloads_complete),
           TRACE_NAME(cache_check_entry),
           TRACE_NAME(cache_check_result),
-          TRACE_NAME(directory_flushed),
-          TRACE_NAME(file_touched),
           TRACE_NAME(file_exists_check),
-          TRACE_NAME(directory_flush_failed),
           TRACE_NAME(extract_archive_start),
           TRACE_NAME(extract_archive_complete),
           TRACE_NAME(product_transitive_check),
           TRACE_NAME(product_transitive_check_dep),
           TRACE_NAME(product_parsed),
-          [](auto const &) -> std::string_view { return "unknown"; },
       },
       event);
 }
@@ -210,46 +199,6 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " new_target=" << pkg_phase_name(value.new_target);
             return oss.str();
           },
-          [](trace_events::lua_ctx_run_start const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_run_start spec=" << value.spec << " command=" << value.command
-                << " cwd=" << value.cwd;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_run_complete const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_run_complete spec=" << value.spec
-                << " exit_code=" << value.exit_code
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_fetch_start const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_fetch_start spec=" << value.spec << " url=" << value.url
-                << " destination=" << value.destination;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_fetch_complete const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_fetch_complete spec=" << value.spec << " url=" << value.url
-                << " bytes_downloaded=" << value.bytes_downloaded
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_extract_start const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_extract_start spec=" << value.spec
-                << " archive_path=" << value.archive_path
-                << " destination=" << value.destination;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_extract_complete const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_extract_complete spec=" << value.spec
-                << " files_extracted=" << value.files_extracted
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
           [](trace_events::lua_ctx_package_access const &value) {
             std::ostringstream oss;
             oss << "lua_ctx_package_access spec=" << value.spec
@@ -301,20 +250,6 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " hold_ms=" << value.hold_duration_ms;
             return oss.str();
           },
-          [](trace_events::fetch_file_start const &value) {
-            std::ostringstream oss;
-            oss << "fetch_file_start spec=" << value.spec << " url=" << value.url
-                << " destination=" << value.destination;
-            return oss.str();
-          },
-          [](trace_events::fetch_file_complete const &value) {
-            std::ostringstream oss;
-            oss << "fetch_file_complete spec=" << value.spec << " url=" << value.url
-                << " bytes_downloaded=" << value.bytes_downloaded
-                << " duration_ms=" << value.duration_ms
-                << " from_cache=" << bool_string(value.from_cache);
-            return oss.str();
-          },
           [](trace_events::spec_fetch_counter_inc const &value) {
             std::ostringstream oss;
             oss << "spec_fetch_counter_inc spec=" << value.spec
@@ -328,9 +263,18 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " was_completed=" << bool_string(value.was_completed);
             return oss.str();
           },
-          [](trace_events::debug_marker const &value) {
+          [](trace_events::execute_downloads_start const &value) {
             std::ostringstream oss;
-            oss << "debug_marker spec=" << value.spec << " marker_id=" << value.marker_id;
+            oss << "execute_downloads_start spec=" << value.spec
+                << " thread_id=" << value.thread_id
+                << " num_files=" << value.num_files;
+            return oss.str();
+          },
+          [](trace_events::execute_downloads_complete const &value) {
+            std::ostringstream oss;
+            oss << "execute_downloads_complete spec=" << value.spec
+                << " thread_id=" << value.thread_id << " num_files=" << value.num_files
+                << " duration_ms=" << value.duration_ms;
             return oss.str();
           },
           [](trace_events::cache_check_entry const &value) {
@@ -348,28 +292,11 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " check_location=" << value.check_location;
             return oss.str();
           },
-          [](trace_events::directory_flushed const &value) {
-            std::ostringstream oss;
-            oss << "directory_flushed spec=" << value.spec
-                << " dir_path=" << value.dir_path;
-            return oss.str();
-          },
-          [](trace_events::file_touched const &value) {
-            std::ostringstream oss;
-            oss << "file_touched spec=" << value.spec << " file_path=" << value.file_path;
-            return oss.str();
-          },
           [](trace_events::file_exists_check const &value) {
             std::ostringstream oss;
             oss << "file_exists_check spec=" << value.spec
                 << " file_path=" << value.file_path
                 << " exists=" << bool_string(value.exists);
-            return oss.str();
-          },
-          [](trace_events::directory_flush_failed const &value) {
-            std::ostringstream oss;
-            oss << "directory_flush_failed spec=" << value.spec
-                << " dir_path=" << value.dir_path << " reason=" << value.reason;
             return oss.str();
           },
           [](trace_events::extract_archive_start const &value) {
@@ -388,9 +315,26 @@ std::string trace_event_to_string(trace_event_t const &event) {
                 << " duration_ms=" << value.duration_ms;
             return oss.str();
           },
-          [](auto const &) {
+          [](trace_events::product_transitive_check const &value) {
             std::ostringstream oss;
-            oss << "trace_event_unknown";
+            oss << "product_transitive_check spec=" << value.spec
+                << " product=" << value.product
+                << " has_product_directly=" << bool_string(value.has_product_directly)
+                << " dependency_count=" << value.dependency_count;
+            return oss.str();
+          },
+          [](trace_events::product_transitive_check_dep const &value) {
+            std::ostringstream oss;
+            oss << "product_transitive_check_dep spec=" << value.spec
+                << " product=" << value.product
+                << " checking_dependency=" << value.checking_dependency;
+            return oss.str();
+          },
+          [](trace_events::product_parsed const &value) {
+            std::ostringstream oss;
+            oss << "product_parsed spec=" << value.spec
+                << " product_name=" << value.product_name
+                << " product_value=" << value.product_value;
             return oss.str();
           },
       },
@@ -456,37 +400,6 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_phase(output, "old_target", value.old_target);
             append_phase(output, "new_target", value.new_target);
           },
-          [&](trace_events::lua_ctx_run_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "command", value.command);
-            append_kv(output, "cwd", value.cwd);
-          },
-          [&](trace_events::lua_ctx_run_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "exit_code", static_cast<std::int64_t>(value.exit_code));
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-          },
-          [&](trace_events::lua_ctx_fetch_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "url", value.url);
-            append_kv(output, "destination", value.destination);
-          },
-          [&](trace_events::lua_ctx_fetch_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "url", value.url);
-            append_kv(output, "bytes_downloaded", value.bytes_downloaded);
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-          },
-          [&](trace_events::lua_ctx_extract_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "archive_path", value.archive_path);
-            append_kv(output, "destination", value.destination);
-          },
-          [&](trace_events::lua_ctx_extract_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "files_extracted", value.files_extracted);
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-          },
           [&](trace_events::lua_ctx_package_access const &value) {
             append_spec(value.spec);
             append_kv(output, "target", value.target);
@@ -533,18 +446,6 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "lock_path", value.lock_path);
             append_kv(output, "hold_duration_ms", value.hold_duration_ms);
           },
-          [&](trace_events::fetch_file_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "url", value.url);
-            append_kv(output, "destination", value.destination);
-          },
-          [&](trace_events::fetch_file_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "url", value.url);
-            append_kv(output, "bytes_downloaded", value.bytes_downloaded);
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-            append_kv(output, "from_cache", value.from_cache);
-          },
           [&](trace_events::spec_fetch_counter_inc const &value) {
             append_spec(value.spec);
             append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
@@ -554,9 +455,16 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
             append_kv(output, "was_completed", value.was_completed);
           },
-          [&](trace_events::debug_marker const &value) {
+          [&](trace_events::execute_downloads_start const &value) {
             append_spec(value.spec);
-            append_kv(output, "marker_id", static_cast<std::int64_t>(value.marker_id));
+            append_kv(output, "thread_id", static_cast<std::int64_t>(value.thread_id));
+            append_kv(output, "num_files", static_cast<std::int64_t>(value.num_files));
+          },
+          [&](trace_events::execute_downloads_complete const &value) {
+            append_spec(value.spec);
+            append_kv(output, "thread_id", static_cast<std::int64_t>(value.thread_id));
+            append_kv(output, "num_files", static_cast<std::int64_t>(value.num_files));
+            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
           },
           [&](trace_events::cache_check_entry const &value) {
             append_spec(value.spec);
@@ -569,23 +477,10 @@ std::string trace_event_to_json(trace_event_t const &event) {
             append_kv(output, "is_complete", value.is_complete);
             append_kv(output, "check_location", value.check_location);
           },
-          [&](trace_events::directory_flushed const &value) {
-            append_spec(value.spec);
-            append_kv(output, "dir_path", value.dir_path);
-          },
-          [&](trace_events::file_touched const &value) {
-            append_spec(value.spec);
-            append_kv(output, "file_path", value.file_path);
-          },
           [&](trace_events::file_exists_check const &value) {
             append_spec(value.spec);
             append_kv(output, "file_path", value.file_path);
             append_kv(output, "exists", value.exists);
-          },
-          [&](trace_events::directory_flush_failed const &value) {
-            append_spec(value.spec);
-            append_kv(output, "dir_path", value.dir_path);
-            append_kv(output, "reason", value.reason);
           },
           [&](trace_events::extract_archive_start const &value) {
             append_spec(value.spec);
@@ -629,7 +524,6 @@ std::string trace_event_to_json(trace_event_t const &event) {
               output += ']';
             }
           },
-          [](auto const &) {},
       },
       event);
 

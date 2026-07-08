@@ -311,12 +311,10 @@ std::string render_text_stream(envy::tui::text_stream_data const &data,
                                int width,
                                std::chrono::steady_clock::time_point now) {
   // Determine which lines to render
-  std::size_t start_idx{ 0 };
   std::size_t const num_lines{ data.lines.size() };
-
-  if (data.line_limit > 0 && num_lines > data.line_limit) {
-    start_idx = num_lines - data.line_limit;
-  }
+  std::size_t const start_idx{
+    data.line_limit > 0 && num_lines > data.line_limit ? num_lines - data.line_limit : 0
+  };
 
   // Compute spinner frame
   auto const elapsed{ now - data.start_time };
@@ -1223,8 +1221,8 @@ std::string pad_to_width(std::string const &str, int target_width) {
 
 namespace {
 std::size_t measure_label_width_impl(section_frame const &frame, std::size_t indent) {
-  std::size_t len{ indent + frame.label.size() };
-  if (!frame.phase_label.empty()) { len += frame.phase_label.size() + 3; }
+  std::size_t const len{ indent + frame.label.size() +
+                         (frame.phase_label.empty() ? 0 : frame.phase_label.size() + 3) };
 
   return std::accumulate(frame.children.begin(),
                          frame.children.end(),

@@ -1283,3 +1283,21 @@ TEST_CASE("util_platform_matches_platform_id: OS-arch constraint extracts OS") {
   CHECK_FALSE(envy::util_platform_matches_platform_id({ "linux-x86_64" },
                                                       envy::platform_id::WINDOWS));
 }
+
+TEST_CASE("util_is_safe_path_component") {
+  CHECK(envy::util_is_safe_path_component("tools.gcc@14.2"));
+  CHECK(envy::util_is_safe_path_component("a-b_c.d@1"));
+  CHECK(envy::util_is_safe_path_component("...")); // odd but a plain filename
+  CHECK(envy::util_is_safe_path_component("a..b"));
+
+  CHECK_FALSE(envy::util_is_safe_path_component(""));
+  CHECK_FALSE(envy::util_is_safe_path_component("."));
+  CHECK_FALSE(envy::util_is_safe_path_component(".."));
+  CHECK_FALSE(envy::util_is_safe_path_component("a/b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a\\b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("../evil@1.0"));
+  CHECK_FALSE(envy::util_is_safe_path_component("foo.bar/../../../evil@1.0"));
+  CHECK_FALSE(envy::util_is_safe_path_component("C:evil"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a\tb"));
+}

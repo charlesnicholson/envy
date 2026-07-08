@@ -37,6 +37,10 @@ std::uint64_t extract(std::filesystem::path const &archive_path,
 // Check if path has archive extension
 bool extract_is_archive_extension(std::filesystem::path const &path);
 
+// True if an archive entry path is safe to materialize under a destination root:
+// non-empty, relative, no ".." components (and no drive letter on Windows).
+bool extract_is_safe_archive_path(char const *path);
+
 // If path has a single-stream compression suffix (.gz, .bz2, .xz, .zst, .lzma) AND
 // the stem is not a tar wrapper (e.g., foo.tar.gz), returns the filename with the
 // suffix stripped (e.g., bar.txt.gz -> bar.txt). Otherwise returns nullopt.

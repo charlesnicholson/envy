@@ -28,7 +28,6 @@ class cmd_init : public cmd {
   cmd_init(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
-  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;
