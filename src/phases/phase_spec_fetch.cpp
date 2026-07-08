@@ -74,8 +74,8 @@ void validate_phases(sol::state_view lua,
 
   if (user_managed) {
     if (!has_setup) {
-      throw std::runtime_error(
-          "User-managed spec must define at least one SETUP pair: " + identity);
+      throw std::runtime_error("User-managed spec must define at least one SETUP pair: " +
+                               identity);
     }
     std::pair<char const *, bool> const forbidden[]{
       { "FETCH", has_fetch },
@@ -136,9 +136,8 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
 
     for (auto const &[pair_key, _] : pair) {  // Reject unknown pair fields
       sol::object const pair_key_obj(pair_key);
-      std::string const k{ pair_key_obj.is<std::string>()
-                               ? pair_key_obj.as<std::string>()
-                               : std::string{} };
+      std::string const k{ pair_key_obj.is<std::string>() ? pair_key_obj.as<std::string>()
+                                                          : std::string{} };
       if (k != "CHECK" && k != "INSTALL" && k != "PLATFORMS") {
         throw std::runtime_error("SETUP entry '" + name + "' has unknown field '" + k +
                                  "' in spec '" + identity +
@@ -162,8 +161,7 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
     if (plat_obj.valid() && plat_obj.get_type() != sol::type::lua_nil) {
       if (plat_obj.get_type() != sol::type::table) {
         throw std::runtime_error("SETUP entry '" + name +
-                                 "' PLATFORMS must be a table in spec '" + identity +
-                                 "'");
+                                 "' PLATFORMS must be a table in spec '" + identity + "'");
       }
       sol::table plat_table{ plat_obj.as<sol::table>() };
       for (size_t i{ 1 }; i <= plat_table.size(); ++i) {

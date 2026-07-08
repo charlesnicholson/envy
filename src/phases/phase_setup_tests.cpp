@@ -89,9 +89,9 @@ struct setup_test_fixture {
   void set_options(std::string_view options_lua) {
     auto const acc{ p->lua.lock() };
     sol::state_view state{ *acc };
-    sol::protected_function_result res{ state.safe_script(
-        "return " + std::string(options_lua),
-        sol::script_pass_on_error) };
+    sol::protected_function_result res{
+      state.safe_script("return " + std::string(options_lua), sol::script_pass_on_error)
+    };
     REQUIRE(res.valid());
     state.registry()[ENVY_OPTIONS_RIDX] = res.get<sol::object>();
   }
@@ -219,8 +219,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair check receives options table") {
   CHECK(run_pair_check(p.get(), eng, "main"));
 }
 
-TEST_CASE_FIXTURE(setup_test_fixture,
-                  "pair check returned string interpolates options") {
+TEST_CASE_FIXTURE(setup_test_fixture, "pair check returned string interpolates options") {
   set_options("{ exit_code = '0' }");
   set_setup(R"({ main = {
     CHECK = function(pkg_dir, opts) return 'exit ' .. opts.exit_code end,
@@ -356,8 +355,7 @@ TEST_CASE_FIXTURE(setup_test_fixture,
   CHECK(selected[1] == "zeta");
 }
 
-TEST_CASE_FIXTURE(setup_test_fixture,
-                  "cache-managed default selection selects nothing") {
+TEST_CASE_FIXTURE(setup_test_fixture, "cache-managed default selection selects nothing") {
   p->type = pkg_type::CACHE_MANAGED;
   p->setup_pairs.emplace("alpha", std::vector<std::string>{});
   p->setup_default = true;

@@ -1020,8 +1020,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
   for (auto const *cfg : roots) { root_pkgs.push_back(ensure_pkg(cfg)); }
 
   for (size_t i{ 0 }; i < root_pkgs.size(); ++i) {
-    tui::debug("engine: resolve_graph start thread for %s",
-               roots[i]->identity.c_str());
+    tui::debug("engine: resolve_graph start thread for %s", roots[i]->identity.c_str());
     start_pkg_thread(root_pkgs[i], pkg_phase::spec_fetch);
   }
 

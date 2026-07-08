@@ -49,8 +49,8 @@ bool run_pair_check_command(pkg *p, std::string_view cmd, std::string const &con
     try {
       return shell_run(cmd, cfg);
     } catch (std::exception const &e) {
-      throw std::runtime_error(context + " command failed for " + p->cfg->identity +
-                               ": " + e.what());
+      throw std::runtime_error(context + " command failed for " + p->cfg->identity + ": " +
+                               e.what());
     }
   }() };
 
@@ -167,11 +167,11 @@ std::vector<std::string> compute_selected_pairs(pkg *p) {
 
   for (auto const &name : selected) {
     if (!p->setup_pairs.contains(name)) {
-      throw std::runtime_error("Unknown setup pair '" + name + "' selected for " +
-                               p->cfg->identity + " (spec defines " +
-                               (p->setup_pairs.empty() ? "no SETUP pairs"
-                                                       : "different SETUP pair names") +
-                               ")");
+      throw std::runtime_error(
+          "Unknown setup pair '" + name + "' selected for " + p->cfg->identity +
+          " (spec defines " +
+          (p->setup_pairs.empty() ? "no SETUP pairs" : "different SETUP pair names") +
+          ")");
     }
   }
 
@@ -243,9 +243,7 @@ void run_setup_phase(pkg *p, engine &eng) {
                                        pkg_phase::pkg_setup,
                                        std::chrono::steady_clock::now() };
 
-  if (p->type != pkg_type::CACHE_MANAGED && p->type != pkg_type::USER_MANAGED) {
-    return;
-  }
+  if (p->type != pkg_type::CACHE_MANAGED && p->type != pkg_type::USER_MANAGED) { return; }
 
   for (auto const &name : compute_selected_pairs(p)) { run_setup_pair(p, eng, name); }
 }
