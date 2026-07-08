@@ -1,6 +1,6 @@
 NO FILES OUTSIDE THE PROJECT ROOT MAY BE TOUCHED WITHOUT EXPLICIT USER PERMISSION. NO PERMANENT CHANGES TO THE HOST ENVIRONMENT ARE EVER ALLOWED.
 NEVER DO MORE WORK THAN IS EXPLICITLY REQUESTED WITHOUT CONFIRMATION.
-AGENTS MUST ONLY USE GIT TO EXAMINE THE REPOSITORY, NOT TO MUTATE REPOSITORY STATE. No commits, no branches, no stashes, no resets—only read-only operations (status, diff, log, show, blame). DO NOT ADD OR COMMIT CODE TO GIT EVER.
+AGENTS MUST ONLY USE GIT TO EXAMINE THE REPOSITORY, NOT TO MUTATE REPOSITORY STATE, unless explicitly requested by the user. Absent such a request: no commits, no branches, no stashes, no resets—only read-only operations (status, diff, log, show, blame). DO NOT ADD OR COMMIT CODE TO GIT unless the user explicitly asks.
 
 # Repository Guidelines
 
