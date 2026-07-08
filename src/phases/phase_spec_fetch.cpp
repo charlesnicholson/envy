@@ -65,7 +65,8 @@ void validate_phases(sol::state_view lua,
   bool const has_install{ lua["INSTALL"].is<sol::protected_function>() ||
                           lua["INSTALL"].is<std::string>() };
 
-  if (lua["CHECK"].is<sol::protected_function>() || lua["CHECK"].is<std::string>()) {
+  if (sol::object check_obj{ lua["CHECK"] };
+      check_obj.valid() && check_obj.get_type() != sol::type::lua_nil) {
     throw std::runtime_error("Spec " + identity +
                              " defines top-level CHECK; CHECK/INSTALL pairs belong in "
                              "SETUP entries (SETUP = { name = { CHECK=..., "

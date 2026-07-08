@@ -212,6 +212,14 @@ TEST_CASE("top-level CHECK is rejected for cache-managed specs") {
   CHECK(msg.find("SETUP") != std::string::npos);
 }
 
+TEST_CASE("top-level CHECK is rejected regardless of value type") {
+  auto const msg{ run_spec_body("toplevel_check_tbl",
+                                "FETCH = \"https://example.com/x.tar.gz\"\n"
+                                "CHECK = { shell = \"echo test\" }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("top-level CHECK") != std::string::npos);
+}
+
 TEST_CASE("top-level CHECK is rejected for user-managed specs") {
   auto const msg{ run_spec_body(
       "toplevel_check_um",
@@ -365,8 +373,8 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     ofs << "IDENTITY = \"test.options_ok@v1\"\n";
     ofs << "OPTIONS = { foo = {} }\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-           "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
     ofs.close();
   }
 
@@ -376,8 +384,8 @@ TEST_CASE("OPTIONS table succeeds and sees options") {
     ofs << "IDENTITY = \"test.options_true@v1\"\n";
     ofs << "OPTIONS = function(opts) return true end\n";
     ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-           "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
     ofs.close();
   }
 
@@ -404,8 +412,8 @@ TEST_CASE("OPTIONS function returns false fails") {
   ofs << "IDENTITY = \"test.options_false@v1\"\n";
   ofs << "OPTIONS = function(opts) return false end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-         "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_false@v1", spec_file) };
@@ -438,8 +446,8 @@ TEST_CASE("OPTIONS function returns string fails with message") {
   ofs << "IDENTITY = \"test.options_string@v1\"\n";
   ofs << "OPTIONS = function(opts) return \"nope\" end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-         "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_string@v1", spec_file) };
@@ -471,8 +479,8 @@ TEST_CASE("OPTIONS function invalid return type errors") {
   ofs << "IDENTITY = \"test.options_type@v1\"\n";
   ofs << "OPTIONS = function(opts) return 123 end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-         "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_type@v1", spec_file) };
@@ -495,8 +503,8 @@ TEST_CASE("OPTIONS set to non-table non-function errors") {
   ofs << "IDENTITY = \"test.options_nonfn@v1\"\n";
   ofs << "OPTIONS = 42\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-         "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_nonfn@v1", spec_file) };
@@ -519,8 +527,8 @@ TEST_CASE("OPTIONS function runtime error bubbles with context") {
   ofs << "IDENTITY = \"test.options_error@v1\"\n";
   ofs << "OPTIONS = function(opts) error(\"boom\") end\n";
   ofs << "USER_MANAGED = true\n";
-  ofs << "SETUP = { main = { CHECK = function(pkg_dir) return true end, INSTALL = "
-         "function(install_dir, stage_dir, fetch_dir, tmp_dir) end } }\n";
+    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+           "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_error@v1", spec_file) };
