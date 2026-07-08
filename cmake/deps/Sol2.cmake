@@ -72,7 +72,13 @@ if(NOT TARGET sol2::sol2)
   add_library(sol2 INTERFACE)
   target_include_directories(sol2 INTERFACE "${SOL2_GENERATED_DIR}")
   target_link_libraries(sol2 INTERFACE lua::lua)
-  target_compile_definitions(sol2 INTERFACE "SOL2_GIT_SHA_SHORT=\"${SOL2_SHORT_SHA}\"")
+  # Force SOL_NIL off everywhere. Otherwise sol/forward.hpp and sol/sol.hpp resolve
+  # SOL_NIL_I_ from platform detection (defined(nil)/__MAC_OS_X_VERSION_MAX_ALLOWED),
+  # which can differ between the two headers within one TU (SOL_NIL_I_ redefined
+  # warning). envy uses sol::lua_nil, never the global `nil` macro, so disabling it
+  # is safe and makes both headers agree.
+  target_compile_definitions(sol2 INTERFACE "SOL2_GIT_SHA_SHORT=\"${SOL2_SHORT_SHA}\""
+                                            "SOL_NO_NIL=1")
   add_library(sol2::sol2 ALIAS sol2)
 endif()
 
