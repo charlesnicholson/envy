@@ -24,7 +24,6 @@ class cmd_hash : public cmd {
   cmd_hash(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
-  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;

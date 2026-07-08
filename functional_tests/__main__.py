@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import faulthandler
 import os
 import pathlib
 import sys
@@ -10,6 +11,40 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import test_config
+
+# Watchdog: tests currently executing, name -> (monotonic start, timeout seconds).
+# A test that exceeds its timeout terminates the whole run - a hung test must fail
+# loudly, not stall forever (as_completed() blocks before any future timeout can fire).
+# The default is deliberately tight (catches deadlocks in our code); inherently slow
+# tests (network clones, downloads) opt into a larger budget via an
+# `envy_watchdog_timeout` attribute on the test method or its class.
+_running_tests: dict[str, tuple[float, float]] = {}
+_running_tests_lock = threading.Lock()
+_default_watchdog_timeout: float = 5.0
+
+
+def _resolve_timeout(test: unittest.TestCase, default: float) -> float:
+    method = getattr(test, test._testMethodName, None)
+    override = getattr(method, "envy_watchdog_timeout", None)
+    if override is None:
+        override = getattr(test, "envy_watchdog_timeout", None)
+    return float(override) if override is not None else default
+
+
+def _watchdog_loop() -> None:
+    while True:
+        time.sleep(0.5)
+        now = time.monotonic()
+        with _running_tests_lock:
+            for name, (start, timeout) in _running_tests.items():
+                if now - start > timeout:
+                    sys.stderr.write(
+                        f"\nwatchdog: test '{name}' exceeded {timeout:.0f}s; "
+                        "terminating\n"
+                    )
+                    sys.stderr.flush()
+                    faulthandler.dump_traceback()
+                    os._exit(1)
 
 # Track thread exceptions to catch subprocess decode errors
 _thread_exceptions: list[tuple[str, str]] = []
@@ -81,19 +116,26 @@ def _run_single_test(
     test: unittest.TestCase, verbose: bool = False
 ) -> unittest.TestResult:
     """Run a single test case and return its result."""
+    test_name = f"{test.__class__.__module__}.{test.__class__.__name__}.{test._testMethodName}"
     if verbose:
-        test_name = f"{test.__class__.__module__}.{test.__class__.__name__}.{test._testMethodName}"
         print(f"\nRunning: {test_name}", flush=True)
 
     suite = unittest.TestSuite([test])
     result = unittest.TestResult()
-    suite.run(result)
+    timeout = _resolve_timeout(test, _default_watchdog_timeout)
+    with _running_tests_lock:
+        _running_tests[test_name] = (time.monotonic(), timeout)
+    try:
+        suite.run(result)
+    finally:
+        with _running_tests_lock:
+            _running_tests.pop(test_name, None)
 
     return result
 
 
 def _get_test_timeout() -> int:
-    """Get per-test timeout in seconds from ENVY_TEST_TIMEOUT (default: 60)."""
+    """Get per-test watchdog timeout in seconds from ENVY_TEST_TIMEOUT (default: 5)."""
     timeout_env = os.environ.get("ENVY_TEST_TIMEOUT")
     if timeout_env:
         try:
@@ -101,21 +143,23 @@ def _get_test_timeout() -> int:
             if t >= 1:
                 return t
             print(
-                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (must be >= 1), using 60"
+                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (must be >= 1), using 5"
             )
         except ValueError:
             print(
-                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (not a number), using 60"
+                f"Warning: Invalid ENVY_TEST_TIMEOUT={timeout_env} (not a number), using 5"
             )
-    return 60
+    return 5
 
 
 def _run_parallel(
     loader: unittest.TestLoader, root: pathlib.Path, jobs: int, verbose: bool = False
 ) -> None:
     """Run tests in parallel using ThreadPoolExecutor."""
+    global _default_watchdog_timeout
     start_time = time.time()
     test_timeout = _get_test_timeout()
+    _default_watchdog_timeout = float(test_timeout)
 
     # Discover all tests
     suite = loader.discover(str(root), top_level_dir=str(root.parent))
@@ -134,7 +178,9 @@ def _run_parallel(
         print(f"ERROR: {e}")
         sys.exit(1)
 
-    timeout_note = f", timeout={test_timeout}s" if test_timeout != 60 else ""
+    threading.Thread(target=_watchdog_loop, daemon=True).start()
+
+    timeout_note = f", watchdog={test_timeout}s" if test_timeout != 5 else ""
     print(
         f"Running {len(test_cases)} tests with {jobs} workers{timeout_note}..."
         + (" (verbose mode)" if verbose else "")
@@ -157,7 +203,7 @@ def _run_parallel(
         for i, future in enumerate(as_completed(future_to_test), 1):
             test = future_to_test[future]
             try:
-                result = future.result(timeout=test_timeout)
+                result = future.result()
             except Exception as e:
                 sys.stdout.write("E")
                 errors += 1

@@ -117,12 +117,14 @@ git_repository *try_git_clone(std::string const &url,
                               std::filesystem::path const &dest,
                               fetch_progress_cb_t const &progress,
                               int depth) {
-  git_clone_options clone_opts;
-  git_clone_options_init(&clone_opts, GIT_CLONE_OPTIONS_VERSION);
-
-  if (depth > 0) { clone_opts.fetch_opts.depth = depth; }
-  clone_opts.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
-  clone_opts.fetch_opts.callbacks.payload = const_cast<fetch_progress_cb_t *>(&progress);
+  git_clone_options const clone_opts{ [&] {
+    git_clone_options o;
+    git_clone_options_init(&o, GIT_CLONE_OPTIONS_VERSION);
+    if (depth > 0) { o.fetch_opts.depth = depth; }
+    o.fetch_opts.callbacks.transfer_progress = git_fetch_progress_callback;
+    o.fetch_opts.callbacks.payload = const_cast<fetch_progress_cb_t *>(&progress);
+    return o;
+  }() };
 
   git_repository *repo_raw{ nullptr };
   if (git_clone(&repo_raw, url.c_str(), dest.string().c_str(), &clone_opts)) {
@@ -195,9 +197,12 @@ fetch_result fetch_git_repo(std::string const &url,
   std::unique_ptr<git_object, decltype(&git_object_free)> target{ target_obj,
                                                                   git_object_free };
 
-  git_checkout_options checkout_opts;
-  git_checkout_options_init(&checkout_opts, GIT_CHECKOUT_OPTIONS_VERSION);
-  checkout_opts.checkout_strategy = GIT_CHECKOUT_FORCE;
+  git_checkout_options const checkout_opts{ [] {
+    git_checkout_options o;
+    git_checkout_options_init(&o, GIT_CHECKOUT_OPTIONS_VERSION);
+    o.checkout_strategy = GIT_CHECKOUT_FORCE;
+    return o;
+  }() };
 
   if (git_checkout_tree(repo.get(), target.get(), &checkout_opts)) {
     git_error const *git_err{ git_error_last() };

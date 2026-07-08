@@ -31,10 +31,13 @@ phase_context const *lua_phase_context_get(sol::this_state ts);
 // RAII guard that sets Lua registry context for phase execution scope.
 // Automatically clears context on destruction (including exception unwinding).
 // The guard owns the context struct on the stack; registry stores pointer to it.
+// Caller passes the lua_State explicitly and must hold the owning package's
+// sol_state_guard accessor for the guard's full lifetime.
 class phase_context_guard : unmovable {
  public:
   phase_context_guard(engine *eng,
                       pkg *p,
+                      lua_State *L,
                       std::optional<std::filesystem::path> run_dir = std::nullopt,
                       cache::scoped_entry_lock const *lock = nullptr);
   ~phase_context_guard();

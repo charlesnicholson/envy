@@ -2,7 +2,7 @@
 
 #include "pkg_cfg.h"
 
-#include "sol/sol.hpp"
+#include "sol/forward.hpp"
 
 #include <filesystem>
 #include <string>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sol/sol.hpp"
+#include "sol/forward.hpp"
 
 #include <filesystem>
 #include <functional>

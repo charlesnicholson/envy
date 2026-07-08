@@ -3,7 +3,7 @@
 #include "pkg_phase.h"
 #include "util.h"
 
-#include "sol/sol.hpp"
+#include "sol/forward.hpp"
 
 #include <deque>
 #include <filesystem>

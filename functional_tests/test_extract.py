@@ -365,6 +365,82 @@ class EnvyExtractTests(unittest.TestCase):
 
             self.assertNotEqual(0, result.returncode)
 
+    def test_extract_rejects_parent_traversal_entry(self) -> None:
+        """A tar entry with a ../ path must be refused and write nothing outside dest."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = self._archives_dir / "evil_traversal.tar"
+            with tarfile.open(archive, "w") as tar:
+                data = b"pwned\n"
+                info = tarfile.TarInfo(name="../escaped.txt")
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            result = self._run_envy("extract", str(archive), str(dest))
+
+            self.assertNotEqual(0, result.returncode)
+            # Nothing must escape into the parent of dest.
+            self.assertFalse((dest.parent / "escaped.txt").exists())
+            self.assertEqual([], list(dest.iterdir()))
+
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Windows extract of UTF-8 archive entry names needs wide-path handling "
+        "(libarchive narrow pathname mangles UTF-8 to '?'); tracked separately",
+    )
+    def test_extract_non_ascii_filenames_roundtrip(self) -> None:
+        """Archive entries with non-ASCII (UTF-8) names must extract intact; the
+        path-safety guard rejects traversal, not legitimate Unicode names."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            entries = {
+                "root/café.txt": "accented\n",
+                "root/日本語/ファイル.txt": "japanese\n",
+                "root/naïve-Ω.bin": "mixed\n",
+            }
+            archive = self._archives_dir / "unicode.tar"
+            with tarfile.open(archive, "w", encoding="utf-8") as tar:
+                for name, content in entries.items():
+                    data = content.encode("utf-8")
+                    info = tarfile.TarInfo(name=name)
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            result = self._run_envy("extract", str(archive), str(dest))
+
+            self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+            for name, content in entries.items():
+                extracted = dest / name
+                self.assertTrue(extracted.exists(), f"missing {name}")
+                self.assertEqual(content, extracted.read_text(encoding="utf-8"))
+
+    def test_extract_rejects_symlink_escape(self) -> None:
+        """A symlink entry pointing outside dest plus a write through it must be
+        refused (ARCHIVE_EXTRACT_SECURE_SYMLINKS) and must not write outside dest."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outside = Path(tmpdir) / "outside"
+            outside.mkdir()
+            archive = self._archives_dir / "evil_symlink.tar"
+            with tarfile.open(archive, "w") as tar:
+                link = tarfile.TarInfo(name="escape")
+                link.type = tarfile.SYMTYPE
+                link.linkname = str(outside)
+                tar.addfile(link)
+                data = b"pwned\n"
+                payload = tarfile.TarInfo(name="escape/payload.txt")
+                payload.size = len(data)
+                tar.addfile(payload, io.BytesIO(data))
+
+            dest = Path(tmpdir) / "dest"
+            dest.mkdir()
+            result = self._run_envy("extract", str(archive), str(dest))
+
+            self.assertNotEqual(0, result.returncode)
+            # The write must not have escaped through the symlink.
+            self.assertFalse((outside / "payload.txt").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

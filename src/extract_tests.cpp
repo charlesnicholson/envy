@@ -465,3 +465,26 @@ TEST_CASE("archive_create_tar_zst with fetch prefix") {
   std::filesystem::remove_all(dest);
   std::filesystem::remove_all(archive.parent_path());
 }
+
+TEST_CASE("extract_is_safe_archive_path rejects escape vectors") {
+  CHECK(envy::extract_is_safe_archive_path("a.txt"));
+  CHECK(envy::extract_is_safe_archive_path("a/b/c.txt"));
+  CHECK(envy::extract_is_safe_archive_path("a/..b/c"));  // ".." substring, not component
+  CHECK(envy::extract_is_safe_archive_path("a/b../c"));
+  CHECK(envy::extract_is_safe_archive_path("..a/b"));
+  CHECK(envy::extract_is_safe_archive_path("a..b"));
+
+  CHECK_FALSE(envy::extract_is_safe_archive_path(nullptr));
+  CHECK_FALSE(envy::extract_is_safe_archive_path(""));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("/abs/path"));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("\\abs\\path"));
+  CHECK_FALSE(envy::extract_is_safe_archive_path(".."));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("../x"));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("a/../../x"));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("a/.."));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("a\\..\\x"));
+#ifdef _WIN32
+  CHECK_FALSE(envy::extract_is_safe_archive_path("C:\\evil"));
+  CHECK_FALSE(envy::extract_is_safe_archive_path("c:/evil"));
+#endif
+}

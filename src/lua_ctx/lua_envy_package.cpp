@@ -61,16 +61,21 @@ void lua_envy_package_install(sol::table &envy_table) {
     // Use canonical identity from fuzzy match for lookup
     std::string const &canonical_id{ matched_identity.value_or(identity) };
 
-    // Look up dependency in pkg's dependency map
-    auto it{ consumer->dependencies.find(canonical_id) };
-    if (it == consumer->dependencies.end()) {
+    // Look up dependency in pkg's dependency map (copy under deps_mutex)
+    auto const dep_info{ [&]() -> std::optional<pkg::dependency_info> {
+      std::lock_guard const deps_lock(consumer->deps_mutex);
+      auto it{ consumer->dependencies.find(canonical_id) };
+      if (it == consumer->dependencies.end()) { return std::nullopt; }
+      return it->second;
+    }() };
+    if (!dep_info) {
       std::string const msg{ "envy.package: dependency not found in map: " +
                              canonical_id };
       emit_access(false, first_needed_by, msg);
       throw std::runtime_error(msg);
     }
 
-    pkg const *dep{ it->second.p };
+    pkg const *dep{ dep_info->p };
     if (!dep) {
       std::string const msg{ "envy.package: null dependency pointer: " + identity };
       emit_access(false, first_needed_by, msg);

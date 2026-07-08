@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <stdexcept>
 
 namespace envy::tui_actions {
 
@@ -325,6 +326,56 @@ shell_result run_shell_with_progress(std::string_view script,
   }
 
   return shell_run(script, cfg);
+}
+
+// ==== run_phase_shell_script ====
+
+void run_phase_shell_script(std::string_view script,
+                            std::string_view phase_label,
+                            std::filesystem::path const &cwd,
+                            std::string const &identity,
+                            resolved_shell shell,
+                            tui::section_handle section,
+                            std::filesystem::path const &cache_root) {
+  std::ostringstream stdout_capture;
+  std::ostringstream stderr_capture;
+
+  shell_env_t env{ shell_getenv() };
+  shell_run_cfg cfg{
+    .on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; },
+    .on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; },
+    .cwd = cwd,
+    .env = std::move(env),
+    .shell = std::move(shell)
+  };
+
+  shell_result const result{
+    run_shell_with_progress(script, section, identity, cache_root, std::move(cfg))
+  };
+  if (result.exit_code == 0) { return; }
+
+  std::string const stdout_str{ stdout_capture.str() };
+  if (!stdout_str.empty()) { tui::error("%s", stdout_str.c_str()); }
+
+  std::string const stderr_str{ stderr_capture.str() };
+  if (!stderr_str.empty()) {
+    std::ostringstream oss;
+    constexpr size_t kMaxStderrBytes{ 2048 };
+    if (stderr_str.size() > kMaxStderrBytes) {
+      oss << "... (truncated)\n"
+          << std::string_view{ stderr_str }.substr(stderr_str.size() - kMaxStderrBytes);
+    } else {
+      oss << stderr_str;
+    }
+    tui::error("%s", oss.str().c_str());
+  }
+
+  std::string const suffix{
+    result.signal ? " (terminated by signal " + std::to_string(*result.signal) + ")"
+                  : " (exit code " + std::to_string(result.exit_code) + ")"
+  };
+  throw std::runtime_error(std::string{ phase_label } + " shell script failed for " +
+                           identity + suffix);
 }
 
 }  // namespace envy::tui_actions

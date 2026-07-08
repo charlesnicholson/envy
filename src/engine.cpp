@@ -64,6 +64,7 @@ bool has_dependency_path(pkg const *from, pkg const *to) {
     if (visited.contains(current)) { continue; }
     visited.insert(current);
 
+    std::lock_guard const deps_lock(current->deps_mutex);
     for (auto const &[dep_identity, dep_info] : current->dependencies) {
       if (dep_info.p == to) { return true; }
       if (!visited.contains(dep_info.p)) { stack.push_back(dep_info.p); }
@@ -74,6 +75,8 @@ bool has_dependency_path(pkg const *from, pkg const *to) {
 }
 
 void wire_dependency(pkg *parent, pkg *dep, pkg_phase needed_by) {
+  std::lock_guard const deps_lock(parent->deps_mutex);
+
   if (!parent->dependencies.contains(dep->cfg->identity)) {
     parent->dependencies[dep->cfg->identity] = { dep, needed_by };
     ENVY_TRACE_DEPENDENCY_ADDED(parent->cfg->identity, dep->cfg->identity, needed_by);
@@ -102,13 +105,16 @@ void resolve_identity_ref(pkg *p,
     }
 
     wire_dependency(p, dep, wr->needed_by);
-    wr->resolved = dep;
-    if (wr->is_product) {
-      auto const it{ p->product_dependencies.find(wr->query) };
-      if (it != p->product_dependencies.end()) {
-        it->second.provider = dep;
-        if (it->second.constraint_identity.empty()) {
-          it->second.constraint_identity = wr->constraint_identity;
+    {
+      std::lock_guard const deps_lock(p->deps_mutex);
+      wr->resolved = dep;
+      if (wr->is_product) {
+        auto const it{ p->product_dependencies.find(wr->query) };
+        if (it != p->product_dependencies.end()) {
+          it->second.provider = dep;
+          if (it->second.constraint_identity.empty()) {
+            it->second.constraint_identity = wr->constraint_identity;
+          }
         }
       }
     }
@@ -138,13 +144,16 @@ void resolve_identity_ref(pkg *p,
     child_chain.push_back(p->cfg->identity);
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
-    wr->resolved = dep;
-    if (wr->is_product) {
-      auto const it{ p->product_dependencies.find(wr->query) };
-      if (it != p->product_dependencies.end()) {
-        it->second.provider = dep;
-        if (it->second.constraint_identity.empty()) {
-          it->second.constraint_identity = wr->constraint_identity;
+    {
+      std::lock_guard const deps_lock(p->deps_mutex);
+      wr->resolved = dep;
+      if (wr->is_product) {
+        auto const it{ p->product_dependencies.find(wr->query) };
+        if (it != p->product_dependencies.end()) {
+          it->second.provider = dep;
+          if (it->second.constraint_identity.empty()) {
+            it->second.constraint_identity = wr->constraint_identity;
+          }
         }
       }
     }
@@ -158,6 +167,8 @@ void resolve_product_ref(pkg *p,
                          std::unordered_map<std::string, pkg *> const &registry,
                          engine &eng) {
   auto set_product_provider = [&](pkg *provider) {
+    std::lock_guard const deps_lock(p->deps_mutex);
+    wr->resolved = provider;
     auto const it{ p->product_dependencies.find(wr->query) };
     if (it != p->product_dependencies.end()) {
       it->second.provider = provider;
@@ -186,7 +197,6 @@ void resolve_product_ref(pkg *p,
     }
 
     wire_dependency(p, dep, wr->needed_by);
-    wr->resolved = dep;
     set_product_provider(dep);
     ++result.resolved;
     return;
@@ -202,7 +212,6 @@ void resolve_product_ref(pkg *p,
     child_chain.push_back(p->cfg->identity);
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
-    wr->resolved = dep;
     set_product_provider(dep);
     ++result.fallbacks_started;
   }
@@ -221,12 +230,22 @@ bool pkg_provides_product_transitively_impl(pkg *p,
 
   if (p->products.contains(product_name)) { return true; }
 
-  for (auto const &[dep_id, dep_info] : p->dependencies) {
+  auto const deps{ [&] {
+    std::lock_guard const deps_lock(p->deps_mutex);
+    std::vector<std::pair<std::string, pkg *>> snapshot;
+    snapshot.reserve(p->dependencies.size());
+    for (auto const &[dep_id, dep_info] : p->dependencies) {
+      snapshot.emplace_back(dep_id, dep_info.p);
+    }
+    return snapshot;
+  }() };
+
+  for (auto const &[dep_id, dep] : deps) {
     ENVY_TRACE_EMIT(
         (trace_events::product_transitive_check_dep{ .spec = p->cfg->identity,
                                                      .product = product_name,
                                                      .checking_dependency = dep_id }));
-    if (pkg_provides_product_transitively_impl(dep_info.p, product_name, visited)) {
+    if (pkg_provides_product_transitively_impl(dep, product_name, visited)) {
       return true;
     }
   }
@@ -282,6 +301,7 @@ engine::weak_resolution_result engine::resolve_weak_references() {
     std::vector<std::pair<pkg *, pkg::weak_reference *>> unresolved;
     std::lock_guard const lock(mutex_);
     for (auto &[key, package] : packages_) {
+      std::lock_guard const deps_lock(package->deps_mutex);
       for (auto &wr : package->weak_references) {
         if (!wr.resolved) { unresolved.emplace_back(package.get(), &wr); }
       }
@@ -592,10 +612,15 @@ void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &
 
   ctx.set_target_phase(pkg_phase::completion);
 
-  // Recursively extend all dependencies
-  for (auto const &[dep_identity, dep_info] : p->dependencies) {
-    extend_dependencies_recursive(dep_info.p, visited);
-  }
+  // Recursively extend all dependencies (snapshot: no nested pkg locks)
+  auto const deps{ [&] {
+    std::lock_guard const deps_lock(p->deps_mutex);
+    std::vector<pkg *> snapshot;
+    snapshot.reserve(p->dependencies.size());
+    for (auto const &[_, dep_info] : p->dependencies) { snapshot.push_back(dep_info.p); }
+    return snapshot;
+  }() };
+  for (auto *dep : deps) { extend_dependencies_recursive(dep, visited); }
 }
 
 #ifdef ENVY_UNIT_TEST
@@ -649,6 +674,7 @@ void engine::process_fetch_dependencies(pkg *p,
       wr.query = fetch_dep_cfg->identity;
       wr.needed_by = pkg_phase::spec_fetch;
       wr.fallback = fetch_dep_cfg->weak;
+      std::lock_guard const deps_lock(p->deps_mutex);
       p->weak_references.push_back(std::move(wr));
       continue;
     }
@@ -656,7 +682,10 @@ void engine::process_fetch_dependencies(pkg *p,
     pkg *fetch_dep{ ensure_pkg(fetch_dep_cfg) };
 
     // Add to dependencies map - phase loop will handle blocking at spec_fetch
-    p->dependencies[fetch_dep_cfg->identity] = { fetch_dep, pkg_phase::spec_fetch };
+    {
+      std::lock_guard const deps_lock(p->deps_mutex);
+      p->dependencies[fetch_dep_cfg->identity] = { fetch_dep, pkg_phase::spec_fetch };
+    }
     ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity,
                                 fetch_dep_cfg->identity,
                                 pkg_phase::spec_fetch);
@@ -699,16 +728,25 @@ void engine::run_pkg_thread(pkg *p) {
 
       // Wait for dependencies that are needed by this phase.
       // Wait for install+1 (not completion) so post-install phases like export
-      // can overlap with dependents' builds.
-      for (auto const &[dep_identity, dep_info] : p->dependencies) {
-        if (next >= dep_info.needed_by) {
-          ENVY_TRACE_PHASE_BLOCKED(p->cfg->identity,
-                                   next,
-                                   dep_identity,
-                                   kDependencySatisfiedPhase);
-          ensure_pkg_at_phase(dep_info.p->key, kDependencySatisfiedPhase);
-          ENVY_TRACE_PHASE_UNBLOCKED(p->cfg->identity, next, dep_identity);
+      // can overlap with dependents' builds. Snapshot under deps_mutex - the
+      // resolution loop may wire weak deps into this map concurrently.
+      auto const blocking_deps{ [&] {
+        std::lock_guard const deps_lock(p->deps_mutex);
+        std::vector<std::pair<std::string, pkg *>> snapshot;
+        for (auto const &[dep_identity, dep_info] : p->dependencies) {
+          if (next >= dep_info.needed_by) {
+            snapshot.emplace_back(dep_identity, dep_info.p);
+          }
         }
+        return snapshot;
+      }() };
+      for (auto const &[dep_identity, dep] : blocking_deps) {
+        ENVY_TRACE_PHASE_BLOCKED(p->cfg->identity,
+                                 next,
+                                 dep_identity,
+                                 kDependencySatisfiedPhase);
+        ensure_pkg_at_phase(dep->key, kDependencySatisfiedPhase);
+        ENVY_TRACE_PHASE_UNBLOCKED(p->cfg->identity, next, dep_identity);
       }
 
       ctx.current_phase = next;  // Phase is now active
@@ -852,9 +890,14 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
 void engine::fail_all_contexts() {
   std::lock_guard const lock(mutex_);
   for (auto &[_, ctx] : execution_ctxs_) {
-    ctx->failed = true;
-    ctx->target_phase = pkg_phase::completion;
-    ctx->current_phase = pkg_phase::completion;
+    // Hold ctx->mutex across the stores so a worker can't evaluate its wait
+    // predicate false and then sleep through the notify (lost wakeup).
+    {
+      std::lock_guard const ctx_lock(ctx->mutex);
+      ctx->failed = true;
+      ctx->target_phase = pkg_phase::completion;
+      ctx->current_phase = pkg_phase::completion;
+    }
     ctx->cv.notify_all();
   }
   cv_.notify_all();
@@ -863,18 +906,19 @@ void engine::fail_all_contexts() {
 void engine::update_product_registry() {
   std::unordered_map<std::string, std::vector<pkg *>> providers_by_product;
 
-  {
-    std::lock_guard const lock(mutex_);
-    for (auto &[key, package] : packages_) {
-      auto const ctx_it{ execution_ctxs_.find(key) };
-      if (ctx_it == execution_ctxs_.end()) { continue; }
-      if (ctx_it->second->current_phase.load() < pkg_phase::spec_fetch) { continue; }
+  // mutex_ guards product_registry_ for the whole function - readers
+  // (find_product_provider) may run concurrently on worker threads.
+  std::lock_guard const lock(mutex_);
 
-      for (auto const &[product_name, _] : package->products) {
-        // Skip already-registered providers (added in prior iterations)
-        if (product_registry_.contains(product_name)) { continue; }
-        providers_by_product[product_name].push_back(package.get());
-      }
+  for (auto &[key, package] : packages_) {
+    auto const ctx_it{ execution_ctxs_.find(key) };
+    if (ctx_it == execution_ctxs_.end()) { continue; }
+    if (!ctx_it->second->spec_fetch_completed.load()) { continue; }
+
+    for (auto const &[product_name, _] : package->products) {
+      // Skip already-registered providers (added in prior iterations)
+      if (product_registry_.contains(product_name)) { continue; }
+      providers_by_product[product_name].push_back(package.get());
     }
   }
 
@@ -964,6 +1008,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
     std::lock_guard const lock(mutex_);
     size_t count{ 0 };
     for (auto &[_, package] : packages_) {
+      std::lock_guard const deps_lock(package->deps_mutex);
       for (auto &wr : package->weak_references) {
         if (!wr.resolved) { ++count; }
       }
@@ -1030,6 +1075,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
   {  // Cache resolved weak dependency keys for thread-safe hash computation
     std::lock_guard const lock(mutex_);
     for (auto &[_, package] : packages_) {
+      std::lock_guard const deps_lock(package->deps_mutex);
       package->resolved_weak_dependency_keys.clear();
       for (auto const &wr : package->weak_references) {
         if (wr.resolved) {

@@ -260,62 +260,6 @@ TEST_CASE("trace_event_to_json serializes all event types") {
         phase_num_token("new_target", envy::pkg_phase::completion) });
 
   expect_json_tokens(
-      envy::trace_events::lua_ctx_run_start{
-          .spec = "r5",
-          .command = "echo \"hi\"\n",
-          .cwd = "/tmp",
-      },
-      { "\"spec\":\"r5\"", "\"command\":\"echo \\\"hi\\\"\\n\"", "\"cwd\":\"/tmp\"" });
-
-  expect_json_tokens(
-      envy::trace_events::lua_ctx_run_complete{
-          .spec = "r5",
-          .exit_code = 7,
-          .duration_ms = 10,
-      },
-      { "\"spec\":\"r5\"", "\"exit_code\":7", "\"duration_ms\":10" });
-
-  expect_json_tokens(
-      envy::trace_events::lua_ctx_fetch_start{
-          .spec = "r6",
-          .url = "https://example.com",
-          .destination = "/cache/r6/file",
-      },
-      { "\"spec\":\"r6\"",
-        "\"url\":\"https://example.com\"",
-        "\"destination\":\"/cache/r6/file\"" });
-
-  expect_json_tokens(
-      envy::trace_events::lua_ctx_fetch_complete{
-          .spec = "r6",
-          .url = "https://example.com",
-          .bytes_downloaded = 1234,
-          .duration_ms = 42,
-      },
-      { "\"spec\":\"r6\"",
-        "\"url\":\"https://example.com\"",
-        "\"bytes_downloaded\":1234",
-        "\"duration_ms\":42" });
-
-  expect_json_tokens(
-      envy::trace_events::lua_ctx_extract_start{
-          .spec = "r7",
-          .archive_path = "/tmp/archive.tgz",
-          .destination = "/tmp/out",
-      },
-      { "\"spec\":\"r7\"",
-        "\"archive_path\":\"/tmp/archive.tgz\"",
-        "\"destination\":\"/tmp/out\"" });
-
-  expect_json_tokens(
-      envy::trace_events::lua_ctx_extract_complete{
-          .spec = "r7",
-          .files_extracted = 99,
-          .duration_ms = 5,
-      },
-      { "\"spec\":\"r7\"", "\"files_extracted\":99", "\"duration_ms\":5" });
-
-  expect_json_tokens(
       envy::trace_events::cache_hit{
           .spec = "r8",
           .cache_key = "ck",
@@ -345,30 +289,6 @@ TEST_CASE("trace_event_to_json serializes all event types") {
           .hold_duration_ms = 15,
       },
       { "\"spec\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"hold_duration_ms\":15" });
-
-  expect_json_tokens(
-      envy::trace_events::fetch_file_start{
-          .spec = "r10",
-          .url = "https://example.com/file",
-          .destination = "/tmp/dst",
-      },
-      { "\"spec\":\"r10\"",
-        "\"url\":\"https://example.com/file\"",
-        "\"destination\":\"/tmp/dst\"" });
-
-  expect_json_tokens(
-      envy::trace_events::fetch_file_complete{
-          .spec = "r10",
-          .url = "https://example.com/file",
-          .bytes_downloaded = 321,
-          .duration_ms = 8,
-          .from_cache = false,
-      },
-      { "\"spec\":\"r10\"",
-        "\"url\":\"https://example.com/file\"",
-        "\"bytes_downloaded\":321",
-        "\"duration_ms\":8",
-        "\"from_cache\":false" });
 }
 
 TEST_CASE("trace_event_to_json escapes special characters") {

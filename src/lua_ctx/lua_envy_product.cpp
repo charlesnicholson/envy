@@ -33,8 +33,14 @@ void lua_envy_product_install(sol::table &envy_table) {
 
     pkg_phase const current_phase{ exec_ctx->current_phase.load() };
 
-    auto const dep_it{ consumer->product_dependencies.find(product_name) };
-    if (dep_it == consumer->product_dependencies.end()) {
+    // Copy under deps_mutex - the resolution loop writes provider concurrently.
+    auto const dep_opt{ [&]() -> std::optional<pkg::product_dependency> {
+      std::lock_guard const deps_lock(consumer->deps_mutex);
+      auto const dep_it{ consumer->product_dependencies.find(product_name) };
+      if (dep_it == consumer->product_dependencies.end()) { return std::nullopt; }
+      return dep_it->second;
+    }() };
+    if (!dep_opt) {
       std::string const msg{ "envy.product: pkg '" + consumer->cfg->identity +
                              "' does not declare product dependency on '" + product_name +
                              "'" };
@@ -48,7 +54,7 @@ void lua_envy_product_install(sol::table &envy_table) {
       throw std::runtime_error(msg);
     }
 
-    pkg::product_dependency const &dep{ dep_it->second };
+    pkg::product_dependency const &dep{ *dep_opt };
 
     auto emit_access = [&](bool allowed, std::string const &reason) {
       std::string const provider_identity{ dep.provider ? dep.provider->cfg->identity

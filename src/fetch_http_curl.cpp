@@ -86,6 +86,9 @@ std::filesystem::path fetch_http_download(std::string_view url,
   setopt(CURLOPT_FOLLOWLOCATION, 1L);
   setopt(CURLOPT_FAILONERROR, 1L);
   setopt(CURLOPT_NOSIGNAL, 1L);
+  setopt(CURLOPT_CONNECTTIMEOUT, 30L);
+  setopt(CURLOPT_LOW_SPEED_LIMIT, 1L);
+  setopt(CURLOPT_LOW_SPEED_TIME, 60L);
   setopt(CURLOPT_USERAGENT, kDefaultUserAgent);
   setopt(CURLOPT_WRITEFUNCTION, curl_write_file);
   setopt(CURLOPT_WRITEDATA, &output);

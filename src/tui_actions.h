@@ -113,4 +113,16 @@ shell_result run_shell_with_progress(std::string_view script,
                                      std::filesystem::path const &cache_root,
                                      shell_run_cfg cfg);
 
+// Run a phase's shell script with stdout/stderr capture. On nonzero exit, prints
+// captured stdout and a truncated stderr tail via tui::error, then throws
+// "<phase_label> shell script failed for <identity> (exit code N)" (or the
+// terminated-by-signal variant).
+void run_phase_shell_script(std::string_view script,
+                            std::string_view phase_label,
+                            std::filesystem::path const &cwd,
+                            std::string const &identity,
+                            resolved_shell shell,
+                            tui::section_handle section,
+                            std::filesystem::path const &cache_root);
+
 }  // namespace envy::tui_actions

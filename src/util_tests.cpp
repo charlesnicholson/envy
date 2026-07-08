@@ -1283,3 +1283,38 @@ TEST_CASE("util_platform_matches_platform_id: OS-arch constraint extracts OS") {
   CHECK_FALSE(envy::util_platform_matches_platform_id({ "linux-x86_64" },
                                                       envy::platform_id::WINDOWS));
 }
+
+TEST_CASE("util_is_safe_path_component") {
+  CHECK(envy::util_is_safe_path_component("tools.gcc@14.2"));
+  CHECK(envy::util_is_safe_path_component("a-b_c.d@1"));
+  CHECK(envy::util_is_safe_path_component("..."));  // odd but a plain filename
+  CHECK(envy::util_is_safe_path_component("a..b"));
+
+  CHECK_FALSE(envy::util_is_safe_path_component(""));
+  CHECK_FALSE(envy::util_is_safe_path_component("."));
+  CHECK_FALSE(envy::util_is_safe_path_component(".."));
+  CHECK_FALSE(envy::util_is_safe_path_component("a/b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a\\b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("../evil@1.0"));
+  CHECK_FALSE(envy::util_is_safe_path_component("foo.bar/../../../evil@1.0"));
+  CHECK_FALSE(envy::util_is_safe_path_component("C:evil"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a b"));
+  CHECK_FALSE(envy::util_is_safe_path_component("a\tb"));
+
+  // Non-ASCII bytes must be rejected regardless of locale (std::isalnum could
+  // otherwise accept high-bit UTF-8 bytes under a non-"C" locale).
+  CHECK_FALSE(envy::util_is_safe_path_component("caf\xc3\xa9"));   // "café" (UTF-8)
+  CHECK_FALSE(envy::util_is_safe_path_component("\xe4\xbd\xa0"));  // "你" (UTF-8)
+  CHECK_FALSE(envy::util_is_safe_path_component(std::string_view{ "\xff\xfe", 2 }));
+}
+
+TEST_CASE("util_ascii_is_alpha/alnum are locale-independent ASCII only") {
+  CHECK(envy::util_ascii_is_alpha('a'));
+  CHECK(envy::util_ascii_is_alpha('Z'));
+  CHECK(envy::util_ascii_is_alnum('0'));
+  CHECK_FALSE(envy::util_ascii_is_alpha('0'));
+  CHECK_FALSE(envy::util_ascii_is_alpha('_'));
+  CHECK_FALSE(envy::util_ascii_is_alnum(' '));
+  CHECK_FALSE(envy::util_ascii_is_alpha(static_cast<char>(0xc3)));  // UTF-8 lead byte
+  CHECK_FALSE(envy::util_ascii_is_alnum(static_cast<char>(0xe9)));
+}

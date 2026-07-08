@@ -116,7 +116,10 @@ jobs:
 
       - name: Unit tests under valgrind
         if: matrix.shard == 'main' && runner.os == 'Linux'
-        run: valgrind -q --error-exitcode=1 --leak-check=full --suppressions=valgrind.supp out/build/envy_unit_tests
+        run: valgrind -q --error-exitcode=1 --child-silent-after-fork=yes --leak-check=full --suppressions=valgrind.supp out/build/envy_unit_tests
+        env:
+          # Watchdog thread would make the shell tests' fork() misbehave under valgrind.
+          ENVY_TEST_NO_WATCHDOG: 1
 
       - name: Functional tests
         if: startsWith(matrix.shard, 'func-')
@@ -124,7 +127,7 @@ jobs:
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
           ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
-          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
+          ENVY_TEST_WRAPPER: ${{ matrix.shard == 'func-valgrind' && format('valgrind -q --error-exitcode=1 --child-silent-after-fork=yes --leak-check=full --suppressions={0}/valgrind.supp', github.workspace) || '' }}
 
       - name: Save sccache cache
         uses: actions/cache/save@v5
@@ -221,6 +224,7 @@ jobs:
         run: py -3.13 -m functional_tests
         env:
           ENVY_TEST_JOBS: ${{ matrix.test_jobs || '2' }}
+          ENVY_TEST_TIMEOUT: ${{ matrix.test_timeout || '60' }}
 
       - name: Save sccache cache
         uses: actions/cache/save@v5

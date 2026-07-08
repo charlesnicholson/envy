@@ -24,6 +24,9 @@ TEST_FILES = {
 class TestEngineDeclarativeFetch(unittest.TestCase):
     """Tests for declarative fetch phase (package fetching)."""
 
+    # Some cases clone real github repos; relax the watchdog for network latency.
+    envy_watchdog_timeout = 60
+
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
         self.test_files_dir = Path(tempfile.mkdtemp(prefix="envy-decl-fetch-files-"))

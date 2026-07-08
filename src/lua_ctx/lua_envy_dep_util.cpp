@@ -8,12 +8,23 @@ bool identity_matches(std::string const &dep_id, std::string const &query) {
   return key.matches(query);
 }
 
+namespace {
+
+// Snapshot a node's dependency edges under its deps_mutex so traversal never holds
+// two pkg locks and never races the engine's weak-resolution wiring.
+std::vector<std::pair<std::string, pkg::dependency_info>> dependency_edges(pkg *from) {
+  std::lock_guard const deps_lock(from->deps_mutex);
+  return { from->dependencies.begin(), from->dependencies.end() };
+}
+
+}  // namespace
+
 bool dependency_reachable(pkg *from,
                           std::string const &query,
                           std::unordered_set<pkg *> &visited) {
   if (!visited.insert(from).second) { return false; }
 
-  for (auto const &[dep_id, dep_info] : from->dependencies) {
+  for (auto const &[dep_id, dep_info] : dependency_edges(from)) {
     pkg *child{ dep_info.p };
     if (!child) { continue; }
     if (identity_matches(dep_id, query)) { return true; }
@@ -29,7 +40,7 @@ bool strong_reachable(pkg *from,
                       std::optional<std::string> &matched_identity) {
   bool found{ false };
 
-  for (auto const &[dep_id, dep_info] : from->dependencies) {
+  for (auto const &[dep_id, dep_info] : dependency_edges(from)) {
     pkg *child{ dep_info.p };
     if (!child) { continue; }
 

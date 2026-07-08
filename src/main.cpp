@@ -7,10 +7,15 @@
 #include "termination.h"
 #include "tui.h"
 
+#include <clocale>
 #include <cstdlib>
 #include <variant>
 
 int main(int argc, char *argv[]) {
+  // Adopt the environment's locale so libarchive (and other libc consumers) can
+  // convert UTF-8 archive/entry pathnames instead of failing under the "C" locale.
+  std::setlocale(LC_ALL, "");
+
   envy::termination_handler_install();
   envy::tui::init();
 #ifdef ENVY_FUNCTIONAL_TESTER

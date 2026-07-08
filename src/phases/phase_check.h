@@ -1,7 +1,5 @@
 #pragma once
 
-#include "sol/sol.hpp"
-
 namespace envy {
 
 class engine;

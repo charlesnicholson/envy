@@ -147,34 +147,6 @@ std::string wstring_to_utf8(std::wstring_view input) {
   return result;
 }
 
-bool ends_with_crlf(std::wstring const &text) {
-  return text.size() >= 2 && text[text.size() - 2] == L'\r' &&
-         text[text.size() - 1] == L'\n';
-}
-
-std::wstring normalize_newlines(std::wstring_view input) {
-  std::wstring result{};
-  result.reserve(input.size() + 2);
-  for (size_t i{ 0 }; i < input.size(); ++i) {
-    wchar_t const ch{ input[i] };
-    if (ch == L'\r') {
-      result.push_back(L'\r');
-      if (i + 1 < input.size() && input[i + 1] == L'\n') {
-        result.push_back(L'\n');
-        ++i;
-      } else {
-        result.push_back(L'\n');
-      }
-    } else if (ch == L'\n') {
-      result.push_back(L'\r');
-      result.push_back(L'\n');
-    } else {
-      result.push_back(ch);
-    }
-  }
-  return result;
-}
-
 // Split script into lines, preserving line content but normalizing line endings.
 std::vector<std::wstring> split_script_lines(std::wstring_view script) {
   std::vector<std::wstring> lines;

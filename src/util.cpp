@@ -18,6 +18,18 @@
 
 namespace envy {
 
+bool util_is_safe_path_component(std::string_view s) {
+  if (s.empty() || s == "." || s == "..") { return false; }
+  // Strict ASCII whitelist, locale-independent (see util_ascii_is_alnum): identities
+  // are deliberately ASCII-only and become cache/spec path components.
+  for (char const c : s) {
+    if (!util_ascii_is_alnum(c) && c != '.' && c != '-' && c != '_' && c != '@') {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string util_bytes_to_hex(void const *data, size_t length) {
   static constexpr char hex_chars[] = "0123456789abcdef";
 

@@ -174,23 +174,7 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
   std::optional<pkg_phase> needed_by;
   auto needed_by_str{ sol_util_get_optional<std::string>(table, "needed_by", "Package") };
   if (needed_by_str.has_value()) {
-    std::string const &nb{ *needed_by_str };
-    if (nb == "check") {
-      needed_by = pkg_phase::pkg_check;
-    } else if (nb == "fetch") {
-      needed_by = pkg_phase::pkg_fetch;
-    } else if (nb == "stage") {
-      needed_by = pkg_phase::pkg_stage;
-    } else if (nb == "build") {
-      needed_by = pkg_phase::pkg_build;
-    } else if (nb == "install") {
-      needed_by = pkg_phase::pkg_install;
-    } else {
-      throw std::runtime_error(
-          "Package 'needed_by' must be one of: check, fetch, stage, build, install "
-          "(got: " +
-          nb + ")");
-    }
+    needed_by = pkg_phase_parse_needed_by(*needed_by_str, "Package");
   }
 
   std::optional<std::string> product{
@@ -501,31 +485,31 @@ std::optional<std::string> manifest::run_bundle_fetch(
   }
 
   sol::table bundles_table{ bundles_obj.as<sol::table>() };
-  sol::protected_function fetch_func;
-  bool found{ false };
+  sol::protected_function const fetch_func{ [&] {
+    for (auto const &[key, value] : bundles_table) {
+      if (!value.is<sol::table>()) { continue; }
 
-  for (auto const &[key, value] : bundles_table) {
-    if (!value.is<sol::table>()) { continue; }
+      sol::table bundle_entry{ value.as<sol::table>() };
 
-    sol::table bundle_entry{ value.as<sol::table>() };
+      sol::object identity_obj{ bundle_entry["identity"] };
+      if (!identity_obj.valid() || !identity_obj.is<std::string>()) { continue; }
+      if (identity_obj.as<std::string>() != bundle_identity) { continue; }
 
-    sol::object identity_obj{ bundle_entry["identity"] };
-    if (!identity_obj.valid() || !identity_obj.is<std::string>()) { continue; }
-    if (identity_obj.as<std::string>() != bundle_identity) { continue; }
+      sol::object source_obj{ bundle_entry["source"] };
+      if (!source_obj.valid() || !source_obj.is<sol::table>()) { continue; }
 
-    sol::object source_obj{ bundle_entry["source"] };
-    if (!source_obj.valid() || !source_obj.is<sol::table>()) { continue; }
+      sol::table source_table{ source_obj.as<sol::table>() };
+      sol::object fetch_obj{ source_table["fetch"] };
+      if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { continue; }
 
-    sol::table source_table{ source_obj.as<sol::table>() };
-    sol::object fetch_obj{ source_table["fetch"] };
-    if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) { continue; }
+      return fetch_obj.as<sol::protected_function>();
+    }
+    return sol::protected_function{};
+  }() };
 
-    fetch_func = fetch_obj.as<sol::protected_function>();
-    found = true;
-    break;
+  if (!fetch_func.valid()) {
+    return "bundle fetch function not found: " + bundle_identity;
   }
-
-  if (!found) { return "bundle fetch function not found: " + bundle_identity; }
 
   // RAII guard to clear registry on scope exit (including exceptions)
   sol::state_view lua_view{ *lua_ };

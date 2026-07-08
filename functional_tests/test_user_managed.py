@@ -82,6 +82,9 @@ end
 class TestUserManagedPackages(unittest.TestCase):
     """Test user-managed package behavior with check verbs."""
 
+    # Some cases fetch over the real network; relax the watchdog for latency.
+    envy_watchdog_timeout = 60
+
     def setUp(self):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-user-managed-test-"))
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-user-managed-work-"))

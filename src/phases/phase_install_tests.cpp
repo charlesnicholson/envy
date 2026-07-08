@@ -62,7 +62,6 @@ struct install_test_fixture {
                                       .default_shell_ptr = nullptr,
                                       .exec_ctx = nullptr,
                                       .lua = std::move(lua_state),
-                                      // lua_mutex is default-initialized
                                       .lock = nullptr,
                                       .canonical_identity_hash = {},
                                       .pkg_path = std::filesystem::path{},
@@ -84,11 +83,14 @@ struct install_test_fixture {
     std::filesystem::remove_all(temp_root, ec);
   }
 
-  sol::state_view lua_state() { return sol::state_view{ *p->lua }; }
+  // Returns the guard accessor (holds the lua mutex). The temporary lives to the end
+  // of the full expression it's used in, so `(*lua())[key] = v` runs under the lock;
+  // bind it to a named local when driving the state across multiple statements.
+  sol_state_guard::accessor lua() { return p->lua.lock(); }
 
   // Configure the fixture as cache-managed (CHECK cleared, type = CACHE_MANAGED).
   void clear_check_verb() {
-    lua_state()["CHECK"] = sol::lua_nil;
+    (*lua())["CHECK"] = sol::lua_nil;
     p->type = pkg_type::CACHE_MANAGED;
   }
 
@@ -96,18 +98,19 @@ struct install_test_fixture {
   // Dispatch in run_install_phase keys on p->type, but tests that exercise
   // run_check_verb() still need CHECK populated in the Lua state.
   void set_check_verb(std::string_view check_code) {
-    lua_state()["CHECK"] = std::string(check_code);
+    (*lua())["CHECK"] = std::string(check_code);
     p->type = pkg_type::USER_MANAGED;
   }
 
-  void clear_install_verb() { lua_state()["INSTALL"] = sol::lua_nil; }
+  void clear_install_verb() { (*lua())["INSTALL"] = sol::lua_nil; }
 
   void set_install_string(std::string_view install_code) {
-    lua_state()["INSTALL"] = std::string(install_code);
+    (*lua())["INSTALL"] = std::string(install_code);
   }
 
   void set_install_function(std::string_view install_code) {
-    auto state{ lua_state() };
+    auto const acc{ lua() };
+    sol::state_view state{ *acc };
     std::string code = "INSTALL = " + std::string(install_code);
     sol::protected_function_result result =
         state.safe_script(code, sol::script_pass_on_error);
@@ -644,7 +647,7 @@ TEST_CASE_FIXTURE(
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
   auto const cwd_file{ temp_root / "func_install_cwd.txt" };
-  lua_state()["CWD_FILE"] = cwd_file.string();
+  (*lua())["CWD_FILE"] = cwd_file.string();
 
 #ifdef _WIN32
   set_install_function(R"lua(
@@ -677,7 +680,7 @@ TEST_CASE_FIXTURE(
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
   auto const cwd_file{ temp_root / "returned_string_cwd.txt" };
-  lua_state()["CWD_FILE"] = cwd_file.string();
+  (*lua())["CWD_FILE"] = cwd_file.string();
 
 #ifdef _WIN32
   set_install_function(R"lua(

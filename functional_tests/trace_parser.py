@@ -36,18 +36,10 @@ EventType = Literal[
     "thread_complete",
     "spec_registered",
     "target_extended",
-    "lua_ctx_run_start",
-    "lua_ctx_run_complete",
-    "lua_ctx_fetch_start",
-    "lua_ctx_fetch_complete",
-    "lua_ctx_extract_start",
-    "lua_ctx_extract_complete",
     "cache_hit",
     "cache_miss",
     "lock_acquired",
     "lock_released",
-    "fetch_file_start",
-    "fetch_file_complete",
 ]
 
 

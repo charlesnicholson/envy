@@ -24,7 +24,6 @@ class cmd_product : public cmd {
   cmd_product(cfg cfg, std::optional<std::filesystem::path> const &cli_cache_root);
 
   void execute() override;
-  cfg const &get_cfg() const { return cfg_; }
 
  private:
   cfg cfg_;

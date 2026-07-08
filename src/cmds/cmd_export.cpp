@@ -43,11 +43,7 @@ cmd_export::cmd_export(cfg cfg, std::optional<std::filesystem::path> const &cli_
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_export::execute() {
-  auto const m{ manifest::find_and_load(cfg_.manifest_path) };
-
-  reexec_if_needed(m->meta, cli_cache_root_);
-
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
+  auto const [m, c]{ cmd_startup_load("export", cfg_.manifest_path, cli_cache_root_) };
 
   // Collect target packages: all if no queries, matched subset otherwise
   auto const targets{ [&] {

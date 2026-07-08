@@ -39,12 +39,7 @@ cmd_install::cmd_install(cfg cfg, std::optional<fs::path> const &cli_cache_root)
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_install::execute() {
-  auto const m{ manifest::load(manifest::find_manifest_path(cfg_.manifest_path, false)) };
-  if (!m) { throw std::runtime_error("install: could not load manifest"); }
-
-  reexec_if_needed(m->meta, cli_cache_root_);
-
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
+  auto const [m, c]{ cmd_startup_load("install", cfg_.manifest_path, cli_cache_root_) };
 
   auto const targets{ [&] {
     std::vector<pkg_cfg const *> t;

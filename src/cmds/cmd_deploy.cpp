@@ -48,11 +48,9 @@ cmd_deploy::cmd_deploy(cfg cfg, std::optional<std::filesystem::path> const &cli_
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_deploy::execute() {
-  auto const m{ manifest::load(
-      manifest::find_manifest_path(cfg_.manifest_path, cfg_.subproject)) };
-  if (!m) { throw std::runtime_error("deploy: could not load manifest"); }
-
-  reexec_if_needed(m->meta, cli_cache_root_);
+  auto const [m, c]{
+    cmd_startup_load("deploy", cfg_.manifest_path, cli_cache_root_, cfg_.subproject)
+  };
 
   if (!m->meta.bin) {
     throw std::runtime_error(
@@ -60,8 +58,6 @@ void cmd_deploy::execute() {
   }
 
   auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
-
-  auto c{ self_deploy::ensure(cli_cache_root_, m->meta.cache_for_platform()) };
 
   fs::path const manifest_dir{ m->manifest_path.parent_path() };
   update_luarc_types_path(manifest_dir, m->meta);

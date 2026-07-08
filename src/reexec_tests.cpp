@@ -102,6 +102,13 @@ TEST_CASE("reexec_is_valid_version: space rejected") {
   CHECK_FALSE(envy::reexec_is_valid_version("1.2.3 ; rm -rf /"));
 }
 
+TEST_CASE("reexec_is_valid_version: non-ASCII rejected regardless of locale") {
+  // Version becomes the envy/<version> cache path component; high-bit UTF-8 bytes
+  // must be rejected (std::isalnum could accept them under a non-"C" locale).
+  CHECK_FALSE(envy::reexec_is_valid_version("1.2.3-caf\xc3\xa9"));  // "café"
+  CHECK_FALSE(envy::reexec_is_valid_version("\xe4\xbd\xa0"));       // "你"
+}
+
 TEST_CASE("reexec_is_valid_version: null byte rejected") {
   CHECK_FALSE(envy::reexec_is_valid_version(std::string_view{ "1.2\0.3", 6 }));
 }

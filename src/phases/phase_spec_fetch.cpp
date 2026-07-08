@@ -356,15 +356,15 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
     std::filesystem::path const tmp_dir{ cache_result.lock->work_dir() / "tmp" };
     std::filesystem::create_directories(tmp_dir);
 
-    std::lock_guard const lock(parent->lua_mutex);
+    auto const parent_acc{ parent->lua.lock() };
 
-    if (!parent->lua) {
+    if (!parent_acc) {
       throw std::runtime_error("Custom fetch function spec has no parent Lua state: " +
                                cfg.identity);
     }
 
     {
-      sol::state_view parent_lua_view{ *parent->lua };
+      sol::state_view parent_lua_view{ *parent_acc };
 
       auto fetch_func_opt{ pkg_cfg::get_source_fetch(parent_lua_view, cfg.identity) };
       if (!fetch_func_opt) {
@@ -376,7 +376,11 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
       // Set up phase context with lock so envy.commit_fetch can access paths.
       // The inline source.fetch runs in parent's Lua state, so we pass the lock
       // explicitly rather than through parent->lock.
-      phase_context_guard ctx_guard{ &eng, parent, tmp_dir, cache_result.lock.get() };
+      phase_context_guard ctx_guard{ &eng,
+                                     parent,
+                                     parent_lua_view.lua_state(),
+                                     tmp_dir,
+                                     cache_result.lock.get() };
 
       sol::protected_function_result fetch_result{ (*fetch_func_opt)(tmp_dir.string(),
                                                                      options_obj) };
@@ -582,8 +586,11 @@ std::optional<pkg_cfg::bundle_source> try_parse_pure_bundle_dep(
         "Pure bundle dependency 'bundle' field must be string (identity)");
   }
   std::string bundle_identity{ bundle_obj.as<std::string>() };
-  if (bundle_identity.empty()) {
-    throw std::runtime_error("Pure bundle dependency 'bundle' field cannot be empty");
+  if (!util_is_safe_path_component(bundle_identity)) {
+    throw std::runtime_error(
+        "Pure bundle dependency 'bundle' field is not a valid "
+        "identity: '" +
+        bundle_identity + "'");
   }
 
   // Parse source: string (URL/path) or table { fetch = function, dependencies = {} }
@@ -706,23 +713,7 @@ pkg_cfg *parse_spec_from_bundle_dep(sol::table const &table,
     sol_util_get_optional<std::string>(table, "needed_by", "Dependency")
   };
   if (needed_by_str.has_value()) {
-    std::string const &nb{ *needed_by_str };
-    if (nb == "check") {
-      needed_by = pkg_phase::pkg_check;
-    } else if (nb == "fetch") {
-      needed_by = pkg_phase::pkg_fetch;
-    } else if (nb == "stage") {
-      needed_by = pkg_phase::pkg_stage;
-    } else if (nb == "build") {
-      needed_by = pkg_phase::pkg_build;
-    } else if (nb == "install") {
-      needed_by = pkg_phase::pkg_install;
-    } else {
-      throw std::runtime_error(
-          "Dependency 'needed_by' must be one of: check, fetch, stage, build, install "
-          "(got: " +
-          nb + ")");
-    }
+    needed_by = pkg_phase_parse_needed_by(*needed_by_str, "Dependency");
   }
 
   std::optional<std::string> product{
@@ -790,23 +781,7 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
         sol_util_get_optional<std::string>(table, "needed_by", "Bundle dependency")
       };
       if (needed_by_str.has_value()) {
-        std::string const &nb{ *needed_by_str };
-        if (nb == "check") {
-          needed_by = pkg_phase::pkg_check;
-        } else if (nb == "fetch") {
-          needed_by = pkg_phase::pkg_fetch;
-        } else if (nb == "stage") {
-          needed_by = pkg_phase::pkg_stage;
-        } else if (nb == "build") {
-          needed_by = pkg_phase::pkg_build;
-        } else if (nb == "install") {
-          needed_by = pkg_phase::pkg_install;
-        } else {
-          throw std::runtime_error(
-              "Bundle dependency 'needed_by' must be one of: check, fetch, stage, build, "
-              "install (got: " +
-              nb + ")");
-        }
+        needed_by = pkg_phase_parse_needed_by(*needed_by_str, "Bundle dependency");
       }
 
       // Create a pkg_cfg for the bundle dependency
@@ -942,19 +917,26 @@ void wire_dependency_graph(pkg *p, engine &eng) {
     if (is_product_dep) {
       std::string const &product_name{ *dep_cfg->product };
 
-      if (auto const [_, inserted]{ p->product_dependencies.emplace(
-              product_name,
-              pkg::product_dependency{ .name = product_name,
-                                       .needed_by = needed_by_phase,
-                                       .provider = nullptr,
-                                       .constraint_identity = dep_cfg->identity }) };
-          !inserted) {
+      bool inserted{ false };
+      {
+        std::lock_guard const deps_lock(p->deps_mutex);
+        inserted = p->product_dependencies
+                       .emplace(product_name,
+                                pkg::product_dependency{ .name = product_name,
+                                                         .needed_by = needed_by_phase,
+                                                         .provider = nullptr,
+                                                         .constraint_identity =
+                                                             dep_cfg->identity })
+                       .second;
+      }
+      if (!inserted) {
         throw std::runtime_error("Duplicate product dependency '" + product_name +
                                  "' in spec '" + p->cfg->identity + "'");
       }
     }
 
     if (dep_cfg->is_weak_reference()) {
+      std::lock_guard const deps_lock(p->deps_mutex);
       p->weak_references.push_back(pkg::weak_reference{
           .query = is_product_dep ? *dep_cfg->product : dep_cfg->identity,
           .fallback = dep_cfg->weak,
@@ -969,11 +951,14 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       // Strong product dependency (has source) - wire directly, no weak resolution needed
       pkg *dep{ eng.ensure_pkg(dep_cfg) };
 
-      p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+      {
+        std::lock_guard const deps_lock(p->deps_mutex);
+        p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+        auto &pd{ p->product_dependencies.at(*dep_cfg->product) };
+        pd.provider = dep;
+        pd.constraint_identity = dep_cfg->identity;
+      }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
-      auto &pd{ p->product_dependencies.at(*dep_cfg->product) };
-      pd.provider = dep;
-      pd.constraint_identity = dep_cfg->identity;
 
       std::vector<std::string> child_chain{ ctx.ancestor_chain };
       child_chain.push_back(p->cfg->identity);
@@ -986,7 +971,10 @@ void wire_dependency_graph(pkg *p, engine &eng) {
     if (is_pure_bundle_dep) {
       // Pure bundle deps fetch the bundle but don't execute spec phases
       pkg *dep{ eng.ensure_pkg(dep_cfg) };
-      p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+      {
+        std::lock_guard const deps_lock(p->deps_mutex);
+        p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+      }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
       std::vector<std::string> child_chain{ ctx.ancestor_chain };
@@ -998,7 +986,10 @@ void wire_dependency_graph(pkg *p, engine &eng) {
     pkg *dep{ eng.ensure_pkg(dep_cfg) };
 
     // Store dependency info in parent's map for ctx.pkg() lookup and phase coordination
-    p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+    {
+      std::lock_guard const deps_lock(p->deps_mutex);
+      p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
+    }
     ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
     std::vector<std::string> child_chain{ ctx.ancestor_chain };
@@ -1100,14 +1091,18 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
               if (cfg.parent) {
                 // Bundle declared in a spec's DEPENDENCIES - use parent's Lua state
                 pkg *parent{ eng.find_exact(pkg_key(*cfg.parent)) };
-                if (!parent || !parent->lua) {
+                if (!parent) {
                   throw std::runtime_error(
                       "Bundle custom fetch: parent spec Lua state unavailable for " +
                       bundle_id);
                 }
-
-                std::lock_guard const lock(parent->lua_mutex);
-                sol::state_view parent_lua{ *parent->lua };
+                auto const parent_acc{ parent->lua.lock() };
+                if (!parent_acc) {
+                  throw std::runtime_error(
+                      "Bundle custom fetch: parent spec Lua state unavailable for " +
+                      bundle_id);
+                }
+                sol::state_view parent_lua{ *parent_acc };
 
                 auto fetch_func_opt{ pkg_cfg::get_bundle_fetch(parent_lua, bundle_id) };
                 if (!fetch_func_opt) {
@@ -1119,6 +1114,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                 // Set up phase context in parent's Lua state
                 phase_context_guard ctx_guard{ &eng,
                                                parent,
+                                               parent_lua.lua_state(),
                                                tmp_dir,
                                                cache_result.lock.get() };
 
@@ -1321,13 +1317,15 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
 
   run_options(p, *lua);
 
-  // Extract dependency identities for ctx.pkg() validation
-  p->declared_dependencies.reserve(p->owned_dependency_cfgs.size());
-  for (auto const *dep_cfg : p->owned_dependency_cfgs) {
-    p->declared_dependencies.push_back(dep_cfg->identity);
+  {  // Extract dependency identities for ctx.pkg() validation
+    std::lock_guard const deps_lock(p->deps_mutex);
+    p->declared_dependencies.reserve(p->owned_dependency_cfgs.size());
+    for (auto const *dep_cfg : p->owned_dependency_cfgs) {
+      p->declared_dependencies.push_back(dep_cfg->identity);
+    }
   }
 
-  p->lua = std::move(lua);
+  p->lua.set(std::move(lua));
 
   wire_dependency_graph(p, eng);
 }

@@ -65,43 +65,6 @@ struct target_extended {
   pkg_phase new_target;
 };
 
-struct lua_ctx_run_start {
-  std::string spec;
-  std::string command;
-  std::string cwd;
-};
-
-struct lua_ctx_run_complete {
-  std::string spec;
-  int exit_code;
-  std::int64_t duration_ms;
-};
-
-struct lua_ctx_fetch_start {
-  std::string spec;
-  std::string url;
-  std::string destination;
-};
-
-struct lua_ctx_fetch_complete {
-  std::string spec;
-  std::string url;
-  std::int64_t bytes_downloaded;
-  std::int64_t duration_ms;
-};
-
-struct lua_ctx_extract_start {
-  std::string spec;
-  std::string archive_path;
-  std::string destination;
-};
-
-struct lua_ctx_extract_complete {
-  std::string spec;
-  std::int64_t files_extracted;
-  std::int64_t duration_ms;
-};
-
 struct lua_ctx_package_access {
   std::string spec;
   std::string target;
@@ -155,20 +118,6 @@ struct lock_released {
   std::int64_t hold_duration_ms;
 };
 
-struct fetch_file_start {
-  std::string spec;
-  std::string url;
-  std::string destination;
-};
-
-struct fetch_file_complete {
-  std::string spec;
-  std::string url;
-  std::int64_t bytes_downloaded;
-  std::int64_t duration_ms;
-  bool from_cache;
-};
-
 struct spec_fetch_counter_inc {
   std::string spec;
   int new_value;
@@ -193,11 +142,6 @@ struct execute_downloads_complete {
   std::int64_t duration_ms;
 };
 
-struct debug_marker {
-  std::string spec;
-  int marker_id;
-};
-
 struct cache_check_entry {
   std::string spec;
   std::string entry_dir;
@@ -211,26 +155,10 @@ struct cache_check_result {
   std::string check_location;  // "before_lock" or "after_lock"
 };
 
-struct directory_flushed {
-  std::string spec;
-  std::string dir_path;
-};
-
-struct file_touched {
-  std::string spec;
-  std::string file_path;
-};
-
 struct file_exists_check {
   std::string spec;
   std::string file_path;
   bool exists;
-};
-
-struct directory_flush_failed {
-  std::string spec;
-  std::string dir_path;
-  std::string reason;
 };
 
 struct extract_archive_start {
@@ -278,12 +206,6 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::thread_complete,
                                    trace_events::spec_registered,
                                    trace_events::target_extended,
-                                   trace_events::lua_ctx_run_start,
-                                   trace_events::lua_ctx_run_complete,
-                                   trace_events::lua_ctx_fetch_start,
-                                   trace_events::lua_ctx_fetch_complete,
-                                   trace_events::lua_ctx_extract_start,
-                                   trace_events::lua_ctx_extract_complete,
                                    trace_events::lua_ctx_package_access,
                                    trace_events::lua_ctx_product_access,
                                    trace_events::lua_ctx_loadenv_spec_access,
@@ -291,19 +213,13 @@ using trace_event_t = std::variant<trace_events::phase_blocked,
                                    trace_events::cache_miss,
                                    trace_events::lock_acquired,
                                    trace_events::lock_released,
-                                   trace_events::fetch_file_start,
-                                   trace_events::fetch_file_complete,
                                    trace_events::spec_fetch_counter_inc,
                                    trace_events::spec_fetch_counter_dec,
                                    trace_events::execute_downloads_start,
                                    trace_events::execute_downloads_complete,
-                                   trace_events::debug_marker,
                                    trace_events::cache_check_entry,
                                    trace_events::cache_check_result,
-                                   trace_events::directory_flushed,
-                                   trace_events::file_touched,
                                    trace_events::file_exists_check,
-                                   trace_events::directory_flush_failed,
                                    trace_events::extract_archive_start,
                                    trace_events::extract_archive_complete,
                                    trace_events::product_transitive_check,
@@ -407,56 +323,6 @@ struct phase_trace_scope {
       .new_target = (new_target_value), \
   }))
 
-#define ENVY_TRACE_LUA_CTX_RUN_START(spec_value, command_value, cwd_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_run_start{ \
-      .spec = (spec_value), \
-      .command = (command_value), \
-      .cwd = (cwd_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_RUN_COMPLETE(spec_value, exit_code_value, duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_run_complete{ \
-      .spec = (spec_value), \
-      .exit_code = (exit_code_value), \
-      .duration_ms = (duration_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_FETCH_START(spec_value, url_value, destination_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_fetch_start{ \
-      .spec = (spec_value), \
-      .url = (url_value), \
-      .destination = (destination_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_FETCH_COMPLETE(spec_value, \
-                                          url_value, \
-                                          bytes_downloaded_value, \
-                                          duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_fetch_complete{ \
-      .spec = (spec_value), \
-      .url = (url_value), \
-      .bytes_downloaded = (bytes_downloaded_value), \
-      .duration_ms = (duration_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_EXTRACT_START(spec_value, \
-                                         archive_path_value, \
-                                         destination_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_extract_start{ \
-      .spec = (spec_value), \
-      .archive_path = (archive_path_value), \
-      .destination = (destination_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_EXTRACT_COMPLETE(spec_value, \
-                                            files_extracted_value, \
-                                            duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_extract_complete{ \
-      .spec = (spec_value), \
-      .files_extracted = (files_extracted_value), \
-      .duration_ms = (duration_value), \
-  }))
-
 #define ENVY_TRACE_LUA_CTX_PACKAGE_ACCESS(spec_value, \
                                           target_value, \
                                           current_phase_value, \
@@ -537,26 +403,6 @@ struct phase_trace_scope {
       .hold_duration_ms = (hold_duration_value), \
   }))
 
-#define ENVY_TRACE_FETCH_FILE_START(spec_value, url_value, destination_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::fetch_file_start{ \
-      .spec = (spec_value), \
-      .url = (url_value), \
-      .destination = (destination_value), \
-  }))
-
-#define ENVY_TRACE_FETCH_FILE_COMPLETE(spec_value, \
-                                       url_value, \
-                                       bytes_downloaded_value, \
-                                       duration_value, \
-                                       from_cache_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::fetch_file_complete{ \
-      .spec = (spec_value), \
-      .url = (url_value), \
-      .bytes_downloaded = (bytes_downloaded_value), \
-      .duration_ms = (duration_value), \
-      .from_cache = (from_cache_value), \
-  }))
-
 #define ENVY_TRACE_SPEC_FETCH_COUNTER_INC(spec_value, new_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::spec_fetch_counter_inc{ \
       .spec = (spec_value), \
@@ -588,12 +434,6 @@ struct phase_trace_scope {
       .duration_ms = (duration_ms_value), \
   }))
 
-#define ENVY_TRACE_DEBUG_MARKER(spec_value, marker_id_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::debug_marker{ \
-      .spec = (spec_value), \
-      .marker_id = (marker_id_value), \
-  }))
-
 #define ENVY_TRACE_CACHE_CHECK_ENTRY(spec_value, entry_dir_value, check_location_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::cache_check_entry{ \
       .spec = (spec_value), \
@@ -612,30 +452,11 @@ struct phase_trace_scope {
       .check_location = (check_location_value), \
   }))
 
-#define ENVY_TRACE_DIRECTORY_FLUSHED(spec_value, dir_path_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::directory_flushed{ \
-      .spec = (spec_value), \
-      .dir_path = (dir_path_value), \
-  }))
-
-#define ENVY_TRACE_FILE_TOUCHED(spec_value, file_path_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::file_touched{ \
-      .spec = (spec_value), \
-      .file_path = (file_path_value), \
-  }))
-
 #define ENVY_TRACE_FILE_EXISTS_CHECK(spec_value, file_path_value, exists_value) \
   ENVY_TRACE_EMIT((::envy::trace_events::file_exists_check{ \
       .spec = (spec_value), \
       .file_path = (file_path_value), \
       .exists = (exists_value), \
-  }))
-
-#define ENVY_TRACE_DIRECTORY_FLUSH_FAILED(spec_value, dir_path_value, reason_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::directory_flush_failed{ \
-      .spec = (spec_value), \
-      .dir_path = (dir_path_value), \
-      .reason = (reason_value), \
   }))
 
 #define ENVY_TRACE_EXTRACT_ARCHIVE_START(spec_value, \

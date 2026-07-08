@@ -14,10 +14,10 @@ phase_context const *lua_phase_context_get(sol::this_state ts) {
 
 phase_context_guard::phase_context_guard(engine *eng,
                                          pkg *p,
+                                         lua_State *L,
                                          std::optional<std::filesystem::path> run_dir,
                                          cache::scoped_entry_lock const *lock)
-    : lua_state_{ p ? p->lua->lua_state() : nullptr },
-      ctx_{ eng, p, std::move(run_dir), lock } {
+    : lua_state_{ L }, ctx_{ eng, p, std::move(run_dir), lock } {
   if (!lua_state_) { return; }
 
   sol::state_view lua{ lua_state_ };

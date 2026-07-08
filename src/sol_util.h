@@ -3,6 +3,7 @@
 #include "sol/sol.hpp"
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,6 +13,41 @@ namespace envy {
 
 using sol_state_ptr = std::unique_ptr<sol::state>;
 sol_state_ptr sol_util_make_lua_state();  // with std libs
+
+// Owns a Lua state plus the mutex serializing access to it. lock() is the only path
+// to the state, so unsynchronized cross-thread access is structurally impossible.
+// Policy: acquire the accessor once at the entry point of any Lua interaction, hold
+// it for the interaction's full extent (including protected_function calls), and
+// pass sol views/objects down the call stack — never re-lock deeper in.
+class sol_state_guard {
+ public:
+  class accessor {
+   public:
+    accessor(std::mutex &m, sol::state *s) : lock_{ m }, state_{ s } {}
+    explicit operator bool() const { return state_ != nullptr; }
+    sol::state &operator*() const { return *state_; }
+    sol::state *operator->() const { return state_; }
+
+   private:
+    std::unique_lock<std::mutex> lock_;
+    sol::state *state_;
+  };
+
+  sol_state_guard() = default;
+  sol_state_guard(std::nullptr_t) {}
+  sol_state_guard(sol_state_ptr state) : state_{ std::move(state) } {}
+
+  accessor lock() const { return { mutex_, state_.get() }; }
+
+  void set(sol_state_ptr state) {
+    std::lock_guard const l{ mutex_ };
+    state_ = std::move(state);
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  sol_state_ptr state_;
+};
 
 namespace detail {
 
