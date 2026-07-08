@@ -79,7 +79,7 @@ struct setup_test_fixture {
     }
 
     p->setup_pairs.clear();
-    sol::table setup{ state["SETUP"] };
+    sol::table setup{ state["SETUP"].get<sol::table>() };
     for (auto const &[key, _] : setup) {
       p->setup_pairs.emplace(sol::object(key).as<std::string>(),
                              std::vector<std::string>{});
