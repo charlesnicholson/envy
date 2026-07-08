@@ -52,13 +52,17 @@ IDENTITY = "local.product_programmatic@v1"
 PRODUCTS = {{ tool = "programmatic-tool" }}
 
 USER_MANAGED = true
-CHECK = function(project_root, options)
-  return true  -- Already satisfied; no cache artifact
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return true  -- Already satisfied; no cache artifact
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- User-managed; no cache artifact
+    end,
+  }},
+}}
 
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- User-managed; no cache artifact
-end
 """
 
 # Shared spec: Consumer with ref-only product dependency (no recipe/source, unconstrained)

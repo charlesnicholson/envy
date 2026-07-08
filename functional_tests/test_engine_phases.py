@@ -51,13 +51,17 @@ class TestEnginePhases(unittest.TestCase):
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache interaction
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
 """
         spec_path = self.write_spec("simple", spec)
         trace_file = self.cache_root / "trace.jsonl"
@@ -134,13 +138,17 @@ end
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Install tool
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Install tool
-end
 """
         self.write_spec("tool", tool_spec)
 

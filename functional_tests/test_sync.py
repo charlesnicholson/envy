@@ -58,12 +58,16 @@ SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
 
 # Cache-managed dependency with archive fetch and build phase
@@ -88,12 +92,16 @@ SPEC_DIAMOND_D = """IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
 
 # Diamond C: depends on D, right side of diamond
@@ -103,12 +111,16 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
 
 # Product provider: cached package exposing 'tool' product at bin/tool

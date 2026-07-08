@@ -33,12 +33,16 @@ SPECS = {
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
     (specs_dir / "spec_a.lua").write_text(spec_a_lua)
 
@@ -46,12 +50,16 @@ end
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
     (specs_dir / "spec_b.lua").write_text(spec_b_lua)
 
@@ -234,12 +242,16 @@ SPECS = {{
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
             spec_path.write_text(spec_lua)
 
@@ -309,12 +321,16 @@ SPECS = {
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         (specs_dir / "spec.lua").write_text(spec_lua)
 
@@ -499,12 +515,16 @@ SPECS = {{
 DEPENDENCIES = {{}}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
             spec_path.write_text(spec_lua)
 
@@ -570,18 +590,22 @@ SPECS = {
 """
         (self.bundle_dir / "envy-bundle.lua").write_text(bundle_lua)
 
-        # local. specs are USER_MANAGED, so INSTALL gets (project_root, options)
+        # local. specs are USER_MANAGED, so SETUP pair verbs get (pkg_dir, options)
         spec_lua = """IDENTITY = "local.marker@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("local bundle spec executed successfully")
+    end,
+  },
+}
 
-function INSTALL(project_root, options)
-  envy.info("local bundle spec executed successfully")
-end
 """
         (specs_dir / "marker.lua").write_text(spec_lua)
 
@@ -623,12 +647,16 @@ SPECS = {
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         (specs_dir / "dummy.lua").write_text(dummy_lua)
 
@@ -647,13 +675,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  local helper = envy.loadenv_spec("local.helpers@v1", "lib.helper")
-  return helper.HELPER_VERSION == "1.0.0"
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      local helper = envy.loadenv_spec("local.helpers@v1", "lib.helper")
+      return helper.HELPER_VERSION == "1.0.0"
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         consumer_path = self.test_dir / "consumer.lua"
         consumer_path.write_text(consumer_spec)

@@ -82,9 +82,8 @@ if res.exit_code ~= 0 then error("foo not installed") end
 
 **Default cwd by phase:**
 - FETCH: tmp_dir
-- STAGE/BUILD: stage_dir
-- INSTALL: install_dir (cache-managed) or project_root (user-managed)
-- CHECK: project_root
+- STAGE/BUILD/INSTALL: stage_dir
+- SETUP pair CHECK/INSTALL: project_root
 
 ---
 

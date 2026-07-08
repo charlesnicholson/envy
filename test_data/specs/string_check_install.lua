@@ -1,5 +1,9 @@
--- Test spec with string CHECK and INSTALL (user-managed)
+-- Test spec with string CHECK and INSTALL pair (user-managed)
 IDENTITY = "local.string_check_install@v1"
 USER_MANAGED = true
-CHECK = "echo checking"
-INSTALL = "echo installing"
+SETUP = {
+  main = {
+    CHECK = "echo checking",
+    INSTALL = "echo installing",
+  },
+}

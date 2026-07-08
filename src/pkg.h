@@ -9,9 +9,11 @@
 #include "tui.h"
 
 #include <filesystem>
+#include <map>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace envy {
@@ -68,6 +70,11 @@ struct pkg {
   pkg_type type;
   int schema{ 0 };
 
+  // SETUP pairs declared by the spec: name → per-pair platform constraints
+  // (empty = all). Sorted map gives deterministic execution order. Written once
+  // during spec_fetch, read by the setup phase.
+  std::map<std::string, std::vector<std::string>> setup_pairs;
+
   // Dependency state — deps_mutex guards every field below. The engine's resolution
   // loop mutates these maps while worker threads traverse them. Lock one node at a
   // time; snapshot before recursing or blocking so no two pkg locks nest.
@@ -80,6 +87,12 @@ struct pkg {
   std::unordered_map<std::string, product_entry> products;
   std::vector<std::string> resolved_platforms;
   std::vector<std::string> resolved_weak_dependency_keys;
+
+  // SETUP selection, merged across referring cfgs (manifest entries only may
+  // carry `setup`). setup_default means some referrer omitted `setup`: the
+  // package-type default applies (user-managed: all pairs; cache-managed: none).
+  std::unordered_set<std::string> setup_selected;
+  bool setup_default{ false };
 };
 
 }  // namespace envy

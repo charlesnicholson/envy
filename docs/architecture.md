@@ -2,9 +2,9 @@
 
 ## Project Manifests
 
-All script-global variables are uppercase: manifests export `PACKAGES`; specs declare `IDENTITY`, `FETCH`, `CHECK`, `STAGE`, `BUILD`, `INSTALL`, `DEPENDENCIES`, and `PRODUCTS`.
+All script-global variables are uppercase: manifests export `PACKAGES`; specs declare `IDENTITY`, `FETCH`, `STAGE`, `BUILD`, `INSTALL`, `SETUP`, `DEPENDENCIES`, and `PRODUCTS`.
 
-**Syntax:** Shorthand `"namespace.name@version"` expands to `{ spec = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`.
+**Syntax:** Shorthand `"namespace.name@version"` expands to `{ spec = "namespace.name@version" }`. Table syntax supports `source`, `sha256`, `file`, `fetch`, `options`, `dependencies`, `needed_by`, `setup`.
 
 **Platform-specific packages:** Manifests are Lua scripts—use conditionals and `envy.join()` to combine common and OS-specific package lists.
 
@@ -63,6 +63,7 @@ PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 - `file` — Project-local spec path (never cached; `local.*` namespace only)
 - `subdir` — Subdirectory within archive or git repo containing spec entry point
 - `options` — Recipe-specific configuration (passed to phase functions as `options` parameter)
+- `setup` — Names of the spec's `SETUP` pairs to run on this host (manifest entries only; never hashed into the package key)
 - `dependencies` — Transitive dependencies (specs this spec needs)
   - **Strong:** full spec spec with `source` (or manifest-provided source)
   - **Weak:** partial `recipe` plus `weak = { ... }` fallback spec
@@ -152,7 +153,6 @@ end
 
 Specs define verbs describing how to acquire, validate, and install packages:
 
-- **`check`** — Test whether package is already satisfied (optional). Returns boolean or exit code. If absent, uses cache marker (`envy-complete`). Enables wrapping system package managers (apt, brew) without cache involvement.
 - **`fetch`** — Acquire source materials. Can be:
   - String: `fetch = "https://..."` (no verification)
   - Single file: `fetch = {url="...", sha256="..."}` (optional verification)
@@ -162,45 +162,45 @@ Specs define verbs describing how to acquire, validate, and install packages:
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
 - **`build`** — Compile or process staged content. Specs access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
+- **`setup`** — Named host-side CHECK/INSTALL pairs (`SETUP = { name = { CHECK, INSTALL, PLATFORMS? } }`). Run after install, check-gated every invocation, never cached or hashed. See below.
+
+### SETUP Pairs: Host State Beside (or Instead of) the Cache
+
+Payload bytes live in the cache and are keyed by `(identity, options, platform)`. Host state (udev rules, system package managers, credentials) is per-machine, per-intent, and idempotent-checkable — it must never influence the package hash. `SETUP` pairs express it:
+
+- Pair verbs: `CHECK(pkg_dir, options) -> bool|string` (string runs as shell; true/exit 0 = satisfied) and `INSTALL(pkg_dir, options) -> nil|string` (string runs as shell). `pkg_dir` is the installed payload path for cache-managed packages, `nil` for user-managed. cwd = `project_root`.
+- Selection: manifest entry `setup = { "name", ... }` (dependency entries may not carry `setup`). Defaults: user-managed packages run **all** pairs; cache-managed run **none**. Explicit list narrows or selects; `setup = {}` disables all. Unknown names are hard errors.
+- Per-pair `PLATFORMS` filters against the host (mismatches skip silently).
+- Selection is **never** part of `format_key()`/BLAKE3 — one depot artifact serves every selection. Different projects sharing a user-wide cache get their own selections honored on every run because pairs are CHECK-gated, not marker-gated.
+- Execution: pairs run sorted by name in the `setup` phase (after `install`, before `export`). Dependents wait for a dependency's setup phase, so host state is ready before dependents proceed.
+
+**Double-check lock per pair:** pre-lock CHECK (skip if satisfied) → acquire ephemeral cache entry lock keyed `BLAKE3(format_key() + "|setup:" + name)`, marked user-managed → re-CHECK (skip if another process finished) → INSTALL → destructor purges entry. Concurrent envy processes run each pair's INSTALL at most once.
 
 ### User-Managed vs Cache-Managed Packages
 
-Specs declare their mode via top-level `USER_MANAGED` (boolean or function-returning-boolean; defaults to `false`). The value is resolved once at spec load and determines `p->type` for the rest of the pipeline; `CHECK` is just a phase verb.
+Specs declare their mode via top-level `USER_MANAGED` (boolean or function-returning-boolean; defaults to `false`). The value is resolved once at spec load and determines `p->type` for the rest of the pipeline.
 
 **Cache-Managed Packages** (`USER_MANAGED = false` or absent):
 - Artifacts stored in cache—hash-based lookup via `cache::ensure_pkg()`
 - Install writes to `install_dir`; on successful return, envy auto-marks complete
 - Lock destructor renames `install/` → `pkg/`, touches `envy-complete`
-- Subsequent runs: cache hit skips all phases
-- Full pipeline: FETCH → STAGE → BUILD → INSTALL
-- **`CHECK` is forbidden**—use `USER_MANAGED=true` if you need it
+- Subsequent runs: cache hit skips payload phases; selected SETUP pairs still evaluate
+- Full pipeline: FETCH → STAGE → BUILD → INSTALL (+ optional SETUP pairs)
 - Example: toolchains, libraries, build tools
 
 **User-Managed Packages** (`USER_MANAGED = true`):
-- Artifacts live outside cache (system state, environment, user directories)
-- CHECK verb tests satisfaction (string command or function returning bool)
-- Lock marked user-managed via `lock->mark_user_managed()`—destructor purges entire `entry_dir` (ephemeral workspace)
-- Install phase modifies system; workspace never persists to cache
-- **Cannot define FETCH/STAGE/BUILD verbs**—only CHECK and INSTALL allowed
-- INSTALL receives `nil` for `install_dir` (signals user-managed context)
-- Default cwd for `envy.run()` is `project_root` (not cache directory)
+- The package **is** its SETUP pairs — host state only, no payload, no persistent cache entry
+- Must define at least one SETUP pair; must NOT define FETCH/STAGE/BUILD/INSTALL
+- All pairs selected by default; manifest `setup` narrows
 - Example: brew/apt wrappers, environment setup, credential files
 
-**Double-Check Lock Pattern (user-managed only):**
-Coordinates concurrent processes, prevents duplicate work:
-1. **Pre-lock check:** Run CHECK verb; if true (satisfied), skip all phases
-2. **Acquire lock:** Mark user-managed, block while other process works
-3. **Post-lock re-check:** Run CHECK again; if true (race—other process completed), release lock, purge entry_dir
-4. **Install:** If still false, execute phases; destructor purges entry_dir after completion
-
-Race example: Process A checks (false), waits for lock. Process B holds lock, installs Python via brew. B releases. A acquires lock, re-checks (true—Python now installed), releases, skips phases.
+Top-level `CHECK` is invalid everywhere — CHECK/INSTALL pairs live only inside `SETUP`.
 
 **Implementation mechanics:**
 - Resolution: `resolve_user_managed()` reads `USER_MANAGED` once during `phase_spec_fetch`; sets `p->type`. Function form is called with no args and must return a boolean.
-- Dispatch: `run_check_phase()` and `run_install_phase()` branch on `p->type == pkg_type::USER_MANAGED`.
-- User-managed lock: `phase_check.cpp` calls `lock->mark_user_managed()` on lock acquisition.
-- Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_pkg(); }`
-- Validation: `phase_spec_fetch.cpp::validate_phases()` enforces the rules table above; `CHECK` is rejected when `USER_MANAGED` is not true; `FETCH/STAGE/BUILD` are rejected when it is.
+- `phase_setup.cpp` runs selected pairs; `phase_check.cpp` does hash lookup for cache-managed only (user-managed acquires no package lock, so payload phases no-op).
+- Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_pkg(); }` — pair locks always take the ephemeral branch.
+- Validation: `phase_spec_fetch.cpp::validate_phases()` + `parse_setup_table()` enforce the rules above at spec load.
 
 **Example: System Package Wrapper**
 ```lua
@@ -208,37 +208,54 @@ Race example: Process A checks (false), waits for lock. Process B holds lock, in
 IDENTITY = "python.interpreter@v3"
 USER_MANAGED = true
 
--- Check if Python already installed
-CHECK = function(project_root, options)
-  local result = envy.run("python3 --version", {quiet = true})
-  return result.exit_code == 0
-end
-
--- Install via platform package manager (install_dir is nil for user-managed)
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  if envy.PLATFORM == "darwin" then
-    envy.run("brew install python3")
-  elseif envy.PLATFORM == "linux" then
-    envy.run("sudo apt-get install -y python3")
-  end
-  -- Workspace is ephemeral—purged after completion
-end
+SETUP = {
+  python = {
+    CHECK = function(pkg_dir, options)
+      local result = envy.run("python3 --version", {quiet = true, check = false})
+      return result.exit_code == 0
+    end,
+    INSTALL = function(pkg_dir, options)
+      if envy.PLATFORM == "darwin" then
+        envy.run("brew install python3")
+      elseif envy.PLATFORM == "linux" then
+        envy.run("sudo apt-get install -y python3")
+      end
+    end,
+  },
+}
 ```
 
-**Example: Cache-Managed Toolchain**
+**Example: Cache-Managed Toolchain with Optional Host Setup**
 ```lua
--- arm.gcc@v2 (cache-managed)
-IDENTITY = "arm.gcc@v2"
--- No CHECK verb—hash-based cache lookup
+-- segger.jlink@r0 (cache-managed payload + opt-in host mutation)
+IDENTITY = "segger.jlink@r0"
 
-FETCH = {source = "https://arm.com/gcc-13.2.0.tar.xz", sha256 = "abc..."}
-
-STAGE = {strip = 1}
+FETCH = {source = "https://segger.com/JLink.tgz", sha256 = "abc..."}
 
 INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.copy(stage_dir .. "/gcc", install_dir)
-  -- Auto-marked complete on successful return—lock destructor renames install → asset
+  envy.extract(fetch_dir .. "JLink.tgz", install_dir, { strip = 1 })
 end
+
+SETUP = {
+  udev_rules = {
+    PLATFORMS = { "linux" },
+    CHECK = function(pkg_dir, options)
+      local r = envy.run("cmp -s " .. pkg_dir .. "99-jlink.rules /etc/udev/rules.d/99-jlink.rules",
+                         { quiet = true, check = false })
+      return r.exit_code == 0
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.run({
+        "sudo cp " .. pkg_dir .. "99-jlink.rules /etc/udev/rules.d/",
+        "sudo udevadm control -R",
+      }, { interactive = true })
+    end,
+  },
+}
+
+-- Manifest (bench machines opt in; CI never selects the pair):
+-- { spec = "segger.jlink@r0", source = "...", options = { version = "9.30" },
+--   setup = not os.getenv("CI") and { "udev_rules" } or nil }
 ```
 
 ### Dependencies

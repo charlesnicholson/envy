@@ -75,17 +75,15 @@ This uses the same locking strategy as recipe/asset installation (see Locking & 
   - Touches `entry/envy-complete`
 - Crash recovery: next locker deletes stale `install/`, recreates `work/`, preserves `fetch/` for per-file cache reuse.
 
-### User-Managed Packages (Ephemeral Cache)
-- Spec declares `USER_MANAGED = true` (boolean or function-returning-boolean); resolved once during `phase_spec_fetch`
-- Lock calls `mark_user_managed()` to signal ephemeral workspace
-- Workspace created same as cache-managed: `install/`, `fetch/`, `work/` directories
-- User-managed specs may only define `CHECK` and `INSTALL`—not FETCH/STAGE/BUILD
-- Install phase modifies system; workspace never persists to cache
+### SETUP Pair Entries (Ephemeral Cache)
+- Host-side work lives in `SETUP` pairs (`{ name = { CHECK, INSTALL } }`); user-managed specs (`USER_MANAGED = true`, resolved once during `phase_spec_fetch`) define only pairs, cache-managed packages may add opt-in pairs beside their payload
+- Each running pair acquires an ephemeral entry keyed `BLAKE3(format_key() + "|setup:" + name)`; lock calls `mark_user_managed()` to signal ephemeral workspace
+- Pair INSTALL modifies the host; workspace never persists to cache
 - On completion (lock destructor detects `user_managed_` flag):
   - Entire `entry_dir` deleted (no `pkg/` rename)
   - Cache entry fully purged—no persistent artifacts
   - Lock file deleted
-- Subsequent runs use check verb (not cache marker) to skip work
+- Subsequent runs use the pair's CHECK verb (not cache marker) to skip work
 - Crash recovery: next locker deletes entire stale entry, starts fresh
 
 ### Lock Destructor Three-Way Branch
@@ -141,12 +139,12 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 5. **Multi-project sharing**: identical `(identity, options, platform, hash)` reuses the same asset directory; no duplication.
 
-### User-Managed Package Install
+### SETUP Pair Install
 
-1. **First install with check=false**: check verb returns false (not satisfied) → lock acquired, `mark_user_managed()` called → double-check returns false → install phase runs against `project_root` and modifies system (brew install, file writes, etc.; FETCH/STAGE/BUILD are rejected at spec load for user-managed specs) → lock destructor detects `user_managed_` flag → entire `entry_dir` deleted → lock released.
+1. **First run with CHECK=false**: pair CHECK returns false (not satisfied) → pair lock acquired, `mark_user_managed()` called → post-lock re-CHECK returns false → pair INSTALL runs against `project_root` and modifies the host (udev rules, brew install, etc.) → lock destructor detects `user_managed_` flag → entire `entry_dir` deleted → lock released.
 
-2. **Second run with check=true**: check verb returns true (already satisfied) → no lock acquired → all phases skipped.
+2. **Second run with CHECK=true**: pair CHECK returns true (already satisfied) → no lock acquired → pair skipped.
 
-3. **Concurrent install**: Process A checks (false) → acquires lock, marks user-managed, re-checks (false) → starts install. Process B checks (false) → blocks on lock. Process A completes install, destructor purges entry. Process B acquires lock, marks user-managed, re-checks (NOW true, A finished) → releases lock immediately without running phases.
+3. **Concurrent install**: Process A checks (false) → acquires pair lock, marks user-managed, re-checks (false) → runs INSTALL. Process B checks (false) → blocks on lock. Process A completes, destructor purges entry. Process B acquires lock, re-checks (NOW true, A finished) → releases lock immediately without running INSTALL.
 
-4. **User-managed install only**: user-managed specs are limited to `CHECK` and `INSTALL`; FETCH/STAGE/BUILD are rejected at spec load. The install runs against `project_root` and modifies system state; destructor purges the entry_dir, leaving no artifacts.
+4. **Selection isolation**: pair selection is per-manifest and never hashed—projects sharing the user-wide cache reuse one payload entry while each run evaluates only its own selected pairs (user-managed default: all pairs; cache-managed default: none).

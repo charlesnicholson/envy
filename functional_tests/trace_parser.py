@@ -21,8 +21,9 @@ class PkgPhase(IntEnum):
     PKG_STAGE = 4
     PKG_BUILD = 5
     PKG_INSTALL = 6
-    PKG_EXPORT = 7
-    COMPLETION = 8
+    PKG_SETUP = 7
+    PKG_EXPORT = 8
+    COMPLETION = 9
 
 
 # Type aliases for event types

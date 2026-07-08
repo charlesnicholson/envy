@@ -151,13 +151,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
             "diamond_b.lua": """-- Left side of diamond: B depends on D
 IDENTITY = "local.diamond_b@v1"
@@ -166,13 +170,17 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
             "diamond_c.lua": """-- Right side of diamond: C depends on D
 IDENTITY = "local.diamond_c@v1"
@@ -181,38 +189,50 @@ DEPENDENCIES = {
 }
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
             "diamond_d.lua": """-- Base of diamond dependency
 IDENTITY = "local.diamond_d@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package
-end
 """,
             "install_programmatic.lua": """-- Test programmatic package (user-managed)
 IDENTITY = "local.programmatic@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache artifacts
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache artifacts
-end
 """,
         }
 

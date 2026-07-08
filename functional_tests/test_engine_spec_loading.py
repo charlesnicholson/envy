@@ -53,13 +53,17 @@ IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- Programmatic package - no cache interaction
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- Programmatic package - no cache interaction
-end
 """
         spec_path = self.write_spec("simple.lua", simple_spec)
 
@@ -129,13 +133,17 @@ DEPENDENCIES = {}
 IDENTITY = "remote.child@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote child recipe")
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote child recipe")
-end
 """
         child_spec_path = self.write_spec("remote_child.lua", remote_child_spec)
 
@@ -157,13 +165,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("SHA256 verification succeeded")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("SHA256 verification succeeded")
-end
 """)
             tmp_path = tmp.name
 
@@ -196,13 +208,17 @@ end
 IDENTITY = "remote.child@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Installing remote child recipe")
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Installing remote child recipe")
-end
 """
         child_spec_path = self.write_spec("remote_child.lua", remote_child_spec)
         wrong_sha256 = (
@@ -223,13 +239,17 @@ DEPENDENCIES = {{
 }}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("This should not execute")
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("This should not execute")
-end
 """)
             tmp_path = tmp.name
 
@@ -271,13 +291,17 @@ IDENTITY = "local.identity_correct@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.info("Identity validation passed")
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.info("Identity validation passed")
-end
 """
         spec_path = self.write_spec("identity_correct.lua", identity_correct_spec)
 
@@ -306,13 +330,17 @@ end
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- This should never execute
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- This should never execute
-end
 """
         spec_path = self.write_spec("identity_missing.lua", identity_missing_spec)
 
@@ -351,13 +379,17 @@ IDENTITY = "local.wrong_identity@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- This should never execute
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- This should never execute
-end
 """
         spec_path = self.write_spec("identity_mismatch.lua", identity_mismatch_spec)
 
@@ -401,13 +433,17 @@ IDENTITY = { name = "wrong" }
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- This should never execute
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- This should never execute
-end
 """
         spec_path = self.write_spec("identity_wrong_type.lua", identity_wrong_type_spec)
 
@@ -446,8 +482,13 @@ end
 -- Missing identity in local spec
 DEPENDENCIES = {}
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """)
             tmp_path = tmp.name
 
@@ -485,8 +526,13 @@ function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { required = true } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_table_ok.lua", spec)
 
@@ -513,8 +559,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { required = true } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_table_missing.lua", spec)
 
@@ -540,8 +591,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = {} }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_table_unknown.lua", spec)
 
@@ -569,8 +625,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { type = "semver" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_semver_ok.lua", spec)
 
@@ -597,8 +658,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { type = "semver" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_semver_bad.lua", spec)
 
@@ -626,8 +692,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_range_ok.lua", spec)
 
@@ -654,8 +725,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = { type = "semver", range = ">=1.0.0 <2.0.0" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_range_bad.lua", spec)
 
@@ -683,8 +759,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { count = { range = ">=1 <10" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_numrange_ok.lua", spec)
 
@@ -711,8 +792,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { count = { range = ">=1 <10" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_numrange_bad.lua", spec)
 
@@ -740,8 +826,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { mode = { validate = function(v) end } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_cv_ok.lua", spec)
 
@@ -768,8 +859,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { mode = { validate = function(v) return "bad mode: " .. v end } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_cv_bad.lua", spec)
 
@@ -797,8 +893,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { version = {} }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_opt_ok.lua", spec)
 
@@ -823,8 +924,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = {}
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_empty.lua", spec)
 
@@ -851,8 +957,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { name = { type = "string" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_type_str_ok.lua", spec)
 
@@ -879,8 +990,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { name = { type = "string" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_type_str_bad.lua", spec)
 
@@ -908,8 +1024,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { items = { type = "list" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_type_list_ok.lua", spec)
 
@@ -936,8 +1057,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { items = { type = "list" } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_type_list_bad.lua", spec)
 
@@ -965,8 +1091,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { mode = { choices = { "install", "extract" } } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_choices_ok.lua", spec)
 
@@ -993,8 +1124,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = { mode = { choices = { "install", "extract" } } }
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_choices_bad.lua", spec)
 
@@ -1024,8 +1160,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_nil.lua", spec)
 
@@ -1050,8 +1191,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) return true end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_true.lua", spec)
 
@@ -1076,8 +1222,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) return false end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_false.lua", spec)
 
@@ -1103,8 +1254,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) return "nope" end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_string.lua", spec)
 
@@ -1130,8 +1286,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) return 123 end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_type.lua", spec)
 
@@ -1157,8 +1318,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = function(opts) error("boom") end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_error.lua", spec)
 
@@ -1186,8 +1352,13 @@ OPTIONS = function(opts)
 end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_envy_ok.lua", spec)
 
@@ -1216,8 +1387,13 @@ OPTIONS = function(opts)
 end
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_fn_envy_bad.lua", spec)
 
@@ -1245,8 +1421,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = 42
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_badtype.lua", spec)
 
@@ -1272,8 +1453,13 @@ INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
 OPTIONS = "string"
 
 USER_MANAGED = true
-CHECK = function(project_root, options) return true end
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+
 """
         spec_path = self.write_spec("options_strtype.lua", spec)
 

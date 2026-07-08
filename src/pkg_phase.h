@@ -14,8 +14,9 @@ enum class pkg_phase : int {
   pkg_stage = 4,
   pkg_build = 5,
   pkg_install = 6,
-  pkg_export = 7,
-  completion = 8,  // All phases complete
+  pkg_setup = 7,  // Host-side SETUP pairs (check-gated, ephemeral)
+  pkg_export = 8,
+  completion = 9,  // All phases complete
 };
 
 constexpr int pkg_phase_count = static_cast<int>(pkg_phase::completion) + 1;

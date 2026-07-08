@@ -1,4 +1,4 @@
-"""Functional tests for user-managed packages (Phase 8)."""
+"""Functional tests for user-managed packages (SETUP pairs)."""
 
 import os
 import shutil
@@ -18,69 +18,60 @@ from . import test_config
 SPEC_SIMPLE = """IDENTITY = "local.user_managed_simple@v1"
 USER_MANAGED = true
 
-function CHECK(project_root, options)
-    local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
-    if not marker then error("ENVY_TEST_MARKER_SIMPLE must be set") end
-    local f = io.open(marker, "r")
-    if f then f:close(); return true end
-    return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+        local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
+        if not marker then error("ENVY_TEST_MARKER_SIMPLE must be set") end
+        local f = io.open(marker, "r")
+        if f then f:close(); return true end
+        return false
+    end,
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
-    if not marker then error("ENVY_TEST_MARKER_SIMPLE must be set") end
-    local f = io.open(marker, "w")
-    if not f then error("Failed to create marker file: " .. marker) end
-    f:write("installed by user_managed_simple")
-    f:close()
-end
+    INSTALL = function(pkg_dir, options)
+        local marker = os.getenv("ENVY_TEST_MARKER_SIMPLE")
+        if not marker then error("ENVY_TEST_MARKER_SIMPLE must be set") end
+        local f = io.open(marker, "w")
+        if not f then error("Failed to create marker file: " .. marker) end
+        f:write("installed by user_managed_simple")
+        f:close()
+    end,
+  },
+}
 """
 
-# Context isolation test: verify restricted directory access for user-managed
-# Tests install_dir=nil, stage_dir access, fetch_dir access, extract_all behavior
+# Context isolation: user-managed pair verbs receive nil pkg_dir.
 SPEC_CTX_FORBIDDEN = """IDENTITY = "local.user_managed_ctx_isolation_forbidden@v1"
 USER_MANAGED = true
 
-function CHECK(project_root, options)
-    return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+        return false
+    end,
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    local forbidden_api = os.getenv("ENVY_TEST_FORBIDDEN_API")
-    if not forbidden_api then error("ENVY_TEST_FORBIDDEN_API must be set") end
+    INSTALL = function(pkg_dir, options)
+        local forbidden_api = os.getenv("ENVY_TEST_FORBIDDEN_API")
+        if not forbidden_api then error("ENVY_TEST_FORBIDDEN_API must be set") end
 
-    if forbidden_api == "install_dir" then
-        if install_dir == nil then
-            print("Verified: install_dir not available for user-managed")
-            return
+        if forbidden_api == "pkg_dir" then
+            if pkg_dir == nil then
+                print("Verified: pkg_dir is nil for user-managed")
+                return
+            else
+                error("pkg_dir should be nil for user-managed packages")
+            end
         else
-            error("install_dir should be nil for user-managed packages")
+            error("Unknown forbidden API: " .. forbidden_api)
         end
-    elseif forbidden_api == "stage_dir" then
-        if stage_dir then
-            print("Verified: stage_dir access checked for user-managed")
-            return
-        end
-    elseif forbidden_api == "fetch_dir" then
-        if fetch_dir then
-            print("Verified: fetch_dir access checked for user-managed")
-            return
-        end
-    elseif forbidden_api == "extract_all" then
-        local success, err = pcall(function() envy.extract_all("", "") end)
-        if not success then
-            print("Verified: extract_all fails without proper context for user-managed")
-            return
-        end
-    else
-        error("Unknown forbidden API: " .. forbidden_api)
-    end
-end
+    end,
+  },
+}
 """
 
 
 class TestUserManagedPackages(unittest.TestCase):
-    """Test user-managed package behavior with check verbs."""
+    """Test user-managed package behavior with SETUP pairs."""
 
     # Some cases fetch over the real network; relax the watchdog for latency.
     envy_watchdog_timeout = 60
@@ -136,7 +127,7 @@ class TestUserManagedPackages(unittest.TestCase):
     # =========================================================================
 
     def test_simple_first_run_check_false_installs(self):
-        """First run with check=false acquires lock, runs install, purges cache."""
+        """First run with check=false acquires pair lock, runs install, purges cache."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
         result = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -153,7 +144,7 @@ class TestUserManagedPackages(unittest.TestCase):
             )
 
     def test_simple_second_run_check_true_skips(self):
-        """Second run with check=true skips all phases, no lock acquired."""
+        """Second run with check=true skips the pair, no lock acquired."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         # Create marker to simulate already-installed
@@ -165,14 +156,14 @@ class TestUserManagedPackages(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        self.assertIn("user check returned true", result.stderr.lower())
-        self.assertIn("skipping all phases", result.stderr.lower())
+        self.assertIn("pair 'main' satisfied (pre-lock)", result.stderr)
+        self.assertNotIn("running pair 'main' install", result.stderr)
         self.assertIn(
             "phase install: no lock (cache hit), skipping", result.stderr.lower()
         )
 
     def test_multiple_runs_cache_lifecycle(self):
-        """Verify cache entry created/purged/created on each install cycle."""
+        """Verify pair installs, skips when satisfied, reinstalls after drift."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         # Run 1: Install
@@ -185,29 +176,33 @@ class TestUserManagedPackages(unittest.TestCase):
             "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
         )
         self.assertEqual(result2.returncode, 0)
-        self.assertIn("check passed", result2.stderr.lower())
-        self.assertIn("skipping all phases", result2.stderr.lower())
+        self.assertIn("pair 'main' satisfied (pre-lock)", result2.stderr)
+        self.assertNotIn("running pair 'main' install", result2.stderr)
 
         # Run 3: Remove marker, reinstall
         self.marker_simple.unlink()
-        result3 = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
+        result3 = self.run_spec(
+            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+        )
         self.assertEqual(result3.returncode, 0)
+        self.assertIn("running pair 'main' install", result3.stderr)
         self.assertTrue(
             self.marker_simple.exists(), "Should reinstall after marker removed"
         )
 
-    def test_double_check_lock_prevents_duplicate_work(self):
-        """Double-check lock: if check passes post-lock, skip install."""
+    def test_double_check_lock_runs_install_when_still_unsatisfied(self):
+        """Double-check lock: pre-lock check fails, post-lock re-check fails, install runs."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         result = self.run_spec(
             "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
         )
-        self.assertIn("re-running user check (post-lock)", result.stderr)
-        self.assertIn("re-check returned false", result.stderr)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("running pair 'main' install", result.stderr)
+        self.assertNotIn("satisfied (post-lock)", result.stderr)
 
     def test_cache_state_after_install_fully_deleted(self):
-        """After install completes, entire entry_dir deleted for user-managed."""
+        """After install completes, the ephemeral pair entry is purged."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         result = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
@@ -276,92 +271,43 @@ end
         self.assertGreater(len(pkg_subdirs), 0, "Should have pkg/ directory in cache")
 
     # =========================================================================
-    # Validation error tests
-    # =========================================================================
-
-    def test_validation_error_check_with_forbidden_api(self):
-        """User-managed packages cannot access install_dir (it's nil)."""
-        # User-managed spec that tries to use install_dir
-        spec_invalid = """IDENTITY = "local.user_managed_invalid@v1"
-USER_MANAGED = true
-
-function CHECK(project_root, options)
-    return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    if install_dir == nil then
-        error("install_dir not available for user-managed package local.user_managed_invalid@v1")
-    end
-    local path = install_dir .. "/test.txt"
-end
-"""
-        self.write_spec("invalid", spec_invalid)
-
-        result = self.run_spec("invalid", "local.user_managed_invalid@v1")
-        self.assertNotEqual(result.returncode, 0, "Should fail validation")
-        self.assertIn("not available for user-managed", result.stderr)
-
-    # =========================================================================
     # Context isolation tests (using SPEC_CTX_FORBIDDEN)
     # =========================================================================
 
-    def test_user_managed_ctx_tmp_dir_accessible(self):
-        """User-managed packages can access and use tmp_dir."""
-        # Spec that verifies tmp_dir is accessible and writable
-        spec_tmp_dir = """IDENTITY = "local.user_managed_ctx_isolation_tmp_dir@v1"
-USER_MANAGED = true
-
-function CHECK(project_root, options)
-    return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    if not tmp_dir then error("tmp_dir should be accessible") end
-    if type(tmp_dir) ~= "string" then error("tmp_dir should be a string") end
-
-    local test_file = tmp_dir .. "/test.txt"
-    local f = io.open(test_file, "w")
-    if not f then error("Failed to create file in tmp_dir") end
-    f:write("test content")
-    f:close()
-
-    f = io.open(test_file, "r")
-    if not f then error("Failed to read file from tmp_dir") end
-    local content = f:read("*all")
-    f:close()
-    if content ~= "test content" then error("tmp_dir file content mismatch") end
-end
-"""
-        self.write_spec("ctx_tmp_dir", spec_tmp_dir)
-
+    def test_user_managed_pair_pkg_dir_is_nil(self):
+        """User-managed pair INSTALL receives nil pkg_dir."""
         result = self.run_spec(
-            "ctx_tmp_dir", "local.user_managed_ctx_isolation_tmp_dir@v1"
+            "ctx_forbidden",
+            "local.user_managed_ctx_isolation_forbidden@v1",
+            env_vars={"ENVY_TEST_FORBIDDEN_API": "pkg_dir"},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_user_managed_ctx_allowed_apis(self):
-        """User-managed packages can access allowed APIs (run, package, product)."""
-        # Spec that verifies envy.* APIs are accessible
+        """User-managed pair verbs can use allowed APIs (run, package, product)."""
         spec_allowed = """IDENTITY = "local.user_managed_ctx_isolation_allowed@v1"
 USER_MANAGED = true
 
-function CHECK(project_root, options)
-    return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+        return false
+    end,
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    if IDENTITY ~= "local.user_managed_ctx_isolation_allowed@v1" then
-        error("IDENTITY mismatch")
-    end
+    INSTALL = function(pkg_dir, options)
+        if IDENTITY ~= "local.user_managed_ctx_isolation_allowed@v1" then
+            error("IDENTITY mismatch")
+        end
 
-    if type(envy.run) ~= "function" then error("envy.run should be a function") end
-    local result = envy.run("echo test", {capture = true, quiet = true})
-    if result.exit_code ~= 0 then error("envy.run failed") end
+        if type(envy.run) ~= "function" then error("envy.run should be a function") end
+        local result = envy.run("echo test", {capture = true, quiet = true})
+        if result.exit_code ~= 0 then error("envy.run failed") end
 
-    if type(envy.package) ~= "function" then error("envy.package should be a function") end
-    if type(envy.product) ~= "function" then error("envy.product should be a function") end
-end
+        if type(envy.package) ~= "function" then error("envy.package should be a function") end
+        if type(envy.product) ~= "function" then error("envy.product should be a function") end
+    end,
+  },
+}
 """
         self.write_spec("ctx_allowed", spec_allowed)
 
@@ -370,41 +316,73 @@ end
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-    def test_user_managed_ctx_forbids_fetch_dir(self):
-        """User-managed packages: fetch_dir access verification."""
-        result = self.run_spec(
-            "ctx_forbidden",
-            "local.user_managed_ctx_isolation_forbidden@v1",
-            env_vars={"ENVY_TEST_FORBIDDEN_API": "fetch_dir"},
-        )
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+    # =========================================================================
+    # Multi-pair behavior
+    # =========================================================================
 
-    def test_user_managed_ctx_forbids_stage_dir(self):
-        """User-managed packages: stage_dir access verification."""
-        result = self.run_spec(
-            "ctx_forbidden",
-            "local.user_managed_ctx_isolation_forbidden@v1",
-            env_vars={"ENVY_TEST_FORBIDDEN_API": "stage_dir"},
-        )
-        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+    def test_multiple_pairs_all_run_sorted(self):
+        """All pairs of a user-managed spec run by default, in sorted name order."""
+        spec = """IDENTITY = "local.um_multi_pair@v1"
+USER_MANAGED = true
 
-    def test_user_managed_ctx_forbids_install_dir(self):
-        """User-managed packages: install_dir should be nil."""
+SETUP = {
+  zeta = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+        local f = io.open(os.getenv("ENVY_TEST_MULTI_LOG"), "a")
+        f:write("zeta\\n")
+        f:close()
+    end,
+  },
+  alpha = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+        local f = io.open(os.getenv("ENVY_TEST_MULTI_LOG"), "a")
+        f:write("alpha\\n")
+        f:close()
+    end,
+  },
+}
+"""
+        log = self.marker_dir / "multi-pair-log"
+        self.write_spec("multi_pair", spec)
         result = self.run_spec(
-            "ctx_forbidden",
-            "local.user_managed_ctx_isolation_forbidden@v1",
-            env_vars={"ENVY_TEST_FORBIDDEN_API": "install_dir"},
+            "multi_pair",
+            "local.um_multi_pair@v1",
+            env_vars={"ENVY_TEST_MULTI_LOG": str(log)},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertEqual(log.read_text().split(), ["alpha", "zeta"])
 
-    def test_user_managed_ctx_forbids_extract_all(self):
-        """User-managed packages: extract_all fails without proper context."""
+    def test_satisfied_pair_skipped_others_run(self):
+        """Satisfied pairs are skipped independently of unsatisfied ones."""
+        spec = """IDENTITY = "local.um_partial@v1"
+USER_MANAGED = true
+
+SETUP = {
+  done = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) error("must not run") end,
+  },
+  todo = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+        local f = io.open(os.getenv("ENVY_TEST_PARTIAL_MARKER"), "w")
+        f:write("done")
+        f:close()
+    end,
+  },
+}
+"""
+        marker = self.marker_dir / "partial-marker"
+        self.write_spec("partial", spec)
         result = self.run_spec(
-            "ctx_forbidden",
-            "local.user_managed_ctx_isolation_forbidden@v1",
-            env_vars={"ENVY_TEST_FORBIDDEN_API": "extract_all"},
+            "partial",
+            "local.um_partial@v1",
+            env_vars={"ENVY_TEST_PARTIAL_MARKER": str(marker)},
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(marker.exists())
 
     # =========================================================================
     # USER_MANAGED resolution forms (boolean / function / errors)
@@ -415,22 +393,26 @@ end
         spec = """IDENTITY = "local.um_fn_form_true@v1"
 USER_MANAGED = function() return envy.PLATFORM ~= "<<never>>" end
 
-function CHECK(project_root, options)
-    local marker = os.getenv("ENVY_TEST_MARKER_FN")
-    local f = io.open(marker, "r")
-    if f then f:close(); return true end
-    return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+        local marker = os.getenv("ENVY_TEST_MARKER_FN")
+        local f = io.open(marker, "r")
+        if f then f:close(); return true end
+        return false
+    end,
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    if install_dir ~= nil then
-        error("install_dir should be nil for user-managed packages")
-    end
-    local marker = os.getenv("ENVY_TEST_MARKER_FN")
-    local f = io.open(marker, "w")
-    f:write("installed via function-form USER_MANAGED")
-    f:close()
-end
+    INSTALL = function(pkg_dir, options)
+        if pkg_dir ~= nil then
+            error("pkg_dir should be nil for user-managed packages")
+        end
+        local marker = os.getenv("ENVY_TEST_MARKER_FN")
+        local f = io.open(marker, "w")
+        f:write("installed via function-form USER_MANAGED")
+        f:close()
+    end,
+  },
+}
 """
         marker = self.marker_dir / "marker-fn-form"
         self.write_spec("fn_form_true", spec)
@@ -447,14 +429,45 @@ end
         spec = """IDENTITY = "local.um_fn_form_bad@v1"
 USER_MANAGED = function() return "yes" end
 
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options) end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
 """
         self.write_spec("fn_form_bad", spec)
         result = self.run_spec("fn_form_bad", "local.um_fn_form_bad@v1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must return a boolean", result.stderr)
         self.assertIn("local.um_fn_form_bad@v1", result.stderr)
+
+    def test_user_managed_top_level_check_rejected(self):
+        """Top-level CHECK is rejected; CHECK/INSTALL pairs belong in SETUP."""
+        spec = """IDENTITY = "local.um_toplevel_check@v1"
+USER_MANAGED = true
+CHECK = "echo hi"
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return true end,
+    INSTALL = function(pkg_dir, options) end,
+  },
+}
+"""
+        self.write_spec("toplevel_check", spec)
+        result = self.run_spec("toplevel_check", "local.um_toplevel_check@v1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("top-level CHECK", result.stderr)
+
+    def test_user_managed_without_setup_rejected(self):
+        """User-managed spec without SETUP pairs is a load error."""
+        spec = """IDENTITY = "local.um_no_setup@v1"
+USER_MANAGED = true
+"""
+        self.write_spec("no_setup", spec)
+        result = self.run_spec("no_setup", "local.um_no_setup@v1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at least one SETUP pair", result.stderr)
 
 
 if __name__ == "__main__":

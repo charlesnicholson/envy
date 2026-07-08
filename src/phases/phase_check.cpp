@@ -3,122 +3,25 @@
 #include "blake3_util.h"
 #include "cache.h"
 #include "engine.h"
-#include "lua_ctx/lua_phase_context.h"
-#include "lua_envy.h"
-#include "lua_error_formatter.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
-#include "shell.h"
 #include "trace.h"
 #include "tui.h"
 #include "util.h"
 
 #include <chrono>
-#include <filesystem>
-#include <sstream>
-#include <stdexcept>
+#include <mutex>
+#include <string>
 #include <utility>
 
 namespace envy {
 
-bool run_check_string(pkg *p, engine &eng, std::string_view check_cmd) {
-  tui::debug("phase check: executing string check: %s", std::string(check_cmd).c_str());
+namespace {
 
-  std::ostringstream stdout_capture;
-  std::ostringstream stderr_capture;
-
-  shell_run_cfg cfg;
-  cfg.env = shell_getenv();
-  cfg.on_stdout_line = [&](std::string_view line) { stdout_capture << line << '\n'; };
-  cfg.on_stderr_line = [&](std::string_view line) { stderr_capture << line << '\n'; };
-  cfg.cwd = pkg_cfg::compute_project_root(p->cfg);
-  cfg.shell = shell_resolve_default(p ? p->default_shell_ptr : nullptr);
-
-  shell_result const result{ [&] {
-    try {
-      return shell_run(check_cmd, cfg);
-    } catch (std::exception const &e) {
-      throw std::runtime_error("check command failed for " + p->cfg->identity + ": " +
-                               e.what());
-    }
-  }() };
-
-  bool const check_passed{ result.exit_code == 0 };
-
-  if (!check_passed) {
-    std::string const stdout_str{ stdout_capture.str() };
-    std::string const stderr_str{ stderr_capture.str() };
-    tui::error("check failed for %s (exit code %d)",
-               p->cfg->identity.c_str(),
-               result.exit_code);
-    tui::error("command: %s", std::string(check_cmd).c_str());
-    if (!stdout_str.empty()) { tui::error("stdout:\n%s", stdout_str.c_str()); }
-    if (!stderr_str.empty()) { tui::error("stderr:\n%s", stderr_str.c_str()); }
-  }
-
-  tui::debug("phase check: string check exit_code=%d (check %s)",
-             result.exit_code,
-             check_passed ? "passed" : "failed");
-  return check_passed;
-}
-
-bool run_check_function(pkg *p,
-                        engine &eng,
-                        sol::state_view lua,
-                        sol::protected_function check_func) {
-  tui::debug("phase check: executing function check");
-
-  std::filesystem::path const project_root{ pkg_cfg::compute_project_root(p->cfg) };
-
-  // Set up Lua registry context for envy.* functions (run_dir = project_root)
-  // Note: CHECK has no lock yet, so envy.commit_fetch() etc. will fail
-  phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
-
-  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-
-  // New signature: CHECK(project_root, options)
-  sol::object result_obj{ call_lua_function_with_enriched_errors(p, "CHECK", [&]() {
-    return check_func(project_root.string(), opts);
-  }) };
-
-  // Check function can return:
-  // 1. Boolean - true/false for check passed/failed
-  // 2. String - execute as shell command and return result
-  sol::type const result_type{ result_obj.get_type() };
-
-  if (result_obj.is<bool>()) {
-    bool const check_passed{ result_obj.as<bool>() };
-    tui::debug("phase check: function check returned %s", check_passed ? "true" : "false");
-    return check_passed;
-  } else if (result_obj.is<std::string>()) {
-    // Function returned a string - execute it as a shell command
-    std::string const check_cmd{ result_obj.as<std::string>() };
-    tui::debug("phase check: function check returned string, executing: %s",
-               check_cmd.c_str());
-    return run_check_string(p, eng, check_cmd);
-  }
-
-  throw std::runtime_error("check function for " + p->cfg->identity +
-                           " must return boolean or string, got " +
-                           sol::type_name(lua.lua_state(), result_type));
-}
-
-bool run_check_verb(pkg *p, engine &eng, sol::state_view lua) {
-  sol::object check_obj{ lua["CHECK"] };
-
-  if (check_obj.is<sol::protected_function>()) {
-    return run_check_function(p, eng, lua, check_obj.as<sol::protected_function>());
-  } else if (check_obj.is<std::string>()) {
-    return run_check_string(p, eng, check_obj.as<std::string_view>());
-  }
-
-  return false;
-}
-
-// Helper: Compute hash and perform cache lookup (common to both user/cache-managed).
-// The Lua state is locked only to read PLATFORM/ARCH and released before ensure_pkg:
-// ensure_pkg acquires the cache entry's file lock, and holding p->lua across that
-// would invert the lock order taken by later phases (cache lock, then p->lua).
+// Compute hash and perform cache lookup. The Lua state is locked only to read
+// PLATFORM/ARCH and released before ensure_pkg: ensure_pkg acquires the cache
+// entry's file lock, and holding p->lua across that would invert the lock order
+// taken by later phases (cache lock, then p->lua).
 cache::ensure_result compute_hash_and_lookup_cache(pkg *p) {
   // Compute hash including resolved weak/ref-only dependencies
   std::string key_for_hash{ p->cfg->format_key() };
@@ -141,70 +44,17 @@ cache::ensure_result compute_hash_and_lookup_cache(pkg *p) {
   return p->cache_ptr->ensure_pkg(p->cfg->identity, platform, arch, hash_prefix);
 }
 
-// Run the check verb under a short-lived Lua lock (never held across cache locking).
-bool run_check_verb_locked(pkg *p, engine &eng) {
-  auto const lua_acc{ p->lua.lock() };
-  return run_check_verb(p, eng, sol::state_view{ *lua_acc });
-}
+}  // namespace
 
-// USER-MANAGED PACKAGE PATH: Double-check lock pattern
-void run_check_phase_user_managed(pkg *p, engine &eng) {
-  // First check (pre-lock): See if work is needed
-  tui::debug("phase check: running user check (pre-lock)");
-  bool const check_passed_prelock{ run_check_verb_locked(p, eng) };
-  tui::debug("phase check: user check returned %s",
-             check_passed_prelock ? "true" : "false");
+void run_check_phase(pkg *p, engine &eng) {
+  phase_trace_scope const phase_scope{ p->cfg->identity,
+                                       pkg_phase::pkg_check,
+                                       std::chrono::steady_clock::now() };
 
-  if (check_passed_prelock) {
-    // Check passed - no work needed, skip all phases
-    tui::debug("phase check: check passed (pre-lock), skipping all phases");
-    return;
-  }
+  // User-managed packages do all their work in check-gated SETUP pairs; the
+  // shared cache holds nothing for them, so there is nothing to look up.
+  if (p->type != pkg_type::CACHE_MANAGED) { return; }
 
-  // Check failed - work might be needed, acquire lock
-  tui::debug(
-      "phase check: check failed (pre-lock), acquiring lock for user-managed package");
-
-  auto cache_result{ compute_hash_and_lookup_cache(p) };
-
-  if (cache_result.lock) {
-    // Got lock - mark as user-managed for proper cleanup
-    cache_result.lock->mark_user_managed();
-    tui::debug("phase check: lock acquired, marked as user-managed");
-
-    // Second check (post-lock): Detect races where another process completed work
-    tui::debug("phase check: re-running user check (post-lock)");
-    bool const check_passed_postlock{ run_check_verb_locked(p, eng) };
-    tui::debug("phase check: re-check returned %s",
-               check_passed_postlock ? "true" : "false");
-
-    if (check_passed_postlock) {
-      // Race detected: another process completed work while we waited for lock
-      tui::debug(
-          "phase check: re-check passed, releasing lock (another process completed)");
-      // Lock destructor will run, purging entry_dir because user_managed flag is set.
-      // This is correct: user-managed packages don't leave cache artifacts, so even
-      // if install phase ran, there's nothing to preserve.
-      return;
-    }
-
-    // Still needed - keep lock, phases will execute
-    p->lock = std::move(cache_result.lock);
-    tui::debug("phase check: re-check failed, keeping lock, phases will execute");
-  } else {
-    // Cache hit for user-managed package indicates inconsistent state:
-    // check verb returned false (work needed) but cache entry exists.
-    // This may indicate a buggy/non-deterministic check verb or race condition.
-    p->pkg_path = cache_result.pkg_path;
-    tui::warn(
-        "phase check: unexpected cache hit for user-managed package at %s - "
-        "check verb may be buggy or non-deterministic",
-        cache_result.pkg_path.string().c_str());
-  }
-}
-
-// CACHE-MANAGED PACKAGE PATH: Traditional hash-based caching
-void run_check_phase_cache_managed(pkg *p) {
   std::string const key{ p->cfg->format_key() };
 
   auto cache_result{ compute_hash_and_lookup_cache(p) };
@@ -217,18 +67,6 @@ void run_check_phase_cache_managed(pkg *p) {
     tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
                key.c_str(),
                cache_result.pkg_path.string().c_str());
-  }
-}
-
-void run_check_phase(pkg *p, engine &eng) {
-  phase_trace_scope const phase_scope{ p->cfg->identity,
-                                       pkg_phase::pkg_check,
-                                       std::chrono::steady_clock::now() };
-
-  if (p->type == pkg_type::USER_MANAGED) {
-    run_check_phase_user_managed(p, eng);
-  } else {
-    run_check_phase_cache_managed(p);
   }
 }
 

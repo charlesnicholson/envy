@@ -193,12 +193,16 @@ PACKAGES = {{
         spec_user_provider = """IDENTITY = "local.ctx_package_user_provider@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return true
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return true
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
         # Consumer tries to access user-managed package
         spec_consumer = """IDENTITY = "local.ctx_package_user_consumer@v1"

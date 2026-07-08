@@ -17,8 +17,10 @@
 #include "util.h"
 
 #include <chrono>
+#include <map>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace envy {
@@ -54,54 +56,131 @@ bool resolve_user_managed(sol::state_view lua, std::string const &identity) {
       sol::type_name(lua.lua_state(), obj.get_type()) + ") for " + identity);
 }
 
-void validate_phases(sol::state_view lua, std::string const &identity, bool user_managed) {
+void validate_phases(sol::state_view lua,
+                     std::string const &identity,
+                     bool user_managed,
+                     bool has_setup) {
   bool const has_fetch{ lua["FETCH"].is<sol::protected_function>() ||
                         lua["FETCH"].is<std::string>() || lua["FETCH"].is<sol::table>() };
-  bool const has_stage{ lua["STAGE"].is<sol::protected_function>() ||
-                        lua["STAGE"].is<std::string>() || lua["STAGE"].is<sol::table>() };
-  bool const has_build{ lua["BUILD"].is<sol::protected_function>() ||
-                        lua["BUILD"].is<std::string>() };
-  bool const has_check{ lua["CHECK"].is<sol::protected_function>() ||
-                        lua["CHECK"].is<std::string>() };
   bool const has_install{ lua["INSTALL"].is<sol::protected_function>() ||
                           lua["INSTALL"].is<std::string>() };
 
+  if (sol::object check_obj{ lua["CHECK"] };
+      check_obj.valid() && check_obj.get_type() != sol::type::lua_nil) {
+    throw std::runtime_error("Spec " + identity +
+                             " defines top-level CHECK; CHECK/INSTALL pairs belong in "
+                             "SETUP entries (SETUP = { name = { CHECK=..., "
+                             "INSTALL=... } })");
+  }
+
   if (user_managed) {
-    if (!has_check) {
-      throw std::runtime_error("User-managed spec must define 'CHECK': " + identity);
+    if (!has_setup) {
+      throw std::runtime_error("User-managed spec must define at least one SETUP pair: " +
+                               identity);
     }
-    if (!has_install) {
-      throw std::runtime_error("User-managed spec must define 'INSTALL': " + identity);
-    }
-    if (has_fetch) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " is user-managed (USER_MANAGED=true) but declares FETCH phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove FETCH phase or set USER_MANAGED=false.");
-    }
-    if (has_stage) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " is user-managed (USER_MANAGED=true) but declares STAGE phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove STAGE phase or set USER_MANAGED=false.");
-    }
-    if (has_build) {
-      throw std::runtime_error(
-          "Spec " + identity +
-          " is user-managed (USER_MANAGED=true) but declares BUILD phase. "
-          "User-managed packages cannot use cache-managed phases (FETCH/STAGE/BUILD). "
-          "Remove BUILD phase or set USER_MANAGED=false.");
+    std::pair<char const *, bool> const forbidden[]{
+      { "FETCH", has_fetch },
+      { "STAGE",
+        lua["STAGE"].is<sol::protected_function>() || lua["STAGE"].is<std::string>() ||
+            lua["STAGE"].is<sol::table>() },
+      { "BUILD",
+        lua["BUILD"].is<sol::protected_function>() || lua["BUILD"].is<std::string>() },
+      { "INSTALL", has_install },
+    };
+    for (auto const &[verb, present] : forbidden) {
+      if (present) {
+        throw std::runtime_error(
+            "Spec " + identity + " is user-managed (USER_MANAGED=true) but declares " +
+            verb +
+            ". User-managed packages define only SETUP pairs; remove the phase verb "
+            "or set USER_MANAGED=false.");
+      }
     }
   } else {
-    if (has_check) {
-      throw std::runtime_error("Spec " + identity +
-                               " defines CHECK but USER_MANAGED is not true; "
-                               "CHECK is only valid for user-managed packages");
-    }
     if (!has_fetch) { throw std::runtime_error("Spec must define 'FETCH': " + identity); }
   }
+}
+
+// Parse and validate the SETUP global: { name = { CHECK, INSTALL, PLATFORMS? } }.
+// Returns name → per-pair platform constraints (empty = all platforms).
+std::map<std::string, std::vector<std::string>> parse_setup_table(
+    sol::state_view lua,
+    std::string const &identity) {
+  std::map<std::string, std::vector<std::string>> pairs;
+
+  sol::object setup_obj{ lua["SETUP"] };
+  if (!setup_obj.valid() || setup_obj.get_type() == sol::type::lua_nil) { return pairs; }
+  if (setup_obj.get_type() != sol::type::table) {
+    throw std::runtime_error("SETUP must be a table in spec '" + identity + "'");
+  }
+
+  auto const is_verb{ [](sol::object const &o) {
+    return o.is<sol::protected_function>() || o.is<std::string>();
+  } };
+
+  sol::table setup_table{ setup_obj.as<sol::table>() };
+  for (auto const &[key, value] : setup_table) {
+    sol::object const key_obj(key);
+    sol::object const val_obj(value);
+
+    if (!key_obj.is<std::string>() || key_obj.as<std::string>().empty()) {
+      throw std::runtime_error("SETUP keys must be non-empty strings in spec '" +
+                               identity + "'");
+    }
+    std::string const name{ key_obj.as<std::string>() };
+
+    if (!val_obj.is<sol::table>()) {
+      throw std::runtime_error("SETUP entry '" + name + "' must be a table in spec '" +
+                               identity + "'");
+    }
+    sol::table pair{ val_obj.as<sol::table>() };
+
+    for (auto const &[pair_key, _] : pair) {  // Reject unknown pair fields
+      sol::object const pair_key_obj(pair_key);
+      std::string const k{ pair_key_obj.is<std::string>() ? pair_key_obj.as<std::string>()
+                                                          : std::string{} };
+      if (k != "CHECK" && k != "INSTALL" && k != "PLATFORMS") {
+        throw std::runtime_error("SETUP entry '" + name + "' has unknown field '" + k +
+                                 "' in spec '" + identity +
+                                 "' (valid: CHECK, INSTALL, PLATFORMS)");
+      }
+    }
+
+    if (!is_verb(pair["CHECK"])) {
+      throw std::runtime_error("SETUP entry '" + name +
+                               "' must define CHECK (function or string) in spec '" +
+                               identity + "'");
+    }
+    if (!is_verb(pair["INSTALL"])) {
+      throw std::runtime_error("SETUP entry '" + name +
+                               "' must define INSTALL (function or string) in spec '" +
+                               identity + "'");
+    }
+
+    std::vector<std::string> platforms;
+    sol::object plat_obj{ pair["PLATFORMS"] };
+    if (plat_obj.valid() && plat_obj.get_type() != sol::type::lua_nil) {
+      if (plat_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("SETUP entry '" + name +
+                                 "' PLATFORMS must be a table in spec '" + identity + "'");
+      }
+      sol::table plat_table{ plat_obj.as<sol::table>() };
+      for (size_t i{ 1 }; i <= plat_table.size(); ++i) {
+        sol::object elem{ plat_table[i] };
+        if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+          throw std::runtime_error("SETUP entry '" + name +
+                                   "' PLATFORMS entries must be non-empty strings in "
+                                   "spec '" +
+                                   identity + "'");
+        }
+        platforms.push_back(elem.as<std::string>());
+      }
+    }
+
+    pairs.emplace(name, std::move(platforms));
+  }
+
+  return pairs;
 }
 
 sol_state_ptr create_lua_state() {
@@ -463,8 +542,8 @@ std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg cons
   } else {
     throw std::runtime_error("PRODUCTS must be table or function in spec '" + id + "'");
   }
-  sol::object check_obj{ lua["CHECK"] };
-  bool const has_check{ check_obj.valid() && check_obj.get_type() == sol::type::function };
+  // User-managed product values name host state (not cache paths); skip path safety.
+  bool const user_managed{ p->type == pkg_type::USER_MANAGED };
 
   for (auto const &[key, value] : products_table) {
     sol::object key_obj(key);
@@ -538,7 +617,7 @@ std::unordered_map<std::string, product_entry> parse_products_table(pkg_cfg cons
       throw std::runtime_error("PRODUCTS value cannot be empty in spec '" + id + "'");
     }
 
-    if (!has_check) {  // Validate path safety for cached packages
+    if (!user_managed) {  // Validate path safety for cached packages
       std::filesystem::path product_path{ val_str };
 
       if (product_path.is_absolute() || (!val_str.empty() && val_str[0] == '/')) {
@@ -767,6 +846,13 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
     }
 
     sol::table table{ entry.as<sol::table>() };
+
+    if (sol::object setup_obj{ table["setup"] };
+        setup_obj.valid() && setup_obj.get_type() != sol::type::lua_nil) {
+      throw std::runtime_error("Dependency entries cannot select 'setup' pairs (spec '" +
+                               cfg.identity +
+                               "'); only manifest package entries may carry 'setup'");
+    }
 
     // Check for pure bundle dependency: {bundle = "id", source = "..."}
     if (auto pure_bundle{ try_parse_pure_bundle_dep(table, spec_path) }) {
@@ -1260,11 +1346,13 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
                              "' but spec declares '" + declared_identity + "'");
   }
 
-  // Determine package type (user-managed or cache-managed) and validate phases.
+  // Determine package type (user-managed or cache-managed), parse SETUP pairs,
+  // and validate the phase-verb matrix.
   {
     sol::state_view lua_view{ *lua };
     bool const user_managed{ resolve_user_managed(lua_view, cfg.identity) };
-    validate_phases(lua_view, cfg.identity, user_managed);
+    p->setup_pairs = parse_setup_table(lua_view, cfg.identity);
+    validate_phases(lua_view, cfg.identity, user_managed, !p->setup_pairs.empty());
     p->type = user_managed ? pkg_type::USER_MANAGED : pkg_type::CACHE_MANAGED;
   }
 

@@ -88,12 +88,16 @@ SPEC_USER_MANAGED = """\
 IDENTITY = "local.usermanaged@v1"
 
 USER_MANAGED = true
-CHECK = function(project_root, options)
-  return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+    end,
+  }},
+}}
 
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-end
 """
 
 SPEC_WITH_PRODUCT = """\

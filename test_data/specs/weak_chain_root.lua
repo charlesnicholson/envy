@@ -5,11 +5,13 @@ DEPENDENCIES = {
   { spec = "local.chain_missing", weak = { spec = "local.chain_b@v1", source = "weak_chain_b.lua" } },
 }
 
-function CHECK(project_root, options)
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
   return false
-end
-
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+    end,
+    INSTALL = function(pkg_dir, options)
   -- Programmatic install: no cache artifacts
-end
-
+    end,
+  },
+}

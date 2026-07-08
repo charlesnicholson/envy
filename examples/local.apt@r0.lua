@@ -5,34 +5,38 @@ USER_MANAGED = true
 
 local missing_packages = {}
 
-CHECK = function(tmp_dir, opts)
-  local cmd = "dpkg-query -W -f='${Status} ${Package}\n' " ..
-  table.concat(opts.packages, " ")
+SETUP = {
+  packages = {
+    CHECK = function(pkg_dir, opts)
+      local cmd = "dpkg-query -W -f='${Status} ${Package}\n' " ..
+      table.concat(opts.packages, " ")
 
-  local res = envy.run(cmd, { capture = true, quiet = true, check = false })
+      local res = envy.run(cmd, { capture = true, quiet = true, check = false })
 
-  local installed = {}
+      local installed = {}
 
-  for line in res.stdout:gmatch("[^\r\n]+") do
-    if line:match("^install ok installed") then
-      local pkg = line:match("%S+$")
-      if pkg then
-        installed[pkg] = true
+      for line in res.stdout:gmatch("[^\r\n]+") do
+        if line:match("^install ok installed") then
+          local pkg = line:match("%S+$")
+          if pkg then
+            installed[pkg] = true
+          end
+        end
       end
-    end
-  end
 
-  missing_packages = {}
+      missing_packages = {}
 
-  for _, pkg in pairs(opts.packages) do
-    if not installed[pkg] then
-      table.insert(missing_packages, pkg)
-    end
-  end
+      for _, pkg in pairs(opts.packages) do
+        if not installed[pkg] then
+          table.insert(missing_packages, pkg)
+        end
+      end
 
-  return #missing_packages == 0
-end
+      return #missing_packages == 0
+    end,
 
-INSTALL = function(install_dir, stage_dir, fetch_dir, tmp_dir, opts)
-  return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
-end
+    INSTALL = function(pkg_dir, opts)
+      return "sudo apt-get install -y " .. table.concat(missing_packages, " ")
+    end,
+  },
+}

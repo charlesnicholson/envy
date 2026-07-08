@@ -1469,18 +1469,22 @@ class TestUserManagedSkipsDepot(unittest.TestCase):
         content = f'''IDENTITY = "{identity}"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-    local f = io.open("{mp}", "r")
-    if f then f:close(); return true end
-    return false
-end
+SETUP = {{
+  main = {{
+    CHECK = function(pkg_dir, options)
+        local f = io.open("{mp}", "r")
+        if f then f:close(); return true end
+        return false
+    end,
+    INSTALL = function(pkg_dir, options)
+        local f = io.open("{mp}", "w")
+        if not f then error("Failed to create marker") end
+        f:write("installed")
+        f:close()
+    end,
+  }},
+}}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-    local f = io.open("{mp}", "w")
-    if not f then error("Failed to create marker") end
-    f:write("installed")
-    f:close()
-end
 '''
         path = self.test_dir / f"{name}.lua"
         path.write_text(content, encoding="utf-8")

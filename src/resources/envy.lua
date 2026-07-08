@@ -296,14 +296,22 @@ STAGE = {}
 ---@type string|fun(install_dir: string, stage_dir: string, fetch_dir: string, tmp_dir: string, options: table)
 BUILD = nil
 
----INSTALL phase: shell script string or function
+---INSTALL phase (cache-managed only): shell script string or function
 ---@type string|fun(install_dir: string, stage_dir: string, fetch_dir: string, tmp_dir: string, options: table)
 INSTALL = nil
 
----CHECK phase: shell script string, function, or table with shell key
----Returns true if already satisfied (skip install), false to proceed
----@type string|fun(project_root: string, options: table): boolean|{ shell: string }
-CHECK = nil
+---@class envy.setup_pair
+---@field CHECK string|fun(pkg_dir: string?, options: table): boolean|string Satisfaction probe: true/exit 0 = already satisfied. String (or returned string) runs as shell.
+---@field INSTALL string|fun(pkg_dir: string?, options: table): string? Host mutation, runs with cwd=project_root when CHECK fails. Returned string runs as shell.
+---@field PLATFORMS? string[] Per-pair platform constraints (empty/absent = all)
+
+---SETUP: named host-side CHECK/INSTALL pairs, re-evaluated every run (never cached,
+---never hashed into the package key). pkg_dir is the installed payload path for
+---cache-managed packages, nil for user-managed. User-managed specs define ONLY
+---SETUP pairs (all selected by default); cache-managed packages run pairs only when
+---a manifest entry selects them via `setup = { "name", ... }`.
+---@type table<string, envy.setup_pair>
+SETUP = nil
 
 ---@alias envy.option_constraint { required?: boolean, type?: "string"|"int"|"float"|"boolean"|"table"|"list"|"semver", range?: string, choices?: any[], validate?: fun(value: any): nil|boolean|string }
 
@@ -313,10 +321,11 @@ CHECK = nil
 ---@type table<string, envy.option_constraint>|fun(options: table): nil|boolean|string
 OPTIONS = nil
 
----USER_MANAGED: marks the spec as user-managed (CHECK gates install; cache holds no install output).
+---USER_MANAGED: marks the spec as user-managed (host state only; cache holds nothing).
 ---Boolean or function returning a boolean (called once at spec load). Defaults to false (cache-managed).
----When true, CHECK and INSTALL must be defined and FETCH/STAGE/BUILD must NOT be defined.
----When false (default), CHECK must NOT be defined and FETCH must be defined.
+---When true, the spec defines only SETUP pairs (all selected by default) and must NOT
+---define FETCH/STAGE/BUILD/INSTALL. When false (default), FETCH must be defined and
+---SETUP pairs run only when selected by a manifest entry.
 ---@type boolean|fun(): boolean
 USER_MANAGED = nil
 
@@ -329,7 +338,7 @@ EXPORTABLE = nil
 -- Manifest Globals
 --------------------------------------------------------------------------------
 
----@alias envy.package_spec string|{ spec: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean, platforms?: string[] }
+---@alias envy.package_spec string|{ spec: string, source?: string, options?: table, needed_by?: string, product?: string, weak?: boolean, platforms?: string[], setup?: string[] }
 
 ---Manifest packages array
 ---@type envy.package_spec[]

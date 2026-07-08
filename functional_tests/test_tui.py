@@ -18,46 +18,64 @@ from .test_config import make_manifest
 SPEC_BUILD_FUNCTION = """IDENTITY = "local.build_function@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.run("echo 'Building with envy.run()'", { quiet = true })
+      envy.run("echo 'Build finished successfully'", { quiet = true })
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("echo 'Building with envy.run()'", { quiet = true })
-  envy.run("echo 'Build finished successfully'", { quiet = true })
-end
 """
 
 # Dependency spec for parallel execution test
 SPEC_BUILD_DEPENDENCY = """IDENTITY = "local.build_dependency@v1"
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      envy.run("echo 'dependency: begin'", { quiet = true })
+      envy.run("echo 'dependency: success'", { quiet = true })
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("echo 'dependency: begin'", { quiet = true })
-  envy.run("echo 'dependency: success'", { quiet = true })
-end
 """
 
 # Fast-completing spec (instant install)
 SPEC_FAST = """IDENTITY = "local.fast@v1"
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("echo fast-install-done", { quiet = true })
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+      envy.run("echo fast-install-done", { quiet = true })
+    end,
+  },
+}
+
 """
 
 # Slow spec (sleeps to keep renderer active)
 SPEC_SLOW = """IDENTITY = "local.slow@v1"
 USER_MANAGED = true
-function CHECK(project_root, options) return false end
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  envy.run("sleep 2")
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options) return false end,
+    INSTALL = function(pkg_dir, options)
+      envy.run("sleep 2")
+    end,
+  },
+}
+
 """
 
 # Minimal spec for ANSI/fallback mode tests
@@ -65,13 +83,17 @@ SPEC_SIMPLE = """IDENTITY = "local.simple@v1"
 DEPENDENCIES = {}
 
 USER_MANAGED = true
-function CHECK(project_root, options)
-  return false
-end
+SETUP = {
+  main = {
+    CHECK = function(pkg_dir, options)
+      return false
+    end,
+    INSTALL = function(pkg_dir, options)
+      -- No-op install
+    end,
+  },
+}
 
-function INSTALL(install_dir, stage_dir, fetch_dir, tmp_dir, options)
-  -- No-op install
-end
 """
 
 

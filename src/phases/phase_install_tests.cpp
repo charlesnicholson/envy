@@ -3,7 +3,6 @@
 #include "cache.h"
 #include "engine.h"
 #include "lua_envy.h"
-#include "phase_check.h"
 #include "pkg.h"
 #include "pkg_cfg.h"
 #include "sol_util.h"
@@ -67,7 +66,7 @@ struct install_test_fixture {
                                       .pkg_path = std::filesystem::path{},
                                       .spec_file_path = std::nullopt,
                                       .result_hash = {},
-                                      .type = pkg_type::UNKNOWN,
+                                      .type = pkg_type::CACHE_MANAGED,
                                       .declared_dependencies = {},
                                       .owned_dependency_cfgs = {},
                                       .dependencies = {},
@@ -87,20 +86,6 @@ struct install_test_fixture {
   // of the full expression it's used in, so `(*lua())[key] = v` runs under the lock;
   // bind it to a named local when driving the state across multiple statements.
   sol_state_guard::accessor lua() { return p->lua.lock(); }
-
-  // Configure the fixture as cache-managed (CHECK cleared, type = CACHE_MANAGED).
-  void clear_check_verb() {
-    (*lua())["CHECK"] = sol::lua_nil;
-    p->type = pkg_type::CACHE_MANAGED;
-  }
-
-  // Configure the fixture as user-managed (CHECK set, type = USER_MANAGED).
-  // Dispatch in run_install_phase keys on p->type, but tests that exercise
-  // run_check_verb() still need CHECK populated in the Lua state.
-  void set_check_verb(std::string_view check_code) {
-    (*lua())["CHECK"] = std::string(check_code);
-    p->type = pkg_type::USER_MANAGED;
-  }
 
   void clear_install_verb() { (*lua())["INSTALL"] = sol::lua_nil; }
 
@@ -138,61 +123,11 @@ struct install_test_fixture {
 }  // namespace
 
 // ============================================================================
-// Check XOR Cache validation tests
+// Basic install phase behavior
 // ============================================================================
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase provides nil install_dir for user-managed packages") {
-  // Spec with check verb (user-managed)
-  set_check_verb("echo test");
-
-  // Install function that verifies install_dir is nil for user-managed packages
-  // and properly guards against using it as a path
-  set_install_function(R"(
-    function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      -- install_dir is nil for user-managed packages
-      if install_dir ~= nil then
-        error("expected install_dir to be nil for user-managed package")
-      end
-      -- Verify other directories are valid strings
-      if type(stage_dir) ~= "string" then
-        error("expected stage_dir to be string")
-      end
-    end
-  )");
-
-  acquire_lock();
-
-  // Should succeed - the function properly checks for nil
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-}
-
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase allows user-managed package without mark_install_complete") {
-  // Spec with check verb (user-managed)
-  set_check_verb("echo test");
-
-  // Install function with new signature (install_dir is nil for user-managed)
-  set_install_function(R"(
-    function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      -- User-managed packages receive nil for install_dir
-      -- They do work but don't populate cache
-    end
-  )");
-
-  acquire_lock();
-
-  // Should not throw
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-}
-
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase auto-marks cache-managed package complete on success") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
-  // Install function with new signature (auto-marks complete)
+                  "install phase auto-marks package complete on success") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       -- Auto-marked complete on successful return
@@ -202,45 +137,19 @@ TEST_CASE_FIXTURE(install_test_fixture,
   acquire_lock();
   write_install_content();
 
-  // Should not throw and should mark complete
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
   // Verify pkg was marked complete
   CHECK(p->pkg_path.string().find("pkg") != std::string::npos);
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase allows cache-managed package without mark_install_complete "
-    "(programmatic)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
-  // Install function with new signature
-  set_install_function(R"(
-    function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      -- Programmatic packages don't populate cache either
-    end
-  )");
-
-  acquire_lock();
-
-  // Should not throw
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-}
-
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase user-managed receives nil install_dir") {
-  // String check verb (user-managed)
-  set_check_verb("echo test");
-
-  // Install function that verifies install_dir is nil for user-managed
+                  "install function receives all directory arguments as strings") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      if install_dir ~= nil then
-        error("expected install_dir to be nil for user-managed package")
+      if type(install_dir) ~= "string" then
+        error("expected install_dir to be string")
       end
-      -- stage_dir, fetch_dir, tmp_dir should still be valid strings
       if type(stage_dir) ~= "string" then
         error("expected stage_dir to be string")
       end
@@ -256,97 +165,27 @@ TEST_CASE_FIXTURE(install_test_fixture,
   acquire_lock();
   write_install_content();
 
-  // Should not throw - all assertions pass
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install phase allows nil install with check verb (user-managed)") {
-  // Check verb (user-managed)
-  set_check_verb("echo test");
-
-  // Nil install - default behavior (promote stage to install)
-  clear_install_verb();
-
-  acquire_lock();
-
-  // Should not throw - nil install doesn't call mark_install_complete
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-}
-
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase string install succeeds for user-managed without marking complete") {
-  // Check verb (user-managed)
-  set_check_verb("echo test");
-
-  // String install - runs command but doesn't mark complete for user-managed
+                  "install phase string install succeeds and marks complete") {
   set_install_string("echo 'installing'");
 
   acquire_lock();
 
-  // String installs should succeed for user-managed, but not mark complete
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
-  // Verify pkg_path was NOT set (not marked complete for user-managed)
-  CHECK(p->pkg_path.empty());
-}
-
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase string install succeeds for cache-managed and marks complete") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
-  // String install
-  set_install_string("echo 'installing'");
-
-  acquire_lock();
-
-  // String installs should succeed and mark complete for cache-managed
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-
-  // Verify pkg_path was set (marked complete for cache-managed)
+  // Verify pkg_path was set (marked complete)
   CHECK(!p->pkg_path.empty());
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase string install with non-zero exit throws (user-managed)") {
-  // Check verb (user-managed)
-  set_check_verb("echo test");
-
-  // String install that fails
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install phase string install with non-zero exit throws") {
   set_install_string("exit 1");
 
   acquire_lock();
 
-  // Should throw on non-zero exit regardless of user-managed status
-  bool exception_thrown = false;
-  std::string exception_msg;
-  try {
-    run_install_phase(p.get(), eng);
-  } catch (std::runtime_error const &e) {
-    exception_thrown = true;
-    exception_msg = e.what();
-  }
-  REQUIRE(exception_thrown);
-  CHECK(exception_msg.find("Install shell script failed") != std::string::npos);
-  CHECK(exception_msg.find("exit code 1") != std::string::npos);
-}
-
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install phase string install with non-zero exit throws (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
-  // String install that fails
-  set_install_string("exit 1");
-
-  acquire_lock();
-
-  // Should throw on non-zero exit
   bool exception_thrown = false;
   std::string exception_msg;
   try {
@@ -365,7 +204,6 @@ TEST_CASE_FIXTURE(install_test_fixture,
   // Don't acquire lock (simulates cache hit)
   p->lock = nullptr;
 
-  set_check_verb("echo test");
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       error("Should not run - no lock means cache hit")
@@ -380,11 +218,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 // Install function return type validation tests
 // ============================================================================
 
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function returning nil succeeds (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+TEST_CASE_FIXTURE(install_test_fixture, "install function returning nil succeeds") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return nil
@@ -395,26 +229,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 }
 
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function returning nil succeeds (user-managed)") {
-  // Check verb (user-managed)
-  set_check_verb("echo test");
-
-  set_install_function(R"(
-    function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      return nil
-    end
-  )");
-
-  acquire_lock();
-  CHECK_NOTHROW(run_install_phase(p.get(), eng));
-}
-
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function with no return succeeds (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+TEST_CASE_FIXTURE(install_test_fixture, "install function with no return succeeds") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       -- No return statement
@@ -427,9 +242,6 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning number throws with type error") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return 42
@@ -453,9 +265,6 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning table throws with type error") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return {foo = "bar"}
@@ -479,9 +288,6 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
 TEST_CASE_FIXTURE(install_test_fixture,
                   "install function returning boolean throws with type error") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return true
@@ -508,11 +314,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 // ============================================================================
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function returning string executes shell and marks complete "
-                  "(cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+                  "install function returning string executes shell and marks complete") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "echo 'returned string executed'"
@@ -521,39 +323,14 @@ TEST_CASE_FIXTURE(install_test_fixture,
 
   acquire_lock();
 
-  // Should execute returned string and mark complete
   CHECK_NOTHROW(run_install_phase(p.get(), eng));
 
   // Verify pkg_path was set (indicates marked complete)
   CHECK(!p->pkg_path.empty());
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install function returning string does not mark complete (user-managed)") {
-  // Check verb (user-managed)
-  set_check_verb("echo test");
-
-  set_install_function(R"(
-    function(install_dir, stage_dir, fetch_dir, tmp_dir)
-      return "exit 0"
-    end
-  )");
-
-  acquire_lock();
-
-  // Should not throw - user-managed packages can return strings
-  run_install_phase(p.get(), eng);
-
-  // Verify pkg_path was NOT set (user-managed packages don't mark complete)
-  CHECK(p->pkg_path.empty());
-}
-
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function can call envy.run and return string (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+                  "install function can call envy.run and return string") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       envy.run("echo 'first command'")
@@ -568,12 +345,8 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK(!p->pkg_path.empty());
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "install function returning string with non-zero exit throws (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "install function returning string with non-zero exit throws") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return "exit 1"
@@ -596,10 +369,7 @@ TEST_CASE_FIXTURE(
 }
 
 TEST_CASE_FIXTURE(install_test_fixture,
-                  "install function returning empty string succeeds (cache-managed)") {
-  // No check verb (cache-managed)
-  clear_check_verb();
-
+                  "install function returning empty string succeeds") {
   set_install_function(R"(
     function(install_dir, stage_dir, fetch_dir, tmp_dir)
       return ""
@@ -617,9 +387,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
 // Install phase cwd tests (cache-managed packages use stage_dir as cwd)
 // ============================================================================
 
-TEST_CASE_FIXTURE(install_test_fixture,
-                  "string install cwd is stage_dir for cache-managed packages") {
-  clear_check_verb();
+TEST_CASE_FIXTURE(install_test_fixture, "string install cwd is stage_dir") {
   acquire_lock();
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
@@ -639,10 +407,7 @@ TEST_CASE_FIXTURE(install_test_fixture,
   CHECK(cwd_output == expected_cwd);
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "function install envy.run cwd is stage_dir for cache-managed packages") {
-  clear_check_verb();
+TEST_CASE_FIXTURE(install_test_fixture, "function install envy.run cwd is stage_dir") {
   acquire_lock();
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
@@ -672,10 +437,8 @@ TEST_CASE_FIXTURE(
   CHECK(cwd_output == expected_cwd);
 }
 
-TEST_CASE_FIXTURE(
-    install_test_fixture,
-    "function install returning string cwd is stage_dir for cache-managed packages") {
-  clear_check_verb();
+TEST_CASE_FIXTURE(install_test_fixture,
+                  "function install returning string cwd is stage_dir") {
   acquire_lock();
 
   auto const expected_cwd{ std::filesystem::canonical(p->lock->stage_dir()).string() };
