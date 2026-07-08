@@ -312,9 +312,9 @@ std::string render_text_stream(envy::tui::text_stream_data const &data,
                                std::chrono::steady_clock::time_point now) {
   // Determine which lines to render
   std::size_t const num_lines{ data.lines.size() };
-  std::size_t const start_idx{
-    data.line_limit > 0 && num_lines > data.line_limit ? num_lines - data.line_limit : 0
-  };
+  std::size_t const start_idx{ data.line_limit > 0 && num_lines > data.line_limit
+                                   ? num_lines - data.line_limit
+                                   : 0 };
 
   // Compute spinner frame
   auto const elapsed{ now - data.start_time };

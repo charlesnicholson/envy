@@ -469,7 +469,7 @@ TEST_CASE("archive_create_tar_zst with fetch prefix") {
 TEST_CASE("extract_is_safe_archive_path rejects escape vectors") {
   CHECK(envy::extract_is_safe_archive_path("a.txt"));
   CHECK(envy::extract_is_safe_archive_path("a/b/c.txt"));
-  CHECK(envy::extract_is_safe_archive_path("a/..b/c"));   // ".." substring, not component
+  CHECK(envy::extract_is_safe_archive_path("a/..b/c"));  // ".." substring, not component
   CHECK(envy::extract_is_safe_archive_path("a/b../c"));
   CHECK(envy::extract_is_safe_archive_path("..a/b"));
   CHECK(envy::extract_is_safe_archive_path("a..b"));

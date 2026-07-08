@@ -65,12 +65,15 @@ struct test_pkg_fixture {
                                       .resolved_weak_dependency_keys = {} });
   }
 
-  void set_check_string(std::string_view cmd) { (*p->lua.lock())["CHECK"] = std::string(cmd); }
+  void set_check_string(std::string_view cmd) {
+    (*p->lua.lock())["CHECK"] = std::string(cmd);
+  }
 
   void set_check_function(std::string_view lua_code) {
     std::string code = "return " + std::string(lua_code);
-    sol::protected_function_result res{ p->lua.lock()->safe_script(code,
-                                                            sol::script_pass_on_error) };
+    sol::protected_function_result res{
+      p->lua.lock()->safe_script(code, sol::script_pass_on_error)
+    };
     if (!res.valid()) {
       sol::error err = res;
       throw std::runtime_error(std::string("Failed to set check function: ") + err.what());
@@ -255,8 +258,9 @@ TEST_CASE("run_check_function receives project_root as directory path") {
       "  return string.find(project_root, \"envy%-check%-cwd\") ~= nil\n"
       "end";
 
-  sol::protected_function_result res{ f.p->lua.lock()->safe_script(lua_script,
-                                                            sol::script_pass_on_error) };
+  sol::protected_function_result res{
+    f.p->lua.lock()->safe_script(lua_script, sol::script_pass_on_error)
+  };
   REQUIRE(res.valid());
   sol::protected_function check_func = res;
 

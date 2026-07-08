@@ -22,8 +22,8 @@ namespace envy {
 bool util_is_safe_path_component(std::string_view s) {
   if (s.empty() || s == "." || s == "..") { return false; }
   for (char const c : s) {
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
-        c != '_' && c != '@') {
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' && c != '_' &&
+        c != '@') {
       return false;
     }
   }

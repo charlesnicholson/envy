@@ -328,7 +328,6 @@ shell_result run_shell_with_progress(std::string_view script,
   return shell_run(script, cfg);
 }
 
-
 // ==== run_phase_shell_script ====
 
 void run_phase_shell_script(std::string_view script,
@@ -350,11 +349,9 @@ void run_phase_shell_script(std::string_view script,
     .shell = std::move(shell)
   };
 
-  shell_result const result{ run_shell_with_progress(script,
-                                                     section,
-                                                     identity,
-                                                     cache_root,
-                                                     std::move(cfg)) };
+  shell_result const result{
+    run_shell_with_progress(script, section, identity, cache_root, std::move(cfg))
+  };
   if (result.exit_code == 0) { return; }
 
   std::string const stdout_str{ stdout_capture.str() };
@@ -373,11 +370,10 @@ void run_phase_shell_script(std::string_view script,
     tui::error("%s", oss.str().c_str());
   }
 
-  std::string const suffix{ result.signal
-                                ? " (terminated by signal " +
-                                      std::to_string(*result.signal) + ")"
-                                : " (exit code " + std::to_string(result.exit_code) +
-                                      ")" };
+  std::string const suffix{
+    result.signal ? " (terminated by signal " + std::to_string(*result.signal) + ")"
+                  : " (exit code " + std::to_string(result.exit_code) + ")"
+  };
   throw std::runtime_error(std::string{ phase_label } + " shell script failed for " +
                            identity + suffix);
 }

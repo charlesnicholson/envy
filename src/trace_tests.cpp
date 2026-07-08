@@ -52,8 +52,9 @@ TEST_CASE("trace_event_name is unique per event type") {
   constexpr std::size_t kEventCount{ std::variant_size_v<envy::trace_event_t> };
   std::vector<std::string> names;
   auto collect{ [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-    (names.emplace_back(envy::trace_event_name(envy::trace_event_t{
-         std::in_place_index<Is>, std::variant_alternative_t<Is, envy::trace_event_t>{} })),
+    (names.emplace_back(envy::trace_event_name(
+         envy::trace_event_t{ std::in_place_index<Is>,
+                              std::variant_alternative_t<Is, envy::trace_event_t>{} })),
      ...);
   } };
   collect(std::make_index_sequence<kEventCount>{});

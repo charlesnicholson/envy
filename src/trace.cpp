@@ -266,8 +266,7 @@ std::string trace_event_to_string(trace_event_t const &event) {
           [](trace_events::execute_downloads_start const &value) {
             std::ostringstream oss;
             oss << "execute_downloads_start spec=" << value.spec
-                << " thread_id=" << value.thread_id
-                << " num_files=" << value.num_files;
+                << " thread_id=" << value.thread_id << " num_files=" << value.num_files;
             return oss.str();
           },
           [](trace_events::execute_downloads_complete const &value) {

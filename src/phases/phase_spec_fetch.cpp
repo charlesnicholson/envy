@@ -587,9 +587,10 @@ std::optional<pkg_cfg::bundle_source> try_parse_pure_bundle_dep(
   }
   std::string bundle_identity{ bundle_obj.as<std::string>() };
   if (!util_is_safe_path_component(bundle_identity)) {
-    throw std::runtime_error("Pure bundle dependency 'bundle' field is not a valid "
-                             "identity: '" +
-                             bundle_identity + "'");
+    throw std::runtime_error(
+        "Pure bundle dependency 'bundle' field is not a valid "
+        "identity: '" +
+        bundle_identity + "'");
   }
 
   // Parse source: string (URL/path) or table { fetch = function, dependencies = {} }
@@ -921,11 +922,11 @@ void wire_dependency_graph(pkg *p, engine &eng) {
         std::lock_guard const deps_lock(p->deps_mutex);
         inserted = p->product_dependencies
                        .emplace(product_name,
-                                pkg::product_dependency{
-                                    .name = product_name,
-                                    .needed_by = needed_by_phase,
-                                    .provider = nullptr,
-                                    .constraint_identity = dep_cfg->identity })
+                                pkg::product_dependency{ .name = product_name,
+                                                         .needed_by = needed_by_phase,
+                                                         .provider = nullptr,
+                                                         .constraint_identity =
+                                                             dep_cfg->identity })
                        .second;
       }
       if (!inserted) {

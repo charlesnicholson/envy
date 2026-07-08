@@ -337,8 +337,8 @@ cache::ensure_result cache::ensure_pkg(std::string_view identity,
 
 cache::ensure_result cache::ensure_spec(std::string_view identity) {
   if (!util_is_safe_path_component(identity)) {
-    throw std::runtime_error("cache: invalid spec identity: '" +
-                             std::string{ identity } + "'");
+    throw std::runtime_error("cache: invalid spec identity: '" + std::string{ identity } +
+                             "'");
   }
   std::string const id{ identity };
   return ensure_entry(*m,

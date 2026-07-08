@@ -19,8 +19,8 @@ namespace {
 constexpr std::chrono::seconds kTestTimeout{ 5 };
 
 std::mutex g_watchdog_mutex;
-std::string g_current_test;                            // guarded by g_watchdog_mutex
-std::chrono::steady_clock::time_point g_test_start;    // guarded by g_watchdog_mutex
+std::string g_current_test;                          // guarded by g_watchdog_mutex
+std::chrono::steady_clock::time_point g_test_start;  // guarded by g_watchdog_mutex
 std::atomic_bool g_test_running{ false };
 std::atomic_bool g_watchdog_shutdown{ false };
 
@@ -55,8 +55,7 @@ void watchdog_thread_main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     if (!g_test_running) { continue; }
     std::lock_guard const lock(g_watchdog_mutex);
-    if (g_test_running &&
-        std::chrono::steady_clock::now() - g_test_start > kTestTimeout) {
+    if (g_test_running && std::chrono::steady_clock::now() - g_test_start > kTestTimeout) {
       std::fprintf(stderr,
                    "\nwatchdog: test case '%s' exceeded %lld seconds; aborting\n",
                    g_current_test.c_str(),

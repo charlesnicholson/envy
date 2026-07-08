@@ -240,9 +240,7 @@ void cmd_import::execute() {
 
     if (ext == ".txt") {
       // Depot manifest import — build index from file, let engine handle everything
-      auto const [m, c]{ cmd_startup_load("import",
-                                          cfg_.manifest_path,
-                                          cli_cache_root_) };
+      auto const [m, c]{ cmd_startup_load("import", cfg_.manifest_path, cli_cache_root_) };
 
       auto const data{ util_load_file(cfg_.archive_path) };
       std::string contents(reinterpret_cast<char const *>(data.data()), data.size());
