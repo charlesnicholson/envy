@@ -169,6 +169,17 @@ TEST_CASE("classify_uri detects local file paths") {
              "server:1234/assets/tool.lua");
 }
 
+TEST_CASE("classify_uri handles non-ASCII (UTF-8) local paths") {
+  // Drive-letter detection is ASCII-only, so a leading high-bit UTF-8 byte is never
+  // mistaken for a drive spec, and the unicode path round-trips unchanged.
+  expect_uri("caf\xc3\xa9/archive.tar.gz",  // "café/archive.tar.gz"
+             envy::uri_scheme::LOCAL_FILE_RELATIVE,
+             "caf\xc3\xa9/archive.tar.gz");
+  expect_uri("\xe4\xbd\xa0\xe5\xa5\xbd/tool.lua",  // "你好/tool.lua"
+             envy::uri_scheme::LOCAL_FILE_RELATIVE,
+             "\xe4\xbd\xa0\xe5\xa5\xbd/tool.lua");
+}
+
 TEST_CASE("classify_uri handles whitespace and unknown schemes") {
   expect_uri("  https://example.com/archive.tar.gz  ",
              envy::uri_scheme::HTTPS,

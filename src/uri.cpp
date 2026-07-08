@@ -66,11 +66,11 @@ bool looks_like_scp_uri(std::string_view uri) {
 bool is_drive_letter_path(std::string_view path) {
   if (path.size() < 2) { return false; }
 
-  if (std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') { return true; }
+  if (util_ascii_is_alpha(path[0]) && path[1] == ':') { return true; }
   if (path.size() < 3) { return false; }
 
-  if ((path[0] == '/' || path[0] == '\\') &&
-      std::isalpha(static_cast<unsigned char>(path[1])) && path[2] == ':') {
+  if ((path[0] == '/' || path[0] == '\\') && util_ascii_is_alpha(path[1]) &&
+      path[2] == ':') {
     return true;
   }
 
@@ -81,7 +81,7 @@ std::string strip_file_scheme(std::string_view uri) {
   std::string cand{ uri.substr(7) };
 
   if (!cand.empty() && cand[0] == '/' && cand.size() >= 3 &&
-      std::isalpha(static_cast<unsigned char>(cand[1])) && cand[2] == ':') {
+      util_ascii_is_alpha(cand[1]) && cand[2] == ':') {
     cand.erase(cand.begin());
     return cand;
   }

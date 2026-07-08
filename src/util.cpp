@@ -3,7 +3,6 @@
 #include "platform.h"
 
 #include <array>
-#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -21,9 +20,10 @@ namespace envy {
 
 bool util_is_safe_path_component(std::string_view s) {
   if (s.empty() || s == "." || s == "..") { return false; }
+  // Strict ASCII whitelist, locale-independent (see util_ascii_is_alnum): identities
+  // are deliberately ASCII-only and become cache/spec path components.
   for (char const c : s) {
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' && c != '_' &&
-        c != '@') {
+    if (!util_ascii_is_alnum(c) && c != '.' && c != '-' && c != '_' && c != '@') {
       return false;
     }
   }

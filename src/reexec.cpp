@@ -7,8 +7,8 @@
 #include "fetch.h"
 #include "platform.h"
 #include "tui.h"
+#include "util.h"
 
-#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
@@ -104,10 +104,9 @@ reexec_decision reexec_should(std::string_view self_version,
 
 bool reexec_is_valid_version(std::string_view version) {
   if (version.empty()) { return false; }
+  // ASCII-only: version becomes the envy/<version> cache path component.
   for (char c : version) {
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-' && c != '_') {
-      return false;
-    }
+    if (!util_ascii_is_alnum(c) && c != '.' && c != '-' && c != '_') { return false; }
   }
   return true;
 }

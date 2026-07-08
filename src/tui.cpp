@@ -943,7 +943,8 @@ void configure_trace_outputs(std::vector<trace_output_spec> outputs) {
       if (s_tui.trace_file) {
         throw std::logic_error{ "Only one trace file output supported" };
       }
-      s_tui.trace_file = std::fopen(spec.file_path->string().c_str(), "w");
+      // util_open_file uses _wfopen on Windows so non-ASCII trace paths work.
+      s_tui.trace_file = util_open_file(*spec.file_path, "w").release();
       if (!s_tui.trace_file) {
         throw std::runtime_error("Failed to open trace file: " + spec.file_path->string());
       }

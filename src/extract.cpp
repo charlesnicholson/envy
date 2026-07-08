@@ -225,9 +225,7 @@ bool extract_is_safe_archive_path(char const *path) {
   if (!path || path[0] == '\0') { return false; }
   if (path[0] == '/' || path[0] == '\\') { return false; }
 #ifdef _WIN32
-  if (std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':') {
-    return false;
-  }
+  if (util_ascii_is_alpha(path[0]) && path[1] == ':') { return false; }
 #endif
   std::string_view sv{ path };
   // Reject paths containing ".." components

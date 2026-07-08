@@ -119,6 +119,37 @@ class TestStructuredTrace(unittest.TestCase):
                 except json.JSONDecodeError as e:
                     self.fail(f"Line {line_num} is not valid JSON: {e}\nLine: {line}")
 
+    def test_trace_file_non_ascii_path(self):
+        """A trace-file path with non-ASCII characters must open and write correctly.
+
+        Exercises the Unicode-safe file open (util_open_file / _wfopen on Windows)
+        rather than a narrow fopen that would mangle the path.
+        """
+        trace_dir = self.cache_root / "trace-café-你好"
+        trace_dir.mkdir(parents=True)
+        trace_file = trace_dir / "trace-日本語.jsonl"
+
+        result = test_config.run(
+            [
+                str(self.envy),
+                f"--cache-root={self.cache_root}",
+                f"--trace=file:{trace_file}",
+                "engine-test",
+                "local.simple@v1",
+                str(self.spec_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertTrue(
+            trace_file.exists(), "Trace file at non-ASCII path should be created"
+        )
+
+        parser = TraceParser(trace_file)
+        self.assertGreater(len(parser.parse()), 0, "Expected trace events in file")
+
     def test_trace_multiple_outputs_simultaneously(self):
         """Verify --trace=stderr,file:<path> works simultaneously."""
         trace_file = self.cache_root / "trace.jsonl"
