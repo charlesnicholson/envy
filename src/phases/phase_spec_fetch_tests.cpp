@@ -412,8 +412,8 @@ TEST_CASE("OPTIONS function returns false fails") {
   ofs << "IDENTITY = \"test.options_false@v1\"\n";
   ofs << "OPTIONS = function(opts) return false end\n";
   ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
-           "end, INSTALL = function(pkg_dir, options) end } }\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+         "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_false@v1", spec_file) };
@@ -446,8 +446,8 @@ TEST_CASE("OPTIONS function returns string fails with message") {
   ofs << "IDENTITY = \"test.options_string@v1\"\n";
   ofs << "OPTIONS = function(opts) return \"nope\" end\n";
   ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
-           "end, INSTALL = function(pkg_dir, options) end } }\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+         "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_string@v1", spec_file) };
@@ -479,8 +479,8 @@ TEST_CASE("OPTIONS function invalid return type errors") {
   ofs << "IDENTITY = \"test.options_type@v1\"\n";
   ofs << "OPTIONS = function(opts) return 123 end\n";
   ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
-           "end, INSTALL = function(pkg_dir, options) end } }\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+         "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_type@v1", spec_file) };
@@ -503,8 +503,8 @@ TEST_CASE("OPTIONS set to non-table non-function errors") {
   ofs << "IDENTITY = \"test.options_nonfn@v1\"\n";
   ofs << "OPTIONS = 42\n";
   ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
-           "end, INSTALL = function(pkg_dir, options) end } }\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+         "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_nonfn@v1", spec_file) };
@@ -527,8 +527,8 @@ TEST_CASE("OPTIONS function runtime error bubbles with context") {
   ofs << "IDENTITY = \"test.options_error@v1\"\n";
   ofs << "OPTIONS = function(opts) error(\"boom\") end\n";
   ofs << "USER_MANAGED = true\n";
-    ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
-           "end, INSTALL = function(pkg_dir, options) end } }\n";
+  ofs << "SETUP = { main = { CHECK = function(pkg_dir, options) return true "
+         "end, INSTALL = function(pkg_dir, options) end } }\n";
   ofs.close();
 
   auto *cfg{ make_local_cfg("test.options_error@v1", spec_file) };
