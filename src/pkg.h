@@ -8,6 +8,7 @@
 #include "sol_util.h"
 #include "tui.h"
 
+#include <atomic>
 #include <filesystem>
 #include <map>
 #include <mutex>
