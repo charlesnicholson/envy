@@ -213,9 +213,13 @@ void task_engine::run_worker(task *t) {
       int const done{ t->completed };
 
       if (done >= t->target) {  // reached target: wait for extension
-        std::unique_lock lock(t->mutex);
-        t->cv.wait(lock, [t, done] { return t->target > done || t->failed; });
+        {
+          std::unique_lock lock(t->mutex);
+          t->cv.wait(lock, [t, done] { return t->target > done || t->failed; });
+        }
         if (t->failed) { break; }
+        // Outside the task mutex: observers may reenter the engine, and
+        // fail_all takes engine mutex -> task mutex (lock-order inversion).
         if (observer_.target_extended) {
           observer_.target_extended(key, done, t->target.load());
         }
