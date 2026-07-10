@@ -394,9 +394,8 @@ TEST_CASE_FIXTURE(setup_test_fixture, "diamond DEPENDS closure resolves each pai
   p->setup_pairs.emplace("a", pkg::setup_pair_decl{});
   p->setup_pairs.emplace("b", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
   p->setup_pairs.emplace("c", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
-  p->setup_pairs.emplace(
-      "d",
-      pkg::setup_pair_decl{ .platforms = {}, .depends = { "b", "c" } });
+  p->setup_pairs.emplace("d",
+                         pkg::setup_pair_decl{ .platforms = {}, .depends = { "b", "c" } });
   p->setup_selected.insert("d");
 
   auto const selected{ compute_selected_pairs(p.get()) };

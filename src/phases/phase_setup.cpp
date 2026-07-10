@@ -99,8 +99,7 @@ bool run_pair_check(pkg *p, engine &eng, std::string const &name) {
       } else {
         throw std::runtime_error(context + " for " + p->cfg->identity +
                                  " must return boolean or string, got " +
-                                 sol::type_name(lua.lua_state(),
-                                                result_obj.get_type()));
+                                 sol::type_name(lua.lua_state(), result_obj.get_type()));
       }
     }
   }

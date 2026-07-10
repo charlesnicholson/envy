@@ -70,9 +70,11 @@ class task_engine : unmovable {
   struct observer {
     std::function<void(std::string const &key, int target)> thread_start;
     std::function<void(std::string const &key, int completed)> thread_complete;
-    std::function<void(std::string const &key, int step, std::string const &dep, int watermark)>
+    std::function<
+        void(std::string const &key, int step, std::string const &dep, int watermark)>
         blocked;
-    std::function<void(std::string const &key, int step, std::string const &dep)> unblocked;
+    std::function<void(std::string const &key, int step, std::string const &dep)>
+        unblocked;
     std::function<void(std::string const &key, int old_target, int new_target)>
         target_extended;
   };
@@ -130,9 +132,9 @@ class task_engine : unmovable {
  private:
   struct task {
     task_config cfg;
-    std::thread worker;  // guarded by mutex: assigned by start_task, moved out
-                         // by join_all — they race when workers spawn tasks
-    std::mutex mutex;    // guards worker, spawn_settled, error; pairs with cv
+    std::thread worker;          // guarded by mutex: assigned by start_task, moved out
+                                 // by join_all — they race when workers spawn tasks
+    std::mutex mutex;            // guards worker, spawn_settled, error; pairs with cv
     std::condition_variable cv;  // target extension / failure wakeups
     std::atomic<int> completed{ 0 };
     std::atomic<int> target{ 0 };

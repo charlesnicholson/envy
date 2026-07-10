@@ -311,32 +311,32 @@ task_engine::observer engine::make_trace_observer() {
 
   obs.thread_start = [this](std::string const &key, int target) {
     if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_THREAD_START(trace_display(key),
-                            is_setup_pair_key(key) ? pkg_phase::pkg_setup
-                                                   : phase_from_watermark(target));
+    ENVY_TRACE_THREAD_START(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::pkg_setup : phase_from_watermark(target));
   };
   obs.thread_complete = [this](std::string const &key, int completed) {
     if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_THREAD_COMPLETE(trace_display(key),
-                               is_setup_pair_key(key) ? pkg_phase::completion
-                                                      : phase_from_watermark(completed));
+    ENVY_TRACE_THREAD_COMPLETE(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::completion : phase_from_watermark(completed));
   };
-  obs.blocked = [this](std::string const &key, int step, std::string const &dep,
-                       int watermark) {
-    if (!tui::g_trace_enabled) { return; }
-    bool const pair{ is_setup_pair_key(key) };
-    ENVY_TRACE_PHASE_BLOCKED(trace_display(key),
-                             pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
-                             trace_display(dep),
-                             pair ? pkg_phase::completion
-                                  : static_cast<pkg_phase>(watermark));
-  };
+  obs.blocked =
+      [this](std::string const &key, int step, std::string const &dep, int watermark) {
+        if (!tui::g_trace_enabled) { return; }
+        bool const pair{ is_setup_pair_key(key) };
+        ENVY_TRACE_PHASE_BLOCKED(
+            trace_display(key),
+            pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+            trace_display(dep),
+            pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
+      };
   obs.unblocked = [this](std::string const &key, int step, std::string const &dep) {
     if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_PHASE_UNBLOCKED(trace_display(key),
-                               is_setup_pair_key(key) ? pkg_phase::pkg_setup
-                                                      : static_cast<pkg_phase>(step),
-                               trace_display(dep));
+    ENVY_TRACE_PHASE_UNBLOCKED(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+        trace_display(dep));
   };
   obs.target_extended = [this](std::string const &key, int old_done, int new_target) {
     if (!tui::g_trace_enabled) { return; }
@@ -432,8 +432,7 @@ pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
       std::lock_guard const deps_lock(result->deps_mutex);
       size_t const before{ result->setup_selected.size() };
       result->setup_selected.insert(cfg->setup->begin(), cfg->setup->end());
-      if (result->setup_selection_consumed &&
-          result->setup_selected.size() != before) {
+      if (result->setup_selection_consumed && result->setup_selected.size() != before) {
         throw std::runtime_error(
             "SETUP selection for " + cfg->identity +
             " arrived after its setup phase ran; select pairs from entries that "
@@ -525,8 +524,7 @@ void engine::wait_for_completion(pkg_key const &key) {
   core_.wait_at(canonical, core_.step_count(canonical));
 }
 
-void engine::run_setup_pairs_for(pkg *parent,
-                                 std::vector<std::string> const &pair_names) {
+void engine::run_setup_pairs_for(pkg *parent, std::vector<std::string> const &pair_names) {
   // Pair name → task key; the selection closure guarantees every DEPENDS
   // target of a selected pair is itself selected.
   std::unordered_map<std::string, std::string> key_of;

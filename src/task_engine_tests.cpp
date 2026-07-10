@@ -197,9 +197,7 @@ TEST_CASE("task_engine: failure propagates through waits with the real message")
 
   step_log log;
   auto dependent{ simple_task("dependent", 1, log) };
-  dependent.edges = [](int) {
-    return std::vector<task_engine::edge>{ { "bad", 1 } };
-  };
+  dependent.edges = [](int) { return std::vector<task_engine::edge>{ { "bad", 1 } }; };
   REQUIRE(te.ensure_task(std::move(dependent)));
 
   te.start_task("bad", 1);
@@ -672,31 +670,28 @@ TEST_CASE("task_engine: race - recursive spawn tree reaped by concurrent join") 
   task_engine te;
   std::atomic_int leaf_runs{ 0 };
 
-  std::function<task_engine::task_config(std::string, int)> make_node{
-    [&](std::string key, int depth) {
-      task_engine::task_config cfg;
-      cfg.key = key;
-      cfg.step_count = 1;
-      cfg.step = [&, key, depth](int) {
-        if (depth == kDepth) {
-          ++leaf_runs;
-          return false;
-        }
-        for (int c{ 0 }; c < 2; ++c) {
-          std::string const child{ key + "." + std::to_string(c) };
-          if (!te.ensure_task(make_node(child, depth + 1))) {
-            throw std::runtime_error("collision: " + child);
-          }
-          te.start_task(child, 1);
-        }
-        for (int c{ 0 }; c < 2; ++c) {
-          te.wait_at(key + "." + std::to_string(c), 1);
-        }
+  std::function<task_engine::task_config(std::string, int)> make_node{ [&](std::string key,
+                                                                           int depth) {
+    task_engine::task_config cfg;
+    cfg.key = key;
+    cfg.step_count = 1;
+    cfg.step = [&, key, depth](int) {
+      if (depth == kDepth) {
+        ++leaf_runs;
         return false;
-      };
-      return cfg;
-    }
-  };
+      }
+      for (int c{ 0 }; c < 2; ++c) {
+        std::string const child{ key + "." + std::to_string(c) };
+        if (!te.ensure_task(make_node(child, depth + 1))) {
+          throw std::runtime_error("collision: " + child);
+        }
+        te.start_task(child, 1);
+      }
+      for (int c{ 0 }; c < 2; ++c) { te.wait_at(key + "." + std::to_string(c), 1); }
+      return false;
+    };
+    return cfg;
+  } };
 
   REQUIRE(te.ensure_task(make_node("root", 1)));
   te.start_task("root", 1);
@@ -859,9 +854,7 @@ TEST_CASE("task_engine: race - extend_all_to_done racing task creation") {
   te.extend_all_to_done();  // cover tasks created after the extender's last pass
   te.join_all();
 
-  for (int i{ 0 }; i < kTasks; ++i) {
-    CHECK(te.completed("t" + std::to_string(i)) == 3);
-  }
+  for (int i{ 0 }; i < kTasks; ++i) { CHECK(te.completed("t" + std::to_string(i)) == 3); }
 }
 
 TEST_CASE("task_engine: on_failed fires exactly once per failure mode") {
@@ -912,9 +905,8 @@ TEST_CASE("task_engine: before_spawn throw fails the task instead of stranding i
   cfg.step = [](int) { return false; };
   REQUIRE(te.ensure_task(std::move(cfg)));
 
-  CHECK_THROWS_WITH(
-      te.start_task("t", 1, [] { throw std::runtime_error("spawn boom"); }),
-      "spawn boom");
+  CHECK_THROWS_WITH(te.start_task("t", 1, [] { throw std::runtime_error("spawn boom"); }),
+                    "spawn boom");
 
   // Waiters must observe the failure rather than hang on a task that can
   // never run (started is latched, no worker exists).
@@ -958,9 +950,7 @@ TEST_CASE("task_engine: observer callbacks may reenter engine queries") {
   } };
   obs.thread_start = [&](std::string const &key, int) { query(key); };
   obs.thread_complete = [&](std::string const &key, int) { query(key); };
-  obs.blocked = [&](std::string const &key, int, std::string const &, int) {
-    query(key);
-  };
+  obs.blocked = [&](std::string const &key, int, std::string const &, int) { query(key); };
   obs.unblocked = [&](std::string const &key, int, std::string const &) { query(key); };
   obs.target_extended = [&](std::string const &key, int, int) { query(key); };
 

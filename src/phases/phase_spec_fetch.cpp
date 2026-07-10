@@ -120,27 +120,27 @@ std::map<std::string, pkg::setup_pair_decl> parse_setup_table(
     return o.is<sol::protected_function>() || o.is<std::string>();
   } };
 
-  auto const parse_string_array{ [&identity](sol::object const &obj,
-                                             std::string const &name,
-                                             char const *field) {
-    std::vector<std::string> values;
-    if (!obj.valid() || obj.get_type() == sol::type::lua_nil) { return values; }
-    if (obj.get_type() != sol::type::table) {
-      throw std::runtime_error("SETUP entry '" + name + "' " + field +
-                               " must be a table in spec '" + identity + "'");
-    }
-    sol::table t{ obj.as<sol::table>() };
-    for (size_t i{ 1 }; i <= t.size(); ++i) {
-      sol::object elem{ t[i] };
-      if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+  auto const parse_string_array{
+    [&identity](sol::object const &obj, std::string const &name, char const *field) {
+      std::vector<std::string> values;
+      if (!obj.valid() || obj.get_type() == sol::type::lua_nil) { return values; }
+      if (obj.get_type() != sol::type::table) {
         throw std::runtime_error("SETUP entry '" + name + "' " + field +
-                                 " entries must be non-empty strings in spec '" +
-                                 identity + "'");
+                                 " must be a table in spec '" + identity + "'");
       }
-      values.push_back(elem.as<std::string>());
+      sol::table t{ obj.as<sol::table>() };
+      for (size_t i{ 1 }; i <= t.size(); ++i) {
+        sol::object elem{ t[i] };
+        if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+          throw std::runtime_error("SETUP entry '" + name + "' " + field +
+                                   " entries must be non-empty strings in spec '" +
+                                   identity + "'");
+        }
+        values.push_back(elem.as<std::string>());
+      }
+      return values;
     }
-    return values;
-  } };
+  };
 
   sol::table setup_table{ setup_obj.as<sol::table>() };
   for (auto const &[key, value] : setup_table) {
@@ -191,10 +191,11 @@ std::map<std::string, pkg::setup_pair_decl> parse_setup_table(
                                identity + "'");
     }
 
-    pairs.emplace(name,
-                  pkg::setup_pair_decl{
-                      .platforms = parse_string_array(pair["PLATFORMS"], name, "PLATFORMS"),
-                      .depends = parse_string_array(pair["DEPENDS"], name, "DEPENDS") });
+    pairs.emplace(
+        name,
+        pkg::setup_pair_decl{
+            .platforms = parse_string_array(pair["PLATFORMS"], name, "PLATFORMS"),
+            .depends = parse_string_array(pair["DEPENDS"], name, "DEPENDS") });
   }
 
   for (auto const &[name, decl] : pairs) {  // DEPENDS targets must exist
@@ -913,18 +914,20 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
         return std::nullopt;
       }
       if (setup_obj.get_type() != sol::type::table) {
-        throw std::runtime_error("Dependency 'setup' field must be a table of pair "
-                                 "names (spec '" +
-                                 cfg.identity + "')");
+        throw std::runtime_error(
+            "Dependency 'setup' field must be a table of pair "
+            "names (spec '" +
+            cfg.identity + "')");
       }
       std::vector<std::string> names;
       sol::table t{ setup_obj.as<sol::table>() };
       for (size_t j{ 1 }; j <= t.size(); ++j) {
         sol::object elem{ t[j] };
         if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
-          throw std::runtime_error("Dependency 'setup' entries must be non-empty "
-                                   "strings (spec '" +
-                                   cfg.identity + "')");
+          throw std::runtime_error(
+              "Dependency 'setup' entries must be non-empty "
+              "strings (spec '" +
+              cfg.identity + "')");
         }
         names.push_back(elem.as<std::string>());
       }
@@ -934,9 +937,10 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
     // Check for pure bundle dependency: {bundle = "id", source = "..."}
     if (auto pure_bundle{ try_parse_pure_bundle_dep(table, spec_path) }) {
       if (dep_setup.has_value()) {
-        throw std::runtime_error("Bundle dependencies cannot select 'setup' pairs "
-                                 "(spec '" +
-                                 cfg.identity + "')");
+        throw std::runtime_error(
+            "Bundle dependencies cannot select 'setup' pairs "
+            "(spec '" +
+            cfg.identity + "')");
       }
       std::string const bundle_id{ pure_bundle->bundle_identity };
 
@@ -975,10 +979,10 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
       if (dep_cfg->is_weak_reference()) {
         // Weak/reference resolution wires to whatever package already exists —
         // there is no ensure_pkg call to merge a selection through.
-        throw std::runtime_error("Weak/reference dependencies cannot select 'setup' "
-                                 "pairs (spec '" +
-                                 cfg.identity + "', dependency '" + dep_cfg->identity +
-                                 "')");
+        throw std::runtime_error(
+            "Weak/reference dependencies cannot select 'setup' "
+            "pairs (spec '" +
+            cfg.identity + "', dependency '" + dep_cfg->identity + "')");
       }
       dep_cfg->setup = dep_setup;
     } };
