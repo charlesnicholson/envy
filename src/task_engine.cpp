@@ -1,5 +1,6 @@
 #include "task_engine.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -34,6 +35,7 @@ task_engine::task *task_engine::find(std::string const &key) const {
 }
 
 void task_engine::ratchet_target(task &t, int target) {
+  target = std::min(target, t.cfg.step_count);  // beyond-done is unsatisfiable
   int current{ t.target.load() };
   while (current < target) {
     if (t.target.compare_exchange_weak(current, target)) {
@@ -104,6 +106,7 @@ void task_engine::extend_all_to_done() {
 void task_engine::wait_at(std::string const &key, int watermark) {
   task *t{ find(key) };
   ratchet_target(*t, watermark);
+  watermark = std::min(watermark, t->cfg.step_count);  // "done" is the ceiling
 
   std::unique_lock lock(mutex_);
   cv_.wait(lock, [t, watermark] { return t->completed >= watermark || t->failed; });

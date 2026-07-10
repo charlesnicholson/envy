@@ -98,12 +98,14 @@ class task_engine : unmovable {
                   std::function<void()> const &before_spawn = {});
 
   // Ratchet a task's target watermark upward (no-op if already higher).
+  // Targets clamp to step_count — beyond-done is unsatisfiable.
   void extend_target(std::string const &key, int target);
   void extend_to_done(std::string const &key);
   void extend_all_to_done();
 
-  // Block until `key` has completed at least `watermark` steps. Throws
-  // std::runtime_error with the task's stored message if it failed.
+  // Block until `key` has completed at least `watermark` steps (clamped to
+  // step_count, so an oversized watermark waits for done rather than hanging).
+  // Throws std::runtime_error with the task's stored message if it failed.
   void wait_at(std::string const &key, int watermark);
 
   int completed(std::string const &key) const;

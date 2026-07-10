@@ -974,6 +974,20 @@ TEST_CASE("task_engine: observer callbacks may reenter engine queries") {
   CHECK(te.collect_failures().empty());
 }
 
+TEST_CASE("task_engine: oversized watermarks clamp to done instead of hanging") {
+  step_log log;
+  task_engine te;
+  REQUIRE(te.ensure_task(simple_task("t", 2, log)));
+
+  te.extend_target("t", 100);
+  CHECK(te.target("t") == 2);  // ratchet clamps: beyond-done is unsatisfiable
+
+  te.start_task("t", 500);
+  te.wait_at("t", 1000);  // waits for done rather than an impossible watermark
+  te.join_all();
+  CHECK(te.completed("t") == 2);
+}
+
 TEST_CASE("task_engine: zero-step task, trivial watermarks, repeated joins") {
   task_engine te;
   task_engine::task_config cfg;
