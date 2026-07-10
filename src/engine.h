@@ -7,16 +7,15 @@
 #include "pkg_key.h"
 #include "pkg_phase.h"
 #include "shell.h"
+#include "task_engine.h"
 #include "util.h"
 
 #include <atomic>
-#include <condition_variable>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -32,23 +31,6 @@ enum class pkg_type {
   CACHE_MANAGED,  // Package produces cached artifacts (has fetch)
   USER_MANAGED,   // Package managed by user (has check/install, no cache artifacts)
   BUNDLE_ONLY     // Pure bundle dependency (no spec, just bundle for envy.loadenv_spec())
-};
-
-struct pkg_execution_ctx {
-  std::thread worker;
-  std::mutex mutex;
-  std::condition_variable cv;
-  std::atomic<pkg_phase> current_phase{ pkg_phase::none };  // executing or pending
-  std::atomic<pkg_phase> target_phase{ pkg_phase::none };
-  std::atomic_bool failed{ false };
-  std::atomic_bool started{ false };  // True if worker thread has been created
-  std::atomic_bool spec_fetch_completed{ false };  // True after spec_fetch completes
-
-  std::vector<std::string> ancestor_chain;  // Per-thread for cycle detection
-  std::string error_message;                // when failed=true (guarded by mutex)
-
-  void set_target_phase(pkg_phase target);
-  void start(struct pkg *p, class engine *eng, std::vector<std::string> chain);
 };
 
 struct pkg_result {
@@ -76,6 +58,10 @@ struct product_info {
   std::vector<std::string> platforms;  // Effective constraint (empty = all)
 };
 
+// Domain adapter over task_engine: packages are tasks whose steps are the
+// pkg_phase ladder; SETUP pairs are one-step tasks spawned by their package's
+// setup phase. All envy semantics (spec parsing, weak-reference/product
+// resolution, registries) live here; scheduling lives in task_engine.
 class engine : unmovable {
  public:
   engine(cache &cache, manifest const *manifest = nullptr);
@@ -88,19 +74,22 @@ class engine : unmovable {
   pkg *find_product_provider(std::string const &product_name) const;
   std::vector<product_info> collect_all_products() const;
 
-  pkg_execution_ctx &get_execution_ctx(pkg *p);
-  pkg_execution_ctx &get_execution_ctx(pkg_key const &key);
-  pkg_execution_ctx const &get_execution_ctx(pkg_key const &key) const;
-
-  // Phase coordination (thread-safe)
-  void ensure_pkg_at_phase(pkg_key const &key, pkg_phase target_phase);
+  // Start the package's worker (idempotent) and ratchet its target so it runs
+  // through `run_through` inclusive.
   void start_pkg_thread(pkg *p,
-                        pkg_phase initial_target,
+                        pkg_phase run_through,
                         std::vector<std::string> ancestor_chain = {});
-  void wait_for_resolution_phase();
-  void notify_phase_complete();
-  void on_spec_fetch_start();
-  void on_spec_fetch_complete(std::string const &pkg_identity);
+
+  // Ratchet a package's target to full completion (no wait).
+  void extend_to_completion(pkg_key const &key);
+
+  // Block until the package has fully completed; throws its failure message.
+  void wait_for_completion(pkg_key const &key);
+
+  // Spawn one single-step task per selected SETUP pair of `parent` (sibling
+  // DEPENDS become edges), wait for all of them, and aggregate failures into
+  // one exception. Called by the parent's setup phase.
+  void run_setup_pairs_for(pkg *parent, std::vector<std::string> const &pair_names);
 
   // High-level execution
   pkg_result_map_t run_full(std::vector<pkg_cfg const *> const &roots);
@@ -144,7 +133,21 @@ class engine : unmovable {
 #endif
 
  private:
-  void fail_all_contexts();
+  // Watermark mapping: pkg_phase `p` as a "run/wait through p inclusive" bound
+  // is watermark int(p)+1 (task_engine watermark N = first N steps completed).
+  static constexpr int watermark_through(pkg_phase p) { return static_cast<int>(p) + 1; }
+
+  task_engine::task_config make_pkg_task_config(pkg *p);
+  task_engine::observer make_trace_observer();
+  std::string trace_display(std::string const &key) const;
+  void process_fetch_dependencies(pkg *p);
+  void update_product_registry();
+  void validate_product_fallbacks();
+  bool pkg_provides_product_transitively(pkg *p, std::string const &product_name) const;
+  void extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited);
+  void wait_for_resolution_phase();
+  void on_spec_fetch_start();
+  void on_spec_fetch_complete(std::string const &pkg_identity);
 
   cache &cache_;
   default_shell_cfg_t default_shell_;
@@ -154,20 +157,9 @@ class engine : unmovable {
   std::atomic_bool depot_pre_set_{ false };
   std::atomic_bool depot_ignored_{ false };
 
-  void notify_all_global_locked();
-  void run_pkg_thread(pkg *p);  // Thread entry point
-  void process_fetch_dependencies(pkg *p, std::vector<std::string> const &ancestor_chain);
-  void update_product_registry();
-  void validate_product_fallbacks();
-  bool pkg_provides_product_transitively(pkg *p, std::string const &product_name) const;
-  void extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited);
-
-  friend struct pkg_execution_ctx;  // Allows worker threads to call run_pkg_thread
-
+  // Domain state (mutex_ guards the maps below; never held across core_ waits)
   std::unordered_map<pkg_key, std::unique_ptr<pkg>> packages_;
-  std::unordered_map<pkg_key, std::unique_ptr<pkg_execution_ctx>> execution_ctxs_;
   mutable std::mutex mutex_;
-  std::condition_variable cv_;
   std::atomic_int pending_spec_fetches_{ 0 };
 
   // Product registry: maps product name → provider package (built during resolution)
@@ -179,6 +171,10 @@ class engine : unmovable {
   // Export phase state (set before resolve_graph, read by phase handler)
   std::optional<export_phase_config> export_config_;
   std::unordered_map<std::string, std::string> export_results_;  // guarded by mutex_
+
+  // Declared last: workers capture pkg*/this, so the core (which joins them)
+  // must be destroyed before the maps above.
+  task_engine core_;
 };
 
 // Filter pkg_cfgs to those matching the current host platform.

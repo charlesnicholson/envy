@@ -1,14 +1,16 @@
 """Functional tests for SETUP pairs (named host-side CHECK/INSTALL work).
 
 Covers:
-- Manifest `setup` selection of pairs on cache-managed packages
+- Explicit-only selection: pairs run only when a manifest or dependency entry
+  selects them; no selection (any package type) runs nothing
 - pkg_dir argument (payload path for cache-managed, nil for user-managed)
-- Selection defaults (user-managed: all pairs; cache-managed: none)
-- Narrowing and empty selections
 - Unknown pair name errors
 - Per-pair PLATFORMS filtering
+- DEPENDS: sibling sequencing, transitive auto-selection, diamond closure
+- Parallelism: unrelated selected pairs overlap in time
 - Idempotency: CHECK gates re-runs; cache-hit runs still evaluate pairs
-- Pair failure propagation to dependents
+- Pair failure propagation: dependent pairs blocked, unrelated pairs complete
+- Dependency entries selecting pairs (`setup` on DEPENDENCIES entries)
 - Dependents wait for a dependency's setup phase
 - Concurrent envy processes: double-check lock runs INSTALL exactly once
 """
@@ -313,21 +315,31 @@ SETUP = {{{{
         self.assertIn("skipped (platform mismatch)", result.stderr)
 
     # =========================================================================
-    # User-managed selection defaults
+    # Explicit-only selection (no defaults)
     # =========================================================================
 
-    def test_user_managed_default_runs_all_pairs_sorted(self):
-        """User-managed package with no `setup` field runs all pairs, sorted."""
+    def test_user_managed_without_selection_runs_nothing(self):
+        """User-managed package with no `setup` field runs no pairs (explicit-only)."""
         spec_path = self.write_spec("um_two_pairs", SPEC_UM_TWO_PAIRS)
         manifest = self.create_manifest(
             f'PACKAGES = {{ {{ spec = "local.um_two_pairs@v1", source = "{spec_path}" }} }}'
         )
         self.run_install(manifest)
+        self.assertFalse((self.test_dir / "pair_log.txt").exists())
+
+    def test_user_managed_full_selection_runs_all_pairs(self):
+        """Selecting every pair runs every pair (order unspecified: parallel)."""
+        spec_path = self.write_spec("um_two_pairs", SPEC_UM_TWO_PAIRS)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_two_pairs@v1", source = "{spec_path}", '
+            f'setup = {{ "alpha", "beta" }} }} }}'
+        )
+        self.run_install(manifest)
         log = self.test_dir / "pair_log.txt"
-        self.assertEqual(log.read_text().split(), ["alpha", "beta"])
+        self.assertEqual(sorted(log.read_text().split()), ["alpha", "beta"])
 
     def test_user_managed_narrowed_selection(self):
-        """Explicit `setup` list narrows a user-managed package's pairs."""
+        """Explicit `setup` list selects only the named pairs."""
         spec_path = self.write_spec("um_two_pairs", SPEC_UM_TWO_PAIRS)
         manifest = self.create_manifest(
             f'PACKAGES = {{ {{ spec = "local.um_two_pairs@v1", source = "{spec_path}", '
@@ -338,7 +350,7 @@ SETUP = {{{{
         self.assertEqual(log.read_text().split(), ["beta"])
 
     def test_user_managed_empty_selection_runs_nothing(self):
-        """Explicit empty `setup` list disables all pairs."""
+        """Explicit empty `setup` list selects nothing (same as absent)."""
         spec_path = self.write_spec("um_two_pairs", SPEC_UM_TWO_PAIRS)
         manifest = self.create_manifest(
             f'PACKAGES = {{ {{ spec = "local.um_two_pairs@v1", source = "{spec_path}", '
@@ -346,6 +358,262 @@ SETUP = {{{{
         )
         self.run_install(manifest)
         self.assertFalse((self.test_dir / "pair_log.txt").exists())
+
+    # =========================================================================
+    # DEPENDS: sequencing, auto-selection, parallelism
+    # =========================================================================
+
+    SPEC_UM_DEPENDS_CHAIN = """IDENTITY = "local.um_chain@v1"
+USER_MANAGED = true
+
+local function log_pair(name)
+  local f = io.open("chain_log.txt", "a")
+  f:write(name .. "\\n")
+  f:close()
+end
+
+SETUP = {{
+  a = {{
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("a") end,
+  }},
+  b = {{
+    DEPENDS = {{ "a" }},
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("b") end,
+  }},
+  c = {{
+    DEPENDS = {{ "b" }},
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("c") end,
+  }},
+}}
+"""
+
+    def test_depends_chain_runs_in_order(self):
+        """b DEPENDS a, c DEPENDS b: install order is strictly a, b, c."""
+        spec_path = self.write_spec("um_chain", self.SPEC_UM_DEPENDS_CHAIN)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_chain@v1", source = "{spec_path}", '
+            f'setup = {{ "a", "b", "c" }} }} }}'
+        )
+        self.run_install(manifest)
+        log = self.test_dir / "chain_log.txt"
+        self.assertEqual(log.read_text().split(), ["a", "b", "c"])
+
+    def test_depends_auto_selects_prerequisites(self):
+        """Selecting only the chain tail transitively selects and runs its DEPENDS."""
+        spec_path = self.write_spec("um_chain", self.SPEC_UM_DEPENDS_CHAIN)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_chain@v1", source = "{spec_path}", '
+            f'setup = {{ "c" }} }} }}'
+        )
+        self.run_install(manifest)
+        log = self.test_dir / "chain_log.txt"
+        self.assertEqual(log.read_text().split(), ["a", "b", "c"])
+
+    def test_depends_diamond_runs_each_pair_once_in_order(self):
+        """Diamond (d -> b,c -> a): a first, d last, b/c between, each exactly once."""
+        spec = """IDENTITY = "local.um_diamond@v1"
+USER_MANAGED = true
+
+local function log_pair(name)
+  local f = io.open("diamond_log.txt", "a")
+  f:write(name .. "\\n")
+  f:close()
+end
+
+SETUP = {{
+  a = {{ CHECK = function() return false end, INSTALL = function() log_pair("a") end }},
+  b = {{
+    DEPENDS = {{ "a" }},
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("b") end,
+  }},
+  c = {{
+    DEPENDS = {{ "a" }},
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("c") end,
+  }},
+  d = {{
+    DEPENDS = {{ "b", "c" }},
+    CHECK = function() return false end,
+    INSTALL = function() log_pair("d") end,
+  }},
+}}
+"""
+        spec_path = self.write_spec("um_diamond", spec)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_diamond@v1", source = "{spec_path}", '
+            f'setup = {{ "d" }} }} }}'
+        )
+        self.run_install(manifest)
+        entries = (self.test_dir / "diamond_log.txt").read_text().split()
+        self.assertEqual(sorted(entries), ["a", "b", "c", "d"])
+        self.assertEqual(entries[0], "a")
+        self.assertEqual(entries[-1], "d")
+
+    def test_unrelated_pairs_run_in_parallel(self):
+        """Two independent pairs with 2s shell installs overlap in wall-clock time.
+
+        INSTALL uses the shell-string form: string scripts run outside the
+        package's Lua lock, so unrelated pair nodes execute concurrently.
+        """
+        if sys.platform == "win32":
+            stamp = (
+                'Add-Content stamps.txt "{name} {edge} '
+                '$([DateTimeOffset]::Now.ToUnixTimeSeconds())"'
+            )
+            sleep = "Start-Sleep -Seconds 2"
+        else:
+            stamp = 'echo "{name} {edge} $(date +%s)" >> stamps.txt'
+            sleep = "sleep 2"
+
+        def install_script(name: str) -> str:
+            return "; ".join(
+                [stamp.format(name=name, edge="start"), sleep,
+                 stamp.format(name=name, edge="end")]
+            )
+
+        spec = f"""IDENTITY = "local.um_parallel@v1"
+USER_MANAGED = true
+
+SETUP = {{{{
+  left = {{{{
+    CHECK = function() return false end,
+    INSTALL = [[{install_script("left")}]],
+  }}}},
+  right = {{{{
+    CHECK = function() return false end,
+    INSTALL = [[{install_script("right")}]],
+  }}}},
+}}}}
+"""
+        spec_path = self.write_spec("um_parallel", spec)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_parallel@v1", source = "{spec_path}", '
+            f'setup = {{ "left", "right" }} }} }}'
+        )
+        self.run_install(manifest)
+
+        events = {}
+        for line in (self.test_dir / "stamps.txt").read_text().splitlines():
+            name, edge, when = line.split()
+            events[(name, edge)] = int(when)
+
+        # Overlap: each pair starts before the other finishes. Serial execution
+        # of two 2s installs cannot satisfy both inequalities.
+        self.assertLess(events[("left", "start")], events[("right", "end")])
+        self.assertLess(events[("right", "start")], events[("left", "end")])
+
+    def test_platform_filtered_depends_still_satisfies_dependents(self):
+        """A DEPENDS target filtered out by PLATFORMS skips but unblocks dependents."""
+        other_os = "windows" if sys.platform != "win32" else "linux"
+        spec = f"""IDENTITY = "local.um_plat_dep@v1"
+USER_MANAGED = true
+
+SETUP = {{{{
+  gated = {{{{
+    PLATFORMS = {{{{ "{other_os}" }}}},
+    CHECK = function() return false end,
+    INSTALL = function() error("must not run on this platform") end,
+  }}}},
+  dependent = {{{{
+    DEPENDS = {{{{ "gated" }}}},
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("plat_dep_marker.txt", "w")
+      f:write("ran")
+      f:close()
+    end,
+  }}}},
+}}}}
+"""
+        spec_path = self.write_spec("um_plat_dep", spec)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_plat_dep@v1", source = "{spec_path}", '
+            f'setup = {{ "dependent" }} }} }}'
+        )
+        self.run_install(manifest)
+        self.assertTrue((self.test_dir / "plat_dep_marker.txt").exists())
+
+    def test_pair_failure_blocks_dependent_pair_but_not_unrelated(self):
+        """Failing pair: its dependent pair never runs; an unrelated pair completes."""
+        spec = """IDENTITY = "local.um_fail_iso@v1"
+USER_MANAGED = true
+
+local function mark(name)
+  local f = io.open("iso_" .. name .. ".txt", "w")
+  f:write("ran")
+  f:close()
+end
+
+SETUP = {{
+  bad = {{
+    CHECK = function() return false end,
+    INSTALL = function() error("intentional bad-pair failure") end,
+  }},
+  blocked = {{
+    DEPENDS = {{ "bad" }},
+    CHECK = function() return false end,
+    INSTALL = function() mark("blocked") end,
+  }},
+  unrelated = {{
+    CHECK = function() return false end,
+    INSTALL = function() mark("unrelated") end,
+  }},
+}}
+"""
+        spec_path = self.write_spec("um_fail_iso", spec)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.um_fail_iso@v1", source = "{spec_path}", '
+            f'setup = {{ "blocked", "unrelated" }} }} }}'
+        )
+        result = self.run_install(manifest, should_fail=True)
+        self.assertIn("intentional bad-pair failure", result.stderr)
+        self.assertFalse((self.test_dir / "iso_blocked.txt").exists())
+        self.assertTrue((self.test_dir / "iso_unrelated.txt").exists())
+
+    def test_dependency_entry_selects_pairs(self):
+        """A DEPENDENCIES entry's `setup` list selects pairs on the dependency."""
+        dep = """IDENTITY = "local.dep_sel_target@v1"
+USER_MANAGED = true
+
+SETUP = {{
+  main = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("dep_sel_marker.txt", "w")
+      f:write("ran")
+      f:close()
+    end,
+  }},
+}}
+"""
+        top = f"""IDENTITY = "local.dep_sel_top@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{{{
+  {{{{ spec = "local.dep_sel_target@v1", source = "dep_sel_target.lua", setup = {{{{ "main" }}}} }}}}
+}}}}
+
+SETUP = {{{{
+  main = {{{{
+    CHECK = function() return true end,
+    INSTALL = function() end,
+  }}}},
+}}}}
+"""
+        self.write_spec("dep_sel_target", dep)
+        top_path = self.write_spec("dep_sel_top", top)
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.dep_sel_top@v1", source = "{top_path}" }} }}'
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "dep_sel_marker.txt").exists(),
+            "dependency entry's setup selection must run the dependency's pair",
+        )
 
     # =========================================================================
     # Failure propagation and dependency ordering
@@ -369,7 +637,7 @@ SETUP = {{
 USER_MANAGED = true
 
 DEPENDENCIES = {{{{
-  {{{{ spec = "local.failing_pair@v1", source = "failing_pair.lua" }}}}
+  {{{{ spec = "local.failing_pair@v1", source = "failing_pair.lua", setup = {{{{ "main" }}}} }}}}
 }}}}
 
 SETUP = {{{{
@@ -386,7 +654,8 @@ SETUP = {{{{
         self.write_spec("failing_pair", failing)
         dep_path = self.write_spec("dependent", dependent)
         manifest = self.create_manifest(
-            f'PACKAGES = {{ {{ spec = "local.dependent@v1", source = "{dep_path}" }} }}'
+            f'PACKAGES = {{ {{ spec = "local.dependent@v1", source = "{dep_path}", '
+            f'setup = {{ "main" }} }} }}'
         )
         result = self.run_install(manifest, should_fail=True)
         self.assertIn("intentional pair failure", result.stderr)
@@ -415,7 +684,7 @@ SETUP = {{
 USER_MANAGED = true
 
 DEPENDENCIES = {{{{
-  {{{{ spec = "local.order_dep@v1", source = "order_dep.lua" }}}}
+  {{{{ spec = "local.order_dep@v1", source = "order_dep.lua", setup = {{{{ "main" }}}} }}}}
 }}}}
 
 SETUP = {{{{
@@ -432,7 +701,8 @@ SETUP = {{{{
         self.write_spec("order_dep", dep)
         top_path = self.write_spec("order_top", top)
         manifest = self.create_manifest(
-            f'PACKAGES = {{ {{ spec = "local.order_top@v1", source = "{top_path}" }} }}'
+            f'PACKAGES = {{ {{ spec = "local.order_top@v1", source = "{top_path}", '
+            f'setup = {{ "main" }} }} }}'
         )
         self.run_install(manifest)
         log = self.test_dir / "order_log.txt"
@@ -471,7 +741,8 @@ SETUP = {{{{
 """
         spec_path = self.write_spec("concurrent_pair", spec)
         manifest = self.create_manifest(
-            f'PACKAGES = {{ {{ spec = "local.concurrent_pair@v1", source = "{spec_path}" }} }}'
+            f'PACKAGES = {{ {{ spec = "local.concurrent_pair@v1", source = "{spec_path}", '
+            f'setup = {{ "main" }} }} }}'
         )
 
         cmd = [

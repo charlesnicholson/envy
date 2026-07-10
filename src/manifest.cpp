@@ -101,7 +101,8 @@ using bundle_alias_map = std::unordered_map<std::string, pkg_cfg::bundle_source>
 using bundle_pkg_map = std::unordered_map<std::string, pkg_cfg *>;
 
 // Parse optional `setup` field: array of SETUP pair names to select.
-// Manifest package entries only — dependency entries reject this field.
+// Selection is explicit-only and unions across referrers (manifest entries here;
+// dependency entries parse theirs in phase_spec_fetch).
 void parse_setup_field(sol::table const &table, pkg_cfg *cfg) {
   sol::object setup_obj{ table["setup"] };
   if (!setup_obj.valid() || setup_obj.get_type() == sol::type::lua_nil) { return; }

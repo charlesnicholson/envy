@@ -122,7 +122,7 @@ void cmd_product::execute() {
   }
 
   eng.extend_dependencies_to_completion(provider);
-  eng.ensure_pkg_at_phase(provider->key, pkg_phase::completion);
+  eng.wait_for_completion(provider->key);
 
   std::string const rendered_value{ product_util_resolve(provider, cfg_.product_name) };
   tui::print_stdout("%s\n", rendered_value.c_str());

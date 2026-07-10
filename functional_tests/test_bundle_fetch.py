@@ -126,7 +126,7 @@ BUNDLES = {{
 }}
 
 PACKAGES = {{
-    {{ spec = "test.spec_a@v1", bundle = "toolchain" }},
+    {{ spec = "test.spec_a@v1", bundle = "toolchain", setup = {{ "main" }} }},
 }}
 """
         )
@@ -151,8 +151,8 @@ BUNDLES = {{
 }}
 
 PACKAGES = {{
-    {{ spec = "test.spec_a@v1", bundle = "toolchain" }},
-    {{ spec = "test.spec_b@v1", bundle = "toolchain" }},
+    {{ spec = "test.spec_a@v1", bundle = "toolchain", setup = {{ "main" }} }},
+    {{ spec = "test.spec_b@v1", bundle = "toolchain", setup = {{ "main" }} }},
 }}
 """
         )
@@ -178,6 +178,7 @@ PACKAGES = {{
 PACKAGES = {{
     {{
         spec = "test.spec_a@v1",
+        setup = {{ "main" }},
         bundle = {{
             identity = "test.simple-bundle@v1",
             source = "{self.lua_path(self.simple_bundle)}",
@@ -614,6 +615,7 @@ SETUP = {
 PACKAGES = {{
     {{
         spec = "local.marker@v1",
+        setup = {{ "main" }},
         bundle = {{
             identity = "local.test@v1",
             source = "{self.lua_path(self.bundle_dir)}",

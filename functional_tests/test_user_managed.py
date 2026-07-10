@@ -106,13 +106,36 @@ class TestUserManagedPackages(unittest.TestCase):
         return path
 
     def run_spec(
-        self, name: str, identity: str, trace: bool = False, env_vars: dict = None
+        self,
+        name: str,
+        identity: str,
+        trace: bool = False,
+        env_vars: dict = None,
+        setup: list = None,
     ):
-        """Run spec by name and identity."""
+        """Run spec by name and identity.
+
+        setup=None uses the bare engine-test path (no pair selection). A list of
+        pair names writes a manifest selecting them and runs `install --manifest`.
+        """
         cmd = [str(self.envy_test), f"--cache-root={self.cache_root}"]
         if trace:
             cmd.append("--trace")
-        cmd.extend(["engine-test", identity, str(self.specs_dir / f"{name}.lua")])
+
+        if setup is None:
+            cmd.extend(["engine-test", identity, str(self.specs_dir / f"{name}.lua")])
+        else:
+            names = ", ".join(f'"{n}"' for n in setup)
+            spec_path = (self.specs_dir / f"{name}.lua").as_posix()
+            manifest = self.test_dir / "envy.lua"
+            manifest.write_text(
+                test_config.make_manifest(
+                    f'PACKAGES = {{ {{ spec = "{identity}", source = "{spec_path}", '
+                    f"setup = {{ {names} }} }} }}"
+                ),
+                encoding="utf-8",
+            )
+            cmd.extend(["install", "--manifest", str(manifest)])
 
         env = os.environ.copy()
         if env_vars:
@@ -129,7 +152,9 @@ class TestUserManagedPackages(unittest.TestCase):
     def test_simple_first_run_check_false_installs(self):
         """First run with check=false acquires pair lock, runs install, purges cache."""
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
-        result = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
+        result = self.run_spec(
+            "simple", "local.user_managed_simple@v1", env_vars=env, setup=["main"]
+        )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         self.assertTrue(
@@ -152,7 +177,11 @@ class TestUserManagedPackages(unittest.TestCase):
         self.marker_simple.write_text("already installed")
 
         result = self.run_spec(
-            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+            "simple",
+            "local.user_managed_simple@v1",
+            trace=True,
+            env_vars=env,
+            setup=["main"],
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -167,13 +196,19 @@ class TestUserManagedPackages(unittest.TestCase):
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         # Run 1: Install
-        result1 = self.run_spec("simple", "local.user_managed_simple@v1", env_vars=env)
+        result1 = self.run_spec(
+            "simple", "local.user_managed_simple@v1", env_vars=env, setup=["main"]
+        )
         self.assertEqual(result1.returncode, 0)
         self.assertTrue(self.marker_simple.exists(), "First run should create marker")
 
         # Run 2: Skip (check=true)
         result2 = self.run_spec(
-            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+            "simple",
+            "local.user_managed_simple@v1",
+            trace=True,
+            env_vars=env,
+            setup=["main"],
         )
         self.assertEqual(result2.returncode, 0)
         self.assertIn("pair 'main' satisfied (pre-lock)", result2.stderr)
@@ -182,7 +217,11 @@ class TestUserManagedPackages(unittest.TestCase):
         # Run 3: Remove marker, reinstall
         self.marker_simple.unlink()
         result3 = self.run_spec(
-            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+            "simple",
+            "local.user_managed_simple@v1",
+            trace=True,
+            env_vars=env,
+            setup=["main"],
         )
         self.assertEqual(result3.returncode, 0)
         self.assertIn("running pair 'main' install", result3.stderr)
@@ -195,7 +234,11 @@ class TestUserManagedPackages(unittest.TestCase):
         env = {"ENVY_TEST_MARKER_SIMPLE": str(self.marker_simple)}
 
         result = self.run_spec(
-            "simple", "local.user_managed_simple@v1", trace=True, env_vars=env
+            "simple",
+            "local.user_managed_simple@v1",
+            trace=True,
+            env_vars=env,
+            setup=["main"],
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertIn("running pair 'main' install", result.stderr)
@@ -320,8 +363,8 @@ SETUP = {
     # Multi-pair behavior
     # =========================================================================
 
-    def test_multiple_pairs_all_run_sorted(self):
-        """All pairs of a user-managed spec run by default, in sorted name order."""
+    def test_multiple_pairs_all_run_when_selected(self):
+        """All selected pairs run; execution order is unspecified (parallel nodes)."""
         spec = """IDENTITY = "local.um_multi_pair@v1"
 USER_MANAGED = true
 
@@ -350,9 +393,10 @@ SETUP = {
             "multi_pair",
             "local.um_multi_pair@v1",
             env_vars={"ENVY_TEST_MULTI_LOG": str(log)},
+            setup=["alpha", "zeta"],
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertEqual(log.read_text().split(), ["alpha", "zeta"])
+        self.assertEqual(sorted(log.read_text().split()), ["alpha", "zeta"])
 
     def test_satisfied_pair_skipped_others_run(self):
         """Satisfied pairs are skipped independently of unsatisfied ones."""
@@ -380,6 +424,7 @@ SETUP = {
             "partial",
             "local.um_partial@v1",
             env_vars={"ENVY_TEST_PARTIAL_MARKER": str(marker)},
+            setup=["done", "todo"],
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(marker.exists())
@@ -420,6 +465,7 @@ SETUP = {
             "fn_form_true",
             "local.um_fn_form_true@v1",
             env_vars={"ENVY_TEST_MARKER_FN": str(marker)},
+            setup=["main"],
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(marker.exists(), "INSTALL should have run and created the marker")

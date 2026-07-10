@@ -157,6 +157,7 @@ PACKAGES = {{
 DEPENDENCIES = {{
   {{
     spec = "test.gcc@v1",
+    setup = {{ "main" }},
     bundle = {{
       identity = "test.toolchain@v1",
       source = "{self.lua_path(bundle_path)}",
@@ -214,8 +215,8 @@ BUNDLES = {{
 }}
 
 DEPENDENCIES = {{
-  {{ spec = "test.gcc@v1", bundle = "tc" }},
-  {{ spec = "test.clang@v1", bundle = "tc" }},
+  {{ spec = "test.gcc@v1", bundle = "tc", setup = {{ "main" }} }},
+  {{ spec = "test.clang@v1", bundle = "tc", setup = {{ "main" }} }},
 }}
 
 USER_MANAGED = true

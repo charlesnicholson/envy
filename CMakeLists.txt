@@ -249,6 +249,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_version.cpp
     src/deploy.cpp
     src/engine.cpp
+    src/task_engine.cpp
     src/pkg_phase.cpp
     src/pkg_key.cpp
     src/lua_ctx/lua_envy_dep_util.cpp
@@ -475,7 +476,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/extract_tests.cpp
     src/engine_tests.cpp
     src/engine_weak_resolution_tests.cpp
-    src/engine_target_phase_tests.cpp
+    src/task_engine_tests.cpp
     src/fetch_tests.cpp
     src/lua_error_formatter_tests.cpp
     src/lua_shell_tests.cpp

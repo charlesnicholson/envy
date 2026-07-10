@@ -53,6 +53,7 @@ PACKAGES = {
 
   { spec = "local.brew_package@r0", source = "local.brew_package@r0.lua",
     options = { packages = { "ghostty", "neovim", "pv", "bat", "libusb" } },
+    setup = { "packages" },  -- SETUP pairs run only when selected
     platforms = { "darwin" } },
 
   { spec = "local.apt@r0", source = "local.apt@r0.lua",
@@ -60,5 +61,6 @@ PACKAGES = {
       packages = {
         "libglib2.0-0", "libglib2.0-dev", "libudev-dev", "libusb-1.0-0-dev" }
     },
+    setup = { "packages" },
     platforms = { "linux" } },
 }

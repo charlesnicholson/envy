@@ -277,7 +277,7 @@ class TestSyncCommand(unittest.TestCase):
         manifest = self.create_manifest(f"""
 PACKAGES = {{
     {{ spec = "local.build_dependency@v1", source = "{build_dep_path}" }},
-    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+    {{ spec = "local.simple@v1", source = "{simple_path}", setup = {{ "main" }} }},
 }}
 """)
 
@@ -298,7 +298,7 @@ PACKAGES = {{
         manifest = self.create_manifest(f"""
 PACKAGES = {{
     {{ spec = "local.build_dependency@v1", source = "{build_dep_path}" }},
-    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+    {{ spec = "local.simple@v1", source = "{simple_path}", setup = {{ "main" }} }},
 }}
 """)
 
@@ -319,7 +319,7 @@ PACKAGES = {{
         manifest = self.create_manifest(f"""
 PACKAGES = {{
     {{ spec = "local.build_dependency@v1", source = "{build_dep_path}" }},
-    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+    {{ spec = "local.simple@v1", source = "{simple_path}", setup = {{ "main" }} }},
 }}
 """)
 
@@ -377,7 +377,7 @@ PACKAGES = {{
 
         manifest = self.create_manifest(f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+    {{ spec = "local.simple@v1", source = "{simple_path}", setup = {{ "main" }} }},
 }}
 """)
 
@@ -448,7 +448,7 @@ PACKAGES = {{
 
             manifest = self.create_manifest(f"""
 PACKAGES = {{
-    {{ spec = "local.simple@v1", source = "{simple_path}" }},
+    {{ spec = "local.simple@v1", source = "{simple_path}", setup = {{ "main" }} }},
 }}
 """)
 

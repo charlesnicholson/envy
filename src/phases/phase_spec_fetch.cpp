@@ -101,12 +101,14 @@ void validate_phases(sol::state_view lua,
   }
 }
 
-// Parse and validate the SETUP global: { name = { CHECK, INSTALL, PLATFORMS? } }.
-// Returns name → per-pair platform constraints (empty = all platforms).
-std::map<std::string, std::vector<std::string>> parse_setup_table(
+// Parse and validate the SETUP global:
+// { name = { CHECK, INSTALL, PLATFORMS?, DEPENDS? } }.
+// DEPENDS names sibling pairs that must complete first; validated here for
+// unknown targets and cycles so downstream selection/scheduling can trust it.
+std::map<std::string, pkg::setup_pair_decl> parse_setup_table(
     sol::state_view lua,
     std::string const &identity) {
-  std::map<std::string, std::vector<std::string>> pairs;
+  std::map<std::string, pkg::setup_pair_decl> pairs;
 
   sol::object setup_obj{ lua["SETUP"] };
   if (!setup_obj.valid() || setup_obj.get_type() == sol::type::lua_nil) { return pairs; }
@@ -116,6 +118,28 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
 
   auto const is_verb{ [](sol::object const &o) {
     return o.is<sol::protected_function>() || o.is<std::string>();
+  } };
+
+  auto const parse_string_array{ [&identity](sol::object const &obj,
+                                             std::string const &name,
+                                             char const *field) {
+    std::vector<std::string> values;
+    if (!obj.valid() || obj.get_type() == sol::type::lua_nil) { return values; }
+    if (obj.get_type() != sol::type::table) {
+      throw std::runtime_error("SETUP entry '" + name + "' " + field +
+                               " must be a table in spec '" + identity + "'");
+    }
+    sol::table t{ obj.as<sol::table>() };
+    for (size_t i{ 1 }; i <= t.size(); ++i) {
+      sol::object elem{ t[i] };
+      if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+        throw std::runtime_error("SETUP entry '" + name + "' " + field +
+                                 " entries must be non-empty strings in spec '" +
+                                 identity + "'");
+      }
+      values.push_back(elem.as<std::string>());
+    }
+    return values;
   } };
 
   sol::table setup_table{ setup_obj.as<sol::table>() };
@@ -129,6 +153,16 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
     }
     std::string const name{ key_obj.as<std::string>() };
 
+    // Pair names become engine-node key suffixes ("<canonical>#setup:<name>");
+    // restrict the charset so they can never collide with real identities.
+    if (name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                               "abcdefghijklmnopqrstuvwxyz0123456789_.-") !=
+        std::string::npos) {
+      throw std::runtime_error("SETUP pair name '" + name + "' in spec '" + identity +
+                               "' has invalid characters (allowed: alphanumerics, "
+                               "'_', '.', '-')");
+    }
+
     if (!val_obj.is<sol::table>()) {
       throw std::runtime_error("SETUP entry '" + name + "' must be a table in spec '" +
                                identity + "'");
@@ -139,10 +173,10 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
       sol::object const pair_key_obj(pair_key);
       std::string const k{ pair_key_obj.is<std::string>() ? pair_key_obj.as<std::string>()
                                                           : std::string{} };
-      if (k != "CHECK" && k != "INSTALL" && k != "PLATFORMS") {
+      if (k != "CHECK" && k != "INSTALL" && k != "PLATFORMS" && k != "DEPENDS") {
         throw std::runtime_error("SETUP entry '" + name + "' has unknown field '" + k +
                                  "' in spec '" + identity +
-                                 "' (valid: CHECK, INSTALL, PLATFORMS)");
+                                 "' (valid: CHECK, INSTALL, PLATFORMS, DEPENDS)");
       }
     }
 
@@ -157,27 +191,51 @@ std::map<std::string, std::vector<std::string>> parse_setup_table(
                                identity + "'");
     }
 
-    std::vector<std::string> platforms;
-    sol::object plat_obj{ pair["PLATFORMS"] };
-    if (plat_obj.valid() && plat_obj.get_type() != sol::type::lua_nil) {
-      if (plat_obj.get_type() != sol::type::table) {
-        throw std::runtime_error("SETUP entry '" + name +
-                                 "' PLATFORMS must be a table in spec '" + identity + "'");
-      }
-      sol::table plat_table{ plat_obj.as<sol::table>() };
-      for (size_t i{ 1 }; i <= plat_table.size(); ++i) {
-        sol::object elem{ plat_table[i] };
-        if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
-          throw std::runtime_error("SETUP entry '" + name +
-                                   "' PLATFORMS entries must be non-empty strings in "
-                                   "spec '" +
-                                   identity + "'");
-        }
-        platforms.push_back(elem.as<std::string>());
+    pairs.emplace(name,
+                  pkg::setup_pair_decl{
+                      .platforms = parse_string_array(pair["PLATFORMS"], name, "PLATFORMS"),
+                      .depends = parse_string_array(pair["DEPENDS"], name, "DEPENDS") });
+  }
+
+  for (auto const &[name, decl] : pairs) {  // DEPENDS targets must exist
+    for (auto const &dep : decl.depends) {
+      if (!pairs.contains(dep)) {
+        throw std::runtime_error("SETUP entry '" + name + "' DEPENDS on unknown pair '" +
+                                 dep + "' in spec '" + identity + "'");
       }
     }
+  }
 
-    pairs.emplace(name, std::move(platforms));
+  {  // Cycle detection: iterative DFS, white/gray/black, deterministic (sorted map)
+    std::unordered_map<std::string, int> color;
+    for (auto const &[root, _] : pairs) {
+      if (color[root]) { continue; }
+      std::vector<std::pair<std::string, size_t>> stack{ { root, 0 } };
+      color[root] = 1;
+      while (!stack.empty()) {
+        std::string const cur{ stack.back().first };
+        auto const &deps{ pairs.at(cur).depends };
+        if (stack.back().second == deps.size()) {
+          color[cur] = 2;
+          stack.pop_back();
+          continue;
+        }
+        std::string const &next{ deps[stack.back().second++] };
+        if (color[next] == 1) {  // gray = on stack = cycle; report the loop path
+          std::string path;
+          for (auto const &[frame, _] : stack) {
+            if (path.empty() && frame != next) { continue; }
+            path += frame + " -> ";
+          }
+          throw std::runtime_error("SETUP DEPENDS cycle in spec '" + identity +
+                                   "': " + path + next);
+        }
+        if (color[next] == 0) {
+          color[next] = 1;
+          stack.emplace_back(next, 0);
+        }
+      }
+    }
   }
 
   return pairs;
@@ -847,15 +905,39 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
 
     sol::table table{ entry.as<sol::table>() };
 
-    if (sol::object setup_obj{ table["setup"] };
-        setup_obj.valid() && setup_obj.get_type() != sol::type::lua_nil) {
-      throw std::runtime_error("Dependency entries cannot select 'setup' pairs (spec '" +
-                               cfg.identity +
-                               "'); only manifest package entries may carry 'setup'");
-    }
+    // Optional 'setup' selection: spec authors may demand host-state pairs from
+    // their dependencies. Merged (union) with all other referrers' selections.
+    auto const dep_setup{ [&]() -> std::optional<std::vector<std::string>> {
+      sol::object setup_obj{ table["setup"] };
+      if (!setup_obj.valid() || setup_obj.get_type() == sol::type::lua_nil) {
+        return std::nullopt;
+      }
+      if (setup_obj.get_type() != sol::type::table) {
+        throw std::runtime_error("Dependency 'setup' field must be a table of pair "
+                                 "names (spec '" +
+                                 cfg.identity + "')");
+      }
+      std::vector<std::string> names;
+      sol::table t{ setup_obj.as<sol::table>() };
+      for (size_t j{ 1 }; j <= t.size(); ++j) {
+        sol::object elem{ t[j] };
+        if (!elem.is<std::string>() || elem.as<std::string>().empty()) {
+          throw std::runtime_error("Dependency 'setup' entries must be non-empty "
+                                   "strings (spec '" +
+                                   cfg.identity + "')");
+        }
+        names.push_back(elem.as<std::string>());
+      }
+      return names;
+    }() };
 
     // Check for pure bundle dependency: {bundle = "id", source = "..."}
     if (auto pure_bundle{ try_parse_pure_bundle_dep(table, spec_path) }) {
+      if (dep_setup.has_value()) {
+        throw std::runtime_error("Bundle dependencies cannot select 'setup' pairs "
+                                 "(spec '" +
+                                 cfg.identity + "')");
+      }
       std::string const bundle_id{ pure_bundle->bundle_identity };
 
       // Register this bundle for identity-based lookups
@@ -888,6 +970,19 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
       continue;
     }
 
+    auto const apply_dep_setup{ [&](pkg_cfg *dep_cfg) {
+      if (!dep_setup.has_value()) { return; }
+      if (dep_cfg->is_weak_reference()) {
+        // Weak/reference resolution wires to whatever package already exists —
+        // there is no ensure_pkg call to merge a selection through.
+        throw std::runtime_error("Weak/reference dependencies cannot select 'setup' "
+                                 "pairs (spec '" +
+                                 cfg.identity + "', dependency '" + dep_cfg->identity +
+                                 "')");
+      }
+      dep_cfg->setup = dep_setup;
+    } };
+
     // Check for spec-from-bundle: {spec = "id", bundle = "ref"}
     sol::object bundle_obj{ table["bundle"] };
     if (bundle_obj.valid() && bundle_obj.get_type() != sol::type::lua_nil) {
@@ -900,6 +995,7 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
                                  "' cannot depend on local spec '" + dep_cfg->identity +
                                  "'");
       }
+      apply_dep_setup(dep_cfg);
       parsed_deps.push_back(dep_cfg);
       continue;
     }
@@ -911,6 +1007,7 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
                                "' cannot depend on local spec '" + dep_cfg->identity +
                                "'");
     }
+    apply_dep_setup(dep_cfg);
     parsed_deps.push_back(dep_cfg);
   }
 
@@ -980,8 +1077,6 @@ void run_options(pkg *p, sol::state &lua) {
 }
 
 void wire_dependency_graph(pkg *p, engine &eng) {
-  auto &ctx{ eng.get_execution_ctx(p) };
-
   for (auto *dep_cfg : p->owned_dependency_cfgs) {
     // Pure bundle dep: identity == bundle_identity (bundle fetched for
     // envy.loadenv_spec()) Spec-from-bundle: identity != bundle_identity (spec resolved
@@ -991,7 +1086,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
 
     engine_validate_dependency_cycle(
         dep_cfg->identity,
-        ctx.ancestor_chain,
+        p->ancestor_chain,
         p->cfg->identity,
         is_pure_bundle_dep ? "Bundle dependency" : "Dependency");
 
@@ -1046,7 +1141,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
-      std::vector<std::string> child_chain{ ctx.ancestor_chain };
+      std::vector<std::string> child_chain{ p->ancestor_chain };
       child_chain.push_back(p->cfg->identity);
       eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
@@ -1063,7 +1158,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
-      std::vector<std::string> child_chain{ ctx.ancestor_chain };
+      std::vector<std::string> child_chain{ p->ancestor_chain };
       child_chain.push_back(p->cfg->identity);
       eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
       continue;
@@ -1078,7 +1173,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
     }
     ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
-    std::vector<std::string> child_chain{ ctx.ancestor_chain };
+    std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
   }

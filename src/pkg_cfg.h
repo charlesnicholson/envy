@@ -97,9 +97,9 @@ struct pkg_cfg : unmovable {
   // Platform constraints (empty = all platforms)
   std::vector<std::string> platforms;
 
-  // SETUP pair selection (manifest package entries only; never hashed into the
-  // package key). nullopt = default: user-managed selects all pairs, cache-managed
-  // selects none. Empty list = select nothing.
+  // SETUP pair selection (manifest or dependency entries; never hashed into the
+  // package key). Explicit-only: nullopt or empty list selects nothing; the
+  // effective set is the union across all referrers, closed over pair DEPENDS.
   std::optional<std::vector<std::string>> setup;
 
   // Bundle-related fields (for specs that come from bundles)
