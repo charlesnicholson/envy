@@ -459,14 +459,16 @@ SETUP = {{
         INSTALL uses the shell-string form: string scripts run outside the
         package's Lua lock, so unrelated pair nodes execute concurrently.
         """
+        # One stamp file per pair: concurrent appends to a shared file are not
+        # safe under PowerShell's Add-Content.
         if sys.platform == "win32":
             stamp = (
-                'Add-Content stamps.txt "{name} {edge} '
+                'Add-Content stamps_{name}.txt "{edge} '
                 '$([DateTimeOffset]::Now.ToUnixTimeSeconds())"'
             )
             sleep = "Start-Sleep -Seconds 2"
         else:
-            stamp = 'echo "{name} {edge} $(date +%s)" >> stamps.txt'
+            stamp = 'echo "{edge} $(date +%s)" >> stamps_{name}.txt'
             sleep = "sleep 2"
 
         def install_script(name: str) -> str:
@@ -497,9 +499,10 @@ SETUP = {{{{
         self.run_install(manifest)
 
         events = {}
-        for line in (self.test_dir / "stamps.txt").read_text().splitlines():
-            name, edge, when = line.split()
-            events[(name, edge)] = int(when)
+        for name in ("left", "right"):
+            for line in (self.test_dir / f"stamps_{name}.txt").read_text().splitlines():
+                edge, when = line.split()
+                events[(name, edge)] = int(when)
 
         # Overlap: each pair starts before the other finishes. Serial execution
         # of two 2s installs cannot satisfy both inequalities.
