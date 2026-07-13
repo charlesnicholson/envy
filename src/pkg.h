@@ -48,6 +48,7 @@ struct pkg {
     pkg *resolved{ nullptr };
     bool is_product{ false };
     std::string constraint_identity;
+    std::vector<std::string> setup;
   };
 
   // Immutable after construction

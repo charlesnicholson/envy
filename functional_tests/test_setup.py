@@ -120,6 +120,68 @@ SETUP = {{
 }}
 """
 
+# Target for weak-dependency SETUP selection. Pulled into the graph strongly (a
+# manifest root that selects nothing); each pair writes a distinct marker so we
+# can observe which selections a weak referrer contributed.
+SPEC_WEAK_SETUP_TARGET = """IDENTITY = "local.weak_setup_target@v1"
+USER_MANAGED = true
+
+SETUP = {{
+  alpha = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("weak_alpha_marker.txt", "w"); f:write("a"); f:close()
+    end,
+  }},
+  beta = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("weak_beta_marker.txt", "w"); f:write("b"); f:close()
+    end,
+  }},
+}}
+"""
+
+# Weak referrers: no `source` on the dependency entry (so it's a weak reference
+# that binds to whatever package already provides the identity) and no revision
+# (decoupled from the provider's exact version). Each selects a different pair.
+SPEC_WEAK_CONSUMER_A = """IDENTITY = "local.weak_consumer_a@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_setup_target", setup = {{ "alpha" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+SPEC_WEAK_CONSUMER_B = """IDENTITY = "local.weak_consumer_b@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_setup_target", setup = {{ "beta" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+# Weak referrer selecting a pair the target does not declare.
+SPEC_WEAK_CONSUMER_GHOST = """IDENTITY = "local.weak_consumer_ghost@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_setup_target", setup = {{ "ghost" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
 
 class TestSetupPairs(unittest.TestCase):
     """Manifest-driven SETUP pair behavior."""
@@ -617,6 +679,64 @@ SETUP = {{{{
             (self.test_dir / "dep_sel_marker.txt").exists(),
             "dependency entry's setup selection must run the dependency's pair",
         )
+
+    # =========================================================================
+    # Weak dependencies carrying SETUP selections
+    # =========================================================================
+
+    def _weak_setup_manifest(self, *consumers: str) -> Path:
+        """Manifest with the weak-setup target root plus the named consumer roots."""
+        target = self.write_spec("weak_setup_target", SPEC_WEAK_SETUP_TARGET)
+        lines = [f'  {{ spec = "local.weak_setup_target@v1", source = "{target}" }},']
+        for name, spec in consumers:
+            path = self.write_spec(name, spec)
+            lines.append(
+                f'  {{ spec = "local.{name}@v1", source = "{path}" }},'
+            )
+        return self.create_manifest("PACKAGES = {\n" + "\n".join(lines) + "\n}")
+
+    def test_weak_dependency_selects_pair_on_resolved_target(self):
+        """A weak dependency (no source, no revision) selects a pair on whatever
+        package provides the identity; only the selected pair runs."""
+        manifest = self._weak_setup_manifest(
+            ("weak_consumer_a", SPEC_WEAK_CONSUMER_A)
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_alpha_marker.txt").exists(),
+            "weak referrer's selection (alpha) must run on the resolved target",
+        )
+        self.assertFalse(
+            (self.test_dir / "weak_beta_marker.txt").exists(),
+            "unselected pair must not run",
+        )
+
+    def test_weak_dependency_setup_unions_across_referrers(self):
+        """Two packages weak-depend on the same target selecting different pairs;
+        the target runs the union of both selections."""
+        manifest = self._weak_setup_manifest(
+            ("weak_consumer_a", SPEC_WEAK_CONSUMER_A),
+            ("weak_consumer_b", SPEC_WEAK_CONSUMER_B),
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_alpha_marker.txt").exists(),
+            "weak referrer A's selection (alpha) must run",
+        )
+        self.assertTrue(
+            (self.test_dir / "weak_beta_marker.txt").exists(),
+            "weak referrer B's selection (beta) must run (union, not overwrite)",
+        )
+
+    def test_weak_dependency_unknown_setup_key_fails(self):
+        """Selecting a pair the resolved target does not declare is a detailed
+        post-resolution error."""
+        manifest = self._weak_setup_manifest(
+            ("weak_consumer_ghost", SPEC_WEAK_CONSUMER_GHOST)
+        )
+        result = self.run_install(manifest, should_fail=True)
+        self.assertIn("weak-depends on", result.stderr)
+        self.assertIn("SETUP pair 'ghost'", result.stderr)
 
     # =========================================================================
     # Failure propagation and dependency ordering

@@ -103,6 +103,25 @@ void wire_dependency(pkg *parent, pkg *dep, pkg_phase needed_by) {
   }
 }
 
+// Merge a weak reference's SETUP selection into the package it resolved to
+// (union with all other referrers). Weak resolution wires to an existing
+// package without an ensure_pkg call, so the selection is merged here instead.
+// Runs during graph resolution, strictly before any setup phase executes, so
+// the consumed guard never fires in practice — kept for symmetry with
+// ensure_pkg and to catch a pathologically late resolution. Locks only `dep`.
+void merge_setup_selection(pkg *dep, std::vector<std::string> const &names) {
+  if (names.empty()) { return; }
+  std::lock_guard const deps_lock(dep->deps_mutex);
+  size_t const before{ dep->setup_selected.size() };
+  dep->setup_selected.insert(names.begin(), names.end());
+  if (dep->setup_selection_consumed && dep->setup_selected.size() != before) {
+    throw std::runtime_error(
+        "SETUP selection for " + dep->cfg->identity +
+        " arrived after its setup phase ran; a weak dependency selected a pair "
+        "that resolved too late");
+  }
+}
+
 void resolve_identity_ref(pkg *p,
                           pkg::weak_reference *wr,
                           engine::weak_resolution_result &result,
@@ -120,6 +139,7 @@ void resolve_identity_ref(pkg *p,
     }
 
     wire_dependency(p, dep, wr->needed_by);
+    merge_setup_selection(dep, wr->setup);
     {
       std::lock_guard const deps_lock(p->deps_mutex);
       wr->resolved = dep;
@@ -154,6 +174,7 @@ void resolve_identity_ref(pkg *p,
 
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
+    merge_setup_selection(dep, wr->setup);
 
     std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
@@ -212,6 +233,7 @@ void resolve_product_ref(pkg *p,
     }
 
     wire_dependency(p, dep, wr->needed_by);
+    merge_setup_selection(dep, wr->setup);
     set_product_provider(dep);
     ++result.resolved;
     return;
@@ -222,6 +244,7 @@ void resolve_product_ref(pkg *p,
 
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
+    merge_setup_selection(dep, wr->setup);
 
     std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
@@ -940,6 +963,62 @@ void engine::validate_product_fallbacks() {
   }
 }
 
+void engine::validate_setup_selections() {
+  // A weak reference may select SETUP pairs on whatever package it resolves to.
+  // A selection only makes sense if the resolved package runs a setup phase and
+  // declares the named pair. Validate once, after the graph is fully resolved
+  // (all spec_fetches complete, so type/setup_pairs are populated), so the
+  // author sees a precise error before any fetch/build work begins.
+  std::vector<std::pair<pkg *, pkg::weak_reference *>> to_validate;
+  {
+    std::lock_guard const lock(mutex_);
+    for (auto &[_, package] : packages_) {
+      for (auto &wr : package->weak_references) {
+        if (!wr.setup.empty() && wr.resolved) {
+          to_validate.emplace_back(package.get(), &wr);
+        }
+      }
+    }
+  }
+
+  std::vector<std::string> errors;
+
+  for (auto const &[requester, wr] : to_validate) {
+    pkg *const target{ wr->resolved };
+    std::string const context{ "spec '" + requester->cfg->identity +
+                               "' weak-depends on '" + wr->query + "' (resolved to '" +
+                               target->cfg->identity + "')" };
+
+    // (a) target must actually run a setup phase (see run_setup_phase).
+    if (target->type != pkg_type::CACHE_MANAGED &&
+        target->type != pkg_type::USER_MANAGED) {
+      for (auto const &name : wr->setup) {
+        errors.push_back(context + " selects SETUP pair '" + name +
+                         "', but that package runs no setup phase");
+      }
+      continue;
+    }
+
+    // (b) every selected pair must be declared by the resolved package.
+    for (auto const &name : wr->setup) {
+      if (target->setup_pairs.contains(name)) { continue; }
+      std::string detail{ target->setup_pairs.empty() ? "it declares no SETUP pairs"
+                                                       : "declared pairs:" };
+      for (auto const &[pair_name, _] : target->setup_pairs) { detail += " " + pair_name; }
+      errors.push_back(context + " selects SETUP pair '" + name + "', but " + detail);
+    }
+  }
+
+  if (!errors.empty()) {
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < errors.size(); ++i) {
+      if (i) { oss << "\n"; }
+      oss << errors[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+}
+
 bool engine::pkg_provides_product_transitively(pkg *p,
                                                std::string const &product_name) const {
   std::unordered_set<pkg const *> visited;
@@ -1081,6 +1160,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
   }
 
   validate_product_fallbacks();
+  validate_setup_selections();
 
   {  // Cache resolved weak dependency keys for thread-safe hash computation
     std::lock_guard const lock(mutex_);
