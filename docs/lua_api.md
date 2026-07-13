@@ -218,6 +218,31 @@ if not envy.verify_hash(file, hash) then
 end
 ```
 
+### envy.git_resolve(repo, ref) → sha
+
+Resolve a git ref (tag/branch) in a remote repo to a full commit sha via
+libgit2's ref advertisement — no clone, no `git` binary. Lets a spec express a
+*semantic* pin (a version/tag) and turn it into the sha a CIPD-by-`git_revision`
+URL needs. Call from `FETCH`; the resolve then runs only on cache-miss.
+
+- `repo` — remote URL (`https://…`, `file://…`; HTTPS uses the system CA bundle).
+- `ref` — the advertised name. Prefer fully-qualified (`refs/tags/…`,
+  `refs/heads/…`); a bare trailing segment (`v1.5.23`) also resolves when it is
+  unambiguous. Annotated tags are peeled to the commit they point at.
+- A full 40/64-hex sha is returned unchanged (no network).
+- Throws when `ref` is absent, or a bare name is ambiguous across refs.
+
+```lua
+FETCH = function(tmp_dir, opts)
+  local platform = ({ darwin = "mac-arm64", linux = "linux-amd64",
+                      windows = "windows-amd64" })[envy.PLATFORM]
+  local sha = envy.git_resolve("https://chromium.googlesource.com/build",
+                               "refs/tags/siso/v" .. opts.version)
+  return { source = ".../dl/build/siso/" .. platform .. "/+/git_revision:" .. sha,
+           dest = "siso.zip" }
+end
+```
+
 ---
 
 ## Dependency Access
