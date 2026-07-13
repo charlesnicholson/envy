@@ -439,14 +439,18 @@ pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
             "resolve before the package executes");
       }
     }
-  }
 
-  if (inserted && !core_.ensure_task(make_pkg_task_config(result))) {
-    // A fresh package key must never collide with an existing task (e.g. a
-    // pathological identity matching a pair-task key). Fail loudly now instead
-    // of hanging later on a task with someone else's config.
-    throw std::runtime_error("Package task key collides with existing task: " +
-                             key.canonical());
+    // Task creation must be atomic with the packages_ insert (still under
+    // mutex_; engine mutex -> core mutex ordering, never reversed): a second
+    // thread that loses the try_emplace returns immediately and may start or
+    // wait on the task before this thread would otherwise have created it.
+    if (inserted && !core_.ensure_task(make_pkg_task_config(result))) {
+      // A fresh package key must never collide with an existing task (e.g. a
+      // pathological identity matching a pair-task key). Fail loudly now
+      // instead of hanging later on a task with someone else's config.
+      throw std::runtime_error("Package task key collides with existing task: " +
+                               key.canonical());
+    }
   }
 
   return result;
