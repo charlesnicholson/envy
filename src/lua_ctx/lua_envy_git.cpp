@@ -118,8 +118,9 @@ void lua_envy_git_install(sol::table &envy_table) {
     // A full object id needs no lookup -- return it (no network). Normalize to
     // lowercase so it matches the lowercase oids the ref-advertisement path emits.
     if (git_ref_is_full_sha(ref)) {
-      std::transform(ref.begin(), ref.end(), ref.begin(),
-                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      std::transform(ref.begin(), ref.end(), ref.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+      });
       return ref;
     }
 
