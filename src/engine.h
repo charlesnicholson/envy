@@ -143,6 +143,7 @@ class engine : unmovable {
   void process_fetch_dependencies(pkg *p);
   void update_product_registry();
   void validate_product_fallbacks();
+  void validate_setup_selections();
   bool pkg_provides_product_transitively(pkg *p, std::string const &product_name) const;
   void extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &visited);
   void wait_for_resolution_phase();

@@ -974,16 +974,13 @@ std::vector<pkg_cfg *> parse_dependencies_table(sol::state &lua,
       continue;
     }
 
+    // Both strong and weak deps may select 'setup'. Strong deps merge through
+    // ensure_pkg; weak deps carry the selection on their weak_reference record
+    // and merge it into whatever package they resolve to (see
+    // wire_dependency_graph / engine::resolve_*_ref). Existence of the selected
+    // pairs is validated post-resolution.
     auto const apply_dep_setup{ [&](pkg_cfg *dep_cfg) {
       if (!dep_setup.has_value()) { return; }
-      if (dep_cfg->is_weak_reference()) {
-        // Weak/reference resolution wires to whatever package already exists —
-        // there is no ensure_pkg call to merge a selection through.
-        throw std::runtime_error(
-            "Weak/reference dependencies cannot select 'setup' "
-            "pairs (spec '" +
-            cfg.identity + "', dependency '" + dep_cfg->identity + "')");
-      }
       dep_cfg->setup = dep_setup;
     } };
 
@@ -1128,7 +1125,8 @@ void wire_dependency_graph(pkg *p, engine &eng) {
           .needed_by = needed_by_phase,
           .resolved = nullptr,
           .is_product = is_product_dep,
-          .constraint_identity = is_product_dep ? dep_cfg->identity : "" });
+          .constraint_identity = is_product_dep ? dep_cfg->identity : "",
+          .setup = dep_cfg->setup.value_or(std::vector<std::string>{}) });
       continue;
     }
 
