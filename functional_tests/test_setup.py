@@ -295,6 +295,56 @@ SETUP = {{
 }}
 """
 
+# Single weak referrer selecting BOTH of the target's pairs in one entry.
+SPEC_WEAK_CONSUMER_BOTH = """IDENTITY = "local.weak_consumer_both@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_setup_target", setup = {{ "alpha", "beta" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+# Cache-managed fallback provider for product "tool": fetched only when nothing
+# else provides the product. Declares a SETUP pair that writes a marker.
+SPEC_WEAK_PRODUCT_FB_PROVIDER = """IDENTITY = "local.weak_prod_fb_provider@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = {{strip = 1}}
+
+PRODUCTS = {{ tool = "payload.txt" }}
+
+SETUP = {{
+  alpha = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("weak_prod_fb_marker.txt", "w"); f:write("pf"); f:close()
+    end,
+  }},
+}}
+"""
+
+# Weak PRODUCT reference with a fallback provider; nothing provides "tool", so
+# the fallback is fetched and the setup selection lands on it.
+SPEC_WEAK_PRODUCT_FB_CONSUMER = """IDENTITY = "local.weak_prod_fb_consumer@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ product = "tool", weak = {{ spec = "local.weak_prod_fb_provider@v1", source = "weak_prod_fb_provider.lua" }}, setup = {{ "alpha" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
 
 class TestSetupPairs(unittest.TestCase):
     """Manifest-driven SETUP pair behavior."""
@@ -931,6 +981,35 @@ SETUP = {{{{
         self.assertTrue(
             (self.test_dir / "weak_prod_marker.txt").exists(),
             "weak product reference's selection (alpha) must run on the provider",
+        )
+
+    def test_weak_product_fallback_carries_setup(self):
+        """A weak PRODUCT reference that falls back to fetching a provider lands
+        its setup selection on the fetched provider."""
+        # Fallback provider must be on disk (referenced by relative path).
+        self.write_spec("weak_prod_fb_provider", SPEC_WEAK_PRODUCT_FB_PROVIDER)
+        manifest = self._manifest_roots(
+            ("weak_prod_fb_consumer", "local.weak_prod_fb_consumer@v1", SPEC_WEAK_PRODUCT_FB_CONSUMER),
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_prod_fb_marker.txt").exists(),
+            "fallback provider's selected pair (alpha) must run",
+        )
+
+    def test_weak_single_entry_selects_multiple_pairs(self):
+        """A single weak entry selecting multiple pairs runs all of them."""
+        manifest = self._weak_setup_manifest(
+            ("weak_consumer_both", SPEC_WEAK_CONSUMER_BOTH)
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_alpha_marker.txt").exists(),
+            "first selected pair (alpha) must run",
+        )
+        self.assertTrue(
+            (self.test_dir / "weak_beta_marker.txt").exists(),
+            "second selected pair (beta) must run",
         )
 
     def test_weak_selection_on_bundle_only_node_fails(self):
