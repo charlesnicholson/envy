@@ -234,6 +234,8 @@ URL needs. Call from `FETCH`; the resolve then runs only on cache-miss.
 
 ```lua
 FETCH = function(tmp_dir, opts)
+  local platform = ({ darwin = "mac-arm64", linux = "linux-amd64",
+                      windows = "windows-amd64" })[envy.PLATFORM]
   local sha = envy.git_resolve("https://chromium.googlesource.com/build",
                                "refs/tags/siso/v" .. opts.version)
   return { source = ".../dl/build/siso/" .. platform .. "/+/git_revision:" .. sha,
