@@ -243,7 +243,7 @@ SETUP = {
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.undeclared@v1", source = "{self.lua_path(spec_path)}" }},
+    {{ spec = "local.undeclared@v1", source = "{self.lua_path(spec_path)}", setup = {{ "main" }} }},
 }}
 """
         )

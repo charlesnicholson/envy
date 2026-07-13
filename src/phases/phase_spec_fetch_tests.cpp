@@ -318,20 +318,142 @@ TEST_CASE("cache-managed spec with SETUP parses pairs and platforms") {
   REQUIRE(p->setup_pairs.size() == 2);
   REQUIRE(p->setup_pairs.contains("udev_rules"));
   REQUIRE(p->setup_pairs.contains("extras"));
-  REQUIRE(p->setup_pairs.at("udev_rules").size() == 1);
-  CHECK(p->setup_pairs.at("udev_rules")[0] == "linux");
-  CHECK(p->setup_pairs.at("extras").empty());
+  REQUIRE(p->setup_pairs.at("udev_rules").platforms.size() == 1);
+  CHECK(p->setup_pairs.at("udev_rules").platforms[0] == "linux");
+  CHECK(p->setup_pairs.at("extras").platforms.empty());
 }
 
-TEST_CASE("dependency entry with setup field throws") {
+TEST_CASE("SETUP pair DEPENDS parses into decl") {
+  cache c;
+  engine eng{ c };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_setup_depends_parse" };
+  std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+
+  {
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"test.setup_depends_parse@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
+    ofs << "SETUP = {\n";
+    ofs << "  a = { CHECK = 'exit 0', INSTALL = 'echo a' },\n";
+    ofs << "  b = { CHECK = 'exit 0', INSTALL = 'echo b', DEPENDS = { 'a' } },\n";
+    ofs << "}\n";
+  }
+
+  auto *cfg{ make_local_cfg("test.setup_depends_parse@v1", spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  REQUIRE(p->setup_pairs.at("b").depends.size() == 1);
+  CHECK(p->setup_pairs.at("b").depends[0] == "a");
+  CHECK(p->setup_pairs.at("a").depends.empty());
+}
+
+TEST_CASE("SETUP pair DEPENDS on unknown pair throws") {
   auto const msg{ run_spec_body(
-      "dep_setup_rejected",
+      "depends_unknown",
+      "USER_MANAGED = true\n"
+      "SETUP = { a = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = { 'ghost' } } "
+      "}\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("DEPENDS on unknown pair 'ghost'") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair DEPENDS self-cycle throws") {
+  auto const msg{ run_spec_body(
+      "depends_self",
+      "USER_MANAGED = true\n"
+      "SETUP = { a = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = { 'a' } } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("SETUP DEPENDS cycle") != std::string::npos);
+  CHECK(msg.find("a -> a") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair DEPENDS cycle throws with path") {
+  auto const msg{ run_spec_body(
+      "depends_cycle",
+      "USER_MANAGED = true\n"
+      "SETUP = {\n"
+      "  a = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = { 'b' } },\n"
+      "  b = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = { 'c' } },\n"
+      "  c = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = { 'a' } },\n"
+      "}\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("SETUP DEPENDS cycle") != std::string::npos);
+  CHECK(msg.find("->") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair DEPENDS with non-table type throws") {
+  auto const msg{ run_spec_body(
+      "depends_bad_type",
+      "USER_MANAGED = true\n"
+      "SETUP = { a = { CHECK = 'exit 0', INSTALL = 'echo x', DEPENDS = 'b' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("DEPENDS must be a table") != std::string::npos);
+}
+
+TEST_CASE("SETUP pair name with invalid characters throws") {
+  auto const msg{ run_spec_body(
+      "bad_pair_name",
+      "USER_MANAGED = true\n"
+      "SETUP = { ['bad name!'] = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n") };
+  REQUIRE(!msg.empty());
+  CHECK(msg.find("invalid characters") != std::string::npos);
+}
+
+TEST_CASE("weak dependency entry with setup field throws") {
+  auto const msg{ run_spec_body(
+      "dep_setup_weak_rejected",
       "USER_MANAGED = true\n"
       "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n"
-      "DEPENDENCIES = { { spec = 'local.other@v1', source = 'other.lua', setup = { "
-      "'main' } } }\n") };
+      "DEPENDENCIES = { { spec = 'test.other@v1', setup = { 'main' } } }\n") };
   REQUIRE(!msg.empty());
-  CHECK(msg.find("Dependency entries cannot select 'setup'") != std::string::npos);
+  CHECK(msg.find("cannot select 'setup'") != std::string::npos);
+}
+
+TEST_CASE("strong dependency entry with setup field parses into dep cfg") {
+  cache c;
+  engine eng{ c };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_dep_setup_ok" };
+  std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
+
+  {
+    std::ofstream ofs{ temp_dir / "other.lua" };
+    ofs << "IDENTITY = \"local.other@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
+    ofs << "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n";
+  }
+
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+  {
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"local.dep_setup_ok@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
+    ofs << "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n";
+    ofs << "DEPENDENCIES = { { spec = 'local.other@v1', source = 'other.lua', setup = "
+           "{ 'main' } } }\n";
+  }
+
+  auto *cfg{ make_local_cfg("local.dep_setup_ok@v1", spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  REQUIRE(p->owned_dependency_cfgs.size() == 1);
+  auto const *dep_cfg{ p->owned_dependency_cfgs[0] };
+  REQUIRE(dep_cfg->setup.has_value());
+  REQUIRE(dep_cfg->setup->size() == 1);
+  CHECK((*dep_cfg->setup)[0] == "main");
+
+  // ensure_pkg merged the dep entry's selection into the dep package
+  pkg *dep{ eng.find_exact(pkg_key{ "local.other@v1" }) };
+  REQUIRE(dep != nullptr);
+  CHECK(dep->setup_selected.contains("main"));
 }
 
 TEST_CASE("user-managed package with check verb and install phase succeeds") {

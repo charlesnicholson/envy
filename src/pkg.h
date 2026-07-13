@@ -8,6 +8,7 @@
 #include "sol_util.h"
 #include "tui.h"
 
+#include <atomic>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -19,7 +20,6 @@
 namespace envy {
 
 enum class pkg_type;
-struct pkg_execution_ctx;
 
 struct product_entry {
   std::string value;
@@ -57,7 +57,15 @@ struct pkg {
   default_shell_cfg_t const *const default_shell_ptr;
   tui::section_handle const tui_section;
 
-  pkg_execution_ctx *exec_ctx{ nullptr };  // assigned by engine
+  // Execution mirror: the phase currently executing on this package's worker
+  // (written by the engine's step wrapper, read by lua_ctx access gating) and
+  // whether spec_fetch has completed (read by product-registry updates).
+  std::atomic<pkg_phase> current_phase{ pkg_phase::none };
+  std::atomic_bool spec_fetch_completed{ false };
+
+  // Ancestor identities for dependency-cycle detection. Set before this
+  // package's worker starts; immutable after.
+  std::vector<std::string> ancestor_chain;
 
   sol_state_guard lua;
   cache::scoped_entry_lock::ptr_t lock;
@@ -70,10 +78,13 @@ struct pkg {
   pkg_type type;
   int schema{ 0 };
 
-  // SETUP pairs declared by the spec: name → per-pair platform constraints
-  // (empty = all). Sorted map gives deterministic execution order. Written once
-  // during spec_fetch, read by the setup phase.
-  std::map<std::string, std::vector<std::string>> setup_pairs;
+  // SETUP pairs declared by the spec. Sorted map gives deterministic node
+  // creation order. Written once during spec_fetch, read by the setup phase.
+  struct setup_pair_decl {
+    std::vector<std::string> platforms;  // empty = all
+    std::vector<std::string> depends;    // sibling pair names (parse-validated, acyclic)
+  };
+  std::map<std::string, setup_pair_decl> setup_pairs;
 
   // Dependency state — deps_mutex guards every field below. The engine's resolution
   // loop mutates these maps while worker threads traverse them. Lock one node at a
@@ -88,11 +99,12 @@ struct pkg {
   std::vector<std::string> resolved_platforms;
   std::vector<std::string> resolved_weak_dependency_keys;
 
-  // SETUP selection, merged across referring cfgs (manifest entries only may
-  // carry `setup`). setup_default means some referrer omitted `setup`: the
-  // package-type default applies (user-managed: all pairs; cache-managed: none).
+  // SETUP selection: union of explicit `setup` lists from all referring cfgs
+  // (manifest or dependency entries). Explicit-only — unselected pairs never
+  // run. setup_selection_consumed flips when the setup phase snapshots the set;
+  // a merge that adds names afterward is a hard error (selection arrived too late).
   std::unordered_set<std::string> setup_selected;
-  bool setup_default{ false };
+  bool setup_selection_consumed{ false };
 };
 
 }  // namespace envy

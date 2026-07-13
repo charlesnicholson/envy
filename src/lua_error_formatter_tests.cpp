@@ -44,7 +44,6 @@ struct formatter_test_fixture {
                                       .cfg = cfg,
                                       .cache_ptr = nullptr,
                                       .default_shell_ptr = nullptr,
-                                      .exec_ctx = nullptr,
                                       .lua = std::move(lua_state),
                                       .lock = nullptr,
                                       .canonical_identity_hash = {},

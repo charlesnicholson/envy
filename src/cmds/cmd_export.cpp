@@ -119,12 +119,8 @@ void cmd_export::execute() {
   eng.resolve_graph(targets);
 
   // Extend all targets to completion and wait
-  for (auto const &key : target_keys) {
-    eng.get_execution_ctx(key).set_target_phase(pkg_phase::completion);
-  }
-  for (auto const &key : target_keys) {
-    eng.ensure_pkg_at_phase(key, pkg_phase::completion);
-  }
+  for (auto const &key : target_keys) { eng.extend_to_completion(key); }
+  for (auto const &key : target_keys) { eng.wait_for_completion(key); }
 
   // Delete TUI sections, then print results in deterministic target order
   for (auto const &key : target_keys) {

@@ -1491,11 +1491,19 @@ SETUP = {{
         return path
 
     def _make_manifest_with_depot(self, specs, depot_url):
+        """specs: (identity, path) or (identity, path, setup_pair_names) tuples."""
         header = f'-- @envy bin "envy-bin"\n-- @envy package-depot "{depot_url}"\n'
-        packages = ", ".join(
-            f'{{ spec = "{ident}", source = "{path.as_posix()}" }}'
-            for ident, path in specs
-        )
+
+        def entry(spec):
+            ident, path = spec[0], spec[1]
+            setup = (
+                ", setup = { " + ", ".join(f'"{n}"' for n in spec[2]) + " }"
+                if len(spec) > 2
+                else ""
+            )
+            return f'{{ spec = "{ident}", source = "{path.as_posix()}"{setup} }}'
+
+        packages = ", ".join(entry(s) for s in specs)
         manifest = self.test_dir / "envy.lua"
         manifest.write_text(
             header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
@@ -1513,7 +1521,7 @@ SETUP = {{
         try:
             depot_url = f"http://127.0.0.1:{port}/depot.txt"
             m = self._make_manifest_with_depot(
-                [("local.um_depot_test@v1", spec)], depot_url
+                [("local.um_depot_test@v1", spec, ("main",))], depot_url
             )
             r = self._run("sync", "--manifest", str(m))
             self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")

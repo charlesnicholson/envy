@@ -18,7 +18,11 @@ namespace envy {
 
 // Extern declarations for unit testing (not in public API)
 extern bool run_pair_check(pkg *p, engine &eng, std::string const &name);
-extern void run_pair_install(pkg *p, engine &eng, std::string const &name);
+extern void run_pair_install(pkg *p,
+                             engine &eng,
+                             std::string const &name,
+                             tui::section_handle section,
+                             std::string const &log_identity);
 extern std::vector<std::string> compute_selected_pairs(pkg *p);
 
 namespace {
@@ -47,7 +51,6 @@ struct setup_test_fixture {
                                       .cfg = cfg,
                                       .cache_ptr = nullptr,
                                       .default_shell_ptr = nullptr,
-                                      .exec_ctx = nullptr,
                                       .lua = std::move(lua_state),
                                       .lock = nullptr,
                                       .canonical_identity_hash = {},
@@ -81,9 +84,12 @@ struct setup_test_fixture {
     p->setup_pairs.clear();
     sol::table setup{ state["SETUP"].get<sol::table>() };
     for (auto const &[key, _] : setup) {
-      p->setup_pairs.emplace(sol::object(key).as<std::string>(),
-                             std::vector<std::string>{});
+      p->setup_pairs.emplace(sol::object(key).as<std::string>(), pkg::setup_pair_decl{});
     }
+  }
+
+  void run_install(engine &eng, std::string const &name) {
+    run_pair_install(p.get(), eng, name, p->tui_section, p->cfg->identity);
   }
 
   void set_options(std::string_view options_lua) {
@@ -257,7 +263,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install string executes") {
   set_setup("{ main = { CHECK = 'exit 1', INSTALL = 'echo installing' } }");
   cache test_cache;
   engine eng{ test_cache };
-  CHECK_NOTHROW(run_pair_install(p.get(), eng, "main"));
+  CHECK_NOTHROW(run_install(eng, "main"));
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture, "pair install string non-zero exit throws") {
@@ -266,7 +272,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install string non-zero exit throws"
   engine eng{ test_cache };
 
   try {
-    run_pair_install(p.get(), eng, "main");
+    run_install(eng, "main");
     FAIL("Expected exception");
   } catch (std::runtime_error const &e) {
     std::string msg{ e.what() };
@@ -282,7 +288,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install function returning nil succe
   } })");
   cache test_cache;
   engine eng{ test_cache };
-  CHECK_NOTHROW(run_pair_install(p.get(), eng, "main"));
+  CHECK_NOTHROW(run_install(eng, "main"));
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture,
@@ -293,7 +299,7 @@ TEST_CASE_FIXTURE(setup_test_fixture,
   } })");
   cache test_cache;
   engine eng{ test_cache };
-  CHECK_NOTHROW(run_pair_install(p.get(), eng, "main"));
+  CHECK_NOTHROW(run_install(eng, "main"));
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture,
@@ -304,7 +310,7 @@ TEST_CASE_FIXTURE(setup_test_fixture,
   } })");
   cache test_cache;
   engine eng{ test_cache };
-  CHECK_THROWS_AS(run_pair_install(p.get(), eng, "main"), std::runtime_error);
+  CHECK_THROWS_AS(run_install(eng, "main"), std::runtime_error);
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture, "pair install function returning number throws") {
@@ -316,7 +322,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install function returning number th
   engine eng{ test_cache };
 
   try {
-    run_pair_install(p.get(), eng, "main");
+    run_install(eng, "main");
     FAIL("Expected exception");
   } catch (std::runtime_error const &e) {
     std::string msg{ e.what() };
@@ -335,7 +341,7 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install receives options table") {
   } })");
   cache test_cache;
   engine eng{ test_cache };
-  CHECK_NOTHROW(run_pair_install(p.get(), eng, "main"));
+  CHECK_NOTHROW(run_install(eng, "main"));
 }
 
 // ============================================================================
@@ -343,30 +349,25 @@ TEST_CASE_FIXTURE(setup_test_fixture, "pair install receives options table") {
 // ============================================================================
 
 TEST_CASE_FIXTURE(setup_test_fixture,
-                  "user-managed default selection includes all pairs, sorted") {
+                  "user-managed with no selection selects nothing (explicit-only)") {
   p->type = pkg_type::USER_MANAGED;
-  p->setup_pairs.emplace("zeta", std::vector<std::string>{});
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
-  p->setup_default = true;
+  p->setup_pairs.emplace("zeta", pkg::setup_pair_decl{});
+  p->setup_pairs.emplace("alpha", pkg::setup_pair_decl{});
 
-  auto const selected{ compute_selected_pairs(p.get()) };
-  REQUIRE(selected.size() == 2);
-  CHECK(selected[0] == "alpha");
-  CHECK(selected[1] == "zeta");
+  CHECK(compute_selected_pairs(p.get()).empty());
 }
 
-TEST_CASE_FIXTURE(setup_test_fixture, "cache-managed default selection selects nothing") {
+TEST_CASE_FIXTURE(setup_test_fixture, "cache-managed with no selection selects nothing") {
   p->type = pkg_type::CACHE_MANAGED;
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
-  p->setup_default = true;
+  p->setup_pairs.emplace("alpha", pkg::setup_pair_decl{});
 
   CHECK(compute_selected_pairs(p.get()).empty());
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture, "explicit selection picks named pairs only") {
   p->type = pkg_type::CACHE_MANAGED;
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
-  p->setup_pairs.emplace("beta", std::vector<std::string>{});
+  p->setup_pairs.emplace("alpha", pkg::setup_pair_decl{});
+  p->setup_pairs.emplace("beta", pkg::setup_pair_decl{});
   p->setup_selected.insert("beta");
 
   auto const selected{ compute_selected_pairs(p.get()) };
@@ -374,35 +375,57 @@ TEST_CASE_FIXTURE(setup_test_fixture, "explicit selection picks named pairs only
   CHECK(selected[0] == "beta");
 }
 
-TEST_CASE_FIXTURE(setup_test_fixture,
-                  "explicit selection narrows user-managed default when no default "
-                  "referrer exists") {
+TEST_CASE_FIXTURE(setup_test_fixture, "selection closes transitively over DEPENDS") {
   p->type = pkg_type::USER_MANAGED;
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
-  p->setup_pairs.emplace("beta", std::vector<std::string>{});
-  p->setup_selected.insert("alpha");
-  p->setup_default = false;
+  p->setup_pairs.emplace("a", pkg::setup_pair_decl{});
+  p->setup_pairs.emplace("b", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
+  p->setup_pairs.emplace("c", pkg::setup_pair_decl{ .platforms = {}, .depends = { "b" } });
+  p->setup_selected.insert("c");
 
   auto const selected{ compute_selected_pairs(p.get()) };
-  REQUIRE(selected.size() == 1);
-  CHECK(selected[0] == "alpha");
+  REQUIRE(selected.size() == 3);
+  CHECK(selected[0] == "a");
+  CHECK(selected[1] == "b");
+  CHECK(selected[2] == "c");
+}
+
+TEST_CASE_FIXTURE(setup_test_fixture, "diamond DEPENDS closure resolves each pair once") {
+  p->type = pkg_type::CACHE_MANAGED;
+  p->setup_pairs.emplace("a", pkg::setup_pair_decl{});
+  p->setup_pairs.emplace("b", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
+  p->setup_pairs.emplace("c", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
+  p->setup_pairs.emplace("d",
+                         pkg::setup_pair_decl{ .platforms = {}, .depends = { "b", "c" } });
+  p->setup_selected.insert("d");
+
+  auto const selected{ compute_selected_pairs(p.get()) };
+  REQUIRE(selected.size() == 4);
+  CHECK(selected == std::vector<std::string>{ "a", "b", "c", "d" });
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture,
-                  "default referrer unions with explicit selection for user-managed") {
+                  "unselected pairs stay unselected regardless of DEPENDS direction") {
   p->type = pkg_type::USER_MANAGED;
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
-  p->setup_pairs.emplace("beta", std::vector<std::string>{});
-  p->setup_selected.insert("alpha");
-  p->setup_default = true;  // some referrer omitted `setup` → all pairs
+  p->setup_pairs.emplace("a", pkg::setup_pair_decl{});
+  p->setup_pairs.emplace("b", pkg::setup_pair_decl{ .platforms = {}, .depends = { "a" } });
+  p->setup_selected.insert("a");  // b depends on a, but selecting a must not pull b
 
   auto const selected{ compute_selected_pairs(p.get()) };
-  CHECK(selected.size() == 2);
+  REQUIRE(selected.size() == 1);
+  CHECK(selected[0] == "a");
+}
+
+TEST_CASE_FIXTURE(setup_test_fixture, "selection marks the package consumed") {
+  p->type = pkg_type::CACHE_MANAGED;
+  p->setup_pairs.emplace("alpha", pkg::setup_pair_decl{});
+  CHECK_FALSE(p->setup_selection_consumed);
+  compute_selected_pairs(p.get());
+  CHECK(p->setup_selection_consumed);
 }
 
 TEST_CASE_FIXTURE(setup_test_fixture, "unknown selected pair name throws") {
   p->type = pkg_type::CACHE_MANAGED;
-  p->setup_pairs.emplace("alpha", std::vector<std::string>{});
+  p->setup_pairs.emplace("alpha", pkg::setup_pair_decl{});
   p->setup_selected.insert("nonexistent");
 
   try {

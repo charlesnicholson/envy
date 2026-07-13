@@ -25,13 +25,7 @@ void lua_envy_product_install(sol::table &envy_table) {
       throw std::runtime_error("envy.product: product name cannot be empty");
     }
 
-    pkg_execution_ctx *exec_ctx{ consumer->exec_ctx };
-    if (!exec_ctx) {
-      throw std::runtime_error("envy.product: missing execution context for pkg '" +
-                               consumer->cfg->identity + "'");
-    }
-
-    pkg_phase const current_phase{ exec_ctx->current_phase.load() };
+    pkg_phase const current_phase{ consumer->current_phase.load() };
 
     // Copy under deps_mutex - the resolution loop writes provider concurrently.
     auto const dep_opt{ [&]() -> std::optional<pkg::product_dependency> {

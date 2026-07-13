@@ -162,17 +162,18 @@ Specs define verbs describing how to acquire, validate, and install packages:
 - **`stage`** — Prepare staging area from fetched content. Default extracts archives; custom functions can manipulate source tree.
 - **`build`** — Compile or process staged content. Specs access staging directory, dependency artifacts, and install directory.
 - **`install`** — Write final artifacts to install directory. On success, envy atomically renames to asset directory and marks complete.
-- **`setup`** — Named host-side CHECK/INSTALL pairs (`SETUP = { name = { CHECK, INSTALL, PLATFORMS? } }`). Run after install, check-gated every invocation, never cached or hashed. See below.
+- **`setup`** — Named host-side CHECK/INSTALL pairs (`SETUP = { name = { CHECK, INSTALL, PLATFORMS?, DEPENDS? } }`). Run after install, check-gated every invocation, never cached or hashed. Explicit-only selection; selected pairs run as parallel tasks. See below.
 
 ### SETUP Pairs: Host State Beside (or Instead of) the Cache
 
 Payload bytes live in the cache and are keyed by `(identity, options, platform)`. Host state (udev rules, system package managers, credentials) is per-machine, per-intent, and idempotent-checkable — it must never influence the package hash. `SETUP` pairs express it:
 
-- Pair verbs: `CHECK(pkg_dir, options) -> bool|string` (string runs as shell; true/exit 0 = satisfied) and `INSTALL(pkg_dir, options) -> nil|string` (string runs as shell). `pkg_dir` is the installed payload path for cache-managed packages, `nil` for user-managed. cwd = `project_root`.
-- Selection: manifest entry `setup = { "name", ... }` (dependency entries may not carry `setup`). Defaults: user-managed packages run **all** pairs; cache-managed run **none**. Explicit list narrows or selects; `setup = {}` disables all. Unknown names are hard errors.
-- Per-pair `PLATFORMS` filters against the host (mismatches skip silently).
+- Pair verbs: `CHECK(pkg_dir, options) -> bool|string` (string runs as shell; true/exit 0 = satisfied) and `INSTALL(pkg_dir, options) -> nil|string` (string runs as shell). `pkg_dir` is the installed payload path for cache-managed packages, `nil` for user-managed. cwd = `project_root`. String scripts (and strings returned by function verbs) execute outside the package's Lua lock, so pairs of one package parallelize on shell time; function bodies themselves serialize on the shared Lua state.
+- Selection is **explicit-only**: `setup = { "name", ... }` on a manifest package entry or a dependency entry (spec authors may demand host state from their dependencies; weak/reference and pure-bundle deps may not). Effective set = union across all referrers, closed transitively over `DEPENDS`. No selection = nothing runs, any package type; `setup = {}` ≡ absent. Unknown explicit names are hard errors.
+- Per-pair `DEPENDS = { "sibling", ... }` sequences pairs within one spec (validated at parse: unknown targets, cycles). Selecting a pair auto-selects its `DEPENDS` closure. A `PLATFORMS`-filtered `DEPENDS` target skips silently but still satisfies dependents.
+- Per-pair `PLATFORMS` filters against the host (mismatches skip silently). Pair names are `[A-Za-z0-9_.-]+`.
 - Selection is **never** part of `format_key()`/BLAKE3 — one depot artifact serves every selection. Different projects sharing a user-wide cache get their own selections honored on every run because pairs are CHECK-gated, not marker-gated.
-- Execution: pairs run sorted by name in the `setup` phase (after `install`, before `export`). Dependents wait for a dependency's setup phase, so host state is ready before dependents proceed.
+- Execution: each selected pair becomes a first-class single-step `task_engine` task (keyed `<canonical>#setup:<name>`) spawned by the parent's `setup` phase (after `install`, before `export`). Unrelated pairs run in parallel on their own worker threads; `DEPENDS` become ordinary task edges. The parent waits for all its pair tasks and aggregates failures; a failing pair blocks its dependent pairs, unrelated pairs complete. Dependents of the package wait for its setup phase, so host state is ready before they proceed.
 
 **Double-check lock per pair:** pre-lock CHECK (skip if satisfied) → acquire ephemeral cache entry lock keyed `BLAKE3(format_key() + "|setup:" + name)`, marked user-managed → re-CHECK (skip if another process finished) → INSTALL → destructor purges entry. Concurrent envy processes run each pair's INSTALL at most once.
 
@@ -191,14 +192,15 @@ Specs declare their mode via top-level `USER_MANAGED` (boolean or function-retur
 **User-Managed Packages** (`USER_MANAGED = true`):
 - The package **is** its SETUP pairs — host state only, no payload, no persistent cache entry
 - Must define at least one SETUP pair; must NOT define FETCH/STAGE/BUILD/INSTALL
-- All pairs selected by default; manifest `setup` narrows
+- Selection is explicit like everything else — an unselected user-managed package participates in the graph (loadenv/products) but mutates nothing
 - Example: brew/apt wrappers, environment setup, credential files
 
 Top-level `CHECK` is invalid everywhere — CHECK/INSTALL pairs live only inside `SETUP`.
 
 **Implementation mechanics:**
 - Resolution: `resolve_user_managed()` reads `USER_MANAGED` once during `phase_spec_fetch`; sets `p->type`. Function form is called with no args and must return a boolean.
-- `phase_setup.cpp` runs selected pairs; `phase_check.cpp` does hash lookup for cache-managed only (user-managed acquires no package lock, so payload phases no-op).
+- `phase_setup.cpp` computes the selection closure and calls `engine::run_setup_pairs_for()`, which spawns one single-step task per pair and waits for all of them — pairs never masquerade as packages. `phase_check.cpp` does hash lookup for cache-managed only (user-managed acquires no package lock, so payload phases no-op).
+- A selection merging in after a package's setup phase snapshots it (only reachable via exotic fetch-dependency ordering) is a hard error, not a silent drop.
 - Lock destructor: `if (user_managed_) { purge_entry_dir(); }` vs `if (completed_) { rename_install_to_pkg(); }` — pair locks always take the ephemeral branch.
 - Validation: `phase_spec_fetch.cpp::validate_phases()` + `parse_setup_table()` enforce the rules above at spec load.
 
@@ -239,6 +241,7 @@ end
 SETUP = {
   udev_rules = {
     PLATFORMS = { "linux" },
+    DEPENDS = { "plugdev_group" },  -- selecting udev_rules pulls this in, runs it first
     CHECK = function(pkg_dir, options)
       local r = envy.run("cmp -s " .. pkg_dir .. "99-jlink.rules /etc/udev/rules.d/99-jlink.rules",
                          { quiet = true, check = false })
@@ -251,11 +254,19 @@ SETUP = {
       }, { interactive = true })
     end,
   },
+  plugdev_group = {
+    PLATFORMS = { "linux" },
+    CHECK = "groups | grep -q plugdev",
+    INSTALL = "sudo usermod -aG plugdev $USER",
+  },
 }
 
--- Manifest (bench machines opt in; CI never selects the pair):
+-- Manifest (bench machines opt in; CI never selects the pair). Selecting
+-- udev_rules transitively selects plugdev_group and runs it first:
 -- { spec = "segger.jlink@r0", source = "...", options = { version = "9.30" },
 --   setup = not os.getenv("CI") and { "udev_rules" } or nil }
+-- Spec authors can also demand a dependency's pairs:
+-- DEPENDENCIES = { { spec = "local.brew@r0", source = "...", setup = { "brew" } } }
 ```
 
 ### Dependencies
@@ -308,7 +319,7 @@ Each DAG node represents `(recipe_identity, options)` with up to seven verb phas
 
 **Node optimization:** Only declared/inferred phases create nodes. Minimal specs (just `source` field) infer `recipe_fetch` → `fetch` → `stage`, skip `build`/`install`/`deploy`. Spec without `build` verb omits build node. Zero-verb overhead for simple cases.
 
-**Phase execution:** Each phase is a `flow::continue_node`. Intra-node dependencies: `recipe_fetch` → `check` → `fetch` → `stage` → `build` → `install` → `deploy` (linear chain). Inter-node dependencies declared via `needed_by` annotation (see below).
+**Phase execution:** Scheduling lives in `task_engine` (src/task_engine.h), a domain-agnostic threaded executor: keyed tasks, linear steps, ratcheting target watermarks, per-step edges, dynamic task creation. `engine` adapts envy onto it — each package is one task whose steps are the phase ladder; SETUP pairs are single-step tasks. Inter-package dependencies become task edges via `needed_by` annotation (see below).
 
 ### Spec Fetching (Custom and Declarative)
 
@@ -442,7 +453,7 @@ DEPENDENCIES = {
 3. For each dependency: ensure memoized node exists, add edges based on `needed_by`
 4. Child `recipe_fetch` nodes execute, discover their dependencies, add more nodes
 5. Graph grows until all transitive dependencies discovered
-6. `flow::graph::wait_for_all()` blocks until entire graph completes
+6. `task_engine::join_all()` reaps every worker, tolerating tasks created mid-join
 
 **Cycle detection:** Must catch cycles during graph construction. Example illegal cycle:
 ```lua
@@ -471,9 +482,9 @@ bool cmd_install::execute() {
 }
 ```
 
-**Parallelism:** Each package gets its own `std::thread` worker. Workers wait on dependencies via condition variables. No shared thread pool—simple fork-join model with mutex-protected shared state.
+**Parallelism:** Each task (package or SETUP pair) gets its own `std::thread` worker. Workers block on dependency watermarks via condition variables — legal because workers are plain threads, not pooled. Dependency edges wait to "setup complete" while ratcheting the dependency through export, so export overlaps dependents' builds.
 
-**Lifetime:** Engine owns packages and execution contexts; destroyed after `execute()` returns.
+**Lifetime:** Engine owns packages; `task_engine` (destroyed first) fails and joins all workers before package storage dies.
 
 ## Filesystem Cache
 

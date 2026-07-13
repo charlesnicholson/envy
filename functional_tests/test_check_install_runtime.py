@@ -63,8 +63,13 @@ class TestCheckInstallRuntime(unittest.TestCase):
         should_fail=False,
         env_vars=None,
         verbose=False,
+        setup=None,
     ):
-        """Run a spec with given content and identity, return subprocess result."""
+        """Run a spec with given content and identity, return subprocess result.
+
+        setup=None uses the bare engine-test path (no pair selection). A list of
+        pair names writes a manifest selecting them and runs `install --manifest`.
+        """
         spec_path = self.specs_dir / f"{spec_name}.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
@@ -72,7 +77,19 @@ class TestCheckInstallRuntime(unittest.TestCase):
         cmd.extend(self.trace_flag)
         if verbose:
             cmd.append("--verbose")
-        cmd.extend(["engine-test", identity, str(spec_path)])
+        if setup is None:
+            cmd.extend(["engine-test", identity, str(spec_path)])
+        else:
+            names = ", ".join(f'"{n}"' for n in setup)
+            manifest = self.test_dir / "envy.lua"
+            manifest.write_text(
+                test_config.make_manifest(
+                    f'PACKAGES = {{ {{ spec = "{identity}", '
+                    f'source = "{spec_path.as_posix()}", setup = {{ {names} }} }} }}'
+                ),
+                encoding="utf-8",
+            )
+            cmd.extend(["install", "--manifest", str(manifest)])
 
         env = os.environ.copy()
         if env_vars:
@@ -162,6 +179,7 @@ SETUP = {
             spec,
             "local.check_ctx_run_quiet_fail@v1",
             should_fail=True,
+            setup=["main"],
         )
         self.assertIn("error", result.stderr.lower())
 
@@ -402,7 +420,9 @@ SETUP = {
   },
 }
 """
-        self.run_spec("pair_install_string", spec, "local.pair_install_string@v1")
+        self.run_spec(
+            "pair_install_string", spec, "local.pair_install_string@v1", setup=["main"]
+        )
         marker = self.test_dir / "pair_install_string_marker.txt"
         self.assertTrue(marker.exists(), "string INSTALL should write in project root")
 
@@ -456,6 +476,7 @@ SETUP = {
             spec,
             "local.check_error_not_found@v1",
             should_fail=True,
+            setup=["main"],
         )
         stderr_lower = result.stderr.lower()
         if sys.platform == "win32":
@@ -473,7 +494,11 @@ SETUP = {
 """,
         )
         result = self.run_spec(
-            "error_syntax", spec, "local.check_error_syntax@v1", should_fail=True
+            "error_syntax",
+            spec,
+            "local.check_error_syntax@v1",
+            should_fail=True,
+            setup=["main"],
         )
         self.assertIn("error", result.stderr.lower())
 
@@ -515,6 +540,7 @@ SETUP = {
             spec,
             "local.check_empty_output@v1",
             should_fail=True,
+            setup=["main"],
         )
         self.assertIn("error", result.stderr.lower())
 

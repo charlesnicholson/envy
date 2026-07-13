@@ -50,13 +50,7 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     engine *eng{ ctx->eng };
     if (!eng) { throw std::runtime_error("envy.loadenv_spec: missing engine context"); }
 
-    pkg_execution_ctx *exec_ctx{ consumer->exec_ctx };
-    if (!exec_ctx) {
-      throw std::runtime_error("envy.loadenv_spec: missing execution context for pkg '" +
-                               consumer->cfg->identity + "'");
-    }
-
-    pkg_phase const current_phase{ exec_ctx->current_phase.load() };
+    pkg_phase const current_phase{ consumer->current_phase.load() };
 
     auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
       ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(consumer->cfg->identity,

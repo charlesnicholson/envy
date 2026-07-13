@@ -59,8 +59,8 @@ SETUP = {{
                 f"mid_{i}.lua",
                 f"""IDENTITY = "local.mid-{i}@v1"
 DEPENDENCIES = {{
-  {{ spec = "local.leaf-a@v1", source = "leaf_a.lua" }},
-  {{ spec = "local.leaf-b@v1", source = "leaf_b.lua" }},
+  {{ spec = "local.leaf-a@v1", source = "leaf_a.lua", setup = {{ "main" }} }},
+  {{ spec = "local.leaf-b@v1", source = "leaf_b.lua", setup = {{ "main" }} }},
 }}
 USER_MANAGED = true
 SETUP = {{
@@ -78,7 +78,7 @@ SETUP = {{
             )
 
         mid_deps = ",\n  ".join(
-            f'{{ spec = "local.mid-{i}@v1", source = "mid_{i}.lua" }}'
+            f'{{ spec = "local.mid-{i}@v1", source = "mid_{i}.lua", setup = {{ "main" }} }}'
             for i in range(MID_COUNT)
         )
         self.write_spec(

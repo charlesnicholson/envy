@@ -76,8 +76,8 @@ This uses the same locking strategy as recipe/asset installation (see Locking & 
 - Crash recovery: next locker deletes stale `install/`, recreates `work/`, preserves `fetch/` for per-file cache reuse.
 
 ### SETUP Pair Entries (Ephemeral Cache)
-- Host-side work lives in `SETUP` pairs (`{ name = { CHECK, INSTALL } }`); user-managed specs (`USER_MANAGED = true`, resolved once during `phase_spec_fetch`) define only pairs, cache-managed packages may add opt-in pairs beside their payload
-- Each running pair acquires an ephemeral entry keyed `BLAKE3(format_key() + "|setup:" + name)`; lock calls `mark_user_managed()` to signal ephemeral workspace
+- Host-side work lives in `SETUP` pairs (`{ name = { CHECK, INSTALL, DEPENDS? } }`); user-managed specs (`USER_MANAGED = true`, resolved once during `phase_spec_fetch`) define only pairs, cache-managed packages may add opt-in pairs beside their payload
+- Each running pair acquires an ephemeral entry keyed `BLAKE3(format_key() + "|setup:" + name)`; lock calls `mark_user_managed()` to signal ephemeral workspace. Selected pairs run as parallel tasks, so one package may hold several ephemeral pair entries concurrently
 - Pair INSTALL modifies the host; workspace never persists to cache
 - On completion (lock destructor detects `user_managed_` flag):
   - Entire `entry_dir` deleted (no `pkg/` rename)
@@ -147,4 +147,4 @@ The `scoped_entry_lock` destructor handles three distinct completion modes:
 
 3. **Concurrent install**: Process A checks (false) → acquires pair lock, marks user-managed, re-checks (false) → runs INSTALL. Process B checks (false) → blocks on lock. Process A completes, destructor purges entry. Process B acquires lock, re-checks (NOW true, A finished) → releases lock immediately without running INSTALL.
 
-4. **Selection isolation**: pair selection is per-manifest and never hashed—projects sharing the user-wide cache reuse one payload entry while each run evaluates only its own selected pairs (user-managed default: all pairs; cache-managed default: none).
+4. **Selection isolation**: pair selection is per-referrer (manifest or dependency entries) and never hashed—projects sharing the user-wide cache reuse one payload entry while each run evaluates only its explicitly selected pairs (no selection = no pairs, any package type).

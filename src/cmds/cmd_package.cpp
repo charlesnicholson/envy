@@ -97,7 +97,7 @@ void cmd_package::execute() {
   pkg *p{ eng.find_exact(target_key) };
   if (!p) { throw std::runtime_error("package: spec not found in graph"); }
 
-  eng.ensure_pkg_at_phase(p->key, pkg_phase::completion);
+  eng.wait_for_completion(p->key);
 
   if (p->type != pkg_type::CACHE_MANAGED) {
     throw std::runtime_error("package: package is not cache-managed");

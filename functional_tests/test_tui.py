@@ -218,8 +218,8 @@ PACKAGES = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.fast@v1", source = "{self.lua_path(self.specs_dir)}/fast.lua" }},
-    {{ spec = "local.slow@v1", source = "{self.lua_path(self.specs_dir)}/slow.lua" }},
+    {{ spec = "local.fast@v1", source = "{self.lua_path(self.specs_dir)}/fast.lua", setup = {{ "main" }} }},
+    {{ spec = "local.slow@v1", source = "{self.lua_path(self.specs_dir)}/slow.lua", setup = {{ "main" }} }},
 }}
 """
         )

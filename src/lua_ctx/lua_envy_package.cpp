@@ -23,13 +23,7 @@ void lua_envy_package_install(sol::table &envy_table) {
       throw std::runtime_error("envy.package: not in phase context (missing pkg)");
     }
 
-    pkg_execution_ctx *exec_ctx{ consumer->exec_ctx };
-    if (!exec_ctx) {
-      throw std::runtime_error("envy.package: missing execution context for pkg '" +
-                               consumer->cfg->identity + "'");
-    }
-
-    pkg_phase const current_phase{ exec_ctx->current_phase.load() };
+    pkg_phase const current_phase{ consumer->current_phase.load() };
 
     auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
       ENVY_TRACE_LUA_CTX_PACKAGE_ACCESS(consumer->cfg->identity,

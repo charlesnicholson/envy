@@ -30,7 +30,6 @@ std::unique_ptr<pkg> make_pkg(std::string identity, pkg_type type) {
                                        .cache_ptr = nullptr,
                                        .default_shell_ptr = nullptr,
                                        .tui_section = {},
-                                       .exec_ctx = nullptr,
                                        .lua = nullptr,
                                        .lock = nullptr,
                                        .canonical_identity_hash = {},

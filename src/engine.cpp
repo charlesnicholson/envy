@@ -29,14 +29,17 @@ namespace envy {
 
 namespace {
 
-// Phase after which a dependency's artifacts and host-side SETUP state are
-// available. Dependencies are waited on to this point (not completion) so that
-// export can overlap with dependents' builds. Setup must complete before
-// dependents proceed: user-managed packages do all their work in SETUP pairs.
-constexpr auto kDependencySatisfiedPhase =
-    static_cast<pkg_phase>(static_cast<int>(pkg_phase::pkg_setup) + 1);
-static_assert(kDependencySatisfiedPhase == pkg_phase::pkg_export &&
-                  kDependencySatisfiedPhase < pkg_phase::completion,
+// Watermark after which a dependency's artifacts and host-side SETUP state are
+// available: setup completed (= export may begin). Dependencies are waited on
+// to this point (not completion) so that export can overlap with dependents'
+// builds — the edge ratchets the dependency through export without waiting for
+// it. Setup must complete before dependents proceed: user-managed packages do
+// all their work in SETUP pairs.
+constexpr int kDependencySatisfiedWatermark{ static_cast<int>(pkg_phase::pkg_setup) + 1 };
+constexpr int kDependencyRunThroughWatermark{ static_cast<int>(pkg_phase::pkg_export) +
+                                              1 };
+static_assert(kDependencySatisfiedWatermark == static_cast<int>(pkg_phase::pkg_export) &&
+                  kDependencySatisfiedWatermark < static_cast<int>(pkg_phase::completion),
               "pkg_setup must be followed by pkg_export before completion");
 
 using phase_func_t = void (*)(pkg *, engine &);
@@ -53,6 +56,14 @@ constexpr std::array<phase_func_t, pkg_phase_count> phase_dispatch_table{
   run_export_phase,      // pkg_phase::pkg_export
   run_completion_phase,  // pkg_phase::completion
 };
+
+// Trace mapping: watermark w = "first w steps completed"; the corresponding
+// "current" phase in legacy trace terms is the last completed step, w - 1.
+constexpr pkg_phase phase_from_watermark(int w) { return static_cast<pkg_phase>(w - 1); }
+
+constexpr bool is_setup_pair_key(std::string_view key) {
+  return key.find("#setup:") != std::string_view::npos;
+}
 
 bool has_dependency_path(pkg const *from, pkg const *to) {
   if (from == to) { return true; }
@@ -144,7 +155,7 @@ void resolve_identity_ref(pkg *p,
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
 
-    std::vector<std::string> child_chain{ eng.get_execution_ctx(p).ancestor_chain };
+    std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
@@ -212,7 +223,7 @@ void resolve_product_ref(pkg *p,
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
 
-    std::vector<std::string> child_chain{ eng.get_execution_ctx(p).ancestor_chain };
+    std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
@@ -283,141 +294,166 @@ void engine_validate_dependency_cycle(std::string const &candidate_identity,
 engine::engine(cache &cache, manifest const *manifest)
     : cache_(cache),
       default_shell_(manifest ? manifest->get_default_shell() : std::nullopt),
-      manifest_(manifest) {}
+      manifest_(manifest),
+      core_(make_trace_observer()) {}
 
-engine::~engine() {
-  fail_all_contexts();
+engine::~engine() = default;  // core_ (declared last) fails + joins workers first
 
-  for (auto &[key, ctx] : execution_ctxs_) {
-    if (ctx->worker.joinable()) { ctx->worker.join(); }
-  }
-}
-
-void engine::notify_all_global_locked() {
+std::string engine::trace_display(std::string const &key) const {
+  if (is_setup_pair_key(key)) { return key; }
   std::lock_guard const lock(mutex_);
-  cv_.notify_all();
+  auto const it{ packages_.find(pkg_key{ key }) };
+  return it != packages_.end() ? it->second->cfg->identity : key;
 }
 
-engine::weak_resolution_result engine::resolve_weak_references() {
-  weak_resolution_result result{};
+task_engine::observer engine::make_trace_observer() {
+  task_engine::observer obs;
 
-  auto collect_unresolved = [this]() {
-    std::vector<std::pair<pkg *, pkg::weak_reference *>> unresolved;
-    std::lock_guard const lock(mutex_);
-    for (auto &[key, package] : packages_) {
-      std::lock_guard const deps_lock(package->deps_mutex);
-      for (auto &wr : package->weak_references) {
-        if (!wr.resolved) { unresolved.emplace_back(package.get(), &wr); }
-      }
-    }
-    return unresolved;
+  obs.thread_start = [this](std::string const &key, int target) {
+    if (!tui::g_trace_enabled) { return; }
+    ENVY_TRACE_THREAD_START(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::pkg_setup : phase_from_watermark(target));
+  };
+  obs.thread_complete = [this](std::string const &key, int completed) {
+    if (!tui::g_trace_enabled) { return; }
+    ENVY_TRACE_THREAD_COMPLETE(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::completion : phase_from_watermark(completed));
+  };
+  obs.blocked =
+      [this](std::string const &key, int step, std::string const &dep, int watermark) {
+        if (!tui::g_trace_enabled) { return; }
+        bool const pair{ is_setup_pair_key(key) };
+        ENVY_TRACE_PHASE_BLOCKED(
+            trace_display(key),
+            pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+            trace_display(dep),
+            pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
+      };
+  obs.unblocked = [this](std::string const &key, int step, std::string const &dep) {
+    if (!tui::g_trace_enabled) { return; }
+    ENVY_TRACE_PHASE_UNBLOCKED(
+        trace_display(key),
+        is_setup_pair_key(key) ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+        trace_display(dep));
+  };
+  obs.target_extended = [this](std::string const &key, int old_done, int new_target) {
+    if (!tui::g_trace_enabled) { return; }
+    ENVY_TRACE_TARGET_EXTENDED(trace_display(key),
+                               phase_from_watermark(old_done),
+                               phase_from_watermark(new_target));
   };
 
-  std::vector<std::string> ambiguity_messages;
+  return obs;
+}
 
-  for (auto [p, wr] : collect_unresolved()) {
-    if (wr->is_product) {
-      resolve_product_ref(p, wr, result, product_registry_, *this);
-    } else {
-      resolve_identity_ref(p, wr, result, ambiguity_messages, *this);
-    }
-  }
+task_engine::task_config engine::make_pkg_task_config(pkg *p) {
+  task_engine::task_config cfg;
+  cfg.key = p->key.canonical();
+  cfg.step_count = pkg_phase_count;
 
-  // If we spawned any fallback threads, wait for their spec_fetch to complete
-  // before checking for still-unresolved references
-  if (result.fallbacks_started > 0) { wait_for_resolution_phase(); }
+  cfg.on_start = [this, p] {
+    // Fetch/source dependencies must be wired before step 0's edge query so
+    // spec loading blocks on the bundles it needs.
+    if (!p->cfg->source_dependencies.empty()) { process_fetch_dependencies(p); }
+  };
 
-  // Final validation: any unresolved without fallback is an error
-  std::vector<std::string> const missing_messages{ [&] {
-    std::vector<std::string> msgs;
-    for (auto [p, wr] : collect_unresolved()) {
-      if (!wr->resolved && !wr->fallback) {
-        if (wr->is_product) {
-          msgs.push_back("Product '" + wr->query + "' in spec '" + p->cfg->identity +
-                         "' was not found");
-        } else {
-          msgs.push_back("Reference '" + wr->query + "' in spec '" + p->cfg->identity +
-                         "' was not found");
-        }
+  cfg.edges = [p](int step) {
+    // Snapshot under deps_mutex — the resolution loop may wire weak deps into
+    // this map concurrently. Re-waiting satisfied edges on later steps is cheap.
+    std::vector<task_engine::edge> edges;
+    std::lock_guard const deps_lock(p->deps_mutex);
+    for (auto const &[dep_identity, dep_info] : p->dependencies) {
+      if (step >= static_cast<int>(dep_info.needed_by)) {
+        edges.push_back({ dep_info.p->key.canonical(),
+                          kDependencySatisfiedWatermark,
+                          kDependencyRunThroughWatermark });
       }
     }
-    return msgs;
-  }() };
+    return edges;
+  };
 
-  result.missing_without_fallback = missing_messages;
+  cfg.step = [this, p](int step) {
+    p->current_phase.store(static_cast<pkg_phase>(step));
+    phase_dispatch_table[step](p, *this);
 
-  if (!ambiguity_messages.empty()) {
-    fail_all_contexts();
-    std::ostringstream oss;
-    for (size_t i{ 0 }; i < ambiguity_messages.size(); ++i) {
-      if (i) { oss << "\n"; }
-      oss << ambiguity_messages[i];
+    if (static_cast<pkg_phase>(step) == pkg_phase::spec_fetch) {
+      p->spec_fetch_completed = true;
+      on_spec_fetch_complete(p->cfg->identity);
+
+      // BUNDLE_ONLY packages stop after spec_fetch - no lua state to execute
+      if (p->type == pkg_type::BUNDLE_ONLY) { return true; }
     }
-    throw std::runtime_error(oss.str());
-  }
+    return false;
+  };
 
-  return result;
-}
+  cfg.on_failed = [this, p] {
+    if (!p->spec_fetch_completed) { on_spec_fetch_complete(p->cfg->identity); }
+  };
 
-void pkg_execution_ctx::set_target_phase(pkg_phase target) {
-  pkg_phase current_target{ target_phase.load() };
-  while (current_target < target) {
-    if (target_phase.compare_exchange_weak(current_target, target)) {
-      std::lock_guard const lock(mutex);
-      cv.notify_one();
-      return;
-    }
-  }
-}
-
-void pkg_execution_ctx::start(pkg *p, engine *eng, std::vector<std::string> chain) {
-  ancestor_chain = std::move(chain);
-  worker = std::thread([p, eng] { eng->run_pkg_thread(p); });
+  return cfg;
 }
 
 pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
-  std::lock_guard const lock(mutex_);
-
   pkg_key const key(*cfg);
+  pkg *result{ nullptr };
+  bool inserted{ false };
 
-  auto p{ std::unique_ptr<pkg>(new pkg{ .key = key,
-                                        .cfg = cfg,
-                                        .cache_ptr = &cache_,
-                                        .default_shell_ptr = &default_shell_,
-                                        .tui_section = tui::section_create(),
-                                        .exec_ctx = nullptr,
-                                        .lua = nullptr,
-                                        .lock = nullptr,
-                                        .canonical_identity_hash = key.canonical(),
-                                        .pkg_path = std::filesystem::path{},
-                                        .result_hash = {},
-                                        .type = pkg_type::UNKNOWN,
-                                        .declared_dependencies = {},
-                                        .owned_dependency_cfgs = {},
-                                        .dependencies = {},
-                                        .product_dependencies = {},
-                                        .weak_references = {} }) };
+  {
+    std::lock_guard const lock(mutex_);
 
-  auto const [it, inserted]{ packages_.try_emplace(key, std::move(p)) };
-  if (inserted) {
-    execution_ctxs_[key] = std::make_unique<pkg_execution_ctx>();
-    it->second->exec_ctx = execution_ctxs_[key].get();
-    ENVY_TRACE_RECIPE_REGISTERED(cfg->identity, key.canonical(), false);
-  } else if (auto ctx_it = execution_ctxs_.find(key); ctx_it != execution_ctxs_.end()) {
-    it->second->exec_ctx = ctx_it->second.get();
-  }
+    auto p{ std::unique_ptr<pkg>(new pkg{ .key = key,
+                                          .cfg = cfg,
+                                          .cache_ptr = &cache_,
+                                          .default_shell_ptr = &default_shell_,
+                                          .tui_section = tui::section_create(),
+                                          .lua = nullptr,
+                                          .lock = nullptr,
+                                          .canonical_identity_hash = key.canonical(),
+                                          .pkg_path = std::filesystem::path{},
+                                          .result_hash = {},
+                                          .type = pkg_type::UNKNOWN,
+                                          .declared_dependencies = {},
+                                          .owned_dependency_cfgs = {},
+                                          .dependencies = {},
+                                          .product_dependencies = {},
+                                          .weak_references = {} }) };
 
-  {  // Merge SETUP selection across referrers (union; absence requests type default)
-    pkg *existing{ it->second.get() };
-    std::lock_guard const deps_lock(existing->deps_mutex);
-    if (cfg->setup.has_value()) {
-      existing->setup_selected.insert(cfg->setup->begin(), cfg->setup->end());
-    } else {
-      existing->setup_default = true;
+    auto const [it, was_inserted]{ packages_.try_emplace(key, std::move(p)) };
+    inserted = was_inserted;
+    result = it->second.get();
+
+    if (inserted) { ENVY_TRACE_RECIPE_REGISTERED(cfg->identity, key.canonical(), false); }
+
+    if (cfg->setup.has_value() && !cfg->setup->empty()) {
+      // Merge explicit SETUP selection across referrers (union). Selection is
+      // explicit-only: a referrer that omits `setup` requests nothing.
+      std::lock_guard const deps_lock(result->deps_mutex);
+      size_t const before{ result->setup_selected.size() };
+      result->setup_selected.insert(cfg->setup->begin(), cfg->setup->end());
+      if (result->setup_selection_consumed && result->setup_selected.size() != before) {
+        throw std::runtime_error(
+            "SETUP selection for " + cfg->identity +
+            " arrived after its setup phase ran; select pairs from entries that "
+            "resolve before the package executes");
+      }
+    }
+
+    // Task creation must be atomic with the packages_ insert (still under
+    // mutex_; engine mutex -> core mutex ordering, never reversed): a second
+    // thread that loses the try_emplace returns immediately and may start or
+    // wait on the task before this thread would otherwise have created it.
+    if (inserted && !core_.ensure_task(make_pkg_task_config(result))) {
+      // A fresh package key must never collide with an existing task (e.g. a
+      // pathological identity matching a pair-task key). Fail loudly now
+      // instead of hanging later on a task with someone else's config.
+      throw std::runtime_error("Package task key collides with existing task: " +
+                               key.canonical());
     }
   }
 
-  return it->second.get();
+  return result;
 }
 
 pkg *engine::find_exact(pkg_key const &key) const {
@@ -475,57 +511,83 @@ std::vector<pkg *> engine::find_matches(std::string_view query) const {
   return matches;
 }
 
-pkg_execution_ctx &engine::get_execution_ctx(pkg *p) { return get_execution_ctx(p->key); }
-
-pkg_execution_ctx &engine::get_execution_ctx(pkg_key const &key) {
-  std::lock_guard const lock(mutex_);
-  auto const it{ execution_ctxs_.find(key) };
-  if (it == execution_ctxs_.end()) {
-    throw std::runtime_error("Package execution context not found: " + key.canonical());
-  }
-  return *it->second;
-}
-
-pkg_execution_ctx const &engine::get_execution_ctx(pkg_key const &key) const {
-  std::lock_guard const lock(mutex_);
-  auto const it{ execution_ctxs_.find(key) };
-  if (it == execution_ctxs_.end()) {
-    throw std::runtime_error("Package execution context not found: " + key.canonical());
-  }
-  return *it->second;
-}
-
 void engine::start_pkg_thread(pkg *p,
-                              pkg_phase initial_target,
+                              pkg_phase run_through,
                               std::vector<std::string> ancestor_chain) {
-  auto &ctx{ get_execution_ctx(p) };
-
-  bool expected{ false };
-  if (ctx.started.compare_exchange_strong(expected, true)) {  // set phase then start
-    if (initial_target >= pkg_phase::spec_fetch) { on_spec_fetch_start(); }
-    ctx.set_target_phase(initial_target);
-    ENVY_TRACE_THREAD_START(p->cfg->identity, initial_target);
-    ctx.start(p, this, std::move(ancestor_chain));
-  } else {  // already started, extend target if needed
-    ctx.set_target_phase(initial_target);
-  }
+  // before_spawn runs exactly once, before the worker exists: the ancestor
+  // chain must be visible to the worker, and the spec-fetch counter must rise
+  // before the worker can decrement it.
+  core_.start_task(p->key.canonical(),
+                   watermark_through(run_through),
+                   [this, p, &ancestor_chain] {
+                     p->ancestor_chain = std::move(ancestor_chain);
+                     on_spec_fetch_start();
+                   });
 }
 
-void engine::ensure_pkg_at_phase(pkg_key const &key, pkg_phase const target) {
-  auto &ctx{ get_execution_ctx(key) };
+void engine::extend_to_completion(pkg_key const &key) {
+  core_.extend_to_done(key.canonical());
+}
 
-  ctx.set_target_phase(target);  // Extend target if needed
+void engine::wait_for_completion(pkg_key const &key) {
+  std::string const canonical{ key.canonical() };
+  core_.wait_at(canonical, core_.step_count(canonical));
+}
 
-  // Wait for package to reach target
-  std::unique_lock lock(mutex_);
-  cv_.wait(lock, [&ctx, target] { return ctx.current_phase >= target || ctx.failed; });
-
-  if (ctx.failed) {
-    std::lock_guard ctx_lock(ctx.mutex);
-    std::string const msg{ ctx.error_message.empty() ? "Package failed: " + key.canonical()
-                                                     : ctx.error_message };
-    throw std::runtime_error(msg);
+void engine::run_setup_pairs_for(pkg *parent, std::vector<std::string> const &pair_names) {
+  // Pair name → task key; the selection closure guarantees every DEPENDS
+  // target of a selected pair is itself selected.
+  std::unordered_map<std::string, std::string> key_of;
+  for (auto const &name : pair_names) {
+    key_of.emplace(name, parent->key.canonical() + "#setup:" + name);
   }
+
+  for (auto const &name : pair_names) {
+    std::string const &key{ key_of.at(name) };
+
+    std::vector<task_engine::edge> sibling_edges;
+    for (auto const &dep : parent->setup_pairs.at(name).depends) {
+      sibling_edges.push_back({ key_of.at(dep), 1 });
+    }
+
+    tui::section_handle const section{ tui::section_create() };
+
+    task_engine::task_config cfg;
+    cfg.key = key;
+    cfg.step_count = 1;
+    cfg.edges = [edges = std::move(sibling_edges)](int) { return edges; };
+    cfg.step = [this, parent, name, section, key](int) {
+      run_setup_pair(parent, *this, name, section, key);
+      if (section && tui::section_has_content(section)) {
+        tui::section_set_content(
+            section,
+            tui::section_frame{ .label = "[" + key + "]",
+                                .content = tui::static_text_data{ .text = "done" } });
+        tui::section_set_complete(section);
+      }
+      return false;
+    };
+
+    if (!core_.ensure_task(std::move(cfg))) {
+      throw std::runtime_error("SETUP pair task key collides with existing task: " + key);
+    }
+  }
+
+  // Edges are baked into each config, so start order is irrelevant.
+  for (auto const &name : pair_names) { core_.start_task(key_of.at(name), 1); }
+
+  // Wait for every pair and aggregate failures so one bad pair doesn't mask
+  // the others; unrelated in-flight pairs run to completion.
+  std::string errors;
+  for (auto const &name : pair_names) {
+    try {
+      core_.wait_at(key_of.at(name), 1);
+    } catch (std::exception const &e) {
+      errors += errors.empty() ? "" : "\n";
+      errors += e.what();
+    }
+  }
+  if (!errors.empty()) { throw std::runtime_error(errors); }
 }
 
 void engine::extend_dependencies_to_completion(pkg *p) {
@@ -618,14 +680,16 @@ void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &
   if (!visited.insert(p->key).second) { return; }  // Already visited (cycle detection)
 
   // Extend this package's target to completion
-  auto &ctx{ get_execution_ctx(p) };
-  pkg_phase const old_target{ ctx.target_phase.load() };
+  std::string const canonical{ p->key.canonical() };
+  int const old_target{ core_.target(canonical) };
 
-  if (old_target < pkg_phase::completion) {
-    ENVY_TRACE_TARGET_EXTENDED(p->cfg->identity, old_target, pkg_phase::completion);
+  if (old_target < core_.step_count(canonical)) {
+    ENVY_TRACE_TARGET_EXTENDED(p->cfg->identity,
+                               phase_from_watermark(old_target),
+                               pkg_phase::completion);
   }
 
-  ctx.set_target_phase(pkg_phase::completion);
+  core_.extend_to_done(canonical);
 
   // Recursively extend all dependencies (snapshot: no nested pkg locks)
   auto const deps{ [&] {
@@ -640,17 +704,13 @@ void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &
 
 #ifdef ENVY_UNIT_TEST
 pkg_phase engine::get_pkg_target_phase(pkg_key const &key) const {
-  auto const &ctx{ get_execution_ctx(key) };
-  return ctx.target_phase.load();
+  return phase_from_watermark(core_.target(key.canonical()));
 }
 #endif
 
 void engine::wait_for_resolution_phase() {
-  std::unique_lock lock(mutex_);
-  cv_.wait(lock, [this] { return pending_spec_fetches_ == 0; });
+  core_.wait_global([this] { return pending_spec_fetches_ == 0; });
 }
-
-void engine::notify_phase_complete() { notify_all_global_locked(); }
 
 void engine::on_spec_fetch_start() {
   int const new_value{ pending_spec_fetches_.fetch_add(1) + 1 };
@@ -660,13 +720,12 @@ void engine::on_spec_fetch_start() {
 void engine::on_spec_fetch_complete(std::string const &pkg_identity) {
   int const new_value{ pending_spec_fetches_.fetch_sub(1) - 1 };
   ENVY_TRACE_SPEC_FETCH_COUNTER_DEC(pkg_identity, new_value, true);
-  if (new_value == 0) { notify_all_global_locked(); }
+  if (new_value == 0) { core_.notify_global(); }
 }
 
-void engine::process_fetch_dependencies(pkg *p,
-                                        std::vector<std::string> const &ancestor_chain) {
+void engine::process_fetch_dependencies(pkg *p) {
   // Process fetch dependencies - added to dependencies map with needed_by=spec_fetch
-  // Existing phase loop wait logic handles blocking automatically
+  // The per-step edge query handles blocking automatically
   for (auto *fetch_dep_cfg : p->cfg->source_dependencies) {
     // Set parent pointer for custom fetch lookup, but only for spec-declared deps.
     // Manifest-declared bundles (parent already null, identity == bundle_identity)
@@ -680,7 +739,7 @@ void engine::process_fetch_dependencies(pkg *p,
     }
 
     engine_validate_dependency_cycle(fetch_dep_cfg->identity,
-                                     ancestor_chain,
+                                     p->ancestor_chain,
                                      p->cfg->identity,
                                      "Fetch dependency");
 
@@ -696,7 +755,7 @@ void engine::process_fetch_dependencies(pkg *p,
 
     pkg *fetch_dep{ ensure_pkg(fetch_dep_cfg) };
 
-    // Add to dependencies map - phase loop will handle blocking at spec_fetch
+    // Add to dependencies map - the edge query will block spec_fetch on it
     {
       std::lock_guard const deps_lock(p->deps_mutex);
       p->dependencies[fetch_dep_cfg->identity] = { fetch_dep, pkg_phase::spec_fetch };
@@ -706,97 +765,10 @@ void engine::process_fetch_dependencies(pkg *p,
                                 pkg_phase::spec_fetch);
 
     // Build child ancestor chain (local to this thread path)
-    std::vector<std::string> child_chain{ ancestor_chain };
+    std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
 
     start_pkg_thread(fetch_dep, pkg_phase::completion, std::move(child_chain));
-  }
-}
-
-void engine::run_pkg_thread(pkg *p) {
-  auto &ctx{ get_execution_ctx(p) };
-
-  try {
-    if (!p->cfg->source_dependencies.empty()) {
-      process_fetch_dependencies(p, ctx.ancestor_chain);
-    }
-
-    while (ctx.current_phase < pkg_phase::completion) {
-      if (ctx.failed) { break; }
-      pkg_phase const target{ ctx.target_phase };
-      pkg_phase const current{ ctx.current_phase };
-
-      if (current >= target) {  // Check if we've reached target
-        std::unique_lock lock(ctx.mutex);
-        ctx.cv.wait(lock,
-                    [&ctx, current] { return ctx.target_phase > current || ctx.failed; });
-
-        if (ctx.target_phase == current || ctx.failed) { break; }
-        ENVY_TRACE_TARGET_EXTENDED(p->cfg->identity, current, ctx.target_phase.load());
-      }
-
-      pkg_phase const next{ static_cast<pkg_phase>(static_cast<int>(current) + 1) };
-      if (static_cast<int>(next) < 0 || static_cast<int>(next) >= pkg_phase_count) {
-        throw std::runtime_error("Invalid phase: " +
-                                 std::to_string(static_cast<int>(next)));
-      }
-
-      // Wait for dependencies that are needed by this phase.
-      // Wait for setup+1 (not completion) so post-install phases like export
-      // can overlap with dependents' builds. Snapshot under deps_mutex - the
-      // resolution loop may wire weak deps into this map concurrently.
-      auto const blocking_deps{ [&] {
-        std::lock_guard const deps_lock(p->deps_mutex);
-        std::vector<std::pair<std::string, pkg *>> snapshot;
-        for (auto const &[dep_identity, dep_info] : p->dependencies) {
-          if (next >= dep_info.needed_by) {
-            snapshot.emplace_back(dep_identity, dep_info.p);
-          }
-        }
-        return snapshot;
-      }() };
-      for (auto const &[dep_identity, dep] : blocking_deps) {
-        ENVY_TRACE_PHASE_BLOCKED(p->cfg->identity,
-                                 next,
-                                 dep_identity,
-                                 kDependencySatisfiedPhase);
-        ensure_pkg_at_phase(dep->key, kDependencySatisfiedPhase);
-        ENVY_TRACE_PHASE_UNBLOCKED(p->cfg->identity, next, dep_identity);
-      }
-
-      ctx.current_phase = next;  // Phase is now active
-      phase_dispatch_table[static_cast<int>(next)](p, *this);
-
-      if (next == pkg_phase::spec_fetch) {
-        ctx.spec_fetch_completed = true;
-        on_spec_fetch_complete(p->cfg->identity);
-
-        // BUNDLE_ONLY packages stop after spec_fetch - no lua state to execute
-        if (p->type == pkg_type::BUNDLE_ONLY) {
-          ctx.current_phase = pkg_phase::completion;
-          notify_phase_complete();  // Wake waiters before exiting
-          break;
-        }
-      }
-      notify_phase_complete();
-    }
-    ENVY_TRACE_THREAD_COMPLETE(p->cfg->identity, ctx.current_phase);
-  } catch (...) {
-    std::string error_msg;
-    try {
-      throw;  // rethrow to inspect
-    } catch (std::exception const &e) { error_msg = e.what(); } catch (...) {
-      error_msg = "unknown exception";
-    }
-
-    {
-      std::lock_guard lock(ctx.mutex);
-      ctx.error_message = std::move(error_msg);
-    }
-
-    ctx.failed = true;
-    if (!ctx.spec_fetch_completed) { on_spec_fetch_complete(p->cfg->identity); }
-    notify_all_global_locked();
   }
 }
 
@@ -850,48 +822,28 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
   try {
     resolve_graph(filtered);
   } catch (...) {
-    fail_all_contexts();
-
-    for (auto &[key, ctx] : execution_ctxs_) {  // Best-effort join to avoid leaks
-      if (ctx->worker.joinable()) { ctx->worker.join(); }
-    }
-
+    core_.fail_all();
+    core_.join_all();  // Best-effort join to avoid leaks
     throw;
   }
 
-  {
-    std::lock_guard lock(mutex_);
-    for (auto &[key, ctx] :
-         execution_ctxs_) {  // Launch all packages running to completion
-      ctx->set_target_phase(pkg_phase::completion);
-    }
-  }
+  core_.extend_all_to_done();  // Launch all tasks running to completion
 
-  tui::debug("engine: joining %zu package threads", execution_ctxs_.size());
-  for (auto &[key, ctx] : execution_ctxs_) {  // Wait for all packages to complete
-    if (ctx->worker.joinable()) { ctx->worker.join(); }
-  }
+  tui::debug("engine: joining package threads");
+  core_.join_all();  // Tolerates pair tasks spawned while joining
   tui::debug("engine: all package threads joined");
 
-  {
-    std::lock_guard lock(mutex_);
-    for (auto const &[key, ctx] : execution_ctxs_) {  // Check for failures
-      if (ctx->failed) {
-        std::lock_guard ctx_lock(ctx->mutex);
-        std::string const msg{ ctx->error_message.empty()
-                                   ? "Package failed: " + key.canonical()
-                                   : ctx->error_message };
-        throw std::runtime_error(msg);
-      }
-    }
+  if (auto const failures{ core_.collect_failures() }; !failures.empty()) {
+    auto const &[key, msg]{ failures.front() };
+    throw std::runtime_error(msg.empty() ? "Package failed: " + key : msg);
   }
 
   auto const results{ [&] {
     pkg_result_map_t r;
     std::lock_guard lock(mutex_);
     for (auto const &[key, package] : packages_) {
-      auto const &ctx{ execution_ctxs_.at(key) };
-      pkg_type const result_type{ ctx->failed ? pkg_type::UNKNOWN : package->type };
+      pkg_type const result_type{ core_.failed(key.canonical()) ? pkg_type::UNKNOWN
+                                                                : package->type };
       r[package->key.canonical()] = { result_type,
                                       package->result_hash,
                                       package->pkg_path };
@@ -902,22 +854,6 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
   return results;
 }
 
-void engine::fail_all_contexts() {
-  std::lock_guard const lock(mutex_);
-  for (auto &[_, ctx] : execution_ctxs_) {
-    // Hold ctx->mutex across the stores so a worker can't evaluate its wait
-    // predicate false and then sleep through the notify (lost wakeup).
-    {
-      std::lock_guard const ctx_lock(ctx->mutex);
-      ctx->failed = true;
-      ctx->target_phase = pkg_phase::completion;
-      ctx->current_phase = pkg_phase::completion;
-    }
-    ctx->cv.notify_all();
-  }
-  cv_.notify_all();
-}
-
 void engine::update_product_registry() {
   std::unordered_map<std::string, std::vector<pkg *>> providers_by_product;
 
@@ -926,9 +862,7 @@ void engine::update_product_registry() {
   std::lock_guard const lock(mutex_);
 
   for (auto &[key, package] : packages_) {
-    auto const ctx_it{ execution_ctxs_.find(key) };
-    if (ctx_it == execution_ctxs_.end()) { continue; }
-    if (!ctx_it->second->spec_fetch_completed.load()) { continue; }
+    if (!package->spec_fetch_completed.load()) { continue; }
 
     for (auto const &[product_name, _] : package->products) {
       // Skip already-registered providers (added in prior iterations)
@@ -1012,6 +946,67 @@ bool engine::pkg_provides_product_transitively(pkg *p,
   return pkg_provides_product_transitively_impl(p, product_name, visited);
 }
 
+engine::weak_resolution_result engine::resolve_weak_references() {
+  weak_resolution_result result{};
+
+  auto collect_unresolved = [this]() {
+    std::vector<std::pair<pkg *, pkg::weak_reference *>> unresolved;
+    std::lock_guard const lock(mutex_);
+    for (auto &[key, package] : packages_) {
+      std::lock_guard const deps_lock(package->deps_mutex);
+      for (auto &wr : package->weak_references) {
+        if (!wr.resolved) { unresolved.emplace_back(package.get(), &wr); }
+      }
+    }
+    return unresolved;
+  };
+
+  std::vector<std::string> ambiguity_messages;
+
+  for (auto [p, wr] : collect_unresolved()) {
+    if (wr->is_product) {
+      resolve_product_ref(p, wr, result, product_registry_, *this);
+    } else {
+      resolve_identity_ref(p, wr, result, ambiguity_messages, *this);
+    }
+  }
+
+  // If we spawned any fallback threads, wait for their spec_fetch to complete
+  // before checking for still-unresolved references
+  if (result.fallbacks_started > 0) { wait_for_resolution_phase(); }
+
+  // Final validation: any unresolved without fallback is an error
+  std::vector<std::string> const missing_messages{ [&] {
+    std::vector<std::string> msgs;
+    for (auto [p, wr] : collect_unresolved()) {
+      if (!wr->resolved && !wr->fallback) {
+        if (wr->is_product) {
+          msgs.push_back("Product '" + wr->query + "' in spec '" + p->cfg->identity +
+                         "' was not found");
+        } else {
+          msgs.push_back("Reference '" + wr->query + "' in spec '" + p->cfg->identity +
+                         "' was not found");
+        }
+      }
+    }
+    return msgs;
+  }() };
+
+  result.missing_without_fallback = missing_messages;
+
+  if (!ambiguity_messages.empty()) {
+    core_.fail_all();
+    std::ostringstream oss;
+    for (size_t i{ 0 }; i < ambiguity_messages.size(); ++i) {
+      if (i) { oss << "\n"; }
+      oss << ambiguity_messages[i];
+    }
+    throw std::runtime_error(oss.str());
+  }
+
+  return result;
+}
+
 void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
   // Register all roots before starting any thread so every manifest cfg's
   // SETUP selection is merged before a dependency thread can race ensure_pkg.
@@ -1036,15 +1031,10 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
     return count;
   } };
 
-  auto const collect_failed_packages{ [this]() {
+  auto const collect_failed{ [this]() {
     std::vector<std::string> errors;
-    std::lock_guard const lock(mutex_);
-    for (auto const &[key, ctx] : execution_ctxs_) {
-      if (ctx->failed) {
-        std::lock_guard const ctx_lock(ctx->mutex);
-        errors.push_back(ctx->error_message.empty() ? "Package failed: " + key.canonical()
-                                                    : ctx->error_message);
-      }
+    for (auto const &[key, msg] : core_.collect_failures()) {
+      errors.push_back(msg.empty() ? "Package failed: " + key : msg);
     }
     return errors;
   } };
@@ -1054,8 +1044,8 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
     ++iteration;
     wait_for_resolution_phase();
 
-    if (auto const errors{ collect_failed_packages() }; !errors.empty()) {
-      fail_all_contexts();
+    if (auto const errors{ collect_failed() }; !errors.empty()) {
+      core_.fail_all();
       std::ostringstream oss;
       for (size_t i{ 0 }; i < errors.size(); ++i) {
         if (i) { oss << "\n"; }
@@ -1070,7 +1060,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
     if (resolution.resolved == 0 && resolution.fallbacks_started == 0) {
       size_t const unresolved{ count_unresolved() };
       if (!resolution.missing_without_fallback.empty()) {
-        fail_all_contexts();
+        core_.fail_all();
         std::ostringstream oss;
         for (size_t i{ 0 }; i < resolution.missing_without_fallback.size(); ++i) {
           if (i) { oss << "\n"; }
@@ -1081,7 +1071,7 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
         throw std::runtime_error(oss.str());
       }
       if (unresolved > 0) {
-        fail_all_contexts();
+        core_.fail_all();
         throw std::runtime_error("Dependency resolution made no progress at iteration " +
                                  std::to_string(iteration) + " with " +
                                  std::to_string(unresolved) + " unresolved references");

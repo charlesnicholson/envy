@@ -65,104 +65,115 @@ bool run_pair_check_command(pkg *p, std::string_view cmd, std::string const &con
 
 // Run a pair's CHECK verb. Returns true when the host state is already satisfied.
 // Function form: CHECK(pkg_dir, options) -> boolean | string (string runs as shell).
+// The Lua lock is released before any shell command runs so concurrent pair nodes
+// sharing this package's state serialize only on Lua execution, not shell time.
 // Not in anonymous namespace so tests can call it.
 bool run_pair_check(pkg *p, engine &eng, std::string const &name) {
   std::string const context{ "SETUP." + name + ".CHECK" };
 
-  auto const lua_acc{ p->lua.lock() };
-  sol::state_view lua{ *lua_acc };
-  sol::object verb{ lua["SETUP"][name]["CHECK"] };
+  std::optional<bool> verdict;
+  std::optional<std::string> cmd;
+  {
+    auto const lua_acc{ p->lua.lock() };
+    sol::state_view lua{ *lua_acc };
+    sol::object verb{ lua["SETUP"][name]["CHECK"] };
 
-  if (verb.is<std::string>()) {
-    return run_pair_check_command(p, verb.as<std::string>(), context);
+    if (verb.is<std::string>()) {
+      cmd = verb.as<std::string>();
+    } else if (!verb.is<sol::protected_function>()) {
+      throw std::runtime_error(context + " must be a function or string for " +
+                               p->cfg->identity);
+    } else {
+      std::filesystem::path const project_root{ pkg_cfg::compute_project_root(p->cfg) };
+      phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
+      sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+      sol::object result_obj{ call_lua_function_with_enriched_errors(p, context, [&]() {
+        return verb.as<sol::protected_function>()(make_pkg_dir_arg(lua, p), opts);
+      }) };
+
+      if (result_obj.is<bool>()) {
+        verdict = result_obj.as<bool>();
+      } else if (result_obj.is<std::string>()) {
+        cmd = result_obj.as<std::string>();
+      } else {
+        throw std::runtime_error(context + " for " + p->cfg->identity +
+                                 " must return boolean or string, got " +
+                                 sol::type_name(lua.lua_state(), result_obj.get_type()));
+      }
+    }
   }
 
-  if (!verb.is<sol::protected_function>()) {
-    throw std::runtime_error(context + " must be a function or string for " +
-                             p->cfg->identity);
-  }
-
-  std::filesystem::path const project_root{ pkg_cfg::compute_project_root(p->cfg) };
-  phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
-  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-
-  sol::object result_obj{ call_lua_function_with_enriched_errors(p, context, [&]() {
-    return verb.as<sol::protected_function>()(make_pkg_dir_arg(lua, p), opts);
-  }) };
-
-  if (result_obj.is<bool>()) { return result_obj.as<bool>(); }
-  if (result_obj.is<std::string>()) {
-    return run_pair_check_command(p, result_obj.as<std::string>(), context);
-  }
-
-  throw std::runtime_error(context + " for " + p->cfg->identity +
-                           " must return boolean or string, got " +
-                           sol::type_name(lua.lua_state(), result_obj.get_type()));
+  return verdict ? *verdict : run_pair_check_command(p, *cmd, context);
 }
 
-// Run a pair's INSTALL verb against the host (cwd = project_root).
+// Run a pair's INSTALL verb against the host (cwd = project_root). Shell output
+// lands in `section` (the pair node's TUI section), labeled with `log_identity`.
 // Function form: INSTALL(pkg_dir, options) -> nil | string (string runs as shell).
+// The Lua lock is released before any shell script runs (see run_pair_check).
 // Not in anonymous namespace so tests can call it.
-void run_pair_install(pkg *p, engine &eng, std::string const &name) {
+void run_pair_install(pkg *p,
+                      engine &eng,
+                      std::string const &name,
+                      tui::section_handle section,
+                      std::string const &log_identity) {
   std::string const context{ "SETUP." + name + ".INSTALL" };
   std::filesystem::path const project_root{ pkg_cfg::compute_project_root(p->cfg) };
 
-  auto const lua_acc{ p->lua.lock() };
-  sol::state_view lua{ *lua_acc };
-  sol::object verb{ lua["SETUP"][name]["INSTALL"] };
+  std::optional<std::string> script;
+  {
+    auto const lua_acc{ p->lua.lock() };
+    sol::state_view lua{ *lua_acc };
+    sol::object verb{ lua["SETUP"][name]["INSTALL"] };
 
-  auto const run_script{ [&](std::string_view script) {
-    tui_actions::run_phase_shell_script(script,
+    if (verb.is<std::string>()) {
+      script = verb.as<std::string>();
+    } else if (!verb.is<sol::protected_function>()) {
+      throw std::runtime_error(context + " must be a function or string for " +
+                               p->cfg->identity);
+    } else {
+      phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
+      sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
+
+      sol::object result_obj{ call_lua_function_with_enriched_errors(p, context, [&]() {
+        return verb.as<sol::protected_function>()(make_pkg_dir_arg(lua, p), opts);
+      }) };
+
+      sol::type const result_type{ result_obj.get_type() };
+      if (result_type != sol::type::none && result_type != sol::type::lua_nil) {
+        if (!result_obj.is<std::string>()) {
+          throw std::runtime_error(context + " for " + p->cfg->identity +
+                                   " must return nil or string, got " +
+                                   sol::type_name(lua.lua_state(), result_type));
+        }
+        script = result_obj.as<std::string>();
+      }
+    }
+  }
+
+  if (script) {
+    tui_actions::run_phase_shell_script(*script,
                                         "Setup",
                                         project_root,
-                                        p->cfg->identity,
+                                        log_identity,
                                         shell_resolve_default(p->default_shell_ptr),
-                                        p->tui_section,
+                                        section,
                                         eng.cache_root());
-  } };
-
-  if (verb.is<std::string>()) {
-    run_script(verb.as<std::string>());
-    return;
   }
-
-  if (!verb.is<sol::protected_function>()) {
-    throw std::runtime_error(context + " must be a function or string for " +
-                             p->cfg->identity);
-  }
-
-  phase_context_guard ctx_guard{ &eng, p, lua.lua_state(), project_root };
-  sol::object opts{ lua.registry()[ENVY_OPTIONS_RIDX] };
-
-  sol::object result_obj{ call_lua_function_with_enriched_errors(p, context, [&]() {
-    return verb.as<sol::protected_function>()(make_pkg_dir_arg(lua, p), opts);
-  }) };
-
-  sol::type const result_type{ result_obj.get_type() };
-  if (result_type == sol::type::none || result_type == sol::type::lua_nil) { return; }
-  if (!result_obj.is<std::string>()) {
-    throw std::runtime_error(context + " for " + p->cfg->identity +
-                             " must return nil or string, got " +
-                             sol::type_name(lua.lua_state(), result_type));
-  }
-  run_script(result_obj.as<std::string>());
 }
 
-// Effective selection: explicit names from manifest entries, plus all pairs when
-// any referrer used the default and the package is user-managed. Sorted for
-// deterministic execution; unknown names are hard errors.
+// Effective selection: union of explicit names from all referrers, closed
+// transitively over DEPENDS (selecting a pair implies its prerequisites).
+// No defaults — an empty selection runs nothing, any package type. Sorted for
+// deterministic node creation; unknown explicit names are hard errors.
+// Marks the selection consumed: a later merge that adds names is an error.
 // Not in anonymous namespace so tests can call it.
 std::vector<std::string> compute_selected_pairs(pkg *p) {
   std::unordered_set<std::string> selected;
-  bool default_requested{ false };
   {
     std::lock_guard const deps_lock(p->deps_mutex);
     selected = p->setup_selected;
-    default_requested = p->setup_default;
-  }
-
-  if (default_requested && p->type == pkg_type::USER_MANAGED) {
-    for (auto const &[name, _] : p->setup_pairs) { selected.insert(name); }
+    p->setup_selection_consumed = true;
   }
 
   for (auto const &name : selected) {
@@ -175,18 +186,32 @@ std::vector<std::string> compute_selected_pairs(pkg *p) {
     }
   }
 
+  // Transitive DEPENDS closure — parse validation guarantees targets exist
+  std::vector<std::string> work{ selected.begin(), selected.end() };
+  while (!work.empty()) {
+    std::string const name{ std::move(work.back()) };
+    work.pop_back();
+    for (auto const &dep : p->setup_pairs.at(name).depends) {
+      if (selected.insert(dep).second) { work.push_back(dep); }
+    }
+  }
+
   std::vector<std::string> sorted{ selected.begin(), selected.end() };
   std::ranges::sort(sorted);
   return sorted;
 }
 
-namespace {
-
 // One pair: double-check lock pattern shared with legacy user-managed packages.
 // The lock entry is ephemeral (mark_user_managed) — purged on release, never
-// marked complete; the CHECK verb is the only re-run gate.
-void run_setup_pair(pkg *p, engine &eng, std::string const &name) {
-  auto const &pair_platforms{ p->setup_pairs.at(name) };
+// marked complete; the CHECK verb is the only re-run gate. `p` is the declaring
+// (parent) package; `section`/`log_identity` come from the pair task so shell
+// output is attributed per-pair.
+void run_setup_pair(pkg *p,
+                    engine &eng,
+                    std::string const &name,
+                    tui::section_handle section,
+                    std::string const &log_identity) {
+  auto const &pair_platforms{ p->setup_pairs.at(name).platforms };
   if (!pair_platforms.empty() &&
       !util_platform_matches(pair_platforms, platform::os_name(), platform::arch_name())) {
     tui::debug("phase setup: [%s] pair '%s' skipped (platform mismatch)",
@@ -233,10 +258,8 @@ void run_setup_pair(pkg *p, engine &eng, std::string const &name) {
   tui::debug("phase setup: [%s] running pair '%s' install",
              p->cfg->identity.c_str(),
              name.c_str());
-  run_pair_install(p, eng, name);
+  run_pair_install(p, eng, name, section, log_identity);
 }
-
-}  // namespace
 
 void run_setup_phase(pkg *p, engine &eng) {
   phase_trace_scope const phase_scope{ p->cfg->identity,
@@ -245,7 +268,13 @@ void run_setup_phase(pkg *p, engine &eng) {
 
   if (p->type != pkg_type::CACHE_MANAGED && p->type != pkg_type::USER_MANAGED) { return; }
 
-  for (auto const &name : compute_selected_pairs(p)) { run_setup_pair(p, eng, name); }
+  auto const selected{ compute_selected_pairs(p) };
+  if (selected.empty()) { return; }  // Explicit-only: no selection, nothing to do
+
+  // Selected pairs become single-step engine tasks: unrelated pairs run in
+  // parallel, DEPENDS sequences siblings via edges. The engine waits for every
+  // pair and aggregates failures so one bad pair doesn't mask the others.
+  eng.run_setup_pairs_for(p, selected);
 }
 
 }  // namespace envy

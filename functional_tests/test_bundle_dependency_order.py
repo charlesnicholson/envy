@@ -177,7 +177,7 @@ SETUP = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}" }},
+    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}", setup = {{ "main" }} }},
 }}
 """
         )
@@ -254,7 +254,7 @@ SETUP = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}" }},
+    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}", setup = {{ "main" }} }},
 }}
 """
         )
@@ -316,7 +316,7 @@ SETUP = {{
         manifest = self.create_manifest(
             f"""
 PACKAGES = {{
-    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}" }},
+    {{ spec = "local.consumer@v1", source = "{self.lua_path(spec_path)}", setup = {{ "main" }} }},
 }}
 """
         )

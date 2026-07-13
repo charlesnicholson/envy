@@ -3,7 +3,10 @@ IDENTITY = "local.brew_package@r0"
 PLATFORMS = { "darwin" }
 USER_MANAGED = true
 
-DEPENDENCIES = { spec = "local.brew@r0", source = "local.brew@r0.lua" }
+-- Dependency entries may select the dependency's SETUP pairs.
+DEPENDENCIES = {
+  { spec = "local.brew@r0", source = "local.brew@r0.lua", setup = { "brew" } },
+}
 
 local missing_packages = {}
 
