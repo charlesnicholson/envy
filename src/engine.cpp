@@ -973,6 +973,10 @@ void engine::validate_setup_selections() {
   {
     std::lock_guard const lock(mutex_);
     for (auto &[_, package] : packages_) {
+      // weak_references is deps_mutex-guarded; take it while iterating to match
+      // resolve_weak_references (no mutators run at this point, but keep the
+      // discipline consistent).
+      std::lock_guard const deps_lock(package->deps_mutex);
       for (auto &wr : package->weak_references) {
         if (!wr.setup.empty() && wr.resolved) {
           to_validate.emplace_back(package.get(), &wr);

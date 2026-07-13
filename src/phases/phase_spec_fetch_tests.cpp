@@ -436,6 +436,37 @@ TEST_CASE("weak dependency entry with setup field carries selection onto record"
   CHECK(wr.setup[1] == "bar");
 }
 
+TEST_CASE("weak product dependency with setup field carries selection onto record") {
+  cache c;
+  engine eng{ c };
+
+  std::filesystem::path temp_dir{ std::filesystem::temp_directory_path() /
+                                  "envy_test_dep_setup_weak_product" };
+  std::filesystem::create_directories(temp_dir);
+  temp_dir_guard guard{ temp_dir };
+
+  std::filesystem::path spec_file{ temp_dir / "spec.lua" };
+  {
+    std::ofstream ofs{ spec_file };
+    ofs << "IDENTITY = \"local.dep_setup_weak_prod@v1\"\n";
+    ofs << "USER_MANAGED = true\n";
+    ofs << "SETUP = { main = { CHECK = 'exit 0', INSTALL = 'echo x' } }\n";
+    // product ref with no source => weak product reference.
+    ofs << "DEPENDENCIES = { { product = 'tool', setup = { 'main' } } }\n";
+  }
+
+  auto *cfg{ make_local_cfg("local.dep_setup_weak_prod@v1", spec_file) };
+  pkg *p{ eng.ensure_pkg(cfg) };
+
+  REQUIRE_NOTHROW(run_spec_fetch_phase(p, eng));
+  REQUIRE(p->weak_references.size() == 1);
+  auto const &wr{ p->weak_references[0] };
+  CHECK(wr.is_product);
+  CHECK(wr.query == "tool");
+  REQUIRE(wr.setup.size() == 1);
+  CHECK(wr.setup[0] == "main");
+}
+
 TEST_CASE("strong dependency entry with setup field parses into dep cfg") {
   cache c;
   engine eng{ c };

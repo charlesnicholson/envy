@@ -182,6 +182,119 @@ SETUP = {{
 }}
 """
 
+# Strong referrer selecting "alpha" on the shared target (pulls it into the
+# graph via a strong dependency); paired with a weak referrer selecting "beta"
+# to prove the two merge paths compose into a union.
+SPEC_WEAK_STRONG_REF_ALPHA = """IDENTITY = "local.strong_ref_alpha@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_setup_target@v1", source = "weak_setup_target.lua", setup = {{ "alpha" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+# Target whose "leaf" pair DEPENDS on "base"; each writes a marker so a weak
+# referrer selecting only "leaf" can be shown to pull "base" transitively.
+SPEC_WEAK_DEPENDS_TARGET = """IDENTITY = "local.weak_depends_target@v1"
+USER_MANAGED = true
+
+SETUP = {{
+  base = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("wd_base_marker.txt", "w"); f:write("base"); f:close()
+    end,
+  }},
+  leaf = {{
+    DEPENDS = {{ "base" }},
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("wd_leaf_marker.txt", "w"); f:write("leaf"); f:close()
+    end,
+  }},
+}}
+"""
+
+SPEC_WEAK_DEPENDS_CONSUMER = """IDENTITY = "local.weak_depends_consumer@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_depends_target", setup = {{ "leaf" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+# Fallback target: fetched only when nothing provides the weak identity.
+SPEC_WEAK_FALLBACK_TARGET = """IDENTITY = "local.weak_fb_target@v1"
+USER_MANAGED = true
+
+SETUP = {{
+  main = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("weak_fb_marker.txt", "w"); f:write("fb"); f:close()
+    end,
+  }},
+}}
+"""
+
+# Weak referrer with a fallback; no package provides "local.weak_fb_absent", so
+# the fallback target is fetched and the setup selection lands on it.
+SPEC_WEAK_FALLBACK_CONSUMER = """IDENTITY = "local.weak_fb_consumer@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ spec = "local.weak_fb_absent", weak = {{ spec = "local.weak_fb_target@v1", source = "weak_fb_target.lua" }}, setup = {{ "main" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
+# Cache-managed product provider with a SETUP pair; the pair writes a marker.
+SPEC_WEAK_PRODUCT_PROVIDER = """IDENTITY = "local.weak_prod_provider@v1"
+
+FETCH = {{
+  source = "{ARCHIVE_PATH}",
+  sha256 = "{ARCHIVE_HASH}",
+}}
+
+STAGE = {{strip = 1}}
+
+PRODUCTS = {{ tool = "payload.txt" }}
+
+SETUP = {{
+  alpha = {{
+    CHECK = function() return false end,
+    INSTALL = function()
+      local f = io.open("weak_prod_marker.txt", "w"); f:write("p"); f:close()
+    end,
+  }},
+}}
+"""
+
+# Weak PRODUCT reference (no spec/source) selecting a pair on whatever provides
+# the product "tool".
+SPEC_WEAK_PRODUCT_CONSUMER = """IDENTITY = "local.weak_prod_consumer@v1"
+USER_MANAGED = true
+
+DEPENDENCIES = {{
+  {{ product = "tool", setup = {{ "alpha" }} }},
+}}
+
+SETUP = {{
+  noop = {{ CHECK = function() return true end, INSTALL = function() end }},
+}}
+"""
+
 
 class TestSetupPairs(unittest.TestCase):
     """Manifest-driven SETUP pair behavior."""
@@ -684,8 +797,12 @@ SETUP = {{{{
     # Weak dependencies carrying SETUP selections
     # =========================================================================
 
-    def _weak_setup_manifest(self, *consumers: str) -> Path:
-        """Manifest with the weak-setup target root plus the named consumer roots."""
+    def _weak_setup_manifest(self, *consumers: "tuple[str, str]") -> Path:
+        """Manifest with the weak-setup target root plus the named consumer roots.
+
+        Each consumer is a (spec_name, spec_content) pair; its identity is taken
+        to be local.<spec_name>@v1.
+        """
         target = self.write_spec("weak_setup_target", SPEC_WEAK_SETUP_TARGET)
         lines = [f'  {{ spec = "local.weak_setup_target@v1", source = "{target}" }},']
         for name, spec in consumers:
@@ -693,6 +810,14 @@ SETUP = {{{{
             lines.append(
                 f'  {{ spec = "local.{name}@v1", source = "{path}" }},'
             )
+        return self.create_manifest("PACKAGES = {\n" + "\n".join(lines) + "\n}")
+
+    def _manifest_roots(self, *entries) -> Path:
+        """Manifest whose PACKAGES roots are the given (spec_name, identity, content)."""
+        lines = []
+        for spec_name, identity, content in entries:
+            path = self.write_spec(spec_name, content)
+            lines.append(f'  {{ spec = "{identity}", source = "{path}" }},')
         return self.create_manifest("PACKAGES = {\n" + "\n".join(lines) + "\n}")
 
     def test_weak_dependency_selects_pair_on_resolved_target(self):
@@ -730,13 +855,121 @@ SETUP = {{{{
 
     def test_weak_dependency_unknown_setup_key_fails(self):
         """Selecting a pair the resolved target does not declare is a detailed
-        post-resolution error."""
+        post-resolution error naming requester, query, target, and declared pairs."""
         manifest = self._weak_setup_manifest(
             ("weak_consumer_ghost", SPEC_WEAK_CONSUMER_GHOST)
         )
         result = self.run_install(manifest, should_fail=True)
-        self.assertIn("weak-depends on", result.stderr)
+        self.assertIn("local.weak_consumer_ghost@v1", result.stderr)
+        self.assertIn("weak-depends on 'local.weak_setup_target'", result.stderr)
+        self.assertIn("resolved to 'local.weak_setup_target@v1'", result.stderr)
         self.assertIn("SETUP pair 'ghost'", result.stderr)
+        # The two real pairs are listed so the author sees the valid choices.
+        self.assertIn("declared pairs:", result.stderr)
+        self.assertIn("alpha", result.stderr)
+        self.assertIn("beta", result.stderr)
+
+    def test_weak_and_strong_referrers_union(self):
+        """A strong referrer (alpha) and a weak referrer (beta) select on the
+        same target; both selections run (union across both merge paths)."""
+        # strong_ref pulls the target in strongly and selects alpha;
+        # weak_consumer_b weak-refs the same target and selects beta.
+        manifest = self._manifest_roots(
+            ("strong_ref_alpha", "local.strong_ref_alpha@v1", SPEC_WEAK_STRONG_REF_ALPHA),
+            ("weak_consumer_b", "local.weak_consumer_b@v1", SPEC_WEAK_CONSUMER_B),
+        )
+        # The strong dep's relative source needs the target spec on disk.
+        self.write_spec("weak_setup_target", SPEC_WEAK_SETUP_TARGET)
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_alpha_marker.txt").exists(),
+            "strong referrer's selection (alpha) must run",
+        )
+        self.assertTrue(
+            (self.test_dir / "weak_beta_marker.txt").exists(),
+            "weak referrer's selection (beta) must run (union)",
+        )
+
+    def test_weak_selection_pulls_depends_prerequisites(self):
+        """A weak referrer selecting only 'leaf' transitively pulls its DEPENDS
+        prerequisite 'base'; both pairs run."""
+        manifest = self._manifest_roots(
+            ("weak_depends_target", "local.weak_depends_target@v1", SPEC_WEAK_DEPENDS_TARGET),
+            ("weak_depends_consumer", "local.weak_depends_consumer@v1", SPEC_WEAK_DEPENDS_CONSUMER),
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "wd_leaf_marker.txt").exists(),
+            "explicitly selected pair (leaf) must run",
+        )
+        self.assertTrue(
+            (self.test_dir / "wd_base_marker.txt").exists(),
+            "DEPENDS prerequisite (base) must be auto-selected via the weak referrer",
+        )
+
+    def test_weak_fallback_target_carries_setup(self):
+        """When a weak reference falls back to fetching a target, the setup
+        selection lands on the fetched fallback."""
+        # Fallback source spec must exist on disk (referenced by relative path).
+        self.write_spec("weak_fb_target", SPEC_WEAK_FALLBACK_TARGET)
+        manifest = self._manifest_roots(
+            ("weak_fb_consumer", "local.weak_fb_consumer@v1", SPEC_WEAK_FALLBACK_CONSUMER),
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_fb_marker.txt").exists(),
+            "fallback target's selected pair (main) must run",
+        )
+
+    def test_weak_product_reference_carries_setup(self):
+        """A weak PRODUCT reference selects a pair on the resolved provider."""
+        manifest = self._manifest_roots(
+            ("weak_prod_provider", "local.weak_prod_provider@v1", SPEC_WEAK_PRODUCT_PROVIDER),
+            ("weak_prod_consumer", "local.weak_prod_consumer@v1", SPEC_WEAK_PRODUCT_CONSUMER),
+        )
+        self.run_install(manifest)
+        self.assertTrue(
+            (self.test_dir / "weak_prod_marker.txt").exists(),
+            "weak product reference's selection (alpha) must run on the provider",
+        )
+
+    def test_weak_selection_on_bundle_only_node_fails(self):
+        """Selecting a pair on a package that runs no setup phase (a BUNDLE_ONLY
+        node) is a detailed post-resolution error."""
+        bundle_dir = self.specs_dir / "hb_bundle"
+        (bundle_dir / "specs").mkdir(parents=True)
+        (bundle_dir / "envy-bundle.lua").write_text(
+            'BUNDLE = "test.hb_bundle@v1"\n'
+            'SPECS = { ["local.hb_member@v1"] = "specs/member.lua" }\n',
+            encoding="utf-8",
+        )
+        (bundle_dir / "specs" / "member.lua").write_text(
+            'IDENTITY = "local.hb_member@v1"\n'
+            "USER_MANAGED = true\n"
+            "SETUP = { noop = { CHECK = function() return true end, "
+            "INSTALL = function() end } }\n",
+            encoding="utf-8",
+        )
+        # Consumer pulls the bundle (a BUNDLE_ONLY node) and then weak-refs that
+        # node's identity while selecting a pair — the node runs no setup phase.
+        consumer = (
+            'IDENTITY = "local.hb_consumer@v1"\n'
+            "USER_MANAGED = true\n"
+            "DEPENDENCIES = {\n"
+            f'  {{ bundle = "test.hb_bundle@v1", source = "{bundle_dir.as_posix()}" }},\n'
+            '  { spec = "test.hb_bundle@v1", setup = { "noop" } },\n'
+            "}\n"
+            "SETUP = {\n"
+            "  noop = { CHECK = function() return true end, INSTALL = function() end },\n"
+            "}\n"
+        )
+        consumer_path = self.specs_dir / "hb_consumer.lua"
+        consumer_path.write_text(consumer, encoding="utf-8")
+        manifest = self.create_manifest(
+            f'PACKAGES = {{ {{ spec = "local.hb_consumer@v1", source = "{consumer_path.as_posix()}" }} }}'
+        )
+        result = self.run_install(manifest, should_fail=True)
+        self.assertIn("runs no setup phase", result.stderr)
 
     # =========================================================================
     # Failure propagation and dependency ordering
