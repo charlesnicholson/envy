@@ -32,8 +32,7 @@ bool git_ref_is_full_sha(std::string_view s);
 //
 // Throws std::runtime_error when `ref` is empty, matches nothing, is advertised
 // with conflicting oids, or when a suffix match is ambiguous across oids.
-std::string git_resolve_ref(std::vector<git_ref_entry> const &refs,
-                            std::string_view ref);
+std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_view ref);
 
 // Install envy.git_resolve(repo, ref) -> sha into the envy table.
 void lua_envy_git_install(sol::table &envy_table);

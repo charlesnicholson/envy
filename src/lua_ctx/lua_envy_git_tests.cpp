@@ -82,8 +82,8 @@ TEST_CASE("git_resolve_ref resolves HEAD") {
 TEST_CASE("git_resolve_ref prefers the peeled commit of an annotated tag") {
   // Annotated tag: plain entry is the tag object; "^{}" is the commit.
   std::vector<git_ref_entry> refs{
-    { "refs/tags/v1.0", kOidA },      // tag object
-    { "refs/tags/v1.0^{}", kOidB },   // peeled commit
+    { "refs/tags/v1.0", kOidA },     // tag object
+    { "refs/tags/v1.0^{}", kOidB },  // peeled commit
   };
   CHECK(git_resolve_ref(refs, "refs/tags/v1.0") == kOidB);
 }
@@ -164,8 +164,8 @@ TEST_CASE("git_resolve_ref suffix collisions on one oid are not ambiguous") {
 
 TEST_CASE("git_resolve_ref exact match wins over an otherwise-ambiguous suffix") {
   std::vector<git_ref_entry> refs{
-    { "x", kOidA },              // exact
-    { "refs/tags/x", kOidB },    // would suffix-match, different oid
+    { "x", kOidA },            // exact
+    { "refs/tags/x", kOidB },  // would suffix-match, different oid
   };
   CHECK(git_resolve_ref(refs, "x") == kOidA);
 }

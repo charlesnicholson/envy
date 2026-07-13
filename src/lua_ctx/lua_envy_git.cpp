@@ -43,8 +43,7 @@ bool git_ref_is_full_sha(std::string_view s) {
   return true;
 }
 
-std::string git_resolve_ref(std::vector<git_ref_entry> const &refs,
-                            std::string_view ref) {
+std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_view ref) {
   if (ref.empty()) { throw std::runtime_error("envy.git_resolve: ref must be non-empty"); }
 
   // Collapse the advertisement into one oid per base name. Plain entries carry
@@ -133,7 +132,10 @@ void lua_envy_git_install(sol::table &envy_table) {
     git_remote_callbacks callbacks;
     git_remote_init_callbacks(&callbacks, GIT_REMOTE_CALLBACKS_VERSION);
 
-    if (git_remote_connect(remote.get(), GIT_DIRECTION_FETCH, &callbacks, nullptr,
+    if (git_remote_connect(remote.get(),
+                           GIT_DIRECTION_FETCH,
+                           &callbacks,
+                           nullptr,
                            nullptr)) {
       throw git_last_error("envy.git_resolve: cannot connect to '" + repo + "'");
     }
