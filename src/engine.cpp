@@ -1003,7 +1003,7 @@ void engine::validate_setup_selections() {
     for (auto const &name : wr->setup) {
       if (target->setup_pairs.contains(name)) { continue; }
       std::string detail{ target->setup_pairs.empty() ? "it declares no SETUP pairs"
-                                                       : "declared pairs:" };
+                                                      : "declared pairs:" };
       for (auto const &[pair_name, _] : target->setup_pairs) { detail += " " + pair_name; }
       errors.push_back(context + " selects SETUP pair '" + name + "', but " + detail);
     }
