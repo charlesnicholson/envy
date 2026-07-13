@@ -335,6 +335,8 @@ set(ENVY_COMMON_COMPILE_OPTIONS
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-format-zero-length>
     $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-format-zero-length>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-Wno-deprecated-declarations>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-Wno-deprecated-declarations>
 )
 
 # Function to configure an envy executable (base configuration, no sanitizers)

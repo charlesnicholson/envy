@@ -88,9 +88,9 @@ set(ENVY_LIBZSTD_ARCHIVE "zstd-${ENVY_LIBZSTD_VERSION}.tar.gz")
 set(ENVY_LIBZSTD_URL "https://github.com/facebook/zstd/archive/refs/tags/v${ENVY_LIBZSTD_VERSION}.tar.gz")
 set(ENVY_LIBZSTD_SHA256 37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3)
 
-set(ENVY_CLI11_VERSION "2.5.0")
+set(ENVY_CLI11_VERSION "2.6.2")
 set(ENVY_CLI11_URL "https://github.com/CLIUtils/CLI11/releases/download/v${ENVY_CLI11_VERSION}/CLI11.hpp")
-set(ENVY_CLI11_SHA256 4bf0a9490aa7209176ccda70544f95413e594d2207cca33c9cd18ded189a63a6)
+set(ENVY_CLI11_SHA256 227a16fe5f9f8ada80c3c409492475536f597e7bd83a6c26eacc3c8c149a9295)
 
 set(ENVY_SEMVER_VERSION "1.0.0-rc")
 set(ENVY_SEMVER_URL "https://raw.githubusercontent.com/Neargye/semver/v${ENVY_SEMVER_VERSION}/include/semver.hpp")

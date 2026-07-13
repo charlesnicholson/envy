@@ -3,6 +3,48 @@
 
 include(FetchContent)
 
+# Download a single hash-pinned file into the cache, verifying its SHA-256.
+#
+# EXPECTED_HASH on file(DOWNLOAD) only validates a fresh download; an existing
+# cached copy is never re-checked. So any stale file left from a previous pin
+# (classically, one restored via CI cache `restore-keys` fallback) would be
+# silently reused. Hash any existing copy and remove it on mismatch so the
+# download path re-runs. When the cached copy already matches this is a no-op,
+# keeping offline reconfigures fast.
+#
+#   envy_fetch_verified_file(
+#       PATH <dest> URL <url> SHA256 <hex>
+#       [HUMAN_NAME <label>]   # printed while downloading
+#       [SHOW_PROGRESS])       # forwarded to file(DOWNLOAD)
+function(envy_fetch_verified_file)
+    set(options SHOW_PROGRESS)
+    set(oneValueArgs PATH URL SHA256 HUMAN_NAME)
+    cmake_parse_arguments(_evf "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if(EXISTS "${_evf_PATH}")
+        file(SHA256 "${_evf_PATH}" _evf_cached_hash)
+        if(NOT _evf_cached_hash STREQUAL "${_evf_SHA256}")
+            file(REMOVE "${_evf_PATH}")
+        endif()
+    endif()
+
+    if(NOT EXISTS "${_evf_PATH}")
+        if(_evf_HUMAN_NAME)
+            message(STATUS "[envy] Downloading ${_evf_HUMAN_NAME}...")
+        endif()
+        set(_evf_progress "")
+        if(_evf_SHOW_PROGRESS)
+            set(_evf_progress SHOW_PROGRESS)
+        endif()
+        file(DOWNLOAD
+            "${_evf_URL}"
+            "${_evf_PATH}"
+            EXPECTED_HASH SHA256=${_evf_SHA256}
+            ${_evf_progress}
+        )
+    endif()
+endfunction()
+
 function(envy_fetchcontent_acquire name human_name)
     set(options MAKE_AVAILABLE)
     set(oneValueArgs OUT_WAS_POPULATED)
