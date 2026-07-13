@@ -237,6 +237,21 @@ TEST_CASE("envy.git_resolve returns a full sha unchanged without a lookup") {
   CHECK(r.get<std::string>() == sha);
 }
 
+TEST_CASE("envy.git_resolve lowercases a full sha passed in uppercase") {
+  auto lua{ envy::sol_util_make_lua_state() };
+  sol::table envy_table{ lua->create_table() };
+  envy::lua_envy_git_install(envy_table);
+
+  sol::protected_function resolve{ envy_table["git_resolve"] };
+  std::string const upper{ "36CC599DCA99520D2A0DF22D62C4A87FC5A536D1" };
+  std::string const lower{ "36cc599dca99520d2a0df22d62c4a87fc5a536d1" };
+
+  // Uppercase never hits the network; it normalizes to match advertised oids.
+  sol::protected_function_result r{ resolve("https://example.invalid/repo", upper) };
+  REQUIRE(r.valid());
+  CHECK(r.get<std::string>() == lower);
+}
+
 TEST_CASE("envy.git_resolve rejects empty repo and empty ref") {
   auto lua{ envy::sol_util_make_lua_state() };
   sol::table envy_table{ lua->create_table() };

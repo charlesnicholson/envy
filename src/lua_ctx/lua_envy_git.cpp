@@ -5,6 +5,7 @@
 #include <git2.h>
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -114,8 +115,13 @@ void lua_envy_git_install(sol::table &envy_table) {
       throw std::runtime_error("envy.git_resolve: ref must be non-empty");
     }
 
-    // A full object id needs no lookup -- return it unchanged (no network).
-    if (git_ref_is_full_sha(ref)) { return ref; }
+    // A full object id needs no lookup -- return it (no network). Normalize to
+    // lowercase so it matches the lowercase oids the ref-advertisement path emits.
+    if (git_ref_is_full_sha(ref)) {
+      std::transform(ref.begin(), ref.end(), ref.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return ref;
+    }
 
     // HTTPS requires CA certificates be configured (matches fetch_git_repo).
     if (repo.starts_with("https://")) { libgit2_require_ssl_certs(); }
