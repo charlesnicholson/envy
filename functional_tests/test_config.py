@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Subprocess text mode kwargs - use UTF-8 to avoid cp1252 decode errors on Windows
@@ -36,6 +37,47 @@ def run(*args, **kwargs) -> subprocess.CompletedProcess[str]:
     if args and not kwargs.get("shell"):
         args[0] = _wrap_cmd(args[0])
     return subprocess.run(*args, **kwargs)
+
+
+def is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
+    """True if pwsh's .NET runtime crashed at startup rather than running the script.
+
+    pwsh intermittently aborts at process startup on resource-constrained CI
+    runners (observed on linux-arm64 under ASAN). Two CoreCLR signatures seen:
+    - "Unhandled exception ... The given assembly name was invalid" (SIGABRT)
+    - a bare "Stack overflow." (SIGABRT)
+    Both fire before the script executes and are nondeterministic and unrelated
+    to the behavior under test. A genuine script failure exits cleanly with the
+    wrong output (not a managed-runtime abort), so these signatures are safe to
+    retry without masking a real bug — a deterministic crash still fails after
+    the retries are exhausted.
+    """
+    if result.returncode == 0:
+        return False
+    stderr = result.stderr or ""
+    if "Unhandled exception" in stderr and (
+        "FileLoadException" in stderr or "assembly" in stderr
+    ):
+        return True
+    return "Stack overflow." in stderr
+
+
+def run_pwsh(cmd, retries: int = 3, delay: float = 0.5, **kwargs):
+    """Run a pwsh command, retrying .NET-runtime startup crashes.
+
+    See is_pwsh_runtime_crash; genuine failures are returned as-is.
+    """
+    result = None
+    for attempt in range(retries):
+        result = run(cmd, **kwargs)
+        if not is_pwsh_runtime_crash(result):
+            return result
+        sys.stderr.write(
+            f"pwsh runtime crash (attempt {attempt + 1}/{retries}), retrying: "
+            f"{(result.stderr or '').strip()[:120]}\n"
+        )
+        time.sleep(delay)
+    return result
 
 
 def popen(*args, **kwargs) -> subprocess.Popen[str]:

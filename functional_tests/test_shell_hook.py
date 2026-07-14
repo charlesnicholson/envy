@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -978,25 +977,6 @@ class TestFishHook(unittest.TestCase):
         self.assertNotIn("\U0001f99d", result.stdout)
 
 
-def _is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
-    """True if pwsh's .NET runtime crashed at startup rather than running the script.
-
-    pwsh intermittently aborts at process startup on resource-constrained CI
-    runners (observed on linux-arm64 under ASAN): a SIGABRT with an
-    "Unhandled exception ... The given assembly name was invalid" dumped before
-    the hook script executes. It is nondeterministic and unrelated to shell-hook
-    behavior. A genuine hook failure exits cleanly with the wrong output (not a
-    managed-runtime crash), so this signature is safe to retry without masking a
-    real bug.
-    """
-    if result.returncode == 0:
-        return False
-    stderr = result.stderr or ""
-    return "Unhandled exception" in stderr and (
-        "FileLoadException" in stderr or "assembly" in stderr
-    )
-
-
 @unittest.skipUnless(shutil.which("pwsh"), "pwsh not installed")
 class TestPowerShellHook(unittest.TestCase):
     """Test PowerShell shell hook behavior."""
@@ -1048,25 +1028,16 @@ class TestPowerShellHook(unittest.TestCase):
         """Run a PowerShell script that dot-sources the hook and tests behavior.
 
         Retries on a pwsh .NET-runtime startup crash (a nondeterministic infra
-        flake, see _is_pwsh_runtime_crash); genuine failures are returned as-is.
+        flake, see test_config.is_pwsh_runtime_crash); genuine failures are
+        returned as-is.
         """
-        result = None
-        for attempt in range(3):
-            result = test_config.run(
-                ["pwsh", "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=self._hook_test_env(),
-            )
-            if not _is_pwsh_runtime_crash(result):
-                return result
-            sys.stderr.write(
-                f"pwsh runtime crash (attempt {attempt + 1}/3), retrying: "
-                f"{(result.stderr or '').strip()[:120]}\n"
-            )
-            time.sleep(0.5)
-        return result
+        return test_config.run_pwsh(
+            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=self._hook_test_env(),
+        )
 
     def _make_envy_project(self, name: str, bin_val: str = "tools") -> Path:
         """Create a minimal envy project directory."""
