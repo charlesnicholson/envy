@@ -1118,6 +1118,14 @@ void wire_dependency_graph(pkg *p, engine &eng) {
     }
 
     if (dep_cfg->is_weak_reference()) {
+      if (p->depot_bootstrap) {
+        // Bootstrap packages may run after the resolution loop has finished,
+        // so weak/product references could never resolve.
+        throw std::runtime_error(
+            "package-depot dependency closure must use strong dependencies: '" +
+            (is_product_dep ? *dep_cfg->product : dep_cfg->identity) + "' in spec '" +
+            p->cfg->identity + "' is a weak reference");
+      }
       std::lock_guard const deps_lock(p->deps_mutex);
       p->weak_references.push_back(pkg::weak_reference{
           .query = is_product_dep ? *dep_cfg->product : dep_cfg->identity,
@@ -1141,6 +1149,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
         pd.provider = dep;
         pd.constraint_identity = dep_cfg->identity;
       }
+      if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
       std::vector<std::string> child_chain{ p->ancestor_chain };
@@ -1158,6 +1167,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
         std::lock_guard const deps_lock(p->deps_mutex);
         p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
       }
+      if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
       ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
       std::vector<std::string> child_chain{ p->ancestor_chain };
@@ -1173,6 +1183,7 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       std::lock_guard const deps_lock(p->deps_mutex);
       p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
     }
+    if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
     ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
 
     std::vector<std::string> child_chain{ p->ancestor_chain };

@@ -37,8 +37,10 @@ void run_import_phase(pkg *p, engine &eng) {
 
   if (!p->lock) { return; }  // Cache hit or user-managed (never locks) — no work
 
-  auto const *depot{ eng.depot_index() };
-  if (!depot || depot->empty()) { return; }  // No depot configured
+  // Blocks until every depot manifest is fetched (the #depot task, started on
+  // first use); depot-bootstrap packages get nullptr and build from source.
+  auto const *depot{ eng.depot_index_for(p) };
+  if (!depot || depot->empty()) { return; }  // No depot configured / exempt
 
   auto const [platform, arch]{ [&] {
     auto const lua_acc{ p->lua.lock() };

@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "lua_ctx/lua_phase_context.h"
 #include "manifest.h"
 #include "package_depot.h"
 #include "phases/phase_build.h"
@@ -140,6 +141,7 @@ void resolve_identity_ref(pkg *p,
 
     wire_dependency(p, dep, wr->needed_by);
     merge_setup_selection(dep, wr->setup);
+    if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
     {
       std::lock_guard const deps_lock(p->deps_mutex);
       wr->resolved = dep;
@@ -175,6 +177,7 @@ void resolve_identity_ref(pkg *p,
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
     merge_setup_selection(dep, wr->setup);
+    if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
 
     std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
@@ -234,6 +237,7 @@ void resolve_product_ref(pkg *p,
 
     wire_dependency(p, dep, wr->needed_by);
     merge_setup_selection(dep, wr->setup);
+    if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
     set_product_provider(dep);
     ++result.resolved;
     return;
@@ -245,6 +249,7 @@ void resolve_product_ref(pkg *p,
     pkg *dep{ eng.ensure_pkg(wr->fallback) };
     wire_dependency(p, dep, wr->needed_by);
     merge_setup_selection(dep, wr->setup);
+    if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
 
     std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
@@ -648,30 +653,179 @@ std::string const *engine::get_export_result(pkg_key const &key) const {
   return it != export_results_.end() ? &it->second : nullptr;
 }
 
-package_depot_index const *engine::depot_index() const {
+package_depot_index const *engine::depot_index_for(pkg *p) {
   // Pre-set index (set before thread creation, safe to read without synchronization)
   if (depot_pre_set_) { return &*depot_index_; }
 
   if (depot_ignored_) { return nullptr; }
 
-  if (!manifest_ || manifest_->meta.package_depots.empty()) { return nullptr; }
+  if (!manifest_ || manifest_->package_depots.empty()) { return nullptr; }
 
-  std::call_once(depot_init_flag_, [this] {
-    namespace fs = std::filesystem;
-    auto const depot_tmp{ fs::temp_directory_path() /
-                          ("envy-depot-" + std::to_string(platform::get_process_id())) };
-    try {
-      std::error_code ec;
-      fs::create_directories(depot_tmp, ec);
-      depot_index_ = package_depot_index::build(manifest_->meta.package_depots, depot_tmp);
-    } catch (std::exception const &e) {
-      tui::warn("failed to build depot index: %s", e.what());
-    }
-    std::error_code ec;
-    fs::remove_all(depot_tmp, ec);
+  if (p->depot_bootstrap) { return nullptr; }  // Bootstrap: never consult the depot
+
+  ensure_depot_task_started();
+
+  // The #depot worker broadcasts the global condition on completion/failure;
+  // mark_depot_bootstrap broadcasts when this package's exemption flips late
+  // (it was wired into the depot's DEPENDS closure after blocking here).
+  core_.wait_global([this, p] {
+    return depot_state_ != depot_state::NOT_READY || p->depot_bootstrap.load();
   });
 
+  if (p->depot_bootstrap) { return nullptr; }
+  if (depot_state_ == depot_state::FAILED) { throw std::runtime_error(depot_error_); }
   return depot_index_ ? &*depot_index_ : nullptr;
+}
+
+void engine::ensure_depot_task_started() {
+  std::call_once(depot_task_once_, [this] {
+    task_engine::task_config cfg;
+    cfg.key = kDepotTaskKey;
+    cfg.step_count = 1;
+    cfg.on_start = [this] {
+      try {
+        depot_edge_deps_ = spawn_depot_dependencies();
+      } catch (std::exception const &e) {
+        depot_error_ = std::string{ "package depot: " } + e.what();
+        throw;
+      }
+    };
+    cfg.edges = [this](int) {
+      std::vector<task_engine::edge> edges;
+      edges.reserve(depot_edge_deps_.size());
+      for (pkg *dep : depot_edge_deps_) {
+        edges.push_back({ dep->key.canonical(),
+                          kDependencySatisfiedWatermark,
+                          kDependencyRunThroughWatermark });
+      }
+      return edges;
+    };
+    cfg.step = [this](int) {
+      try {
+        run_depot_step();
+      } catch (std::exception const &e) {
+        depot_error_ = std::string{ "package depot: " } + e.what();
+        throw;
+      }
+      return false;
+    };
+    cfg.on_failed = [this] {
+      if (depot_error_.empty()) { depot_error_ = "package depot: dependency failed"; }
+      depot_state_ = depot_state::FAILED;
+    };
+
+    if (!core_.ensure_task(std::move(cfg))) {
+      throw std::runtime_error("depot task key collides with existing task");
+    }
+    core_.start_task(kDepotTaskKey, 1);
+  });
+}
+
+std::vector<pkg *> engine::spawn_depot_dependencies() {
+  std::vector<pkg *> edge_deps;
+  std::unordered_set<pkg *> seen;
+
+  for (auto const &src : manifest_->package_depots) {
+    auto const *fn{ std::get_if<manifest::depot_fetch_fn>(&src) };
+    if (!fn) { continue; }
+
+    std::vector<pkg *> fn_deps;
+    if (!fn->depends.empty()) {
+      auto const cfgs{
+        engine_resolve_targets(manifest_->packages, fn->depends, "package-depot")
+      };
+      fn_deps.reserve(cfgs.size());
+      for (auto const *cfg : cfgs) {
+        pkg *dep{ ensure_pkg(cfg) };
+        mark_depot_bootstrap(dep);
+        fn_deps.push_back(dep);
+        if (seen.insert(dep).second) {
+          edge_deps.push_back(dep);
+          // Run to full completion: depot deps may spawn after the resolution
+          // loop, so nothing else ratchets them.
+          start_pkg_thread(dep, pkg_phase::completion);
+        }
+      }
+    }
+    depot_fn_deps_.emplace_back(fn->lua_index, std::move(fn_deps));
+  }
+
+  return edge_deps;
+}
+
+void engine::run_depot_step() {
+  namespace fs = std::filesystem;
+
+  auto const depot_tmp{ fs::temp_directory_path() /
+                        ("envy-depot-" + std::to_string(platform::get_process_id())) };
+  std::error_code ec;
+  fs::create_directories(depot_tmp, ec);
+
+  try {
+    package_depot_index merged;
+
+    std::vector<std::string> urls;
+    for (auto const &src : manifest_->package_depots) {
+      if (auto const *uri{ std::get_if<manifest::depot_uri>(&src) }) {
+        urls.push_back(uri->url);
+      }
+    }
+    merged.merge(package_depot_index::build(urls, depot_tmp));
+
+    for (auto const &[lua_index, deps] : depot_fn_deps_) {
+      std::vector<std::pair<std::string, std::string>> dep_paths;
+      dep_paths.reserve(deps.size());
+      for (pkg *dep : deps) {
+        dep_paths.emplace_back(dep->cfg->identity, dep->pkg_path.string());
+      }
+
+      phase_context ctx{ .eng = this,
+                         .p = nullptr,
+                         .run_dir = depot_tmp,
+                         .lock = nullptr };
+      auto const result{
+        manifest_->run_depot_fetch(lua_index, &ctx, depot_tmp, dep_paths)
+      };
+
+      if (auto const *text{ std::get_if<std::string>(&result) }) {
+        // A newline-free string naming an existing file is a path to depot
+        // manifest text; anything else is the text itself. FETCH output is
+        // author-trusted, so SHA256 is not required (local paths importable).
+        std::string content{ *text };
+        if (text->find('\n') == std::string::npos && fs::exists(fs::path{ *text }, ec)) {
+          auto const data{ util_load_file(*text) };
+          content.assign(reinterpret_cast<char const *>(data.data()), data.size());
+        }
+        merged.merge(package_depot_index::build_from_text(content, false));
+      } else {
+        merged.merge(package_depot_index::build_from_entries(
+            std::get<std::vector<depot_entry>>(result)));
+      }
+    }
+
+    depot_index_ = std::move(merged);
+    depot_state_ = depot_state::READY;
+  } catch (...) {
+    fs::remove_all(depot_tmp, ec);
+    throw;
+  }
+  fs::remove_all(depot_tmp, ec);
+}
+
+void engine::mark_depot_bootstrap(pkg *p) {
+  if (p->depot_bootstrap.exchange(true)) { return; }
+
+  // Snapshot then recurse without holding the lock (no nested pkg locks).
+  auto const deps{ [&] {
+    std::lock_guard const deps_lock(p->deps_mutex);
+    std::vector<pkg *> snapshot;
+    snapshot.reserve(p->dependencies.size());
+    for (auto const &[_, dep_info] : p->dependencies) { snapshot.push_back(dep_info.p); }
+    return snapshot;
+  }() };
+  for (auto *dep : deps) { mark_depot_bootstrap(dep); }
+
+  core_.notify_global();  // Wake a depot wait this package may be blocked in
 }
 
 bundle *engine::register_bundle(std::string const &identity,
@@ -767,6 +921,14 @@ void engine::process_fetch_dependencies(pkg *p) {
                                      "Fetch dependency");
 
     if (fetch_dep_cfg->is_weak_reference()) {  // Defer resolution to weak pass
+      if (p->depot_bootstrap) {
+        // Bootstrap packages may run after the resolution loop has finished,
+        // so weak/product references could never resolve.
+        throw std::runtime_error(
+            "package-depot dependency closure must use strong dependencies: '" +
+            fetch_dep_cfg->identity + "' in spec '" + p->cfg->identity +
+            "' is a weak reference");
+      }
       pkg::weak_reference wr;
       wr.query = fetch_dep_cfg->identity;
       wr.needed_by = pkg_phase::spec_fetch;
@@ -783,6 +945,7 @@ void engine::process_fetch_dependencies(pkg *p) {
       std::lock_guard const deps_lock(p->deps_mutex);
       p->dependencies[fetch_dep_cfg->identity] = { fetch_dep, pkg_phase::spec_fetch };
     }
+    if (p->depot_bootstrap) { mark_depot_bootstrap(fetch_dep); }
     ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity,
                                 fetch_dep_cfg->identity,
                                 pkg_phase::spec_fetch);

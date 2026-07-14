@@ -64,6 +64,11 @@ struct pkg {
   std::atomic<pkg_phase> current_phase{ pkg_phase::none };
   std::atomic_bool spec_fetch_completed{ false };
 
+  // In the package-depot DEPENDS closure: never consults the depot (breaks the
+  // bootstrap circularity) and unblocks any in-flight depot wait. Set via
+  // engine::mark_depot_bootstrap, which propagates transitively.
+  std::atomic_bool depot_bootstrap{ false };
+
   // Ancestor identities for dependency-cycle detection. Set before this
   // package's worker starts; immutable after.
   std::vector<std::string> ancestor_chain;

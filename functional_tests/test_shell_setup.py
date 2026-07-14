@@ -216,8 +216,9 @@ class TestShellHookDeployment(unittest.TestCase):
     def test_ps1_hook_is_syntactically_valid(self) -> None:
         self._trigger_self_deploy()
         hook = self._cache_dir / "shell" / "hook.ps1"
-        # Parse only — check for syntax errors via ast
-        result = test_config.run(
+        # Parse only — check for syntax errors via ast. run_pwsh retries the
+        # nondeterministic .NET-runtime startup aborts seen on CI runners.
+        result = test_config.run_pwsh(
             [
                 "pwsh",
                 "-NoProfile",
