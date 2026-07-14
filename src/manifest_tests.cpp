@@ -961,42 +961,272 @@ PACKAGES = {}
 }
 
 // ============================================================================
-// parse_envy_meta: package-depot directive tests
+// PACKAGE_DEPOTS global tests
 // ============================================================================
 
-TEST_CASE("parse_envy_meta: single package-depot") {
-  auto meta{ envy::parse_envy_meta(R"(
+TEST_CASE("parse_envy_meta: package-depot directive is a hard error") {
+  CHECK_THROWS_WITH_AS(envy::parse_envy_meta(R"(
 -- @envy bin "tools"
 -- @envy package-depot "https://example.com/depot.txt"
 PACKAGES = {}
-)") };
-
-  REQUIRE(meta.package_depots.size() == 1);
-  CHECK(meta.package_depots[0] == "https://example.com/depot.txt");
+)"),
+                       doctest::Contains("'@envy package-depot' directive removed"),
+                       std::runtime_error);
 }
 
-TEST_CASE("parse_envy_meta: multiple package-depots accumulate") {
-  auto meta{ envy::parse_envy_meta(R"(
--- @envy bin "tools"
--- @envy package-depot "https://example.com/darwin-arm64.txt"
--- @envy package-depot "https://example.com/linux-x86_64.txt"
--- @envy package-depot "s3://bucket/depot.txt"
-PACKAGES = {}
-)") };
-
-  REQUIRE(meta.package_depots.size() == 3);
-  CHECK(meta.package_depots[0] == "https://example.com/darwin-arm64.txt");
-  CHECK(meta.package_depots[1] == "https://example.com/linux-x86_64.txt");
-  CHECK(meta.package_depots[2] == "s3://bucket/depot.txt");
+TEST_CASE("PACKAGE_DEPOTS: absent yields empty depot config") {
+  auto m{ envy::manifest::load("-- @envy bin \"tools\"\nPACKAGES = {}",
+                               fs::path("/fake/envy.lua")) };
+  CHECK(m->package_depots.empty());
 }
 
-TEST_CASE("parse_envy_meta: no package-depot yields empty vector") {
-  auto meta{ envy::parse_envy_meta(R"(
--- @envy bin "tools"
+TEST_CASE("PACKAGE_DEPOTS: single string entry") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
 PACKAGES = {}
-)") };
+PACKAGE_DEPOTS = { "https://example.com/depot.txt" }
+)",
+                               fs::path("/fake/envy.lua")) };
 
-  CHECK(meta.package_depots.empty());
+  REQUIRE(m->package_depots.size() == 1);
+  auto const *uri{ std::get_if<envy::manifest::depot_uri>(&m->package_depots[0]) };
+  REQUIRE(uri);
+  CHECK(uri->url == "https://example.com/depot.txt");
+}
+
+TEST_CASE("PACKAGE_DEPOTS: multiple string entries keep declaration order") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  "https://example.com/darwin-arm64.txt",
+  "https://example.com/linux-x86_64.txt",
+  "s3://bucket/depot.txt",
+}
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->package_depots.size() == 3);
+  CHECK(std::get<envy::manifest::depot_uri>(m->package_depots[0]).url ==
+        "https://example.com/darwin-arm64.txt");
+  CHECK(std::get<envy::manifest::depot_uri>(m->package_depots[1]).url ==
+        "https://example.com/linux-x86_64.txt");
+  CHECK(std::get<envy::manifest::depot_uri>(m->package_depots[2]).url ==
+        "s3://bucket/depot.txt");
+}
+
+TEST_CASE("PACKAGE_DEPOTS: computed string entry captures evaluated value") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { "https://example.com/depot-" .. envy.PLATFORM_ARCH .. ".txt" }
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->package_depots.size() == 1);
+  auto const &url{ std::get<envy::manifest::depot_uri>(m->package_depots[0]).url };
+  CHECK(url.starts_with("https://example.com/depot-"));
+  CHECK(url.ends_with(".txt"));
+  CHECK(url.size() > std::string{ "https://example.com/depot-.txt" }.size());
+}
+
+TEST_CASE("PACKAGE_DEPOTS: table entry with FETCH only has empty DEPENDS") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) return {} end } }
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->package_depots.size() == 1);
+  auto const *fn{ std::get_if<envy::manifest::depot_fetch_fn>(&m->package_depots[0]) };
+  REQUIRE(fn);
+  CHECK(fn->depends.empty());
+  CHECK(fn->lua_index == 1);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: table entry captures DEPENDS identities") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  {
+    DEPENDS = { "tools.jfrog@v1", "tools.aws@v2" },
+    FETCH = function(ctx) return {} end,
+  },
+}
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->package_depots.size() == 1);
+  auto const &fn{ std::get<envy::manifest::depot_fetch_fn>(m->package_depots[0]) };
+  REQUIRE(fn.depends.size() == 2);
+  CHECK(fn.depends[0] == "tools.jfrog@v1");
+  CHECK(fn.depends[1] == "tools.aws@v2");
+}
+
+TEST_CASE("PACKAGE_DEPOTS: mixed string and table entries") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  "https://cdn.example.com/public.txt",
+  { FETCH = function(ctx) return {} end },
+  "s3://bucket/depot.txt",
+}
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  REQUIRE(m->package_depots.size() == 3);
+  CHECK(std::holds_alternative<envy::manifest::depot_uri>(m->package_depots[0]));
+  auto const &fn{ std::get<envy::manifest::depot_fetch_fn>(m->package_depots[1]) };
+  CHECK(fn.lua_index == 2);
+  CHECK(std::holds_alternative<envy::manifest::depot_uri>(m->package_depots[2]));
+}
+
+TEST_CASE("PACKAGE_DEPOTS: non-table global is an error") {
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load("-- @envy bin \"tools\"\nPACKAGES = {}\nPACKAGE_DEPOTS = 42",
+                           fs::path("/fake/envy.lua")),
+      doctest::Contains("PACKAGE_DEPOTS must be a table"),
+      std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: entry neither string nor table is an error") {
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(
+          "-- @envy bin \"tools\"\nPACKAGES = {}\nPACKAGE_DEPOTS = { 42 }",
+          fs::path("/fake/envy.lua")),
+      doctest::Contains("must be a URI string or a {DEPENDS, FETCH} table"),
+      std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: empty string entry is an error") {
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(
+          "-- @envy bin \"tools\"\nPACKAGES = {}\nPACKAGE_DEPOTS = { \"\" }",
+          fs::path("/fake/envy.lua")),
+      doctest::Contains("non-empty URI string"),
+      std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: table entry without FETCH is an error") {
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(
+          "-- @envy bin \"tools\"\nPACKAGES = {}\nPACKAGE_DEPOTS = { { DEPENDS = {} } }",
+          fs::path("/fake/envy.lua")),
+      doctest::Contains("requires a FETCH function"),
+      std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: non-function FETCH is an error") {
+  CHECK_THROWS_WITH_AS(
+      envy::manifest::load(
+          "-- @envy bin \"tools\"\nPACKAGES = {}\nPACKAGE_DEPOTS = { { FETCH = \"x\" } }",
+          fs::path("/fake/envy.lua")),
+      doctest::Contains("requires a FETCH function"),
+      std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: non-table DEPENDS is an error") {
+  CHECK_THROWS_WITH_AS(envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { DEPENDS = "tools.jfrog@v1", FETCH = function() end } }
+)",
+                                            fs::path("/fake/envy.lua")),
+                       doctest::Contains("DEPENDS must be a table"),
+                       std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: non-string DEPENDS entry is an error") {
+  CHECK_THROWS_WITH_AS(envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { DEPENDS = { 42 }, FETCH = function() end } }
+)",
+                                            fs::path("/fake/envy.lua")),
+                       doctest::Contains("DEPENDS entries must be non-empty strings"),
+                       std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: run_depot_fetch passes ctx and returns raw text") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  {
+    DEPENDS = { "tools.jfrog@v1" },
+    FETCH = function(ctx)
+      return ctx.tmp_dir .. "|" .. ctx.deps["tools.jfrog@v1"].pkg_path
+    end,
+  },
+}
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  auto const result{ m->run_depot_fetch(1,
+                                        nullptr,
+                                        fs::path("/fake/tmp"),
+                                        { { "tools.jfrog@v1", "/fake/pkg" } }) };
+  auto const *text{ std::get_if<std::string>(&result) };
+  REQUIRE(text);
+  CHECK(*text == "/fake/tmp|/fake/pkg");
+}
+
+TEST_CASE("PACKAGE_DEPOTS: run_depot_fetch converts entries table") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  {
+    FETCH = function(ctx)
+      return {
+        { url = "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst",
+          sha256 = string.rep("a", 64) },
+        { url = "/local/pkg@v2-linux-x86_64-blake3-bbbb.tar.zst" },
+      }
+    end,
+  },
+}
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  auto const result{ m->run_depot_fetch(1, nullptr, fs::path("/fake/tmp"), {}) };
+  auto const *entries{ std::get_if<std::vector<envy::depot_entry>>(&result) };
+  REQUIRE(entries);
+  REQUIRE(entries->size() == 2);
+  CHECK((*entries)[0].url == "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst");
+  REQUIRE((*entries)[0].sha256.has_value());
+  CHECK(*(*entries)[0].sha256 == std::string(64, 'a'));
+  CHECK((*entries)[1].url == "/local/pkg@v2-linux-x86_64-blake3-bbbb.tar.zst");
+  CHECK_FALSE((*entries)[1].sha256.has_value());
+}
+
+TEST_CASE("PACKAGE_DEPOTS: run_depot_fetch rejects invalid return shape") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) return 42 end } }
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  CHECK_THROWS_WITH_AS(m->run_depot_fetch(1, nullptr, fs::path("/fake/tmp"), {}),
+                       doctest::Contains("FETCH must return"),
+                       std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: run_depot_fetch surfaces Lua errors") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) error("boom") end } }
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  CHECK_THROWS_WITH_AS(m->run_depot_fetch(1, nullptr, fs::path("/fake/tmp"), {}),
+                       doctest::Contains("FETCH failed"),
+                       std::runtime_error);
+}
+
+TEST_CASE("PACKAGE_DEPOTS: run_depot_fetch rejects entry without url") {
+  auto m{ envy::manifest::load(R"(-- @envy bin "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) return { { sha256 = string.rep("a", 64) } } end } }
+)",
+                               fs::path("/fake/envy.lua")) };
+
+  CHECK_THROWS_WITH_AS(m->run_depot_fetch(1, nullptr, fs::path("/fake/tmp"), {}),
+                       doctest::Contains("require a non-empty 'url'"),
+                       std::runtime_error);
 }
 
 // ============================================================================

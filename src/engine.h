@@ -118,7 +118,19 @@ class engine : unmovable {
   manifest const *get_manifest() const;
   void set_depot_index(package_depot_index idx);
   void set_ignore_depot(bool ignore);
-  package_depot_index const *depot_index() const;
+
+  // Depot access for the import phase. Lazily interns + starts the single-step
+  // "#depot" task on first use (fetches every PACKAGE_DEPOTS manifest, running
+  // FETCH functions after their DEPENDS complete) and blocks until the merged
+  // index is published. Returns nullptr when no depot is configured, depot is
+  // ignored, or `p` is in the depot's DEPENDS closure (depot_bootstrap —
+  // bootstrap packages never consult the depot). Throws if the depot task or a
+  // depot dependency failed.
+  package_depot_index const *depot_index_for(pkg *p);
+
+  // Flag `p` and its dependency closure as depot-bootstrap and wake any
+  // blocked depot waits. Idempotent.
+  void mark_depot_bootstrap(pkg *p);
 
   // Export phase configuration — set before resolve_graph() for pipeline export
   void set_export_config(export_phase_config cfg);
@@ -150,13 +162,32 @@ class engine : unmovable {
   void on_spec_fetch_start();
   void on_spec_fetch_complete(std::string const &pkg_identity);
 
+  enum class depot_state : int { NOT_READY, READY, FAILED };
+
+  static constexpr char kDepotTaskKey[]{ "#depot" };
+
+  void ensure_depot_task_started();
+  std::vector<pkg *> spawn_depot_dependencies();  // #depot on_start (worker thread)
+  void run_depot_step();                          // #depot step 0 (worker thread)
+
   cache &cache_;
   default_shell_cfg_t default_shell_;
   manifest const *manifest_{ nullptr };  // For bundle fetch function lookup
-  mutable std::once_flag depot_init_flag_;
-  mutable std::optional<package_depot_index> depot_index_;  // Lazy
+
+  // Depot state machine: importers block on the global condition until READY/
+  // FAILED (or their own depot_bootstrap flag flips). depot_index_ is written
+  // by the #depot worker (or set_depot_index) strictly before READY publishes.
+  std::once_flag depot_task_once_;
+  std::optional<package_depot_index> depot_index_;
+  std::atomic<depot_state> depot_state_{ depot_state::NOT_READY };
+  std::string depot_error_;  // written by #depot worker before FAILED publishes
   std::atomic_bool depot_pre_set_{ false };
   std::atomic_bool depot_ignored_{ false };
+
+  // #depot worker-local: written in on_start, read by edges/step on the same
+  // thread. lua_index → deps for each FETCH entry; flat list for edge queries.
+  std::vector<std::pair<size_t, std::vector<pkg *>>> depot_fn_deps_;
+  std::vector<pkg *> depot_edge_deps_;
 
   // Domain state (mutex_ guards the maps below; never held across core_ waits)
   std::unordered_map<pkg_key, std::unique_ptr<pkg>> packages_;

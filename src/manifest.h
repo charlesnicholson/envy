@@ -1,5 +1,6 @@
 #pragma once
 
+#include "package_depot.h"
 #include "pkg_cfg.h"
 #include "shell.h"
 #include "sol_util.h"
@@ -10,21 +11,22 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 namespace envy {
 
 // @envy metadata parsed from comment headers in manifest
 struct envy_meta {
-  int schema{ 0 };                          // @envy schema "N" (0 = absent)
-  std::optional<std::string> version;       // @envy version "x.y.z"
-  std::optional<std::string> cache_posix;   // @envy cache-posix (always parsed)
-  std::optional<std::string> cache_win;     // @envy cache-win (always parsed)
-  std::optional<std::string> mirror;        // @envy mirror "https://..."
-  std::optional<std::string> bin;           // @envy bin "relative/path/to/bin"
-  std::optional<bool> deploy;               // @envy deploy "true"/"false"
-  std::optional<bool> root;                 // @envy root "true"/"false"
-  std::vector<std::string> package_depots;  // @envy package-depot "url" (repeatable)
+  int schema{ 0 };                         // @envy schema "N" (0 = absent)
+  std::optional<std::string> version;      // @envy version "x.y.z"
+  std::optional<std::string> cache_posix;  // @envy cache-posix (always parsed)
+  std::optional<std::string> cache_win;    // @envy cache-win (always parsed)
+  std::optional<std::string> mirror;       // @envy mirror "https://..."
+  std::optional<std::string> bin;          // @envy bin "relative/path/to/bin"
+  std::optional<bool> deploy;              // @envy deploy "true"/"false"
+  std::optional<bool> root;                // @envy root "true"/"false"
 
   std::optional<std::string> const &cache_for_platform() const;
 };
@@ -33,7 +35,23 @@ struct envy_meta {
 envy_meta parse_envy_meta(std::string_view content);
 
 struct manifest : unmovable {
+  // PACKAGE_DEPOTS entry: plain URI, or FETCH function with optional package
+  // DEPENDS (identities resolved against this manifest's PACKAGES).
+  struct depot_uri {
+    std::string url;
+  };
+  struct depot_fetch_fn {
+    std::vector<std::string> depends;
+    size_t lua_index{ 0 };  // 1-based index into the PACKAGE_DEPOTS global
+  };
+  using depot_source = std::variant<depot_uri, depot_fetch_fn>;
+
+  // FETCH functions return depot manifest text (or a path to it — the caller
+  // disambiguates) or an explicit entries table.
+  using depot_fetch_result = std::variant<std::string, std::vector<depot_entry>>;
+
   std::vector<pkg_cfg *> packages;
+  std::vector<depot_source> package_depots;
   std::filesystem::path manifest_path;
   envy_meta meta;
 
@@ -74,6 +92,15 @@ struct manifest : unmovable {
   std::optional<std::string> run_bundle_fetch(std::string const &bundle_identity,
                                               void *phase_ctx,
                                               std::filesystem::path const &tmp_dir) const;
+
+  // Execute PACKAGE_DEPOTS[lua_index].FETCH(ctx) under the manifest Lua lock.
+  // `deps` (identity → pkg_path) populates ctx.deps; ctx.tmp_dir = tmp_dir.
+  // Throws on Lua error or an invalid return shape.
+  depot_fetch_result run_depot_fetch(
+      size_t lua_index,
+      void *phase_ctx,
+      std::filesystem::path const &tmp_dir,
+      std::vector<std::pair<std::string, std::string>> const &deps) const;
 
  private:
   mutable std::mutex lua_mutex_;  // Protects lua_ access from concurrent threads

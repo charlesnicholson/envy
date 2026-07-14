@@ -497,6 +497,160 @@ TEST_CASE("package_depot_index: build_from_directory without checksums has no sh
   CHECK_FALSE(result->sha256.has_value());
 }
 
+// --- merge tests ---
+
+TEST_CASE("package_depot_index: merge combines disjoint indexes") {
+  auto index{ package_depot_index::build_from_text(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+      "https://depot1/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true) };
+  index.merge(package_depot_index::build_from_text(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  "
+      "https://depot2/local.uv@r0-linux-x86_64-blake3-bbbb.tar.zst\n",
+      true));
+
+  CHECK(index.find("arm.gcc@r2", "darwin", "arm64", "aaaa").has_value());
+  CHECK(index.find("local.uv@r0", "linux", "x86_64", "bbbb").has_value());
+}
+
+TEST_CASE("package_depot_index: merge duplicate key identical sha keeps entry") {
+  auto index{ package_depot_index::build_from_text(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+      "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true) };
+  index.merge(package_depot_index::build_from_text(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+      "https://second/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true));
+
+  auto result{ index.find("arm.gcc@r2", "darwin", "arm64", "aaaa") };
+  REQUIRE(result.has_value());
+  CHECK(result->url == "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst");
+  CHECK(*result->sha256 == kHashA);
+}
+
+TEST_CASE("package_depot_index: merge duplicate key differing sha keeps first") {
+  auto index{ package_depot_index::build_from_text(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+      "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true) };
+  index.merge(package_depot_index::build_from_text(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  "
+      "https://second/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true));
+
+  auto result{ index.find("arm.gcc@r2", "darwin", "arm64", "aaaa") };
+  REQUIRE(result.has_value());
+  CHECK(result->url == "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst");
+  CHECK(*result->sha256 == kHashA);
+}
+
+TEST_CASE("package_depot_index: merge duplicate key missing sha keeps first") {
+  auto index{ package_depot_index::build_from_text(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+      "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      true) };
+  index.merge(package_depot_index::build_from_text(
+      "https://second/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      false));
+
+  auto result{ index.find("arm.gcc@r2", "darwin", "arm64", "aaaa") };
+  REQUIRE(result.has_value());
+  CHECK(result->url == "https://first/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst");
+  REQUIRE(result->sha256.has_value());
+}
+
+// --- build_from_text tests ---
+
+TEST_CASE(
+    "package_depot_index: build_from_text without sha requirement accepts plain "
+    "URLs") {
+  auto index{ package_depot_index::build_from_text(
+      "/local/path/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst\n",
+      false) };
+
+  auto result{ index.find("arm.gcc@r2", "darwin", "arm64", "aaaa") };
+  REQUIRE(result.has_value());
+  CHECK(result->url == "/local/path/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst");
+  CHECK_FALSE(result->sha256.has_value());
+}
+
+TEST_CASE("package_depot_index: build_from_text parses identically to contents form") {
+  std::string const text{
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+    "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n"
+  };
+  auto from_text{ package_depot_index::build_from_text(text, true) };
+  auto from_contents{ package_depot_index::build_from_contents({ text }) };
+
+  auto r1{ from_text.find("pkg@v1", "darwin", "arm64", "aaaa") };
+  auto r2{ from_contents.find("pkg@v1", "darwin", "arm64", "aaaa") };
+  REQUIRE(r1.has_value());
+  REQUIRE(r2.has_value());
+  CHECK(r1->url == r2->url);
+  CHECK(r1->sha256 == r2->sha256);
+}
+
+// --- build_from_entries tests ---
+
+TEST_CASE("package_depot_index: build_from_entries keys by filename stem") {
+  auto index{ package_depot_index::build_from_entries(
+      { { "https://cdn/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst",
+          std::string{ kHashA } },
+        { "/local/local.uv@r0-linux-x86_64-blake3-bbbb.tar.zst", std::nullopt } }) };
+
+  auto r1{ index.find("arm.gcc@r2", "darwin", "arm64", "aaaa") };
+  REQUIRE(r1.has_value());
+  CHECK(r1->url == "https://cdn/arm.gcc@r2-darwin-arm64-blake3-aaaa.tar.zst");
+  REQUIRE(r1->sha256.has_value());
+  CHECK(*r1->sha256 == kHashA);
+
+  auto r2{ index.find("local.uv@r0", "linux", "x86_64", "bbbb") };
+  REQUIRE(r2.has_value());
+  CHECK_FALSE(r2->sha256.has_value());
+}
+
+TEST_CASE("package_depot_index: build_from_entries normalizes sha to lowercase") {
+  auto index{ package_depot_index::build_from_entries(
+      { { "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst",
+          std::string{ "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                       "A" } } }) };
+
+  auto result{ index.find("pkg@v1", "darwin", "arm64", "aaaa") };
+  REQUIRE(result.has_value());
+  CHECK(*result->sha256 == kHashA);
+}
+
+TEST_CASE("package_depot_index: build_from_entries rejects empty url") {
+  CHECK_THROWS_WITH_AS(package_depot_index::build_from_entries({ { "", std::nullopt } }),
+                       doctest::Contains("non-empty 'url'"),
+                       std::runtime_error);
+}
+
+TEST_CASE("package_depot_index: build_from_entries rejects malformed sha256") {
+  CHECK_THROWS_WITH_AS(package_depot_index::build_from_entries(
+                           { { "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst",
+                               std::string{ "nothex" } } }),
+                       doctest::Contains("malformed sha256"),
+                       std::runtime_error);
+}
+
+TEST_CASE("package_depot_index: build_from_entries skips non-tar-zst urls") {
+  auto index{ package_depot_index::build_from_entries(
+      { { "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.gz", std::nullopt },
+        { "https://cdn/pkg@v2-darwin-arm64-blake3-bbbb.tar.zst", std::nullopt } }) };
+
+  CHECK_FALSE(index.find("pkg@v1", "darwin", "arm64", "aaaa").has_value());
+  CHECK(index.find("pkg@v2", "darwin", "arm64", "bbbb").has_value());
+}
+
+TEST_CASE("package_depot_index: build_from_entries skips unparseable stems") {
+  auto index{ package_depot_index::build_from_entries(
+      { { "https://cdn/not-a-cache-key.tar.zst", std::nullopt } }) };
+
+  CHECK(index.empty());
+}
+
 TEST_CASE("package_depot_index: build_from_directory checksums partial match") {
   namespace fs = std::filesystem;
   auto const tmp{ fs::temp_directory_path() / "envy-depot-dir-partial-test" };

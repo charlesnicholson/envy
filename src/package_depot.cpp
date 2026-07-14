@@ -20,6 +20,49 @@ bool is_hex_char(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
+std::string lowercase_hex(std::string_view hex) {
+  std::string result{ hex };
+  for (auto &c : result) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return result;
+}
+
+bool is_valid_sha256_hex(std::string_view hex) {
+  if (hex.size() != 64) { return false; }
+  for (char const c : hex) {
+    if (!is_hex_char(c)) { return false; }
+  }
+  return true;
+}
+
+// Extract the archive filename stem (filename minus .tar.zst) from a URL.
+// Returns nullopt (with a warning naming `context`) when the URL has no
+// .tar.zst extension or the stem doesn't parse as an archive filename.
+std::optional<std::string> stem_from_url(std::string_view url, std::string_view context) {
+  auto const slash_pos{ url.rfind('/') };
+  std::string_view filename{ (slash_pos != std::string_view::npos &&
+                              slash_pos + 1 < url.size())
+                                 ? url.substr(slash_pos + 1)
+                                 : url };
+
+  std::string_view stem{ filename };
+  if (stem.size() > 8 && stem.substr(stem.size() - 8) == ".tar.zst") {
+    stem = stem.substr(0, stem.size() - 8);
+  } else {
+    tui::warn("depot: skipping entry without .tar.zst extension: %s",
+              std::string(context).c_str());
+    return std::nullopt;
+  }
+
+  if (!util_parse_archive_filename(stem)) {
+    tui::warn("depot: skipping unparseable entry: %s", std::string(context).c_str());
+    return std::nullopt;
+  }
+
+  return std::string{ stem };
+}
+
 // Parse a single manifest text into a map of filename stem → depot entry.
 // Supports two line formats:
 //   <URL>                           (plain URL, no hash — rejected when require_sha256)
@@ -43,54 +86,21 @@ std::unordered_map<std::string, depot_entry> parse_manifest_text(std::string_vie
     std::optional<std::string> sha256_hash;
     std::string_view url_part{ line };
 
-    if (line.size() > 66 && line[64] == ' ' && line[65] == ' ') {
-      bool all_hex{ true };
-      for (size_t i{ 0 }; i < 64; ++i) {
-        if (!is_hex_char(line[i])) {
-          all_hex = false;
-          break;
-        }
-      }
-      if (all_hex) {
-        std::string hash{ line.substr(0, 64) };
-        for (auto &c : hash) {
-          c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        }
-        sha256_hash = std::move(hash);
-        url_part = std::string_view{ line }.substr(66);
-      }
+    if (line.size() > 66 && line[64] == ' ' && line[65] == ' ' &&
+        is_valid_sha256_hex(std::string_view{ line }.substr(0, 64))) {
+      sha256_hash = lowercase_hex(std::string_view{ line }.substr(0, 64));
+      url_part = std::string_view{ line }.substr(66);
     }
 
-    // Extract filename from URL: everything after the last '/'
-    auto const slash_pos{ url_part.rfind('/') };
-    std::string_view filename;
-    if (slash_pos != std::string_view::npos && slash_pos + 1 < url_part.size()) {
-      filename = url_part.substr(slash_pos + 1);
-    } else {
-      filename = url_part;
-    }
-
-    // Strip .tar.zst extension
-    std::string_view stem{ filename };
-    if (stem.size() > 8 && stem.substr(stem.size() - 8) == ".tar.zst") {
-      stem = stem.substr(0, stem.size() - 8);
-    } else {
-      tui::warn("depot: skipping line without .tar.zst extension: %s",
-                std::string(line).c_str());
-      continue;
-    }
-
-    if (!util_parse_archive_filename(stem)) {
-      tui::warn("depot: skipping unparseable line: %s", std::string(line).c_str());
-      continue;
-    }
+    auto stem{ stem_from_url(url_part, line) };
+    if (!stem) { continue; }
 
     if (require_sha256 && !sha256_hash) {
-      tui::warn("depot: skipping line without SHA256: %s", std::string(line).c_str());
+      tui::warn("depot: skipping line without SHA256: %s", line.c_str());
       continue;
     }
 
-    entries.try_emplace(std::string(stem),
+    entries.try_emplace(std::move(*stem),
                         depot_entry{ std::string(url_part), std::move(sha256_hash) });
   }
 
@@ -179,12 +189,11 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
     tui::section_delete(section);
   }
 
-  // Parse all downloaded manifests
+  // Parse all downloaded manifests into one merged index
   package_depot_index index;
   for (auto const &dl : downloads) {
     if (!dl.ok) { continue; }
-    auto entries{ parse_manifest_text(dl.content, true) };
-    if (!entries.empty()) { index.manifests_.push_back(std::move(entries)); }
+    index.merge(build_from_text(dl.content, true));
   }
 
   return index;
@@ -194,17 +203,56 @@ package_depot_index package_depot_index::build_from_contents(
     std::vector<std::string> const &manifest_contents) {
   package_depot_index index;
   for (auto const &content : manifest_contents) {
-    auto entries{ parse_manifest_text(content, true) };
-    if (!entries.empty()) { index.manifests_.push_back(std::move(entries)); }
+    index.merge(build_from_text(content, true));
   }
+  return index;
+}
+
+package_depot_index package_depot_index::build_from_text(std::string_view text,
+                                                         bool require_sha256) {
+  package_depot_index index;
+  index.entries_ = parse_manifest_text(text, require_sha256);
+  return index;
+}
+
+package_depot_index package_depot_index::build_from_entries(
+    std::vector<depot_entry> const &entries) {
+  package_depot_index index;
+
+  for (auto const &entry : entries) {
+    if (entry.url.empty()) {
+      throw std::runtime_error("depot entry requires a non-empty 'url'");
+    }
+
+    std::optional<std::string> sha256_hash;
+    if (entry.sha256) {
+      if (!is_valid_sha256_hex(*entry.sha256)) {
+        throw std::runtime_error("depot entry has malformed sha256 for url: " + entry.url);
+      }
+      sha256_hash = lowercase_hex(*entry.sha256);
+    }
+
+    auto stem{ stem_from_url(entry.url, entry.url) };
+    if (!stem) { continue; }
+
+    index.entries_.try_emplace(std::move(*stem),
+                               depot_entry{ entry.url, std::move(sha256_hash) });
+  }
+
   return index;
 }
 
 package_depot_index package_depot_index::build_from_directory(
     std::filesystem::path const &dir) {
+  return build_from_directory(dir, {});
+}
+
+package_depot_index package_depot_index::build_from_directory(
+    std::filesystem::path const &dir,
+    std::unordered_map<std::string, std::string> const &checksums) {
   namespace fs = std::filesystem;
 
-  std::unordered_map<std::string, depot_entry> entries;
+  package_depot_index index;
 
   for (auto const &e : fs::directory_iterator(dir)) {
     if (!e.is_regular_file()) { continue; }
@@ -219,63 +267,37 @@ package_depot_index package_depot_index::build_from_directory(
       continue;
     }
 
-    entries.try_emplace(stem, depot_entry{ fs::absolute(p).string(), std::nullopt });
-  }
-
-  package_depot_index index;
-  if (!entries.empty()) { index.manifests_.push_back(std::move(entries)); }
-  return index;
-}
-
-package_depot_index package_depot_index::build_from_directory(
-    std::filesystem::path const &dir,
-    std::unordered_map<std::string, std::string> const &checksums) {
-  namespace fs = std::filesystem;
-
-  std::unordered_map<std::string, depot_entry> entries;
-
-  for (auto const &e : fs::directory_iterator(dir)) {
-    if (!e.is_regular_file()) { continue; }
-    auto const &p{ e.path() };
-    if (p.extension() != ".zst") { continue; }
-    auto stem_path{ p.stem() };
-    if (stem_path.extension() != ".tar") { continue; }
-    std::string const stem{ stem_path.stem().string() };
-
-    if (!util_parse_archive_filename(stem)) {
-      tui::warn("depot: skipping unrecognized file %s", p.filename().string().c_str());
-      continue;
-    }
-
     std::string const filename{ p.filename().string() };
     auto const it{ checksums.find(filename) };
     std::optional<std::string> sha256_hash;
     if (it != checksums.end()) { sha256_hash = it->second; }
 
-    entries.try_emplace(stem,
-                        depot_entry{ fs::absolute(p).string(), std::move(sha256_hash) });
+    index.entries_.try_emplace(
+        stem,
+        depot_entry{ fs::absolute(p).string(), std::move(sha256_hash) });
   }
 
-  package_depot_index index;
-  if (!entries.empty()) { index.manifests_.push_back(std::move(entries)); }
   return index;
+}
+
+void package_depot_index::merge(package_depot_index other) {
+  for (auto &[stem, entry] : other.entries_) {
+    auto const [it, inserted]{ entries_.try_emplace(stem, std::move(entry)) };
+    if (!inserted && it->second.sha256 != entry.sha256) {
+      tui::warn("depot: duplicate entry %s with differing SHA256; keeping first",
+                stem.c_str());
+    }
+  }
 }
 
 std::optional<depot_entry> package_depot_index::find(std::string_view identity,
                                                      std::string_view platform,
                                                      std::string_view arch,
                                                      std::string_view hash_prefix) const {
-  auto const key{ cache::key(identity, platform, arch, hash_prefix) };
-
-  // Search manifests in order; stop at first match
-  for (auto const &manifest : manifests_) {
-    auto const it{ manifest.find(key) };
-    if (it != manifest.end()) { return it->second; }
-  }
-
-  return std::nullopt;
+  auto const it{ entries_.find(cache::key(identity, platform, arch, hash_prefix)) };
+  return it != entries_.end() ? std::optional{ it->second } : std::nullopt;
 }
 
-bool package_depot_index::empty() const { return manifests_.empty(); }
+bool package_depot_index::empty() const { return entries_.empty(); }
 
 }  // namespace envy

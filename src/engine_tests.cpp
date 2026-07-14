@@ -3,6 +3,8 @@
 #include "cache.h"
 #include "doctest.h"
 #include "manifest.h"
+#include "package_depot.h"
+#include "pkg.h"
 #include "platform.h"
 
 #include <filesystem>
@@ -427,6 +429,262 @@ TEST_CASE("engine_filter_host_platform: all filtered yields empty") {
 
   auto result{ engine_filter_host_platform({ a, b }) };
   CHECK(result.empty());
+}
+
+// --- package depot (#depot task, depot_bootstrap exemption) ---
+
+namespace {
+
+pkg_cfg *make_local_cfg(std::string identity, std::string spec_path) {
+  return pkg_cfg::pool()->emplace(
+      std::move(identity),
+      pkg_cfg::local_source{ .file_path = std::filesystem::path(std::move(spec_path)) },
+      "{}",
+      std::nullopt,
+      nullptr,
+      nullptr,
+      std::vector<pkg_cfg *>{},
+      std::nullopt,
+      std::filesystem::path{});
+}
+
+}  // namespace
+
+TEST_CASE("depot_index_for: no configured depots yields nullptr") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-none" };
+  cache c{ cache_root };
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  CHECK(eng.depot_index_for(p) == nullptr);
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot_index_for: ignore-depot yields nullptr and spawns no deps") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-ignore" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = { { spec = "local.tool@r0", source = "test_data/specs/simple_python.lua" } }
+PACKAGE_DEPOTS = {
+  { DEPENDS = { "local.tool@r0" }, FETCH = function(ctx) return {} end },
+}
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+  eng.set_ignore_depot(true);
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  CHECK(eng.depot_index_for(p) == nullptr);
+  CHECK(eng.find_matches("local.tool").empty());  // Depot dep never spawned
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot_index_for: pre-set index bypasses depot task") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-preset" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = { { spec = "local.tool@r0", source = "test_data/specs/simple_python.lua" } }
+PACKAGE_DEPOTS = {
+  { DEPENDS = { "local.tool@r0" }, FETCH = function(ctx) error("must not run") end },
+}
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+  eng.set_depot_index(package_depot_index::build_from_contents(
+      { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  "
+        "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n" }));
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  auto const *depot{ eng.depot_index_for(p) };
+  REQUIRE(depot != nullptr);
+  CHECK(depot->find("pkg@v1", "darwin", "arm64", "aaaa").has_value());
+  CHECK(eng.find_matches("local.tool").empty());  // Depot dep never spawned
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot_index_for: depot-bootstrap package is exempt") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-exempt" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) error("must not run") end } }
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  eng.mark_depot_bootstrap(p);
+  CHECK(p->depot_bootstrap.load());
+  CHECK(eng.depot_index_for(p) == nullptr);  // Returns before starting depot task
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("mark_depot_bootstrap: propagates through dependency closure") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-mark" };
+  cache c{ cache_root };
+  auto m{ manifest::load("-- @envy bin-dir \"tools\"\nPACKAGES = {}",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg_cfg *gn_cfg{ make_local_cfg("local.gn@r0",
+                                  "test_data/specs/dependency_chain_gn.lua") };
+  eng.resolve_graph({ gn_cfg });  // gn depends on local.ninja@r0
+
+  pkg *gn{ eng.find_exact(pkg_key(*gn_cfg)) };
+  REQUIRE(gn != nullptr);
+  auto const ninja_matches{ eng.find_matches("local.ninja@r0") };
+  REQUIRE(ninja_matches.size() == 1);
+
+  CHECK_FALSE(gn->depot_bootstrap.load());
+  CHECK_FALSE(ninja_matches[0]->depot_bootstrap.load());
+
+  eng.mark_depot_bootstrap(gn);
+
+  CHECK(gn->depot_bootstrap.load());
+  CHECK(ninja_matches[0]->depot_bootstrap.load());
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot task: FETCH entries publish a merged index") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-entries" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  {
+    FETCH = function(ctx)
+      return {
+        { url = "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst",
+          sha256 = string.rep("a", 64) },
+      }
+    end,
+  },
+}
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  auto const *depot{ eng.depot_index_for(p) };  // Blocks until #depot publishes
+  REQUIRE(depot != nullptr);
+  auto const entry{ depot->find("pkg@v1", "darwin", "arm64", "aaaa") };
+  REQUIRE(entry.has_value());
+  CHECK(entry->url == "https://cdn/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst");
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot task: FETCH raw text parses without SHA256 requirement") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-text" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  { FETCH = function(ctx) return "/local/pkg@v1-darwin-arm64-blake3-aaaa.tar.zst\n" end },
+}
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  auto const *depot{ eng.depot_index_for(p) };
+  REQUIRE(depot != nullptr);
+  auto const entry{ depot->find("pkg@v1", "darwin", "arm64", "aaaa") };
+  REQUIRE(entry.has_value());
+  CHECK_FALSE(entry->sha256.has_value());
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot task: FETCH failure is fatal for waiting importers") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-fail" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = { { FETCH = function(ctx) error("boom") end } }
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  CHECK_THROWS_WITH_AS(eng.depot_index_for(p),
+                       doctest::Contains("FETCH failed"),
+                       std::runtime_error);
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot task: unknown DEPENDS identity is fatal") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-missing" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {}
+PACKAGE_DEPOTS = {
+  { DEPENDS = { "local.missing@v1" }, FETCH = function(ctx) return {} end },
+}
+)",
+                         fs::path("/fake/envy.lua")) };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  CHECK_THROWS_WITH_AS(eng.depot_index_for(p),
+                       doctest::Contains("not found in manifest"),
+                       std::runtime_error);
+
+  fs::remove_all(cache_root);
+}
+
+TEST_CASE("depot task: DEPENDS spawn as depot-bootstrap and feed ctx.deps") {
+  namespace fs = std::filesystem;
+  fs::path const cache_root{ fs::temp_directory_path() / "envy-depot-eng-deps" };
+  cache c{ cache_root };
+  auto m{ manifest::load(R"(-- @envy bin-dir "tools"
+PACKAGES = {
+  { spec = "local.gn@r0", source = "test_data/specs/dependency_chain_gn.lua" },
+}
+PACKAGE_DEPOTS = {
+  {
+    DEPENDS = { "local.gn@r0" },
+    FETCH = function(ctx)
+      assert(ctx.deps["local.gn@r0"] ~= nil)
+      return ""
+    end,
+  },
+}
+)",
+                         fs::current_path() / "envy.lua") };
+  engine eng{ c, m.get() };
+
+  pkg *p{ eng.ensure_pkg(make_local_cfg("local.a@r0", "test_data/specs/simple_uv.lua")) };
+  auto const *depot{ eng.depot_index_for(p) };  // Waits on gn through setup
+  REQUIRE(depot != nullptr);
+  CHECK(depot->empty());
+
+  // The tool and its transitive dependency are flagged depot-bootstrap.
+  auto const gn_matches{ eng.find_matches("local.gn@r0") };
+  REQUIRE(gn_matches.size() == 1);
+  CHECK(gn_matches[0]->depot_bootstrap.load());
+  auto const ninja_matches{ eng.find_matches("local.ninja@r0") };
+  REQUIRE(ninja_matches.size() == 1);
+  CHECK(ninja_matches[0]->depot_bootstrap.load());
+
+  fs::remove_all(cache_root);
 }
 
 TEST_CASE("engine_filter_host_platform: empty input yields empty output") {

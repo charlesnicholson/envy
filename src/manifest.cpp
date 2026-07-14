@@ -248,6 +248,65 @@ pkg_cfg *parse_package_entry(sol::object const &entry,
   return cfg;
 }
 
+// Parse the optional PACKAGE_DEPOTS global: list of URI strings and/or
+// { DEPENDS = {...}, FETCH = function } tables.
+std::vector<manifest::depot_source> parse_package_depots(sol::object const &depots_obj) {
+  std::vector<manifest::depot_source> depots;
+
+  if (!depots_obj.valid() || depots_obj.get_type() == sol::type::lua_nil) {
+    return depots;
+  }
+  if (depots_obj.get_type() != sol::type::table) {
+    throw std::runtime_error(
+        "PACKAGE_DEPOTS must be a table of URI strings or {DEPENDS, FETCH} tables");
+  }
+
+  sol::table t{ depots_obj.as<sol::table>() };
+  for (size_t i{ 1 }; i <= t.size(); ++i) {
+    std::string const label{ "PACKAGE_DEPOTS[" + std::to_string(i) + "]" };
+    sol::object entry{ t[i] };
+
+    if (entry.is<std::string>()) {
+      std::string url{ entry.as<std::string>() };
+      if (url.empty()) {
+        throw std::runtime_error(label + " must be a non-empty URI string");
+      }
+      depots.push_back(manifest::depot_uri{ std::move(url) });
+      continue;
+    }
+
+    if (entry.get_type() != sol::type::table) {
+      throw std::runtime_error(label +
+                               " must be a URI string or a {DEPENDS, FETCH} table");
+    }
+
+    sol::table et{ entry.as<sol::table>() };
+    if (sol::object fetch_obj{ et["FETCH"] };
+        !fetch_obj.valid() || fetch_obj.get_type() != sol::type::function) {
+      throw std::runtime_error(label + " requires a FETCH function");
+    }
+
+    manifest::depot_fetch_fn fn{ .depends = {}, .lua_index = i };
+    if (sol::object dep_obj{ et["DEPENDS"] };
+        dep_obj.valid() && dep_obj.get_type() != sol::type::lua_nil) {
+      if (dep_obj.get_type() != sol::type::table) {
+        throw std::runtime_error(label + " DEPENDS must be a table of package identities");
+      }
+      sol::table dt{ dep_obj.as<sol::table>() };
+      for (size_t j{ 1 }; j <= dt.size(); ++j) {
+        sol::object d{ dt[j] };
+        if (!d.is<std::string>() || d.as<std::string>().empty()) {
+          throw std::runtime_error(label + " DEPENDS entries must be non-empty strings");
+        }
+        fn.depends.push_back(d.as<std::string>());
+      }
+    }
+    depots.push_back(std::move(fn));
+  }
+
+  return depots;
+}
+
 }  // namespace
 
 std::optional<std::string> const &envy_meta::cache_for_platform() const {
@@ -289,7 +348,10 @@ envy_meta parse_envy_meta(std::string_view content) {
       } else if (key == "root") {
         result.root = parse_bool_value(value);
       } else if (key == "package-depot") {
-        result.package_depots.push_back(value);
+        throw std::runtime_error(
+            "'@envy package-depot' directive removed; declare a PACKAGE_DEPOTS global "
+            "in the manifest instead, e.g.: PACKAGE_DEPOTS = { \"" +
+            value + "\" }");
       }
     }
 
@@ -447,6 +509,8 @@ std::unique_ptr<manifest> manifest::load(std::vector<unsigned char> const &conte
                                               custom_fetch_bundle_pkgs));
   }
 
+  m->package_depots = parse_package_depots((*m->lua_)["PACKAGE_DEPOTS"]);
+
   return m;
 }
 
@@ -551,6 +615,93 @@ std::optional<std::string> manifest::run_bundle_fetch(
   }
 
   return std::nullopt;
+}
+
+manifest::depot_fetch_result manifest::run_depot_fetch(
+    size_t lua_index,
+    void *phase_ctx,
+    std::filesystem::path const &tmp_dir,
+    std::vector<std::pair<std::string, std::string>> const &deps) const {
+  std::lock_guard const lock(lua_mutex_);
+
+  std::string const label{ "PACKAGE_DEPOTS[" + std::to_string(lua_index) + "]" };
+
+  if (!lua_) { throw std::runtime_error(label + ": manifest Lua state unavailable"); }
+
+  sol::state_view lua_view{ *lua_ };
+
+  sol::protected_function const fetch_func{ [&] {
+    sol::object depots_obj{ lua_view["PACKAGE_DEPOTS"] };
+    if (!depots_obj.valid() || !depots_obj.is<sol::table>()) {
+      throw std::runtime_error(label + ": PACKAGE_DEPOTS global not found");
+    }
+    sol::object entry{ depots_obj.as<sol::table>()[lua_index] };
+    if (!entry.valid() || !entry.is<sol::table>()) {
+      throw std::runtime_error(label + ": entry is not a table");
+    }
+    sol::object fetch_obj{ entry.as<sol::table>()["FETCH"] };
+    if (!fetch_obj.valid() || !fetch_obj.is<sol::function>()) {
+      throw std::runtime_error(label + ": FETCH function not found");
+    }
+    return fetch_obj.as<sol::protected_function>();
+  }() };
+
+  // RAII guard to clear registry on scope exit (including exceptions)
+  struct registry_guard {
+    sol::state_view &lua;
+    ~registry_guard() { lua.registry()[ENVY_PHASE_CTX_RIDX] = sol::lua_nil; }
+  } guard{ lua_view };
+
+  lua_view.registry()[ENVY_PHASE_CTX_RIDX] = phase_ctx;
+
+  sol::table ctx{ lua_view.create_table() };
+  ctx["tmp_dir"] = tmp_dir.string();
+  sol::table deps_table{ lua_view.create_table() };
+  for (auto const &[identity, pkg_path] : deps) {
+    sol::table d{ lua_view.create_table() };
+    d["pkg_path"] = pkg_path;
+    deps_table[identity] = d;
+  }
+  ctx["deps"] = deps_table;
+
+  sol::protected_function_result result{ fetch_func(ctx) };
+  if (!result.valid()) {
+    sol::error err = result;
+    throw std::runtime_error(label + " FETCH failed: " + std::string(err.what()));
+  }
+
+  sol::object ret{ result.get<sol::object>() };
+  if (ret.is<std::string>()) { return ret.as<std::string>(); }
+
+  if (ret.get_type() == sol::type::table) {
+    std::vector<depot_entry> entries;
+    sol::table rt{ ret.as<sol::table>() };
+    for (size_t i{ 1 }; i <= rt.size(); ++i) {
+      sol::object e{ rt[i] };
+      if (e.get_type() != sol::type::table) {
+        throw std::runtime_error(label + " FETCH entries must be tables");
+      }
+      sol::table et{ e.as<sol::table>() };
+      sol::object url_obj{ et["url"] };
+      if (!url_obj.is<std::string>() || url_obj.as<std::string>().empty()) {
+        throw std::runtime_error(label +
+                                 " FETCH entries require a non-empty 'url' string");
+      }
+      depot_entry de{ url_obj.as<std::string>(), std::nullopt };
+      if (sol::object sha_obj{ et["sha256"] };
+          sha_obj.valid() && sha_obj.get_type() != sol::type::lua_nil) {
+        if (!sha_obj.is<std::string>()) {
+          throw std::runtime_error(label + " FETCH entry 'sha256' must be a string");
+        }
+        de.sha256 = sha_obj.as<std::string>();
+      }
+      entries.push_back(std::move(de));
+    }
+    return entries;
+  }
+
+  throw std::runtime_error(
+      label + " FETCH must return depot manifest text, a path to it, or an entries table");
 }
 
 }  // namespace envy

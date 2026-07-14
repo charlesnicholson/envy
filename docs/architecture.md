@@ -73,6 +73,26 @@ PACKAGES = ENVY_PLATFORM == "darwin" and envy.join(common, darwin_packages)
 
 **Uniqueness validation:** Envy validates manifests post-execution. Duplicate recipe+options combinations error (deep comparison—string `"foo@v1"` matches `{ spec = "foo@v1" }`). Same spec with conflicting sources (different `source`/`sha256`/`file`/`fetch`) errors. Same recipe+options from identical sources is duplicate. Different options yield different deployments—allowed.
 
+### Package Depots
+
+`PACKAGE_DEPOTS` lists sources of prebuilt `.tar.zst` artifacts consulted during the import phase; hits skip fetch/build. Entries are URI strings (Lua-computable) or `{ DEPENDS, FETCH }` tables whose `FETCH(ctx)` returns depot manifest text, a path to it, or an entries table (`{ url=, sha256= }`); `DEPENDS` names manifest packages needed to run `FETCH` (Artifactory CLI, internal tooling).
+
+```lua
+PACKAGE_DEPOTS = {
+  "https://cdn.example.com/depot-" .. envy.PLATFORM_ARCH .. ".txt",
+  {
+    DEPENDS = { "tools.jfrog@v2" },
+    FETCH = function(ctx)
+      local out = ctx.tmp_dir .. "/depot.txt"
+      envy.run(ctx.deps["tools.jfrog@v2"].pkg_path .. "/bin/jf rt dl depots/prod.txt " .. out)
+      return out
+    end,
+  },
+}
+```
+
+Semantics: all depot manifests merge into one flat index before any import proceeds (order irrelevant—cache keys are hash-unique; duplicate keys keep the first, differing SHA256 warns). Fetching is lazy: a single-step `#depot` engine task starts on first import that needs it; `DEPENDS` closures are flagged depot-bootstrap—they always source-build (breaks circularity) and must use strong dependencies only. URI download failures warn and degrade to source builds; a failed `DEPENDS` build or throwing `FETCH` is fatal. `--ignore-depot`/`ENVY_IGNORE_DEPOT` skips the task entirely (no deps spawn). Depot config is never hashed.
+
 ## Shell Configuration
 
 Manifests can specify a `DEFAULT_SHELL` global to control how `envy.run()` executes scripts across all specs. This enables portable build scripts in custom languages without requiring pre-installed interpreters.

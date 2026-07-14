@@ -275,16 +275,17 @@ class TestPackageDepot(unittest.TestCase):
         return f"http://127.0.0.1:{port}/{name}"
 
     def _make_target_manifest(self, identities, depot_urls):
-        """Create manifest with depot directives for target sync."""
+        """Create manifest with a PACKAGE_DEPOTS global for target sync."""
         header = '-- @envy bin "envy-bin"\n'
-        for u in depot_urls:
-            header += f'-- @envy package-depot "{u}"\n'
         packages = ", ".join(
             f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
         )
+        depots = ", ".join(f'"{u}"' for u in depot_urls)
         path = self.test_dir / "target.lua"
         path.write_text(
-            header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
+            header
+            + f"\nPACKAGES = {{\n    {packages}\n}}\n"
+            + f"PACKAGE_DEPOTS = {{ {depots} }}\n",
             encoding="utf-8",
         )
         return path
@@ -756,14 +757,15 @@ class TestIgnoreDepot(unittest.TestCase):
 
     def _make_target_manifest(self, identities, depot_urls):
         header = '-- @envy bin "envy-bin"\n'
-        for u in depot_urls:
-            header += f'-- @envy package-depot "{u}"\n'
         packages = ", ".join(
             f'{{ spec = "{i}", source = "{self.spec_lua[i]}" }}' for i in identities
         )
+        depots = ", ".join(f'"{u}"' for u in depot_urls)
         path = self.test_dir / "target.lua"
         path.write_text(
-            header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
+            header
+            + f"\nPACKAGES = {{\n    {packages}\n}}\n"
+            + f"PACKAGE_DEPOTS = {{ {depots} }}\n",
             encoding="utf-8",
         )
         return path
@@ -1492,7 +1494,7 @@ SETUP = {{
 
     def _make_manifest_with_depot(self, specs, depot_url):
         """specs: (identity, path) or (identity, path, setup_pair_names) tuples."""
-        header = f'-- @envy bin "envy-bin"\n-- @envy package-depot "{depot_url}"\n'
+        header = '-- @envy bin "envy-bin"\n'
 
         def entry(spec):
             ident, path = spec[0], spec[1]
@@ -1506,7 +1508,9 @@ SETUP = {{
         packages = ", ".join(entry(s) for s in specs)
         manifest = self.test_dir / "envy.lua"
         manifest.write_text(
-            header + f"\nPACKAGES = {{\n    {packages}\n}}\n",
+            header
+            + f"\nPACKAGES = {{\n    {packages}\n}}\n"
+            + f'PACKAGE_DEPOTS = {{ "{depot_url}" }}\n',
             encoding="utf-8",
         )
         return manifest
@@ -1576,6 +1580,341 @@ SETUP = {{
         finally:
             srv.shutdown()
             srv.server_close()
+
+
+class TestDepotFetchFunction(unittest.TestCase):
+    """PACKAGE_DEPOTS FETCH-function entries: text/path/entries returns, DEPENDS
+    on a manifest tool package, failure fatality, --ignore-depot laziness."""
+
+    def setUp(self):
+        self.source_cache = Path(tempfile.mkdtemp(prefix="envy-dfn-src-"))
+        self.target_cache = Path(tempfile.mkdtemp(prefix="envy-dfn-tgt-"))
+        self.test_dir = Path(tempfile.mkdtemp(prefix="envy-dfn-specs-"))
+        self.output_dir = Path(tempfile.mkdtemp(prefix="envy-dfn-out-"))
+        self.serve_dir = Path(tempfile.mkdtemp(prefix="envy-dfn-http-"))
+        self.marker_dir = Path(tempfile.mkdtemp(prefix="envy-dfn-markers-"))
+        self.envy = test_config.get_envy_executable()
+        self.project_root = Path(__file__).parent.parent
+
+        self.archive_path = self.test_dir / "test.tar.gz"
+        self.archive_hash = _create_test_archive(self.archive_path)
+
+        # Downstream package with an external build marker (source build detector)
+        self.pkg_identity = "local.dfn_pkg@v1"
+        self.pkg_marker = self.marker_dir / "pkg.marker"
+        pkg_spec = self.test_dir / "dfn_pkg.lua"
+        pkg_spec.write_text(
+            self._spec_with_marker(self.pkg_identity, self.pkg_marker),
+            encoding="utf-8",
+        )
+        self.pkg_spec = pkg_spec
+
+    def tearDown(self):
+        for d in [
+            self.source_cache,
+            self.target_cache,
+            self.test_dir,
+            self.output_dir,
+            self.serve_dir,
+            self.marker_dir,
+        ]:
+            shutil.rmtree(d, ignore_errors=True)
+
+    # -- helpers --
+
+    def _spec_with_marker(self, identity, marker_path, build_body=""):
+        p = self.archive_path.as_posix()
+        mp = marker_path.as_posix()
+        return f'''IDENTITY = "{identity}"
+EXPORTABLE = true
+
+FETCH = {{
+  source = "{p}",
+  sha256 = "{self.archive_hash}"
+}}
+
+STAGE = {{strip = 1}}
+
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  local m = io.open("{mp}", "w"); m:write("built"); m:close()
+{build_body}
+end
+'''
+
+    def _run(self, *args, cache_root=None):
+        cache = cache_root or self.target_cache
+        cmd = [str(self.envy), "--cache-root", str(cache), *args]
+        return test_config.run(
+            cmd, cwd=self.project_root, capture_output=True, text=True
+        )
+
+    def _install_and_export_pkg(self):
+        """Install + export the downstream package. Returns (archive, sha256)."""
+        m = self.test_dir / "source.lua"
+        m.write_text(
+            make_manifest(
+                f'\nPACKAGES = {{\n    {{ spec = "{self.pkg_identity}", '
+                f'source = "{self.pkg_spec.as_posix()}" }}\n}}\n'
+            ),
+            encoding="utf-8",
+        )
+        r = self._run("install", "--manifest", str(m), cache_root=self.source_cache)
+        self.assertEqual(r.returncode, 0, f"install failed: {r.stderr}")
+        r = self._run(
+            "export",
+            "-o",
+            str(self.output_dir),
+            "--manifest",
+            str(m),
+            cache_root=self.source_cache,
+        )
+        self.assertEqual(r.returncode, 0, f"export failed: {r.stderr}")
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+        self.assertEqual(len(lines), 1)
+        _, archive = parse_export_line(lines[0])
+        self.pkg_marker.unlink(missing_ok=True)
+        return archive, hashlib.sha256(archive.read_bytes()).hexdigest()
+
+    def _serve(self, archive):
+        """Serve archive over HTTP. Returns (server, archive_url, depot_line)."""
+        shutil.copy2(archive, self.serve_dir / archive.name)
+        handler = partial(_QuietHandler, directory=str(self.serve_dir))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        port = srv.server_address[1]
+        url = f"http://127.0.0.1:{port}/{archive.name}"
+        sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+        return srv, url, f"{sha}  {url}"
+
+    def _write_manifest(self, depots_lua, extra_packages=""):
+        path = self.test_dir / "target.lua"
+        path.write_text(
+            '-- @envy bin "envy-bin"\n'
+            + f"\nPACKAGES = {{\n"
+            + f'    {{ spec = "{self.pkg_identity}", source = "{self.pkg_spec.as_posix()}" }}{extra_packages}\n'
+            + "}\n"
+            + f"PACKAGE_DEPOTS = {depots_lua}\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def _assert_imported(self, r):
+        self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+        pkg_dir = self.target_cache / "packages" / self.pkg_identity
+        self.assertTrue(pkg_dir.exists(), "Package should be in target cache")
+        self.assertFalse(
+            self.pkg_marker.exists(),
+            "BUILD marker should NOT exist (depot import expected)",
+        )
+
+    # -- tests --
+
+    def test_fetch_returns_path(self):
+        """FETCH returning a path to a depot text file imports the package."""
+        archive, _ = self._install_and_export_pkg()
+        srv, _, depot_line = self._serve(archive)
+        try:
+            depot_txt = self.test_dir / "fn_depot.txt"
+            depot_txt.write_text(depot_line + "\n", encoding="utf-8")
+            m = self._write_manifest(
+                f'{{ {{ FETCH = function(ctx) return "{depot_txt.as_posix()}" end }} }}'
+            )
+            self._assert_imported(self._run("sync", "--manifest", str(m)))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_fetch_returns_raw_text(self):
+        """FETCH returning depot manifest text imports the package."""
+        archive, _ = self._install_and_export_pkg()
+        srv, _, depot_line = self._serve(archive)
+        try:
+            m = self._write_manifest(
+                f'{{ {{ FETCH = function(ctx) return "{depot_line}\\n" end }} }}'
+            )
+            self._assert_imported(self._run("sync", "--manifest", str(m)))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_fetch_returns_entries_table(self):
+        """FETCH returning an entries table imports the package."""
+        archive, sha = self._install_and_export_pkg()
+        srv, url, _ = self._serve(archive)
+        try:
+            m = self._write_manifest(
+                "{ { FETCH = function(ctx)\n"
+                f'      return {{ {{ url = "{url}", sha256 = "{sha}" }} }}\n'
+                "    end } }"
+            )
+            self._assert_imported(self._run("sync", "--manifest", str(m)))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_fetch_with_depends_tool_builds_from_source(self):
+        """DEPENDS tool source-builds (never imports); downstream imports."""
+        archive, _ = self._install_and_export_pkg()
+        srv, _, depot_line = self._serve(archive)
+        try:
+            tool_identity = "local.dfn_tool@v1"
+            tool_marker = self.marker_dir / "tool.marker"
+            tool_spec = self.test_dir / "dfn_tool.lua"
+            tool_spec.write_text(
+                self._spec_with_marker(
+                    tool_identity,
+                    tool_marker,
+                    build_body=(
+                        f'  local f = io.open(install_dir .. "/depot.txt", "w")\n'
+                        f'  f:write("{depot_line}\\n"); f:close()\n'
+                    ),
+                ),
+                encoding="utf-8",
+            )
+
+            m = self._write_manifest(
+                "{ {\n"
+                f'    DEPENDS = {{ "{tool_identity}" }},\n'
+                "    FETCH = function(ctx)\n"
+                f'      local f = io.open(ctx.deps["{tool_identity}"].pkg_path .. "/depot.txt", "r")\n'
+                '      local text = f:read("*a"); f:close()\n'
+                "      return text\n"
+                "    end,\n"
+                "  } }",
+                extra_packages=(
+                    f',\n    {{ spec = "{tool_identity}", '
+                    f'source = "{tool_spec.as_posix()}" }}'
+                ),
+            )
+
+            r = self._run("sync", "--manifest", str(m))
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+            self.assertTrue(
+                tool_marker.exists(),
+                "Tool BUILD marker should exist (source-built, never imports)",
+            )
+            self.assertFalse(
+                self.pkg_marker.exists(),
+                "Downstream BUILD marker should NOT exist (depot import)",
+            )
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_depot_dependency_failure_is_fatal(self):
+        """A failing depot DEPENDS build fails the run."""
+        tool_identity = "local.dfn_badtool@v1"
+        tool_spec = self.test_dir / "dfn_badtool.lua"
+        tool_spec.write_text(
+            f'''IDENTITY = "{tool_identity}"
+FETCH = {{ source = "{self.archive_path.as_posix()}", sha256 = "{self.archive_hash}" }}
+STAGE = {{strip = 1}}
+BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
+  error("tool build exploded")
+end
+''',
+            encoding="utf-8",
+        )
+        m = self._write_manifest(
+            "{ {\n"
+            f'    DEPENDS = {{ "{tool_identity}" }},\n'
+            '    FETCH = function(ctx) return "" end,\n'
+            "  } }",
+            extra_packages=(
+                f',\n    {{ spec = "{tool_identity}", '
+                f'source = "{tool_spec.as_posix()}" }}'
+            ),
+        )
+        r = self._run("sync", "--manifest", str(m))
+        self.assertNotEqual(r.returncode, 0, "sync should fail when depot dep fails")
+        self.assertIn("tool build exploded", r.stderr + r.stdout)
+
+    def test_fetch_error_is_fatal(self):
+        """A throwing FETCH function fails the run."""
+        m = self._write_manifest(
+            '{ { FETCH = function(ctx) error("depot fetch exploded") end } }'
+        )
+        r = self._run("sync", "--manifest", str(m))
+        self.assertNotEqual(r.returncode, 0, "sync should fail when FETCH throws")
+        self.assertIn("depot fetch exploded", r.stderr + r.stdout)
+
+    def test_unreachable_uri_degrades_gracefully(self):
+        """A dead URI entry warns and skips; other entries still serve imports."""
+        archive, _ = self._install_and_export_pkg()
+        srv, _, depot_line = self._serve(archive)
+        try:
+            depot_txt = self.serve_dir / "depot.txt"
+            depot_txt.write_text(depot_line + "\n", encoding="utf-8")
+            port = srv.server_address[1]
+            dead_port = _get_free_port()
+            m = self._write_manifest(
+                f'{{ "http://127.0.0.1:{dead_port}/depot.txt", '
+                f'"http://127.0.0.1:{port}/depot.txt" }}'
+            )
+            self._assert_imported(self._run("sync", "--manifest", str(m)))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_ignore_depot_skips_fetch_fn_and_depends(self):
+        """--ignore-depot: no depot task, tool never built, source build runs."""
+        tool_identity = "local.dfn_lazytool@v1"
+        tool_marker = self.marker_dir / "lazytool.marker"
+        tool_spec = self.test_dir / "dfn_lazytool.lua"
+        tool_spec.write_text(
+            self._spec_with_marker(tool_identity, tool_marker),
+            encoding="utf-8",
+        )
+        m = self._write_manifest(
+            "{ {\n"
+            f'    DEPENDS = {{ "{tool_identity}" }},\n'
+            '    FETCH = function(ctx) error("must not run") end,\n'
+            "  } }"
+        )
+        r = self._run("sync", "--ignore-depot", "--manifest", str(m))
+        self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+        self.assertTrue(
+            self.pkg_marker.exists(),
+            "Downstream BUILD marker should exist (source build)",
+        )
+        self.assertFalse(
+            tool_marker.exists(),
+            "Tool should never be built when depot is ignored",
+        )
+
+    def test_duplicate_key_differing_sha_keeps_first(self):
+        """Duplicate stem across depots with differing SHA256: first wins."""
+        archive, _ = self._install_and_export_pkg()
+        srv, url, depot_line = self._serve(archive)
+        try:
+            port = srv.server_address[1]
+            (self.serve_dir / "good.txt").write_text(
+                depot_line + "\n", encoding="utf-8"
+            )
+            (self.serve_dir / "bad.txt").write_text(
+                f"{'0' * 64}  {url}\n", encoding="utf-8"
+            )
+            m = self._write_manifest(
+                f'{{ "http://127.0.0.1:{port}/good.txt", '
+                f'"http://127.0.0.1:{port}/bad.txt" }}'
+            )
+            self._assert_imported(self._run("sync", "--manifest", str(m)))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_old_package_depot_directive_is_hard_error(self):
+        """The removed @envy package-depot directive fails with migration hint."""
+        m = self.test_dir / "old.lua"
+        m.write_text(
+            '-- @envy bin "envy-bin"\n'
+            '-- @envy package-depot "https://example.com/depot.txt"\n'
+            "PACKAGES = {}\n",
+            encoding="utf-8",
+        )
+        r = self._run("sync", "--manifest", str(m))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("PACKAGE_DEPOTS", r.stderr + r.stdout)
 
 
 if __name__ == "__main__":
