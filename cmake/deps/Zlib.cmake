@@ -5,8 +5,10 @@ if(EXISTS "${_zlib_archive}")
     set(_zlib_url "file://${_zlib_archive_norm}")
 endif()
 
-set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(ZLIB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(envy_zlib
@@ -64,7 +66,21 @@ if(DEFINED envy_zlib_BINARY_DIR)
     set(ZLIB_VERSION_STRING "${ENVY_ZLIB_VERSION}" CACHE STRING "" FORCE)
 
     if(DEFINED envy_zlib_SOURCE_DIR AND EXISTS "${envy_zlib_BINARY_DIR}/zconf.h")
-        configure_file("${envy_zlib_BINARY_DIR}/zconf.h" "${envy_zlib_SOURCE_DIR}/zconf.h" COPYONLY)
+        # zlib 1.3.2's generated zconf.h hard-defines HAVE_UNISTD_H/HAVE_STDARG_H;
+        # guard them so consumers whose config headers define these valueless
+        # (libssh2_config.h) don't trip macro-redefinition warnings.
+        file(READ "${envy_zlib_BINARY_DIR}/zconf.h" _envy_zconf)
+        foreach(_envy_zconf_macro HAVE_UNISTD_H HAVE_STDARG_H)
+            string(REPLACE
+                "#define ${_envy_zconf_macro} 1"
+                "#ifndef ${_envy_zconf_macro}\n#define ${_envy_zconf_macro} 1\n#endif"
+                _envy_zconf "${_envy_zconf}")
+        endforeach()
+        file(WRITE "${envy_zlib_BINARY_DIR}/zconf.h.envy" "${_envy_zconf}")
+        execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${envy_zlib_BINARY_DIR}/zconf.h.envy" "${envy_zlib_SOURCE_DIR}/zconf.h")
+        unset(_envy_zconf)
+        unset(_envy_zconf_macro)
     endif()
 endif()
 
