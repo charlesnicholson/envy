@@ -4,6 +4,7 @@
 #include "cmds/cmd_export.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
+#include "cmds/cmd_git_resolve.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_import.h"
 #include "cmds/cmd_init.h"
@@ -35,6 +36,7 @@ struct cli_args {
                                  cmd_export::cfg,
                                  cmd_extract::cfg,
                                  cmd_fetch::cfg,
+                                 cmd_git_resolve::cfg,
                                  cmd_hash::cfg,
                                  cmd_import::cfg,
                                  cmd_init::cfg,

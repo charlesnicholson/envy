@@ -1,4 +1,4 @@
-"""Functional tests for envy.git_resolve(repo, ref).
+"""Functional tests for the ``envy git-resolve <url> <ref>`` subcommand.
 
 Resolves refs against a local ``file://`` repository built with the ``git``
 binary, then compares envy's answer to ``git rev-parse``. No network. Requires
@@ -20,7 +20,7 @@ _GIT = shutil.which("git")
 
 @unittest.skipIf(_GIT is None, "git binary not available")
 class TestGitResolve(unittest.TestCase):
-    """Resolve tags/branches/shas of a local repo via the `envy lua` command."""
+    """Resolve tags/branches/shas of a local repo via `envy git-resolve`."""
 
     def setUp(self) -> None:
         project_root = Path(__file__).resolve().parent.parent
@@ -86,20 +86,12 @@ class TestGitResolve(unittest.TestCase):
     def _repo_url(self) -> str:
         return self._repo.as_uri()  # file:// URL, correct on every platform
 
-    def _resolve(self, ref: str) -> subprocess.CompletedProcess:
-        """Invoke `envy lua` on a script that prints git_resolve(repo, ref)."""
-        script = self._work / "resolve.lua"
-        # repo/ref are interpolated as Lua long-bracket strings -- no escaping.
-        script.write_text(
-            "envy.stdout(envy.git_resolve([==[{repo}]==], [==[{ref}]==]))\n".format(
-                repo=self._repo_url, ref=ref
-            ),
-            encoding="utf-8",
-        )
+    def _resolve(self, ref: str, repo: str | None = None) -> subprocess.CompletedProcess:
+        """Invoke `envy git-resolve <url> <ref>`."""
         env = os.environ.copy()
         env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
         return test_config.run(
-            [str(self._envy), "lua", str(script)],
+            [str(self._envy), "git-resolve", repo or self._repo_url, ref],
             capture_output=True,
             text=True,
             env=env,
@@ -119,6 +111,9 @@ class TestGitResolve(unittest.TestCase):
     def test_branch_fully_qualified(self) -> None:
         self.assertEqual(self._resolve_ok("refs/heads/main"), self.c2)
 
+    def test_bare_branch_suffix_match(self) -> None:
+        self.assertEqual(self._resolve_ok("main"), self.c2)
+
     def test_annotated_tag_peels_to_commit(self) -> None:
         # Must return the commit the tag points at, not the tag object itself.
         resolved = self._resolve_ok("refs/tags/v2.0")
@@ -128,13 +123,23 @@ class TestGitResolve(unittest.TestCase):
     def test_bare_tag_suffix_match(self) -> None:
         self.assertEqual(self._resolve_ok("v1.0"), self.c1)
 
+    def test_full_sha_passthrough(self) -> None:
+        # A full sha is echoed back unchanged without contacting the repo.
+        self.assertEqual(self._resolve_ok(self.c1), self.c1)
+
     def test_full_sha_uppercase_passthrough_lowercases(self) -> None:
         # Full sha is returned normalized to lowercase without contacting the repo.
         self.assertEqual(self._resolve_ok(self.c1.upper()), self.c1)
 
+    def test_output_is_bare_sha_with_trailing_newline(self) -> None:
+        # stdout is exactly the sha plus one newline -- pipeable, no adornment.
+        result = self._resolve("refs/tags/v1.0")
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertEqual(result.stdout, self.c1 + "\n")
+
     # -- error cases ---------------------------------------------------------
 
-    def test_missing_ref_fails(self) -> None:
+    def test_unknown_ref_fails(self) -> None:
         result = self._resolve("refs/tags/does-not-exist")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not found", result.stderr.lower())
@@ -143,6 +148,13 @@ class TestGitResolve(unittest.TestCase):
         result = self._resolve("amb")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("ambiguous", result.stderr.lower())
+
+    def test_unreachable_repo_fails(self) -> None:
+        # A non-sha ref forces a network/advertisement attempt; a bogus local
+        # path cannot be connected to.
+        result = self._resolve("refs/heads/main", repo=(self._work / "nope").as_uri())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "")
 
 
 if __name__ == "__main__":

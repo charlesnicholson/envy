@@ -32,6 +32,8 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 
 **`envy hash <path...> [--algorithm=...]`** — Compute and print cryptographic hashes for files and directories. Defaults to SHA256 and BLAKE3; supports sha256, blake3, sha1, md5. Recursively hashes all files in directories. Outputs in format `HASH  filename`.
 
+**`envy git-resolve <url> <ref>`** — Resolve a git ref (tag/branch/sha) in a remote repo to a full commit sha via libgit2's ref advertisement (no clone, no `git` binary); prints the sha to stdout. Prefer fully-qualified refs (`refs/tags/…`, `refs/heads/…`); a bare trailing segment (`v1.5.23`) resolves when unambiguous. Annotated tags peel to their commit; a full 40/64-hex sha is echoed back (lowercased, no network). Turns a mutable tag/branch into an immutable sha to pin in a manifest — resolving once at authoring time, not on every script run.
+
 **`envy hash-verify <file> <expected-hash> [--algorithm=...]`** — Verify file matches expected hash. Algorithm flag required (sha256, blake3, sha1, md5). Exits 0 if match, non-zero otherwise. Useful in scripts/CI.
 
 **`envy lua [script]`** — Execute Lua script with envy's embedded runtime. If no script provided, opens interactive REPL. Exposes envy verbs (`fetch`, `extract`, `hash`) to Lua environment.
