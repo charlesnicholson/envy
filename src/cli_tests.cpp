@@ -3,6 +3,7 @@
 #include "cmds/cmd_export.h"
 #include "cmds/cmd_extract.h"
 #include "cmds/cmd_fetch.h"
+#include "cmds/cmd_git_resolve.h"
 #include "cmds/cmd_hash.h"
 #include "cmds/cmd_import.h"
 #include "cmds/cmd_init.h"
@@ -198,6 +199,74 @@ TEST_CASE("cli_parse: cmd_fetch") {
     CHECK(cfg->destination == std::filesystem::path("/tmp/tool.tar.gz"));
     REQUIRE(cfg->manifest_root.has_value());
     CHECK(*cfg->manifest_root == std::filesystem::path("/workspace"));
+  }
+}
+
+TEST_CASE("cli_parse: cmd_git_resolve") {
+  SUBCASE("url and ref") {
+    std::vector<std::string> args{ "envy",
+                                   "git-resolve",
+                                   "https://chromium.googlesource.com/build",
+                                   "refs/tags/siso/v1.5.23" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_git_resolve::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->repo == "https://chromium.googlesource.com/build");
+    CHECK(cfg->ref == "refs/tags/siso/v1.5.23");
+  }
+
+  SUBCASE("positional order is url then ref") {
+    // A bare branch name and a file:// url; verifies fields are not transposed.
+    std::vector<std::string> args{ "envy", "git-resolve", "file:///srv/repo.git", "main" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_git_resolve::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->repo == "file:///srv/repo.git");
+    CHECK(cfg->ref == "main");
+  }
+
+  SUBCASE("full sha ref parses verbatim") {
+    std::vector<std::string> args{ "envy",
+                                   "git-resolve",
+                                   "git@github.com:org/repo.git",
+                                   "36cc599dca99520d2a0df22d62c4a87fc5a536d1" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_git_resolve::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->repo == "git@github.com:org/repo.git");
+    CHECK(cfg->ref == "36cc599dca99520d2a0df22d62c4a87fc5a536d1");
+  }
+
+  SUBCASE("missing ref rejected") {
+    std::vector<std::string> args{ "envy", "git-resolve", "https://example.com/repo" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("missing url and ref rejected") {
+    std::vector<std::string> args{ "envy", "git-resolve" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
   }
 }
 

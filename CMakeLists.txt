@@ -235,6 +235,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_export.cpp
     src/cmds/cmd_extract.cpp
     src/cmds/cmd_fetch.cpp
+    src/cmds/cmd_git_resolve.cpp
     src/cmds/cmd_import.cpp
     src/cmds/cmd_package.cpp
     src/cmds/cmd_hash.cpp
@@ -256,7 +257,6 @@ set(ENVY_BASE_SOURCES
     src/lua_ctx/lua_envy_extract.cpp
     src/lua_ctx/lua_envy_fetch.cpp
     src/lua_ctx/lua_envy_file_ops.cpp
-    src/lua_ctx/lua_envy_git.cpp
     src/lua_ctx/lua_envy_loadenv_spec.cpp
     src/lua_ctx/lua_envy_options.cpp
     src/lua_ctx/lua_envy_package.cpp
@@ -281,6 +281,7 @@ set(ENVY_BASE_SOURCES
     src/extract.cpp
     src/aws_util.cpp
     src/blake3_util.cpp
+    src/git_resolve.cpp
     src/libgit2_util.cpp
     src/sol_util.cpp
     src/lua_shell.cpp
@@ -488,8 +489,8 @@ set(ENVY_UNIT_TEST_SOURCES
     src/pkg_cfg_tests.cpp
     src/pkg_cfg_custom_source_tests.cpp
     src/pkg_key_tests.cpp
+    src/git_resolve_tests.cpp
     src/lua_ctx/lua_envy_dep_util_tests.cpp
-    src/lua_ctx/lua_envy_git_tests.cpp
     src/lua_ctx/lua_envy_options_tests.cpp
     src/lua_envy_tests.cpp
     src/platform_tests.cpp

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "sol/sol.hpp"
-
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,7 +32,15 @@ bool git_ref_is_full_sha(std::string_view s);
 // with conflicting oids, or when a suffix match is ambiguous across oids.
 std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_view ref);
 
-// Install envy.git_resolve(repo, ref) -> sha into the envy table.
-void lua_envy_git_install(sol::table &envy_table);
+// Resolve `ref` (tag/branch/sha) in remote `repo` to a full commit sha.
+//
+// A full 40/64-hex sha is returned lowercased without any network access.
+// Otherwise the remote's ref advertisement is fetched (libgit2 ls-remote; no
+// clone, no `git` binary) and matched via git_resolve_ref. HTTPS remotes
+// require the system CA bundle be configured.
+//
+// Throws std::runtime_error when `repo` or `ref` is empty, the remote cannot
+// be contacted, or the ref does not resolve (see git_resolve_ref).
+std::string git_resolve_remote(std::string const &repo, std::string const &ref);
 
 }  // namespace envy
