@@ -128,8 +128,7 @@ std::string git_resolve_remote(std::string const &repo, std::string const &ref) 
     if (git_remote_create_detached(&raw, repo.c_str())) {
       throw git_last_error("git-resolve: invalid remote '" + repo + "'");
     }
-    return std::unique_ptr<git_remote, decltype(&git_remote_free)>{ raw,
-                                                                    git_remote_free };
+    return std::unique_ptr<git_remote, decltype(&git_remote_free)>{ raw, git_remote_free };
   }() };
 
   git_remote_callbacks callbacks;
