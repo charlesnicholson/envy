@@ -139,7 +139,7 @@ class TestGitResolve(unittest.TestCase):
 
     # -- error cases ---------------------------------------------------------
 
-    def test_missing_ref_fails(self) -> None:
+    def test_unknown_ref_fails(self) -> None:
         result = self._resolve("refs/tags/does-not-exist")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not found", result.stderr.lower())
