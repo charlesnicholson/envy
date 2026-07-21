@@ -148,7 +148,7 @@ class task_engine : unmovable {
   };
 
   task *find(std::string const &key) const;  // throws on unknown key
-  static void ratchet_target(task &t, int target);
+  void ratchet_target(task &t, int target, bool notify_observer = true);
   static std::string current_exception_message();  // call from a catch block
   void fail_task(task *t, std::string error_msg);
   void run_worker(task *t);

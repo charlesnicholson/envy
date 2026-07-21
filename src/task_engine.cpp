@@ -34,13 +34,20 @@ task_engine::task *task_engine::find(std::string const &key) const {
   return it->second.get();
 }
 
-void task_engine::ratchet_target(task &t, int target) {
+void task_engine::ratchet_target(task &t, int target, bool notify_observer) {
   target = std::min(target, t.cfg.step_count);  // beyond-done is unsatisfiable
   int current{ t.target.load() };
   while (current < target) {
     if (t.target.compare_exchange_weak(current, target)) {
-      std::lock_guard const lock(t.mutex);
-      t.cv.notify_one();
+      {
+        std::lock_guard const lock(t.mutex);
+        t.cv.notify_one();
+      }
+      // Outside the task mutex: observers may reenter the engine, and
+      // fail_all takes engine mutex -> task mutex (lock-order inversion).
+      if (notify_observer && observer_.target_extended) {
+        observer_.target_extended(t.cfg.key, current, target);
+      }
       return;
     }
   }
@@ -68,7 +75,8 @@ bool task_engine::start_task(std::string const &key,
         throw;
       }
     }
-    ratchet_target(*t, target);
+    // Initial ratchet isn't an extension: thread_start announces the target.
+    ratchet_target(*t, target, false);
     if (observer_.thread_start) { observer_.thread_start(key, target); }
     {
       // Under the task mutex: join_all may be reaping concurrently (workers
@@ -218,11 +226,9 @@ void task_engine::run_worker(task *t) {
           t->cv.wait(lock, [t, done] { return t->target > done || t->failed; });
         }
         if (t->failed) { break; }
-        // Outside the task mutex: observers may reenter the engine, and
-        // fail_all takes engine mutex -> task mutex (lock-order inversion).
-        if (observer_.target_extended) {
-          observer_.target_extended(key, done, t->target.load());
-        }
+        // target_extended fires from ratchet_target, where the extension is
+        // deterministic; a worker may never park here if the extension lands
+        // before its target check.
       }
 
       int const step{ t->completed };
