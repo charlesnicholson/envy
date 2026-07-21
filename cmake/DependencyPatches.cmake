@@ -311,6 +311,41 @@ function(envy_patch_aws_noexecstack source_dir binary_dir)
     unset(S2N_CMAKELISTS)
 endfunction()
 
+# Align aws-c-common's AVX2 base64 encoder definition with its declaration;
+# upstream's Base64url change left the definition one parameter short and GCC
+# LTO warns (-Wlto-type-mismatch) at final link.
+function(envy_patch_aws_crt_base64_sig source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_aws_crt_base64_sig_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_crt_base64_sig.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_crt_base64_sig_patch.py.in")
+
+    set(AWS_C_COMMON_ENCODING_AVX2 "${_source_dir_norm}/crt/aws-crt-cpp/crt/aws-c-common/source/arch/intel/encoding_avx2.c")
+    if(NOT EXISTS "${AWS_C_COMMON_ENCODING_AVX2}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWS_C_COMMON_ENCODING_AVX2)
+endfunction()
+
 # Make libcurl’s pkg-config metadata reference the actual zlib target we
 # build instead of the abstract ZLIB::ZLIB alias.
 function(envy_patch_libcurl_cmakelists source_dir binary_dir zlib_target)

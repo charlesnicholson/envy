@@ -1,0 +1,34 @@
+import pathlib
+
+# aws-c-common's Base64url change (#1229) added a url_safe_encoding parameter
+# to the aws_common_private_base64_encode_sse41 declaration and call site in
+# encoding.c, but left the AVX2 definition with the old 3-parameter signature.
+# GCC LTO flags the mismatch at link (-Wlto-type-mismatch). Align the
+# definition with the declaration; the only call site is guarded by
+# !do_url_safe_encoding, so the parameter is ignored.
+
+encoding_avx2 = pathlib.Path(r"@AWS_C_COMMON_ENCODING_AVX2@")
+text = encoding_avx2.read_text()
+
+marker = "/* envy: match encoding.c declaration */"
+
+old_sig = (
+    "void aws_common_private_base64_encode_sse41("
+    "const uint8_t *input, uint8_t *output, size_t inlen) {"
+)
+
+new_sig = (
+    "void aws_common_private_base64_encode_sse41(\n"
+    "    const uint8_t *input, uint8_t *output, size_t inlen, bool url_safe_encoding) "
+    + marker
+    + " {\n"
+    "    (void)url_safe_encoding; /* call site guarantees false */"
+)
+
+if old_sig not in text:
+    if marker in text:
+        raise SystemExit(0)
+    raise RuntimeError("aws-c-common: base64_encode_sse41 definition not found")
+
+text = text.replace(old_sig, new_sig, 1)
+encoding_avx2.write_text(text)
