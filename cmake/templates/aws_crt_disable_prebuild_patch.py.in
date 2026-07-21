@@ -87,6 +87,9 @@ replacement = """        if(NOT USE_OPENSSL)
                 # OPENSSL_NO_ASM is used because MSan can't see into asm.
                 set(MSAN 1 CACHE BOOL "" FORCE)
                 set(OPENSSL_NO_ASM 1 CACHE BOOL "" FORCE)
+            else()
+                set(MSAN 0 CACHE BOOL "" FORCE)
+                set(OPENSSL_NO_ASM 0 CACHE BOOL "" FORCE)
             endif()
 
             add_subdirectory(crt/aws-lc) # envy: disable aws crt prebuild
