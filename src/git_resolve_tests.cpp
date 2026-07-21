@@ -1,9 +1,8 @@
-#include "lua_envy_git.h"
-
-#include "sol_util.h"
+#include "git_resolve.h"
 
 #include "doctest.h"
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -12,6 +11,7 @@ namespace {
 using envy::git_ref_entry;
 using envy::git_ref_is_full_sha;
 using envy::git_resolve_ref;
+using envy::git_resolve_remote;
 
 // 40-char lowercase-hex oids (a/b/c/d/e are hex digits).
 std::string const kOidA(40, 'a');
@@ -220,44 +220,29 @@ TEST_CASE("git_resolve_ref resolves a realistic siso tag advertisement") {
 }
 
 // ---------------------------------------------------------------------------
-// Lua binding -- sha passthrough and argument validation (no network)
+// git_resolve_remote -- sha passthrough and argument validation (no network)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("envy.git_resolve returns a full sha unchanged without a lookup") {
-  auto lua{ envy::sol_util_make_lua_state() };
-  sol::table envy_table{ lua->create_table() };
-  envy::lua_envy_git_install(envy_table);
-
-  sol::protected_function resolve{ envy_table["git_resolve"] };
+TEST_CASE("git_resolve_remote returns a full sha unchanged without a lookup") {
   std::string const sha{ "36cc599dca99520d2a0df22d62c4a87fc5a536d1" };
-
   // repo is required non-empty but is never contacted for a full sha.
-  sol::protected_function_result r{ resolve("https://example.invalid/repo", sha) };
-  REQUIRE(r.valid());
-  CHECK(r.get<std::string>() == sha);
+  CHECK(git_resolve_remote("https://example.invalid/repo", sha) == sha);
 }
 
-TEST_CASE("envy.git_resolve lowercases a full sha passed in uppercase") {
-  auto lua{ envy::sol_util_make_lua_state() };
-  sol::table envy_table{ lua->create_table() };
-  envy::lua_envy_git_install(envy_table);
-
-  sol::protected_function resolve{ envy_table["git_resolve"] };
+TEST_CASE("git_resolve_remote lowercases a full sha passed in uppercase") {
   std::string const upper{ "36CC599DCA99520D2A0DF22D62C4A87FC5A536D1" };
   std::string const lower{ "36cc599dca99520d2a0df22d62c4a87fc5a536d1" };
-
   // Uppercase never hits the network; it normalizes to match advertised oids.
-  sol::protected_function_result r{ resolve("https://example.invalid/repo", upper) };
-  REQUIRE(r.valid());
-  CHECK(r.get<std::string>() == lower);
+  CHECK(git_resolve_remote("https://example.invalid/repo", upper) == lower);
 }
 
-TEST_CASE("envy.git_resolve rejects empty repo and empty ref") {
-  auto lua{ envy::sol_util_make_lua_state() };
-  sol::table envy_table{ lua->create_table() };
-  envy::lua_envy_git_install(envy_table);
+TEST_CASE("git_resolve_remote passes a full 64-char sha256 through unchanged") {
+  std::string const sha{ std::string(64, 'a') };
+  CHECK(git_resolve_remote("https://example.invalid/repo", sha) == sha);
+}
 
-  sol::protected_function resolve{ envy_table["git_resolve"] };
-  CHECK_FALSE(resolve("", "refs/heads/main").valid());
-  CHECK_FALSE(resolve("https://example.invalid/repo", "").valid());
+TEST_CASE("git_resolve_remote rejects empty repo and empty ref") {
+  CHECK_THROWS_AS(git_resolve_remote("", "refs/heads/main"), std::runtime_error);
+  CHECK_THROWS_AS(git_resolve_remote("https://example.invalid/repo", ""),
+                  std::runtime_error);
 }

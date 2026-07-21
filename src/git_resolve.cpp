@@ -1,4 +1,4 @@
-#include "lua_envy_git.h"
+#include "git_resolve.h"
 
 #include "libgit2_util.h"
 
@@ -45,7 +45,7 @@ bool git_ref_is_full_sha(std::string_view s) {
 }
 
 std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_view ref) {
-  if (ref.empty()) { throw std::runtime_error("envy.git_resolve: ref must be non-empty"); }
+  if (ref.empty()) { throw std::runtime_error("git-resolve: ref must be non-empty"); }
 
   // Collapse the advertisement into one oid per base name. Plain entries carry
   // the ref's own oid; peeled ("<name>^{}") entries carry the underlying commit
@@ -58,13 +58,13 @@ std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_
       std::string base{ e.name.substr(0, e.name.size() - kPeelSuffix.size()) };
       auto const [it, inserted]{ peeled.try_emplace(std::move(base), e.oid) };
       if (!inserted && it->second != e.oid) {
-        throw std::runtime_error("envy.git_resolve: ref '" + it->first +
+        throw std::runtime_error("git-resolve: ref '" + it->first +
                                  "' advertised with conflicting peeled oids");
       }
     } else {
       auto const [it, inserted]{ plain.try_emplace(e.name, e.oid) };
       if (!inserted && it->second != e.oid) {
-        throw std::runtime_error("envy.git_resolve: ref '" + e.name +
+        throw std::runtime_error("git-resolve: ref '" + e.name +
                                  "' advertised with conflicting oids");
       }
     }
@@ -90,7 +90,7 @@ std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_
   }
 
   if (matches.empty()) {
-    throw std::runtime_error("envy.git_resolve: ref not found: " + std::string{ ref });
+    throw std::runtime_error("git-resolve: ref not found: " + std::string{ ref });
   }
 
   bool const all_same{ std::all_of(matches.begin(), matches.end(), [&](auto const &m) {
@@ -98,7 +98,7 @@ std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_
   }) };
   if (!all_same) {
     std::ostringstream msg;
-    msg << "envy.git_resolve: ref '" << ref << "' is ambiguous; matches:";
+    msg << "git-resolve: ref '" << ref << "' is ambiguous; matches:";
     for (auto const &[name, oid] : matches) { msg << "\n  " << name << " -> " << oid; }
     throw std::runtime_error(msg.str());
   }
@@ -106,69 +106,64 @@ std::string git_resolve_ref(std::vector<git_ref_entry> const &refs, std::string_
   return matches.front().second;
 }
 
-void lua_envy_git_install(sol::table &envy_table) {
-  envy_table["git_resolve"] = [](std::string repo, std::string ref) -> std::string {
-    if (repo.empty()) {
-      throw std::runtime_error("envy.git_resolve: repo must be non-empty");
+std::string git_resolve_remote(std::string const &repo, std::string const &ref) {
+  if (repo.empty()) { throw std::runtime_error("git-resolve: repo must be non-empty"); }
+  if (ref.empty()) { throw std::runtime_error("git-resolve: ref must be non-empty"); }
+
+  // A full object id needs no lookup -- return it (no network). Normalize to
+  // lowercase so it matches the lowercase oids the ref-advertisement path emits.
+  if (git_ref_is_full_sha(ref)) {
+    std::string lower{ ref };
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+    return lower;
+  }
+
+  // HTTPS requires CA certificates be configured (matches fetch_git_repo).
+  if (repo.starts_with("https://")) { libgit2_require_ssl_certs(); }
+
+  std::unique_ptr<git_remote, decltype(&git_remote_free)> const remote{ [&] {
+    git_remote *raw{ nullptr };
+    if (git_remote_create_detached(&raw, repo.c_str())) {
+      throw git_last_error("git-resolve: invalid remote '" + repo + "'");
     }
-    if (ref.empty()) {
-      throw std::runtime_error("envy.git_resolve: ref must be non-empty");
-    }
+    return std::unique_ptr<git_remote, decltype(&git_remote_free)>{ raw,
+                                                                    git_remote_free };
+  }() };
 
-    // A full object id needs no lookup -- return it (no network). Normalize to
-    // lowercase so it matches the lowercase oids the ref-advertisement path emits.
-    if (git_ref_is_full_sha(ref)) {
-      std::transform(ref.begin(), ref.end(), ref.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-      });
-      return ref;
-    }
+  git_remote_callbacks callbacks;
+  git_remote_init_callbacks(&callbacks, GIT_REMOTE_CALLBACKS_VERSION);
 
-    // HTTPS requires CA certificates be configured (matches fetch_git_repo).
-    if (repo.starts_with("https://")) { libgit2_require_ssl_certs(); }
+  if (git_remote_connect(remote.get(),
+                         GIT_DIRECTION_FETCH,
+                         &callbacks,
+                         nullptr,
+                         nullptr)) {
+    throw git_last_error("git-resolve: cannot connect to '" + repo + "'");
+  }
 
-    std::unique_ptr<git_remote, decltype(&git_remote_free)> const remote{ [&] {
-      git_remote *raw{ nullptr };
-      if (git_remote_create_detached(&raw, repo.c_str())) {
-        throw git_last_error("envy.git_resolve: invalid remote '" + repo + "'");
-      }
-      return std::unique_ptr<git_remote, decltype(&git_remote_free)>{ raw,
-                                                                      git_remote_free };
-    }() };
+  // git_remote_ls borrows from the connection; disconnect after copying out.
+  struct disconnect_guard {
+    git_remote *r;
+    ~disconnect_guard() { git_remote_disconnect(r); }
+  } const guard{ remote.get() };
 
-    git_remote_callbacks callbacks;
-    git_remote_init_callbacks(&callbacks, GIT_REMOTE_CALLBACKS_VERSION);
+  git_remote_head const **heads{ nullptr };
+  size_t count{ 0 };
+  if (git_remote_ls(&heads, &count, remote.get())) {
+    throw git_last_error("git-resolve: cannot list refs of '" + repo + "'");
+  }
 
-    if (git_remote_connect(remote.get(),
-                           GIT_DIRECTION_FETCH,
-                           &callbacks,
-                           nullptr,
-                           nullptr)) {
-      throw git_last_error("envy.git_resolve: cannot connect to '" + repo + "'");
-    }
+  std::vector<git_ref_entry> entries;
+  entries.reserve(count);
+  char oid_hex[GIT_OID_MAX_HEXSIZE + 1];
+  for (size_t i{ 0 }; i < count; ++i) {
+    git_oid_tostr(oid_hex, sizeof(oid_hex), &heads[i]->oid);
+    entries.push_back({ heads[i]->name ? heads[i]->name : "", std::string{ oid_hex } });
+  }
 
-    // git_remote_ls borrows from the connection; disconnect after copying out.
-    struct disconnect_guard {
-      git_remote *r;
-      ~disconnect_guard() { git_remote_disconnect(r); }
-    } const guard{ remote.get() };
-
-    git_remote_head const **heads{ nullptr };
-    size_t count{ 0 };
-    if (git_remote_ls(&heads, &count, remote.get())) {
-      throw git_last_error("envy.git_resolve: cannot list refs of '" + repo + "'");
-    }
-
-    std::vector<git_ref_entry> entries;
-    entries.reserve(count);
-    char oid_hex[GIT_OID_MAX_HEXSIZE + 1];
-    for (size_t i{ 0 }; i < count; ++i) {
-      git_oid_tostr(oid_hex, sizeof(oid_hex), &heads[i]->oid);
-      entries.push_back({ heads[i]->name ? heads[i]->name : "", std::string{ oid_hex } });
-    }
-
-    return git_resolve_ref(entries, ref);
-  };
+  return git_resolve_ref(entries, ref);
 }
 
 }  // namespace envy
