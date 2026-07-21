@@ -108,6 +108,9 @@ set(_envy_libgit2_warning_silencers
     # GCC+TSAN warning: atomic_thread_fence not supported with -fsanitize=thread
     # Only GCC emits this warning; Clang/AppleClang don't recognize -Wno-tsan
     $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-tsan>
+    # libgit2 enables -Wc99-c11-compat; libssh2.h retypedefs credential.h's
+    # forward typedefs (legal C11) in ssh_libssh2.c
+    $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-c99-c11-compat>
 )
 foreach(_libgit2_target IN ITEMS libgit2 libgit2package util ntlmclient http-parser xdiff)
     if(TARGET ${_libgit2_target})
