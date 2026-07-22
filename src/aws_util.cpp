@@ -91,9 +91,9 @@ void on_download_progress(
 // AWS default chain minus the EC2 IMDS provider, which blackholes off-EC2
 // (169.254.169.254 routes nowhere). Empty creds -> signer sends unsigned (public
 // buckets); real creds -> signed (private objects).
-class signed_credentials_chain : public Aws::Auth::AWSCredentialsProviderChain {
+class non_imds_credentials_chain : public Aws::Auth::AWSCredentialsProviderChain {
  public:
-  signed_credentials_chain() {
+  non_imds_credentials_chain() {
     using namespace Aws::Auth;
     AddProvider(Aws::MakeShared<EnvironmentAWSCredentialsProvider>(kAllocationTag));
     AddProvider(Aws::MakeShared<ProfileConfigFileAWSCredentialsProvider>(kAllocationTag));
@@ -112,7 +112,7 @@ transfer_context &get_transfer_context(std::string const &region) {
   Aws::Client::ClientConfiguration config;
   if (!region.empty()) { config.region = Aws::String(region.c_str()); }
 
-  auto provider{ Aws::MakeShared<signed_credentials_chain>(kAllocationTag) };
+  auto provider{ Aws::MakeShared<non_imds_credentials_chain>(kAllocationTag) };
 
   auto client{ Aws::MakeShared<Aws::S3::S3Client>(
       kAllocationTag,
