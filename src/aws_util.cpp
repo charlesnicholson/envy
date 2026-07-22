@@ -4,6 +4,8 @@
 #include "aws/core/Aws.h"
 #include "aws/core/auth/AWSCredentialsProvider.h"
 #include "aws/core/auth/AWSCredentialsProviderChain.h"
+#include "aws/core/auth/SSOCredentialsProvider.h"
+#include "aws/core/auth/STSCredentialsProvider.h"
 #include "aws/core/client/ClientConfiguration.h"
 #include "aws/core/utils/logging/LogLevel.h"
 #include "aws/core/utils/logging/NullLogSystem.h"
@@ -86,6 +88,22 @@ void on_download_progress(
   }
 }
 
+// AWS default chain minus the EC2 IMDS provider, which blackholes off-EC2
+// (169.254.169.254 routes nowhere). Empty creds -> signer sends unsigned (public
+// buckets); real creds -> signed (private objects).
+class non_imds_credentials_chain : public Aws::Auth::AWSCredentialsProviderChain {
+ public:
+  non_imds_credentials_chain() {
+    using namespace Aws::Auth;
+    AddProvider(Aws::MakeShared<EnvironmentAWSCredentialsProvider>(kAllocationTag));
+    AddProvider(Aws::MakeShared<ProfileConfigFileAWSCredentialsProvider>(kAllocationTag));
+    AddProvider(Aws::MakeShared<ProcessCredentialsProvider>(kAllocationTag));
+    AddProvider(
+        Aws::MakeShared<STSAssumeRoleWebIdentityCredentialsProvider>(kAllocationTag));
+    AddProvider(Aws::MakeShared<SSOCredentialsProvider>(kAllocationTag));
+  }
+};
+
 transfer_context &get_transfer_context(std::string const &region) {
   std::lock_guard<std::mutex> lock{ g_transfer_mutex };
   auto const it{ g_transfer_contexts.find(region) };
@@ -94,15 +112,7 @@ transfer_context &get_transfer_context(std::string const &region) {
   Aws::Client::ClientConfiguration config;
   if (!region.empty()) { config.region = Aws::String(region.c_str()); }
 
-  // Try the default credential chain; fall back to anonymous for public buckets.
-  auto provider{ [&]() -> std::shared_ptr<Aws::Auth::AWSCredentialsProvider> {
-    auto chain{ Aws::MakeShared<Aws::Auth::DefaultAWSCredentialsProviderChain>(
-        kAllocationTag) };
-    return chain->GetAWSCredentials().IsEmpty()
-               ? std::shared_ptr<Aws::Auth::AWSCredentialsProvider>{ Aws::MakeShared<
-                     Aws::Auth::AnonymousAWSCredentialsProvider>(kAllocationTag) }
-               : std::move(chain);
-  }() };
+  auto provider{ Aws::MakeShared<non_imds_credentials_chain>(kAllocationTag) };
 
   auto client{ Aws::MakeShared<Aws::S3::S3Client>(
       kAllocationTag,
