@@ -109,7 +109,11 @@ transfer_context &get_transfer_context(std::string const &region) {
   auto const it{ g_transfer_contexts.find(region) };
   if (it != g_transfer_contexts.end()) { return it->second; }
 
-  Aws::Client::ClientConfiguration config;
+  // Disable IMDS so the ctor never probes 169.254.169.254 for region when none is
+  // configured (env/profile); that blackholes off-EC2 and stalls until timeout.
+  Aws::Client::ClientConfigurationInitValues init;
+  init.shouldDisableIMDS = true;
+  Aws::Client::ClientConfiguration config{ init };
   if (!region.empty()) { config.region = Aws::String(region.c_str()); }
 
   auto provider{ Aws::MakeShared<non_imds_credentials_chain>(kAllocationTag) };
