@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
