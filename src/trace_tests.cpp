@@ -94,9 +94,9 @@ TEST_CASE("json and human serializers agree on field sets") {
           auto const json{ envy::trace_record_to_json(rec) };
           auto const human{ envy::trace_record_to_string(rec) };
 
-          auto const it{ std::find_if(schemas.begin(),
-                                      schemas.end(),
-                                      [&](auto const &s) { return s.name == name; }) };
+          auto const it{ std::find_if(schemas.begin(), schemas.end(), [&](auto const &s) {
+            return s.name == name;
+          }) };
           REQUIRE(it != schemas.end());
           for (auto const &field : it->fields) {
             auto const key{ field.substr(0, field.find(':')) };
@@ -144,8 +144,8 @@ TEST_CASE("trace_record_to_json produces valid ISO8601 timestamps") {
 }
 
 TEST_CASE("phase fields serialize as names") {
-  auto const rec{ make_record(envy::trace_events::phase_start{
-      .phase = envy::pkg_phase::pkg_fetch }) };
+  auto const rec{ make_record(
+      envy::trace_events::phase_start{ .phase = envy::pkg_phase::pkg_fetch }) };
   auto const json{ envy::trace_record_to_json(rec) };
   CHECK(json.find("\"phase\":\"fetch\"") != std::string::npos);
   CHECK(json.find("phase_num") == std::string::npos);

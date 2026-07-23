@@ -670,8 +670,10 @@ std::string format_prefix(std::string_view label) {
   std::tm const local_tm{ make_local_tm(timestamp) };
 
   char timestamp_buf[32]{};
-  if (std::strftime(timestamp_buf, sizeof(timestamp_buf), "%Y-%m-%d %H:%M:%S", &local_tm) ==
-      0) {
+  if (std::strftime(timestamp_buf,
+                    sizeof(timestamp_buf),
+                    "%Y-%m-%d %H:%M:%S",
+                    &local_tm) == 0) {
     return {};
   }
 

@@ -304,9 +304,7 @@ std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests,
   for (size_t i = 0; i < requests.size(); ++i) {
     workers.emplace_back([i, &requests, &results, &trace_spec]() {
       auto const [source, destination]{ std::visit(
-          [](auto const &r) {
-            return std::pair{ r.source, r.destination.string() };
-          },
+          [](auto const &r) { return std::pair{ r.source, r.destination.string() }; },
           requests[i]) };
       ENVY_TRACE(download_start, trace_spec, .url = source, .destination = destination);
       auto const start{ std::chrono::steady_clock::now() };
@@ -316,11 +314,11 @@ std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests,
 
         auto const &res{ std::get<fetch_result>(results[i]) };
         std::error_code size_ec;
-        auto const bytes{ std::filesystem::is_regular_file(res.resolved_destination,
-                                                           size_ec)
-                              ? std::filesystem::file_size(res.resolved_destination,
-                                                           size_ec)
-                              : 0 };
+        auto const bytes{
+          std::filesystem::is_regular_file(res.resolved_destination, size_ec)
+              ? std::filesystem::file_size(res.resolved_destination, size_ec)
+              : 0
+        };
         ENVY_TRACE(download_complete,
                    trace_spec,
                    .url = source,

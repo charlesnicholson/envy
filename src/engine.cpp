@@ -359,21 +359,20 @@ task_engine::observer engine::make_trace_observer() {
       [this](std::string const &key, int step, std::string const &dep, int watermark) {
         if (!tui::g_trace_enabled) { return; }
         bool const pair{ is_setup_pair_key(key) };
-        ENVY_TRACE(phase_blocked,
-                   trace_display(key),
-                   .blocked_at_phase =
-                       pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
-                   .waiting_for = trace_display(dep),
-                   .target_phase =
-                       pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
+        ENVY_TRACE(
+            phase_blocked,
+            trace_display(key),
+            .blocked_at_phase = pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+            .waiting_for = trace_display(dep),
+            .target_phase =
+                pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
       };
   obs.unblocked = [this](std::string const &key, int step, std::string const &dep) {
     if (!tui::g_trace_enabled) { return; }
     ENVY_TRACE(phase_unblocked,
                trace_display(key),
-               .unblocked_at_phase =
-                   is_setup_pair_key(key) ? pkg_phase::pkg_setup
-                                          : static_cast<pkg_phase>(step),
+               .unblocked_at_phase = is_setup_pair_key(key) ? pkg_phase::pkg_setup
+                                                            : static_cast<pkg_phase>(step),
                .dependency = trace_display(dep));
   };
   obs.target_extended = [this](std::string const &key, int old_done, int new_target) {
@@ -472,9 +471,7 @@ pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
     inserted = was_inserted;
     result = it->second.get();
 
-    if (inserted) {
-      ENVY_TRACE(spec_registered, cfg->identity, .key = key.canonical());
-    }
+    if (inserted) { ENVY_TRACE(spec_registered, cfg->identity, .key = key.canonical()); }
 
     if (cfg->setup.has_value() && !cfg->setup->empty()) {
       // Merge explicit SETUP selection across referrers (union). Selection is
@@ -1034,7 +1031,7 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
   }
 
   core_.extend_all_to_done();  // Launch all tasks running to completion
-  core_.join_all();  // Tolerates pair tasks spawned while joining
+  core_.join_all();            // Tolerates pair tasks spawned while joining
 
   if (auto const failures{ core_.collect_failures() }; !failures.empty()) {
     auto const &[key, msg]{ failures.front() };

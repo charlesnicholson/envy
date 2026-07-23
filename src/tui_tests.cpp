@@ -124,9 +124,9 @@ TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
       { { envy::tui::trace_output_type::std_err, std::nullopt } });
   CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
 
-  envy::tui::trace("demo.spec@v1",
-                   envy::trace_events::phase_start{ .phase =
-                                                        envy::pkg_phase::spec_fetch });
+  envy::tui::trace(
+      "demo.spec@v1",
+      envy::trace_events::phase_start{ .phase = envy::pkg_phase::spec_fetch });
 
   CHECK_NOTHROW(envy::tui::shutdown());
   REQUIRE_FALSE(messages.empty());
@@ -220,16 +220,16 @@ TEST_CASE("trace file output writes JSONL format") {
   CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
 
   // Emit various trace events
-  envy::tui::trace("test@v1",
-                   envy::trace_events::phase_start{ .phase =
-                                                        envy::pkg_phase::spec_fetch });
-  envy::tui::trace("parent@v1",
-                   envy::trace_events::dependency_added{
-                       .dependency = "child@v2",
-                       .needed_by = envy::pkg_phase::pkg_fetch });
-  envy::tui::trace("test@v1",
-                   envy::trace_events::cache_hit{ .cache_key = "test-key",
-                                                  .pkg_path = "/cache/test" });
+  envy::tui::trace(
+      "test@v1",
+      envy::trace_events::phase_start{ .phase = envy::pkg_phase::spec_fetch });
+  envy::tui::trace(
+      "parent@v1",
+      envy::trace_events::dependency_added{ .dependency = "child@v2",
+                                            .needed_by = envy::pkg_phase::pkg_fetch });
+  envy::tui::trace(
+      "test@v1",
+      envy::trace_events::cache_hit{ .cache_key = "test-key", .pkg_path = "/cache/test" });
 
   CHECK_NOTHROW(envy::tui::shutdown());
 
@@ -313,8 +313,7 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
 
   // Emit trace event
   envy::tui::trace("multi@v1",
-                   envy::trace_events::phase_complete{ .phase =
-                                                           envy::pkg_phase::pkg_build,
+                   envy::trace_events::phase_complete{ .phase = envy::pkg_phase::pkg_build,
                                                        .duration_ms = 123 });
 
   CHECK_NOTHROW(envy::tui::shutdown());

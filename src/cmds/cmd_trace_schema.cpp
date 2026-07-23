@@ -11,8 +11,7 @@
 namespace envy {
 
 void cmd_trace_schema::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
-  auto *sub{ app.add_subcommand("trace-schema",
-                                "Dump the trace event registry as JSON") };
+  auto *sub{ app.add_subcommand("trace-schema", "Dump the trace event registry as JSON") };
   sub->callback([on_selected = std::move(on_selected)] { on_selected(cfg{}); });
 }
 
