@@ -17,10 +17,6 @@ envy = {}
 -- Logging
 --------------------------------------------------------------------------------
 
----Emit trace-level log message
----@param msg string
-function envy.trace(msg) end
-
 ---Emit debug-level log message
 ---@param msg string
 function envy.debug(msg) end
