@@ -9,6 +9,7 @@
 #include "tui.h"
 
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -68,6 +69,14 @@ struct pkg {
   // bootstrap circularity) and unblocks any in-flight depot wait. Set via
   // engine::mark_depot_bootstrap, which propagates transitively.
   std::atomic_bool depot_bootstrap{ false };
+
+  // Outcome accounting, all read only by this package's own worker thread at
+  // completion (single-writer/single-reader, no synchronization needed).
+  // build_start is stamped when the worker begins spec_fetch; imported flips
+  // true when the artifact came from a depot rather than a fresh build.
+  std::chrono::steady_clock::time_point build_start{};
+  bool imported{ false };
+  bool was_cache_hit{ false };  // set by check when the payload was already cached
 
   // Ancestor identities for dependency-cycle detection. Set before this
   // package's worker starts; immutable after.

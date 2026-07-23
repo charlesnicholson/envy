@@ -163,7 +163,7 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
       std::visit([&](auto &r) { r.progress = tracker.make_callback(i); }, requests[i]);
     }
 
-    auto const results{ fetch(requests) };
+    auto const results{ fetch(requests, "#depot") };
 
     for (size_t req_idx{ 0 }; req_idx < results.size(); ++req_idx) {
       auto const dl_idx{ request_to_download[req_idx] };

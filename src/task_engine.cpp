@@ -75,9 +75,8 @@ bool task_engine::start_task(std::string const &key,
         throw;
       }
     }
-    // Initial ratchet isn't an extension: thread_start announces the target.
+    // Initial ratchet isn't an extension: the caller chose this target.
     ratchet_target(*t, target, false);
-    if (observer_.thread_start) { observer_.thread_start(key, target); }
     {
       // Under the task mutex: join_all may be reaping concurrently (workers
       // spawn tasks), and the handle hand-off must not tear.
@@ -246,8 +245,6 @@ void task_engine::run_worker(task *t) {
       t->completed = finished_early ? t->cfg.step_count : step + 1;
       notify_all_global_locked();  // wake cross-task watermark waiters
     }
-
-    if (observer_.thread_complete) { observer_.thread_complete(key, t->completed); }
   } catch (...) {
     fail_task(t, current_exception_message());
     if (t->cfg.on_failed) { t->cfg.on_failed(); }

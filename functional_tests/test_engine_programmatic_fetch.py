@@ -372,6 +372,7 @@ end
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 "--trace",
+                "--verbose",
                 "engine-test",
                 "local.prog_commit_sha256@v1",
                 str(spec_path),

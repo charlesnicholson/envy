@@ -54,7 +54,7 @@ bool run_pair_check_command(pkg *p, std::string_view cmd, std::string const &con
     }
   }() };
 
-  tui::debug("phase setup: %s shell check exit_code=%d (%s)",
+  tui::debug("setup: %s check exit=%d (%s)",
              context.c_str(),
              result.exit_code,
              result.exit_code == 0 ? "satisfied" : "not satisfied");
@@ -214,16 +214,12 @@ void run_setup_pair(pkg *p,
   auto const &pair_platforms{ p->setup_pairs.at(name).platforms };
   if (!pair_platforms.empty() &&
       !util_platform_matches(pair_platforms, platform::os_name(), platform::arch_name())) {
-    tui::debug("phase setup: [%s] pair '%s' skipped (platform mismatch)",
-               p->cfg->identity.c_str(),
-               name.c_str());
+    tui::debug("setup: pair '%s' skipped (platform mismatch)", name.c_str());
     return;
   }
 
   if (run_pair_check(p, eng, name)) {
-    tui::debug("phase setup: [%s] pair '%s' satisfied (pre-lock)",
-               p->cfg->identity.c_str(),
-               name.c_str());
+    tui::debug("setup: pair '%s' satisfied (pre-lock)", name.c_str());
     return;
   }
 
@@ -240,8 +236,7 @@ void run_setup_pair(pkg *p,
   if (!cache_result.lock) {
     // Pair entries are always purged on release; a completed entry means a
     // stale/corrupt cache. Mirror legacy user-managed behavior: warn and skip.
-    tui::warn("phase setup: [%s] unexpected completed cache entry for pair '%s' at %s",
-              p->cfg->identity.c_str(),
+    tui::warn("setup: unexpected completed cache entry for pair '%s' at %s",
               name.c_str(),
               cache_result.pkg_path.string().c_str());
     return;
@@ -249,15 +244,11 @@ void run_setup_pair(pkg *p,
   cache_result.lock->mark_user_managed();
 
   if (run_pair_check(p, eng, name)) {  // Race: another process completed the work
-    tui::debug("phase setup: [%s] pair '%s' satisfied (post-lock)",
-               p->cfg->identity.c_str(),
-               name.c_str());
+    tui::debug("setup: pair '%s' satisfied (post-lock)", name.c_str());
     return;  // Lock destructor purges the ephemeral entry
   }
 
-  tui::debug("phase setup: [%s] running pair '%s' install",
-             p->cfg->identity.c_str(),
-             name.c_str());
+  tui::debug("setup: running pair '%s' install (check failed)", name.c_str());
   run_pair_install(p, eng, name, section, log_identity);
 }
 

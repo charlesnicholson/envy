@@ -5,16 +5,14 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
-#include <iomanip>
-#include <sstream>
 #include <string>
+#include <type_traits>
 
 namespace envy {
 
 namespace {
-
-std::string_view bool_string(bool value) { return value ? "true" : "false"; }
 
 std::tm make_utc_tm(std::time_t time) {
   std::tm result{};
@@ -38,27 +36,23 @@ std::string format_timestamp(std::chrono::system_clock::time_point tp) {
   std::tm const utc_tm{ make_utc_tm(timestamp) };
 
   char base[32]{};
-  if (std::strftime(base, sizeof base, "%Y-%m-%dT%H:%M:%S", &utc_tm) == 0) { return {}; }
+  if (std::strftime(base, sizeof(base), "%Y-%m-%dT%H:%M:%S", &utc_tm) == 0) { return {}; }
 
-  std::ostringstream oss;
-  oss << base << '.' << std::setfill('0') << std::setw(3) << millis << 'Z';
-  return oss.str();
+  char out[40]{};
+  std::snprintf(out, sizeof(out), "%s.%03dZ", base, static_cast<int>(millis));
+  return out;
 }
 
-void append_json_string(std::string &out, std::string_view value) {
-  out.append(util_escape_json_string(value));
-}
-
-void append_kv(std::string &out, char const *key, std::string_view value) {
+void append_json_kv(std::string &out, std::string_view key, std::string_view value) {
   out.push_back(',');
   out.push_back('"');
   out.append(key);
   out.append("\":\"");
-  append_json_string(out, value);
+  out.append(util_escape_json_string(value));
   out.push_back('"');
 }
 
-void append_kv(std::string &out, char const *key, std::int64_t value) {
+void append_json_kv(std::string &out, std::string_view key, std::int64_t value) {
   out.push_back(',');
   out.push_back('"');
   out.append(key);
@@ -66,18 +60,12 @@ void append_kv(std::string &out, char const *key, std::int64_t value) {
   out.append(std::to_string(value));
 }
 
-void append_kv(std::string &out, char const *key, bool value) {
+void append_json_kv(std::string &out, std::string_view key, bool value) {
   out.push_back(',');
   out.push_back('"');
   out.append(key);
   out.append("\":");
   out.append(value ? "true" : "false");
-}
-
-void append_phase(std::string &out, char const *key, pkg_phase phase) {
-  append_kv(out, key, pkg_phase_name(phase));
-  std::string number_key = std::string(key) + "_num";
-  append_kv(out, number_key.c_str(), static_cast<std::int64_t>(static_cast<int>(phase)));
 }
 
 }  // namespace
@@ -86,448 +74,118 @@ phase_trace_scope::phase_trace_scope(std::string pkg_identity,
                                      pkg_phase phase_value,
                                      std::chrono::steady_clock::time_point start_time)
     : spec{ std::move(pkg_identity) }, phase{ phase_value }, start{ start_time } {
-  ENVY_TRACE_PHASE_START(spec, phase);
+  ENVY_TRACE(phase_start, spec, .phase = phase);
 }
 
 phase_trace_scope::~phase_trace_scope() {
   auto const duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::steady_clock::now() - start)
                               .count() };
-  ENVY_TRACE_PHASE_COMPLETE(spec, phase, static_cast<std::int64_t>(duration_ms));
+  ENVY_TRACE(phase_complete,
+             spec,
+             .phase = phase,
+             .duration_ms = static_cast<std::int64_t>(duration_ms));
 }
-
-#define TRACE_NAME(type) \
-  [](trace_events::type const &) -> std::string_view { return #type; }
 
 std::string_view trace_event_name(trace_event_t const &event) {
-  return std::visit(
-      match{
-          TRACE_NAME(phase_blocked),
-          TRACE_NAME(phase_unblocked),
-          TRACE_NAME(dependency_added),
-          TRACE_NAME(phase_start),
-          TRACE_NAME(phase_complete),
-          TRACE_NAME(thread_start),
-          TRACE_NAME(thread_complete),
-          TRACE_NAME(spec_registered),
-          TRACE_NAME(target_extended),
-          TRACE_NAME(lua_ctx_package_access),
-          TRACE_NAME(lua_ctx_product_access),
-          TRACE_NAME(lua_ctx_loadenv_spec_access),
-          TRACE_NAME(cache_hit),
-          TRACE_NAME(cache_miss),
-          TRACE_NAME(lock_acquired),
-          TRACE_NAME(lock_released),
-          TRACE_NAME(spec_fetch_counter_inc),
-          TRACE_NAME(spec_fetch_counter_dec),
-          TRACE_NAME(execute_downloads_start),
-          TRACE_NAME(execute_downloads_complete),
-          TRACE_NAME(cache_check_entry),
-          TRACE_NAME(cache_check_result),
-          TRACE_NAME(file_exists_check),
-          TRACE_NAME(extract_archive_start),
-          TRACE_NAME(extract_archive_complete),
-          TRACE_NAME(product_transitive_check),
-          TRACE_NAME(product_transitive_check_dep),
-          TRACE_NAME(product_parsed),
-      },
-      event);
+  return std::visit([](auto const &e) { return trace_event_name_of(e); }, event);
 }
 
-#undef TRACE_NAME
-
-std::string trace_event_to_string(trace_event_t const &event) {
-  return std::visit(
-      match{
-          [](trace_events::phase_blocked const &value) {
-            std::ostringstream oss;
-            oss << "phase_blocked spec=" << value.spec
-                << " blocked_at=" << pkg_phase_name(value.blocked_at_phase)
-                << " waiting_for=" << value.waiting_for
-                << " target_phase=" << pkg_phase_name(value.target_phase);
-            return oss.str();
-          },
-          [](trace_events::phase_unblocked const &value) {
-            std::ostringstream oss;
-            oss << "phase_unblocked spec=" << value.spec
-                << " dependency=" << value.dependency
-                << " at=" << pkg_phase_name(value.unblocked_at_phase);
-            return oss.str();
-          },
-          [](trace_events::dependency_added const &value) {
-            std::ostringstream oss;
-            oss << "dependency_added parent=" << value.parent
-                << " dependency=" << value.dependency
-                << " needed_by=" << pkg_phase_name(value.needed_by);
-            return oss.str();
-          },
-          [](trace_events::phase_start const &value) {
-            std::ostringstream oss;
-            oss << "phase_start spec=" << value.spec
-                << " phase=" << pkg_phase_name(value.phase);
-            return oss.str();
-          },
-          [](trace_events::phase_complete const &value) {
-            std::ostringstream oss;
-            oss << "phase_complete spec=" << value.spec
-                << " phase=" << pkg_phase_name(value.phase)
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
-          [](trace_events::thread_start const &value) {
-            std::ostringstream oss;
-            oss << "thread_start spec=" << value.spec
-                << " target_phase=" << pkg_phase_name(value.target_phase);
-            return oss.str();
-          },
-          [](trace_events::thread_complete const &value) {
-            std::ostringstream oss;
-            oss << "thread_complete spec=" << value.spec
-                << " final_phase=" << pkg_phase_name(value.final_phase);
-            return oss.str();
-          },
-          [](trace_events::spec_registered const &value) {
-            std::ostringstream oss;
-            oss << "spec_registered spec=" << value.spec << " key=" << value.key
-                << " has_dependencies=" << bool_string(value.has_dependencies);
-            return oss.str();
-          },
-          [](trace_events::target_extended const &value) {
-            std::ostringstream oss;
-            oss << "target_extended spec=" << value.spec
-                << " old_target=" << pkg_phase_name(value.old_target)
-                << " new_target=" << pkg_phase_name(value.new_target);
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_package_access const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_package_access spec=" << value.spec
-                << " target=" << value.target
-                << " current_phase=" << pkg_phase_name(value.current_phase)
-                << " needed_by=" << pkg_phase_name(value.needed_by)
-                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_product_access const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_product_access spec=" << value.spec
-                << " product=" << value.product << " provider=" << value.provider
-                << " current_phase=" << pkg_phase_name(value.current_phase)
-                << " needed_by=" << pkg_phase_name(value.needed_by)
-                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
-            return oss.str();
-          },
-          [](trace_events::lua_ctx_loadenv_spec_access const &value) {
-            std::ostringstream oss;
-            oss << "lua_ctx_loadenv_spec_access spec=" << value.spec
-                << " target=" << value.target << " subpath=" << value.subpath
-                << " current_phase=" << pkg_phase_name(value.current_phase)
-                << " needed_by=" << pkg_phase_name(value.needed_by)
-                << " allowed=" << bool_string(value.allowed) << " reason=" << value.reason;
-            return oss.str();
-          },
-          [](trace_events::cache_hit const &value) {
-            std::ostringstream oss;
-            oss << "cache_hit spec=" << value.spec << " cache_key=" << value.cache_key
-                << " pkg_path=" << value.pkg_path
-                << " fast_path=" << (value.fast_path ? "true" : "false");
-            return oss.str();
-          },
-          [](trace_events::cache_miss const &value) {
-            std::ostringstream oss;
-            oss << "cache_miss spec=" << value.spec << " cache_key=" << value.cache_key;
-            return oss.str();
-          },
-          [](trace_events::lock_acquired const &value) {
-            std::ostringstream oss;
-            oss << "lock_acquired spec=" << value.spec << " lock_path=" << value.lock_path
-                << " wait_ms=" << value.wait_duration_ms;
-            return oss.str();
-          },
-          [](trace_events::lock_released const &value) {
-            std::ostringstream oss;
-            oss << "lock_released spec=" << value.spec << " lock_path=" << value.lock_path
-                << " hold_ms=" << value.hold_duration_ms;
-            return oss.str();
-          },
-          [](trace_events::spec_fetch_counter_inc const &value) {
-            std::ostringstream oss;
-            oss << "spec_fetch_counter_inc spec=" << value.spec
-                << " new_value=" << value.new_value;
-            return oss.str();
-          },
-          [](trace_events::spec_fetch_counter_dec const &value) {
-            std::ostringstream oss;
-            oss << "spec_fetch_counter_dec spec=" << value.spec
-                << " new_value=" << value.new_value
-                << " was_completed=" << bool_string(value.was_completed);
-            return oss.str();
-          },
-          [](trace_events::execute_downloads_start const &value) {
-            std::ostringstream oss;
-            oss << "execute_downloads_start spec=" << value.spec
-                << " thread_id=" << value.thread_id << " num_files=" << value.num_files;
-            return oss.str();
-          },
-          [](trace_events::execute_downloads_complete const &value) {
-            std::ostringstream oss;
-            oss << "execute_downloads_complete spec=" << value.spec
-                << " thread_id=" << value.thread_id << " num_files=" << value.num_files
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
-          [](trace_events::cache_check_entry const &value) {
-            std::ostringstream oss;
-            oss << "cache_check_entry spec=" << value.spec
-                << " entry_dir=" << value.entry_dir
-                << " check_location=" << value.check_location;
-            return oss.str();
-          },
-          [](trace_events::cache_check_result const &value) {
-            std::ostringstream oss;
-            oss << "cache_check_result spec=" << value.spec
-                << " entry_dir=" << value.entry_dir
-                << " is_complete=" << bool_string(value.is_complete)
-                << " check_location=" << value.check_location;
-            return oss.str();
-          },
-          [](trace_events::file_exists_check const &value) {
-            std::ostringstream oss;
-            oss << "file_exists_check spec=" << value.spec
-                << " file_path=" << value.file_path
-                << " exists=" << bool_string(value.exists);
-            return oss.str();
-          },
-          [](trace_events::extract_archive_start const &value) {
-            std::ostringstream oss;
-            oss << "extract_archive_start spec=" << value.spec
-                << " archive_path=" << value.archive_path
-                << " destination=" << value.destination
-                << " strip_components=" << value.strip_components;
-            return oss.str();
-          },
-          [](trace_events::extract_archive_complete const &value) {
-            std::ostringstream oss;
-            oss << "extract_archive_complete spec=" << value.spec
-                << " archive_path=" << value.archive_path
-                << " files_extracted=" << value.files_extracted
-                << " duration_ms=" << value.duration_ms;
-            return oss.str();
-          },
-          [](trace_events::product_transitive_check const &value) {
-            std::ostringstream oss;
-            oss << "product_transitive_check spec=" << value.spec
-                << " product=" << value.product
-                << " has_product_directly=" << bool_string(value.has_product_directly)
-                << " dependency_count=" << value.dependency_count;
-            return oss.str();
-          },
-          [](trace_events::product_transitive_check_dep const &value) {
-            std::ostringstream oss;
-            oss << "product_transitive_check_dep spec=" << value.spec
-                << " product=" << value.product
-                << " checking_dependency=" << value.checking_dependency;
-            return oss.str();
-          },
-          [](trace_events::product_parsed const &value) {
-            std::ostringstream oss;
-            oss << "product_parsed spec=" << value.spec
-                << " product_name=" << value.product_name
-                << " product_value=" << value.product_value;
-            return oss.str();
-          },
-      },
-      event);
-}
-
-std::string trace_event_to_json(trace_event_t const &event) {
-  std::string output;
-  output.reserve(256);
-
-  output.append("{\"ts\":\"");
-  output.append(format_timestamp(std::chrono::system_clock::now()));
-  output.append("\",\"event\":\"");
-  output.append(trace_event_name(event));
-  output.push_back('"');
-
-  auto const append_spec{ [&](std::string_view value) {
-    append_kv(output, "spec", value);
-  } };
+std::string trace_record_to_string(trace_record const &rec) {
+  std::string out;
+  out.reserve(160);
+  out.append(trace_event_name(rec.event));
+  if (!rec.spec.empty()) {
+    out.append(" spec=");
+    out.append(rec.spec);
+  }
 
   std::visit(
-      match{
-          [&](trace_events::phase_blocked const &value) {
-            append_spec(value.spec);
-            append_phase(output, "blocked_at_phase", value.blocked_at_phase);
-            append_kv(output, "waiting_for", value.waiting_for);
-            append_phase(output, "target_phase", value.target_phase);
-          },
-          [&](trace_events::phase_unblocked const &value) {
-            append_spec(value.spec);
-            append_phase(output, "unblocked_at_phase", value.unblocked_at_phase);
-            append_kv(output, "dependency", value.dependency);
-          },
-          [&](trace_events::dependency_added const &value) {
-            append_kv(output, "parent", value.parent);
-            append_kv(output, "dependency", value.dependency);
-            append_phase(output, "needed_by", value.needed_by);
-          },
-          [&](trace_events::phase_start const &value) {
-            append_spec(value.spec);
-            append_phase(output, "phase", value.phase);
-          },
-          [&](trace_events::phase_complete const &value) {
-            append_spec(value.spec);
-            append_phase(output, "phase", value.phase);
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-          },
-          [&](trace_events::thread_start const &value) {
-            append_spec(value.spec);
-            append_phase(output, "target_phase", value.target_phase);
-          },
-          [&](trace_events::thread_complete const &value) {
-            append_spec(value.spec);
-            append_phase(output, "final_phase", value.final_phase);
-          },
-          [&](trace_events::spec_registered const &value) {
-            append_spec(value.spec);
-            append_kv(output, "key", value.key);
-            append_kv(output, "has_dependencies", value.has_dependencies);
-          },
-          [&](trace_events::target_extended const &value) {
-            append_spec(value.spec);
-            append_phase(output, "old_target", value.old_target);
-            append_phase(output, "new_target", value.new_target);
-          },
-          [&](trace_events::lua_ctx_package_access const &value) {
-            append_spec(value.spec);
-            append_kv(output, "target", value.target);
-            append_phase(output, "current_phase", value.current_phase);
-            append_phase(output, "needed_by", value.needed_by);
-            append_kv(output, "allowed", value.allowed);
-            append_kv(output, "reason", value.reason);
-          },
-          [&](trace_events::lua_ctx_product_access const &value) {
-            append_spec(value.spec);
-            append_kv(output, "product", value.product);
-            append_kv(output, "provider", value.provider);
-            append_phase(output, "current_phase", value.current_phase);
-            append_phase(output, "needed_by", value.needed_by);
-            append_kv(output, "allowed", value.allowed);
-            append_kv(output, "reason", value.reason);
-          },
-          [&](trace_events::lua_ctx_loadenv_spec_access const &value) {
-            append_spec(value.spec);
-            append_kv(output, "target", value.target);
-            append_kv(output, "subpath", value.subpath);
-            append_phase(output, "current_phase", value.current_phase);
-            append_phase(output, "needed_by", value.needed_by);
-            append_kv(output, "allowed", value.allowed);
-            append_kv(output, "reason", value.reason);
-          },
-          [&](trace_events::cache_hit const &value) {
-            append_spec(value.spec);
-            append_kv(output, "cache_key", value.cache_key);
-            append_kv(output, "pkg_path", value.pkg_path);
-            append_kv(output, "fast_path", value.fast_path);
-          },
-          [&](trace_events::cache_miss const &value) {
-            append_spec(value.spec);
-            append_kv(output, "cache_key", value.cache_key);
-          },
-          [&](trace_events::lock_acquired const &value) {
-            append_spec(value.spec);
-            append_kv(output, "lock_path", value.lock_path);
-            append_kv(output, "wait_duration_ms", value.wait_duration_ms);
-          },
-          [&](trace_events::lock_released const &value) {
-            append_spec(value.spec);
-            append_kv(output, "lock_path", value.lock_path);
-            append_kv(output, "hold_duration_ms", value.hold_duration_ms);
-          },
-          [&](trace_events::spec_fetch_counter_inc const &value) {
-            append_spec(value.spec);
-            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
-          },
-          [&](trace_events::spec_fetch_counter_dec const &value) {
-            append_spec(value.spec);
-            append_kv(output, "new_value", static_cast<std::int64_t>(value.new_value));
-            append_kv(output, "was_completed", value.was_completed);
-          },
-          [&](trace_events::execute_downloads_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "thread_id", static_cast<std::int64_t>(value.thread_id));
-            append_kv(output, "num_files", static_cast<std::int64_t>(value.num_files));
-          },
-          [&](trace_events::execute_downloads_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "thread_id", static_cast<std::int64_t>(value.thread_id));
-            append_kv(output, "num_files", static_cast<std::int64_t>(value.num_files));
-            append_kv(output, "duration_ms", static_cast<std::int64_t>(value.duration_ms));
-          },
-          [&](trace_events::cache_check_entry const &value) {
-            append_spec(value.spec);
-            append_kv(output, "entry_dir", value.entry_dir);
-            append_kv(output, "check_location", value.check_location);
-          },
-          [&](trace_events::cache_check_result const &value) {
-            append_spec(value.spec);
-            append_kv(output, "entry_dir", value.entry_dir);
-            append_kv(output, "is_complete", value.is_complete);
-            append_kv(output, "check_location", value.check_location);
-          },
-          [&](trace_events::file_exists_check const &value) {
-            append_spec(value.spec);
-            append_kv(output, "file_path", value.file_path);
-            append_kv(output, "exists", value.exists);
-          },
-          [&](trace_events::extract_archive_start const &value) {
-            append_spec(value.spec);
-            append_kv(output, "archive_path", value.archive_path);
-            append_kv(output, "destination", value.destination);
-            append_kv(output,
-                      "strip_components",
-                      static_cast<std::int64_t>(value.strip_components));
-          },
-          [&](trace_events::extract_archive_complete const &value) {
-            append_spec(value.spec);
-            append_kv(output, "archive_path", value.archive_path);
-            append_kv(output, "files_extracted", value.files_extracted);
-            append_kv(output, "duration_ms", value.duration_ms);
-          },
-          [&](trace_events::product_transitive_check const &value) {
-            append_spec(value.spec);
-            append_kv(output, "product", value.product);
-            append_kv(output, "has_product_directly", value.has_product_directly);
-            append_kv(output,
-                      "dependency_count",
-                      static_cast<std::int64_t>(value.dependency_count));
-          },
-          [&](trace_events::product_transitive_check_dep const &value) {
-            append_spec(value.spec);
-            append_kv(output, "product", value.product);
-            append_kv(output, "checking_dependency", value.checking_dependency);
-          },
-          [&](trace_events::product_parsed const &value) {
-            append_spec(value.spec);
-            append_kv(output, "product_name", value.product_name);
-            append_kv(output, "product_value", value.product_value);
-            if (!value.platforms.empty()) {
-              output += ",\"platforms\":[";
-              for (size_t i{ 0 }; i < value.platforms.size(); ++i) {
-                if (i) { output += ','; }
-                output += '"';
-                append_json_string(output, value.platforms[i]);
-                output += '"';
-              }
-              output += ']';
-            }
-          },
+      [&](auto const &e) {
+        trace_event_for_each_field(e, [&](std::string_view key, auto const &value) {
+          out.push_back(' ');
+          out.append(key);
+          out.push_back('=');
+          using T = std::remove_cvref_t<decltype(value)>;
+          if constexpr (std::is_same_v<T, std::string>) {
+            out.append(value);
+          } else if constexpr (std::is_same_v<T, bool>) {
+            out.append(value ? "true" : "false");
+          } else if constexpr (std::is_same_v<T, pkg_phase>) {
+            out.append(pkg_phase_name(value));
+          } else {
+            out.append(std::to_string(value));
+          }
+        });
       },
-      event);
+      rec.event);
 
-  output.push_back('}');
-  return output;
+  return out;
+}
+
+std::string trace_record_to_json(trace_record const &rec) {
+  std::string out;
+  out.reserve(256);
+
+  out.append("{\"seq\":");
+  out.append(std::to_string(rec.seq));
+  out.append(",\"ts\":\"");
+  out.append(format_timestamp(rec.ts));
+  out.append("\",\"tid\":");
+  out.append(std::to_string(rec.tid));
+  out.append(",\"event\":\"");
+  out.append(trace_event_name(rec.event));
+  out.push_back('"');
+  if (!rec.spec.empty()) { append_json_kv(out, "spec", rec.spec); }
+
+  std::visit(
+      [&](auto const &e) {
+        trace_event_for_each_field(e, [&](std::string_view key, auto const &value) {
+          using T = std::remove_cvref_t<decltype(value)>;
+          if constexpr (std::is_same_v<T, pkg_phase>) {
+            append_json_kv(out, key, pkg_phase_name(value));
+          } else if constexpr (std::is_same_v<T, std::string>) {
+            append_json_kv(out, key, std::string_view{ value });
+          } else {
+            append_json_kv(out, key, value);
+          }
+        });
+      },
+      rec.event);
+
+  out.push_back('}');
+  return out;
+}
+
+std::vector<trace_event_schema> trace_schema() {
+  std::vector<trace_event_schema> out;
+  out.reserve(kTraceEventCount);
+
+  auto const add{ [&out](auto const &e, std::string_view name) {
+    trace_event_schema schema{ .name = name, .fields = {} };
+    trace_event_for_each_field(e, [&](std::string_view key, auto const &value) {
+      using T = std::remove_cvref_t<decltype(value)>;
+      char const *const type{ [] {
+        if constexpr (std::is_same_v<T, std::string>) {
+          return "str";
+        } else if constexpr (std::is_same_v<T, bool>) {
+          return "bool";
+        } else if constexpr (std::is_same_v<T, pkg_phase>) {
+          return "phase";
+        } else {
+          return "i64";
+        }
+      }() };
+      schema.fields.push_back(std::string{ key } + ":" + type);
+    });
+    out.push_back(std::move(schema));
+  } };
+
+#define ENVY_TRACE_EVENT(name, fields) add(trace_events::name{}, #name);
+#include "trace_events.def"
+#undef ENVY_TRACE_EVENT
+
+  return out;
 }
 
 }  // namespace envy

@@ -19,7 +19,9 @@
 
 namespace envy::tui {
 
-enum class level { TUI_TRACE, TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
+// Log severity. Trace events are a separate stream (see trace.h) and are NOT a
+// log level — they bypass this threshold entirely.
+enum class level { TUI_DEBUG, TUI_INFO, TUI_WARN, TUI_ERROR };
 
 enum class trace_output_type { std_err, file };
 
@@ -54,6 +56,23 @@ struct scope {  // raii helper
 
  private:
   bool active{ false };
+};
+
+// Ambient per-package log context. While in scope, debug/info/warn/error lines
+// emitted on this thread are auto-prefixed "[<identity>] " so per-package
+// narrative is attributable without every call site threading the identity
+// through. Nests (restores the previous value on destruction). Does not affect
+// print_stdout. The engine sets one around each package worker's phase steps, so
+// calls made from cache/extract/etc. inherit it.
+struct log_ctx_scope {
+  explicit log_ctx_scope(std::string identity);
+  ~log_ctx_scope();
+
+  log_ctx_scope(log_ctx_scope const &) = delete;
+  log_ctx_scope &operator=(log_ctx_scope const &) = delete;
+
+ private:
+  std::string previous_;
 };
 
 // Section progress API

@@ -283,11 +283,11 @@ std::filesystem::path fetch_remote_source(pkg_cfg const &cfg, pkg *p) {
   auto cache_result{ p->cache_ptr->ensure_spec(cfg.identity) };
 
   if (cache_result.lock) {
-    tui::debug("fetch spec %s from %s", cfg.identity.c_str(), remote_src->url.c_str());
+    tui::debug("spec: source %s", remote_src->url.c_str());
     std::filesystem::path fetch_dest{ cache_result.lock->install_dir() / "spec.lua" };
 
     auto req{ fetch_request_from_url(remote_src->url, fetch_dest) };
-    auto const results{ fetch({ req }) };
+    auto const results{ fetch({ req }, cfg.identity) };
     if (results.empty() || std::holds_alternative<std::string>(results[0])) {
       throw std::runtime_error(
           "Failed to fetch spec: " +
@@ -295,7 +295,6 @@ std::filesystem::path fetch_remote_source(pkg_cfg const &cfg, pkg *p) {
     }
 
     if (!remote_src->sha256.empty()) {
-      tui::debug("verifying SHA256 for spec %s", cfg.identity.c_str());
       sha256_verify(remote_src->sha256, sha256(fetch_dest));
     }
 
@@ -311,17 +310,15 @@ std::filesystem::path fetch_git_source(pkg_cfg const &cfg, pkg *p) {
   auto cache_result{ p->cache_ptr->ensure_spec(cfg.identity) };
 
   if (cache_result.lock) {
-    tui::debug("fetch spec %s from git %s @ %s",
-               cfg.identity.c_str(),
-               git_src->url.c_str(),
-               git_src->ref.c_str());
+    tui::debug("spec: from git %s @ %s", git_src->url.c_str(), git_src->ref.c_str());
 
     std::filesystem::path install_dir{ cache_result.lock->install_dir() };
     auto const info{ uri_classify(git_src->url) };
     auto const results{ fetch({ fetch_request_git{ .source = git_src->url,
                                                    .destination = install_dir,
                                                    .ref = git_src->ref,
-                                                   .scheme = info.scheme } }) };
+                                                   .scheme = info.scheme } },
+                              cfg.identity) };
     if (results.empty() || std::holds_alternative<std::string>(results[0])) {
       throw std::runtime_error(
           "Failed to fetch git spec: " +
@@ -355,9 +352,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
   if (bundle_id.starts_with("local.")) {
     auto const *local_src{ std::get_if<pkg_cfg::local_source>(&bundle_src->fetch_source) };
     if (local_src && std::filesystem::is_directory(local_src->file_path)) {
-      tui::debug("using local bundle %s in-situ from %s",
-                 bundle_id.c_str(),
-                 local_src->file_path.c_str());
+      tui::debug("spec: local bundle %s", bundle_id.c_str());
 
       bundle parsed{ bundle::from_path(local_src->file_path) };
       if (parsed.identity != bundle_id) {
@@ -383,7 +378,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
   auto cache_result{ p->cache_ptr->ensure_spec(bundle_id) };
 
   if (cache_result.lock) {
-    tui::debug("fetch bundle %s for spec %s", bundle_id.c_str(), cfg.identity.c_str());
+    tui::debug("spec: bundle %s", bundle_id.c_str());
     std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
 
     // Fetch based on underlying source type
@@ -394,7 +389,7 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
                                                 uri_extract_filename(remote.url) };
 
               auto req{ fetch_request_from_url(remote.url, fetch_dest) };
-              auto const results{ fetch({ req }) };
+              auto const results{ fetch({ req }, bundle_id) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch bundle: " +
@@ -429,7 +424,8 @@ std::filesystem::path fetch_bundle_and_resolve_spec(pkg_cfg const &cfg,
                   { fetch_request_git{ .source = git.url,
                                        .destination = install_dir,
                                        .ref = git.ref,
-                                       .scheme = git_info.scheme } }) };
+                                       .scheme = git_info.scheme } },
+                  bundle_id) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
@@ -488,7 +484,7 @@ std::filesystem::path fetch_custom_function(pkg_cfg const &cfg, pkg *p, engine &
   auto cache_result{ p->cache_ptr->ensure_spec(cfg.identity) };
 
   if (cache_result.lock) {
-    tui::debug("fetch spec %s via custom fetch function", cfg.identity.c_str());
+    tui::debug("spec: custom fetch function");
 
     // Set up paths for custom fetch function
     std::filesystem::path const tmp_dir{ cache_result.lock->work_dir() / "tmp" };
@@ -1150,7 +1146,10 @@ void wire_dependency_graph(pkg *p, engine &eng) {
         pd.constraint_identity = dep_cfg->identity;
       }
       if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
-      ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
+      ENVY_TRACE(dependency_added,
+                 p->cfg->identity,
+                 .dependency = dep_cfg->identity,
+                 .needed_by = needed_by_phase);
 
       std::vector<std::string> child_chain{ p->ancestor_chain };
       child_chain.push_back(p->cfg->identity);
@@ -1168,7 +1167,10 @@ void wire_dependency_graph(pkg *p, engine &eng) {
         p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
       }
       if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
-      ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
+      ENVY_TRACE(dependency_added,
+                 p->cfg->identity,
+                 .dependency = dep_cfg->identity,
+                 .needed_by = needed_by_phase);
 
       std::vector<std::string> child_chain{ p->ancestor_chain };
       child_chain.push_back(p->cfg->identity);
@@ -1184,7 +1186,10 @@ void wire_dependency_graph(pkg *p, engine &eng) {
       p->dependencies[dep_cfg->identity] = { dep, needed_by_phase };
     }
     if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
-    ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity, dep_cfg->identity, needed_by_phase);
+    ENVY_TRACE(dependency_added,
+               p->cfg->identity,
+               .dependency = dep_cfg->identity,
+               .needed_by = needed_by_phase);
 
     std::vector<std::string> child_chain{ p->ancestor_chain };
     child_chain.push_back(p->cfg->identity);
@@ -1206,9 +1211,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
   if (bundle_id.starts_with("local.")) {
     auto const *local_src{ std::get_if<pkg_cfg::local_source>(&bundle_src->fetch_source) };
     if (local_src && std::filesystem::is_directory(local_src->file_path)) {
-      tui::debug("using local bundle %s in-situ from %s (pure bundle dependency)",
-                 bundle_id.c_str(),
-                 local_src->file_path.c_str());
+      tui::debug("spec: local bundle %s (dependency)", bundle_id.c_str());
 
       bundle parsed{ bundle::from_path(local_src->file_path) };
       if (parsed.identity != bundle_id) {
@@ -1225,7 +1228,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
   auto cache_result{ p->cache_ptr->ensure_spec(bundle_id) };
 
   if (cache_result.lock) {
-    tui::debug("fetch bundle %s (pure bundle dependency)", bundle_id.c_str());
+    tui::debug("spec: bundle %s (dependency)", bundle_id.c_str());
     std::filesystem::path const install_dir{ cache_result.lock->install_dir() };
 
     // Fetch based on underlying source type
@@ -1236,7 +1239,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                                                 uri_extract_filename(remote.url) };
 
               auto req{ fetch_request_from_url(remote.url, fetch_dest) };
-              auto const results{ fetch({ req }) };
+              auto const results{ fetch({ req }, bundle_id) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch bundle: " +
@@ -1266,7 +1269,8 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                   { fetch_request_git{ .source = git.url,
                                        .destination = install_dir,
                                        .ref = git.ref,
-                                       .scheme = git_info.scheme } }) };
+                                       .scheme = git_info.scheme } },
+                  bundle_id) };
               if (results.empty() || std::holds_alternative<std::string>(results[0])) {
                 throw std::runtime_error(
                     "Failed to fetch git bundle: " +
@@ -1312,8 +1316,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                                                tmp_dir,
                                                cache_result.lock.get() };
 
-                tui::debug("executing custom fetch for bundle %s (from parent spec)",
-                           bundle_id.c_str());
+                tui::debug("spec: custom fetch for bundle %s", bundle_id.c_str());
                 sol::protected_function_result result{ (*fetch_func_opt)(
                     tmp_dir.string()) };
 
@@ -1331,7 +1334,7 @@ void fetch_bundle_only(pkg_cfg const &cfg, pkg *p, engine &eng) {
                 }
 
                 phase_context ctx{ &eng, p, tmp_dir, cache_result.lock.get() };
-                tui::debug("executing custom fetch for bundle %s", bundle_id.c_str());
+                tui::debug("spec: custom fetch for bundle %s", bundle_id.c_str());
 
                 auto err{ m->run_bundle_fetch(bundle_id, &ctx, tmp_dir) };
                 if (err) {
@@ -1462,15 +1465,10 @@ void run_spec_fetch_phase(pkg *p, engine &eng) {
     p->setup_pairs = parse_setup_table(lua_view, cfg.identity);
     validate_phases(lua_view, cfg.identity, user_managed, !p->setup_pairs.empty());
     p->type = user_managed ? pkg_type::USER_MANAGED : pkg_type::CACHE_MANAGED;
+    tui::debug(user_managed ? "spec: user-managed (setup-only)" : "spec: cache-managed");
   }
 
   p->products = parse_products_table(cfg, *lua, p);
-  for (auto const &[name, entry] : p->products) {
-    ENVY_TRACE_EMIT((trace_events::product_parsed{ .spec = cfg.identity,
-                                                   .product_name = name,
-                                                   .product_value = entry.value,
-                                                   .platforms = entry.platforms }));
-  }
 
   // Extract spec PLATFORMS and intersect with manifest-level platforms
   {

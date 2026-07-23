@@ -538,6 +538,42 @@ TEST_CASE("cli_parse: verbose flag") {
   CHECK(parsed.decorated_logging);
 }
 
+TEST_CASE("cli_parse: default verbosity is info, undecorated") {
+  std::vector<std::string> args{ "envy", "version" };
+  auto argv{ make_argv(args) };
+
+  auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+  REQUIRE(parsed.cmd_cfg.has_value());
+  REQUIRE(parsed.verbosity.has_value());
+  CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
+  CHECK_FALSE(parsed.decorated_logging);
+}
+
+TEST_CASE("cli_parse: quiet flag raises threshold to warn") {
+  for (auto const *flag : { "-q", "--quiet" }) {
+    std::vector<std::string> args{ "envy", flag, "version" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    REQUIRE(parsed.verbosity.has_value());
+    CHECK(parsed.verbosity == envy::tui::level::TUI_WARN);
+    CHECK_FALSE(parsed.decorated_logging);
+  }
+}
+
+TEST_CASE("cli_parse: verbose and quiet are mutually exclusive") {
+  std::vector<std::string> args{ "envy", "--verbose", "--quiet", "version" };
+  auto argv{ make_argv(args) };
+
+  auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+  CHECK_FALSE(parsed.cmd_cfg.has_value());
+  CHECK_FALSE(parsed.cli_output.empty());
+}
+
 TEST_CASE("cli_parse: trace flag enables structured outputs") {
   SUBCASE("stderr trace explicit") {
     std::vector<std::string> args{ "envy", "--trace=stderr", "version" };
@@ -547,8 +583,9 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
 
     REQUIRE(parsed.cmd_cfg.has_value());
     REQUIRE(parsed.verbosity.has_value());
-    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
-    CHECK(parsed.decorated_logging);
+    // --trace is sink-only: it does not change log level or decoration.
+    CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
+    CHECK_FALSE(parsed.decorated_logging);
     REQUIRE(parsed.trace_outputs.size() == 1);
     CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());
@@ -565,7 +602,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
 
     REQUIRE(parsed.cmd_cfg.has_value());
     REQUIRE(parsed.verbosity.has_value());
-    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
+    CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
     REQUIRE(parsed.trace_outputs.size() == 1);
     CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::file);
     REQUIRE(parsed.trace_outputs[0].file_path.has_value());
@@ -583,7 +620,7 @@ TEST_CASE("cli_parse: trace flag enables structured outputs") {
 
     REQUIRE(parsed.cmd_cfg.has_value());
     REQUIRE(parsed.verbosity.has_value());
-    CHECK(parsed.verbosity == envy::tui::level::TUI_TRACE);
+    CHECK(parsed.verbosity == envy::tui::level::TUI_INFO);
     REQUIRE(parsed.trace_outputs.size() == 2);
     CHECK(parsed.trace_outputs[0].type == envy::tui::trace_output_type::std_err);
     CHECK_FALSE(parsed.trace_outputs[0].file_path.has_value());

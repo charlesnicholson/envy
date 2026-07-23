@@ -101,5 +101,6 @@ TEST_CASE_FIXTURE(lua_test_fixture, "envy.warn outputs to tui") {
   }
 
   REQUIRE(script_output.size() >= 1);
-  CHECK(script_output[0] == "warning message\n");
+  // Undecorated warnings are tagged compiler-style.
+  CHECK(script_output[0] == "warning: warning message\n");
 }

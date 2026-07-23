@@ -3,11 +3,13 @@
 #include "aws_util.h"
 #include "fetch_http.h"
 #include "libgit2_util.h"
+#include "trace.h"
 #include "util.h"
 
 #include "git2.h"
 
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -292,19 +294,47 @@ fetch_result fetch_single(fetch_request const &request) {
       request);
 }
 
-std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests) {
+std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests,
+                                  std::string trace_spec) {
   std::vector<fetch_result_t> results(requests.size());
 
   std::vector<std::thread> workers;
   workers.reserve(requests.size());
 
   for (size_t i = 0; i < requests.size(); ++i) {
-    workers.emplace_back([i, &requests, &results]() {
+    workers.emplace_back([i, &requests, &results, &trace_spec]() {
+      auto const [source, destination]{ std::visit(
+          [](auto const &r) {
+            return std::pair{ r.source, r.destination.string() };
+          },
+          requests[i]) };
+      ENVY_TRACE(download_start, trace_spec, .url = source, .destination = destination);
+      auto const start{ std::chrono::steady_clock::now() };
+
       try {
         results[i] = fetch_single(requests[i]);
+
+        auto const &res{ std::get<fetch_result>(results[i]) };
+        std::error_code size_ec;
+        auto const bytes{ std::filesystem::is_regular_file(res.resolved_destination,
+                                                           size_ec)
+                              ? std::filesystem::file_size(res.resolved_destination,
+                                                           size_ec)
+                              : 0 };
+        ENVY_TRACE(download_complete,
+                   trace_spec,
+                   .url = source,
+                   .bytes = static_cast<std::int64_t>(size_ec ? 0 : bytes),
+                   .duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::steady_clock::now() - start)
+                                      .count());
       } catch (std::exception const &e) {
         results[i] = std::string(e.what());
       } catch (...) { results[i] = "Unknown error during fetch"; }
+
+      if (auto const *error{ std::get_if<std::string>(&results[i]) }) {
+        ENVY_TRACE(download_failed, trace_spec, .url = source, .error = *error);
+      }
     });
   }
 

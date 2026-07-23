@@ -23,6 +23,7 @@
 #include <array>
 #include <filesystem>
 #include <sstream>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -95,7 +96,10 @@ void wire_dependency(pkg *parent, pkg *dep, pkg_phase needed_by) {
 
   if (!parent->dependencies.contains(dep->cfg->identity)) {
     parent->dependencies[dep->cfg->identity] = { dep, needed_by };
-    ENVY_TRACE_DEPENDENCY_ADDED(parent->cfg->identity, dep->cfg->identity, needed_by);
+    ENVY_TRACE(dependency_added,
+               parent->cfg->identity,
+               .dependency = dep->cfg->identity,
+               .needed_by = needed_by);
   }
 
   if (std::ranges::find(parent->declared_dependencies, dep->cfg->identity) ==
@@ -121,6 +125,26 @@ void merge_setup_selection(pkg *dep, std::vector<std::string> const &names) {
         " arrived after its setup phase ran; a weak dependency selected a pair "
         "that resolved too late");
   }
+}
+
+// Log + trace a resolved product dependency. No-op for non-product references.
+// `via` is one of "identity" | "registry" | "fallback".
+void trace_product_resolution(pkg const *consumer,
+                              pkg::weak_reference const *wr,
+                              pkg const *provider,
+                              char const *via) {
+  if (!wr->is_product) { return; }
+  bool const fallback{ std::string_view{ via } == "fallback" };
+  tui::debug("resolve: [%s] product '%s' → %s%s",
+             consumer->cfg->identity.c_str(),
+             wr->query.c_str(),
+             provider->cfg->identity.c_str(),
+             fallback ? " (fallback)" : "");
+  ENVY_TRACE(product_resolved,
+             consumer->cfg->identity,
+             .product = wr->query,
+             .provider = provider->cfg->identity,
+             .via = via);
 }
 
 void resolve_identity_ref(pkg *p,
@@ -155,6 +179,7 @@ void resolve_identity_ref(pkg *p,
         }
       }
     }
+    trace_product_resolution(p, wr, dep, "identity");
     ++result.resolved;
     return;
   }
@@ -196,6 +221,7 @@ void resolve_identity_ref(pkg *p,
         }
       }
     }
+    trace_product_resolution(p, wr, dep, "fallback");
     ++result.fallbacks_started;
   }
 }
@@ -239,6 +265,7 @@ void resolve_product_ref(pkg *p,
     merge_setup_selection(dep, wr->setup);
     if (p->depot_bootstrap) { eng.mark_depot_bootstrap(dep); }
     set_product_provider(dep);
+    trace_product_resolution(p, wr, dep, "registry");
     ++result.resolved;
     return;
   }
@@ -256,6 +283,7 @@ void resolve_product_ref(pkg *p,
     eng.start_pkg_thread(dep, pkg_phase::spec_fetch, std::move(child_chain));
 
     set_product_provider(dep);
+    trace_product_resolution(p, wr, dep, "fallback");
     ++result.fallbacks_started;
   }
 }
@@ -264,12 +292,6 @@ bool pkg_provides_product_transitively_impl(pkg *p,
                                             std::string const &product_name,
                                             std::unordered_set<pkg const *> &visited) {
   if (!visited.insert(p).second) { return false; }
-
-  ENVY_TRACE_EMIT((trace_events::product_transitive_check{
-      .spec = p->cfg->identity,
-      .product = product_name,
-      .has_product_directly = p->products.contains(product_name),
-      .dependency_count = p->dependencies.size() }));
 
   if (p->products.contains(product_name)) { return true; }
 
@@ -284,10 +306,6 @@ bool pkg_provides_product_transitively_impl(pkg *p,
   }() };
 
   for (auto const &[dep_id, dep] : deps) {
-    ENVY_TRACE_EMIT(
-        (trace_events::product_transitive_check_dep{ .spec = p->cfg->identity,
-                                                     .product = product_name,
-                                                     .checking_dependency = dep_id }));
     if (pkg_provides_product_transitively_impl(dep, product_name, visited)) {
       return true;
     }
@@ -337,40 +355,33 @@ std::string engine::trace_display(std::string const &key) const {
 task_engine::observer engine::make_trace_observer() {
   task_engine::observer obs;
 
-  obs.thread_start = [this](std::string const &key, int target) {
-    if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_THREAD_START(
-        trace_display(key),
-        is_setup_pair_key(key) ? pkg_phase::pkg_setup : phase_from_watermark(target));
-  };
-  obs.thread_complete = [this](std::string const &key, int completed) {
-    if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_THREAD_COMPLETE(
-        trace_display(key),
-        is_setup_pair_key(key) ? pkg_phase::completion : phase_from_watermark(completed));
-  };
   obs.blocked =
       [this](std::string const &key, int step, std::string const &dep, int watermark) {
         if (!tui::g_trace_enabled) { return; }
         bool const pair{ is_setup_pair_key(key) };
-        ENVY_TRACE_PHASE_BLOCKED(
-            trace_display(key),
-            pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
-            trace_display(dep),
-            pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
+        ENVY_TRACE(phase_blocked,
+                   trace_display(key),
+                   .blocked_at_phase =
+                       pair ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
+                   .waiting_for = trace_display(dep),
+                   .target_phase =
+                       pair ? pkg_phase::completion : static_cast<pkg_phase>(watermark));
       };
   obs.unblocked = [this](std::string const &key, int step, std::string const &dep) {
     if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_PHASE_UNBLOCKED(
-        trace_display(key),
-        is_setup_pair_key(key) ? pkg_phase::pkg_setup : static_cast<pkg_phase>(step),
-        trace_display(dep));
+    ENVY_TRACE(phase_unblocked,
+               trace_display(key),
+               .unblocked_at_phase =
+                   is_setup_pair_key(key) ? pkg_phase::pkg_setup
+                                          : static_cast<pkg_phase>(step),
+               .dependency = trace_display(dep));
   };
   obs.target_extended = [this](std::string const &key, int old_done, int new_target) {
     if (!tui::g_trace_enabled) { return; }
-    ENVY_TRACE_TARGET_EXTENDED(trace_display(key),
-                               phase_from_watermark(old_done),
-                               phase_from_watermark(new_target));
+    ENVY_TRACE(target_extended,
+               trace_display(key),
+               .old_target = phase_from_watermark(old_done),
+               .new_target = phase_from_watermark(new_target));
   };
 
   return obs;
@@ -403,7 +414,16 @@ task_engine::task_config engine::make_pkg_task_config(pkg *p) {
   };
 
   cfg.step = [this, p](int step) {
+    // Ambient log context for this whole step: every debug/info/warn/error line
+    // (including those emitted from cache/extract called by phase code) is
+    // auto-prefixed "[identity]". Deleted hand-rolled [%s] prefixes rely on this.
+    tui::log_ctx_scope const log_ctx{ p->cfg->identity };
     p->current_phase.store(static_cast<pkg_phase>(step));
+
+    if (static_cast<pkg_phase>(step) == pkg_phase::spec_fetch) {
+      p->build_start = std::chrono::steady_clock::now();
+    }
+
     phase_dispatch_table[step](p, *this);
 
     if (static_cast<pkg_phase>(step) == pkg_phase::spec_fetch) {
@@ -452,7 +472,9 @@ pkg *engine::ensure_pkg(pkg_cfg const *cfg) {
     inserted = was_inserted;
     result = it->second.get();
 
-    if (inserted) { ENVY_TRACE_RECIPE_REGISTERED(cfg->identity, key.canonical(), false); }
+    if (inserted) {
+      ENVY_TRACE(spec_registered, cfg->identity, .key = key.canonical());
+    }
 
     if (cfg->setup.has_value() && !cfg->setup->empty()) {
       // Merge explicit SETUP selection across referrers (union). Selection is
@@ -585,6 +607,7 @@ void engine::run_setup_pairs_for(pkg *parent, std::vector<std::string> const &pa
     cfg.step_count = 1;
     cfg.edges = [edges = std::move(sibling_edges)](int) { return edges; };
     cfg.step = [this, parent, name, section, key](int) {
+      tui::log_ctx_scope const log_ctx{ parent->cfg->identity };
       run_setup_pair(parent, *this, name, section, key);
       if (section && tui::section_has_content(section)) {
         tui::section_set_content(
@@ -861,9 +884,10 @@ void engine::extend_dependencies_recursive(pkg *p, std::unordered_set<pkg_key> &
   int const old_target{ core_.target(canonical) };
 
   if (old_target < core_.step_count(canonical)) {
-    ENVY_TRACE_TARGET_EXTENDED(p->cfg->identity,
-                               phase_from_watermark(old_target),
-                               pkg_phase::completion);
+    ENVY_TRACE(target_extended,
+               p->cfg->identity,
+               .old_target = phase_from_watermark(old_target),
+               .new_target = pkg_phase::completion);
   }
 
   core_.extend_to_done(canonical);
@@ -889,15 +913,10 @@ void engine::wait_for_resolution_phase() {
   core_.wait_global([this] { return pending_spec_fetches_ == 0; });
 }
 
-void engine::on_spec_fetch_start() {
-  int const new_value{ pending_spec_fetches_.fetch_add(1) + 1 };
-  ENVY_TRACE_SPEC_FETCH_COUNTER_INC("engine", new_value);
-}
+void engine::on_spec_fetch_start() { pending_spec_fetches_.fetch_add(1); }
 
-void engine::on_spec_fetch_complete(std::string const &pkg_identity) {
-  int const new_value{ pending_spec_fetches_.fetch_sub(1) - 1 };
-  ENVY_TRACE_SPEC_FETCH_COUNTER_DEC(pkg_identity, new_value, true);
-  if (new_value == 0) { core_.notify_global(); }
+void engine::on_spec_fetch_complete(std::string const &) {
+  if (pending_spec_fetches_.fetch_sub(1) - 1 == 0) { core_.notify_global(); }
 }
 
 void engine::process_fetch_dependencies(pkg *p) {
@@ -946,9 +965,10 @@ void engine::process_fetch_dependencies(pkg *p) {
       p->dependencies[fetch_dep_cfg->identity] = { fetch_dep, pkg_phase::spec_fetch };
     }
     if (p->depot_bootstrap) { mark_depot_bootstrap(fetch_dep); }
-    ENVY_TRACE_DEPENDENCY_ADDED(p->cfg->identity,
-                                fetch_dep_cfg->identity,
-                                pkg_phase::spec_fetch);
+    ENVY_TRACE(dependency_added,
+               p->cfg->identity,
+               .dependency = fetch_dep_cfg->identity,
+               .needed_by = pkg_phase::spec_fetch);
 
     // Build child ancestor chain (local to this thread path)
     std::vector<std::string> child_chain{ p->ancestor_chain };
@@ -1014,10 +1034,7 @@ pkg_result_map_t engine::run_full(std::vector<pkg_cfg const *> const &roots) {
   }
 
   core_.extend_all_to_done();  // Launch all tasks running to completion
-
-  tui::debug("engine: joining package threads");
   core_.join_all();  // Tolerates pair tasks spawned while joining
-  tui::debug("engine: all package threads joined");
 
   if (auto const failures{ core_.collect_failures() }; !failures.empty()) {
     auto const &[key, msg]{ failures.front() };
@@ -1261,7 +1278,6 @@ void engine::resolve_graph(std::vector<pkg_cfg const *> const &roots) {
   for (auto const *cfg : roots) { root_pkgs.push_back(ensure_pkg(cfg)); }
 
   for (size_t i{ 0 }; i < root_pkgs.size(); ++i) {
-    tui::debug("engine: resolve_graph start thread for %s", roots[i]->identity.c_str());
     start_pkg_thread(root_pkgs[i], pkg_phase::spec_fetch);
   }
 

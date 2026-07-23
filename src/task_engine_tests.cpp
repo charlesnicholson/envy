@@ -337,15 +337,11 @@ TEST_CASE("task_engine: global condition rendezvous") {
 }
 
 TEST_CASE("task_engine: observer sees lifecycle events") {
-  std::atomic_int starts{ 0 };
-  std::atomic_int completes{ 0 };
   std::atomic_int blocked{ 0 };
   std::atomic_int unblocked{ 0 };
   std::atomic_int extended{ 0 };
 
   task_engine::observer obs;
-  obs.thread_start = [&](std::string const &, int) { ++starts; };
-  obs.thread_complete = [&](std::string const &, int) { ++completes; };
   obs.blocked = [&](std::string const &, int, std::string const &, int) { ++blocked; };
   obs.unblocked = [&](std::string const &, int, std::string const &) { ++unblocked; };
   obs.target_extended = [&](std::string const &, int, int) { ++extended; };
@@ -365,8 +361,6 @@ TEST_CASE("task_engine: observer sees lifecycle events") {
   te.wait_at("b", 1);
   te.join_all();
 
-  CHECK(starts == 2);
-  CHECK(completes == 2);
   CHECK(blocked == 1);
   CHECK(unblocked == 1);
   CHECK(extended >= 1);
@@ -948,8 +942,6 @@ TEST_CASE("task_engine: observer callbacks may reenter engine queries") {
       ++reentrant_queries;
     }
   } };
-  obs.thread_start = [&](std::string const &key, int) { query(key); };
-  obs.thread_complete = [&](std::string const &key, int) { query(key); };
   obs.blocked = [&](std::string const &key, int, std::string const &, int) { query(key); };
   obs.unblocked = [&](std::string const &key, int, std::string const &) { query(key); };
   obs.target_extended = [&](std::string const &key, int, int) { query(key); };

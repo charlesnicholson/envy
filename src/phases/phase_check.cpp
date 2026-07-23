@@ -55,17 +55,15 @@ void run_check_phase(pkg *p, engine &eng) {
   // shared cache holds nothing for them, so there is nothing to look up.
   if (p->type != pkg_type::CACHE_MANAGED) { return; }
 
-  std::string const key{ p->cfg->format_key() };
-
   auto cache_result{ compute_hash_and_lookup_cache(p) };
 
   if (cache_result.lock) {  // Cache miss
     p->lock = std::move(cache_result.lock);
-    tui::debug("phase check: [%s] CACHE MISS - pipeline will execute", key.c_str());
+    tui::debug("check: miss — building");
   } else {  // Cache hit - store pkg_path, no lock means subsequent phases skip
     p->pkg_path = cache_result.pkg_path;
-    tui::debug("phase check: [%s] CACHE HIT at %s - phases will skip",
-               key.c_str(),
+    p->was_cache_hit = true;
+    tui::debug("check: hit at %s — skipping build",
                cache_result.pkg_path.string().c_str());
   }
 }

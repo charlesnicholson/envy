@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .trace_parser import TraceParser
 
 _GIT = shutil.which("git")
 
@@ -136,6 +137,40 @@ class TestGitResolve(unittest.TestCase):
         result = self._resolve("refs/tags/v1.0")
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertEqual(result.stdout, self.c1 + "\n")
+
+    def _resolve_traced(self, ref: str, trace: Path) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        env.setdefault("ENVY_CACHE_DIR", str(self._project_root / "out" / "cache"))
+        return test_config.run(
+            [
+                str(self._envy),
+                f"--trace=file:{trace}",
+                "git-resolve",
+                self._repo_url,
+                ref,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def test_trace_emits_git_resolve_event(self) -> None:
+        # A name resolves via ls-remote; a full sha short-circuits with method=sha.
+        trace = self._work / "resolve.jsonl"
+        result = self._resolve_traced("v1.0", trace)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        events = TraceParser(trace).filter_by_event("git_resolve")
+        self.assertTrue(events, "expected a git_resolve trace event")
+        self.assertEqual(events[0].raw["ref"], "v1.0")
+        self.assertEqual(events[0].raw["sha"], self.c1)
+        self.assertEqual(events[0].raw["method"], "ls-remote")
+
+        sha_trace = self._work / "resolve_sha.jsonl"
+        result = self._resolve_traced(self.c1, sha_trace)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        sha_events = TraceParser(sha_trace).filter_by_event("git_resolve")
+        self.assertTrue(sha_events)
+        self.assertEqual(sha_events[0].raw["method"], "sha")
 
     # -- error cases ---------------------------------------------------------
 

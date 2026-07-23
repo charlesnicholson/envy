@@ -392,7 +392,9 @@ class TestSetupPairs(unittest.TestCase):
     ):
         cmd = [str(self.envy), "--cache-root", str(self.cache_root)]
         if trace:
-            cmd.append("--trace")
+            # These tests observe per-package decision narrative, which lives at
+            # DEBUG (--verbose); --trace is a separate machinery-event stream.
+            cmd.append("--verbose")
         cmd.extend(["install", "--manifest", str(manifest)])
 
         # cwd = manifest dir: pair verbs use plain Lua io.* which resolves
@@ -462,7 +464,7 @@ class TestSetupPairs(unittest.TestCase):
         )
         result = self.run_install(with_setup, trace=True)
 
-        self.assertIn("CACHE HIT", result.stderr)
+        self.assertIn("check: hit", result.stderr)
         self.assertTrue(
             (self.test_dir / "extras_marker.txt").exists(),
             "pair must run even on payload cache hit",

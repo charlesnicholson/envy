@@ -1,0 +1,147 @@
+// Trace event registry — single source of truth for structs, names, serializers,
+// and the trace-schema dump. Fields: ENVY_TRACE_FIELD_{STR,I64,BOOL,PHASE}.
+// Adding an event here requires adding it to trace_event_t in trace.h
+// (enforced by static_assert on kTraceEventCount).
+
+// clang-format off
+
+// Emitted first into every trace stream; schema version sentinel.
+ENVY_TRACE_EVENT(trace_start,
+                 ENVY_TRACE_FIELD_I64(schema))
+
+// --- scheduler / engine ---
+
+ENVY_TRACE_EVENT(spec_registered,
+                 ENVY_TRACE_FIELD_STR(key))
+
+ENVY_TRACE_EVENT(dependency_added,  // spec = parent
+                 ENVY_TRACE_FIELD_STR(dependency)
+                 ENVY_TRACE_FIELD_PHASE(needed_by))
+
+ENVY_TRACE_EVENT(phase_start,
+                 ENVY_TRACE_FIELD_PHASE(phase))
+
+ENVY_TRACE_EVENT(phase_complete,
+                 ENVY_TRACE_FIELD_PHASE(phase)
+                 ENVY_TRACE_FIELD_I64(duration_ms))
+
+ENVY_TRACE_EVENT(phase_blocked,
+                 ENVY_TRACE_FIELD_PHASE(blocked_at_phase)
+                 ENVY_TRACE_FIELD_STR(waiting_for)
+                 ENVY_TRACE_FIELD_PHASE(target_phase))
+
+ENVY_TRACE_EVENT(phase_unblocked,
+                 ENVY_TRACE_FIELD_PHASE(unblocked_at_phase)
+                 ENVY_TRACE_FIELD_STR(dependency))
+
+ENVY_TRACE_EVENT(target_extended,
+                 ENVY_TRACE_FIELD_PHASE(old_target)
+                 ENVY_TRACE_FIELD_PHASE(new_target))
+
+// Terminal per-package result. outcome: cache_hit | imported | installed |
+// setup_complete. The human-facing outcome text is the log/section line; this
+// carries the machine-stable kind plus wall-clock duration.
+ENVY_TRACE_EVENT(pkg_outcome,
+                 ENVY_TRACE_FIELD_STR(outcome)
+                 ENVY_TRACE_FIELD_I64(duration_ms))
+
+// --- cache / locking ---
+
+ENVY_TRACE_EVENT(cache_hit,
+                 ENVY_TRACE_FIELD_STR(cache_key)
+                 ENVY_TRACE_FIELD_STR(pkg_path)
+                 ENVY_TRACE_FIELD_BOOL(fast_path))
+
+ENVY_TRACE_EVENT(cache_miss,
+                 ENVY_TRACE_FIELD_STR(cache_key))
+
+ENVY_TRACE_EVENT(lock_acquired,
+                 ENVY_TRACE_FIELD_STR(lock_path)
+                 ENVY_TRACE_FIELD_I64(wait_duration_ms))
+
+ENVY_TRACE_EVENT(lock_released,
+                 ENVY_TRACE_FIELD_STR(lock_path)
+                 ENVY_TRACE_FIELD_I64(hold_duration_ms))
+
+// --- lua sandbox access checks ---
+
+ENVY_TRACE_EVENT(lua_ctx_package_access,
+                 ENVY_TRACE_FIELD_STR(target)
+                 ENVY_TRACE_FIELD_PHASE(current_phase)
+                 ENVY_TRACE_FIELD_PHASE(needed_by)
+                 ENVY_TRACE_FIELD_BOOL(allowed)
+                 ENVY_TRACE_FIELD_STR(reason))
+
+ENVY_TRACE_EVENT(lua_ctx_product_access,
+                 ENVY_TRACE_FIELD_STR(target)
+                 ENVY_TRACE_FIELD_STR(provider)
+                 ENVY_TRACE_FIELD_PHASE(current_phase)
+                 ENVY_TRACE_FIELD_PHASE(needed_by)
+                 ENVY_TRACE_FIELD_BOOL(allowed)
+                 ENVY_TRACE_FIELD_STR(reason))
+
+ENVY_TRACE_EVENT(lua_ctx_loadenv_spec_access,
+                 ENVY_TRACE_FIELD_STR(target)
+                 ENVY_TRACE_FIELD_STR(subpath)
+                 ENVY_TRACE_FIELD_PHASE(current_phase)
+                 ENVY_TRACE_FIELD_PHASE(needed_by)
+                 ENVY_TRACE_FIELD_BOOL(allowed)
+                 ENVY_TRACE_FIELD_STR(reason))
+
+// --- depot / products / deploy ---
+
+ENVY_TRACE_EVENT(depot_check,
+                 ENVY_TRACE_FIELD_STR(sha)
+                 ENVY_TRACE_FIELD_STR(result))  // hit | miss | sha_mismatch
+
+ENVY_TRACE_EVENT(product_resolved,
+                 ENVY_TRACE_FIELD_STR(product)
+                 ENVY_TRACE_FIELD_STR(provider)
+                 ENVY_TRACE_FIELD_STR(via))  // registry | identity | fallback
+
+ENVY_TRACE_EVENT(deploy_script,
+                 ENVY_TRACE_FIELD_STR(product)
+                 ENVY_TRACE_FIELD_STR(platform)
+                 ENVY_TRACE_FIELD_STR(action))  // created | updated | unchanged | removed
+
+ENVY_TRACE_EVENT(cache_entry_finalized,
+                 ENVY_TRACE_FIELD_STR(entry_dir)
+                 // completed | purged_user_managed | cleaned_failure | kept_partial
+                 ENVY_TRACE_FIELD_STR(disposition))
+
+// --- io ---
+
+ENVY_TRACE_EVENT(download_start,
+                 ENVY_TRACE_FIELD_STR(url)
+                 ENVY_TRACE_FIELD_STR(destination))
+
+ENVY_TRACE_EVENT(download_complete,
+                 ENVY_TRACE_FIELD_STR(url)
+                 ENVY_TRACE_FIELD_I64(bytes)
+                 ENVY_TRACE_FIELD_I64(duration_ms))
+
+ENVY_TRACE_EVENT(download_failed,
+                 ENVY_TRACE_FIELD_STR(url)
+                 ENVY_TRACE_FIELD_STR(error))
+
+ENVY_TRACE_EVENT(download_skipped,
+                 ENVY_TRACE_FIELD_STR(url)
+                 ENVY_TRACE_FIELD_STR(reason))
+
+ENVY_TRACE_EVENT(git_resolve,
+                 ENVY_TRACE_FIELD_STR(url)
+                 ENVY_TRACE_FIELD_STR(ref)
+                 ENVY_TRACE_FIELD_STR(sha)
+                 ENVY_TRACE_FIELD_STR(method))  // sha | ls-remote
+
+ENVY_TRACE_EVENT(extract_start,
+                 ENVY_TRACE_FIELD_STR(archive)
+                 ENVY_TRACE_FIELD_STR(destination)
+                 ENVY_TRACE_FIELD_I64(strip_components))
+
+ENVY_TRACE_EVENT(extract_complete,
+                 ENVY_TRACE_FIELD_STR(archive)
+                 ENVY_TRACE_FIELD_I64(files_extracted)
+                 ENVY_TRACE_FIELD_I64(duration_ms))
+
+// clang-format on

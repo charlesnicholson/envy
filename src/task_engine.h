@@ -68,8 +68,6 @@ class task_engine : unmovable {
   // Scheduling-event callbacks (tracing). Fire on worker/caller threads with no
   // engine locks held; any null member is skipped.
   struct observer {
-    std::function<void(std::string const &key, int target)> thread_start;
-    std::function<void(std::string const &key, int completed)> thread_complete;
     std::function<
         void(std::string const &key, int step, std::string const &dep, int watermark)>
         blocked;
