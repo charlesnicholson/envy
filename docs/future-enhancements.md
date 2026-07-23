@@ -360,3 +360,7 @@ else if (v.starts_with(w + "-")) { result.push_back(v); }
 ## Cross-Platform Spec Variants
 
 Higher-level abstraction for platform-specific variants within a single spec identity. Current Lua approach handles this programmatically.
+
+## Trace Coverage for Bootstrap/Bundle/AWS
+
+Machinery trace events (`src/trace_events.def`) cover the scheduler, cache/lock, fetch, git-resolve, depot, and deploy paths but not `bootstrap.cpp`, `bundle.cpp`, or `aws_util.cpp`. Add events there if those subsystems need production diagnostics (e.g., `bundle_parsed`, `s3_request`).

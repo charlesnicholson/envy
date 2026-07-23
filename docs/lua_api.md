@@ -27,8 +27,7 @@ Platform-incompatible shells throw at runtime; all constants exist on all platfo
 ## Logging
 
 ```lua
-envy.trace(msg)  -- Debug trace (verbose mode)
-envy.debug(msg)  -- Debug output
+envy.debug(msg)  -- Decision narrative (shown with --verbose)
 envy.info(msg)   -- Informational
 envy.warn(msg)   -- Warning
 envy.error(msg)  -- Error (does not throw)

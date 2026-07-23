@@ -660,17 +660,11 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                           int strip_components,
                           std::string const &pkg_identity,
                           tui::section_handle section) {
-  if (!std::filesystem::exists(fetch_dir)) {
-    tui::debug("extract_all_archives: fetch_dir does not exist, nothing to extract");
-    return;
-  }
+  if (!std::filesystem::exists(fetch_dir)) { return; }
 
   // Collect items to extract
   std::vector<std::string> const items{ collect_extract_items(fetch_dir) };
-  if (items.empty()) {
-    tui::debug("extract_all_archives: no files to extract");
-    return;
-  }
+  if (items.empty()) { return; }
 
   // Compute totals (with spinner if TUI enabled)
   std::optional<extract_tui_state> tui_state;
@@ -709,10 +703,11 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     if (extract_is_archive_extension(path)) {
       auto const start{ std::chrono::steady_clock::now() };
 
-      ENVY_TRACE_EXTRACT_ARCHIVE_START(pkg_identity,
-                                       path.string(),
-                                       dest_dir.string(),
-                                       strip_components);
+      ENVY_TRACE(extract_start,
+                 pkg_identity,
+                 .archive = path.string(),
+                 .destination = dest_dir.string(),
+                 .strip_components = strip_components);
 
       auto const archive_base{ processed_bytes };
       std::uint64_t last_archive_bytes{ 0 };
@@ -737,10 +732,11 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
                                std::chrono::steady_clock::now() - start)
                                .count() };
 
-      ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(pkg_identity,
-                                          path.string(),
-                                          static_cast<std::int64_t>(files),
-                                          duration);
+      ENVY_TRACE(extract_complete,
+                 pkg_identity,
+                 .archive = path.string(),
+                 .files_extracted = static_cast<std::int64_t>(files),
+                 .duration_ms = duration);
 
       if (tui_state) { tui_state->on_progress(processed_bytes, {}, false); }
     } else {
@@ -761,10 +757,9 @@ void extract_all_archives(std::filesystem::path const &fetch_dir,
     }
   }
 
-  tui::debug(
-      "extract_all_archives: complete (%llu files from archives, %llu files copied)",
-      static_cast<unsigned long long>(total_files_extracted),
-      static_cast<unsigned long long>(total_files_copied));
+  tui::debug("stage: extracted %llu file(s) from archives, copied %llu",
+             static_cast<unsigned long long>(total_files_extracted),
+             static_cast<unsigned long long>(total_files_copied));
 }
 
 }  // namespace envy

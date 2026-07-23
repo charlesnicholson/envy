@@ -75,20 +75,12 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
                                         std::string_view cache_key) {
   envy::cache::ensure_result result{ entry_dir, entry_dir / "pkg", nullptr };
 
-  ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(pkg_identity),
-                               entry_dir.string(),
-                               "before_lock");
-  bool const complete_before_lock{ envy::cache::is_entry_complete(entry_dir) };
-  ENVY_TRACE_CACHE_CHECK_RESULT(std::string(pkg_identity),
-                                entry_dir.string(),
-                                complete_before_lock,
-                                "before_lock");
-
-  if (complete_before_lock) {
-    ENVY_TRACE_CACHE_HIT(std::string(pkg_identity),
-                         std::string(cache_key),
-                         result.pkg_path.string(),
-                         true);
+  if (envy::cache::is_entry_complete(entry_dir)) {
+    ENVY_TRACE(cache_hit,
+               std::string(pkg_identity),
+               .cache_key = std::string(cache_key),
+               .pkg_path = result.pkg_path.string(),
+               .fast_path = true);
     return result;
   }
 
@@ -97,32 +89,34 @@ envy::cache::ensure_result ensure_entry(envy::cache_impl &impl,
 
   auto const lock_wait_start{ std::chrono::steady_clock::now() };
   envy::platform::file_lock lock{ lock_path };
+  auto const lock_acquired_at{ std::chrono::steady_clock::now() };
   auto const wait_duration_ms{ std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - lock_wait_start)
+                                   lock_acquired_at - lock_wait_start)
                                    .count() };
-  ENVY_TRACE_LOCK_ACQUIRED(std::string(pkg_identity),
-                           lock_path.string(),
-                           static_cast<std::int64_t>(wait_duration_ms));
+  ENVY_TRACE(lock_acquired,
+             std::string(pkg_identity),
+             .lock_path = lock_path.string(),
+             .wait_duration_ms = static_cast<std::int64_t>(wait_duration_ms));
 
-  ENVY_TRACE_CACHE_CHECK_ENTRY(std::string(pkg_identity),
-                               entry_dir.string(),
-                               "after_lock");
-  bool const complete_after_lock{ envy::cache::is_entry_complete(entry_dir) };
-  ENVY_TRACE_CACHE_CHECK_RESULT(std::string(pkg_identity),
-                                entry_dir.string(),
-                                complete_after_lock,
-                                "after_lock");
-
-  if (complete_after_lock) {
-    ENVY_TRACE_CACHE_HIT(std::string(pkg_identity),
-                         std::string(cache_key),
-                         result.pkg_path.string(),
-                         false);
+  if (envy::cache::is_entry_complete(entry_dir)) {
+    ENVY_TRACE(cache_hit,
+               std::string(pkg_identity),
+               .cache_key = std::string(cache_key),
+               .pkg_path = result.pkg_path.string(),
+               .fast_path = false);
+    // Coarse lock is released here (dtor) without handing off to a
+    // scoped_entry_lock; pair the acquire so lock events balance.
+    ENVY_TRACE(lock_released,
+               std::string(pkg_identity),
+               .lock_path = lock_path.string(),
+               .hold_duration_ms = static_cast<std::int64_t>(
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - lock_acquired_at)
+                       .count()));
     return result;
   }
 
-  ENVY_TRACE_CACHE_MISS(std::string(pkg_identity), std::string(cache_key));
-  auto const lock_acquired_at{ std::chrono::steady_clock::now() };
+  ENVY_TRACE(cache_miss, std::string(pkg_identity), .cache_key = std::string(cache_key));
   result.lock = envy::cache::scoped_entry_lock::make(entry_dir,
                                                      std::move(lock),
                                                      lock_path,
@@ -146,23 +140,17 @@ cache::scoped_entry_lock::scoped_entry_lock(
                                 std::move(lock_path),
                                 std::move(pkg_identity),
                                 lock_acquired_at) } {
-  tui::debug("scoped_entry_lock CTOR: entry_dir=%s", m->entry_dir_.string().c_str());
-  tui::debug("  about to remove_all(install_dir)");
   remove_all_noexcept(install_dir());
-  tui::debug("  about to remove_all(work_dir)");
   remove_all_noexcept(work_dir());  // always delete (purely ephemeral)
 
-  // Preserve fetch/ to enable per-file caching across failed attempts
-
-  // Ensure directories exist
-  tui::debug("  creating directories");
+  // Preserve fetch/ to enable per-file caching across failed attempts; create
+  // the rest.
   std::filesystem::create_directories(fetch_dir());
   std::filesystem::create_directories(install_dir());
   std::filesystem::create_directories(work_dir());
   platform::mark_not_indexed(work_dir());  // prevent Indexer from holding handles
   std::filesystem::create_directories(stage_dir());
   std::filesystem::create_directories(tmp_dir());
-  tui::debug("scoped_entry_lock CTOR: done");
 }
 
 cache::scoped_entry_lock::~scoped_entry_lock() {
@@ -170,13 +158,11 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
                                    std::chrono::steady_clock::now() -
                                    m->lock_acquired_time)
                                    .count() };
-  tui::debug("scoped_entry_lock DTOR: entry_dir=%s completed=%s user_managed=%s",
-             m->entry_dir_.string().c_str(),
-             m->completed_ ? "true" : "false",
-             m->user_managed_ ? "true" : "false");
+
+  char const *disposition{ "kept_partial" };
 
   if (m->completed_) {
-    tui::debug("  DTOR: SUCCESS PATH - cleaning up work/fetch dirs");
+    disposition = "completed";
     remove_all_noexcept(work_dir());
     if (!m->preserve_fetch_) {
       // fetch_dir cleanup is best-effort: the install is already complete, so a
@@ -188,16 +174,12 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
                   ec.message().c_str());
       }
     }
-    tui::debug("  DTOR: touching envy-complete");
     platform::touch_file(m->entry_dir_ / "envy-complete");
     platform::flush_directory(m->entry_dir_);
-    tui::debug("  DTOR: completed path success");
   } else if (m->user_managed_) {
-    tui::debug("  DTOR: USER-MANAGED PATH - purging entire entry_dir");
+    disposition = "purged_user_managed";
     remove_all_noexcept(m->entry_dir_);
-    tui::debug("  DTOR: user-managed purge complete");
   } else {
-    tui::debug("  DTOR: CACHE-MANAGED FAILURE PATH - cleaning up");
     // Check empty install_dir AND fetch_dir (installation didn't use cache at all)
     std::error_code ec;
 
@@ -219,25 +201,23 @@ cache::scoped_entry_lock::~scoped_entry_lock() {
       return it == std::filesystem::directory_iterator{};
     }() };
 
-    tui::debug("  DTOR: install_empty=%s fetch_empty=%s",
-               install_dir_empty ? "true" : "false",
-               fetch_dir_empty ? "true" : "false");
-
     remove_all_noexcept(install_dir());
     remove_all_noexcept(work_dir());
 
     if (install_dir_empty && fetch_dir_empty) {
-      tui::debug("  DTOR: both empty, wiping entry");
+      disposition = "cleaned_failure";
       remove_all_noexcept(fetch_dir());
     }
   }
 
-  tui::debug(
-      "  DTOR: lock will be released and lock file deleted by file_lock destructor");
-  ENVY_TRACE_LOCK_RELEASED(m->pkg_identity_,
-                           m->lock_path_.string(),
-                           static_cast<std::int64_t>(hold_duration_ms));
-  tui::debug("scoped_entry_lock DTOR: done");
+  ENVY_TRACE(cache_entry_finalized,
+             m->pkg_identity_,
+             .entry_dir = m->entry_dir_.string(),
+             .disposition = disposition);
+  ENVY_TRACE(lock_released,
+             m->pkg_identity_,
+             .lock_path = m->lock_path_.string(),
+             .hold_duration_ms = static_cast<std::int64_t>(hold_duration_ms));
 }
 
 cache::scoped_entry_lock::ptr_t cache::scoped_entry_lock::make(
@@ -292,10 +272,7 @@ cache::~cache() = default;
 path const &cache::root() const { return m->root_; }
 
 bool cache::is_entry_complete(path const &entry_dir) {
-  path const complete_marker{ entry_dir / "envy-complete" };
-  bool const exists{ platform::file_exists(complete_marker) };
-  ENVY_TRACE_FILE_EXISTS_CHECK("", complete_marker.string(), exists);
-  return exists;
+  return platform::file_exists(entry_dir / "envy-complete");
 }
 
 std::string cache::key(std::string_view identity,

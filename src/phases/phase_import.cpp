@@ -51,13 +51,15 @@ void run_import_phase(pkg *p, engine &eng) {
   std::string const hash_prefix{ p->canonical_identity_hash.substr(0, 16) };
 
   auto const location{ depot->find(p->cfg->identity, platform, arch, hash_prefix) };
-  if (!location) { return; }  // Depot miss — fall through to fetch
+  if (!location) {
+    ENVY_TRACE(depot_check, p->cfg->identity, .sha = hash_prefix, .result = "miss");
+    return;  // Depot miss — fall through to fetch
+  }
+  ENVY_TRACE(depot_check, p->cfg->identity, .sha = hash_prefix, .result = "hit");
 
   namespace fs = std::filesystem;
 
-  tui::debug("phase import: [%s] depot hit: %s",
-             p->cfg->identity.c_str(),
-             location->url.c_str());
+  tui::debug("import: depot hit — importing %s", location->url.c_str());
 
   std::string const label{ "[" + p->cfg->identity + "]" };
 
@@ -81,7 +83,7 @@ void run_import_phase(pkg *p, engine &eng) {
                                                    location->url };
       std::visit([&](auto &r) { r.progress = tracker; }, requests[0]);
 
-      auto const results{ fetch(requests) };
+      auto const results{ fetch(requests, p->cfg->identity) };
       if (results.empty() || !std::holds_alternative<fetch_result>(results[0])) {
         auto const *error{ results.empty() ? nullptr
                                            : std::get_if<std::string>(&results[0]) };
@@ -105,6 +107,10 @@ void run_import_phase(pkg *p, engine &eng) {
       auto const actual{ sha256(archive_path) };
       auto const actual_hex{ util_bytes_to_hex(actual.data(), actual.size()) };
       if (actual_hex != *location->sha256) {
+        ENVY_TRACE(depot_check,
+                   p->cfg->identity,
+                   .sha = hash_prefix,
+                   .result = "sha_mismatch");
         tui::warn("depot: SHA256 mismatch for %s (expected %s, got %s)",
                   location->url.c_str(),
                   location->sha256->c_str(),
@@ -177,22 +183,20 @@ void run_import_phase(pkg *p, engine &eng) {
     if (has_install) {
       p->lock->mark_install_complete();
       p->pkg_path = p->lock->install_dir();
+      p->imported = true;  // completion reads this before the lock is gone
       p->lock.reset();
       tui::section_set_content(
           p->tui_section,
           tui::section_frame{ .label = label,
                               .content = tui::static_text_data{ .text = "imported" } });
-      tui::debug("phase import: [%s] depot import complete at %s",
-                 p->cfg->identity.c_str(),
-                 p->pkg_path.string().c_str());
+      tui::debug("import: depot import complete at %s", p->pkg_path.string().c_str());
     } else if (has_fetch) {
       p->lock->mark_fetch_complete();
       tui::section_set_content(p->tui_section,
                                tui::section_frame{ .label = label,
                                                    .content = tui::static_text_data{
                                                        .text = "imported (fetch)" } });
-      tui::debug("phase import: [%s] depot fetch-only import, build phases will continue",
-                 p->cfg->identity.c_str());
+      tui::debug("import: depot fetch-only import — build phases continue");
     } else {
       tui::warn("depot: archive %s did not populate pkg/ or fetch/ directories",
                 location->url.c_str());

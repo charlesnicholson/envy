@@ -1,19 +1,82 @@
-"""Trace parser for envy structured logging JSONL files.
+"""Trace parser for envy structured trace JSONL files.
 
 Parses JSONL trace files emitted by envy --trace=file:path.jsonl and provides
 filtering and analysis helpers for test assertions.
+
+Schema v2: the first record is a trace_start header carrying the schema version.
+Every record carries envelope keys: seq (monotonic, causal order), ts (emit-time
+ISO8601), tid (small sequential thread id), event, and spec (subject package
+identity; omitted for engine-scoped events).
+
+EVENT_REGISTRY mirrors src/trace_events.def; test_trace_schema.py verifies the
+two stay identical via the binary's trace-schema dump.
 """
 
 import json
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Callable, List, Optional
+
+SCHEMA_VERSION = 2
+
+# event name -> ["field:type", ...] where type is str|i64|bool|phase.
+# Must match src/trace_events.def exactly.
+EVENT_REGISTRY = {
+    "trace_start": ["schema:i64"],
+    "spec_registered": ["key:str"],
+    "dependency_added": ["dependency:str", "needed_by:phase"],
+    "phase_start": ["phase:phase"],
+    "phase_complete": ["phase:phase", "duration_ms:i64"],
+    "phase_blocked": ["blocked_at_phase:phase", "waiting_for:str", "target_phase:phase"],
+    "phase_unblocked": ["unblocked_at_phase:phase", "dependency:str"],
+    "target_extended": ["old_target:phase", "new_target:phase"],
+    "pkg_outcome": ["outcome:str", "duration_ms:i64"],
+    "cache_hit": ["cache_key:str", "pkg_path:str", "fast_path:bool"],
+    "cache_miss": ["cache_key:str"],
+    "lock_acquired": ["lock_path:str", "wait_duration_ms:i64"],
+    "lock_released": ["lock_path:str", "hold_duration_ms:i64"],
+    "lua_ctx_package_access": [
+        "target:str",
+        "current_phase:phase",
+        "needed_by:phase",
+        "allowed:bool",
+        "reason:str",
+    ],
+    "lua_ctx_product_access": [
+        "target:str",
+        "provider:str",
+        "current_phase:phase",
+        "needed_by:phase",
+        "allowed:bool",
+        "reason:str",
+    ],
+    "lua_ctx_loadenv_spec_access": [
+        "target:str",
+        "subpath:str",
+        "current_phase:phase",
+        "needed_by:phase",
+        "allowed:bool",
+        "reason:str",
+    ],
+    "depot_check": ["sha:str", "result:str"],
+    "product_resolved": ["product:str", "provider:str", "via:str"],
+    "deploy_script": ["product:str", "platform:str", "action:str"],
+    "cache_entry_finalized": ["entry_dir:str", "disposition:str"],
+    "download_start": ["url:str", "destination:str"],
+    "download_complete": ["url:str", "bytes:i64", "duration_ms:i64"],
+    "download_failed": ["url:str", "error:str"],
+    "download_skipped": ["url:str", "reason:str"],
+    "git_resolve": ["url:str", "ref:str", "sha:str", "method:str"],
+    "extract_start": ["archive:str", "destination:str", "strip_components:i64"],
+    "extract_complete": ["archive:str", "files_extracted:i64", "duration_ms:i64"],
+}
 
 
 class PkgPhase(IntEnum):
     """Spec phase enum (matches src/pkg_phase.h)"""
 
+    NONE = -1
     SPEC_FETCH = 0
     PKG_CHECK = 1
     PKG_IMPORT = 2
@@ -26,53 +89,51 @@ class PkgPhase(IntEnum):
     COMPLETION = 9
 
 
-# Type aliases for event types
-EventType = Literal[
-    "phase_blocked",
-    "phase_unblocked",
-    "dependency_added",
-    "phase_start",
-    "phase_complete",
-    "thread_start",
-    "thread_complete",
-    "spec_registered",
-    "target_extended",
-    "cache_hit",
-    "cache_miss",
-    "lock_acquired",
-    "lock_released",
-]
+# Serialized phase names (matches src/pkg_phase.cpp name table).
+PHASE_BY_NAME = {
+    "none": PkgPhase.NONE,
+    "spec_fetch": PkgPhase.SPEC_FETCH,
+    "check": PkgPhase.PKG_CHECK,
+    "import": PkgPhase.PKG_IMPORT,
+    "fetch": PkgPhase.PKG_FETCH,
+    "stage": PkgPhase.PKG_STAGE,
+    "build": PkgPhase.PKG_BUILD,
+    "install": PkgPhase.PKG_INSTALL,
+    "setup": PkgPhase.PKG_SETUP,
+    "export": PkgPhase.PKG_EXPORT,
+    "completion": PkgPhase.COMPLETION,
+}
+
+
+def parse_phase(name: str) -> PkgPhase:
+    """Map a serialized phase name to PkgPhase; raises on unknown names."""
+    if name not in PHASE_BY_NAME:
+        raise ValueError(f"Unknown phase name: {name!r}")
+    return PHASE_BY_NAME[name]
 
 
 @dataclass
 class TraceEvent:
-    """Parsed trace event with typed fields."""
+    """Parsed trace event with envelope fields."""
 
-    event: EventType
+    event: str
+    seq: int
     ts: str
+    tid: int
+    spec: Optional[str]
     raw: dict  # Full JSON for accessing event-specific fields
-
-    @property
-    def spec(self) -> Optional[str]:
-        """Get spec identity from event (if present)."""
-        return self.raw.get("spec") or self.raw.get("parent")
 
     @property
     def phase(self) -> Optional[PkgPhase]:
         """Get phase from event (if present), returns enum value."""
-        if "phase_num" in self.raw:
-            return PkgPhase(self.raw["phase_num"])
-        if "blocked_at_phase_num" in self.raw:
-            return PkgPhase(self.raw["blocked_at_phase_num"])
-        if "needed_by_num" in self.raw:
-            return PkgPhase(self.raw["needed_by_num"])
-        if "target_phase_num" in self.raw:
-            return PkgPhase(self.raw["target_phase_num"])
+        for key in ("phase", "blocked_at_phase", "needed_by", "target_phase"):
+            if key in self.raw:
+                return parse_phase(self.raw[key])
         return None
 
 
 class TraceParser:
-    """Parser for envy trace JSONL files."""
+    """Parser for envy trace JSONL files (schema v2, strict)."""
 
     def __init__(self, trace_file: Path):
         """Initialize parser with trace file path."""
@@ -80,7 +141,7 @@ class TraceParser:
         self._events: Optional[List[TraceEvent]] = None
 
     def parse(self) -> List[TraceEvent]:
-        """Parse all events from trace file."""
+        """Parse all events, validate the header, and sort by seq."""
         if self._events is not None:
             return self._events
 
@@ -93,44 +154,60 @@ class TraceParser:
 
                 try:
                     data = json.loads(line)
-                    if "event" not in data or "ts" not in data:
-                        raise ValueError(f"Missing required fields (event, ts)")
-
+                    for key in ("event", "seq", "ts", "tid"):
+                        if key not in data:
+                            raise ValueError(f"Missing envelope key {key!r}")
+                    name = data["event"]
+                    if name not in EVENT_REGISTRY:
+                        raise ValueError(f"Unknown event type: {name!r}")
                     events.append(
-                        TraceEvent(event=data["event"], ts=data["ts"], raw=data)
+                        TraceEvent(
+                            event=name,
+                            seq=data["seq"],
+                            ts=data["ts"],
+                            tid=data["tid"],
+                            spec=data.get("spec"),
+                            raw=data,
+                        )
                     )
                 except (json.JSONDecodeError, ValueError) as e:
-                    raise ValueError(f"Invalid JSON on line {line_num}: {e}") from e
+                    raise ValueError(f"Invalid trace line {line_num}: {e}") from e
+
+        events.sort(key=lambda e: e.seq)
+
+        if not events or events[0].event != "trace_start":
+            raise ValueError("Trace stream missing trace_start header record")
+        schema = events[0].raw.get("schema")
+        if schema != SCHEMA_VERSION:
+            raise ValueError(
+                f"Trace schema mismatch: expected {SCHEMA_VERSION}, got {schema}"
+            )
 
         self._events = events
         return events
 
-    def filter_by_event(self, event_type: EventType) -> List[TraceEvent]:
-        """Filter events by type."""
+    def filter_by_event(self, event_type: str) -> List[TraceEvent]:
+        """Filter events by type; raises on names absent from the registry."""
+        if event_type not in EVENT_REGISTRY:
+            raise ValueError(f"Unknown event type: {event_type!r}")
         return [e for e in self.parse() if e.event == event_type]
 
     def filter_by_spec(self, spec: str) -> List[TraceEvent]:
         """Filter events by spec identity."""
         return [e for e in self.parse() if e.spec == spec]
 
-    def filter_by_spec_and_event(
-        self, spec: str, event_type: EventType
-    ) -> List[TraceEvent]:
+    def filter_by_spec_and_event(self, spec: str, event_type: str) -> List[TraceEvent]:
         """Filter events by spec and event type."""
-        return [e for e in self.parse() if e.spec == spec and e.event == event_type]
+        return [e for e in self.filter_by_event(event_type) if e.spec == spec]
 
     def get_dependency_added_events(self, parent: str) -> List[TraceEvent]:
         """Get all dependency_added events for a given parent spec."""
-        return [
-            e
-            for e in self.filter_by_event("dependency_added")
-            if e.raw.get("parent") == parent
-        ]
+        return self.filter_by_spec_and_event(parent, "dependency_added")
 
     def get_phase_sequence(self, spec: str) -> List[PkgPhase]:
         """Get the sequence of phases executed for a spec."""
         phase_starts = self.filter_by_spec_and_event(spec, "phase_start")
-        return [PkgPhase(e.raw["phase_num"]) for e in phase_starts]
+        return [parse_phase(e.raw["phase"]) for e in phase_starts]
 
     def assert_phase_sequence(self, spec: str, expected: List[PkgPhase]) -> None:
         """Assert that a spec executed phases in expected order."""
@@ -150,11 +227,27 @@ class TraceParser:
 
         assert matching, f"No dependency_added event found for {parent} -> {dependency}"
 
-        event = matching[0]
-        actual_phase = PkgPhase(event.raw["needed_by_num"])
+        actual_phase = parse_phase(matching[0].raw["needed_by"])
 
         assert actual_phase == expected_phase, (
             f"Wrong needed_by phase for {parent} -> {dependency}:\n"
             f"  Expected: {expected_phase.name}\n"
             f"  Actual:   {actual_phase.name}"
+        )
+
+    def assert_ordered(
+        self,
+        before: Callable[[TraceEvent], bool],
+        after: Callable[[TraceEvent], bool],
+    ) -> None:
+        """Assert the first event matching `before` precedes (by seq) the first
+        matching `after`."""
+        events = self.parse()
+        first_before = next((e for e in events if before(e)), None)
+        first_after = next((e for e in events if after(e)), None)
+        assert first_before is not None, "No event matched `before` predicate"
+        assert first_after is not None, "No event matched `after` predicate"
+        assert first_before.seq < first_after.seq, (
+            f"Ordering violation: {first_before.event} (seq={first_before.seq}) does "
+            f"not precede {first_after.event} (seq={first_after.seq})"
         )

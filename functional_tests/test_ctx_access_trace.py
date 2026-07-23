@@ -1,6 +1,5 @@
 """Functional test to validate ctx.package/ctx.product trace emission and ordering."""
 
-import json
 import shutil
 import subprocess
 import tempfile
@@ -8,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from . import test_config
+from .trace_parser import TraceParser
 
 # =============================================================================
 # Shared provider specs
@@ -63,13 +63,6 @@ class TestCtxAccessTrace(unittest.TestCase):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def load_trace(self, trace_file: Path):
-        events = []
-        with trace_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                events.append(json.loads(line))
-        return events
-
     def test_ctx_access_trace_emitted(self):
         """ctx.package/ctx.product emit trace events with allow/deny status."""
         # Main spec: tests allowed and denied access to package and product APIs
@@ -120,13 +113,9 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         self.assertTrue(trace_file.exists(), "Trace file not created")
 
-        events = self.load_trace(trace_file)
-        package_events = [
-            e for e in events if e.get("event") == "lua_ctx_package_access"
-        ]
-        product_events = [
-            e for e in events if e.get("event") == "lua_ctx_product_access"
-        ]
+        parser = TraceParser(trace_file)
+        package_events = [e.raw for e in parser.filter_by_event("lua_ctx_package_access")]
+        product_events = [e.raw for e in parser.filter_by_event("lua_ctx_product_access")]
 
         self.assertGreaterEqual(
             len(package_events), 2, "expected allowed+denied package events"
@@ -145,16 +134,17 @@ end
 
         allowed_products = [e for e in product_events if e.get("allowed") is True]
         denied_products = [e for e in product_events if e.get("allowed") is False]
-        self.assertTrue(any(e.get("product") == "tool" for e in allowed_products))
+        self.assertTrue(any(e.get("target") == "tool" for e in allowed_products))
         self.assertTrue(
-            any(e.get("product") == "missing_prod" for e in denied_products)
+            any(e.get("target") == "missing_prod" for e in denied_products)
         )
 
-        # Verify chronological ordering: allowed package should appear before denied package (same phase)
-        package_indices = {e["target"]: i for i, e in enumerate(package_events)}
-        self.assertLess(
-            package_indices.get("local.dep_val_lib@v1", 9999),
-            package_indices.get("local.missing@v1", 9999),
+        # Verify causal ordering: allowed package access precedes denied access
+        parser.assert_ordered(
+            lambda e: e.event == "lua_ctx_package_access"
+            and e.raw.get("target") == "local.dep_val_lib@v1",
+            lambda e: e.event == "lua_ctx_package_access"
+            and e.raw.get("target") == "local.missing@v1",
         )
 
 

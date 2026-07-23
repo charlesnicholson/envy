@@ -158,7 +158,6 @@ void lua_envy_install(sol::state &lua) {
   };
 
   auto envy_table{ lua.create_table() };  // envy table with logging functions
-  envy_table["trace"] = [](std::string_view msg) { tui::debug("%s", msg.data()); };
   envy_table["debug"] = [](std::string_view msg) { tui::debug("%s", msg.data()); };
   envy_table["info"] = [](std::string_view msg) { tui::info("%s", msg.data()); };
   envy_table["warn"] = [](std::string_view msg) { tui::warn("%s", msg.data()); };

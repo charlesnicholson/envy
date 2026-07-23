@@ -60,38 +60,10 @@ struct captured_output {
   }
 };
 
-std::string phase_token(char const *key, envy::pkg_phase phase) {
-  std::string token{ "\"" };
-  token.append(key);
-  token.append("\":\"");
-  token.append(envy::pkg_phase_name(phase));
-  token.push_back('"');
-  return token;
-}
-
-std::string phase_num_token(char const *key, envy::pkg_phase phase) {
-  std::string token{ "\"" };
-  token.append(key);
-  token.append("_num\":");
-  token.append(std::to_string(static_cast<int>(phase)));
-  return token;
-}
-
-void expect_json_tokens(envy::trace_event_t const &event,
-                        std::vector<std::string> tokens) {
-  auto const json{ envy::trace_event_to_json(event) };
-  CHECK_MESSAGE(json.find("\"ts\"") != std::string::npos, "missing timestamp in json");
-  tokens.emplace_back(std::string{ "\"event\":\"" } +
-                      std::string(envy::trace_event_name(event)) + "\"");
-  for (auto const &token : tokens) {
-    CHECK_MESSAGE(json.find(token) != std::string::npos,
-                  "missing token: " << token << " in json: " << json);
-  }
-}
-
 }  // namespace
 
-TEST_CASE_FIXTURE(captured_output, "tui unstructured logs are raw messages") {
+TEST_CASE_FIXTURE(captured_output,
+                  "tui undecorated logs: info/debug raw, warn/error tagged") {
   REQUIRE(messages.empty());
 
   CHECK_NOTHROW(envy::tui::run(std::nullopt));
@@ -106,8 +78,9 @@ TEST_CASE_FIXTURE(captured_output, "tui unstructured logs are raw messages") {
   REQUIRE(messages.size() == 4);
   CHECK(messages[0] == "hello world\n");
   CHECK(messages[1] == "value 42\n");
-  CHECK(messages[2] == "three 3\n");
-  CHECK(messages[3] == "boom\n");
+  // Undecorated warn/error are marked compiler-style so they stand out.
+  CHECK(messages[2] == "warning: three 3\n");
+  CHECK(messages[3] == "error: boom\n");
 }
 
 TEST_CASE_FIXTURE(captured_output, "tui structured logs include prefix") {
@@ -149,249 +122,26 @@ TEST_CASE_FIXTURE(captured_output, "tui severity filtering honors threshold") {
 TEST_CASE_FIXTURE(captured_output, "tui trace events reach handler") {
   envy::tui::configure_trace_outputs(
       { { envy::tui::trace_output_type::std_err, std::nullopt } });
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
 
-  envy::tui::trace(envy::trace_events::phase_start{
-      .spec = "demo.spec@v1",
-      .phase = envy::pkg_phase::spec_fetch,
-  });
+  envy::tui::trace(
+      "demo.spec@v1",
+      envy::trace_events::phase_start{ .phase = envy::pkg_phase::spec_fetch });
 
   CHECK_NOTHROW(envy::tui::shutdown());
   REQUIRE_FALSE(messages.empty());
-  CHECK(messages[0].find("phase_start") != std::string::npos);
-  CHECK(messages[0].find("spec=demo.spec@v1") != std::string::npos);
+  // configure_trace_outputs emits the trace_start header record first.
+  CHECK(messages[0].find("trace_start") != std::string::npos);
+  bool found{ false };
+  for (auto const &msg : messages) {
+    if (msg.find("phase_start") != std::string::npos &&
+        msg.find("spec=demo.spec@v1") != std::string::npos) {
+      found = true;
+    }
+  }
+  CHECK(found);
 
   envy::tui::configure_trace_outputs({});
-}
-
-TEST_CASE("trace_event_to_json serializes all event types") {
-  expect_json_tokens(
-      envy::trace_events::phase_blocked{
-          .spec = "r1",
-          .blocked_at_phase = envy::pkg_phase::pkg_check,
-          .waiting_for = "dep",
-          .target_phase = envy::pkg_phase::completion,
-      },
-      { "\"spec\":\"r1\"",
-        phase_token("blocked_at_phase", envy::pkg_phase::pkg_check),
-        phase_num_token("blocked_at_phase", envy::pkg_phase::pkg_check),
-        "\"waiting_for\":\"dep\"",
-        phase_token("target_phase", envy::pkg_phase::completion),
-        phase_num_token("target_phase", envy::pkg_phase::completion) });
-
-  expect_json_tokens(
-      envy::trace_events::phase_unblocked{
-          .spec = "r1",
-          .unblocked_at_phase = envy::pkg_phase::pkg_check,
-          .dependency = "dep",
-      },
-      { "\"spec\":\"r1\"",
-        phase_token("unblocked_at_phase", envy::pkg_phase::pkg_check),
-        phase_num_token("unblocked_at_phase", envy::pkg_phase::pkg_check),
-        "\"dependency\":\"dep\"" });
-
-  expect_json_tokens(
-      envy::trace_events::dependency_added{
-          .parent = "parent",
-          .dependency = "child",
-          .needed_by = envy::pkg_phase::pkg_fetch,
-      },
-      { "\"parent\":\"parent\"",
-        "\"dependency\":\"child\"",
-        phase_token("needed_by", envy::pkg_phase::pkg_fetch),
-        phase_num_token("needed_by", envy::pkg_phase::pkg_fetch) });
-
-  expect_json_tokens(
-      envy::trace_events::phase_start{
-          .spec = "r2",
-          .phase = envy::pkg_phase::pkg_stage,
-      },
-      { "\"spec\":\"r2\"",
-        phase_token("phase", envy::pkg_phase::pkg_stage),
-        phase_num_token("phase", envy::pkg_phase::pkg_stage) });
-
-  expect_json_tokens(
-      envy::trace_events::phase_complete{
-          .spec = "r2",
-          .phase = envy::pkg_phase::pkg_stage,
-          .duration_ms = 55,
-      },
-      { "\"spec\":\"r2\"",
-        phase_token("phase", envy::pkg_phase::pkg_stage),
-        phase_num_token("phase", envy::pkg_phase::pkg_stage),
-        "\"duration_ms\":55" });
-
-  expect_json_tokens(
-      envy::trace_events::thread_start{
-          .spec = "r3",
-          .target_phase = envy::pkg_phase::completion,
-      },
-      { "\"spec\":\"r3\"",
-        phase_token("target_phase", envy::pkg_phase::completion),
-        phase_num_token("target_phase", envy::pkg_phase::completion) });
-
-  expect_json_tokens(
-      envy::trace_events::thread_complete{
-          .spec = "r3",
-          .final_phase = envy::pkg_phase::pkg_install,
-      },
-      { "\"spec\":\"r3\"",
-        phase_token("final_phase", envy::pkg_phase::pkg_install),
-        phase_num_token("final_phase", envy::pkg_phase::pkg_install) });
-
-  expect_json_tokens(
-      envy::trace_events::spec_registered{
-          .spec = "r4",
-          .key = "k1",
-          .has_dependencies = true,
-      },
-      { "\"spec\":\"r4\"", "\"key\":\"k1\"", "\"has_dependencies\":true" });
-
-  expect_json_tokens(
-      envy::trace_events::target_extended{
-          .spec = "r4",
-          .old_target = envy::pkg_phase::pkg_fetch,
-          .new_target = envy::pkg_phase::completion,
-      },
-      { "\"spec\":\"r4\"",
-        phase_token("old_target", envy::pkg_phase::pkg_fetch),
-        phase_num_token("old_target", envy::pkg_phase::pkg_fetch),
-        phase_token("new_target", envy::pkg_phase::completion),
-        phase_num_token("new_target", envy::pkg_phase::completion) });
-
-  expect_json_tokens(
-      envy::trace_events::cache_hit{
-          .spec = "r8",
-          .cache_key = "ck",
-          .pkg_path = "/tmp/a",
-      },
-      { "\"spec\":\"r8\"", "\"cache_key\":\"ck\"", "\"pkg_path\":\"/tmp/a\"" });
-
-  expect_json_tokens(
-      envy::trace_events::cache_miss{
-          .spec = "r8",
-          .cache_key = "ck",
-      },
-      { "\"spec\":\"r8\"", "\"cache_key\":\"ck\"" });
-
-  expect_json_tokens(
-      envy::trace_events::lock_acquired{
-          .spec = "r9",
-          .lock_path = "/tmp/l",
-          .wait_duration_ms = 3,
-      },
-      { "\"spec\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"wait_duration_ms\":3" });
-
-  expect_json_tokens(
-      envy::trace_events::lock_released{
-          .spec = "r9",
-          .lock_path = "/tmp/l",
-          .hold_duration_ms = 15,
-      },
-      { "\"spec\":\"r9\"", "\"lock_path\":\"/tmp/l\"", "\"hold_duration_ms\":15" });
-}
-
-TEST_CASE("trace_event_to_json escapes special characters") {
-  // Test backslash escaping
-  auto json{ envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\\back",
-      .cache_key = "key",
-      .pkg_path = "path",
-  }) };
-  CHECK(json.find("r\\\\back") != std::string::npos);
-
-  // Test quote escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\"quote",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\\"quote") != std::string::npos);
-
-  // Test newline escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\nline",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\nline") != std::string::npos);
-
-  // Test tab escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\ttab",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\ttab") != std::string::npos);
-
-  // Test carriage return escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\rreturn",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\rreturn") != std::string::npos);
-
-  // Test form feed escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\fform",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\fform") != std::string::npos);
-
-  // Test backspace escaping
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = "r\bback",
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  CHECK(json.find("r\\bback") != std::string::npos);
-
-  // Test control character escaping (control character \x01 represented as \u0001)
-  json = envy::trace_event_to_json(envy::trace_events::cache_hit{
-      .spec = std::string("r\x01"
-                          "ctrl",
-                          6),
-      .cache_key = "key",
-      .pkg_path = "path",
-  });
-  // Check for the hex escape sequence (lowercase hex digits from %04x format)
-  CHECK((json.find("\\u0001") != std::string::npos ||
-         json.find("r\\u0001ctrl") != std::string::npos));
-}
-
-TEST_CASE("trace_event_to_json produces valid ISO8601 timestamps") {
-  auto const json{ envy::trace_event_to_json(envy::trace_events::phase_start{
-      .spec = "test",
-      .phase = envy::pkg_phase::spec_fetch,
-  }) };
-
-  // Check for ISO8601 format: YYYY-MM-DDTHH:MM:SS.sssZ
-  auto const ts_start{ json.find("\"ts\":\"") };
-  REQUIRE(ts_start != std::string::npos);
-
-  auto const ts_value_start{ ts_start + 6 };
-  auto const ts_end{ json.find("\"", ts_value_start) };
-  REQUIRE(ts_end != std::string::npos);
-
-  auto const timestamp{ json.substr(ts_value_start, ts_end - ts_value_start) };
-
-  // Verify format: YYYY-MM-DDTHH:MM:SS.sssZ (length 24)
-  CHECK(timestamp.size() == 24);
-  CHECK(timestamp[4] == '-');
-  CHECK(timestamp[7] == '-');
-  CHECK(timestamp[10] == 'T');
-  CHECK(timestamp[13] == ':');
-  CHECK(timestamp[16] == ':');
-  CHECK(timestamp[19] == '.');
-  CHECK(timestamp[23] == 'Z');
-
-  // Verify all expected positions are digits
-  for (int i : { 0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 22 }) {
-    CHECK_MESSAGE(std::isdigit(timestamp[i]),
-                  "Position " << i << " should be digit, got: " << timestamp[i]);
-  }
 }
 
 TEST_CASE("g_trace_enabled controls trace event processing") {
@@ -428,73 +178,28 @@ TEST_CASE("g_trace_enabled controls trace event processing") {
   envy::tui::configure_trace_outputs({});
 }
 
-TEST_CASE("trace_event_to_string formats human-readable output") {
-  // Test phase_blocked - phase names are shortened (build not asset_build)
-  auto output{ envy::trace_event_to_string(envy::trace_events::phase_blocked{
-      .spec = "parent@v1",
-      .blocked_at_phase = envy::pkg_phase::pkg_build,
-      .waiting_for = "dep@v2",
-      .target_phase = envy::pkg_phase::completion,
-  }) };
-  CHECK(output.find("phase_blocked") != std::string::npos);
-  CHECK(output.find("spec=parent@v1") != std::string::npos);
-  CHECK(output.find("blocked_at=build") != std::string::npos);
-  CHECK(output.find("waiting_for=dep@v2") != std::string::npos);
-  CHECK(output.find("target_phase=completion") != std::string::npos);
-
-  // Test dependency_added
-  output = envy::trace_event_to_string(envy::trace_events::dependency_added{
-      .parent = "p@v1",
-      .dependency = "d@v2",
-      .needed_by = envy::pkg_phase::pkg_fetch,
-  });
-  CHECK(output.find("dependency_added") != std::string::npos);
-  CHECK(output.find("parent=p@v1") != std::string::npos);
-  CHECK(output.find("dependency=d@v2") != std::string::npos);
-  CHECK(output.find("needed_by=fetch") != std::string::npos);
-
-  // Test cache_hit
-  output = envy::trace_event_to_string(envy::trace_events::cache_hit{
-      .spec = "r@v1",
-      .cache_key = "key123",
-      .pkg_path = "/cache/path",
-  });
-  CHECK(output.find("cache_hit") != std::string::npos);
-  CHECK(output.find("spec=r@v1") != std::string::npos);
-  CHECK(output.find("cache_key=key123") != std::string::npos);
-  CHECK(output.find("pkg_path=/cache/path") != std::string::npos);
-
-  // Test lock_acquired
-  output = envy::trace_event_to_string(envy::trace_events::lock_acquired{
-      .spec = "r@v1",
-      .lock_path = "/locks/entry",
-      .wait_duration_ms = 150,
-  });
-  CHECK(output.find("lock_acquired") != std::string::npos);
-  CHECK(output.find("spec=r@v1") != std::string::npos);
-  CHECK(output.find("lock_path=/locks/entry") != std::string::npos);
-  CHECK(output.find("wait_ms=150") != std::string::npos);
-}
-
-TEST_CASE("trace event macros work with g_trace_enabled") {
+TEST_CASE("ENVY_TRACE respects g_trace_enabled") {
   envy::tui::configure_trace_outputs({});
   CHECK_FALSE(envy::tui::g_trace_enabled);
 
-  // These should not crash even when trace disabled
-  ENVY_TRACE_PHASE_BLOCKED("r1",
-                           envy::pkg_phase::pkg_check,
-                           "dep",
-                           envy::pkg_phase::completion);
-  ENVY_TRACE_DEPENDENCY_ADDED("parent", "child", envy::pkg_phase::pkg_fetch);
-  ENVY_TRACE_CACHE_HIT("r1", "key", "/path", true);
+  // These should not crash even when trace is disabled
+  ENVY_TRACE(phase_blocked,
+             "r1",
+             .blocked_at_phase = envy::pkg_phase::pkg_check,
+             .waiting_for = "dep",
+             .target_phase = envy::pkg_phase::completion);
+  ENVY_TRACE(dependency_added,
+             "parent",
+             .dependency = "child",
+             .needed_by = envy::pkg_phase::pkg_fetch);
 
   // Enable trace and verify events can be emitted
   envy::tui::configure_trace_outputs(
       { { envy::tui::trace_output_type::std_err, std::nullopt } });
   CHECK(envy::tui::g_trace_enabled);
 
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
-  ENVY_TRACE_PHASE_START("test", envy::pkg_phase::spec_fetch);
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
+  ENVY_TRACE(phase_start, "test", .phase = envy::pkg_phase::spec_fetch);
   CHECK_NOTHROW(envy::tui::shutdown());
 
   envy::tui::configure_trace_outputs({});
@@ -512,25 +217,19 @@ TEST_CASE("trace file output writes JSONL format") {
       { { envy::tui::trace_output_type::file, trace_path } });
   CHECK(envy::tui::g_trace_enabled);
 
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
 
   // Emit various trace events
-  envy::tui::trace(envy::trace_events::phase_start{
-      .spec = "test@v1",
-      .phase = envy::pkg_phase::spec_fetch,
-  });
-
-  envy::tui::trace(envy::trace_events::dependency_added{
-      .parent = "parent@v1",
-      .dependency = "child@v2",
-      .needed_by = envy::pkg_phase::pkg_fetch,
-  });
-
-  envy::tui::trace(envy::trace_events::cache_hit{
-      .spec = "test@v1",
-      .cache_key = "test-key",
-      .pkg_path = "/cache/test",
-  });
+  envy::tui::trace(
+      "test@v1",
+      envy::trace_events::phase_start{ .phase = envy::pkg_phase::spec_fetch });
+  envy::tui::trace(
+      "parent@v1",
+      envy::trace_events::dependency_added{ .dependency = "child@v2",
+                                            .needed_by = envy::pkg_phase::pkg_fetch });
+  envy::tui::trace(
+      "test@v1",
+      envy::trace_events::cache_hit{ .cache_key = "test-key", .pkg_path = "/cache/test" });
 
   CHECK_NOTHROW(envy::tui::shutdown());
 
@@ -547,15 +246,24 @@ TEST_CASE("trace file output writes JSONL format") {
   }
   file.close();
 
-  // Should have 3 events
-  CHECK(lines.size() >= 3);
+  // Header record + 3 events
+  REQUIRE(lines.size() >= 4);
+  CHECK(lines[0].find("\"event\":\"trace_start\"") != std::string::npos);
+  CHECK(lines[0].find("\"schema\":") != std::string::npos);
 
-  // Each line should be valid JSON with expected fields
+  // Each line is a JSON object with envelope keys; seq strictly increasing
+  long last_seq{ -1 };
   for (auto const &json_line : lines) {
+    CHECK(json_line.find("\"seq\":") != std::string::npos);
     CHECK(json_line.find("\"ts\":") != std::string::npos);
+    CHECK(json_line.find("\"tid\":") != std::string::npos);
     CHECK(json_line.find("\"event\":") != std::string::npos);
     CHECK(json_line[0] == '{');
     CHECK(json_line[json_line.size() - 1] == '}');
+    auto const seq_pos{ json_line.find("\"seq\":") + 6 };
+    long const seq{ std::stol(json_line.substr(seq_pos)) };
+    CHECK(seq > last_seq);
+    last_seq = seq;
   }
 
   // Verify specific events
@@ -569,7 +277,7 @@ TEST_CASE("trace file output writes JSONL format") {
       found_phase_start = true;
     }
     if (json_line.find("\"event\":\"dependency_added\"") != std::string::npos &&
-        json_line.find("\"parent\":\"parent@v1\"") != std::string::npos) {
+        json_line.find("\"spec\":\"parent@v1\"") != std::string::npos) {
       found_dependency_added = true;
     }
     if (json_line.find("\"event\":\"cache_hit\"") != std::string::npos &&
@@ -601,14 +309,12 @@ TEST_CASE_FIXTURE(captured_output, "trace multiple outputs simultaneously") {
         { envy::tui::trace_output_type::file, trace_path } });
   CHECK(envy::tui::g_trace_enabled);
 
-  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_TRACE, false));
+  CHECK_NOTHROW(envy::tui::run(envy::tui::level::TUI_DEBUG, false));
 
   // Emit trace event
-  envy::tui::trace(envy::trace_events::phase_complete{
-      .spec = "multi@v1",
-      .phase = envy::pkg_phase::pkg_build,
-      .duration_ms = 123,
-  });
+  envy::tui::trace("multi@v1",
+                   envy::trace_events::phase_complete{ .phase = envy::pkg_phase::pkg_build,
+                                                       .duration_ms = 123 });
 
   CHECK_NOTHROW(envy::tui::shutdown());
 

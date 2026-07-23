@@ -1,4 +1,4 @@
-"""Unit tests for trace_parser module."""
+"""Unit tests for trace_parser module (schema v2)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,37 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from .trace_parser import PkgPhase, TraceParser
+from .trace_parser import SCHEMA_VERSION, PkgPhase, TraceParser
+
+HEADER = {
+    "seq": 0,
+    "ts": "2025-01-15T10:30:00.000Z",
+    "tid": 0,
+    "event": "trace_start",
+    "schema": SCHEMA_VERSION,
+}
 
 
-def create_trace_file(events: list[dict[str, Any]]) -> Path:
+def make_event(seq: int, event: str, spec: str | None = None, **fields) -> dict:
+    """Build a schema-v2 trace record with envelope keys."""
+    record: dict[str, Any] = {
+        "seq": seq,
+        "ts": "2025-01-15T10:30:00.123Z",
+        "tid": 1,
+        "event": event,
+    }
+    if spec is not None:
+        record["spec"] = spec
+    record.update(fields)
+    return record
+
+
+def create_trace_file(events: list[dict[str, Any]], header: bool = True) -> Path:
     """Helper to create a temporary trace file with given events."""
     tmpfile = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+    if header:
+        json.dump(HEADER, tmpfile)
+        tmpfile.write("\n")
     for event in events:
         json.dump(event, tmpfile)
         tmpfile.write("\n")
@@ -24,77 +49,99 @@ def create_trace_file(events: list[dict[str, Any]]) -> Path:
 class TestTraceParser(unittest.TestCase):
     """Tests for trace_parser module."""
 
-    def test_parse_empty_file(self):
-        """Test parsing an empty trace file."""
+    def test_parse_header_only(self):
+        """A trace with only the header record parses to just that record."""
         trace_file = create_trace_file([])
         parser = TraceParser(trace_file)
 
         events = parser.parse()
-        self.assertEqual(len(events), 0)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].event, "trace_start")
+
+        trace_file.unlink()
+
+    def test_missing_header_raises(self):
+        """A trace without a trace_start header is rejected."""
+        trace_file = create_trace_file(
+            [make_event(1, "phase_start", spec="test@v1", phase="spec_fetch")],
+            header=False,
+        )
+        parser = TraceParser(trace_file)
+
+        with self.assertRaises(ValueError) as cm:
+            parser.parse()
+        self.assertIn("trace_start", str(cm.exception))
+
+        trace_file.unlink()
+
+    def test_schema_mismatch_raises(self):
+        """A header with the wrong schema version is rejected."""
+        bad_header = dict(HEADER, schema=SCHEMA_VERSION + 1)
+        trace_file = create_trace_file([bad_header], header=False)
+        parser = TraceParser(trace_file)
+
+        with self.assertRaises(ValueError) as cm:
+            parser.parse()
+        self.assertIn("schema mismatch", str(cm.exception))
 
         trace_file.unlink()
 
     def test_parse_single_event(self):
         """Test parsing a single trace event."""
         trace_file = create_trace_file(
-            [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "phase_start",
-                    "spec": "test@v1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                }
-            ]
+            [make_event(1, "phase_start", spec="test@v1", phase="spec_fetch")]
         )
         parser = TraceParser(trace_file)
 
         events = parser.parse()
-        self.assertEqual(len(events), 1)
+        self.assertEqual(len(events), 2)
 
-        event = events[0]
+        event = events[1]
         self.assertEqual(event.event, "phase_start")
         self.assertEqual(event.ts, "2025-01-15T10:30:00.123Z")
+        self.assertEqual(event.seq, 1)
+        self.assertEqual(event.tid, 1)
         self.assertEqual(event.spec, "test@v1")
         self.assertEqual(event.phase, PkgPhase.SPEC_FETCH)
 
         trace_file.unlink()
 
-    def test_parse_multiple_events(self):
-        """Test parsing multiple trace events."""
+    def test_events_sorted_by_seq(self):
+        """Events are returned in seq order regardless of file order."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "spec_registered",
-                    "spec": "parent@v1",
-                    "key": "parent@v1",
-                    "has_dependencies": True,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.456Z",
-                    "event": "dependency_added",
-                    "parent": "parent@v1",
-                    "dependency": "child@v2",
-                    "needed_by": "fetch",
-                    "needed_by_num": 3,
-                },
-                {
-                    "ts": "2025-01-15T10:30:01.789Z",
-                    "event": "cache_hit",
-                    "spec": "child@v2",
-                    "cache_key": "key123",
-                    "pkg_path": "/cache/path",
-                },
+                make_event(3, "phase_start", spec="r1", phase="check"),
+                make_event(1, "spec_registered", spec="r1", key="r1"),
+                make_event(2, "phase_start", spec="r1", phase="spec_fetch"),
             ]
         )
         parser = TraceParser(trace_file)
 
         events = parser.parse()
-        self.assertEqual(len(events), 3)
-        self.assertEqual(events[0].event, "spec_registered")
-        self.assertEqual(events[1].event, "dependency_added")
-        self.assertEqual(events[2].event, "cache_hit")
+        self.assertEqual([e.seq for e in events], [0, 1, 2, 3])
+        self.assertEqual(events[1].event, "spec_registered")
+
+        trace_file.unlink()
+
+    def test_dependency_added_spec_is_parent(self):
+        """dependency_added carries the parent as its envelope spec."""
+        trace_file = create_trace_file(
+            [
+                make_event(
+                    1,
+                    "dependency_added",
+                    spec="parent@v1",
+                    dependency="child@v2",
+                    needed_by="fetch",
+                )
+            ]
+        )
+        parser = TraceParser(trace_file)
+
+        deps = parser.get_dependency_added_events("parent@v1")
+        self.assertEqual(len(deps), 1)
+        self.assertEqual(deps[0].spec, "parent@v1")
+        self.assertEqual(deps[0].raw["dependency"], "child@v2")
 
         trace_file.unlink()
 
@@ -102,28 +149,11 @@ class TestTraceParser(unittest.TestCase):
         """Test filtering events by type."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "phase_start",
-                    "spec": "r1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.456Z",
-                    "event": "phase_complete",
-                    "spec": "r1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                    "duration_ms": 100,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.789Z",
-                    "event": "phase_start",
-                    "spec": "r1",
-                    "phase": "check",
-                    "phase_num": 1,
-                },
+                make_event(1, "phase_start", spec="r1", phase="spec_fetch"),
+                make_event(
+                    2, "phase_complete", spec="r1", phase="spec_fetch", duration_ms=100
+                ),
+                make_event(3, "phase_start", spec="r1", phase="check"),
             ]
         )
         parser = TraceParser(trace_file)
@@ -138,32 +168,41 @@ class TestTraceParser(unittest.TestCase):
 
         trace_file.unlink()
 
+    def test_filter_by_unknown_event_raises(self):
+        """Filtering on a name absent from the registry raises (no vacuous [])."""
+        trace_file = create_trace_file([])
+        parser = TraceParser(trace_file)
+
+        with self.assertRaises(ValueError) as cm:
+            parser.filter_by_event("no_such_event")
+        self.assertIn("Unknown event type", str(cm.exception))
+
+        trace_file.unlink()
+
+    def test_unknown_event_in_file_raises(self):
+        """A record with an unregistered event name is rejected at parse time."""
+        trace_file = create_trace_file([make_event(1, "mystery_event", spec="r1")])
+        parser = TraceParser(trace_file)
+
+        with self.assertRaises(ValueError) as cm:
+            parser.parse()
+        self.assertIn("Unknown event type", str(cm.exception))
+
+        trace_file.unlink()
+
     def test_filter_by_spec(self):
         """Test filtering events by spec."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "phase_start",
-                    "spec": "recipe1@v1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.456Z",
-                    "event": "phase_start",
-                    "spec": "recipe2@v1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.789Z",
-                    "event": "phase_complete",
-                    "spec": "recipe1@v1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                    "duration_ms": 100,
-                },
+                make_event(1, "phase_start", spec="recipe1@v1", phase="spec_fetch"),
+                make_event(2, "phase_start", spec="recipe2@v1", phase="spec_fetch"),
+                make_event(
+                    3,
+                    "phase_complete",
+                    spec="recipe1@v1",
+                    phase="spec_fetch",
+                    duration_ms=100,
+                ),
             ]
         )
         parser = TraceParser(trace_file)
@@ -182,27 +221,9 @@ class TestTraceParser(unittest.TestCase):
         """Test extracting phase execution sequence."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.100Z",
-                    "event": "phase_start",
-                    "spec": "test@v1",
-                    "phase": "recipe_fetch",
-                    "phase_num": 0,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.200Z",
-                    "event": "phase_start",
-                    "spec": "test@v1",
-                    "phase": "check",
-                    "phase_num": 1,
-                },
-                {
-                    "ts": "2025-01-15T10:30:00.300Z",
-                    "event": "phase_start",
-                    "spec": "test@v1",
-                    "phase": "fetch",
-                    "phase_num": 3,
-                },
+                make_event(1, "phase_start", spec="test@v1", phase="spec_fetch"),
+                make_event(2, "phase_start", spec="test@v1", phase="check"),
+                make_event(3, "phase_start", spec="test@v1", phase="fetch"),
             ]
         )
         parser = TraceParser(trace_file)
@@ -223,14 +244,13 @@ class TestTraceParser(unittest.TestCase):
         """Test asserting dependency needed_by phase (success case)."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "dependency_added",
-                    "parent": "parent@v1",
-                    "dependency": "child@v1",
-                    "needed_by": "fetch",
-                    "needed_by_num": 3,
-                }
+                make_event(
+                    1,
+                    "dependency_added",
+                    spec="parent@v1",
+                    dependency="child@v1",
+                    needed_by="fetch",
+                )
             ]
         )
         parser = TraceParser(trace_file)
@@ -244,14 +264,13 @@ class TestTraceParser(unittest.TestCase):
         """Test asserting dependency needed_by phase (failure case)."""
         trace_file = create_trace_file(
             [
-                {
-                    "ts": "2025-01-15T10:30:00.123Z",
-                    "event": "dependency_added",
-                    "parent": "parent@v1",
-                    "dependency": "child@v1",
-                    "needed_by": "fetch",
-                    "needed_by_num": 3,
-                }
+                make_event(
+                    1,
+                    "dependency_added",
+                    spec="parent@v1",
+                    dependency="child@v1",
+                    needed_by="fetch",
+                )
             ]
         )
         parser = TraceParser(trace_file)
@@ -263,6 +282,29 @@ class TestTraceParser(unittest.TestCase):
             )
 
         self.assertIn("Wrong needed_by phase", str(cm.exception))
+
+        trace_file.unlink()
+
+    def test_assert_ordered(self):
+        """assert_ordered compares first-match seq values."""
+        trace_file = create_trace_file(
+            [
+                make_event(1, "cache_miss", spec="r1", cache_key="k"),
+                make_event(2, "phase_start", spec="r1", phase="fetch"),
+            ]
+        )
+        parser = TraceParser(trace_file)
+
+        parser.assert_ordered(
+            lambda e: e.event == "cache_miss",
+            lambda e: e.event == "phase_start" and e.phase == PkgPhase.PKG_FETCH,
+        )
+
+        with self.assertRaises(AssertionError):
+            parser.assert_ordered(
+                lambda e: e.event == "phase_start",
+                lambda e: e.event == "cache_miss",
+            )
 
         trace_file.unlink()
 
@@ -278,14 +320,14 @@ class TestTraceParser(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             parser.parse()
 
-        self.assertIn("Invalid JSON on line 1", str(cm.exception))
+        self.assertIn("Invalid trace line 1", str(cm.exception))
 
         trace_file.unlink()
 
-    def test_missing_required_fields_raises_error(self):
-        """Test that events missing required fields raise error."""
+    def test_missing_envelope_keys_raises_error(self):
+        """Test that events missing envelope keys raise error."""
         tmpfile = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
-        json.dump({"event": "phase_start"}, tmpfile)  # Missing 'ts'
+        json.dump({"event": "phase_start"}, tmpfile)  # Missing seq/ts/tid
         tmpfile.write("\n")
         tmpfile.close()
         trace_file = Path(tmpfile.name)
@@ -295,7 +337,7 @@ class TestTraceParser(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             parser.parse()
 
-        self.assertIn("Missing required fields", str(cm.exception))
+        self.assertIn("Missing envelope key", str(cm.exception))
 
         trace_file.unlink()
 

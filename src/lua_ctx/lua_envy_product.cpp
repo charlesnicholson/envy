@@ -38,13 +38,14 @@ void lua_envy_product_install(sol::table &envy_table) {
       std::string const msg{ "envy.product: pkg '" + consumer->cfg->identity +
                              "' does not declare product dependency on '" + product_name +
                              "'" };
-      ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(consumer->cfg->identity,
-                                        product_name,
-                                        "",
-                                        current_phase,
-                                        pkg_phase::none,
-                                        false,
-                                        msg);
+      ENVY_TRACE(lua_ctx_product_access,
+                 consumer->cfg->identity,
+                 .target = product_name,
+                 .provider = "",
+                 .current_phase = current_phase,
+                 .needed_by = pkg_phase::none,
+                 .allowed = false,
+                 .reason = msg);
       throw std::runtime_error(msg);
     }
 
@@ -53,13 +54,14 @@ void lua_envy_product_install(sol::table &envy_table) {
     auto emit_access = [&](bool allowed, std::string const &reason) {
       std::string const provider_identity{ dep.provider ? dep.provider->cfg->identity
                                                         : std::string{} };
-      ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(consumer->cfg->identity,
-                                        product_name,
-                                        provider_identity,
-                                        current_phase,
-                                        dep.needed_by,
-                                        allowed,
-                                        reason);
+      ENVY_TRACE(lua_ctx_product_access,
+                 consumer->cfg->identity,
+                 .target = product_name,
+                 .provider = provider_identity,
+                 .current_phase = current_phase,
+                 .needed_by = dep.needed_by,
+                 .allowed = allowed,
+                 .reason = reason);
     };
 
     if (current_phase < dep.needed_by) {

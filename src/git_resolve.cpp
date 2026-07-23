@@ -1,6 +1,7 @@
 #include "git_resolve.h"
 
 #include "libgit2_util.h"
+#include "trace.h"
 
 #include <git2.h>
 
@@ -117,6 +118,7 @@ std::string git_resolve_remote(std::string const &repo, std::string const &ref) 
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
       return static_cast<char>(std::tolower(c));
     });
+    ENVY_TRACE(git_resolve, "", .url = repo, .ref = ref, .sha = lower, .method = "sha");
     return lower;
   }
 
@@ -162,7 +164,9 @@ std::string git_resolve_remote(std::string const &repo, std::string const &ref) 
     entries.push_back({ heads[i]->name ? heads[i]->name : "", std::string{ oid_hex } });
   }
 
-  return git_resolve_ref(entries, ref);
+  auto sha{ git_resolve_ref(entries, ref) };
+  ENVY_TRACE(git_resolve, "", .url = repo, .ref = ref, .sha = sha, .method = "ls-remote");
+  return sha;
 }
 
 }  // namespace envy

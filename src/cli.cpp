@@ -18,10 +18,15 @@ cli_args cli_parse(int argc, char **argv) {
   app.allow_windows_style_options(false);
 
   bool verbose{ false };
-  app.add_flag(
+  auto *verbose_flag{ app.add_flag(
       "--verbose",
       verbose,
-      "Enable decorated verbose logging (prefix stdout/stderr with timestamp and level)");
+      "Verbose logging: per-package decision narrative, decorated with timestamp and "
+      "level") };
+
+  bool quiet{ false };
+  app.add_flag("-q,--quiet", quiet, "Quiet logging: warnings and errors only")
+      ->excludes(verbose_flag);
 
   std::optional<std::filesystem::path> cache_root;
   app.add_option("--cache-root", cache_root, "Cache root directory (overrides default)")
@@ -71,7 +76,8 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_merge_depot
 #ifdef ENVY_FUNCTIONAL_TESTER
                            ,
-                           cmd_engine_functional_test
+                           cmd_engine_functional_test,
+                           cmd_trace_schema
 #endif
                            >(app);
 
@@ -111,29 +117,34 @@ cli_args cli_parse(int argc, char **argv) {
     return tokens;
   }() };
 
-  if (!trace_specs_tokens.empty()) {
-    args.verbosity = tui::level::TUI_TRACE;
-    args.decorated_logging = true;
-    for (auto const &spec : trace_specs_tokens) {
-      if (spec.empty() || spec == "stderr") {
-        args.trace_outputs.push_back({ tui::trace_output_type::std_err, std::nullopt });
-      } else if (spec.rfind("file:", 0) == 0 && spec.size() > 5) {
-        args.trace_outputs.push_back(
-            { tui::trace_output_type::file, std::filesystem::path{ spec.substr(5) } });
-      } else {
-        args.cli_output = "Invalid trace output spec: " + spec;
-        args.trace_outputs.clear();
-        args.cmd_cfg.reset();
-        cmd_cfg.reset();
-        break;
-      }
-    }
-    if (args.trace_outputs.empty() && args.cli_output.empty()) {
+  // Trace output is a sink configuration, orthogonal to log verbosity: enabling
+  // --trace no longer changes the log level or decoration. The log level is set
+  // solely by --verbose / --quiet / (default).
+  for (auto const &spec : trace_specs_tokens) {
+    if (spec.empty() || spec == "stderr") {
       args.trace_outputs.push_back({ tui::trace_output_type::std_err, std::nullopt });
+    } else if (spec.rfind("file:", 0) == 0 && spec.size() > 5) {
+      args.trace_outputs.push_back(
+          { tui::trace_output_type::file, std::filesystem::path{ spec.substr(5) } });
+    } else {
+      args.cli_output = "Invalid trace output spec: " + spec;
+      args.trace_outputs.clear();
+      args.cmd_cfg.reset();
+      cmd_cfg.reset();
+      break;
     }
-  } else if (verbose) {
+  }
+  if (!trace_specs_tokens.empty() && args.trace_outputs.empty() &&
+      args.cli_output.empty()) {
+    args.trace_outputs.push_back({ tui::trace_output_type::std_err, std::nullopt });
+  }
+
+  if (verbose) {
     args.verbosity = tui::level::TUI_DEBUG;
     args.decorated_logging = true;
+  } else if (quiet) {
+    args.verbosity = tui::level::TUI_WARN;
+    args.decorated_logging = false;
   } else {
     args.verbosity = tui::level::TUI_INFO;
     args.decorated_logging = false;

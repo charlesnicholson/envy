@@ -11,228 +11,114 @@
 
 namespace envy {
 
+// Trace = machinery observability: structured events describing scheduler,
+// cache/lock, and IO behavior. Consumed by functional tests and diagnostics.
+// Event definitions live in trace_events.def (single source of truth).
+
+inline constexpr std::int64_t kTraceSchemaVersion{ 2 };
+
 namespace trace_events {
 
-struct phase_blocked {
-  std::string spec;
-  pkg_phase blocked_at_phase;
-  std::string waiting_for;
-  pkg_phase target_phase;
-};
-
-struct phase_unblocked {
-  std::string spec;
-  pkg_phase unblocked_at_phase;
-  std::string dependency;
-};
-
-struct dependency_added {
-  std::string parent;
-  std::string dependency;
-  pkg_phase needed_by;
-};
-
-struct phase_start {
-  std::string spec;
-  pkg_phase phase;
-};
-
-struct phase_complete {
-  std::string spec;
-  pkg_phase phase;
-  std::int64_t duration_ms;
-};
-
-struct thread_start {
-  std::string spec;
-  pkg_phase target_phase;
-};
-
-struct thread_complete {
-  std::string spec;
-  pkg_phase final_phase;
-};
-
-struct spec_registered {
-  std::string spec;
-  std::string key;
-  bool has_dependencies;
-};
-
-struct target_extended {
-  std::string spec;
-  pkg_phase old_target;
-  pkg_phase new_target;
-};
-
-struct lua_ctx_package_access {
-  std::string spec;
-  std::string target;
-  pkg_phase current_phase;
-  pkg_phase needed_by;
-  bool allowed;
-  std::string reason;
-};
-
-struct lua_ctx_product_access {
-  std::string spec;
-  std::string product;
-  std::string provider;
-  pkg_phase current_phase;
-  pkg_phase needed_by;
-  bool allowed;
-  std::string reason;
-};
-
-struct lua_ctx_loadenv_spec_access {
-  std::string spec;
-  std::string target;
-  std::string subpath;
-  pkg_phase current_phase;
-  pkg_phase needed_by;
-  bool allowed;
-  std::string reason;
-};
-
-struct cache_hit {
-  std::string spec;
-  std::string cache_key;
-  std::string pkg_path;
-  bool fast_path;
-};
-
-struct cache_miss {
-  std::string spec;
-  std::string cache_key;
-};
-
-struct lock_acquired {
-  std::string spec;
-  std::string lock_path;
-  std::int64_t wait_duration_ms;
-};
-
-struct lock_released {
-  std::string spec;
-  std::string lock_path;
-  std::int64_t hold_duration_ms;
-};
-
-struct spec_fetch_counter_inc {
-  std::string spec;
-  int new_value;
-};
-
-struct spec_fetch_counter_dec {
-  std::string spec;
-  int new_value;
-  bool was_completed;
-};
-
-struct execute_downloads_start {
-  std::string spec;
-  std::size_t thread_id;
-  std::size_t num_files;
-};
-
-struct execute_downloads_complete {
-  std::string spec;
-  std::size_t thread_id;
-  std::size_t num_files;
-  std::int64_t duration_ms;
-};
-
-struct cache_check_entry {
-  std::string spec;
-  std::string entry_dir;
-  std::string check_location;  // "before_lock" or "after_lock"
-};
-
-struct cache_check_result {
-  std::string spec;
-  std::string entry_dir;
-  bool is_complete;
-  std::string check_location;  // "before_lock" or "after_lock"
-};
-
-struct file_exists_check {
-  std::string spec;
-  std::string file_path;
-  bool exists;
-};
-
-struct extract_archive_start {
-  std::string spec;
-  std::string archive_path;
-  std::string destination;
-  int strip_components;
-};
-
-struct extract_archive_complete {
-  std::string spec;
-  std::string archive_path;
-  std::int64_t files_extracted;
-  std::int64_t duration_ms;
-};
-
-struct product_transitive_check {
-  std::string spec;
-  std::string product;
-  bool has_product_directly;
-  std::size_t dependency_count;
-};
-
-struct product_transitive_check_dep {
-  std::string spec;
-  std::string product;
-  std::string checking_dependency;
-};
-
-struct product_parsed {
-  std::string spec;
-  std::string product_name;
-  std::string product_value;
-  std::vector<std::string> platforms;
-};
+#define ENVY_TRACE_FIELD_STR(f) std::string f;
+#define ENVY_TRACE_FIELD_I64(f) std::int64_t f{};
+#define ENVY_TRACE_FIELD_BOOL(f) bool f{};
+#define ENVY_TRACE_FIELD_PHASE(f) pkg_phase f{};
+#define ENVY_TRACE_EVENT(name, fields) \
+  struct name { \
+    fields \
+  };
+#include "trace_events.def"
+#undef ENVY_TRACE_EVENT
+#undef ENVY_TRACE_FIELD_STR
+#undef ENVY_TRACE_FIELD_I64
+#undef ENVY_TRACE_FIELD_BOOL
+#undef ENVY_TRACE_FIELD_PHASE
 
 }  // namespace trace_events
 
-using trace_event_t = std::variant<trace_events::phase_blocked,
-                                   trace_events::phase_unblocked,
+using trace_event_t = std::variant<trace_events::trace_start,
+                                   trace_events::spec_registered,
                                    trace_events::dependency_added,
                                    trace_events::phase_start,
                                    trace_events::phase_complete,
-                                   trace_events::thread_start,
-                                   trace_events::thread_complete,
-                                   trace_events::spec_registered,
+                                   trace_events::phase_blocked,
+                                   trace_events::phase_unblocked,
                                    trace_events::target_extended,
-                                   trace_events::lua_ctx_package_access,
-                                   trace_events::lua_ctx_product_access,
-                                   trace_events::lua_ctx_loadenv_spec_access,
+                                   trace_events::pkg_outcome,
                                    trace_events::cache_hit,
                                    trace_events::cache_miss,
                                    trace_events::lock_acquired,
                                    trace_events::lock_released,
-                                   trace_events::spec_fetch_counter_inc,
-                                   trace_events::spec_fetch_counter_dec,
-                                   trace_events::execute_downloads_start,
-                                   trace_events::execute_downloads_complete,
-                                   trace_events::cache_check_entry,
-                                   trace_events::cache_check_result,
-                                   trace_events::file_exists_check,
-                                   trace_events::extract_archive_start,
-                                   trace_events::extract_archive_complete,
-                                   trace_events::product_transitive_check,
-                                   trace_events::product_transitive_check_dep,
-                                   trace_events::product_parsed>;
+                                   trace_events::lua_ctx_package_access,
+                                   trace_events::lua_ctx_product_access,
+                                   trace_events::lua_ctx_loadenv_spec_access,
+                                   trace_events::depot_check,
+                                   trace_events::product_resolved,
+                                   trace_events::deploy_script,
+                                   trace_events::cache_entry_finalized,
+                                   trace_events::download_start,
+                                   trace_events::download_complete,
+                                   trace_events::download_failed,
+                                   trace_events::download_skipped,
+                                   trace_events::git_resolve,
+                                   trace_events::extract_start,
+                                   trace_events::extract_complete>;
+
+inline constexpr std::size_t kTraceEventCount{ 0
+#define ENVY_TRACE_EVENT(name, fields) +1
+#include "trace_events.def"
+#undef ENVY_TRACE_EVENT
+};
+
+static_assert(std::variant_size_v<trace_event_t> == kTraceEventCount,
+              "trace_events.def and trace_event_t are out of sync");
+
+// Per-event name + field visitor, generated from trace_events.def. The JSON and
+// human serializers both consume trace_event_for_each_field so they cannot drift.
+#define ENVY_TRACE_FIELD_STR(f) fn(#f, e.f);
+#define ENVY_TRACE_FIELD_I64(f) fn(#f, e.f);
+#define ENVY_TRACE_FIELD_BOOL(f) fn(#f, e.f);
+#define ENVY_TRACE_FIELD_PHASE(f) fn(#f, e.f);
+#define ENVY_TRACE_EVENT(name, fields) \
+  constexpr std::string_view trace_event_name_of(trace_events::name const &) { \
+    return #name; \
+  } \
+  template <typename Fn> \
+  void trace_event_for_each_field(trace_events::name const &e, Fn &&fn) { \
+    fields \
+  }
+#include "trace_events.def"
+#undef ENVY_TRACE_EVENT
+#undef ENVY_TRACE_FIELD_STR
+#undef ENVY_TRACE_FIELD_I64
+#undef ENVY_TRACE_FIELD_BOOL
+#undef ENVY_TRACE_FIELD_PHASE
+
+// Envelope: every emitted event carries a monotonic sequence number (true causal
+// order), an emit-time timestamp, a small sequential thread id, and the subject
+// spec (empty = engine-scoped, omitted from output).
+struct trace_record {
+  std::uint64_t seq;
+  std::chrono::system_clock::time_point ts;
+  std::uint32_t tid;
+  std::string spec;
+  trace_event_t event;
+};
 
 std::string_view trace_event_name(trace_event_t const &event);
-std::string trace_event_to_string(trace_event_t const &event);
-std::string trace_event_to_json(trace_event_t const &event);
+std::string trace_record_to_string(trace_record const &rec);  // human key=value
+std::string trace_record_to_json(trace_record const &rec);    // JSONL
+
+// Schema registry (for the trace-schema dump + registry-sync tests).
+struct trace_event_schema {
+  std::string_view name;
+  std::vector<std::string> fields;  // "name:str|i64|bool|phase"
+};
+std::vector<trace_event_schema> trace_schema();
 
 namespace tui {
 extern bool g_trace_enabled;
-void trace(trace_event_t event);
+void trace(std::string spec, trace_event_t event);
 
 inline bool trace_enabled() { return g_trace_enabled; }
 }  // namespace tui
@@ -250,233 +136,9 @@ struct phase_trace_scope {
 
 }  // namespace envy
 
-#define ENVY_TRACE_UNLIKELY [[unlikely]]
-
-#define ENVY_TRACE_EMIT(event_expr) \
+#define ENVY_TRACE(type, spec_expr, ...) \
   do { \
-    if (::envy::tui::g_trace_enabled) ENVY_TRACE_UNLIKELY { \
-        ::envy::tui::trace event_expr; \
-      } \
+    if (::envy::tui::g_trace_enabled) [[unlikely]] { \
+      ::envy::tui::trace((spec_expr), ::envy::trace_events::type{ __VA_ARGS__ }); \
+    } \
   } while (0)
-
-#define ENVY_TRACE_PHASE_BLOCKED(spec_value, \
-                                 blocked_phase_value, \
-                                 waiting_value, \
-                                 target_phase_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::phase_blocked{ \
-      .spec = (spec_value), \
-      .blocked_at_phase = (blocked_phase_value), \
-      .waiting_for = (waiting_value), \
-      .target_phase = (target_phase_value), \
-  }))
-
-#define ENVY_TRACE_PHASE_UNBLOCKED(spec_value, unblocked_phase_value, dependency_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::phase_unblocked{ \
-      .spec = (spec_value), \
-      .unblocked_at_phase = (unblocked_phase_value), \
-      .dependency = (dependency_value), \
-  }))
-
-#define ENVY_TRACE_DEPENDENCY_ADDED(parent_value, dependency_value, needed_by_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::dependency_added{ \
-      .parent = (parent_value), \
-      .dependency = (dependency_value), \
-      .needed_by = (needed_by_value), \
-  }))
-
-#define ENVY_TRACE_PHASE_START(spec_value, phase_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::phase_start{ \
-      .spec = (spec_value), \
-      .phase = (phase_value), \
-  }))
-
-#define ENVY_TRACE_PHASE_COMPLETE(spec_value, phase_value, duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::phase_complete{ \
-      .spec = (spec_value), \
-      .phase = (phase_value), \
-      .duration_ms = (duration_value), \
-  }))
-
-#define ENVY_TRACE_THREAD_START(spec_value, target_phase_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::thread_start{ \
-      .spec = (spec_value), \
-      .target_phase = (target_phase_value), \
-  }))
-
-#define ENVY_TRACE_THREAD_COMPLETE(spec_value, final_phase_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::thread_complete{ \
-      .spec = (spec_value), \
-      .final_phase = (final_phase_value), \
-  }))
-
-#define ENVY_TRACE_RECIPE_REGISTERED(spec_value, key_value, has_dependencies_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::spec_registered{ \
-      .spec = (spec_value), \
-      .key = (key_value), \
-      .has_dependencies = (has_dependencies_value), \
-  }))
-
-#define ENVY_TRACE_TARGET_EXTENDED(spec_value, old_target_value, new_target_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::target_extended{ \
-      .spec = (spec_value), \
-      .old_target = (old_target_value), \
-      .new_target = (new_target_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_PACKAGE_ACCESS(spec_value, \
-                                          target_value, \
-                                          current_phase_value, \
-                                          needed_by_value, \
-                                          allowed_value, \
-                                          reason_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_package_access{ \
-      .spec = (spec_value), \
-      .target = (target_value), \
-      .current_phase = (current_phase_value), \
-      .needed_by = (needed_by_value), \
-      .allowed = (allowed_value), \
-      .reason = (reason_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_PRODUCT_ACCESS(spec_value, \
-                                          product_value, \
-                                          provider_value, \
-                                          current_phase_value, \
-                                          needed_by_value, \
-                                          allowed_value, \
-                                          reason_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_product_access{ \
-      .spec = (spec_value), \
-      .product = (product_value), \
-      .provider = (provider_value), \
-      .current_phase = (current_phase_value), \
-      .needed_by = (needed_by_value), \
-      .allowed = (allowed_value), \
-      .reason = (reason_value), \
-  }))
-
-#define ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(spec_value, \
-                                               target_value, \
-                                               subpath_value, \
-                                               current_phase_value, \
-                                               needed_by_value, \
-                                               allowed_value, \
-                                               reason_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lua_ctx_loadenv_spec_access{ \
-      .spec = (spec_value), \
-      .target = (target_value), \
-      .subpath = (subpath_value), \
-      .current_phase = (current_phase_value), \
-      .needed_by = (needed_by_value), \
-      .allowed = (allowed_value), \
-      .reason = (reason_value), \
-  }))
-
-#define ENVY_TRACE_CACHE_HIT(spec_value, \
-                             cache_key_value, \
-                             pkg_path_value, \
-                             fast_path_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::cache_hit{ \
-      .spec = (spec_value), \
-      .cache_key = (cache_key_value), \
-      .pkg_path = (pkg_path_value), \
-      .fast_path = (fast_path_value), \
-  }))
-
-#define ENVY_TRACE_CACHE_MISS(spec_value, cache_key_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::cache_miss{ \
-      .spec = (spec_value), \
-      .cache_key = (cache_key_value), \
-  }))
-
-#define ENVY_TRACE_LOCK_ACQUIRED(spec_value, lock_path_value, wait_duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lock_acquired{ \
-      .spec = (spec_value), \
-      .lock_path = (lock_path_value), \
-      .wait_duration_ms = (wait_duration_value), \
-  }))
-
-#define ENVY_TRACE_LOCK_RELEASED(spec_value, lock_path_value, hold_duration_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::lock_released{ \
-      .spec = (spec_value), \
-      .lock_path = (lock_path_value), \
-      .hold_duration_ms = (hold_duration_value), \
-  }))
-
-#define ENVY_TRACE_SPEC_FETCH_COUNTER_INC(spec_value, new_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::spec_fetch_counter_inc{ \
-      .spec = (spec_value), \
-      .new_value = (new_value), \
-  }))
-
-#define ENVY_TRACE_SPEC_FETCH_COUNTER_DEC(spec_value, new_value, was_completed_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::spec_fetch_counter_dec{ \
-      .spec = (spec_value), \
-      .new_value = (new_value), \
-      .was_completed = (was_completed_value), \
-  }))
-
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_START(spec_value, thread_id_value, num_files_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_start{ \
-      .spec = (spec_value), \
-      .thread_id = (thread_id_value), \
-      .num_files = (num_files_value), \
-  }))
-
-#define ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(spec_value, \
-                                              thread_id_value, \
-                                              num_files_value, \
-                                              duration_ms_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::execute_downloads_complete{ \
-      .spec = (spec_value), \
-      .thread_id = (thread_id_value), \
-      .num_files = (num_files_value), \
-      .duration_ms = (duration_ms_value), \
-  }))
-
-#define ENVY_TRACE_CACHE_CHECK_ENTRY(spec_value, entry_dir_value, check_location_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::cache_check_entry{ \
-      .spec = (spec_value), \
-      .entry_dir = (entry_dir_value), \
-      .check_location = (check_location_value), \
-  }))
-
-#define ENVY_TRACE_CACHE_CHECK_RESULT(spec_value, \
-                                      entry_dir_value, \
-                                      is_complete_value, \
-                                      check_location_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::cache_check_result{ \
-      .spec = (spec_value), \
-      .entry_dir = (entry_dir_value), \
-      .is_complete = (is_complete_value), \
-      .check_location = (check_location_value), \
-  }))
-
-#define ENVY_TRACE_FILE_EXISTS_CHECK(spec_value, file_path_value, exists_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::file_exists_check{ \
-      .spec = (spec_value), \
-      .file_path = (file_path_value), \
-      .exists = (exists_value), \
-  }))
-
-#define ENVY_TRACE_EXTRACT_ARCHIVE_START(spec_value, \
-                                         archive_path_value, \
-                                         destination_value, \
-                                         strip_components_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_start{ \
-      .spec = (spec_value), \
-      .archive_path = (archive_path_value), \
-      .destination = (destination_value), \
-      .strip_components = (strip_components_value), \
-  }))
-
-#define ENVY_TRACE_EXTRACT_ARCHIVE_COMPLETE(spec_value, \
-                                            archive_path_value, \
-                                            files_extracted_value, \
-                                            duration_ms_value) \
-  ENVY_TRACE_EMIT((::envy::trace_events::extract_archive_complete{ \
-      .spec = (spec_value), \
-      .archive_path = (archive_path_value), \
-      .files_extracted = (files_extracted_value), \
-      .duration_ms = (duration_ms_value), \
-  }))

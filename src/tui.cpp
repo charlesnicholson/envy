@@ -53,7 +53,7 @@ struct stdout_event {
   std::string message;
 };
 
-using log_entry = std::variant<log_event, stdout_event, envy::trace_event_t>;
+using log_entry = std::variant<log_event, stdout_event, envy::trace_record>;
 
 struct tui {
   std::queue<log_entry> messages;
@@ -635,7 +635,6 @@ namespace {
 
 std::string_view level_to_string(level value) {
   switch (value) {
-    case level::TUI_TRACE: return "TRC";
     case level::TUI_DEBUG: return "DBG";
     case level::TUI_INFO: return "INF";
     case level::TUI_WARN: return "WRN";
@@ -656,7 +655,9 @@ std::tm make_local_tm(std::time_t time) {
   return result;
 }
 
-std::string format_prefix(level severity) {
+// Decorated prefix "[ts] [LBL] " for the given 3-char label (a log level or the
+// literal "TRC" for trace-to-stderr). Empty when decoration is off.
+std::string format_prefix(std::string_view label) {
   if (!s_tui.decorated) { return {}; }
 
   auto const now{ std::chrono::system_clock::now() };
@@ -669,15 +670,17 @@ std::string format_prefix(level severity) {
   std::tm const local_tm{ make_local_tm(timestamp) };
 
   char timestamp_buf[32]{};
-  if (std::strftime(timestamp_buf, sizeof timestamp_buf, "%Y-%m-%d %H:%M:%S", &local_tm) ==
-      0) {
+  if (std::strftime(timestamp_buf,
+                    sizeof(timestamp_buf),
+                    "%Y-%m-%d %H:%M:%S",
+                    &local_tm) == 0) {
     return {};
   }
 
   std::ostringstream oss;
   oss << '[' << timestamp_buf << '.' << std::setfill('0') << std::setw(3) << millis
-      << "] [" << std::left << std::setfill(' ') << std::setw(kSeverityLabelWidth)
-      << level_to_string(severity) << "] ";
+      << "] [" << std::left << std::setfill(' ') << std::setw(kSeverityLabelWidth) << label
+      << "] ";
   return oss.str();
 }
 
@@ -692,11 +695,17 @@ void flush_messages(std::queue<log_entry> &pending,
     if (auto *log_ptr{ std::get_if<log_event>(&entry) }) {
       std::string output;
       if (s_tui.decorated) {
-        auto const prefix{ format_prefix(log_ptr->severity) };
+        auto const prefix{ format_prefix(level_to_string(log_ptr->severity)) };
         output.reserve(prefix.size() + log_ptr->message.size() + 1);
         output.append(prefix);
       } else {
-        output.reserve(log_ptr->message.size() + 1);
+        // Undecorated (default): mark warnings/errors compiler-style so they are
+        // visible and greppable amid unmarked INFO lines. INFO/DEBUG unprefixed.
+        char const *tag{ log_ptr->severity == level::TUI_WARN    ? "warning: "
+                         : log_ptr->severity == level::TUI_ERROR ? "error: "
+                                                                 : "" };
+        output.reserve(std::strlen(tag) + log_ptr->message.size() + 1);
+        output.append(tag);
       }
       output.append(log_ptr->message);
       output.push_back('\n');
@@ -712,17 +721,17 @@ void flush_messages(std::queue<log_entry> &pending,
         std::fwrite(stdout_ptr->message.data(), 1, stdout_ptr->message.size(), stdout);
         std::fflush(stdout);
       }
-    } else if (auto *trace_ptr{ std::get_if<envy::trace_event_t>(&entry) }) {
+    } else if (auto *trace_ptr{ std::get_if<envy::trace_record>(&entry) }) {
       if (s_tui.trace_stderr) {
         std::string output;
         if (s_tui.decorated) {
-          auto const prefix{ format_prefix(level::TUI_TRACE) };
-          auto const trace_str{ envy::trace_event_to_string(*trace_ptr) };
+          auto const prefix{ format_prefix("TRC") };
+          auto const trace_str{ envy::trace_record_to_string(*trace_ptr) };
           output.reserve(prefix.size() + trace_str.size() + 1);
           output.append(prefix);
           output.append(trace_str);
         } else {
-          output = envy::trace_event_to_string(*trace_ptr);
+          output = envy::trace_record_to_string(*trace_ptr);
         }
         output.push_back('\n');
 
@@ -735,7 +744,7 @@ void flush_messages(std::queue<log_entry> &pending,
       }
 
       if (s_tui.trace_file) {
-        auto const json{ envy::trace_event_to_json(*trace_ptr) + "\n" };
+        auto const json{ envy::trace_record_to_json(*trace_ptr) + "\n" };
         if (std::fwrite(json.data(), 1, json.size(), s_tui.trace_file) != json.size() ||
             std::fflush(s_tui.trace_file) != 0) {
           std::fflush(stderr);
@@ -867,6 +876,8 @@ void worker_thread() {
   }
 }
 
+thread_local std::string s_log_ctx;
+
 void log_formatted(level severity, char const *fmt, va_list args) {
   if (!s_tui.initialized || fmt == nullptr) { return; }
   if (s_tui.level_threshold && severity < *s_tui.level_threshold) { return; }
@@ -891,6 +902,10 @@ void log_formatted(level severity, char const *fmt, va_list args) {
 
   buffer.resize(static_cast<std::size_t>(written));
   if (buffer.empty()) { return; }
+
+  // Ambient package context: "[identity] message". Applied here (on the caller's
+  // thread) so the correct thread_local is read before the event is queued.
+  if (!s_log_ctx.empty()) { buffer.insert(0, "[" + s_log_ctx + "] "); }
 
   log_event ev{ .timestamp = std::chrono::system_clock::now(),
                 .severity = severity,
@@ -952,6 +967,9 @@ void configure_trace_outputs(std::vector<trace_output_spec> outputs) {
   }
 
   g_trace_enabled = s_tui.trace_stderr || s_tui.trace_file;
+
+  // Header record: first line of every trace stream carries the schema version.
+  ENVY_TRACE(trace_start, "", .schema = kTraceSchemaVersion);
 }
 
 void run(std::optional<level> threshold, bool decorated_logging) {
@@ -988,11 +1006,23 @@ void shutdown() {
 
 bool is_tty() { return platform::is_tty(); }
 
-void trace(trace_event_t event) {
+void trace(std::string spec, trace_event_t event) {
   if (!g_trace_enabled) { return; }
+
+  static std::atomic<std::uint32_t> s_next_tid{ 0 };
+  thread_local std::uint32_t const tid{ s_next_tid.fetch_add(1) };
+
+  trace_record rec{ .seq = 0,
+                    .ts = std::chrono::system_clock::now(),
+                    .tid = tid,
+                    .spec = std::move(spec),
+                    .event = std::move(event) };
   {
     std::lock_guard<std::mutex> lock{ s_tui.mutex };
-    s_tui.messages.push(log_entry{ std::move(event) });
+    // seq assigned under the queue mutex: file order == seq order, strictly.
+    static std::uint64_t s_next_seq{ 0 };
+    rec.seq = s_next_seq++;
+    s_tui.messages.push(log_entry{ std::move(rec) });
   }
   s_tui.cv.notify_one();
 }
@@ -1194,6 +1224,12 @@ scope::~scope() {
     }
   }
 }
+
+log_ctx_scope::log_ctx_scope(std::string identity) : previous_{ s_log_ctx } {
+  s_log_ctx = std::move(identity);
+}
+
+log_ctx_scope::~log_ctx_scope() { s_log_ctx = std::move(previous_); }
 
 #if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
 namespace test {

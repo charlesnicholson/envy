@@ -53,13 +53,14 @@ void lua_envy_loadenv_spec_install(sol::table &envy_table) {
     pkg_phase const current_phase{ consumer->current_phase.load() };
 
     auto emit_access = [&](bool allowed, pkg_phase needed_by, std::string const &reason) {
-      ENVY_TRACE_LUA_CTX_LOADENV_SPEC_ACCESS(consumer->cfg->identity,
-                                             identity,
-                                             module_path,  // Log original dot syntax
-                                             current_phase,
-                                             needed_by,
-                                             allowed,
-                                             reason);
+      ENVY_TRACE(lua_ctx_loadenv_spec_access,
+                 consumer->cfg->identity,
+                 .target = identity,
+                 .subpath = module_path,  // original dot syntax
+                 .current_phase = current_phase,
+                 .needed_by = needed_by,
+                 .allowed = allowed,
+                 .reason = reason);
     };
 
     // Look up dependency by identity (with fuzzy matching)

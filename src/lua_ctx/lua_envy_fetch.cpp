@@ -279,7 +279,7 @@ void lua_envy_fetch_install(sol::table &envy_table) {
                sources.size(),
                dest_dir.string().c_str());
 
-    auto const results{ fetch(requests) };
+    auto const results{ fetch(requests, p->cfg->identity) };
 
     // Check for errors and verify SHA256 if provided
     std::vector<std::string> errors;

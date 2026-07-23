@@ -45,7 +45,7 @@ void run_programmatic_build(sol::protected_function build_func,
                             std::string const &identity,
                             engine &eng,
                             pkg *p) {
-  tui::debug("phase build: running programmatic build function");
+  tui::debug("build: build function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
   phase_context_guard ctx_guard{ &eng, p, build_func.lua_state(), stage_dir };
@@ -69,7 +69,6 @@ void run_programmatic_build(sol::protected_function build_func,
     sol::object return_value = build_result;
     if (return_value.is<std::string>()) {
       std::string const script{ return_value.as<std::string>() };
-      tui::debug("phase build: function returned string, executing via shell");
       execute_build_script(script,
                            stage_dir,
                            identity,
@@ -86,7 +85,7 @@ void run_shell_build(std::string_view script,
                      pkg *p,
                      tui::section_handle tui_section,
                      std::filesystem::path const &cache_root) {
-  tui::debug("phase build: running shell script");
+  tui::debug("build: shell script");
   execute_build_script(script,
                        stage_dir,
                        identity,
@@ -101,17 +100,14 @@ void run_build_phase(pkg *p, engine &eng) {
   phase_trace_scope const phase_scope{ p->cfg->identity,
                                        pkg_phase::pkg_build,
                                        std::chrono::steady_clock::now() };
-  if (!p->lock) {
-    tui::debug("phase build: no lock (cache hit), skipping");
-    return;
-  }
+  if (!p->lock) { return; }  // cache hit
 
   auto const lua_acc{ p->lua.lock() };
   sol::state_view lua_view{ *lua_acc };
   sol::object build_obj{ lua_view["BUILD"] };
 
   if (!build_obj.valid()) {
-    tui::debug("phase build: no build field, skipping");
+    // no BUILD field
   } else if (build_obj.is<std::string>()) {
     std::string const script{ build_obj.as<std::string>() };
     run_shell_build(script,

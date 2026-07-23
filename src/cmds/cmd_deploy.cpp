@@ -1,13 +1,11 @@
 #include "cmd_deploy.h"
 
-#include "bootstrap.h"
 #include "deploy.h"
 #include "engine.h"
 #include "luarc.h"
 #include "manifest.h"
 #include "reexec.h"
 #include "self_deploy.h"
-#include "tui.h"
 #include "util.h"
 
 #include "CLI11.hpp"
@@ -82,23 +80,15 @@ void cmd_deploy::execute() {
 
   auto const products{ eng.collect_all_products() };
 
-  // Update bootstrap script (always, regardless of deploy setting)
-  for (auto const plat : platforms) {
-    if (bootstrap_write_script(bin_dir, m->meta.mirror, plat)) {
-      tui::info("Updated bootstrap script");
-    }
-  }
-
   // Check deploy directive: absent or false means deployment disabled
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
-
-  if (deploy_enabled) {
-    deploy_product_scripts(bin_dir, products, cfg_.strict, platforms);
-  } else {
-    tui::warn("deploy was requested but deployment is disabled in %s",
-              m->manifest_path.string().c_str());
-    tui::info("Add '-- @envy deploy \"true\"' to enable product script deployment");
-  }
+  deploy_finalize(bin_dir,
+                  m->meta.mirror,
+                  products,
+                  platforms,
+                  cfg_.strict,
+                  deploy_enabled,
+                  m->manifest_path);
 }
 
 }  // namespace envy

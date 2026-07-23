@@ -257,12 +257,10 @@ STAGE = {{strip = 1}}
         # but before A reaches completion.
         # Verify this via trace ordering: B's fetch must start before A completes.
         if a_completion and b_fetch_start:
-            # Compare timestamps — B's fetch should start before A's completion
-            b_fetch_ts = b_fetch_start[0].ts
-            a_completion_ts = a_completion[0].ts
+            # Compare causal order — B's fetch should start before A's completion
             self.assertLessEqual(
-                b_fetch_ts,
-                a_completion_ts,
+                b_fetch_start[0].seq,
+                a_completion[0].seq,
                 "B's fetch should start before or at A's completion "
                 "(B should not wait for A's full completion)",
             )

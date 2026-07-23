@@ -397,7 +397,7 @@ if (build_obj.is<std::string>()) {
 
 **Already complete:**
 - `envy` table creation
-- Logging functions: `envy.trace()`, `envy.debug()`, `envy.info()`, `envy.warn()`, `envy.error()`, `envy.stdout()`
+- Logging functions: `envy.debug()`, `envy.info()`, `envy.warn()`, `envy.error()`, `envy.stdout()`
 - Template function: `envy.template(str, values)` - string interpolation with `{{placeholder}}` syntax
 - Platform globals: `ENVY_PLATFORM`, `ENVY_ARCH`, `ENVY_PLATFORM_ARCH`, `ENVY_EXE_EXT` (currently at root level)
 - Shell constants: `ENVY_SHELL.BASH`, `ENVY_SHELL.SH`, `ENVY_SHELL.CMD`, `ENVY_SHELL.POWERSHELL` (root level)

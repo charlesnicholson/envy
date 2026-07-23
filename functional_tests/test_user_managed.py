@@ -120,7 +120,8 @@ class TestUserManagedPackages(unittest.TestCase):
         """
         cmd = [str(self.envy_test), f"--cache-root={self.cache_root}"]
         if trace:
-            cmd.append("--trace")
+            # Observe per-package decision narrative (DEBUG); --trace is separate.
+            cmd.append("--verbose")
 
         if setup is None:
             cmd.extend(["engine-test", identity, str(self.specs_dir / f"{name}.lua")])
@@ -187,9 +188,6 @@ class TestUserManagedPackages(unittest.TestCase):
 
         self.assertIn("pair 'main' satisfied (pre-lock)", result.stderr)
         self.assertNotIn("running pair 'main' install", result.stderr)
-        self.assertIn(
-            "phase install: no lock (cache hit), skipping", result.stderr.lower()
-        )
 
     def test_multiple_runs_cache_lifecycle(self):
         """Verify pair installs, skips when satisfied, reinstalls after drift."""

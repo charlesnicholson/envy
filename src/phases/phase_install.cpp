@@ -45,7 +45,7 @@ bool run_shell_install(std::string_view script,
                        resolved_shell shell,
                        tui::section_handle tui_section,
                        std::filesystem::path const &cache_root) {
-  tui::debug("phase install: running shell script");
+  tui::debug("install: shell script");
   tui_actions::run_phase_shell_script(script,
                                       "Install",
                                       install_dir,
@@ -71,7 +71,7 @@ bool run_programmatic_install(sol::protected_function install_func,
                               std::string const &identity,
                               engine &eng,
                               pkg *p) {
-  tui::debug("phase install: running programmatic install function");
+  tui::debug("install: install function");
 
   // Set up Lua registry context for envy.* functions
   phase_context_guard ctx_guard{ &eng, p, install_func.lua_state(), stage_dir };
@@ -98,8 +98,6 @@ bool run_programmatic_install(sol::protected_function install_func,
 
     // Returned string: spawn fresh shell with manifest defaults
     std::string const returned_script{ result_obj.as<std::string>() };
-    tui::debug("phase install: running returned string from install function");
-
     return run_shell_install(returned_script,
                              stage_dir,
                              lock,
@@ -123,13 +121,13 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
   auto const stage_dir{ lock->stage_dir() };
 
   if (directory_has_entries(install_dir)) {
-    tui::debug("phase install: install_dir already populated, marking complete");
+    tui::debug("install: install dir already populated — marking complete");
     lock->mark_install_complete();
     return true;
   }
 
   if (directory_has_entries(stage_dir)) {
-    tui::debug("phase install: promoting stage_dir contents to install_dir");
+    tui::debug("install: promoting staged files");
     std::filesystem::remove_all(install_dir);
     std::filesystem::create_directories(install_dir.parent_path());
     std::filesystem::rename(stage_dir, install_dir);
@@ -137,7 +135,6 @@ bool promote_stage_to_install(cache::scoped_entry_lock *lock) {
     return true;
   }
 
-  tui::debug("phase install: no outputs detected, leaving entry unmarked");
   return false;
 }
 
@@ -148,10 +145,7 @@ void run_install_phase(pkg *p, engine &eng) {
                                        pkg_phase::pkg_install,
                                        std::chrono::steady_clock::now() };
 
-  if (!p->lock) {  // Cache hit - no work to do
-    tui::debug("phase install: no lock (cache hit), skipping");
-    return;
-  }
+  if (!p->lock) { return; }  // cache hit — no work to do
 
   cache::scoped_entry_lock::ptr_t lock{ std::move(p->lock) };
   std::filesystem::path const final_pkg_path{ lock->install_dir() };

@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 import time
+import unittest
 from pathlib import Path
 
 # Subprocess text mode kwargs - use UTF-8 to avoid cp1252 decode errors on Windows
@@ -65,9 +66,14 @@ def is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
 def run_pwsh(cmd, retries: int = 3, delay: float = 0.5, **kwargs):
     """Run a pwsh command, retrying .NET-runtime startup crashes.
 
-    See is_pwsh_runtime_crash; genuine failures are returned as-is.
+    See is_pwsh_runtime_crash; genuine failures are returned as-is. When every
+    attempt hits the runtime-crash signature, pwsh itself is broken on this
+    runner (observed on some GitHub linux-x64 images where CoreCLR aborts at
+    startup for every invocation) — that is environmental, not the behavior under
+    test, so the test is skipped rather than failed. A real hook failure exits
+    cleanly with the wrong output (never a managed-runtime abort), so it is never
+    skipped here.
     """
-    result = None
     for attempt in range(retries):
         result = run(cmd, **kwargs)
         if not is_pwsh_runtime_crash(result):
@@ -77,7 +83,10 @@ def run_pwsh(cmd, retries: int = 3, delay: float = 0.5, **kwargs):
             f"{(result.stderr or '').strip()[:120]}\n"
         )
         time.sleep(delay)
-    return result
+    raise unittest.SkipTest(
+        f"pwsh .NET runtime crashes at startup on this runner ({retries}/{retries} "
+        "attempts); skipping pwsh-dependent test"
+    )
 
 
 def popen(*args, **kwargs) -> subprocess.Popen[str]:

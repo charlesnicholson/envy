@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest
-from .trace_parser import TraceParser, PkgPhase
+from .trace_parser import TraceParser
 
 # Test archive contents
 TEST_ARCHIVE_FILES = {
@@ -166,15 +166,11 @@ PACKAGES = {{
         # Find all target_extended events
         target_extended_events = [e for e in events if e.event == "target_extended"]
 
-        # Extract specs that had targets extended to completion (phase 7)
+        # Extract specs that had targets extended to completion
         extended_to_completion = set()
         for event in target_extended_events:
-            spec = event.raw.get("spec")
-            new_target = event.raw.get(
-                "new_target_num"
-            )  # Field is new_target_num, not new_target_phase_num
-            if spec and new_target == PkgPhase.COMPLETION:
-                extended_to_completion.add(spec)
+            if event.spec and event.raw.get("new_target") == "completion":
+                extended_to_completion.add(event.spec)
 
         # Verify tool_a, tool_b, tool_c had targets extended to completion
         expected_closure = {"local.tool_a@v1", "local.tool_b@v1", "local.tool_c@v1"}

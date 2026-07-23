@@ -98,7 +98,10 @@ struct fetch_result {
 
 using fetch_result_t = std::variant<fetch_result, std::string>;  // string on error
 
-std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests);
+// trace_spec labels emitted download_* trace events with the requesting package
+// identity (empty = engine/command-scoped).
+std::vector<fetch_result_t> fetch(std::vector<fetch_request> const &requests,
+                                  std::string trace_spec = {});
 
 // Build a fetch_request from a URL + destination. Handles HTTP, HTTPS, FTP, FTPS, S3,
 // and local files. Throws on git, SSH, or unknown schemes.

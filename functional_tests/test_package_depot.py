@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import test_config
 from .test_config import make_manifest, parse_export_line
+from .trace_parser import TraceParser
 
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Test file content\n",
@@ -307,6 +308,34 @@ class TestPackageDepot(unittest.TestCase):
 
             pkg_dir = self.target_cache / "packages" / "local.depot_a@v1"
             self.assertTrue(pkg_dir.exists(), "Package should be in target cache")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_depot_hit_emits_depot_check(self):
+        """A depot hit records a depot_check trace event with result=hit."""
+        archives = self._install_and_export(["local.depot_a@v1"])
+        self.assertEqual(len(archives), 1)
+
+        srv, port = self._start_server()
+        try:
+            depot_url = self._make_depot_manifest(archives, port)
+            m = self._make_target_manifest(["local.depot_a@v1"], [depot_url])
+
+            trace = self.test_dir / "depot.jsonl"
+            r = self._run(
+                f"--trace=file:{trace}",
+                "sync",
+                "--manifest",
+                str(m),
+                cache_root=self.target_cache,
+            )
+            self.assertEqual(r.returncode, 0, f"sync failed: {r.stderr}")
+
+            checks = TraceParser(trace).filter_by_event("depot_check")
+            hits = [e for e in checks if e.raw.get("result") == "hit"]
+            self.assertTrue(hits, f"expected a depot_check hit: {checks}")
+            self.assertEqual(hits[0].spec, "local.depot_a@v1")
         finally:
             srv.shutdown()
             srv.server_close()

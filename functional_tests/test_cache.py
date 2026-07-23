@@ -8,6 +8,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import TraceParser
 
 
 def parse_keyvalue(output: str) -> dict:
@@ -36,11 +37,38 @@ class CacheTestBase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.barrier_dir, ignore_errors=True)
+        shutil.rmtree(self.trace_dir, ignore_errors=True)
         super().tearDown()
 
     def _make_trace_file(self):
         """Generate unique trace file path for a process in this test's trace directory."""
         return self.trace_dir / f"proc-{uuid.uuid4()}.jsonl"
+
+    def all_trace_events(self):
+        """Parse every per-process trace file written by this test.
+
+        Only cleanly-exiting processes are parseable (crash-path processes lose
+        queued events); callers targeting crashes should not use this.
+        """
+        events = []
+        for trace_file in sorted(self.trace_dir.glob("proc-*.jsonl")):
+            events.extend(TraceParser(trace_file).parse())
+        return events
+
+    def assert_lock_pairing(self):
+        """Every lock_acquired has a matching lock_released with sane durations."""
+        events = self.all_trace_events()
+        acquired = [e for e in events if e.event == "lock_acquired"]
+        released = [e for e in events if e.event == "lock_released"]
+        self.assertEqual(
+            sorted(e.raw["lock_path"] for e in acquired),
+            sorted(e.raw["lock_path"] for e in released),
+            "lock_acquired/lock_released must pair per lock_path",
+        )
+        for e in acquired:
+            self.assertGreaterEqual(e.raw["wait_duration_ms"], 0)
+        for e in released:
+            self.assertGreaterEqual(e.raw["hold_duration_ms"], 0)
 
 
 class TestCacheLockingAndConcurrency(CacheTestBase):
@@ -161,6 +189,18 @@ class TestCacheLockingAndConcurrency(CacheTestBase):
             self.assertEqual(result_a["fast_path"], "false")
         else:
             self.assertEqual(result_b["fast_path"], "false")
+
+        # Trace contract: exactly one racer misses (stages), the other hits,
+        # and every lock acquisition pairs with a release.
+        events = self.all_trace_events()
+        misses = [e for e in events if e.event == "cache_miss"]
+        hits = [e for e in events if e.event == "cache_hit"]
+        self.assertEqual(len(misses), 1, "exactly one racer should stage")
+        self.assertEqual(len(hits), 1, "exactly one racer should hit")
+        finalized = [e for e in events if e.event == "cache_entry_finalized"]
+        self.assertEqual(len(finalized), 1)
+        self.assertEqual(finalized[0].raw["disposition"], "completed")
+        self.assert_lock_pairing()
 
     def test_ensure_spec_vs_ensure_asset_different_locks(self):
         """Verify spec and package locks don't conflict."""

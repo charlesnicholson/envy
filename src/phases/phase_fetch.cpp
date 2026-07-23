@@ -27,7 +27,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -111,7 +110,8 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
                                           std::filesystem::path const &fetch_dir,
                                           std::filesystem::path const &stage_dir,
                                           std::string const &key);
-std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs);
+std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs,
+                                               std::string const &identity);
 void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key,
@@ -122,7 +122,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
                             std::string const &identity,
                             engine &eng,
                             pkg *p) {
-  tui::debug("phase fetch: executing fetch function");
+  tui::debug("fetch: running fetch function");
 
   std::filesystem::path const tmp_dir{ lock->tmp_dir() };
 
@@ -143,26 +143,15 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
 
   if (return_value.get_type() == sol::type::none ||
       return_value.get_type() == sol::type::lua_nil) {
-    tui::debug("phase fetch: function returned nil, imperative mode only");
+    // Imperative fetch: the function did its own downloading.
   } else if (return_value.is<std::string>() || return_value.is<sol::table>()) {
-    tui::debug("phase fetch: function returned declarative spec, processing");
-
     auto const fetch_specs{
       parse_fetch_field(return_value, lock->fetch_dir(), lock->stage_dir(), identity)
     };
 
     if (!fetch_specs.empty()) {
-      auto const to_download{ determine_downloads_needed(fetch_specs) };
-      auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
-      auto const start{ std::chrono::steady_clock::now() };
-
-      ENVY_TRACE_EXECUTE_DOWNLOADS_START(identity, tid, to_download.size());
+      auto const to_download{ determine_downloads_needed(fetch_specs, identity) };
       execute_downloads(fetch_specs, to_download, identity, p->tui_section);
-
-      auto const duration{ std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - start)
-                               .count() };
-      ENVY_TRACE_EXECUTE_DOWNLOADS_COMPLETE(identity, tid, to_download.size(), duration);
 
       bool const has_git_repos =
           std::any_of(fetch_specs.begin(), fetch_specs.end(), [](auto const &spec) {
@@ -170,7 +159,7 @@ bool run_programmatic_fetch(sol::protected_function fetch_func,
           });
 
       if (has_git_repos) {
-        tui::debug("phase fetch: returned spec contains git repos, not cacheable");
+        tui::debug("fetch: git repos present — result not cacheable");
         should_mark_complete = false;
       }
     }
@@ -358,7 +347,8 @@ std::vector<fetch_spec> parse_fetch_field(sol::object const &fetch_obj,
 }
 
 // Check cache and determine which files need downloading.
-std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs) {
+std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &specs,
+                                               std::string const &identity) {
   std::vector<size_t> to_download;
 
   for (size_t i = 0; i < specs.size(); ++i) {
@@ -371,7 +361,7 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
     }
 
     if (spec.sha256.empty()) {  // No SHA256: always re-download (no cache trust)
-      tui::debug("phase fetch: no SHA256 for %s, re-downloading (no cache)",
+      tui::debug("fetch: %s has no sha — always downloads",
                  dest.filename().string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
@@ -380,11 +370,15 @@ std::vector<size_t> determine_downloads_needed(std::vector<fetch_spec> const &sp
 
     // File exists with SHA256 - verify cached version
     try {
-      tui::debug("phase fetch: verifying cached file %s", dest.string().c_str());
       sha256_verify(spec.sha256, sha256(dest));
-      tui::debug("phase fetch: cache hit for %s", dest.filename().string().c_str());
+      tui::debug("fetch: %s cached (sha ok)", dest.filename().string().c_str());
+      ENVY_TRACE(download_skipped,
+                 identity,
+                 .url = get_source(spec.request),
+                 .reason = "cached, sha256 verified");
     } catch (std::exception const &e) {  // hash mismatch, delete and re-download
-      tui::debug("phase fetch: cache mismatch for %s, deleting", dest.string().c_str());
+      tui::debug("fetch: %s sha mismatch — re-downloading",
+                 dest.filename().string().c_str());
       std::filesystem::remove(dest);
       to_download.push_back(i);
     }
@@ -402,12 +396,9 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
                        std::vector<size_t> const &to_download_indices,
                        std::string const &key,
                        tui::section_handle section) {
-  if (to_download_indices.empty()) {
-    tui::debug("phase fetch: all files cached, no downloads needed");
-    return;
-  }
+  if (to_download_indices.empty()) { return; }
 
-  tui::debug("phase fetch: downloading %zu file(s)", to_download_indices.size());
+  tui::debug("fetch: downloading %zu file(s)", to_download_indices.size());
 
   std::vector<std::string> labels;
   labels.reserve(to_download_indices.size());
@@ -426,7 +417,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
     requests.push_back(std::move(req));
   }
 
-  auto const results{ fetch(requests) };
+  auto const results{ fetch(requests, key) };
 
   std::vector<std::string> errors;
   for (size_t i = 0; i < results.size(); ++i) {
@@ -436,13 +427,6 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
     if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
       errors.push_back(url + ": " + *err);
     } else {
-      // File downloaded successfully
-      auto const *result{ std::get_if<fetch_result>(&results[i]) };
-      if (result) {
-        tui::debug("phase fetch: downloaded %s",
-                   result->resolved_destination.filename().string().c_str());
-      }
-
 #ifdef ENVY_FUNCTIONAL_TESTER
       try {
         test::decrement_fail_counter();
@@ -456,9 +440,9 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
         try {
           auto const *result{ std::get_if<fetch_result>(&results[i]) };
           if (!result) { throw std::runtime_error("Unexpected result type"); }
-          tui::debug("phase fetch: verifying SHA256 for %s",
-                     result->resolved_destination.string().c_str());
           sha256_verify(specs[spec_idx].sha256, sha256(result->resolved_destination));
+          tui::debug("fetch: %s sha256 verified",
+                     result->resolved_destination.filename().string().c_str());
         } catch (std::exception const &e) {
           errors.push_back(get_source(specs[spec_idx].request) + ": " + e.what());
         }
@@ -490,8 +474,6 @@ bool run_declarative_fetch(sol::object const &fetch_obj,
                            cache::scoped_entry_lock *lock,
                            std::string const &identity,
                            pkg *p) {
-  tui::debug("phase fetch: executing declarative fetch");
-
   // Ensure stage_dir exists (needed for git repos that clone directly there)
   std::error_code ec;
   std::filesystem::create_directories(lock->stage_dir(), ec);
@@ -504,13 +486,10 @@ bool run_declarative_fetch(sol::object const &fetch_obj,
   };
   if (fetch_specs.empty()) { return true; }  // No specs = cacheable (nothing to do)
 
-  auto const tid{ std::hash<std::thread::id>{}(std::this_thread::get_id()) };
-  tui::debug("[%s] starting execute_downloads (thread %zu)", identity.c_str(), tid);
   execute_downloads(fetch_specs,
-                    determine_downloads_needed(fetch_specs),
+                    determine_downloads_needed(fetch_specs, identity),
                     identity,
                     p->tui_section);
-  tui::debug("[%s] finished execute_downloads (thread %zu)", identity.c_str(), tid);
 
   // Check if git repos - if so, don't mark fetch complete (git clones are not cacheable)
   bool const has_git_repos{ std::any_of(fetch_specs.begin(),
@@ -537,15 +516,9 @@ void run_fetch_phase(pkg *p, engine &eng) {
                                        std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock = p->lock.get();
-  if (!lock) {
-    tui::debug("phase fetch: no lock (cache hit), skipping");
-    return;
-  }
+  if (!lock) { return; }  // cache hit — nothing to fetch
 
-  if (lock->is_fetch_complete()) {
-    tui::debug("phase fetch: fetch already complete, skipping");
-    return;
-  }
+  if (lock->is_fetch_complete()) { return; }
 
   std::string const &identity{ p->cfg->identity };
 
@@ -556,8 +529,7 @@ void run_fetch_phase(pkg *p, engine &eng) {
   bool should_mark_complete{ true };
 
   if (!fetch_obj.valid()) {
-    tui::debug("phase fetch: no fetch field, skipping");
-    return;
+    return;  // no FETCH field
   } else if (fetch_obj.is<sol::protected_function>()) {
     should_mark_complete = run_programmatic_fetch(fetch_obj.as<sol::protected_function>(),
                                                   lock,
@@ -571,10 +543,7 @@ void run_fetch_phase(pkg *p, engine &eng) {
                              identity);
   }
 
-  if (should_mark_complete) {
-    lock->mark_fetch_complete();
-    tui::debug("phase fetch: marked fetch complete");
-  }
+  if (should_mark_complete) { lock->mark_fetch_complete(); }
 }
 
 }  // namespace envy

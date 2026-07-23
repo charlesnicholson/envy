@@ -164,22 +164,22 @@ FETCH = {{
                 result2.returncode, 0, f"Second run failed: {result2.stderr}"
             )
 
-            # Verify caching behavior via structured trace
+            # Verify caching behavior via structured trace: 2 files reused from
+            # the per-file cache (sha-verified skips), 1 re-downloaded.
             parser2 = TraceParser(trace_file2)
-            all_events2 = parser2.parse()
-
-            # Verify trace events were generated
-            self.assertGreater(
-                len(all_events2), 0, "Expected trace events on second run"
+            skipped = parser2.filter_by_spec_and_event(
+                "local.fetch_partial@v1", "download_skipped"
             )
-
-            # The test verifies that 2 files were cached and reused
-            # We confirm this by checking that only 1 file was downloaded (the missing one)
-            # This demonstrates the other 2 files were successfully reused from cache
-            self.assertIn(
-                "downloading 1 file(s)",
-                result2.stderr,
-                f"Expected to download only the missing file (cached files reused): {result2.stderr}",
+            completed = parser2.filter_by_spec_and_event(
+                "local.fetch_partial@v1", "download_complete"
+            )
+            self.assertEqual(
+                len(skipped), 2, f"Expected 2 cached files reused, got: {skipped}"
+            )
+            self.assertEqual(
+                len(completed),
+                1,
+                f"Expected only the missing file downloaded, got: {completed}",
             )
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
@@ -225,6 +225,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",  # Has 3 files
                     str(modified_spec),
@@ -268,6 +269,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_spec),
@@ -283,7 +285,9 @@ FETCH = {{
             # Verify cache hits for some files
             stderr_lower = result2.stderr.lower()
             self.assertIn(
-                "cache hit", stderr_lower, f"Expected cache hit log: {result2.stderr}"
+                "cached (sha ok)",
+                stderr_lower,
+                f"Expected per-file cache reuse log: {result2.stderr}",
             )
             # Verify only remaining file(s) downloaded
             self.assertIn(
@@ -336,6 +340,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_spec),
@@ -366,6 +371,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_spec),
@@ -379,9 +385,9 @@ FETCH = {{
             # Verify that corruption was detected and file re-downloaded
             stderr_lower = result.stderr.lower()
             self.assertIn(
-                "cache mismatch",
+                "sha mismatch",
                 stderr_lower,
-                f"Expected cache mismatch detection: {result.stderr}",
+                f"Expected sha mismatch detection: {result.stderr}",
             )
 
             # Verify package completed successfully (entry-level marker exists)
@@ -443,6 +449,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_spec),
@@ -480,6 +487,7 @@ FETCH = {{
                     str(self.envy_test),
                     f"--cache-root={shared_cache}",
                     "--trace",
+                    "--verbose",
                     "engine-test",
                     "local.fetch_array@v1",
                     str(modified_spec),
@@ -492,11 +500,11 @@ FETCH = {{
 
             stderr_lower = result.stderr.lower()
 
-            # Should see cache hits for files with SHA256
+            # Should see per-file cache reuse for files with SHA256
             self.assertIn(
-                "cache hit",
+                "cached (sha ok)",
                 stderr_lower,
-                f"Expected cache hits for verified files: {result.stderr}",
+                f"Expected cached files for verified inputs: {result.stderr}",
             )
 
             # Should still download print_multiple.lua (no SHA256 = can't trust)

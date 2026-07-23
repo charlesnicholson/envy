@@ -1,8 +1,10 @@
 #include "deploy.h"
 
+#include "bootstrap.h"
 #include "embedded_init_resources.h"
 #include "engine.h"
 #include "platform.h"
+#include "trace.h"
 #include "tui.h"
 
 #include <algorithm>
@@ -129,6 +131,11 @@ void deploy_product_scripts(fs::path const &bin_dir,
       std::string const existing_content{ read_file_content(script_path) };
       if (new_content == existing_content) {
         ++unchanged;
+        ENVY_TRACE(deploy_script,
+                   "",
+                   .product = product.product_name,
+                   .platform = plat == platform_id::WINDOWS ? "windows" : "posix",
+                   .action = "unchanged");
         continue;
       }
 
@@ -143,6 +150,11 @@ void deploy_product_scripts(fs::path const &bin_dir,
         ++updated;
         tui::debug("Updated product script: %s", script_path.string().c_str());
       }
+      ENVY_TRACE(deploy_script,
+                 "",
+                 .product = product.product_name,
+                 .platform = plat == platform_id::WINDOWS ? "windows" : "posix",
+                 .action = is_new ? "created" : "updated");
     }
   }
 
@@ -183,6 +195,11 @@ void deploy_product_scripts(fs::path const &bin_dir,
       } else {
         ++removed;
         tui::debug("Removed obsolete product script: %s", entry.path().string().c_str());
+        ENVY_TRACE(deploy_script,
+                   "",
+                   .product = product_name,
+                   .platform = file_plat == platform_id::WINDOWS ? "windows" : "posix",
+                   .action = "removed");
       }
     }
   }
@@ -204,6 +221,27 @@ void deploy_product_scripts(fs::path const &bin_dir,
         updated,
         unchanged,
         removed);
+  }
+}
+
+void deploy_finalize(std::filesystem::path const &bin_dir,
+                     std::optional<std::string> const &mirror,
+                     std::vector<product_info> const &products,
+                     std::vector<platform_id> const &platforms,
+                     bool strict,
+                     bool deploy_enabled,
+                     std::filesystem::path const &manifest_path) {
+  for (auto const plat : platforms) {
+    if (bootstrap_write_script(bin_dir, mirror, plat)) {
+      tui::info("Updated bootstrap script");
+    }
+  }
+
+  if (deploy_enabled) {
+    deploy_product_scripts(bin_dir, products, strict, platforms);
+  } else {
+    tui::warn("deployment is disabled in %s", manifest_path.string().c_str());
+    tui::info("Add '-- @envy deploy \"true\"' to enable product script deployment");
   }
 }
 

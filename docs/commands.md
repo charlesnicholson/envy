@@ -4,7 +4,12 @@ Envy is a multi-tool CLI following Git's subcommand pattern. Each subcommand tar
 
 ## Global Flags
 
-**`-v`, `--verbose`** — Enable structured logging; adds timestamps and severity tags.
+Logging is per-package narrative. Default (INFO) prints one outcome line per package plus command summaries. The three levels are mutually exclusive:
+
+**`--verbose`** — DEBUG: per-package decision narrative (why each choice was made); decorated with timestamp and severity tag.
+**`-q`, `--quiet`** — Warnings and errors only.
+**`--trace[=stderr|file:<path>]`** — Emit structured machinery trace events (scheduler, cache/lock, IO) as JSONL to a file and/or human-readable text to stderr. Comma-separate multiple sinks (`--trace=stderr,file:/tmp/t.jsonl`); bare `--trace` defaults to stderr. Orthogonal to log verbosity—does not change the log level.
+**`-v`, `--version`** — Print version information (alias for `envy version`).
 **`-h`, `--help`, `help`** — Print top-level help summarizing available subcommands. Subcommands also support `--help` for detailed usage.
 
 ## Subcommands

@@ -48,9 +48,8 @@ std::filesystem::path determine_stage_destination(sol::state_view lua,
   std::filesystem::path const dest_dir{ has_custom_phases ? lock->stage_dir()
                                                           : lock->install_dir() };
 
-  tui::debug("phase stage: destination=%s (custom_phases=%s)",
-             dest_dir.string().c_str(),
-             has_custom_phases ? "true" : "false");
+  tui::debug(has_custom_phases ? "stage: extracting to stage dir (custom install)"
+                               : "stage: extracting to install dir");
 
   return dest_dir;
 }
@@ -79,7 +78,7 @@ void run_programmatic_stage(sol::protected_function stage_func,
                             std::string const &identity,
                             engine &eng,
                             pkg *p) {
-  tui::debug("phase stage: running imperative stage function");
+  tui::debug("stage: stage function");
 
   // Set up Lua registry context for envy.* functions (run_dir = stage_dir)
   phase_context_guard ctx_guard{ &eng, p, stage_func.lua_state(), stage_dir };
@@ -101,7 +100,7 @@ void run_shell_stage(std::string_view script,
                      resolved_shell shell,
                      tui::section_handle tui_section,
                      std::filesystem::path const &cache_root) {
-  tui::debug("phase stage: running shell script");
+  tui::debug("stage: shell script");
   tui_actions::run_phase_shell_script(script,
                                       "Stage",
                                       dest_dir,
@@ -119,10 +118,7 @@ void run_stage_phase(pkg *p, engine &eng) {
                                        std::chrono::steady_clock::now() };
 
   cache::scoped_entry_lock *lock{ p->lock.get() };
-  if (!lock) {
-    tui::debug("phase stage: no lock (cache hit), skipping");
-    return;
-  }
+  if (!lock) { return; }  // cache hit
 
   std::string const &identity{ p->cfg->identity };
   auto const lua_acc{ p->lua.lock() };
@@ -131,15 +127,11 @@ void run_stage_phase(pkg *p, engine &eng) {
 
   sol::object stage_obj{ lua_view["STAGE"] };
 
-  if (!fetch_dir_has_files(lock->fetch_dir())) {
-    tui::debug("phase stage: no files in fetch_dir, skipping");
-    return;
-  }
+  if (!fetch_dir_has_files(lock->fetch_dir())) { return; }
 
   platform::await_files_accessible(lock->fetch_dir());
 
   if (!stage_obj.valid()) {
-    tui::debug("phase stage: extracting (strip=0)");
     extract_all_archives(lock->fetch_dir(), stage_dir, 0, identity, p->tui_section);
   } else if (stage_obj.is<std::string>()) {
     auto const script_str{ stage_obj.as<std::string>() };
@@ -159,7 +151,6 @@ void run_stage_phase(pkg *p, engine &eng) {
                            p);
   } else if (stage_obj.is<sol::table>()) {
     stage_options const opts{ parse_stage_options(stage_obj.as<sol::table>(), identity) };
-    tui::debug("phase stage: extracting (strip=%d)", opts.strip_components);
     extract_all_archives(lock->fetch_dir(),
                          stage_dir,
                          opts.strip_components,
