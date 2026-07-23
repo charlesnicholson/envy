@@ -38,7 +38,7 @@ void shutdown();
 
 extern bool g_trace_enabled;
 
-void trace(trace_event_t event);
+// Trace emission lives in trace.h (tui::trace(std::string spec, trace_event_t)).
 void debug(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
 void info(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
 void warn(char const *fmt, ...) ENVY_TUI_PRINTF(1, 2);
