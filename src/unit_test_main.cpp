@@ -3,6 +3,7 @@
 
 #include "tui.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -29,11 +30,25 @@ std::chrono::seconds resolve_test_timeout() {
 #endif
 }
 
-std::chrono::seconds g_test_timeout{ 5 };  // set in main before the watchdog starts
+std::chrono::seconds g_default_timeout{ 5 };  // set in main before the watchdog starts
+
+// Concurrency stress tests (named "... race - ..." / "... stress - ...") spawn
+// hundreds of short-lived threads and hammer a shared mutex. Their wall-clock
+// time balloons on slow / oversubscribed CI runners (measured ~4s at 6x
+// oversubscription on a fast host) and trips the tight default. Give the whole
+// class generous headroom; the watchdog still aborts a genuine hang, just at a
+// higher bound. Matching by name keeps future stress tests covered for free.
+constexpr std::chrono::seconds kStressTimeout{ 45 };
+
+bool is_stress_test(std::string_view name) {
+  return name.find("race - ") != std::string_view::npos ||
+         name.find("stress - ") != std::string_view::npos;
+}
 
 std::mutex g_watchdog_mutex;
 std::string g_current_test;                          // guarded by g_watchdog_mutex
 std::chrono::steady_clock::time_point g_test_start;  // guarded by g_watchdog_mutex
+std::chrono::seconds g_effective_timeout{ 5 };       // guarded by g_watchdog_mutex
 std::atomic_bool g_test_running{ false };
 std::atomic_bool g_watchdog_shutdown{ false };
 
@@ -44,6 +59,9 @@ struct watchdog_listener : doctest::IReporter {
     std::lock_guard const lock(g_watchdog_mutex);
     g_current_test = data.m_name ? data.m_name : "<unnamed>";
     g_test_start = std::chrono::steady_clock::now();
+    g_effective_timeout =
+        is_stress_test(g_current_test) ? std::max(g_default_timeout, kStressTimeout)
+                                       : g_default_timeout;
     g_test_running = true;
   }
 
@@ -69,11 +87,11 @@ void watchdog_thread_main() {
     if (!g_test_running) { continue; }
     std::lock_guard const lock(g_watchdog_mutex);
     if (g_test_running &&
-        std::chrono::steady_clock::now() - g_test_start > g_test_timeout) {
+        std::chrono::steady_clock::now() - g_test_start > g_effective_timeout) {
       std::fprintf(stderr,
                    "\nwatchdog: test case '%s' exceeded %lld seconds; aborting\n",
                    g_current_test.c_str(),
-                   static_cast<long long>(g_test_timeout.count()));
+                   static_cast<long long>(g_effective_timeout.count()));
       std::fflush(stderr);
       std::abort();
     }
@@ -99,7 +117,7 @@ int main(int argc, char **argv) {
 
   std::thread watchdog;
   if (watchdog_enabled) {
-    g_test_timeout = resolve_test_timeout();
+    g_default_timeout = resolve_test_timeout();
     watchdog = std::thread{ watchdog_thread_main };
   }
   int const rc{ context.run() };
