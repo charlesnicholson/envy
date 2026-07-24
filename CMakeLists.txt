@@ -34,7 +34,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Python3 3.13 EXACT REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
 
 if(MSVC)
     enable_language(ASM_MASM)
@@ -95,6 +95,13 @@ endforeach()
 unset(_envy_size_opt)
 unset(_envy_flags)
 unset(_envy_lang)
+
+add_compile_options(
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
+)
 
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
 option(ENVY_BUILD_ENVY "Build the main envy executable" ON)
@@ -352,6 +359,7 @@ function(configure_envy_executable TARGET_NAME)
     target_compile_options(${TARGET_NAME} PRIVATE ${ENVY_COMMON_COMPILE_OPTIONS})
     target_link_options(${TARGET_NAME} PRIVATE
         $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
+        $<$<PLATFORM_ID:Linux>:-Wl,--gc-sections>
     )
     target_link_libraries(${TARGET_NAME} PRIVATE envy::thirdparty)
 
