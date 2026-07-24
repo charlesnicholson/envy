@@ -71,7 +71,11 @@ endif()
 set(_envy_mbedtls_targets mbedtls mbedx509 mbedcrypto)
 foreach(_envy_target IN LISTS _envy_mbedtls_targets)
     if(TARGET ${_envy_target})
-        set_property(TARGET ${_envy_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
+        # Keep LTO off only under sanitizers (see AwsSdk.cmake); Release keeps
+        # the global LTO so cross-module DCE can shrink mbedTLS.
+        if(NOT ENVY_SANITIZER STREQUAL "NONE")
+            set_property(TARGET ${_envy_target} PROPERTY INTERPROCEDURAL_OPTIMIZATION OFF)
+        endif()
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
             # Clang uses -fsanitize-blacklist (configured globally in envy targets)
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
