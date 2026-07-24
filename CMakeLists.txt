@@ -34,7 +34,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Python3 3.13 EXACT REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
 
 if(MSVC)
     enable_language(ASM_MASM)
