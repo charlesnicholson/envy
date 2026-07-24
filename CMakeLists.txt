@@ -103,8 +103,10 @@ unset(_envy_lang)
 # linker can only drop whole object files. Must precede add_subdirectory() of
 # the dependencies so they inherit it.
 add_compile_options(
-    $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:AppleClang,Clang,GNU>>:-ffunction-sections>
-    $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:AppleClang,Clang,GNU>>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
+    $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-fdata-sections>
+    $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-fdata-sections>
 )
 
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
