@@ -59,9 +59,9 @@ struct watchdog_listener : doctest::IReporter {
     std::lock_guard const lock(g_watchdog_mutex);
     g_current_test = data.m_name ? data.m_name : "<unnamed>";
     g_test_start = std::chrono::steady_clock::now();
-    g_effective_timeout =
-        is_stress_test(g_current_test) ? std::max(g_default_timeout, kStressTimeout)
-                                       : g_default_timeout;
+    g_effective_timeout = is_stress_test(g_current_test)
+                              ? std::max(g_default_timeout, kStressTimeout)
+                              : g_default_timeout;
     g_test_running = true;
   }
 
