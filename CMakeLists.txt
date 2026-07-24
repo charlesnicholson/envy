@@ -96,6 +96,17 @@ unset(_envy_size_opt)
 unset(_envy_flags)
 unset(_envy_lang)
 
+# Emit one section per function/data symbol for ALL code (envy + third-party
+# static libs) so the linker's dead-strip / --gc-sections can drop unreferenced
+# functions at symbol granularity. On Mach-O clang already does this via
+# subsections_via_symbols; the real win is ELF (Linux), where without these the
+# linker can only drop whole object files. Must precede add_subdirectory() of
+# the dependencies so they inherit it.
+add_compile_options(
+    $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:AppleClang,Clang,GNU>>:-ffunction-sections>
+    $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CXX_COMPILER_ID:AppleClang,Clang,GNU>>:-fdata-sections>
+)
+
 option(ENABLE_LTO "Enable interprocedural optimization" ON)
 option(ENVY_BUILD_ENVY "Build the main envy executable" ON)
 option(ENVY_BUILD_FUNCTIONAL_TESTER "Build the functional test executable" ON)
@@ -352,6 +363,7 @@ function(configure_envy_executable TARGET_NAME)
     target_compile_options(${TARGET_NAME} PRIVATE ${ENVY_COMMON_COMPILE_OPTIONS})
     target_link_options(${TARGET_NAME} PRIVATE
         $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
+        $<$<PLATFORM_ID:Linux>:-Wl,--gc-sections>
     )
     target_link_libraries(${TARGET_NAME} PRIVATE envy::thirdparty)
 

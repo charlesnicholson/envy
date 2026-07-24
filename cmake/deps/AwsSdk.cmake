@@ -16,6 +16,12 @@ set(NO_ENCRYPTION OFF CACHE BOOL "" FORCE)
 set(AWS_USE_LIBCRYPTO_TO_SUPPORT_ED25519_EVERYWHERE OFF CACHE BOOL "" FORCE)
 set(BUILD_AWS_CRT_MQTT OFF CACHE BOOL "" FORCE)
 set(AWS_MQTT_WITH_WEBSOCKETS OFF CACHE BOOL "" FORCE)
+# On Apple, aws-c-io defaults USE_S2N=ON, which drags in s2n-tls plus its
+# aws-lc/libcrypto dependency (~1.7 MB) even though the Security framework
+# already provides TLS. Force the native Secure Transport backend instead.
+if(APPLE)
+    set(USE_S2N OFF CACHE BOOL "" FORCE)
+endif()
 if(MSVC)
     set(AWS_STATIC_MSVC_RUNTIME_LIBRARY ON CACHE BOOL "" FORCE)
     set(STATIC_CRT ON CACHE BOOL "" FORCE)
