@@ -240,6 +240,40 @@ function(envy_patch_aws_crt_disable_prebuild source_dir binary_dir)
     unset(AWSCRT_CMAKELISTS)
 endfunction()
 
+# On Apple, envy uses Secure Transport (USE_S2N=OFF), so skip compiling s2n and
+# its aws-lc dependency entirely instead of building ~1.7 MB that never links.
+function(envy_patch_aws_crt_no_apple_s2n source_dir binary_dir)
+    set(_source_dir_norm "${source_dir}")
+    set(_binary_dir_norm "${binary_dir}")
+
+    set(_stamp "${_binary_dir_norm}/envy_awssdk_crt_no_apple_s2n_patch.stamp")
+    if(EXISTS "${_stamp}")
+        return()
+    endif()
+
+    set(_script "${_binary_dir_norm}/envy_patch_aws_crt_no_apple_s2n.py")
+    set(_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/templates/aws_crt_no_apple_s2n_patch.py.in")
+
+    set(AWSCRT_CMAKELISTS "${_source_dir_norm}/crt/aws-crt-cpp/CMakeLists.txt")
+    if(NOT EXISTS "${AWSCRT_CMAKELISTS}")
+        return()
+    endif()
+
+    configure_file("${_template}" "${_script}" @ONLY)
+
+    envy_run_python("${_script}")
+
+    file(REMOVE "${_script}")
+    file(WRITE "${_stamp}" "patched\n")
+
+    unset(_stamp)
+    unset(_script)
+    unset(_template)
+    unset(_source_dir_norm)
+    unset(_binary_dir_norm)
+    unset(AWSCRT_CMAKELISTS)
+endfunction()
+
 # Ensure s2n's feature probes include aws-lc headers instead of falling back
 # to system OpenSSL when evaluating libcrypto capabilities.
 function(envy_patch_s2n_feature_probes source_dir binary_dir)
