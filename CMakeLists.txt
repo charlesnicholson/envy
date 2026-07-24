@@ -96,12 +96,6 @@ unset(_envy_size_opt)
 unset(_envy_flags)
 unset(_envy_lang)
 
-# Emit one section per function/data symbol for ALL code (envy + third-party
-# static libs) so the linker's dead-strip / --gc-sections can drop unreferenced
-# functions at symbol granularity. On Mach-O clang already does this via
-# subsections_via_symbols; the real win is ELF (Linux), where without these the
-# linker can only drop whole object files. Must precede add_subdirectory() of
-# the dependencies so they inherit it.
 add_compile_options(
     $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:-ffunction-sections>
     $<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:-ffunction-sections>
