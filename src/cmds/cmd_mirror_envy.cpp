@@ -5,6 +5,7 @@
 #include "fetch.h"
 #include "platform.h"
 #include "tui.h"
+#include "tui_actions.h"
 #include "uri.h"
 #include "util.h"
 
@@ -38,7 +39,7 @@ class scoped_temp_dir : unmovable {
 
   ~scoped_temp_dir() {
     if (auto const ec{ platform::remove_all_with_retry(path_) }) {
-      tui::warn("mirror-envy: failed to remove staging directory %s: %s",
+      tui::warn("failed to remove staging directory %s: %s",
                 path_.string().c_str(),
                 ec.message().c_str());
     }
@@ -63,6 +64,17 @@ void validate_dest(std::string_view dest) {
     throw std::runtime_error("mirror-envy: malformed S3 destination '" +
                              std::string{ dest } + "' (expected s3://bucket/prefix)");
   }
+}
+
+// Progress rows are labeled by basename: every relpath under a run shares the same
+// "vX.Y.Z/" prefix, which would just eat row width without distinguishing anything.
+std::vector<std::string> progress_labels(std::vector<std::string> const &relpaths) {
+  std::vector<std::string> labels;
+  labels.reserve(relpaths.size());
+  for (auto const &rel : relpaths) {
+    labels.push_back(fs::path{ rel }.filename().string());
+  }
+  return labels;
 }
 
 }  // namespace
@@ -171,16 +183,35 @@ void cmd_mirror_envy::execute() {
   }
   if (plan.dest_is_s3) {
     // Debug, not info: the tree is transient scratch that is removed before we return.
-    tui::debug("mirror-envy: staging in %s", staging.string().c_str());
+    tui::debug("staging in %s", staging.string().c_str());
   }
+
+  auto const archive_relpaths{ [&] {
+    std::vector<std::string> v;
+    v.reserve(plan.items.size());
+    for (auto const &item : plan.items) { v.push_back(item.relpath); }
+    return v;
+  }() };
+
+  // One progress bar per archive, same tracker the fetch phase uses: the downloads run
+  // concurrently, so a single spinner would say nothing about which one is stuck.
+  auto const download_section{ tui::section_create() };
+  tui_actions::fetch_all_progress_tracker download_tracker{
+    download_section, "mirror-envy", progress_labels(archive_relpaths)
+  };
 
   std::vector<fetch_request> requests;
   requests.reserve(plan.items.size());
-  for (auto const &item : plan.items) {
-    requests.push_back(fetch_request_from_url(item.source_url, staging / item.relpath));
+  for (size_t i{ 0 }; i < plan.items.size(); ++i) {
+    auto const &item{ plan.items[i] };
+    fetch_request req{ fetch_request_from_url(item.source_url, staging / item.relpath) };
+    std::visit([&](auto &r) { r.progress = download_tracker.make_callback(i); }, req);
+    requests.push_back(std::move(req));
   }
 
   auto const results{ fetch(requests) };
+  tui::section_delete(download_section);
+
   if (results.size() != plan.items.size()) {
     throw std::runtime_error("mirror-envy: fetch returned " +
                              std::to_string(results.size()) + " results for " +
@@ -190,10 +221,10 @@ void cmd_mirror_envy::execute() {
   size_t failed{ 0 };
   for (size_t i{ 0 }; i < results.size(); ++i) {
     if (auto const *error{ std::get_if<std::string>(&results[i]) }) {
-      tui::error("mirror-envy: %s: %s", plan.items[i].source_url.c_str(), error->c_str());
+      tui::error("%s: %s", plan.items[i].source_url.c_str(), error->c_str());
       ++failed;
     } else {
-      tui::debug("mirror-envy: fetched %s", plan.items[i].relpath.c_str());
+      tui::debug("fetched %s", plan.items[i].relpath.c_str());
     }
   }
   if (failed > 0) {
@@ -208,21 +239,25 @@ void cmd_mirror_envy::execute() {
   util_write_file(staging / kMirrorLatestFile, cfg_.version);
 
   if (!plan.dest_is_s3) {
-    tui::info("mirror-envy: staged envy %s (%zu archives) in %s",
+    tui::info("staged envy %s (%zu archives) in %s",
               cfg_.version.c_str(),
               plan.items.size(),
-              staging.string().c_str());
-    tui::info("mirror-envy: upload with: aws s3 cp --recursive %s s3://<bucket>/<prefix>",
               staging.string().c_str());
     return;
   }
 
   // Thread per object, matching fetch()'s shape. Errors are collected so one bad key does
   // not hide the others.
-  std::vector<std::string> relpaths;
-  relpaths.reserve(plan.items.size() + 1);
-  for (auto const &item : plan.items) { relpaths.push_back(item.relpath); }
-  relpaths.emplace_back(kMirrorLatestFile);
+  auto const relpaths{ [&] {
+    std::vector<std::string> v{ archive_relpaths };
+    v.emplace_back(kMirrorLatestFile);
+    return v;
+  }() };
+
+  auto const upload_section{ tui::section_create() };
+  tui_actions::fetch_all_progress_tracker upload_tracker{
+    upload_section, "mirror-envy", progress_labels(relpaths)
+  };
 
   std::vector<std::string> errors(relpaths.size());
   {
@@ -232,8 +267,10 @@ void cmd_mirror_envy::execute() {
       workers.emplace_back([&, i] {
         auto const uri{ mirror_envy_s3_uri(plan, relpaths[i]) };
         try {
-          aws_s3_upload(s3_upload_request{ .source = staging / relpaths[i], .uri = uri });
-          tui::debug("mirror-envy: uploaded %s", uri.c_str());
+          aws_s3_upload(s3_upload_request{ .source = staging / relpaths[i],
+                                           .uri = uri,
+                                           .progress = upload_tracker.make_callback(i) });
+          tui::debug("uploaded %s", uri.c_str());
         } catch (std::exception const &e) {
           errors[i] = uri + ": " + e.what();
         } catch (...) { errors[i] = uri + ": unknown error during upload"; }
@@ -241,11 +278,12 @@ void cmd_mirror_envy::execute() {
     }
     for (auto &t : workers) { t.join(); }
   }
+  tui::section_delete(upload_section);
 
   size_t upload_failures{ 0 };
   for (auto const &error : errors) {
     if (error.empty()) { continue; }
-    tui::error("mirror-envy: %s", error.c_str());
+    tui::error("%s", error.c_str());
     ++upload_failures;
   }
   if (upload_failures > 0) {
@@ -254,11 +292,11 @@ void cmd_mirror_envy::execute() {
   }
 
   auto const root{ mirror_envy_s3_root(plan) };
-  tui::info("mirror-envy: mirrored envy %s (%zu objects) to %s",
+  tui::info("mirrored envy %s (%zu objects) to %s",
             cfg_.version.c_str(),
             relpaths.size(),
             root.c_str());
-  tui::info("mirror-envy: point envy.lua at it with:");
+  tui::info("point envy.lua at it with:");
   tui::info("  -- @envy version \"%s\"", cfg_.version.c_str());
   tui::info("  -- @envy mirror \"%s\"", root.c_str());
 }
