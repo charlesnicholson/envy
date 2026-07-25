@@ -3,6 +3,10 @@
 #include "doctest.h"
 
 #include <algorithm>
+// doctest stringifies a failing CHECK's operands via operator<<. MSVC defines the
+// string_view overload in <string_view> but only forward-declares basic_ostream there, so
+// a string_view operand needs the complete type or instantiation fails.
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>

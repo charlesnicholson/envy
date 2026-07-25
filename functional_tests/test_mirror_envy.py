@@ -346,33 +346,44 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
         Six release archives per invocation adds up, and a predictable name in a shared temp
         directory would let another user pre-create the path.
         """
-        before = set(os.listdir(tempfile.gettempdir()))
+        # Redirect the product's temp dir instead of diffing the shared system one: sibling
+        # S3 cases stage under identical `envy-mirror-<random>` names, and under the
+        # parallel runner one of theirs is legitimately mid-flight during our snapshot
+        # window. temp_directory_path() reads TMPDIR first on POSIX, TMP/TEMP on Windows.
+        scratch = self._temp / "scratch"
+        scratch.mkdir()
         stub = S3Stub()
         port = stub.start()
+        env = {
+            **self._s3_env(port),
+            **dict.fromkeys(("TMPDIR", "TMP", "TEMP"), str(scratch)),
+        }
         try:
             result = self._run(
                 [
+                    # --verbose surfaces the "staging in <path>" debug line, which is the
+                    # positive control: without it a TMPDIR that went unread would leave
+                    # scratch empty and pass vacuously.
+                    "--verbose",
                     "mirror-envy",
                     "1.2.3",
                     "s3://test-bucket/releases",
                     f"--from={self._from_uri()}",
                 ],
-                env_extra=self._s3_env(port),
+                env_extra=env,
             )
         finally:
             stub.stop()
 
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
-        # Match the product's staging names exactly -- `envy-mirror-<mkdtemp>` on POSIX,
-        # `envy-mirror-<pid>-<seq>` on Windows. A prefix match would also catch this
-        # suite's own `envy-mirror-envy-test-*` scratch dirs, which sibling tests are
-        # creating concurrently under the parallel runner.
-        staging_name = re.compile(r"envy-mirror-(?:[A-Za-z0-9]{6}|\d+-\d+)")
-        leaked = [
-            d
-            for d in set(os.listdir(tempfile.gettempdir())) - before
-            if staging_name.fullmatch(d)
-        ]
+        staged_in = re.search(r"mirror-envy: staging in (.+)", result.stderr)
+        self.assertIsNotNone(staged_in, f"no staging line: {result.stderr}")
+        self.assertEqual(
+            scratch.resolve(),
+            Path(staged_in.group(1).strip()).parent.resolve(),
+            "staging did not land in the redirected temp dir",
+        )
+        leaked = [d for d in os.listdir(scratch) if d.startswith("envy-mirror")]
         self.assertEqual([], leaked, f"staging tree left behind: {leaked}")
 
     def test_uploads_every_object_to_s3(self) -> None:
