@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -24,14 +25,15 @@ namespace {
 // taken by later phases (cache lock, then p->lua).
 cache::ensure_result compute_hash_and_lookup_cache(pkg *p) {
   // Compute hash including resolved weak/ref-only dependencies
-  std::string key_for_hash{ p->cfg->format_key() };
-  {
-    std::lock_guard const deps_lock(p->deps_mutex);
-    for (auto const &wk : p->resolved_weak_dependency_keys) {
-      key_for_hash += '|';  // not "|" + wk: that allocates a temporary per iteration
-      key_for_hash += wk;
+  std::string const key_for_hash{ [&] {
+    std::ostringstream key;
+    key << p->cfg->format_key();
+    {  // deps_mutex guards the dependency maps; keep the scope to just the read
+      std::lock_guard const deps_lock(p->deps_mutex);
+      for (auto const &wk : p->resolved_weak_dependency_keys) { key << '|' << wk; }
     }
-  }
+    return key.str();
+  }() };
 
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };
   p->canonical_identity_hash = util_bytes_to_hex(digest.data(), 32);
