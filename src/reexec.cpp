@@ -1,13 +1,12 @@
 #include "reexec.h"
 
-#include "bootstrap.h"
 #include "cache.h"
 #include "cmd.h"
+#include "envy_release.h"
 #include "extract.h"
 #include "fetch.h"
 #include "platform.h"
 #include "tui.h"
-#include "util.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -23,12 +22,6 @@
 namespace envy {
 
 namespace {
-
-#ifdef _WIN32
-constexpr std::string_view kArchiveExt{ ".zip" };
-#else
-constexpr std::string_view kArchiveExt{ ".tar.gz" };
-#endif
 
 char **g_argv{};
 
@@ -102,24 +95,6 @@ reexec_decision reexec_should(std::string_view self_version,
   return reexec_decision::REEXEC;
 }
 
-bool reexec_is_valid_version(std::string_view version) {
-  if (version.empty()) { return false; }
-  // ASCII-only: version becomes the envy/<version> cache path component.
-  for (char c : version) {
-    if (!util_ascii_is_alnum(c) && c != '.' && c != '-' && c != '_') { return false; }
-  }
-  return true;
-}
-
-std::string reexec_download_url(std::string_view mirror_base,
-                                std::string_view version,
-                                std::string_view os,
-                                std::string_view arch) {
-  std::ostringstream ss;
-  ss << mirror_base << "/v" << version << "/envy-" << os << '-' << arch << kArchiveExt;
-  return ss.str();
-}
-
 void reexec_if_needed(envy_meta const &meta,
                       std::optional<std::filesystem::path> const &cli_cache_root) {
   // Consume and unset the loop guard if present
@@ -136,7 +111,7 @@ void reexec_if_needed(envy_meta const &meta,
 
   auto const &version{ *meta.version };
 
-  if (!reexec_is_valid_version(version)) {
+  if (!envy_release_version_is_valid(version)) {
     throw std::runtime_error("reexec: invalid version string: " + version);
   }
 
@@ -148,7 +123,7 @@ void reexec_if_needed(envy_meta const &meta,
   // Slow path: download to temp dir, re-exec from there.
   // The re-exec'd binary's own cache::ensure_envy() will install itself into cache.
 
-  std::string_view mirror{ kEnvyDownloadUrl };
+  std::string_view mirror{ kEnvyReleaseDownloadUrl };
   if (char const *env_mirror = std::getenv("ENVY_MIRROR"); env_mirror) {
     mirror = env_mirror;
   } else if (meta.mirror) {
@@ -156,7 +131,7 @@ void reexec_if_needed(envy_meta const &meta,
   }
 
   auto const url{
-    reexec_download_url(mirror, version, platform::os_name(), platform::arch_name())
+    envy_release_url(mirror, version, platform::os_name(), platform::arch_name())
   };
   tui::info("reexec: downloading envy %s from %s", version.c_str(), url.c_str());
 
@@ -165,10 +140,8 @@ void reexec_if_needed(envy_meta const &meta,
                       ("envy-reexec-" + version + "-" + std::to_string(pid)) };
   std::filesystem::create_directories(tmp_dir);
 
-  auto const archive_name{ "envy-" + std::string{ platform::os_name() } + "-" +
-                           std::string{ platform::arch_name() } +
-                           std::string{ kArchiveExt } };
-  auto const archive_path{ tmp_dir / archive_name };
+  auto const archive_path{ tmp_dir / envy_release_archive_name(platform::os_name(),
+                                                               platform::arch_name()) };
 
   auto const results{ fetch({ fetch_request_from_url(url, archive_path) }) };
   if (results.empty()) {

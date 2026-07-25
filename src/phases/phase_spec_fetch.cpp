@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -223,13 +224,16 @@ std::map<std::string, pkg::setup_pair_decl> parse_setup_table(
         }
         std::string const &next{ deps[stack.back().second++] };
         if (color[next] == 1) {  // gray = on stack = cycle; report the loop path
-          std::string path;
+          std::ostringstream oss;
+          oss << "SETUP DEPENDS cycle in spec '" << identity << "': ";
+          bool started{ false };  // don't overload path.empty() as loop state
           for (auto const &[frame, _] : stack) {
-            if (path.empty() && frame != next) { continue; }
-            path += frame + " -> ";
+            if (!started && frame != next) { continue; }
+            started = true;
+            oss << frame << " -> ";
           }
-          throw std::runtime_error("SETUP DEPENDS cycle in spec '" + identity +
-                                   "': " + path + next);
+          oss << next;
+          throw std::runtime_error(oss.str());
         }
         if (color[next] == 0) {
           color[next] = 1;

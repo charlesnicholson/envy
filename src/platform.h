@@ -50,6 +50,11 @@ class file_lock : uncopyable {
 void atomic_rename(std::filesystem::path const &from, std::filesystem::path const &to);
 void touch_file(std::filesystem::path const &path);
 std::filesystem::path create_unique_temp_file(std::string_view prefix);
+
+// Atomically claim a new private directory under the system temp dir. Owner-only on POSIX.
+// A predictable name would let another user in a shared sticky /tmp pre-create the path
+// and see (or influence) whatever is staged into it.
+std::filesystem::path create_unique_temp_dir(std::string_view prefix);
 void flush_directory(std::filesystem::path const &dir);
 bool file_exists(std::filesystem::path const &path);
 

@@ -2,12 +2,6 @@
 
 #include "doctest.h"
 
-#ifdef _WIN32
-#define EXT ".zip"
-#else
-#define EXT ".tar.gz"
-#endif
-
 // --- reexec_should decision logic ---
 
 TEST_CASE("reexec_should: no @envy version returns PROCEED") {
@@ -66,103 +60,4 @@ TEST_CASE("reexec_should: ENVY_NO_REEXEC takes priority over version mismatch") 
   // no_reexec is checked before version comparison
   CHECK(envy::reexec_should("2.0.0", std::string{ "1.5.0" }, false, true) ==
         envy::reexec_decision::PROCEED);
-}
-
-// --- reexec_is_valid_version ---
-
-TEST_CASE("reexec_is_valid_version: normal version") {
-  CHECK(envy::reexec_is_valid_version("1.2.3"));
-}
-
-TEST_CASE("reexec_is_valid_version: version with pre-release suffix") {
-  CHECK(envy::reexec_is_valid_version("1.2.3-beta.1"));
-}
-
-TEST_CASE("reexec_is_valid_version: version with underscore") {
-  CHECK(envy::reexec_is_valid_version("1_2_3"));
-}
-
-TEST_CASE("reexec_is_valid_version: empty string rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version(""));
-}
-
-TEST_CASE("reexec_is_valid_version: path traversal rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version("../../../etc/passwd"));
-}
-
-TEST_CASE("reexec_is_valid_version: slash rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version("1.2.3/evil"));
-}
-
-TEST_CASE("reexec_is_valid_version: backslash rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version("1.2.3\\evil"));
-}
-
-TEST_CASE("reexec_is_valid_version: space rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version("1.2.3 ; rm -rf /"));
-}
-
-TEST_CASE("reexec_is_valid_version: non-ASCII rejected regardless of locale") {
-  // Version becomes the envy/<version> cache path component; high-bit UTF-8 bytes
-  // must be rejected (std::isalnum could accept them under a non-"C" locale).
-  CHECK_FALSE(envy::reexec_is_valid_version("1.2.3-caf\xc3\xa9"));  // "café"
-  CHECK_FALSE(envy::reexec_is_valid_version("\xe4\xbd\xa0"));       // "你"
-}
-
-TEST_CASE("reexec_is_valid_version: null byte rejected") {
-  CHECK_FALSE(envy::reexec_is_valid_version(std::string_view{ "1.2\0.3", 6 }));
-}
-
-// --- reexec_download_url ---
-
-TEST_CASE("reexec_download_url: default mirror darwin arm64") {
-  auto const url{ envy::reexec_download_url(
-      "https://github.com/charlesnicholson/envy/releases/download",
-      "1.2.3",
-      "darwin",
-      "arm64") };
-  CHECK(url ==
-        "https://github.com/charlesnicholson/envy/releases/download"
-        "/v1.2.3/envy-darwin-arm64" EXT);
-}
-
-TEST_CASE("reexec_download_url: linux x86_64") {
-  auto const url{ envy::reexec_download_url(
-      "https://github.com/charlesnicholson/envy/releases/download",
-      "2.0.0",
-      "linux",
-      "x86_64") };
-  CHECK(url ==
-        "https://github.com/charlesnicholson/envy/releases/download"
-        "/v2.0.0/envy-linux-x86_64" EXT);
-}
-
-TEST_CASE("reexec_download_url: custom mirror") {
-  auto const url{ envy::reexec_download_url("https://my-mirror.example.com/envy",
-                                            "2.0.0",
-                                            "linux",
-                                            "x86_64") };
-  CHECK(url == "https://my-mirror.example.com/envy/v2.0.0/envy-linux-x86_64" EXT);
-}
-
-TEST_CASE("reexec_download_url: file mirror") {
-  auto const url{
-    envy::reexec_download_url("file:///tmp/releases", "1.0.0", "darwin", "arm64")
-  };
-  CHECK(url == "file:///tmp/releases/v1.0.0/envy-darwin-arm64" EXT);
-}
-
-TEST_CASE("reexec_download_url: s3 mirror") {
-  auto const url{
-    envy::reexec_download_url("s3://my-bucket/envy-releases", "3.1.0", "linux", "arm64")
-  };
-  CHECK(url == "s3://my-bucket/envy-releases/v3.1.0/envy-linux-arm64" EXT);
-}
-
-TEST_CASE("reexec_download_url: trailing slash on mirror produces double slash") {
-  // Callers should not pass trailing slashes, but document the behavior
-  auto const url{
-    envy::reexec_download_url("https://mirror.example.com/", "1.0.0", "darwin", "arm64")
-  };
-  CHECK(url == "https://mirror.example.com//v1.0.0/envy-darwin-arm64" EXT);
 }

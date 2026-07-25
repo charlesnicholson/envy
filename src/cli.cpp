@@ -73,7 +73,8 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_git_resolve,
                            cmd_hash,
                            cmd_lua,
-                           cmd_merge_depot
+                           cmd_merge_depot,
+                           cmd_mirror_envy
 #ifdef ENVY_FUNCTIONAL_TESTER
                            ,
                            cmd_engine_functional_test,

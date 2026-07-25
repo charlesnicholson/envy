@@ -140,6 +140,29 @@ std::filesystem::path create_unique_temp_file(std::string_view prefix) {
   return p;
 }
 
+std::filesystem::path create_unique_temp_dir(std::string_view prefix) {
+  static std::atomic<uint64_t> counter{ 0 };
+  DWORD const pid{ ::GetCurrentProcessId() };
+
+  // CreateDirectoryW fails with ERROR_ALREADY_EXISTS rather than reusing an existing
+  // directory, so whoever wins the create owns the name. Retry on collision: the counter
+  // is per-process, so a concurrent process could pick the same seq.
+  for (int attempt{ 0 }; attempt < 16; ++attempt) {
+    auto const seq{ counter.fetch_add(1, std::memory_order_seq_cst) };
+    auto name{ std::string{ prefix } + "-" + std::to_string(pid) + "-" +
+               std::to_string(seq) };
+    auto p{ std::filesystem::temp_directory_path() / name };
+    if (::CreateDirectoryW(p.c_str(), nullptr)) { return p; }
+    if (::GetLastError() != ERROR_ALREADY_EXISTS) {
+      throw std::system_error(::GetLastError(),
+                              std::system_category(),
+                              "Failed to create temp directory: " + p.string());
+    }
+  }
+  throw std::runtime_error("Failed to create a unique temp directory under " +
+                           std::filesystem::temp_directory_path().string());
+}
+
 void touch_file(std::filesystem::path const &path) {
   HANDLE const h{ ::CreateFileW(path.c_str(),
                                 GENERIC_WRITE,

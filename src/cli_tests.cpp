@@ -10,12 +10,14 @@
 #include "cmds/cmd_install.h"
 #include "cmds/cmd_lua.h"
 #include "cmds/cmd_merge_depot.h"
+#include "cmds/cmd_mirror_envy.h"
 #include "cmds/cmd_package.h"
 #include "cmds/cmd_product.h"
 #include "cmds/cmd_run.h"
 #include "cmds/cmd_shell.h"
 #include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
+#include "envy_release.h"
 
 #include "doctest.h"
 
@@ -1595,6 +1597,76 @@ TEST_CASE("cli_parse: cmd_import") {
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     std::filesystem::remove(temp_dir);
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_mirror_envy") {
+  SUBCASE("local destination") {
+    std::vector<std::string> args{ "envy", "mirror-envy", "1.2.3", "./stage" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_mirror_envy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->version == "1.2.3");
+    CHECK(cfg->dest == "./stage");
+    // --from defaults to envy's own release URL so the common case needs no flag.
+    CHECK(cfg->from == envy::kEnvyReleaseDownloadUrl);
+  }
+
+  SUBCASE("s3 destination") {
+    std::vector<std::string> args{ "envy",
+                                   "mirror-envy",
+                                   "1.2.3",
+                                   "s3://my-bucket/releases" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_mirror_envy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->dest == "s3://my-bucket/releases");
+  }
+
+  SUBCASE("--from overrides the source mirror") {
+    std::vector<std::string> args{ "envy",
+                                   "mirror-envy",
+                                   "2.0.0",
+                                   "./stage",
+                                   "--from=s3://upstream/envy" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_mirror_envy::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->version == "2.0.0");
+    CHECK(cfg->from == "s3://upstream/envy");
+  }
+
+  SUBCASE("version is required") {
+    std::vector<std::string> args{ "envy", "mirror-envy" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+
+  SUBCASE("destination is required") {
+    // No implicit staging directory: a bare version would otherwise have to guess.
+    std::vector<std::string> args{ "envy", "mirror-envy", "1.2.3" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
 
     CHECK_FALSE(parsed.cmd_cfg.has_value());
     CHECK_FALSE(parsed.cli_output.empty());

@@ -2,7 +2,9 @@
 # envy-managed bootstrap script - do not edit
 set -euo pipefail
 
-ENVY_MIRROR="${ENVY_MIRROR:-@@DOWNLOAD_URL@@}"
+DEFAULT_MIRROR="@@DOWNLOAD_URL@@"
+LATEST_URL="@@LATEST_URL@@"
+ENV_MIRROR="${ENVY_MIRROR:-}"
 FALLBACK_VERSION="@@ENVY_VERSION@@"
 
 resolve_script_dir() {
@@ -55,7 +57,39 @@ while read -r key val; do
     esac
 done < <(parse_directives)
 
-[[ -n "$MANIFEST_MIRROR" ]] && ENVY_MIRROR="$MANIFEST_MIRROR"
+# Precedence: ENVY_MIRROR env > @envy mirror directive > stamped default. Matches the
+# runtime resolver (src/reexec.cpp) and the documented env-over-manifest order; the two
+# used to disagree, which let a stale exported ENVY_MIRROR and a manifest mirror resolve
+# to different binaries for the same project.
+if [[ -n "$ENV_MIRROR" ]]; then ENVY_MIRROR="$ENV_MIRROR"
+elif [[ -n "$MANIFEST_MIRROR" ]]; then ENVY_MIRROR="$MANIFEST_MIRROR"
+else ENVY_MIRROR="$DEFAULT_MIRROR"; fi
+
+# A trailing slash would produce ".../releases//v1.2.3/...". For s3:// that is a distinct
+# key that does not exist, since S3 keys are opaque byte strings.
+while [[ "$ENVY_MIRROR" == */ ]]; do ENVY_MIRROR="${ENVY_MIRROR%/}"; done
+
+mirror_is_s3() { [[ "$ENVY_MIRROR" == s3://* || "$ENVY_MIRROR" == S3://* ]]; }
+
+require_aws() {
+    command -v aws >/dev/null 2>&1 || {
+        echo "ERROR: mirror '$ENVY_MIRROR' is an s3:// URI but the aws CLI was not found" \
+             "on PATH. Install AWS CLI v2, or use an https:// mirror." >&2
+        exit 1
+    }
+}
+
+# Streams one mirror object to stdout; non-zero if it is missing or unreadable. Region and
+# credentials come from the environment/profile exactly as they do for every other AWS
+# tool -- run 'aws sso login' first for a credential-gated bucket.
+mirror_cat() {
+    if mirror_is_s3; then
+        require_aws
+        aws s3 cp --only-show-errors "$1" -
+    else
+        curl -fsSL --connect-timeout 10 --max-time 300 "$1"
+    fi
+}
 
 if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
 elif [[ -n "$MANIFEST_CACHE" ]]; then
@@ -77,9 +111,19 @@ if [[ -z "$VERSION" ]]; then
         LATEST_VER="${LATEST_VER%%[[:space:]]*}"
         [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
     fi
+    # Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so
+    # a private or air-gapped mirror answers for itself. Note the stamped default is not a
+    # reliable "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
     if [[ -z "$VERSION" ]]; then
+        VERSION="$(mirror_cat "$ENVY_MIRROR/latest" 2>/dev/null || true)"
+        VERSION="${VERSION//[[:space:]]/}"
+    fi
+    # GitHub releases serves no `latest` object, so fall back to its redirect. Skipped for
+    # s3:// mirrors, which are never github and must not reach out to it. Timeouts matter: on
+    # a network that blackholes egress an unbounded connect stalls for the OS TCP timeout.
+    if [[ -z "$VERSION" ]] && ! mirror_is_s3; then
         REDIR="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
-            "https://github.com/charlesnicholson/envy/releases/latest" 2>/dev/null)" || true
+            --connect-timeout 5 --max-time 15 "$LATEST_URL" 2>/dev/null)" || true
         [[ -n "$REDIR" ]] && { GH="${REDIR##*/}"; VERSION="${GH#v}"; }
     fi
     if [[ -z "$VERSION" ]]; then
@@ -101,9 +145,13 @@ ENVY_BIN="$CACHE/envy/$VERSION/envy"
 [[ -x "$ENVY_BIN" ]] && exec "$ENVY_BIN" "$@"
 
 echo "Downloading envy $VERSION..." >&2
-T=${TMPDIR:-/tmp}/envy-$$
-mkdir -p "$T"
+# mktemp, not $$: a predictable name in a shared sticky /tmp lets another user pre-create
+# the directory and have us extract into (and exec from) storage they control.
+T="$(mktemp -d "${TMPDIR:-/tmp}/envy-XXXXXXXX")"
 URL="$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH.tar.gz"
-curl -fsSL "$URL" | tar -xzf - -C "$T" || { echo "ERROR: Failed to download envy from $URL" >&2; rm -rf "$T"; exit 1; }
+mirror_cat "$URL" | tar -xzf - -C "$T" || { echo "ERROR: Failed to download envy from $URL" >&2; rm -rf "$T"; exit 1; }
+# tar exits 0 on an empty archive, so a zero-length object would otherwise fall through to
+# a confusing "no such file" from exec.
+[[ -f "$T/envy" ]] || { echo "ERROR: archive from $URL contained no envy binary" >&2; rm -rf "$T"; exit 1; }
 [[ $PLATFORM == darwin ]] && xattr -d com.apple.quarantine "$T/envy" 2>/dev/null || true
 chmod +x "$T/envy" && exec "$T/envy" "$@"

@@ -250,6 +250,7 @@ set(ENVY_BASE_SOURCES
     src/cmds/cmd_install.cpp
     src/cmds/cmd_lua.cpp
     src/cmds/cmd_merge_depot.cpp
+    src/cmds/cmd_mirror_envy.cpp
     src/cmds/cmd_product.cpp
     src/cmds/cmd_run.cpp
     src/cmds/cmd_sync.cpp
@@ -287,6 +288,7 @@ set(ENVY_BASE_SOURCES
     src/luarc.cpp
     src/extract.cpp
     src/aws_util.cpp
+    src/envy_release.cpp
     src/blake3_util.cpp
     src/git_resolve.cpp
     src/libgit2_util.cpp
@@ -470,6 +472,8 @@ endif() # ENVY_BUILD_FUNCTIONAL_TESTER
 
 set(ENVY_UNIT_TEST_SOURCES
     src/unit_test_main.cpp
+    src/aws_util_tests.cpp
+    src/envy_release_tests.cpp
     src/blake3_util_tests.cpp
     src/cache_tests.cpp
     src/cli_tests.cpp
@@ -480,6 +484,7 @@ set(ENVY_UNIT_TEST_SOURCES
     src/phases/phase_install_tests.cpp
     src/cmds/cmd_extract_tests.cpp
     src/cmds/cmd_merge_depot_tests.cpp
+    src/cmds/cmd_mirror_envy_tests.cpp
     src/deploy_tests.cpp
     src/luarc_tests.cpp
     src/cmds/cmd_lua_tests.cpp

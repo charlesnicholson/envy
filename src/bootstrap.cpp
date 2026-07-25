@@ -1,6 +1,7 @@
 #include "bootstrap.h"
 
 #include "embedded_init_resources.h"
+#include "envy_release.h"
 #include "platform.h"
 #include "tui.h"
 #include "util.h"
@@ -49,6 +50,10 @@ std::string stamp_bootstrap(std::string_view download_url, platform_id platform)
   std::string result{ get_bootstrap_template(platform) };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@DOWNLOAD_URL@@", download_url);
+  // Distinct from DOWNLOAD_URL: that one may be a custom mirror, while the latest-release
+  // probe always targets envy upstream. Stamped rather than hardcoded in the scripts so
+  // relocating the project stays a one-line edit in envy_release.h.
+  replace_all(result, "@@LATEST_URL@@", kEnvyReleaseLatestUrl);
   return result;
 }
 
@@ -102,8 +107,14 @@ bool bootstrap_write_script(fs::path const &bin_dir,
         "' exists but is not envy-managed. Remove manually to allow envy to manage it.");
   }
 
+  // Validate here rather than only at the `envy init --mirror` entry point: this also runs
+  // for a mirror read back out of a hand-edited manifest, and the value is about to be
+  // stamped into a quoted shell/batch assignment.
+  if (mirror) { envy_release_validate_mirror(*mirror, "bootstrap"); }
+
   // Generate new content
-  std::string_view const url{ mirror ? std::string_view{ *mirror } : kEnvyDownloadUrl };
+  std::string_view const url{ mirror ? std::string_view{ *mirror }
+                                     : kEnvyReleaseDownloadUrl };
   std::string const new_content{ stamp_bootstrap(url, platform) };
 
   // Compare with existing

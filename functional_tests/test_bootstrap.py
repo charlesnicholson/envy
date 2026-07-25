@@ -149,6 +149,11 @@ class EnvyServer:
 class BootstrapIntegrationTest(unittest.TestCase):
     """Integration tests for the bootstrap scripts."""
 
+    # These cases spawn a bootstrap that downloads and re-execs a real envy; the 5s default
+    # watchdog trips first and os._exit(1)s the whole run, which also makes the 30s
+    # subprocess timeouts below unreachable.
+    envy_watchdog_timeout = 60
+
     @classmethod
     def setUpClass(cls) -> None:
         cls._project_root = Path(__file__).resolve().parent.parent
@@ -182,7 +187,96 @@ class BootstrapIntegrationTest(unittest.TestCase):
         if hasattr(self, "_server"):
             self._server.stop()
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():
+            # Set ENVY_TEST_KEEP_TEMP to inspect the mock-aws invocation log and the staged
+            # tree after a failure. Tests embed the log in their assertion messages, so the
+            # default is still to leave nothing behind.
+            if os.environ.get("ENVY_TEST_KEEP_TEMP"):
+                sys.stderr.write(f"\nENVY_TEST_KEEP_TEMP: kept {self._temp_dir}\n")
+                return
             shutil.rmtree(self._temp_dir, ignore_errors=True)
+
+    # --- mock AWS CLI -------------------------------------------------------------
+    #
+    # The bootstrap's s3:// branch shells out to `aws`. Rather than reach S3, drop a mock
+    # first on PATH that logs its argv and serves objects from a local tree. The log is the
+    # proof the mock (and not a real aws) ran.
+
+    def _install_mock_aws(self) -> tuple[Path, Path, Path]:
+        """Create the mock aws CLI. Returns (bindir, s3root, logfile)."""
+        bindir = self._temp_dir / "mockbin"
+        s3root = self._temp_dir / "s3root"
+        logfile = self._temp_dir / "aws-invocations.log"
+        bindir.mkdir(parents=True)
+        s3root.mkdir(parents=True)
+
+        # Argument positions are fixed by the bootstrap's own call shape
+        # (`aws s3 cp --only-show-errors <uri> <dest>`); a mock that assumes them fails
+        # loudly if that shape ever changes.
+        (bindir / "aws").write_text(
+            "#!/bin/sh\n"
+            'printf "%s\\n" "$*" >> "$MOCK_AWS_LOG"\n'
+            '[ "$1" = "s3" ] && [ "$2" = "cp" ] || { echo "mock aws: unexpected argv: $*" >&2; exit 64; }\n'
+            'uri="$4"; dest="$5"\n'
+            'key="${uri#*://}"; key="${key#*/}"\n'
+            'src="$MOCK_AWS_ROOT/$key"\n'
+            '[ -f "$src" ] || { echo "mock aws: NoSuchKey: $key" >&2; exit 1; }\n'
+            'if [ "$dest" = "-" ]; then cat "$src"; else cp "$src" "$dest"; fi\n'
+        )
+        (bindir / "aws").chmod(0o755)
+
+        (bindir / "aws.bat").write_text(
+            "@echo off\r\n"
+            "setlocal EnableDelayedExpansion\r\n"
+            '>>"%MOCK_AWS_LOG%" echo %*\r\n'
+            'if not "%~1"=="s3" (echo mock aws: unexpected argv: %* >&2 & exit /b 64)\r\n'
+            'if not "%~2"=="cp" (echo mock aws: unexpected argv: %* >&2 & exit /b 64)\r\n'
+            'set "URI=%~4"\r\n'
+            'set "DEST=%~5"\r\n'
+            'set "KEY=!URI:*://=!"\r\n'
+            "for /f \"tokens=1,* delims=/\" %%a in (\"!KEY!\") do set \"KEY=%%b\"\r\n"
+            'set "SRC=%MOCK_AWS_ROOT%\\!KEY:/=\\!"\r\n'
+            'if not exist "!SRC!" (echo mock aws: NoSuchKey: !KEY! >&2 & exit /b 1)\r\n'
+            'copy /y "!SRC!" "!DEST!" >nul || exit /b 1\r\n'
+        )
+
+        return bindir, s3root, logfile
+
+    def _mock_aws_env(self, bindir: Path, s3root: Path, logfile: Path) -> dict[str, str]:
+        """PATH-prepend the mock and poison real AWS access.
+
+        If PATH injection ever regresses, `aws` resolves to the runner image's real CLI --
+        preinstalled on every GitHub hosted runner. The poisoned endpoint and config paths
+        make that physically unable to reach S3 instead of merely failing the assertions
+        after a live request.
+        """
+        env = {
+            "PATH": f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}",
+            "MOCK_AWS_LOG": str(logfile),
+            "MOCK_AWS_ROOT": str(s3root),
+            "AWS_ENDPOINT_URL": "http://127.0.0.1:1",
+            "AWS_ENDPOINT_URL_S3": "http://127.0.0.1:1",
+            "AWS_CONFIG_FILE": str(self._temp_dir / "no-such-aws-config"),
+            "AWS_SHARED_CREDENTIALS_FILE": str(self._temp_dir / "no-such-aws-creds"),
+            "AWS_EC2_METADATA_DISABLED": "1",
+            "AWS_MAX_ATTEMPTS": "1",
+            "AWS_ACCESS_KEY_ID": "",
+            "AWS_SECRET_ACCESS_KEY": "",
+            "AWS_SESSION_TOKEN": "",
+            "AWS_PROFILE": "",
+        }
+        return env
+
+    def _seed_s3_release(self, s3root: Path, prefix: str, version: str) -> None:
+        """Write the host-platform archive plus a `latest` file under a bucket prefix."""
+        base = s3root / prefix if prefix else s3root
+        (base / f"v{version}").mkdir(parents=True, exist_ok=True)
+        content = (
+            self._server.zip_content
+            if sys.platform == "win32"
+            else self._server.tar_gz_content
+        )
+        (base / f"v{version}" / f"envy-{_OS_NAME}-{_ARCH}{_EXT}").write_bytes(content)
+        (base / "latest").write_text(version)
 
     def _get_bootstrap_script(self) -> Path:
         if sys.platform == "win32":
@@ -226,10 +320,20 @@ class BootstrapIntegrationTest(unittest.TestCase):
         args: list[str],
         cache_dir: Path | None = None,
         env_overrides: dict[str, str] | None = None,
+        set_mirror: bool = True,
     ) -> subprocess.CompletedProcess[str]:
-        """Run the bootstrap script and return the result."""
+        """Run the bootstrap script and return the result.
+
+        set_mirror=False drops ENVY_MIRROR entirely, which is what a manifest-mirror test
+        needs now that env wins over the manifest. It must be dropped rather than set to "":
+        cmd.exe has no concept of an empty-but-defined variable, so `if defined` would
+        disagree with bash's `${VAR:-}` and the two scripts would diverge under test.
+        """
         env = os.environ.copy()
-        env["ENVY_MIRROR"] = f"http://127.0.0.1:{self._port}"
+        if set_mirror:
+            env["ENVY_MIRROR"] = f"http://127.0.0.1:{self._port}"
+        else:
+            env.pop("ENVY_MIRROR", None)
         env["ENVY_CACHE_ROOT"] = str(cache_dir or self._temp_dir / "cache")
         if env_overrides:
             env.update(env_overrides)
@@ -426,6 +530,177 @@ class BootstrapIntegrationTest(unittest.TestCase):
         expected = f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"
         self.assertEqual(1, len(self._server.request_paths))
         self.assertEqual(expected, self._server.request_paths[0])
+
+    # --- s3:// mirrors ------------------------------------------------------------
+
+    def _run_s3_bootstrap(
+        self,
+        manifest: str,
+        *,
+        version: str = "5.6.7",
+        prefix: str = "releases",
+        seed: bool = True,
+        extra_env: dict[str, str] | None = None,
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        bindir, s3root, logfile = self._install_mock_aws()
+        if seed:
+            self._seed_s3_release(s3root, prefix, version)
+
+        project_dir = self._temp_dir / "project"
+        bin_dir = project_dir / "tools"
+        bin_dir.mkdir(parents=True)
+        (project_dir / "envy.lua").write_text(manifest)
+
+        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
+        dest.write_text(
+            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "0.0.1")
+        )
+        if sys.platform != "win32":
+            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+        env = self._mock_aws_env(bindir, s3root, logfile)
+        if extra_env:
+            env.update(extra_env)
+        result = self._run_bootstrap(dest, ["version"], env_overrides=env, set_mirror=False)
+        return result, logfile
+
+    def _mock_log(self, logfile: Path) -> str:
+        # Asserted separately from its contents: a missing log means PATH injection failed
+        # and a real aws ran, which is a different bug from a wrong object key.
+        self.assertTrue(
+            logfile.exists(),
+            "mock aws was never invoked -- PATH injection failed and a real aws CLI may "
+            "have run",
+        )
+        return logfile.read_text()
+
+    def test_bootstrap_s3_mirror_downloads_via_aws_cli(self) -> None:
+        """An s3:// mirror shells out to aws, never to curl."""
+        manifest = (
+            '-- @envy version "5.6.7"\n'
+            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n'
+        )
+        result, logfile = self._run_s3_bootstrap(manifest)
+        log = self._mock_log(logfile)
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}\nlog: {log}")
+        self.assertIn("envy version", result.stderr)
+        self.assertIn(
+            f"s3://fake-bucket/releases/v5.6.7/envy-{_OS_NAME}-{_ARCH}{_EXT}", log
+        )
+        # Proves the http branch was not taken as well.
+        self.assertEqual([], self._server.request_paths)
+
+    def test_bootstrap_s3_mirror_resolves_version_from_mirror_latest(self) -> None:
+        """With no @envy version, the mirror's own `latest` answers -- not github.com."""
+        manifest = (
+            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n'
+        )
+        result, logfile = self._run_s3_bootstrap(manifest)
+        log = self._mock_log(logfile)
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}\nlog: {log}")
+        self.assertIn("s3://fake-bucket/releases/latest", log)
+        self.assertIn(
+            f"s3://fake-bucket/releases/v5.6.7/envy-{_OS_NAME}-{_ARCH}{_EXT}", log
+        )
+        self.assertNotIn("0.0.1", log)  # the stamped fallback was not used
+
+    def test_bootstrap_s3_mirror_bucket_root_prefix(self) -> None:
+        """A bucket-root mirror produces keys with no leading prefix and no double slash."""
+        manifest = (
+            '-- @envy version "5.6.7"\n'
+            '-- @envy mirror "s3://fake-bucket"\n\nPACKAGES = {}\n'
+        )
+        result, logfile = self._run_s3_bootstrap(manifest, prefix="")
+        log = self._mock_log(logfile)
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}\nlog: {log}")
+        self.assertIn(f"s3://fake-bucket/v5.6.7/envy-{_OS_NAME}-{_ARCH}{_EXT}", log)
+        self.assertNotIn("//v5.6.7", log)
+
+    def test_bootstrap_s3_mirror_trailing_slash_does_not_double(self) -> None:
+        """A trailing slash on the mirror must not mint a distinct //-containing key."""
+        manifest = (
+            '-- @envy version "5.6.7"\n'
+            '-- @envy mirror "s3://fake-bucket/releases/"\n\nPACKAGES = {}\n'
+        )
+        result, logfile = self._run_s3_bootstrap(manifest)
+        log = self._mock_log(logfile)
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}\nlog: {log}")
+        self.assertNotIn("releases//", log)
+
+    def test_bootstrap_s3_mirror_missing_object_fails_clearly(self) -> None:
+        """A missing object reports the URL rather than falling through to exec."""
+        manifest = (
+            '-- @envy version "9.9.9"\n'
+            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n'
+        )
+        result, logfile = self._run_s3_bootstrap(manifest, seed=False)
+        self._mock_log(logfile)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Failed to download envy", result.stderr)
+
+    def test_bootstrap_env_mirror_overrides_manifest_mirror(self) -> None:
+        """ENVY_MIRROR beats @envy mirror, matching the runtime resolver in reexec.cpp."""
+        bindir, s3root, logfile = self._install_mock_aws()
+        project_dir = self._temp_dir / "project"
+        bin_dir = project_dir / "tools"
+        bin_dir.mkdir(parents=True)
+        # The manifest points at a bucket the mock cannot serve; the env var points at the
+        # http server. If the manifest won, aws would be invoked and the run would fail.
+        (project_dir / "envy.lua").write_text(
+            '-- @envy version "1.2.3"\n'
+            '-- @envy mirror "s3://wrong-bucket/nope"\n\nPACKAGES = {}\n'
+        )
+        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
+        dest.write_text(
+            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
+        )
+        if sys.platform != "win32":
+            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+        result = self._run_bootstrap(
+            dest, ["version"], env_overrides=self._mock_aws_env(bindir, s3root, logfile)
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        self.assertFalse(
+            logfile.exists(),
+            f"aws was invoked, so the manifest mirror won over ENVY_MIRROR: "
+            f"{logfile.read_text() if logfile.exists() else ''}",
+        )
+        self.assertNotEqual([], self._server.request_paths)
+
+    @unittest.skipIf(
+        sys.platform == "win32", "PATH minimization to exclude a real aws.exe is fragile"
+    )
+    def test_bootstrap_s3_mirror_without_aws_reports_missing_cli(self) -> None:
+        """s3:// without the AWS CLI must say so, not fail obscurely."""
+        project_dir = self._temp_dir / "project"
+        bin_dir = project_dir / "tools"
+        bin_dir.mkdir(parents=True)
+        (project_dir / "envy.lua").write_text(
+            '-- @envy version "1.2.3"\n'
+            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n'
+        )
+        dest = bin_dir / "envy"
+        dest.write_text(
+            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
+        )
+        dest.chmod(dest.stat().st_mode | stat.S_IXUSR)
+
+        # AWS CLI v2 installs to /usr/local/bin, so a minimal PATH excludes it while still
+        # providing the coreutils the script needs.
+        result = self._run_bootstrap(
+            dest, ["version"], env_overrides={"PATH": "/usr/bin:/bin"}, set_mirror=False
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("aws CLI was not found", result.stderr)
 
     def test_bootstrap_fails_without_manifest(self) -> None:
         """Test that bootstrap fails gracefully when envy.lua is not found."""
