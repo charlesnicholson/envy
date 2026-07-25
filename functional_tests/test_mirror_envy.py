@@ -1,0 +1,523 @@
+"""Functional tests for `envy mirror-envy`.
+
+Staging runs against a file:// source mirror so no network is involved. The S3 upload leg
+runs against a local S3 stub reached via AWS_ENDPOINT_URL_S3, which the AWS SDK honors
+natively -- so the upload path gets real coverage without touching AWS.
+"""
+
+from __future__ import annotations
+
+import gzip
+import hashlib
+import io
+import os
+import shutil
+import sys
+import tarfile
+import tempfile
+import threading
+import unittest
+import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+from . import test_config
+
+# Must stay byte-identical to kEnvyReleaseTargets in src/reexec.h.
+RELEASE_ASSETS = [
+    "envy-darwin-arm64.tar.gz",
+    "envy-darwin-x86_64.tar.gz",
+    "envy-linux-arm64.tar.gz",
+    "envy-linux-x86_64.tar.gz",
+    "envy-windows-arm64.zip",
+    "envy-windows-x86_64.zip",
+]
+
+
+def _archive_for(asset: str) -> bytes:
+    """Build a tiny archive shaped like a real release asset."""
+    payload = f"fake-envy-binary-for-{asset}".encode()
+    if asset.endswith(".zip"):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("envy.exe", payload)
+        return buf.getvalue()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        info = tarfile.TarInfo(name="envy")
+        info.size = len(payload)
+        info.mode = 0o755
+        tf.addfile(info, io.BytesIO(payload))
+    return buf.getvalue()
+
+
+class S3Stub:
+    """Minimal S3-compatible endpoint: just enough for single-part PutObject/GetObject.
+
+    Staged archives are tiny, so TransferManager stays under its 5MiB buffer size and never
+    reaches for multipart -- which is why Create/UploadPart/CompleteMultipartUpload are not
+    implemented here. If that assumption ever breaks, the SDK will 501 and the test fails
+    loudly rather than silently skipping coverage.
+    """
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+        self.port = 0
+
+    def start(self) -> int:
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, fmt: str, *args: object) -> None:  # noqa: A003
+                return
+
+            def _key(self) -> str:
+                # Path-style addressing: /<bucket>/<key>. The SDK uses path-style
+                # automatically when the endpoint host is an IP literal.
+                return self.path.lstrip("/").split("?", 1)[0]
+
+            def _read_body(self) -> bytes:
+                """Read the request body, unwrapping both framings the SDK applies.
+
+                A PutObject from aws-sdk-cpp arrives double-framed: HTTP
+                `Transfer-Encoding: chunked` on the outside, and `Content-Encoding:
+                aws-chunked` on the inside with an `x-amz-trailer` checksum after the
+                terminating zero chunk. There is no Content-Length. Reading the body fully
+                also keeps HTTP/1.1 keep-alive framing intact for the next request.
+                """
+                if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+                    body = self._read_http_chunked()
+                else:
+                    length = int(self.headers.get("Content-Length") or 0)
+                    body = self.rfile.read(length) if length else b""
+
+                if "aws-chunked" in (self.headers.get("Content-Encoding") or "").lower():
+                    body = self._decode_aws_chunked(body)
+                return body
+
+            def _read_http_chunked(self) -> bytes:
+                chunks: list[bytes] = []
+                while True:
+                    line = self.rfile.readline().strip()
+                    if not line:
+                        continue
+                    size = int(line.split(b";", 1)[0], 16)
+                    if size == 0:
+                        break
+                    chunks.append(self.rfile.read(size))
+                    self.rfile.read(2)  # chunk-terminating CRLF
+                while True:  # trailer headers, terminated by a blank line
+                    line = self.rfile.readline()
+                    if not line or line in (b"\r\n", b"\n"):
+                        break
+                return b"".join(chunks)
+
+            @staticmethod
+            def _decode_aws_chunked(buf: bytes) -> bytes:
+                out = bytearray()
+                pos = 0
+                while True:
+                    eol = buf.find(b"\r\n", pos)
+                    if eol < 0:
+                        break
+                    size = int(buf[pos:eol].split(b";", 1)[0] or b"0", 16)
+                    pos = eol + 2
+                    if size == 0:
+                        break  # trailers follow; the payload is complete
+                    out += buf[pos : pos + size]
+                    pos += size + 2  # data plus its CRLF
+                return bytes(out)
+
+            def do_PUT(self) -> None:
+                body = self._read_body()
+                # Fail loudly if the stub mis-framed the body rather than silently storing
+                # an empty object, which would make byte-for-byte assertions meaningless.
+                declared = self.headers.get("x-amz-decoded-content-length")
+                if declared is not None and len(body) != int(declared):
+                    parent._send_error(self, 400, "IncompleteBody")
+                    return
+                key = self._key()
+                if "/" not in key:
+                    self.send_response(400)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                bucket, obj = key.split("/", 1)
+                if bucket != "test-bucket":
+                    parent._send_error(self, 404, "NoSuchBucket")
+                    return
+                parent.objects[obj] = body
+                self.send_response(200)
+                self.send_header("ETag", f'"{hashlib.md5(body).hexdigest()}"')
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def do_GET(self) -> None:
+                key = self._key()
+                bucket, _, obj = key.partition("/")
+                if bucket != "test-bucket":
+                    parent._send_error(self, 404, "NoSuchBucket")
+                    return
+                if obj not in parent.objects:
+                    parent._send_error(self, 404, "NoSuchKey")
+                    return
+                body = parent.objects[obj]
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("ETag", f'"{hashlib.md5(body).hexdigest()}"')
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_HEAD(self) -> None:
+                key = self._key()
+                bucket, _, obj = key.partition("/")
+                if bucket != "test-bucket" or obj not in parent.objects:
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(parent.objects[obj])))
+                self.end_headers()
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return self.port
+
+    @staticmethod
+    def _send_error(handler: BaseHTTPRequestHandler, code: int, aws_code: str) -> None:
+        body = (
+            f'<?xml version="1.0" encoding="UTF-8"?><Error><Code>{aws_code}</Code>'
+            f"<Message>{aws_code}</Message></Error>"
+        ).encode()
+        handler.send_response(code)
+        handler.send_header("Content-Type", "application/xml")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+
+
+class MirrorEnvyFunctionalTest(unittest.TestCase):
+    # Downloads six archives and (in the S3 cases) uploads seven objects.
+    envy_watchdog_timeout = 60
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        root = Path(__file__).resolve().parent.parent
+        cls._envy = root / "out" / "build" / (
+            "envy.exe" if sys.platform == "win32" else "envy"
+        )
+
+    def setUp(self) -> None:
+        self.assertTrue(self._envy.exists(), f"envy binary not found at {self._envy}")
+        self._temp = Path(tempfile.mkdtemp(prefix="envy-mirror-envy-test-"))
+        self._source = self._temp / "upstream"
+        (self._source / "v1.2.3").mkdir(parents=True)
+        for asset in RELEASE_ASSETS:
+            (self._source / "v1.2.3" / asset).write_bytes(_archive_for(asset))
+
+    def tearDown(self) -> None:
+        if self._temp.exists():
+            if os.environ.get("ENVY_TEST_KEEP_TEMP"):
+                sys.stderr.write(f"\nENVY_TEST_KEEP_TEMP: kept {self._temp}\n")
+                return
+            shutil.rmtree(self._temp, ignore_errors=True)
+
+    def _from_uri(self) -> str:
+        return self._source.as_uri()
+
+    def _run(self, args: list[str], env_extra: dict[str, str] | None = None):
+        env = os.environ.copy()
+        env["ENVY_CACHE_ROOT"] = str(self._temp / "cache")
+        if env_extra:
+            env.update(env_extra)
+        return test_config.run(
+            [str(self._envy), *args],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=self._temp,
+            timeout=60,
+        )
+
+    # --- staging ------------------------------------------------------------------
+
+    def test_stages_all_six_assets_and_latest(self) -> None:
+        dest = self._temp / "staged"
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        for asset in RELEASE_ASSETS:
+            staged = dest / "v1.2.3" / asset
+            self.assertTrue(staged.exists(), f"missing {asset}")
+            # Byte-identical: mirroring copies release bytes, it never repacks.
+            self.assertEqual(
+                (self._source / "v1.2.3" / asset).read_bytes(), staged.read_bytes()
+            )
+        self.assertEqual("1.2.3", (dest / "latest").read_text())
+
+    def test_staged_windows_archives_are_named_from_any_host(self) -> None:
+        """The .zip assets must be produced even when mirroring from a posix host."""
+        dest = self._temp / "staged"
+        self._run(["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"])
+
+        for asset in ("envy-windows-arm64.zip", "envy-windows-x86_64.zip"):
+            with zipfile.ZipFile(dest / "v1.2.3" / asset) as zf:
+                self.assertEqual(["envy.exe"], zf.namelist())
+
+    def test_staged_posix_archives_hold_a_root_level_envy(self) -> None:
+        """Flat archives: the bootstrap extracts and execs <tmp>/envy directly."""
+        dest = self._temp / "staged"
+        self._run(["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"])
+
+        with tarfile.open(dest / "v1.2.3" / "envy-linux-arm64.tar.gz") as tf:
+            self.assertEqual(["envy"], tf.getnames())
+
+    def test_relative_destination_is_cwd_relative(self) -> None:
+        result = self._run(
+            ["mirror-envy", "1.2.3", "./rel-staged", f"--from={self._from_uri()}"]
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertTrue((self._temp / "rel-staged" / "v1.2.3").is_dir())
+
+    def test_missing_source_asset_fails_and_writes_no_latest(self) -> None:
+        """A partial mirror must never advertise itself as latest."""
+        (self._source / "v1.2.3" / "envy-windows-arm64.zip").unlink()
+        dest = self._temp / "staged"
+
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("failed to download", result.stderr)
+        self.assertFalse((dest / "latest").exists())
+
+    def test_rejects_malformed_and_unsupported_destinations(self) -> None:
+        for dest in ("s3:/one-slash-bucket", "https://example.com/x", "./mirror.git"):
+            result = self._run(
+                ["mirror-envy", "1.2.3", dest, f"--from={self._from_uri()}"]
+            )
+            self.assertNotEqual(0, result.returncode, f"{dest} should have been rejected")
+        # The single-slash typo must not silently create a local directory named "s3:".
+        self.assertFalse((self._temp / "s3:").exists())
+
+    def test_rejects_invalid_version(self) -> None:
+        result = self._run(
+            ["mirror-envy", "../../etc", "./staged", f"--from={self._from_uri()}"]
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("invalid version", result.stderr)
+
+    # --- S3 upload ----------------------------------------------------------------
+
+    def _s3_env(self, port: int) -> dict[str, str]:
+        return {
+            "AWS_ENDPOINT_URL": f"http://127.0.0.1:{port}",
+            "AWS_ENDPOINT_URL_S3": f"http://127.0.0.1:{port}",
+            "AWS_REGION": "us-east-1",
+            "AWS_DEFAULT_REGION": "us-east-1",
+            "AWS_ACCESS_KEY_ID": "test",
+            "AWS_SECRET_ACCESS_KEY": "test",
+            "AWS_EC2_METADATA_DISABLED": "1",
+            "AWS_MAX_ATTEMPTS": "2",
+        }
+
+    def test_uploads_every_object_to_s3(self) -> None:
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                [
+                    "mirror-envy",
+                    "1.2.3",
+                    "s3://test-bucket/releases",
+                    f"--from={self._from_uri()}",
+                ],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        for asset in RELEASE_ASSETS:
+            key = f"releases/v1.2.3/{asset}"
+            self.assertIn(key, stub.objects, f"missing key {key}")
+            self.assertEqual(
+                (self._source / "v1.2.3" / asset).read_bytes(), stub.objects[key]
+            )
+        self.assertEqual(b"1.2.3", stub.objects["releases/latest"])
+        # No double-slash keys: S3 keys are opaque, so "a//b" would be unreachable.
+        for key in stub.objects:
+            self.assertNotIn("//", key)
+
+    def test_uploads_to_bucket_root_without_prefix(self) -> None:
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                ["mirror-envy", "1.2.3", "s3://test-bucket", f"--from={self._from_uri()}"],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("v1.2.3/envy-linux-arm64.tar.gz", stub.objects)
+        self.assertEqual(b"1.2.3", stub.objects["latest"])
+
+    def test_trailing_slash_on_s3_prefix_is_normalized(self) -> None:
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                [
+                    "mirror-envy",
+                    "1.2.3",
+                    "s3://test-bucket/releases/",
+                    f"--from={self._from_uri()}",
+                ],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("releases/v1.2.3/envy-linux-arm64.tar.gz", stub.objects)
+
+    def test_nonexistent_bucket_reports_no_such_bucket(self) -> None:
+        """envy never creates buckets; a missing one must say so."""
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                [
+                    "mirror-envy",
+                    "1.2.3",
+                    "s3://no-such-bucket/releases",
+                    f"--from={self._from_uri()}",
+                ],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("uploads failed", result.stderr)
+        self.assertIn("NoSuchBucket", result.stderr)
+        self.assertIn("envy never creates buckets", result.stderr)
+
+    def test_prints_paste_ready_manifest_directives(self) -> None:
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                [
+                    "mirror-envy",
+                    "1.2.3",
+                    "s3://test-bucket/releases",
+                    f"--from={self._from_uri()}",
+                ],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn('-- @envy version "1.2.3"', result.stderr)
+        self.assertIn('-- @envy mirror "s3://test-bucket/releases"', result.stderr)
+
+
+class InitMirrorSurvivesSyncTest(unittest.TestCase):
+    """`envy init --mirror` must record the mirror in the manifest.
+
+    Before this, the mirror was stamped only into the bootstrap script, and the first
+    `envy sync` re-stamped it from the manifest's (absent) @envy mirror -- silently
+    reverting a configured mirror back to envy's GitHub releases.
+    """
+
+    envy_watchdog_timeout = 60
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        root = Path(__file__).resolve().parent.parent
+        cls._envy = root / "out" / "build" / (
+            "envy.exe" if sys.platform == "win32" else "envy"
+        )
+
+    def setUp(self) -> None:
+        self._temp = Path(tempfile.mkdtemp(prefix="envy-init-mirror-test-"))
+
+    def tearDown(self) -> None:
+        if self._temp.exists():
+            shutil.rmtree(self._temp, ignore_errors=True)
+
+    def _run(self, args: list[str]):
+        env = os.environ.copy()
+        env["ENVY_CACHE_ROOT"] = str(self._temp / "cache")
+        return test_config.run(
+            [str(self._envy), *args],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=self._temp,
+            timeout=60,
+        )
+
+    def _script(self) -> Path:
+        name = "envy.bat" if sys.platform == "win32" else "envy"
+        return self._temp / "tools" / name
+
+    def test_init_mirror_is_written_to_manifest_and_survives_sync(self) -> None:
+        mirror = "s3://my-envy-mirror/releases"
+
+        init = self._run(["init", ".", "./tools", f"--mirror={mirror}"])
+        self.assertEqual(0, init.returncode, f"stderr: {init.stderr}")
+
+        manifest = (self._temp / "envy.lua").read_text()
+        self.assertIn(f'-- @envy mirror "{mirror}"', manifest)
+        self.assertIn(mirror, self._script().read_text())
+
+        sync = self._run(["sync"])
+        self.assertEqual(0, sync.returncode, f"stderr: {sync.stderr}")
+
+        # Assert the stamped assignment itself, not the absence of a hardcoded upstream URL:
+        # that spelling changes when the project relocates, so a stale "not in" check would
+        # then pass vacuously.
+        after = self._script().read_text()
+        assignment = (
+            f'set "DEFAULT_MIRROR={mirror}"'
+            if sys.platform == "win32"
+            else f'DEFAULT_MIRROR="{mirror}"'
+        )
+        self.assertIn(assignment, after)
+        self.assertNotIn("@@DOWNLOAD_URL@@", after)
+
+    def test_init_without_mirror_writes_no_directive(self) -> None:
+        init = self._run(["init", ".", "./tools"])
+        self.assertEqual(0, init.returncode, f"stderr: {init.stderr}")
+
+        manifest = (self._temp / "envy.lua").read_text()
+        self.assertNotIn("@envy mirror", manifest)
+        # No stray blank line where the directive would have gone.
+        self.assertNotIn("\n\n\n", manifest)
+
+
+if __name__ == "__main__":
+    unittest.main()

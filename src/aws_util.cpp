@@ -9,12 +9,16 @@
 #include "aws/core/client/ClientConfiguration.h"
 #include "aws/core/utils/logging/LogLevel.h"
 #include "aws/core/utils/logging/NullLogSystem.h"
+#include "aws/core/utils/memory/stl/AWSMap.h"
 #include "aws/core/utils/threading/PooledThreadExecutor.h"
 #include "aws/s3/S3Client.h"
 #include "aws/transfer/TransferHandle.h"
 #include "aws/transfer/TransferManager.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -42,7 +46,7 @@ struct transfer_context {
 std::mutex g_transfer_mutex;
 std::unordered_map<std::string, transfer_context> g_transfer_contexts;
 
-struct progress_entry {  // Per-download progress state, keyed by destination file path.
+struct progress_entry {  // Per-transfer progress state, keyed by local file path.
   fetch_progress_cb_t cb;
   std::uint64_t last_reported{ 0 };
   bool cancelled{ false };
@@ -60,19 +64,28 @@ void configure_options(Aws::SDKOptions &options) {
   };
 }
 
-void on_download_progress(
+// Serves both directions: TransferHandle::GetTargetFilePath() is the *local* file either
+// way (download destination, upload source), so one map keyed on that path covers both.
+void on_transfer_progress(
     Aws::Transfer::TransferManager const *,
     std::shared_ptr<Aws::Transfer::TransferHandle const> const &handle) {
-  auto const dest{ std::string(handle->GetTargetFilePath().c_str()) };
-  auto const transferred{ handle->GetBytesTransferred() };
+  auto const local{ std::string(handle->GetTargetFilePath().c_str()) };
   auto const total{ handle->GetBytesTotalSize() };
 
   fetch_progress_cb_t cb;
+  std::uint64_t transferred{};
   {
     std::lock_guard<std::mutex> lock{ g_progress_mutex };
-    auto const it{ g_progress_map.find(dest) };
+    auto const it{ g_progress_map.find(local) };
     if (it == g_progress_map.end()) { return; }
-    if (transferred - it->second.last_reported < kProgressInterval) { return; }
+    // Read under the lock: multipart uploads report from several threads, and a stale
+    // reader winning the lock second would drive last_reported backwards (and
+    // unsigned-wrap the interval check).
+    transferred = handle->GetBytesTransferred();
+    if (transferred <= it->second.last_reported ||
+        transferred - it->second.last_reported < kProgressInterval) {
+      return;
+    }
     it->second.last_reported = transferred;
     cb = it->second.cb;
   }
@@ -83,7 +96,7 @@ void on_download_progress(
                             fetch_transfer_progress{ transferred, content_length } };
   if (!cb(payload)) {
     std::lock_guard<std::mutex> lock{ g_progress_mutex };
-    auto const it{ g_progress_map.find(dest) };
+    auto const it{ g_progress_map.find(local) };
     if (it != g_progress_map.end()) { it->second.cancelled = true; }
   }
 }
@@ -124,9 +137,13 @@ transfer_context &get_transfer_context(std::string const &region) {
       Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
       /*useVirtualAddressing=*/true) };
 
+  // Both callbacks must be set here: TransferManagerConfiguration is copied into the
+  // manager at Create() and the manager is memoized per region for process lifetime, so
+  // there is no later opportunity to add one.
   Aws::Transfer::TransferManagerConfiguration tm_config(nullptr);
   tm_config.s3Client = client;
-  tm_config.downloadProgressCallback = on_download_progress;
+  tm_config.downloadProgressCallback = on_transfer_progress;
+  tm_config.uploadProgressCallback = on_transfer_progress;
   tm_config.executorCreateFn = [] {
     return Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(kAllocationTag, 8);
   };
@@ -138,28 +155,146 @@ transfer_context &get_transfer_context(std::string const &region) {
   return inserted->second;
 }
 
-struct s3_uri_parts {
-  std::string bucket;
-  std::string key;
-};
+// prefix must already be lowercase.
+bool istarts_with(std::string_view value, std::string_view prefix) {
+  if (prefix.size() > value.size()) { return false; }
+  for (size_t i{ 0 }; i < prefix.size(); ++i) {
+    char const c{ (value[i] >= 'A' && value[i] <= 'Z')
+                      ? static_cast<char>(value[i] - 'A' + 'a')
+                      : value[i] };
+    if (c != prefix[i]) { return false; }
+  }
+  return true;
+}
 
-s3_uri_parts parse_s3_uri(std::string_view uri) {
+// Formats a TransferHandle failure. Shared by both directions so the AWS-specific hints
+// live in one place.
+[[noreturn]] void throw_transfer_error(
+    std::shared_ptr<Aws::Transfer::TransferHandle> const &handle,
+    std::string_view op,
+    bool writing) {
+  auto const &error{ handle->GetLastError() };
+  auto const http_code{ static_cast<int>(error.GetResponseCode()) };
+  auto const &name{ error.GetExceptionName() };
+
+  std::ostringstream msg;
+  msg << op << ": transfer failed";
+  if (!name.empty()) { msg << ": " << name; }
+  if (auto const &body{ error.GetMessage() };
+      !body.empty() && body != "No response body.") {
+    msg << ": " << body;
+  }
+  if (http_code > 0) { msg << " (HTTP " << http_code << ")"; }
+
+  if (name == "NoSuchBucket") {
+    msg << "\n  Hint: the bucket does not exist. envy never creates buckets.";
+  } else if (name == "PermanentRedirect" || name == "AuthorizationHeaderMalformed" ||
+             http_code == 301) {
+    // The SDK's ClientConfiguration falls back to us-east-1 when no region is configured,
+    // so a bucket elsewhere fails as a redirect rather than as "region not set".
+    msg << "\n  Hint: the bucket is in a different region. Set AWS_REGION (or a profile"
+           " region); envy uses the AWS SDK's own resolution, which defaults to"
+           " us-east-1.";
+  } else if (http_code == 401 || http_code == 403) {
+    msg << (writing ? "\n  Hint: these credentials lack s3:PutObject on this prefix."
+                      " Run 'aws sso login' or check the bucket policy."
+                    : "\n  Hint: check that the bucket policy allows public access,"
+                      " or run 'aws sso login' to authenticate.");
+  }
+
+  throw std::runtime_error(msg.str());
+}
+
+std::filesystem::path absolute_normalized(std::filesystem::path const &p) {
+  auto out{ p.is_absolute() ? p : std::filesystem::absolute(p) };
+  return out.lexically_normal();
+}
+
+char const *content_type_for(std::filesystem::path const &p) {
+  auto const name{ p.filename().string() };
+  if (name.ends_with(".zip")) { return "application/zip"; }
+  if (name.ends_with(".tar.gz")) { return "application/gzip"; }
+  return "application/octet-stream";
+}
+
+// Drives a TransferManager operation to completion: registers progress under the local
+// file path, waits, honors cancellation, maps failure, reports 100%. Shared by both
+// directions so the lifecycle exists once.
+void run_transfer(
+    std::string const &local_path,
+    fetch_progress_cb_t const &progress,
+    std::string_view op,
+    bool writing,
+    std::function<std::shared_ptr<Aws::Transfer::TransferHandle>()> const &start) {
+  aws_init();
+
+  if (progress) {  // Must be registered before the transfer starts.
+    std::lock_guard<std::mutex> lock{ g_progress_mutex };
+    g_progress_map.insert_or_assign(local_path, progress_entry{ progress });
+  }
+
+  auto handle{ start() };
+  handle->WaitUntilFinished();
+
+  if (auto const was_cancelled{ [&] {  // Deregister callback and check cancellation.
+        std::lock_guard<std::mutex> lock{ g_progress_mutex };
+        auto const it{ g_progress_map.find(local_path) };
+        if (it == g_progress_map.end()) { return false; }
+        bool const c{ it->second.cancelled };
+        g_progress_map.erase(it);
+        return c;
+      }() }) {
+    handle->Cancel();
+    throw std::runtime_error(std::string{ op } +
+                             ": transfer cancelled by progress callback");
+  }
+
+  switch (handle->GetStatus()) {
+    case Aws::Transfer::TransferStatus::FAILED:
+    case Aws::Transfer::TransferStatus::CANCELED:
+    case Aws::Transfer::TransferStatus::ABORTED: throw_transfer_error(handle, op, writing);
+    default: break;
+  }
+
+  if (progress) {  // Final callback so the bar reaches 100%.
+    auto const total{ handle->GetBytesTotalSize() };
+    std::optional<std::uint64_t> content_length;
+    if (total > 0) { content_length = total; }
+    fetch_progress_t payload{
+      std::in_place_type<fetch_transfer_progress>,
+      fetch_transfer_progress{ handle->GetBytesTransferred(), content_length }
+    };
+    progress(payload);
+  }
+}
+
+}  // namespace
+
+s3_uri_parts aws_s3_parse_uri(std::string_view uri, std::string_view op) {
   constexpr std::string_view kPrefix{ "s3://" };
-  if (!uri.starts_with(kPrefix)) {
-    throw std::invalid_argument("aws_s3_download: URI must start with s3://");
+  if (!istarts_with(uri, kPrefix)) {
+    throw std::invalid_argument(std::string{ op } + ": URI must start with s3://");
   }
 
   std::string_view remainder{ uri.substr(kPrefix.size()) };
   auto const slash{ remainder.find('/') };
-  if (slash == std::string_view::npos || slash == 0 || slash + 1 >= remainder.size()) {
-    throw std::invalid_argument("aws_s3_download: URI must include bucket and key");
+  if (slash == 0) {
+    throw std::invalid_argument(std::string{ op } + ": URI must include a bucket");
   }
 
-  return s3_uri_parts{ .bucket = std::string(remainder.substr(0, slash)),
-                       .key = std::string(remainder.substr(slash + 1)) };
-}
+  auto const bucket{ remainder.substr(0, slash) };  // npos slash -> whole remainder
+  if (bucket.empty()) {
+    throw std::invalid_argument(std::string{ op } + ": URI must include a bucket");
+  }
 
-}  // namespace
+  std::string_view key{};
+  if (slash != std::string_view::npos) {
+    key = remainder.substr(slash + 1);
+    while (key.ends_with('/')) { key.remove_suffix(1); }
+  }
+
+  return s3_uri_parts{ .bucket = std::string{ bucket }, .key = std::string{ key } };
+}
 
 void aws_init() {
   std::call_once(g_init_once, [] {
@@ -176,6 +311,14 @@ void aws_shutdown() {
   if (!g_initialized) { return; }
   {
     std::lock_guard<std::mutex> tl{ g_transfer_mutex };
+    // TransferManager's destructor only drains buffers; the SDK requires an explicit wait
+    // before ShutdownAPI. Multipart uploads make this reachable: the final part's callback
+    // marks the main handle COMPLETED (releasing WaitUntilFinished) before its own
+    // RemoveTask runs, so tasks can still be in flight here.
+    constexpr std::int64_t kDrainTimeoutMs{ 30'000 };
+    for (auto &[_, ctx] : g_transfer_contexts) {
+      ctx.manager->WaitUntilAllFinished(kDrainTimeoutMs);
+    }
     g_transfer_contexts.clear();
   }
   g_initialized = false;
@@ -185,19 +328,19 @@ void aws_shutdown() {
 aws_shutdown_guard::~aws_shutdown_guard() { aws_shutdown(); }
 
 std::filesystem::path aws_s3_download(s3_download_request const &request) {
+  constexpr std::string_view kOp{ "aws_s3_download" };
+
   if (request.destination.empty()) {
     throw std::invalid_argument("aws_s3_download: destination path is empty");
   }
 
-  std::filesystem::path resolved_destination{ request.destination };
-  if (!resolved_destination.is_absolute()) {
-    resolved_destination = std::filesystem::absolute(resolved_destination);
+  auto const local{ absolute_normalized(request.destination) };
+  auto const parts{ aws_s3_parse_uri(request.uri, kOp) };
+  if (parts.key.empty()) {
+    throw std::invalid_argument("aws_s3_download: URI must include a key");
   }
-  resolved_destination = resolved_destination.lexically_normal();
 
-  auto const parts{ parse_s3_uri(request.uri) };
-
-  auto const parent{ resolved_destination.parent_path() };
+  auto const parent{ local.parent_path() };
   if (!parent.empty()) {
     std::error_code ec;
     std::filesystem::create_directories(parent, ec);
@@ -207,74 +350,44 @@ std::filesystem::path aws_s3_download(s3_download_request const &request) {
     }
   }
 
-  aws_init();
+  auto const local_str{ local.string() };
+  run_transfer(local_str, request.progress, kOp, /*writing=*/false, [&] {
+    return get_transfer_context(request.region.value_or(""))
+        .manager->DownloadFile(Aws::String(parts.bucket.c_str()),
+                               Aws::String(parts.key.c_str()),
+                               Aws::String(local_str.c_str()));
+  });
 
-  std::string const region{ request.region.value_or("") };
-  auto &ctx{ get_transfer_context(region) };
+  return local;
+}
 
-  std::string const dest_str{ resolved_destination.string() };
+void aws_s3_upload(s3_upload_request const &request) {
+  constexpr std::string_view kOp{ "aws_s3_upload" };
 
-  if (request.progress) {  // Register per-download callback before starting the transfer.
-    std::lock_guard<std::mutex> lock{ g_progress_mutex };
-    g_progress_map.insert_or_assign(dest_str, progress_entry{ request.progress });
+  if (request.source.empty()) {
+    throw std::invalid_argument("aws_s3_upload: source path is empty");
   }
 
-  auto handle{ ctx.manager->DownloadFile(Aws::String(parts.bucket.c_str()),
-                                         Aws::String(parts.key.c_str()),
-                                         Aws::String(dest_str.c_str())) };
-
-  handle->WaitUntilFinished();
-
-  if (auto const was_cancelled{ [&] {  // Deregister callback and check cancellation.
-        std::lock_guard<std::mutex> lock{ g_progress_mutex };
-        auto const it{ g_progress_map.find(dest_str) };
-        if (it == g_progress_map.end()) { return false; }
-        bool const c{ it->second.cancelled };
-        g_progress_map.erase(it);
-        return c;
-      }() }) {
-    handle->Cancel();
-    throw std::runtime_error("aws_s3_download: transfer cancelled by progress callback");
+  auto const local{ absolute_normalized(request.source) };
+  if (!std::filesystem::is_regular_file(local)) {
+    throw std::runtime_error("aws_s3_upload: source is not a regular file: " +
+                             local.string());
   }
 
-  auto const status{ handle->GetStatus() };
-  if (status == Aws::Transfer::TransferStatus::FAILED ||
-      status == Aws::Transfer::TransferStatus::CANCELED ||
-      status == Aws::Transfer::TransferStatus::ABORTED) {
-    auto const &error{ handle->GetLastError() };
-    auto const http_code{ static_cast<int>(error.GetResponseCode()) };
-
-    std::ostringstream msg;
-    msg << "aws_s3_download: transfer failed";
-
-    if (auto const &name{ error.GetExceptionName() }; !name.empty()) {
-      msg << ": " << name;
-    }
-
-    auto const &body{ error.GetMessage() };
-    if (!body.empty() && body != "No response body.") { msg << ": " << body; }
-
-    if (http_code > 0) { msg << " (HTTP " << http_code << ")"; }
-
-    if (http_code == 401 || http_code == 403) {
-      msg << "\n  Hint: check that the bucket policy allows public access,"
-             " or run 'aws sso login' to authenticate.";
-    }
-
-    throw std::runtime_error(msg.str());
+  auto const parts{ aws_s3_parse_uri(request.uri, kOp) };
+  if (parts.key.empty()) {
+    throw std::invalid_argument("aws_s3_upload: URI must include a key");
   }
 
-  if (request.progress) {  // Final progress callback so the bar reaches 100%.
-    auto const transferred{ handle->GetBytesTransferred() };
-    auto const total{ handle->GetBytesTotalSize() };
-    std::optional<std::uint64_t> content_length;
-    if (total > 0) { content_length = total; }
-    fetch_progress_t payload{ std::in_place_type<fetch_transfer_progress>,
-                              fetch_transfer_progress{ transferred, content_length } };
-    request.progress(payload);
-  }
-
-  return resolved_destination;
+  auto const local_str{ local.string() };
+  run_transfer(local_str, request.progress, kOp, /*writing=*/true, [&] {
+    return get_transfer_context(request.region.value_or(""))
+        .manager->UploadFile(Aws::String(local_str.c_str()),
+                             Aws::String(parts.bucket.c_str()),
+                             Aws::String(parts.key.c_str()),
+                             Aws::String(content_type_for(local)),
+                             Aws::Map<Aws::String, Aws::String>{});
+  });
 }
 
 }  // namespace envy

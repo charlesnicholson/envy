@@ -58,14 +58,22 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
 }
 
 std::string stamp_manifest_placeholders(std::string_view content,
-                                        std::string_view download_url,
+                                        std::optional<std::string> const &mirror,
                                         std::string_view bin_dir,
                                         std::optional<bool> deploy,
                                         std::optional<bool> root) {
   std::string result{ content };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
-  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
   replace_all(result, "@@BIN_DIR@@", bin_dir);
+
+  // The mirror has to land in the manifest, not just in the bootstrap script: `envy sync`
+  // re-stamps the script from the manifest's @envy mirror, so a script-only mirror is
+  // silently reverted to the default on the first sync.
+  if (mirror.has_value() && !mirror->empty()) {
+    replace_all(result, "@@MIRROR_DIRECTIVE@@", "-- @envy mirror \"" + *mirror + "\"\n");
+  } else {
+    replace_all(result, "@@MIRROR_DIRECTIVE@@", "");
+  }
 
   // Add deploy directive if specified
   if (deploy.has_value()) {
@@ -90,6 +98,7 @@ std::string stamp_manifest_placeholders(std::string_view content,
 
 void write_manifest(fs::path const &project_dir,
                     fs::path const &bin_dir,
+                    std::optional<std::string> const &mirror,
                     std::optional<bool> deploy,
                     std::optional<bool> root) {
   fs::path const manifest_path{ project_dir / "envy.lua" };
@@ -105,7 +114,7 @@ void write_manifest(fs::path const &project_dir,
   auto const relative_bin{ fs::relative(abs_bin, abs_project) };
 
   std::string const content{ stamp_manifest_placeholders(get_manifest_template(),
-                                                         kEnvyDownloadUrl,
+                                                         mirror,
                                                          relative_bin.string(),
                                                          deploy,
                                                          root) };
@@ -147,7 +156,7 @@ void cmd_init::execute() {
     tui::info("Created %s", (cfg_.bin_dir / name).string().c_str());
   }
 
-  write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.deploy, cfg_.root);
+  write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.mirror, cfg_.deploy, cfg_.root);
   extract_lua_ls_types(c->root());
   write_luarc(cfg_.project_dir, envy_meta{});
 

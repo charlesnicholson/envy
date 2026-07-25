@@ -70,9 +70,13 @@ All values are quoted. Escaping is supported:
 | `version` | Yes* | Pinned envy version (semver) |
 | `cache-posix` | Optional | Override cache location (macOS/Linux) |
 | `cache-win` | Optional | Override cache location (Windows) |
-| `mirror` | Optional | Override download mirror URL |
+| `mirror` | Optional | Override download mirror: `https://…` or `s3://bucket/prefix` |
 
-*If `version` is missing, bootstrap falls back to the version stamped when `envy init` created the scripts. A warning is emitted, and envy restores the directive on next run.
+*If `version` is missing, bootstrap resolves it from the mirror's `latest` file (written by `envy mirror-envy`), then—for non-s3 mirrors only—from GitHub's latest-release redirect, then from the version stamped when `envy init` created the scripts.
+
+**Mirror precedence** is `ENVY_MIRROR` env > `@envy mirror` > stamped default, identically in the bootstrap scripts and in the running binary. Trailing slashes are stripped: for `s3://` a doubled slash is a distinct, nonexistent key.
+
+**`s3://` mirrors** require AWS CLI v2 on `PATH`—the bootstrap shells out to `aws s3 cp`, because curl cannot sign requests and no envy binary exists yet. Region and credentials resolve from the environment/profile exactly as for every other AWS tool; run `aws sso login` first for a credential-gated bucket. Note a stale exported `AWS_ACCESS_KEY_ID` silently beats a fresh SSO session. Prefer `https://` for public distribution to keep bootstrap dependency-free. Bucket names must use hyphens, not underscores.
 
 **Platform-specific cache:** Use `cache-posix` for Unix-style paths (`~/...`, `$HOME/...`) and `cache-win` for Windows paths (`%LOCALAPPDATA%\...`). Each platform's bootstrap script and envy binary only parse their respective directive.
 
@@ -202,11 +206,14 @@ Pure batch implementation for directive parsing—avoids ~100-200ms PowerShell s
 **No SHA256 verification in bootstrap.** Rationale:
 - If an attacker can serve a malicious binary, they can serve a matching checksum
 - Checksums only detect corruption, not tampering
-- Real security comes from HTTPS transport to trusted source
+- Real security comes from authenticated transport to a trusted source
 
 Trust hierarchy:
-1. HTTPS to GitHub releases (default, trusted)
-2. HTTPS to configured mirror (enterprise responsibility to secure)
+1. HTTPS to envy's GitHub releases (default, trusted)
+2. HTTPS to a configured mirror (whoever operates it is responsible for securing it)
+3. `s3://` to a configured mirror — SigV4-signed by the AWS CLI, so the bucket's IAM policy is the trust boundary
+
+A mirror moves the trust boundary to whoever ran `envy mirror-envy`: it copies release bytes verbatim, so a wrong or compromised `--from` propagates silently. Restrict write access to the mirror prefix accordingly. `mirror-envy` emits no checksum manifest today — see `docs/future-enhancements.md`.
 
 Future option: Code signing with Anthropic key for real authenticity verification.
 
@@ -329,23 +336,43 @@ jobs:
 
 ### Workflow 5: Enterprise/Air-Gapped Environment
 
-Corporate environment without GitHub access:
+Corporate environment without GitHub access. `envy mirror-envy` stages or uploads the whole
+release matrix in the exact layout bootstrap expects:
 
 ```bash
-# 1. IT sets up internal mirror with envy releases
-#    https://internal.corp/envy-releases/v1.2.3/envy-darwin-arm64
-#    https://internal.corp/envy-releases/v1.2.3/envy-linux-x86_64
-#    etc.
+# 1. Stage all six platform archives plus a `latest` file, then move the bytes yourself
+envy mirror-envy 1.2.3 ./staged
+aws s3 cp --recursive ./staged s3://my-envy-mirror/releases
 
-# 2. Initialize with custom mirror
-envy init . ./tools --mirror=https://internal.corp/envy-releases
+# ...or upload directly (requires credentials; envy never creates the bucket)
+envy mirror-envy 1.2.3 s3://my-envy-mirror/releases
 
-# 3. Or edit bootstrap script directly
-#    Change: ENVY_MIRROR="https://github.com/..."
-#    To:     ENVY_MIRROR="https://internal.corp/envy-releases"
+# Re-mirroring from an existing mirror instead of GitHub:
+envy mirror-envy 1.2.3 ./staged --from=https://internal.corp/envy-releases
 
-# 4. Developers clone and run normally
-./tools/envy sync  # downloads from internal mirror
+# 2. Point the project at it (mirror-envy prints these two lines for you)
+#    -- @envy version "1.2.3"
+#    -- @envy mirror "s3://my-envy-mirror/releases"
+envy init . ./tools --mirror=s3://my-envy-mirror/releases
+
+# 3. Developers clone and run normally
+aws sso login              # only for a credential-gated bucket
+./tools/envy sync          # downloads from the internal mirror
+```
+
+Pin `@envy version`, or publish the `latest` file `mirror-envy` writes — otherwise a
+version-less bootstrap against an `https://` mirror still falls back to GitHub's redirect.
+
+Layout, if you populate a mirror by hand (names must match byte-for-byte):
+
+```
+<mirror>/latest                              # bare version string, no newline
+<mirror>/v1.2.3/envy-darwin-arm64.tar.gz     # archive root: envy
+<mirror>/v1.2.3/envy-darwin-x86_64.tar.gz
+<mirror>/v1.2.3/envy-linux-arm64.tar.gz
+<mirror>/v1.2.3/envy-linux-x86_64.tar.gz
+<mirror>/v1.2.3/envy-windows-arm64.zip       # archive root: envy.exe
+<mirror>/v1.2.3/envy-windows-x86_64.zip
 ```
 
 **Result:** Works behind corporate firewall. IT controls distribution.

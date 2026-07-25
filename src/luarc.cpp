@@ -1,7 +1,7 @@
 #include "luarc.h"
 
-#include "bootstrap.h"
 #include "embedded_init_resources.h"
+#include "envy_release.h"
 #include "tui.h"
 #include "util.h"
 
@@ -197,7 +197,7 @@ fs::path extract_lua_ls_types(fs::path const &cache_root) {
                              types_dir.string() + ": " + ec.message());
   }
 
-  auto const types{ stamp_placeholders(get_type_definitions(), kEnvyDownloadUrl) };
+  auto const types{ stamp_placeholders(get_type_definitions(), kEnvyReleaseDownloadUrl) };
   util_write_file(types_path, types);
 
   tui::info("Extracted type definitions to %s", types_path.string().c_str());
