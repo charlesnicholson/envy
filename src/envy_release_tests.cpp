@@ -3,6 +3,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -21,6 +22,58 @@ TEST_CASE("release URLs derive from one upstream repo") {
       envy::kEnvyReleaseDownloadUrl.size() - kDownloadSuffix.size()) };
   CHECK(envy::kEnvyReleaseLatestUrl.starts_with(base));
   CHECK_FALSE(base.empty());
+}
+
+// --- envy_release_validate_mirror ---
+
+TEST_CASE("envy_release_validate_mirror: ordinary mirrors accepted") {
+  envy::envy_release_validate_mirror("https://github.com/org/envy/releases/download", "t");
+  envy::envy_release_validate_mirror("s3://my-envy-mirror/releases", "t");
+  envy::envy_release_validate_mirror("file:///tmp/releases", "t");
+  // Characters that are fine in every consumer: query strings, ports, tildes, percent.
+  envy::envy_release_validate_mirror("https://h:8443/a-b_c.d~e%20f?x=1&y=2", "t");
+}
+
+TEST_CASE("envy_release_validate_mirror: newline injection rejected") {
+  // Would otherwise append arbitrary directives to envy.lua via the manifest stamp.
+  CHECK_THROWS_AS(
+      envy::envy_release_validate_mirror("https://x\"\n-- @envy version \"9.9.9", "t"),
+      std::runtime_error);
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x\ny", "t"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x\ry", "t"),
+                  std::runtime_error);
+}
+
+TEST_CASE("envy_release_validate_mirror: quote and backslash rejected") {
+  // The directive and the shell/batch assignments are all double-quoted.
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x\"y", "t"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x\\y", "t"),
+                  std::runtime_error);
+}
+
+TEST_CASE("envy_release_validate_mirror: batch delayed-expansion bang rejected") {
+  // envy.bat runs under EnableDelayedExpansion, where `!` is a variable delimiter.
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x/a!b", "t"),
+                  std::runtime_error);
+}
+
+TEST_CASE("envy_release_validate_mirror: control characters and empty rejected") {
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("https://x\ty", "t"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror(std::string_view{ "a\0b", 3 }, "t"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(envy::envy_release_validate_mirror("", "t"), std::runtime_error);
+}
+
+TEST_CASE("envy_release_validate_mirror: op label appears in the error") {
+  try {
+    envy::envy_release_validate_mirror("bad\nvalue", "init");
+    FAIL("expected throw");
+  } catch (std::runtime_error const &e) {
+    CHECK(std::string{ e.what() }.starts_with("init: "));
+  }
 }
 
 // --- envy_release_version_is_valid ---

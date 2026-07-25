@@ -12,6 +12,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -28,6 +29,26 @@ std::string_view strip_trailing_slashes(std::string_view s) {
   while (s.ends_with('/')) { s.remove_suffix(1); }
   return s;
 }
+
+// Owns a scratch tree for the duration of the run. util.h's scoped_path_cleanup removes a
+// single entry, which is not enough here -- the staging directory has archives in it.
+class scoped_temp_dir : unmovable {
+ public:
+  explicit scoped_temp_dir(std::filesystem::path path) : path_{ std::move(path) } {}
+
+  ~scoped_temp_dir() {
+    if (auto const ec{ platform::remove_all_with_retry(path_) }) {
+      tui::warn("mirror-envy: failed to remove staging directory %s: %s",
+                path_.string().c_str(),
+                ec.message().c_str());
+    }
+  }
+
+  std::filesystem::path const &path() const { return path_; }
+
+ private:
+  std::filesystem::path path_;
+};
 
 // A destination is a local directory or an s3:// URI. Everything else -- git, ssh, http --
 // is rejected here rather than surfacing later as a confusing fetch error.
@@ -131,12 +152,16 @@ void cmd_mirror_envy::execute() {
   auto const plan{ mirror_envy_make_plan(cfg_.version, cfg_.dest, cfg_.from) };
 
   // For an S3 destination the archives still have to land on disk first, because the AWS
-  // upload API takes a file. Include the pid: two concurrent runs of the same version must
-  // not interleave writes into one staging tree.
-  auto const pid{ std::to_string(platform::get_process_id()) };
-  auto const staging{ plan.dest_is_s3 ? fs::temp_directory_path() /
-                                            ("envy-mirror-" + cfg_.version + "-" + pid)
-                                      : plan.local_dir };
+  // upload API takes a file. That scratch tree must be uniquely created rather than named
+  // predictably -- otherwise another user in a shared temp dir could pre-create the path
+  // and see, or substitute, what gets uploaded -- and it must not outlive the run: six
+  // release archives per invocation adds up. Use a local destination instead to keep the
+  // staged bytes.
+  std::optional<scoped_temp_dir> scratch;
+  if (plan.dest_is_s3) {
+    scratch.emplace(platform::create_unique_temp_dir("envy-mirror"));
+  }
+  auto const &staging{ scratch ? scratch->path() : plan.local_dir };
 
   std::error_code ec;
   fs::create_directories(staging / ("v" + cfg_.version), ec);
@@ -145,7 +170,8 @@ void cmd_mirror_envy::execute() {
                              ec.message());
   }
   if (plan.dest_is_s3) {
-    tui::info("mirror-envy: staging in %s", staging.string().c_str());
+    // Debug, not info: the tree is transient scratch that is removed before we return.
+    tui::debug("mirror-envy: staging in %s", staging.string().c_str());
   }
 
   std::vector<fetch_request> requests;

@@ -196,6 +196,18 @@ std::filesystem::path create_unique_temp_file(std::string_view prefix) {
   return std::filesystem::path{ buf.data() };
 }
 
+std::filesystem::path create_unique_temp_dir(std::string_view prefix) {
+  auto pattern{ (std::filesystem::temp_directory_path() / std::string{ prefix }).string() +
+                "-XXXXXX" };
+  std::vector<char> buf(pattern.begin(), pattern.end());
+  buf.push_back('\0');
+  // mkdtemp creates with mode 0700 and fails if the name exists, so the claim is atomic.
+  if (::mkdtemp(buf.data()) == nullptr) {
+    throw std::system_error(errno, std::generic_category(), "mkdtemp failed");
+  }
+  return std::filesystem::path{ buf.data() };
+}
+
 void touch_file(std::filesystem::path const &path) {
   int const fd{ ::open(path.c_str(), O_CREAT | O_WRONLY, 0644) };
   if (fd == -1) {

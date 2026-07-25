@@ -3,6 +3,7 @@
 #include "bootstrap.h"
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
+#include "envy_release.h"
 #include "luarc.h"
 #include "platform.h"
 #include "tui.h"
@@ -130,6 +131,10 @@ cmd_init::cmd_init(cmd_init::cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_init::execute() {
+  // Before creating any directories: the mirror is stamped verbatim into a quoted manifest
+  // directive and into both bootstrap scripts.
+  if (cfg_.mirror) { envy_release_validate_mirror(*cfg_.mirror, "init"); }
+
   auto c{ std::make_unique<cache>(cli_cache_root_) };
   std::error_code ec;
 

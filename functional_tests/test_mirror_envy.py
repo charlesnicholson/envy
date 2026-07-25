@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import io
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from . import test_config
 
-# Must stay byte-identical to kEnvyReleaseTargets in src/reexec.h.
+# Must stay byte-identical to kEnvyReleaseTargets in src/envy_release.h.
 RELEASE_ASSETS = [
     "envy-darwin-arm64.tar.gz",
     "envy-darwin-x86_64.tar.gz",
@@ -339,6 +340,41 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
             "AWS_MAX_ATTEMPTS": "2",
         }
 
+    def test_s3_staging_directory_is_cleaned_up(self) -> None:
+        """S3 mode stages to a private temp tree; it must not outlive the run.
+
+        Six release archives per invocation adds up, and a predictable name in a shared temp
+        directory would let another user pre-create the path.
+        """
+        before = set(os.listdir(tempfile.gettempdir()))
+        stub = S3Stub()
+        port = stub.start()
+        try:
+            result = self._run(
+                [
+                    "mirror-envy",
+                    "1.2.3",
+                    "s3://test-bucket/releases",
+                    f"--from={self._from_uri()}",
+                ],
+                env_extra=self._s3_env(port),
+            )
+        finally:
+            stub.stop()
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        # Match the product's staging names exactly -- `envy-mirror-<mkdtemp>` on POSIX,
+        # `envy-mirror-<pid>-<seq>` on Windows. A prefix match would also catch this
+        # suite's own `envy-mirror-envy-test-*` scratch dirs, which sibling tests are
+        # creating concurrently under the parallel runner.
+        staging_name = re.compile(r"envy-mirror-(?:[A-Za-z0-9]{6}|\d+-\d+)")
+        leaked = [
+            d
+            for d in set(os.listdir(tempfile.gettempdir())) - before
+            if staging_name.fullmatch(d)
+        ]
+        self.assertEqual([], leaked, f"staging tree left behind: {leaked}")
+
     def test_uploads_every_object_to_s3(self) -> None:
         stub = S3Stub()
         port = stub.start()
@@ -508,6 +544,26 @@ class InitMirrorSurvivesSyncTest(unittest.TestCase):
         )
         self.assertIn(assignment, after)
         self.assertNotIn("@@DOWNLOAD_URL@@", after)
+
+    def test_init_rejects_mirrors_that_cannot_be_stamped(self) -> None:
+        """A mirror is stamped into a quoted directive and quoted shell/batch assignments.
+
+        A newline would append arbitrary directives to envy.lua; a quote or backslash would
+        produce a malformed one. Rejected before anything is written.
+        """
+        for bad in (
+            'https://x/y"\n-- @envy version "9.9.9"',  # directive injection
+            'https://x/a"b',
+            "https://x/a\\b",
+            "https://x/a!b",  # envy.bat runs under EnableDelayedExpansion
+        ):
+            result = self._run(["init", ".", "./tools", f"--mirror={bad}"])
+            self.assertNotEqual(0, result.returncode, f"accepted bad mirror: {bad!r}")
+            self.assertIn("mirror contains", result.stderr)
+            self.assertFalse(
+                (self._temp / "envy.lua").exists(),
+                f"manifest was written despite rejecting {bad!r}",
+            )
 
     def test_init_without_mirror_writes_no_directive(self) -> None:
         init = self._run(["init", ".", "./tools"])

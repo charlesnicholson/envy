@@ -107,6 +107,11 @@ bool bootstrap_write_script(fs::path const &bin_dir,
         "' exists but is not envy-managed. Remove manually to allow envy to manage it.");
   }
 
+  // Validate here rather than only at the `envy init --mirror` entry point: this also runs
+  // for a mirror read back out of a hand-edited manifest, and the value is about to be
+  // stamped into a quoted shell/batch assignment.
+  if (mirror) { envy_release_validate_mirror(*mirror, "bootstrap"); }
+
   // Generate new content
   std::string_view const url{ mirror ? std::string_view{ *mirror }
                                      : kEnvyReleaseDownloadUrl };
