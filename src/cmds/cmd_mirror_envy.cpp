@@ -196,9 +196,10 @@ void cmd_mirror_envy::execute() {
   // One progress bar per archive, same tracker the fetch phase uses: the downloads run
   // concurrently, so a single spinner would say nothing about which one is stuck.
   auto const download_section{ tui::section_create() };
-  tui_actions::fetch_all_progress_tracker download_tracker{
-    download_section, "mirror-envy", progress_labels(archive_relpaths)
-  };
+  tui_actions::fetch_all_progress_tracker download_tracker{ download_section,
+                                                            "mirror-envy",
+                                                            progress_labels(
+                                                                archive_relpaths) };
 
   std::vector<fetch_request> requests;
   requests.reserve(plan.items.size());
@@ -255,9 +256,9 @@ void cmd_mirror_envy::execute() {
   }() };
 
   auto const upload_section{ tui::section_create() };
-  tui_actions::fetch_all_progress_tracker upload_tracker{
-    upload_section, "mirror-envy", progress_labels(relpaths)
-  };
+  tui_actions::fetch_all_progress_tracker upload_tracker{ upload_section,
+                                                          "mirror-envy",
+                                                          progress_labels(relpaths) };
 
   std::vector<std::string> errors(relpaths.size());
   {
