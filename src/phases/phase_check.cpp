@@ -27,7 +27,10 @@ cache::ensure_result compute_hash_and_lookup_cache(pkg *p) {
   std::string key_for_hash{ p->cfg->format_key() };
   {
     std::lock_guard const deps_lock(p->deps_mutex);
-    for (auto const &wk : p->resolved_weak_dependency_keys) { key_for_hash += "|" + wk; }
+    for (auto const &wk : p->resolved_weak_dependency_keys) {
+      key_for_hash += '|';  // not "|" + wk: that allocates a temporary per iteration
+      key_for_hash += wk;
+    }
   }
 
   auto const digest{ blake3_hash(key_for_hash.data(), key_for_hash.size()) };

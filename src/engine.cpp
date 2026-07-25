@@ -327,12 +327,13 @@ void engine_validate_dependency_cycle(std::string const &candidate_identity,
 
   for (size_t i = 0; i < ancestor_chain.size(); ++i) {  // cycle in ancestor chain
     if (ancestor_chain[i] == candidate_identity) {
-      std::string cycle_path{ ancestor_chain[i] };
+      std::ostringstream oss;
+      oss << dependency_type << " cycle detected: " << ancestor_chain[i];
       for (size_t j{ i + 1 }; j < ancestor_chain.size(); ++j) {
-        cycle_path += " -> " + ancestor_chain[j];
+        oss << " -> " << ancestor_chain[j];
       }
-      cycle_path += " -> " + current_identity + " -> " + candidate_identity;
-      throw std::runtime_error(dependency_type + " cycle detected: " + cycle_path);
+      oss << " -> " << current_identity << " -> " << candidate_identity;
+      throw std::runtime_error(oss.str());
     }
   }
 }
