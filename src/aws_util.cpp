@@ -260,10 +260,9 @@ void run_transfer(
     auto const total{ handle->GetBytesTotalSize() };
     std::optional<std::uint64_t> content_length;
     if (total > 0) { content_length = total; }
-    fetch_progress_t payload{
-      std::in_place_type<fetch_transfer_progress>,
-      fetch_transfer_progress{ handle->GetBytesTransferred(), content_length }
-    };
+    fetch_progress_t payload{ std::in_place_type<fetch_transfer_progress>,
+                              fetch_transfer_progress{ handle->GetBytesTransferred(),
+                                                       content_length } };
     progress(payload);
   }
 }

@@ -98,8 +98,7 @@ TEST_CASE("mirror_envy_make_plan: invalid versions rejected") {
 }
 
 TEST_CASE("mirror_envy_make_plan: empty source mirror rejected") {
-  CHECK_THROWS_AS(envy::mirror_envy_make_plan("1.2.3", "./stage", ""),
-                  std::runtime_error);
+  CHECK_THROWS_AS(envy::mirror_envy_make_plan("1.2.3", "./stage", ""), std::runtime_error);
   CHECK_THROWS_AS(envy::mirror_envy_make_plan("1.2.3", "./stage", "///"),
                   std::runtime_error);
 }
@@ -132,9 +131,9 @@ TEST_CASE("mirror_envy_make_plan: source urls hang off the from mirror") {
 TEST_CASE("mirror_envy_make_plan: trailing slash on the source mirror is stripped") {
   // Otherwise every source url carries a double slash, which is a distinct (missing) key
   // for an s3:// source.
-  auto const plan{ envy::mirror_envy_make_plan("1.2.3",
-                                               "./stage",
-                                               "s3://src-bucket/releases/") };
+  auto const plan{
+    envy::mirror_envy_make_plan("1.2.3", "./stage", "s3://src-bucket/releases/")
+  };
   CHECK(url_for(plan, "v1.2.3/envy-linux-arm64.tar.gz") ==
         "s3://src-bucket/releases/v1.2.3/envy-linux-arm64.tar.gz");
 }

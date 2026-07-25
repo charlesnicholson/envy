@@ -17,13 +17,13 @@ namespace envy {
 
 // Default mirror base: release assets hang off this as /v<version>/<archive name>.
 inline constexpr std::string_view kEnvyReleaseDownloadUrl{ ENVY_UPSTREAM_REPO_URL
-                                                          "/releases/download" };
+                                                           "/releases/download" };
 
 // Resolves the newest published version via its redirect to the tag. GitHub serves no
 // `latest` object, so this is the only way to ask it; a custom mirror answers with a
 // `latest` file instead (see kMirrorLatestFile).
 inline constexpr std::string_view kEnvyReleaseLatestUrl{ ENVY_UPSTREAM_REPO_URL
-                                                        "/releases/latest" };
+                                                         "/releases/latest" };
 
 // Concatenation above happens in the preprocessor; undef so the macro does not leak into
 // every translation unit that includes this header.

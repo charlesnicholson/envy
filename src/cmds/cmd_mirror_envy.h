@@ -33,8 +33,8 @@ struct mirror_envy_plan {
 // source mirror. from_mirror and dest may carry trailing slashes; those are normalized
 // away.
 mirror_envy_plan mirror_envy_make_plan(std::string_view version,
-                                      std::string_view dest,
-                                      std::string_view from_mirror);
+                                       std::string_view dest,
+                                       std::string_view from_mirror);
 
 // s3://<bucket>[/<prefix>], no trailing slash: exactly the value an @envy mirror directive
 // wants.

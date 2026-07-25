@@ -140,9 +140,8 @@ void reexec_if_needed(envy_meta const &meta,
                       ("envy-reexec-" + version + "-" + std::to_string(pid)) };
   std::filesystem::create_directories(tmp_dir);
 
-  auto const archive_path{
-    tmp_dir / envy_release_archive_name(platform::os_name(), platform::arch_name())
-  };
+  auto const archive_path{ tmp_dir / envy_release_archive_name(platform::os_name(),
+                                                               platform::arch_name()) };
 
   auto const results{ fetch({ fetch_request_from_url(url, archive_path) }) };
   if (results.empty()) {

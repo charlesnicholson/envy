@@ -60,8 +60,8 @@ std::string mirror_envy_s3_uri(mirror_envy_plan const &plan, std::string_view re
 }
 
 mirror_envy_plan mirror_envy_make_plan(std::string_view version,
-                                      std::string_view dest,
-                                      std::string_view from_mirror) {
+                                       std::string_view dest,
+                                       std::string_view from_mirror) {
   if (!envy_release_version_is_valid(version)) {
     throw std::runtime_error("mirror-envy: invalid version string: " +
                              std::string{ version });
@@ -206,8 +206,7 @@ void cmd_mirror_envy::execute() {
       workers.emplace_back([&, i] {
         auto const uri{ mirror_envy_s3_uri(plan, relpaths[i]) };
         try {
-          aws_s3_upload(s3_upload_request{ .source = staging / relpaths[i],
-                                           .uri = uri });
+          aws_s3_upload(s3_upload_request{ .source = staging / relpaths[i], .uri = uri });
           tui::debug("mirror-envy: uploaded %s", uri.c_str());
         } catch (std::exception const &e) {
           errors[i] = uri + ": " + e.what();

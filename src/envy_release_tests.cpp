@@ -17,7 +17,8 @@ TEST_CASE("release URLs derive from one upstream repo") {
   REQUIRE(envy::kEnvyReleaseLatestUrl.ends_with(kLatestSuffix));
 
   auto const base{ envy::kEnvyReleaseDownloadUrl.substr(
-      0, envy::kEnvyReleaseDownloadUrl.size() - kDownloadSuffix.size()) };
+      0,
+      envy::kEnvyReleaseDownloadUrl.size() - kDownloadSuffix.size()) };
   CHECK(envy::kEnvyReleaseLatestUrl.starts_with(base));
   CHECK_FALSE(base.empty());
 }
@@ -85,8 +86,7 @@ TEST_CASE("envy_release_archive_name: every published release target") {
   CHECK(envy::envy_release_archive_name("linux", "arm64") == "envy-linux-arm64.tar.gz");
   CHECK(envy::envy_release_archive_name("linux", "x86_64") == "envy-linux-x86_64.tar.gz");
   CHECK(envy::envy_release_archive_name("windows", "arm64") == "envy-windows-arm64.zip");
-  CHECK(envy::envy_release_archive_name("windows", "x86_64") ==
-        "envy-windows-x86_64.zip");
+  CHECK(envy::envy_release_archive_name("windows", "x86_64") == "envy-windows-x86_64.zip");
 }
 
 TEST_CASE("kEnvyReleaseTargets: matches the release workflow's asset matrix") {
@@ -114,16 +114,16 @@ TEST_CASE("envy_release_url: default mirror darwin arm64") {
   auto const url{
     envy::envy_release_url(envy::kEnvyReleaseDownloadUrl, "1.2.3", "darwin", "arm64")
   };
-  CHECK(url == std::string{ envy::kEnvyReleaseDownloadUrl } +
-                   "/v1.2.3/envy-darwin-arm64.tar.gz");
+  CHECK(url ==
+        std::string{ envy::kEnvyReleaseDownloadUrl } + "/v1.2.3/envy-darwin-arm64.tar.gz");
 }
 
 TEST_CASE("envy_release_url: linux x86_64") {
   auto const url{
     envy::envy_release_url(envy::kEnvyReleaseDownloadUrl, "2.0.0", "linux", "x86_64")
   };
-  CHECK(url == std::string{ envy::kEnvyReleaseDownloadUrl } +
-                   "/v2.0.0/envy-linux-x86_64.tar.gz");
+  CHECK(url ==
+        std::string{ envy::kEnvyReleaseDownloadUrl } + "/v2.0.0/envy-linux-x86_64.tar.gz");
 }
 
 TEST_CASE("envy_release_url: windows names a zip from any host") {

@@ -55,8 +55,7 @@ TEST_CASE("aws_s3_parse_uri: non-s3 scheme rejected") {
 }
 
 TEST_CASE("aws_s3_parse_uri: single-slash s3 typo rejected") {
-  CHECK_THROWS_AS(envy::aws_s3_parse_uri("s3:/bucket/key", "test"),
-                  std::invalid_argument);
+  CHECK_THROWS_AS(envy::aws_s3_parse_uri("s3:/bucket/key", "test"), std::invalid_argument);
 }
 
 TEST_CASE("aws_s3_parse_uri: missing bucket rejected") {

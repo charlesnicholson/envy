@@ -1,5 +1,4 @@
 #include "cli.h"
-#include "envy_release.h"
 #include "cmds/cmd_deploy.h"
 #include "cmds/cmd_export.h"
 #include "cmds/cmd_extract.h"
@@ -18,6 +17,7 @@
 #include "cmds/cmd_shell.h"
 #include "cmds/cmd_sync.h"
 #include "cmds/cmd_version.h"
+#include "envy_release.h"
 
 #include "doctest.h"
 
