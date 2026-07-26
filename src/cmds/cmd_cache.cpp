@@ -77,12 +77,12 @@ void cmd_cache::execute() {
   std::vector<std::filesystem::path> scan_roots;
   std::vector<row> packages, deployments, other;
 
-  auto const add{ [&](std::vector<row> &dst,
-                      std::string label,
-                      std::filesystem::path path) {
-    dst.push_back({ std::move(label), scan_roots.size(), {}, {} });
-    scan_roots.push_back(std::move(path));
-  } };
+  auto const add{
+    [&](std::vector<row> &dst, std::string label, std::filesystem::path path) {
+      dst.push_back({ std::move(label), scan_roots.size(), {}, {} });
+      scan_roots.push_back(std::move(path));
+    }
+  };
 
   auto const packages_dir{ root / "packages" };
   for (auto const &identity : child_dirs(packages_dir)) {

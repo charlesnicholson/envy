@@ -205,10 +205,9 @@ platform::dir_size dir_size_oracle(std::filesystem::path const &root) {
 bool has_dir_entry(std::vector<platform::dir_entry> const &entries,
                    std::string const &name,
                    bool is_dir) {
-  return std::any_of(
-      entries.begin(), entries.end(), [&](platform::dir_entry const &e) {
-        return e.name == name && e.is_dir == is_dir && !e.is_symlink;
-      });
+  return std::any_of(entries.begin(), entries.end(), [&](platform::dir_entry const &e) {
+    return e.name == name && e.is_dir == is_dir && !e.is_symlink;
+  });
 }
 
 }  // namespace
@@ -222,10 +221,9 @@ TEST_CASE("platform::dir_list reports immediate children with types") {
   CHECK(has_dir_entry(entries, "ctx_run_stress.py", false));
 
   // "." and ".." are never surfaced.
-  CHECK(std::none_of(
-      entries.begin(), entries.end(), [](platform::dir_entry const &e) {
-        return e.name == "." || e.name == "..";
-      }));
+  CHECK(std::none_of(entries.begin(), entries.end(), [](platform::dir_entry const &e) {
+    return e.name == "." || e.name == "..";
+  }));
 }
 
 TEST_CASE("platform::dir_list on a missing directory is empty") {

@@ -48,7 +48,9 @@ class scan_pool : unmovable {
 
     std::vector<std::thread> workers;
     workers.reserve(n);
-    for (unsigned i{ 0 }; i < n; ++i) { workers.emplace_back([this] { run(); }); }
+    for (unsigned i{ 0 }; i < n; ++i) {
+      workers.emplace_back([this] { run(); });
+    }
     for (auto &w : workers) { w.join(); }
   }
 
@@ -77,7 +79,7 @@ class scan_pool : unmovable {
       dir_scan_one(item.dir, acc, [this, root = item.root](dir_scan_string child) {
         std::lock_guard<std::mutex> lock{ mutex_ };
         queue_.push_back({ std::move(child), root });
-        ++pending_;  // bumped before the parent's decrement, so pending_ only
+        ++pending_;        // bumped before the parent's decrement, so pending_ only
         cv_.notify_one();  // reaches zero when the whole forest is drained
       });
 
