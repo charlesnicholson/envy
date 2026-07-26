@@ -230,6 +230,90 @@ bool file_exists(std::filesystem::path const &path) {
   return false;
 }
 
+namespace {
+
+constexpr wchar_t kLongPrefix[]{ LR"(\\?\)" };
+constexpr wchar_t kLongPrefixUnc[]{ LR"(\\?\UNC\)" };
+
+dir_scan_string dir_join(dir_scan_string const &dir, wchar_t const *name) {
+  dir_scan_string out{ dir };
+  if (!out.empty() && out.back() != L'\\') { out.push_back(L'\\'); }
+  out.append(name);
+  return out;
+}
+
+bool is_dot(wchar_t const *name) {
+  return name[0] == L'.' && (!name[1] || (name[1] == L'.' && !name[2]));
+}
+
+// FindExInfoBasic drops the 8.3 short-name lookup and LARGE_FETCH batches
+// entries per syscall; sizes ride along with the enumeration, so measuring a
+// tree costs no per-file opens at all.
+HANDLE find_first(dir_scan_string const &pattern, WIN32_FIND_DATAW &fd) {
+  return ::FindFirstFileExW(pattern.c_str(),
+                            FindExInfoBasic,
+                            &fd,
+                            FindExSearchNameMatch,
+                            nullptr,
+                            FIND_FIRST_EX_LARGE_FETCH);
+}
+
+}  // namespace
+
+dir_scan_string dir_scan_root(std::filesystem::path const &root) {
+  // Cache trees nest deeply, so opt out of MAX_PATH once at the root and let
+  // every child inherit the prefix. It demands a fully-qualified, backslash-only
+  // path; the prefixed form is internal and never shown to the user.
+  auto out{ root.lexically_normal().native() };
+  for (auto &c : out) {
+    if (c == L'/') { c = L'\\'; }
+  }
+  if (out.rfind(kLongPrefix, 0) == 0) { return out; }
+  if (out.rfind(LR"(\\)", 0) == 0) { return kLongPrefixUnc + out.substr(2); }
+  if (out.size() >= 2 && out[1] == L':') { return kLongPrefix + out; }
+  return out;  // relative: leave alone, MAX_PATH applies
+}
+
+void dir_scan_one(dir_scan_string const &dir, dir_size &acc, dir_scan_push const &push) {
+  WIN32_FIND_DATAW fd;
+  HANDLE const h{ find_first(dir_join(dir, L"*"), fd) };
+  if (h == INVALID_HANDLE_VALUE) { return; }
+
+  do {
+    if (is_dot(fd.cFileName)) { continue; }
+    // A reparse point is billed to whoever owns its target.
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) { continue; }
+
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+      ++acc.dirs;
+      push(dir_join(dir, fd.cFileName));
+    } else {
+      acc.bytes += (static_cast<std::uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+      ++acc.files;
+    }
+  } while (::FindNextFileW(h, &fd));
+
+  ::FindClose(h);
+}
+
+std::vector<dir_entry> dir_list(std::filesystem::path const &dir) {
+  std::vector<dir_entry> out;
+
+  WIN32_FIND_DATAW fd;
+  HANDLE const h{ find_first(dir_join(dir_scan_root(dir), L"*"), fd) };
+  if (h == INVALID_HANDLE_VALUE) { return out; }
+
+  do {
+    if (is_dot(fd.cFileName)) { continue; }
+    out.push_back({ std::filesystem::path{ fd.cFileName }.string(),
+                    (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
+                    (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 });
+  } while (::FindNextFileW(h, &fd));
+
+  ::FindClose(h);
+  return out;
+}
+
 [[noreturn]] void terminate_process() { ::TerminateProcess(::GetCurrentProcess(), 1); }
 
 bool is_tty() { return ::_isatty(::_fileno(stderr)) != 0; }

@@ -23,6 +23,10 @@ Logging is per-package narrative. Default (INFO) prints one outcome line per pac
 
 **`envy package <identity> [--manifest=...]`** — Query and install package, print package path. Loads manifest (auto-discovered or via `--manifest`), finds matching spec, installs only that package plus transitive dependencies if not cached, prints absolute path to package directory to stdout. Other manifest packages are not processed. Errors if identity ambiguous (multiple option variants) or programmatic package (no cached artifacts). Exits 0 with path on success, exits 1 with "not found" on failure.
 
+### Cache
+
+**`envy cache`** — Print the cache root and its disk usage: one line per package entry (`identity/platform-arch-blake3-hash`), one per cached envy deployment, one per remaining top-level directory (`specs`, `locks`), then the total. Rows are largest-first; sizes are apparent file sizes, symlinked trees excluded. Honors `--cache-root`/`ENVY_CACHE_ROOT`; ignores manifests. Measurement is a lock-free parallel walk over platform-native directory enumeration (`openat`/`fdopendir`/`fstatat`, `FindFirstFileExW` with `FIND_FIRST_EX_LARGE_FETCH`), one work-queue entry per directory.
+
 ### Shell Integration
 
 **`envy shell <shell>`** — Print the `source` line to add to your shell profile for automatic PATH management. Supported shells: `bash`, `zsh`, `fish`, `powershell`. Hook files are created automatically during self-deploy; this command just prints the line. Warns if using a non-default cache location. See `docs/shell-integration.md` for details.

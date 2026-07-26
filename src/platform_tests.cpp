@@ -2,6 +2,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <vector>
 
 namespace envy {
 
@@ -168,6 +170,126 @@ TEST_CASE("platform::exe_name works with arbitrary base names") {
 #else
   CHECK(name == std::filesystem::path{ "cmake" });
 #endif
+}
+
+namespace {
+
+// Independent oracle: std::filesystem walking the same tree with the same
+// rules (apparent sizes, symlinks counted as nothing and never followed).
+platform::dir_size dir_size_oracle(std::filesystem::path const &root) {
+  namespace fs = std::filesystem;
+
+  platform::dir_size out{};
+  std::error_code ec;
+  fs::recursive_directory_iterator it{ root,
+                                       fs::directory_options::skip_permission_denied,
+                                       ec };
+  if (ec) { return out; }
+
+  for (fs::recursive_directory_iterator const end; it != end; it.increment(ec)) {
+    if (ec) { break; }
+    auto const st{ it->symlink_status(ec) };
+    if (ec) { continue; }
+    if (fs::is_symlink(st)) {
+      it.disable_recursion_pending();
+    } else if (fs::is_directory(st)) {
+      ++out.dirs;
+    } else if (fs::is_regular_file(st)) {
+      ++out.files;
+      out.bytes += fs::file_size(it->path(), ec);
+    }
+  }
+  return out;
+}
+
+bool has_dir_entry(std::vector<platform::dir_entry> const &entries,
+                   std::string const &name,
+                   bool is_dir) {
+  return std::any_of(
+      entries.begin(), entries.end(), [&](platform::dir_entry const &e) {
+        return e.name == name && e.is_dir == is_dir && !e.is_symlink;
+      });
+}
+
+}  // namespace
+
+TEST_CASE("platform::dir_list reports immediate children with types") {
+  auto const entries{ platform::dir_list("test_data") };
+
+  REQUIRE_FALSE(entries.empty());
+  CHECK(has_dir_entry(entries, "lua", true));
+  CHECK(has_dir_entry(entries, "specs", true));
+  CHECK(has_dir_entry(entries, "ctx_run_stress.py", false));
+
+  // "." and ".." are never surfaced.
+  CHECK(std::none_of(
+      entries.begin(), entries.end(), [](platform::dir_entry const &e) {
+        return e.name == "." || e.name == "..";
+      }));
+}
+
+TEST_CASE("platform::dir_list on a missing directory is empty") {
+  CHECK(platform::dir_list("test_data/does-not-exist").empty());
+}
+
+TEST_CASE("platform::dir_sizes matches a std::filesystem walk") {
+  auto const expected{ dir_size_oracle("test_data") };
+  REQUIRE(expected.files > 0);
+  REQUIRE(expected.bytes > 0);
+
+  auto const actual{ platform::dir_sizes({ "test_data" }) };
+
+  REQUIRE(actual.size() == 1);
+  CHECK(actual[0].bytes == expected.bytes);
+  CHECK(actual[0].files == expected.files);
+  CHECK(actual[0].dirs == expected.dirs);
+}
+
+TEST_CASE("platform::dir_sizes keeps roots independent and index-aligned") {
+  std::vector<std::filesystem::path> const roots{ "test_data/lua",
+                                                  "test_data/does-not-exist",
+                                                  "test_data/specs",
+                                                  "test_data/bundles" };
+
+  auto const actual{ platform::dir_sizes(roots) };
+
+  REQUIRE(actual.size() == roots.size());
+  for (size_t i{ 0 }; i < roots.size(); ++i) {
+    auto const expected{ dir_size_oracle(roots[i]) };
+    CHECK(actual[i].bytes == expected.bytes);
+    CHECK(actual[i].files == expected.files);
+    CHECK(actual[i].dirs == expected.dirs);
+  }
+  CHECK(actual[1].bytes == 0);  // missing root contributes nothing
+  CHECK(actual[1].files == 0);
+  CHECK(actual[1].dirs == 0);
+}
+
+TEST_CASE("platform::dir_sizes is thread-count invariant") {
+  std::vector<std::filesystem::path> const roots{ "test_data", "test_data/archives" };
+
+  auto const serial{ platform::dir_sizes(roots, 1) };
+  auto const parallel{ platform::dir_sizes(roots, 16) };
+
+  REQUIRE(serial.size() == parallel.size());
+  for (size_t i{ 0 }; i < serial.size(); ++i) {
+    CHECK(serial[i].bytes == parallel[i].bytes);
+    CHECK(serial[i].files == parallel[i].files);
+    CHECK(serial[i].dirs == parallel[i].dirs);
+  }
+}
+
+TEST_CASE("platform::dir_sizes with no roots spawns nothing and returns nothing") {
+  CHECK(platform::dir_sizes({}).empty());
+}
+
+TEST_CASE("platform::dir_sizes on a file yields zeroes") {
+  auto const actual{ platform::dir_sizes({ "test_data/ctx_run_stress.py" }) };
+
+  REQUIRE(actual.size() == 1);
+  CHECK(actual[0].bytes == 0);
+  CHECK(actual[0].files == 0);
+  CHECK(actual[0].dirs == 0);
 }
 
 #ifdef _WIN32

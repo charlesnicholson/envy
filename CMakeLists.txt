@@ -238,6 +238,7 @@ set(ENVY_BASE_SOURCES
     src/cache.cpp
     src/cli.cpp
     src/cmd.cpp
+    src/cmds/cmd_cache.cpp
     src/cmds/cmd_deploy.cpp
     src/cmds/cmd_export.cpp
     src/cmds/cmd_extract.cpp
@@ -307,6 +308,7 @@ set(ENVY_BASE_SOURCES
     src/fetch.cpp
     $<$<PLATFORM_ID:Windows>:src/fetch_http_win32.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/fetch_http_curl.cpp>
+    src/platform.cpp
     $<$<PLATFORM_ID:Windows>:src/platform_win.cpp>
     $<$<NOT:$<PLATFORM_ID:Windows>>:src/platform_posix.cpp>
     src/termination.cpp
