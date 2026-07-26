@@ -70,9 +70,12 @@ struct dir_entry {
   bool is_symlink{ false };  // reparse point on Windows; never traversed
 };
 
-// Aggregate of one directory tree. Bytes are apparent file sizes; symlinks are
-// counted as neither file nor directory and never followed, so a tree is
-// measured exactly once no matter how it is linked.
+// Aggregate of one directory tree. Bytes are apparent file sizes. A symlink
+// *encountered during the walk* is counted as neither file nor directory and
+// its target is not descended into, so no tree is measured twice however it is
+// linked. A root named by the caller is opened as named — like every other path
+// here, and unlike its children, since refusing to open it would break a cache
+// root that lives behind a symlink or a junction.
 struct dir_size {
   std::uint64_t bytes{ 0 };
   std::uint64_t files{ 0 };

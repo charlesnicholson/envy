@@ -61,8 +61,11 @@ void print_section(char const *title,
 void cmd_cache::register_cli(CLI::App &app, std::function<void(cfg)> on_selected) {
   auto *sub{ app.add_subcommand("cache", "Show cache location and disk usage") };
   sub->callback([sub, on_selected = std::move(on_selected)] {
-    // Functional-tester builds hang test-only commands off "cache"; CLI11 runs
-    // the child callback first, so only claim the config when none ran.
+    // Functional-tester builds hang test-only commands off "cache", and CLI11
+    // runs a child's callback before its parent's, so the parent must not
+    // clobber a child's config. get_subcommands() returns the subcommands that
+    // were *parsed*, not the ones registered, so this is empty for a bare
+    // "envy cache" even in builds where children exist.
     if (sub->get_subcommands().empty()) { on_selected(cfg{}); }
   });
 }
