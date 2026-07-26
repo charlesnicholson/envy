@@ -311,7 +311,14 @@ def main() -> None:
     argv = sys.argv if len(sys.argv) > 1 else _build_default_argv()
     if verbose:
         argv.append("-v")
-    unittest.main(module=None, argv=argv)
+    # exit=False so the thread-exception check below is reachable: a stub server that dies
+    # in a handler thread must fail the sequential run too, not just the parallel one.
+    program = unittest.main(module=None, argv=argv, exit=False)
+    if _thread_exceptions:
+        sys.stderr.write(f"\nTHREAD EXCEPTIONS ({len(_thread_exceptions)}):\n")
+        for thread_name, exc_str in _thread_exceptions:
+            sys.stderr.write(f"Thread: {thread_name}\n{exc_str}\n")
+    sys.exit(0 if program.result.wasSuccessful() and not _thread_exceptions else 1)
 
 
 if __name__ == "__main__":
