@@ -245,6 +245,25 @@ bool is_dot(char const *name) {
   return name[0] == '.' && (!name[1] || (name[1] == '.' && !name[2]));
 }
 
+// An open directory stream and the descriptor it owns. opendir() is open() +
+// fdopendir() with no window where the descriptor is orphaned, and dirfd()
+// hands the descriptor back for fstatat(), so nothing outside needs to hold it.
+class scoped_dir : unmovable {
+ public:
+  explicit scoped_dir(char const *path) : d_{ ::opendir(path) } {}
+  ~scoped_dir() {
+    if (d_) { ::closedir(d_); }
+  }
+
+  explicit operator bool() const { return d_ != nullptr; }
+
+  int fd() const { return ::dirfd(d_); }
+  dirent const *next() { return ::readdir(d_); }
+
+ private:
+  DIR *d_;
+};
+
 }  // namespace
 
 dir_scan_string dir_scan_root(std::filesystem::path const &root) { return root.native(); }
@@ -253,15 +272,11 @@ void dir_scan_one(dir_scan_string const &dir, dir_size &acc, dir_scan_push const
   // Resolve the directory once, then stat children against its descriptor:
   // fstatat walks a single name instead of the whole path per file, which is
   // where a path-at-a-time walker burns most of its kernel time on deep trees.
-  int const fd{ ::open(dir.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC) };
-  if (fd < 0) { return; }
-  DIR *const d{ ::fdopendir(fd) };  // adopts fd; closedir() closes it
-  if (!d) {
-    ::close(fd);
-    return;
-  }
+  scoped_dir d{ dir.c_str() };
+  if (!d) { return; }
+  int const fd{ d.fd() };
 
-  while (dirent const *const e{ ::readdir(d) }) {
+  while (dirent const *const e{ d.next() }) {
     char const *const name{ e->d_name };
     if (is_dot(name)) { continue; }
 
@@ -286,18 +301,16 @@ void dir_scan_one(dir_scan_string const &dir, dir_size &acc, dir_scan_push const
       ++acc.files;
     }
   }
-
-  ::closedir(d);
 }
 
 std::vector<dir_entry> dir_list(std::filesystem::path const &dir) {
   std::vector<dir_entry> out;
 
-  DIR *const d{ ::opendir(dir.c_str()) };
+  scoped_dir d{ dir.c_str() };
   if (!d) { return out; }
-  int const fd{ ::dirfd(d) };
+  int const fd{ d.fd() };
 
-  while (dirent const *const e{ ::readdir(d) }) {
+  while (dirent const *const e{ d.next() }) {
     if (is_dot(e->d_name)) { continue; }
 
     dir_entry entry{ e->d_name, false, false };
@@ -316,7 +329,6 @@ std::vector<dir_entry> dir_list(std::filesystem::path const &dir) {
     out.push_back(std::move(entry));
   }
 
-  ::closedir(d);
   return out;
 }
 
