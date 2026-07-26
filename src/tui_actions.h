@@ -71,13 +71,15 @@ class fetch_progress_tracker {
   std::chrono::steady_clock::time_point start_time_;
 };
 
-// Multi-file download progress tracker with sub-sections
-// Lifetime: matches fetch() blocking call for multiple downloads
+// Multi-file transfer progress tracker with sub-sections. group_text labels the parent
+// row when there is more than one child (e.g. "fetch", "upload").
+// Lifetime: matches the blocking call for multiple transfers
 class fetch_all_progress_tracker {
  public:
   fetch_all_progress_tracker(tui::section_handle section,
                              std::string const &pkg_identity,
-                             std::vector<std::string> const &labels);
+                             std::vector<std::string> const &labels,
+                             std::string group_text);
 
   fetch_progress_cb_t make_callback(std::size_t slot);
 
@@ -95,6 +97,7 @@ class fetch_all_progress_tracker {
 
   tui::section_handle section_;
   std::string label_;
+  std::string group_text_;
   std::mutex mutex_;
   std::vector<tui::section_frame> children_;
   std::vector<git_state> git_states_;

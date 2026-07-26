@@ -376,7 +376,7 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
             stub.stop()
 
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
-        staged_in = re.search(r"mirror-envy: staging in (.+)", result.stderr)
+        staged_in = re.search(r"staging in (.+)", result.stderr)
         self.assertIsNotNone(staged_in, f"no staging line: {result.stderr}")
         self.assertEqual(
             scratch.resolve(),
