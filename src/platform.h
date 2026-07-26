@@ -2,10 +2,14 @@
 
 #include "util.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 // Platform-specific unreachable hint. Use compiler intrinsics where available
 // while remaining safe for MSVC which lacks __builtin_unreachable.
@@ -57,6 +61,49 @@ std::filesystem::path create_unique_temp_file(std::string_view prefix);
 std::filesystem::path create_unique_temp_dir(std::string_view prefix);
 void flush_directory(std::filesystem::path const &dir);
 bool file_exists(std::filesystem::path const &path);
+
+// One immediate child of a directory, as reported by the platform's native
+// enumeration (POSIX d_type, Windows file attributes).
+struct dir_entry {
+  std::string name;
+  bool is_dir{ false };
+  bool is_symlink{ false };  // reparse point on Windows; never traversed
+};
+
+// Aggregate of one directory tree. Bytes are apparent file sizes. A symlink
+// *encountered during the walk* is counted as neither file nor directory and
+// its target is not descended into, so no tree is measured twice however it is
+// linked. A root named by the caller is opened as named — like every other path
+// here, and unlike its children, since refusing to open it would break a cache
+// root that lives behind a symlink or a junction.
+struct dir_size {
+  std::uint64_t bytes{ 0 };
+  std::uint64_t files{ 0 };
+  std::uint64_t dirs{ 0 };
+};
+
+// Immediate children of `dir`, in filesystem order; empty if unreadable.
+std::vector<dir_entry> dir_list(std::filesystem::path const &dir);
+
+// Measure every root concurrently; results are index-aligned with `roots`.
+// Missing or unreadable roots yield zeroes. `threads == 0` uses hardware
+// concurrency. Traversal is native (openat/fdopendir/fstatat, FindFirstFileExW
+// with FIND_FIRST_EX_LARGE_FETCH) rather than std::filesystem, which
+// re-resolves a full path per entry and cannot be driven from many threads
+// without re-walking shared prefixes.
+std::vector<dir_size> dir_sizes(std::vector<std::filesystem::path> const &roots,
+                                unsigned threads = 0);
+
+// Native path string: UTF-16 on Windows, bytes elsewhere. Traversal stays in
+// the OS encoding; conversion happens only at the public boundary.
+using dir_scan_string = std::filesystem::path::string_type;
+using dir_scan_push = std::function<void(dir_scan_string)>;
+
+// Per-platform traversal hooks driving dir_sizes(); not called directly.
+// dir_scan_root() adapts a path for native traversal; dir_scan_one() folds one
+// directory's files into `acc` and hands each child directory to `push`.
+dir_scan_string dir_scan_root(std::filesystem::path const &root);
+void dir_scan_one(dir_scan_string const &dir, dir_size &acc, dir_scan_push const &push);
 
 std::optional<std::filesystem::path> get_default_cache_root();
 char const *get_default_cache_root_env_vars();

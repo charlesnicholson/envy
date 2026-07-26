@@ -1,5 +1,6 @@
 #include "platform.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -10,6 +11,7 @@
 #endif
 
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -17,6 +19,7 @@
 #include <string>
 #include <system_error>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 extern "C" char **environ;
@@ -225,6 +228,108 @@ void flush_directory(std::filesystem::path const &) {
 bool file_exists(std::filesystem::path const &path) {
   // On Unix, directory caching isn't an issue - std::filesystem::exists is sufficient
   return std::filesystem::exists(path);
+}
+
+namespace {
+
+dir_scan_string dir_join(dir_scan_string const &dir, char const *name) {
+  dir_scan_string out;
+  out.reserve(dir.size() + 1 + std::strlen(name));
+  out.append(dir);
+  if (!out.empty() && out.back() != '/') { out.push_back('/'); }
+  out.append(name);
+  return out;
+}
+
+bool is_dot(char const *name) {
+  return name[0] == '.' && (!name[1] || (name[1] == '.' && !name[2]));
+}
+
+// An open directory stream and the descriptor it owns. opendir() is open() +
+// fdopendir() with no window where the descriptor is orphaned, and dirfd()
+// hands the descriptor back for fstatat(), so nothing outside needs to hold it.
+class scoped_dir : unmovable {
+ public:
+  explicit scoped_dir(char const *path) : d_{ ::opendir(path) } {}
+  ~scoped_dir() {
+    if (d_) { ::closedir(d_); }
+  }
+
+  explicit operator bool() const { return d_ != nullptr; }
+
+  int fd() const { return ::dirfd(d_); }
+  dirent const *next() { return ::readdir(d_); }
+
+ private:
+  DIR *d_;
+};
+
+}  // namespace
+
+dir_scan_string dir_scan_root(std::filesystem::path const &root) { return root.native(); }
+
+void dir_scan_one(dir_scan_string const &dir, dir_size &acc, dir_scan_push const &push) {
+  // Resolve the directory once, then stat children against its descriptor:
+  // fstatat walks a single name instead of the whole path per file, which is
+  // where a path-at-a-time walker burns most of its kernel time on deep trees.
+  scoped_dir d{ dir.c_str() };
+  if (!d) { return; }
+  int const fd{ d.fd() };
+
+  while (dirent const *const e{ d.next() }) {
+    char const *const name{ e->d_name };
+    if (is_dot(name)) { continue; }
+
+    switch (e->d_type) {
+      case DT_DIR:
+        ++acc.dirs;
+        push(dir_join(dir, name));
+        continue;
+      case DT_LNK: continue;  // a symlinked tree is billed to whoever owns it
+      case DT_REG:
+      case DT_UNKNOWN: break;  // need st_size, or the fs withheld the type
+      default: continue;       // sockets, fifos, devices hold no payload
+    }
+
+    struct stat st;
+    if (::fstatat(fd, name, &st, AT_SYMLINK_NOFOLLOW)) { continue; }
+    if (S_ISDIR(st.st_mode)) {
+      ++acc.dirs;
+      push(dir_join(dir, name));
+    } else if (S_ISREG(st.st_mode)) {
+      acc.bytes += static_cast<std::uint64_t>(st.st_size);
+      ++acc.files;
+    }
+  }
+}
+
+std::vector<dir_entry> dir_list(std::filesystem::path const &dir) {
+  std::vector<dir_entry> out;
+
+  scoped_dir d{ dir.c_str() };
+  if (!d) { return out; }
+  int const fd{ d.fd() };
+
+  while (dirent const *const e{ d.next() }) {
+    if (is_dot(e->d_name)) { continue; }
+
+    dir_entry entry{ e->d_name, false, false };
+    switch (e->d_type) {
+      case DT_DIR: entry.is_dir = true; break;
+      case DT_LNK: entry.is_symlink = true; break;
+      case DT_REG: break;
+      default: {
+        struct stat st;
+        if (!::fstatat(fd, e->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
+          entry.is_dir = S_ISDIR(st.st_mode);
+          entry.is_symlink = S_ISLNK(st.st_mode);
+        }
+      } break;
+    }
+    out.push_back(std::move(entry));
+  }
+
+  return out;
 }
 
 void await_files_accessible(std::filesystem::path const &) {}

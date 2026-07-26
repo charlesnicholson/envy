@@ -74,7 +74,8 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_hash,
                            cmd_lua,
                            cmd_merge_depot,
-                           cmd_mirror_envy
+                           cmd_mirror_envy,
+                           cmd_cache
 #ifdef ENVY_FUNCTIONAL_TESTER
                            ,
                            cmd_engine_functional_test,
@@ -83,8 +84,10 @@ cli_args cli_parse(int argc, char **argv) {
                            >(app);
 
 #ifdef ENVY_FUNCTIONAL_TESTER
-  auto *cache{ app.add_subcommand("cache", "Cache testing commands") };
-  register_cmds.operator()<cmd_cache_ensure_package, cmd_cache_ensure_spec>(*cache);
+  // Cache testing commands nest under the real "cache" command; it yields to
+  // them when one is selected.
+  register_cmds.operator()<cmd_cache_ensure_package, cmd_cache_ensure_spec>(
+      *app.get_subcommand("cache"));
 #endif
 
   cli_args args{};

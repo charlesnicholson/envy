@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "cmds/cmd_cache.h"
 #include "cmds/cmd_deploy.h"
 #include "cmds/cmd_export.h"
 #include "cmds/cmd_extract.h"
@@ -263,6 +264,41 @@ TEST_CASE("cli_parse: cmd_git_resolve") {
 
   SUBCASE("missing url and ref rejected") {
     std::vector<std::string> args{ "envy", "git-resolve" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    CHECK_FALSE(parsed.cmd_cfg.has_value());
+    CHECK_FALSE(parsed.cli_output.empty());
+  }
+}
+
+TEST_CASE("cli_parse: cmd_cache") {
+  SUBCASE("bare subcommand") {
+    std::vector<std::string> args{ "envy", "cache" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(std::get_if<envy::cmd_cache::cfg>(&*parsed.cmd_cfg) != nullptr);
+    CHECK_FALSE(parsed.cache_root.has_value());
+  }
+
+  SUBCASE("honors global --cache-root") {
+    std::vector<std::string> args{ "envy", "--cache-root", "/tmp/envy-cli-test", "cache" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    CHECK(std::get_if<envy::cmd_cache::cfg>(&*parsed.cmd_cfg) != nullptr);
+    REQUIRE(parsed.cache_root.has_value());
+    CHECK(*parsed.cache_root == std::filesystem::path{ "/tmp/envy-cli-test" });
+  }
+
+  SUBCASE("rejects positional arguments") {
+    std::vector<std::string> args{ "envy", "cache", "extra" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
