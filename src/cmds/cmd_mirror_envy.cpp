@@ -199,7 +199,8 @@ void cmd_mirror_envy::execute() {
   tui_actions::fetch_all_progress_tracker download_tracker{ download_section,
                                                             "mirror-envy",
                                                             progress_labels(
-                                                                archive_relpaths) };
+                                                                archive_relpaths),
+                                                            "fetch" };
 
   std::vector<fetch_request> requests;
   requests.reserve(plan.items.size());
@@ -258,7 +259,8 @@ void cmd_mirror_envy::execute() {
   auto const upload_section{ tui::section_create() };
   tui_actions::fetch_all_progress_tracker upload_tracker{ upload_section,
                                                           "mirror-envy",
-                                                          progress_labels(relpaths) };
+                                                          progress_labels(relpaths),
+                                                          "upload" };
 
   std::vector<std::string> errors(relpaths.size());
   {

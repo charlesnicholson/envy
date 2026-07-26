@@ -158,7 +158,7 @@ package_depot_index package_depot_index::build(std::vector<std::string> const &d
       return l;
     }() };
 
-    tui_actions::fetch_all_progress_tracker tracker{ section, "depot", labels };
+    tui_actions::fetch_all_progress_tracker tracker{ section, "depot", labels, "fetch" };
     for (size_t i{ 0 }; i < requests.size(); ++i) {
       std::visit([&](auto &r) { r.progress = tracker.make_callback(i); }, requests[i]);
     }

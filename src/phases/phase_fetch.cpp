@@ -406,7 +406,7 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
     labels.push_back(fetch_item_label(specs[idx].request));
   }
 
-  tui_actions::fetch_all_progress_tracker tracker{ section, key, labels };
+  tui_actions::fetch_all_progress_tracker tracker{ section, key, labels, "fetch" };
 
   std::vector<fetch_request> requests;
   requests.reserve(to_download_indices.size());

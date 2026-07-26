@@ -170,9 +170,11 @@ bool fetch_progress_tracker::operator()(fetch_progress_t const &prog) {
 fetch_all_progress_tracker::fetch_all_progress_tracker(
     tui::section_handle section,
     std::string const &pkg_identity,
-    std::vector<std::string> const &labels)
+    std::vector<std::string> const &labels,
+    std::string group_text)
     : section_{ section },
       label_{ "[" + pkg_identity + "]" },
+      group_text_{ std::move(group_text) },
       mutex_{},
       children_{},
       git_states_(labels.size()),
@@ -190,7 +192,7 @@ fetch_all_progress_tracker::fetch_all_progress_tracker(
     tui::section_set_content(
         section_,
         tui::section_frame{ .label = label_,
-                            .content = tui::static_text_data{ .text = "fetch" },
+                            .content = tui::static_text_data{ .text = group_text_ },
                             .children = children_ });
   } else if (!children_.empty()) {
     tui::section_frame frame{ children_[0] };
@@ -301,7 +303,7 @@ void fetch_all_progress_tracker::set_frame(std::size_t slot,
   if (grouped_) {
     if (slot < children_.size()) { children_[slot] = std::move(child_frame); }
     tui::section_frame parent{ .label = label_,
-                               .content = tui::static_text_data{ .text = "fetch" },
+                               .content = tui::static_text_data{ .text = group_text_ },
                                .children = children_,
                                .phase_label = {} };
     tui::section_set_content(section_, parent);
