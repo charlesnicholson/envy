@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -28,6 +30,16 @@ inline constexpr std::string_view kEnvyReleaseLatestUrl{ ENVY_UPSTREAM_REPO_URL
 // Concatenation above happens in the preprocessor; undef so the macro does not leak into
 // every translation unit that includes this header.
 #undef ENVY_UPSTREAM_REPO_URL
+
+// Checksum manifest published beside the archives of every release, one line per artifact
+// in `sha256sum` output format. Bootstrap and re-exec attest a download against it, and a
+// manifest's `@envy sha256sums` pins this file's own hash -- one pin covering all six
+// platforms, since a cross-platform manifest cannot reasonably carry six archive hashes.
+//
+// `envy mirror-envy` republishes it byte-for-byte rather than regenerating it, so the pin
+// is mirror-independent: the same `@envy sha256sums` value verifies against upstream and
+// against every mirror downstream of it.
+inline constexpr std::string_view kEnvyReleaseSumsFile{ "SHA256SUMS" };
 
 struct envy_release_target {
   std::string_view os;
@@ -69,5 +81,35 @@ std::string envy_release_url(std::string_view mirror_base,
                              std::string_view version,
                              std::string_view os,
                              std::string_view arch);
+
+// <mirror_base>/v<version>/SHA256SUMS, same trailing-slash rule as above.
+std::string envy_release_sums_url(std::string_view mirror_base, std::string_view version);
+
+// Exactly 64 hex digits, either case. Anything else in `@envy sha256sums` is a typo or a
+// truncation, and a truncated pin must not silently weaken the check.
+bool envy_release_sha256_hex_is_valid(std::string_view hex);
+
+// Pull one artifact's hash out of SHA256SUMS text. Accepts `sha256sum` output verbatim,
+// including the `*name` binary-mode marker and CRLF line endings. nullopt if the name is
+// absent, which for a release archive means the mirror is serving a sums file that does
+// not describe the platform being bootstrapped.
+std::optional<std::string> envy_release_sums_lookup(std::string_view sums_text,
+                                                    std::string_view artifact_name);
+
+// Read a downloaded SHA256SUMS and return its text, first checking the file's own hash
+// against a manifest's `@envy sha256sums` when one is pinned. This is the step that
+// anchors the chain: everything downstream trusts the sums text, so a pin mismatch must
+// abort before any artifact is checked against it. Throws std::runtime_error, prefixed op.
+std::string envy_release_load_sums(std::filesystem::path const &sums_file,
+                                   std::optional<std::string> const &pinned_hex,
+                                   std::string_view op);
+
+// Verify one downloaded artifact against already-loaded sums text. Throws
+// std::runtime_error prefixed with op, naming the artifact and both hashes, if the entry
+// is missing or the bytes disagree.
+void envy_release_verify_artifact(std::filesystem::path const &artifact,
+                                  std::string_view artifact_name,
+                                  std::string_view sums_text,
+                                  std::string_view op);
 
 }  // namespace envy

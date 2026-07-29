@@ -45,17 +45,30 @@ parse_directives() {
         s/^--[[:space:]]*@envy[[:space:]]+version[[:space:]]+"(([^"\\]|\\.)*)".*/version \1/p
         s/^--[[:space:]]*@envy[[:space:]]+cache-posix[[:space:]]+"(([^"\\]|\\.)*)".*/cache \1/p
         s/^--[[:space:]]*@envy[[:space:]]+mirror[[:space:]]+"(([^"\\]|\\.)*)".*/mirror \1/p
+        s/^--[[:space:]]*@envy[[:space:]]+sha256sums[[:space:]]+"(([^"\\]|\\.)*)".*/sums \1/p
     '
 }
 
-VERSION="" MANIFEST_CACHE="" MANIFEST_MIRROR=""
+VERSION="" MANIFEST_CACHE="" MANIFEST_MIRROR="" SUMS_PIN=""
 while read -r key val; do
     val="${val//\\\"/\"}"
     val="${val//\\\\/\\}"
     case "$key" in
-        version) VERSION="$val" ;; cache) MANIFEST_CACHE="$val" ;; mirror) MANIFEST_MIRROR="$val" ;;
+        version) VERSION="$val" ;; cache) MANIFEST_CACHE="$val" ;;
+        mirror) MANIFEST_MIRROR="$val" ;; sums) SUMS_PIN="$val" ;;
     esac
 done < <(parse_directives)
+# Remember whether the version came from the directive: a sums pin names one release's
+# checksum file, so it is meaningless against a version resolved from `latest` or from the
+# stamped fallback. Captured before the resolution chain below overwrites VERSION.
+PINNED_VERSION="$VERSION"
+
+# Fail closed, and before any network: a pin that silently stops verifying is worse than no
+# pin, because the manifest still advertises attestation.
+if [[ -n "$SUMS_PIN" && -z "$PINNED_VERSION" ]]; then
+    echo "ERROR: '@envy sha256sums' requires '@envy version' in $MANIFEST" >&2
+    exit 1
+fi
 
 # Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
 # the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
@@ -92,6 +105,32 @@ mirror_cat() {
     fi
 }
 
+# sha256 of a file, lowercase hex, no filename. Every tier ships with the OS: sha256sum with
+# GNU coreutils, shasum on macOS (and any perl install), openssl as a last resort. No tier
+# means no attestation is possible, which is a hard error rather than a skip.
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | sed 's/^.*= *//'
+    else
+        echo "ERROR: '@envy sha256sums' is pinned but no sha256 tool was found (tried" \
+             "sha256sum, shasum, openssl)" >&2
+        return 1
+    fi
+}
+
+# Compare hex case-insensitively. The exact match short-circuits, so the tr pipeline only
+# runs for a pin pasted from certutil or Get-FileHash on Windows, which emit uppercase.
+# `if` rather than `[[ ]] && return`: a failing AND-list is a set -e footgun, and bash 3.2
+# (what macOS ships) has no ${var,,} to do this without subprocesses.
+hex_eq() {
+    if [[ "$1" == "$2" ]]; then return 0; fi
+    local a b
+    a="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    b="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+    [[ "$a" == "$b" ]]
+}
+
 if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
 elif [[ -n "$MANIFEST_CACHE" ]]; then
     CACHE="$MANIFEST_CACHE"
@@ -113,8 +152,8 @@ if [[ -z "$VERSION" ]]; then
         [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
     fi
     # Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so
-    # a private or air-gapped mirror answers for itself -- ENVY_MIRROR or `@envy mirror` may
-    # point anywhere, so this is not necessarily github.
+    # a private or air-gapped mirror answers for itself. Note the stamped default is not a
+    # reliable "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
     if [[ -z "$VERSION" ]]; then
         VERSION="$(mirror_cat "$ENVY_MIRROR/latest" 2>/dev/null || true)"
         VERSION="${VERSION//[[:space:]]/}"
@@ -149,10 +188,41 @@ echo "Downloading envy $VERSION..." >&2
 # mktemp, not $$: a predictable name in a shared sticky /tmp lets another user pre-create
 # the directory and have us extract into (and exec from) storage they control.
 T="$(mktemp -d "${TMPDIR:-/tmp}/envy-XXXXXXXX")"
-URL="$ENVY_MIRROR/v$VERSION/envy-$PLATFORM-$ARCH.tar.gz"
-mirror_cat "$URL" | tar -xzf - -C "$T" || { echo "ERROR: Failed to download envy from $URL" >&2; rm -rf "$T"; exit 1; }
+die() { echo "ERROR: $1" >&2; rm -rf "$T"; exit 1; }
+ARCHIVE="envy-$PLATFORM-$ARCH.tar.gz"
+URL="$ENVY_MIRROR/v$VERSION/$ARCHIVE"
+
+# To a file, not piped into tar: an unattested archive must never be unpacked, or a hostile
+# mirror gets to choose the paths written under $T -- from which we then exec.
+mirror_cat "$URL" > "$T/$ARCHIVE" || die "Failed to download envy from $URL"
+
+if [[ -n "$SUMS_PIN" ]]; then
+    SUMS_URL="$ENVY_MIRROR/v$VERSION/SHA256SUMS"
+    mirror_cat "$SUMS_URL" > "$T/SHA256SUMS" || die "Failed to download $SUMS_URL"
+
+    # Anchor the chain on the manifest's pin before trusting anything the sums file says.
+    GOT="$(sha256_file "$T/SHA256SUMS")" || { rm -rf "$T"; exit 1; }
+    hex_eq "$GOT" "$SUMS_PIN" || die "SHA256SUMS does not match the pinned '@envy sha256sums':
+       expected $SUMS_PIN
+       got      $GOT
+       The mirror is serving a different release manifest than $MANIFEST pinned.
+       Update the pin deliberately; do not remove it."
+
+    # Anchor to the line for this exact archive: matching on the hash alone would accept any
+    # platform's binary, and a substring match on the name would accept a longer one.
+    WANT="$(sed -nE "s/^([0-9a-fA-F]{64})[[:space:]]+\*?${ARCHIVE//./\\.}\$/\1/p" \
+        "$T/SHA256SUMS" | head -1)"
+    [[ -n "$WANT" ]] || die "SHA256SUMS lists no entry for $ARCHIVE"
+
+    GOT="$(sha256_file "$T/$ARCHIVE")" || { rm -rf "$T"; exit 1; }
+    hex_eq "$GOT" "$WANT" || die "$ARCHIVE failed attestation:
+       SHA256SUMS says $WANT
+       downloaded      $GOT"
+fi
+
+tar -xzf "$T/$ARCHIVE" -C "$T" || die "Failed to extract envy from $URL"
 # tar exits 0 on an empty archive, so a zero-length object would otherwise fall through to
 # a confusing "no such file" from exec.
-[[ -f "$T/envy" ]] || { echo "ERROR: archive from $URL contained no envy binary" >&2; rm -rf "$T"; exit 1; }
+[[ -f "$T/envy" ]] || die "archive from $URL contained no envy binary"
 [[ $PLATFORM == darwin ]] && xattr -d com.apple.quarantine "$T/envy" 2>/dev/null || true
 chmod +x "$T/envy" && exec "$T/envy" "$@"

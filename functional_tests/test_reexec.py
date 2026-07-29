@@ -12,6 +12,7 @@ re-exec download code fetches via libcurl's file:// support.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform as plat
 import shutil
@@ -87,23 +88,53 @@ class _ReexecTestBase(unittest.TestCase):
             shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     def _setup_reexec_project(
-        self, version: str = "1.2.3", *, mirror: str | None = None
-    ) -> None:
-        """Create a project with version requirement and file:// mirror."""
+        self,
+        version: str = "1.2.3",
+        *,
+        mirror: str | None = None,
+        sums: str | None = None,
+        pin: str | None = None,
+    ) -> str:
+        """Create a project with version requirement and file:// mirror.
+
+        sums controls what the mirror publishes at v<version>/SHA256SUMS: "good" writes the
+        real digest, "wrong" writes a digest that no archive matches, "absent" omits the
+        file. pin overrides the manifest's `@envy sha256sums` value; when sums is not
+        "absent" and pin is None, the manifest pins whatever was published. Returns the
+        published sums file's own hash.
+        """
         release_dir = self._releases_dir / f"v{version}"
         release_dir.mkdir(parents=True, exist_ok=True)
 
         archive_name = f"envy-{_OS_NAME}-{_ARCH}{_EXT}"
         _create_envy_archive(release_dir / archive_name, self._envy)
 
+        published_pin = ""
+        if sums is not None and sums != "absent":
+            # Hash the archive on disk: the tar.gz header carries an mtime, so rebuilding it
+            # would produce different bytes than the ones actually served.
+            digest = (
+                "f" * 64
+                if sums == "wrong"
+                else hashlib.sha256((release_dir / archive_name).read_bytes()).hexdigest()
+            )
+            body = f"{digest}  {archive_name}\n".encode()
+            (release_dir / "SHA256SUMS").write_bytes(body)
+            published_pin = hashlib.sha256(body).hexdigest()
+
         mirror_url = mirror or f"file://{self._releases_dir}"
         manifest = f'-- @envy version "{version}"\n'
         manifest += f'-- @envy mirror "{mirror_url}"\n'
+        if pin is not None:
+            manifest += f'-- @envy sha256sums "{pin}"\n'
+        elif sums is not None:
+            manifest += f'-- @envy sha256sums "{published_pin or "a" * 64}"\n'
         manifest += '-- @envy bin "tools"\n'
         manifest += "PACKAGES = {}\n"
         (self._project / "envy.lua").write_text(manifest)
 
         (self._project / "tools").mkdir(exist_ok=True)
+        return published_pin
 
     def _get_env(self, **overrides: str) -> dict[str, str]:
         env = test_config.get_test_env()
@@ -217,6 +248,66 @@ class TestReexecDownload(_ReexecTestBase):
 
         env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
         result = self._run_envy(["install"], cwd=self._project, env=env)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+
+class TestReexecAttestation(_ReexecTestBase):
+    """`@envy sha256sums` must gate the re-exec download, not just the bootstrap script.
+
+    Re-exec is the other way a project acquires an envy binary, so leaving it unattested
+    would let a hostile mirror win simply by being reached through a binary that is already
+    installed rather than through the shell script.
+    """
+
+    def test_attested_download_reexecs(self) -> None:
+        self._setup_reexec_project("1.2.3", sums="good")
+        env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
+
+        result = self._run_envy(["install"], cwd=self._project, env=env)
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+    def test_tampered_archive_aborts_before_extract(self) -> None:
+        """SHA256SUMS names a digest the archive does not have."""
+        self._setup_reexec_project("1.2.3", sums="wrong")
+        env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
+
+        result = self._run_envy(["install"], cwd=self._project, env=env)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("attestation", result.stderr.lower())
+        # Nothing may reach the cache: a re-exec'd binary self-deploys, so an unattested
+        # archive that got as far as extract would install itself for every later run.
+        self.assertFalse(self._cached_binary_path("1.2.3").exists())
+
+    def test_sums_file_not_matching_the_pin_aborts(self) -> None:
+        """Mirror rewrote both archive and SHA256SUMS; only the manifest pin catches it."""
+        self._setup_reexec_project("1.2.3", sums="good", pin="b" * 64)
+        env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
+
+        result = self._run_envy(["install"], cwd=self._project, env=env)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("sha256sums", result.stderr.lower())
+        self.assertFalse(self._cached_binary_path("1.2.3").exists())
+
+    def test_missing_sums_file_aborts_when_pinned(self) -> None:
+        self._setup_reexec_project("1.2.3", sums="absent", pin="c" * 64)
+        env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
+
+        result = self._run_envy(["install"], cwd=self._project, env=env)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("SHA256SUMS", result.stderr)
+        self.assertFalse(self._cached_binary_path("1.2.3").exists())
+
+    def test_unpinned_manifest_never_fetches_sums(self) -> None:
+        """Opt-in: no pin means no extra request, so old mirrors keep working."""
+        self._setup_reexec_project("1.2.3")  # no sums published, no pin
+        env = self._get_env(ENVY_TEST_SELF_VERSION="9.9.9")
+
+        result = self._run_envy(["install"], cwd=self._project, env=env)
+
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
 

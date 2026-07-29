@@ -4,6 +4,7 @@
 #include "envy_release.h"
 #include "fetch.h"
 #include "platform.h"
+#include "sha256.h"
 #include "tui.h"
 #include "tui_actions.h"
 #include "uri.h"
@@ -123,7 +124,7 @@ mirror_envy_plan mirror_envy_make_plan(std::string_view version,
           std::string{ dest } + "')");
   }
 
-  plan.items.reserve(kEnvyReleaseTargets.size());
+  plan.items.reserve(kEnvyReleaseTargets.size() + 1);
   for (auto const &target : kEnvyReleaseTargets) {
     std::ostringstream rel;
     rel << 'v' << version << '/' << envy_release_archive_name(target.os, target.arch);
@@ -131,6 +132,18 @@ mirror_envy_plan mirror_envy_make_plan(std::string_view version,
         .source_url = envy_release_url(from, version, target.os, target.arch),
         .relpath = rel.str() });
   }
+
+  // Last, so the archive rows keep their stable order in the progress display. Copied
+  // verbatim rather than regenerated from the bytes we just fetched: a project's
+  // `@envy sha256sums` pins this file's own hash, so regenerating it here -- even with
+  // identical digests -- would change that hash on any formatting or ordering difference
+  // and make the pin mirror-specific.
+  std::ostringstream sums_rel;
+  sums_rel << 'v' << version << '/' << kEnvyReleaseSumsFile;
+  plan.sums_relpath = sums_rel.str();
+  plan.items.push_back(
+      mirror_envy_item{ .source_url = envy_release_sums_url(from, version),
+                        .relpath = plan.sums_relpath });
 
   return plan;
 }
@@ -186,20 +199,19 @@ void cmd_mirror_envy::execute() {
     tui::debug("staging in %s", staging.string().c_str());
   }
 
-  auto const archive_relpaths{ [&] {
+  auto const item_relpaths{ [&] {
     std::vector<std::string> v;
     v.reserve(plan.items.size());
     for (auto const &item : plan.items) { v.push_back(item.relpath); }
     return v;
   }() };
 
-  // One progress bar per archive, same tracker the fetch phase uses: the downloads run
+  // One progress bar per object, same tracker the fetch phase uses: the downloads run
   // concurrently, so a single spinner would say nothing about which one is stuck.
   auto const download_section{ tui::section_create() };
   tui_actions::fetch_all_progress_tracker download_tracker{ download_section,
                                                             "mirror-envy",
-                                                            progress_labels(
-                                                                archive_relpaths),
+                                                            progress_labels(item_relpaths),
                                                             "fetch" };
 
   std::vector<fetch_request> requests;
@@ -235,23 +247,49 @@ void cmd_mirror_envy::execute() {
                              " archives failed to download");
   }
 
+  // Attest every archive against the checksum manifest we just fetched from the same
+  // source, before anything is republished. A mirror that passes on corrupt bytes turns
+  // one bad upstream fetch into a bad artifact for every consumer downstream, and a
+  // project pinning this SHA256SUMS would then be attesting garbage as authentic.
+  auto const sums_text{
+    envy_release_load_sums(staging / plan.sums_relpath, std::nullopt, "mirror-envy")
+  };
+  for (auto const &item : plan.items) {
+    if (item.relpath == plan.sums_relpath) { continue; }
+    envy_release_verify_artifact(staging / item.relpath,
+                                 fs::path{ item.relpath }.filename().string(),
+                                 sums_text,
+                                 "mirror-envy");
+  }
+  tui::debug("attested %zu archives against %s",
+             plan.items.size() - 1,
+             std::string{ kEnvyReleaseSumsFile }.c_str());
+
+  // The pin a consuming project puts in its manifest. Computed from the mirrored file, so
+  // it is the value that will actually verify against this mirror -- and, because the file
+  // is copied verbatim, against upstream too.
+  auto const sums_hash{ sha256(staging / plan.sums_relpath) };
+  auto const sums_hex{ util_bytes_to_hex(sums_hash.data(), sums_hash.size()) };
+
   // Mirror-root "latest" so a bootstrap script can resolve the newest version from the
   // mirror rather than probing github.com. Format matches the cache's own latest file:
   // the bare version, no trailing newline.
   util_write_file(staging / kMirrorLatestFile, cfg_.version);
 
   if (!plan.dest_is_s3) {
-    tui::info("staged envy %s (%zu archives) in %s",
+    tui::info("staged envy %s (%zu objects) in %s",
               cfg_.version.c_str(),
               plan.items.size(),
               staging.string().c_str());
+    tui::info("attest against it with:");
+    tui::info("  -- @envy sha256sums \"%s\"", sums_hex.c_str());
     return;
   }
 
   // Thread per object, matching fetch()'s shape. Errors are collected so one bad key does
   // not hide the others.
   auto const relpaths{ [&] {
-    std::vector<std::string> v{ archive_relpaths };
+    std::vector<std::string> v{ item_relpaths };
     v.emplace_back(kMirrorLatestFile);
     return v;
   }() };
@@ -302,6 +340,7 @@ void cmd_mirror_envy::execute() {
   tui::info("point envy.lua at it with:");
   tui::info("  -- @envy version \"%s\"", cfg_.version.c_str());
   tui::info("  -- @envy mirror \"%s\"", root.c_str());
+  tui::info("  -- @envy sha256sums \"%s\"", sums_hex.c_str());
 }
 
 }  // namespace envy

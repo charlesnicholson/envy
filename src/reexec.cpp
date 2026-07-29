@@ -140,17 +140,42 @@ void reexec_if_needed(envy_meta const &meta,
                       ("envy-reexec-" + version + "-" + std::to_string(pid)) };
   std::filesystem::create_directories(tmp_dir);
 
-  auto const archive_path{ tmp_dir / envy_release_archive_name(platform::os_name(),
-                                                               platform::arch_name()) };
+  auto const archive_name{ envy_release_archive_name(platform::os_name(),
+                                                     platform::arch_name()) };
+  auto const archive_path{ tmp_dir / archive_name };
 
-  auto const results{ fetch({ fetch_request_from_url(url, archive_path) }) };
-  if (results.empty()) {
+  // With a sums pin, SHA256SUMS is fetched alongside the archive rather than before it: it
+  // is a few hundred bytes, so serializing the two only to fail fast on a bad pin costs a
+  // round trip on every re-exec and saves nothing on the happy path.
+  std::vector<fetch_request> requests{ fetch_request_from_url(url, archive_path) };
+  std::vector<std::string> urls{ url };
+  auto const sums_path{ tmp_dir / std::string{ kEnvyReleaseSumsFile } };
+  if (meta.sha256sums) {
+    auto sums_url{ envy_release_sums_url(mirror, version) };
+    requests.push_back(fetch_request_from_url(sums_url, sums_path));
+    urls.push_back(std::move(sums_url));
+  }
+
+  auto const results{ fetch(requests) };
+  if (results.size() != requests.size()) {
     throw std::runtime_error("reexec: failed to download envy " + version + " from " +
                              url + ": unknown error");
   }
-  if (std::holds_alternative<std::string>(results[0])) {
-    throw std::runtime_error("reexec: failed to download envy " + version + " from " +
-                             url + ": " + std::get<std::string>(results[0]));
+  for (size_t i{ 0 }; i < results.size(); ++i) {
+    if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
+      throw std::runtime_error("reexec: failed to download envy " + version + " from " +
+                               urls[i] + ": " + *err);
+    }
+  }
+
+  // Verify before extract: an unattested archive is never unpacked, so a hostile mirror
+  // gets no chance to write paths of its choosing under the temp dir.
+  if (meta.sha256sums) {
+    auto const sums_text{ envy_release_load_sums(sums_path, meta.sha256sums, "reexec") };
+    envy_release_verify_artifact(archive_path, archive_name, sums_text, "reexec");
+    tui::debug("attested %s against the pinned %s",
+               archive_name.c_str(),
+               std::string{ kEnvyReleaseSumsFile }.c_str());
   }
 
   extract(archive_path, tmp_dir);

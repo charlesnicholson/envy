@@ -9,13 +9,14 @@ The bootstrap scripts (`envy` for Unix, `envy.bat` for Windows) each:
 2. If missing, fall back to the version stamped into the script (with warning)
 3. Check if that version exists in the user's cache
 4. Download if missing (over HTTPS from GitHub or configured mirror)
-5. Execute the cached binary with all arguments
+5. Attest the archive against `SHA256SUMS`, if the manifest pins one
+6. Execute the cached binary with all arguments
 
 **Version stamping:** `envy init` stamps its own version in two places:
 - The manifest (`-- @envy version "1.2.3"`) — primary source of truth
 - The bootstrap scripts (`FALLBACK_VERSION="1.2.3"`) — recovery if directive deleted
 
-The version is the *only* project value a script carries. The mirror is read from the manifest at run time, never stamped—see **Mirror precedence** below.
+The version is the *only* project value a script carries. The mirror and the sums pin are read from the manifest at run time, never stamped—see **Mirror precedence** below.
 
 **Fast path:** If envy is cached, the bootstrap adds ~0ms overhead—it's just `exec`.
 
@@ -28,12 +29,13 @@ The version is the *only* project value a script carries. The mirror is read fro
 ## Command Signature
 
 ```
-envy init <project-dir> <bin-dir> [--mirror=URL]
+envy init <project-dir> <bin-dir> [--mirror=URL] [--pin-sums]
 ```
 
 - `project-dir`: Where manifest (`envy.lua`) and IDE config (`.luarc.json`) live
 - `bin-dir`: Where bootstrap script (`envy`) lives
 - `--mirror`: Override default GitHub releases URL (for enterprise/air-gapped environments)
+- `--pin-sums`: Fetch this release's `SHA256SUMS` and pin its hash, so bootstrap attests every envy binary it downloads. Needs network; fails before writing anything
 
 ---
 
@@ -73,6 +75,7 @@ All values are quoted. Escaping is supported:
 | `cache-posix` | Optional | Override cache location (macOS/Linux) |
 | `cache-win` | Optional | Override cache location (Windows) |
 | `mirror` | Optional | Override download mirror: `https://…` or `s3://bucket/prefix` |
+| `sha256sums` | Optional | 64 hex digits: sha256 of the release's `SHA256SUMS`. Attests every downloaded archive; requires `version` |
 
 *If `version` is missing, bootstrap resolves it from the mirror's `latest` file (written by `envy mirror-envy`), then—for non-s3 mirrors only—from GitHub's latest-release redirect, then from the version stamped when `envy init` created the scripts.
 
@@ -100,8 +103,8 @@ Both the bootstrap scripts and the envy runtime must parse `@envy` directives:
 
 | Parser | When | Why |
 |--------|------|-----|
-| Bootstrap scripts | Before envy exists locally | Need `version` to know which binary to download; `cache` and `mirror` to know where/how |
-| Envy runtime | After bootstrap, during execution | Need `cache` for type extraction path; `version` for cache key; `mirror` for future self-update |
+| Bootstrap scripts | Before envy exists locally | Need `version` to know which binary to download; `cache` and `mirror` to know where/how; `sha256sums` to attest it |
+| Envy runtime | After bootstrap, during execution | Need `cache` for type extraction path; `version` for cache key; `mirror` and `sha256sums` for re-exec |
 
 The parsing logic is intentionally simple (regex on first 20 lines) so both bash/batch scripts and C++ can implement it identically. Phase 1 delivers both implementations and validates they produce identical results for all test cases.
 
@@ -207,19 +210,35 @@ Pure batch implementation for directive parsing—avoids ~100-200ms PowerShell s
 
 ### Security Model
 
-**No SHA256 verification in bootstrap.** Rationale:
-- If an attacker can serve a malicious binary, they can serve a matching checksum
-- Checksums only detect corruption, not tampering
-- Real security comes from authenticated transport to a trusted source
-
 Trust hierarchy:
 1. HTTPS to envy's GitHub releases (default, trusted)
 2. HTTPS to a configured mirror (whoever operates it is responsible for securing it)
 3. `s3://` to a configured mirror — SigV4-signed by the AWS CLI, so the bucket's IAM policy is the trust boundary
 
-A mirror moves the trust boundary to whoever ran `envy mirror-envy`: it copies release bytes verbatim, so a wrong or compromised `--from` propagates silently. Restrict write access to the mirror prefix accordingly. `mirror-envy` emits no checksum manifest today — see `docs/future-enhancements.md`.
+A mirror moves the trust boundary to whoever ran `envy mirror-envy`: it copies release bytes verbatim, so a wrong or compromised `--from` propagates silently. Restrict write access to the mirror prefix accordingly.
 
-Future option: Code signing with Anthropic key for real authenticity verification.
+### Attestation (`@envy sha256sums`)
+
+Every release publishes `SHA256SUMS` beside its archives. A manifest optionally pins **that file's own hash**; bootstrap and re-exec then refuse any archive the mirror cannot prove:
+
+```
+-- @envy version "1.2.3"
+-- @envy sha256sums "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+```
+
+Chain: the manifest pins `SHA256SUMS` → `SHA256SUMS` names the archive's hash → the archive is what executes. Get the pin from `envy init --pin-sums` or from what `envy mirror-envy` prints.
+
+One pin covers all six platforms — a cross-platform manifest cannot reasonably carry six archive hashes, so the indirection through `SHA256SUMS` is the point. `mirror-envy` republishes that file **byte-for-byte** rather than regenerating it, which is what keeps a pin valid against upstream and every mirror downstream; it also verifies all six archives against it before publishing, so a mirror cannot launder corrupt bytes.
+
+**What this buys:** the project's git repo becomes the root of trust for the envy binary. It defends against a tampered or compromised mirror — most usefully `s3://` and plain-`http` mirrors, and insider write access to a corporate prefix. It does *not* defend against a compromised upstream release or a compromised manifest; the bootstrap scripts are checked in beside `envy.lua`, so git was already the root of trust.
+
+**Fail-closed rules.** A pin requires `@envy version`: it identifies one release, so with the version resolved dynamically it would describe a different release than the one downloaded. A pinned manifest whose mirror has no `SHA256SUMS` is an error, not a silent downgrade. A pin that quietly stopped verifying would be worse than no pin, because the manifest still advertises attestation.
+
+**Not covered:** the cache fast path. Once `$CACHE/envy/$VERSION/envy` exists, bootstrap `exec`s it without re-hashing. Anyone who can write your cache can also write your `bin/envy`, so this is not a downgrade — but attestation is a download-time check, not a per-invocation one.
+
+Hashing needs no extra software: `sha256sum`/`shasum`/`openssl` on POSIX, `certutil` on Windows with `Get-FileHash` as fallback (`certutil` is a known LOLBin and some hardened environments block it).
+
+Future option: code signing for authenticity independent of the manifest.
 
 ---
 
@@ -354,10 +373,11 @@ envy mirror-envy 1.2.3 s3://my-envy-mirror/releases
 # Re-mirroring from an existing mirror instead of GitHub:
 envy mirror-envy 1.2.3 ./staged --from=https://internal.corp/envy-releases
 
-# 2. Point the project at it (mirror-envy prints these two lines for you)
+# 2. Point the project at it (mirror-envy prints these three lines for you)
 #    -- @envy version "1.2.3"
 #    -- @envy mirror "s3://my-envy-mirror/releases"
-envy init . ./tools --mirror=s3://my-envy-mirror/releases
+#    -- @envy sha256sums "9f86d081..."   # attests every download against the mirror
+envy init . ./tools --mirror=s3://my-envy-mirror/releases --pin-sums
 
 # 3. Developers clone and run normally
 aws sso login              # only for a credential-gated bucket
@@ -377,6 +397,7 @@ Layout, if you populate a mirror by hand (names must match byte-for-byte):
 <mirror>/v1.2.3/envy-linux-x86_64.tar.gz
 <mirror>/v1.2.3/envy-windows-arm64.zip       # archive root: envy.exe
 <mirror>/v1.2.3/envy-windows-x86_64.zip
+<mirror>/v1.2.3/SHA256SUMS                    # only if pinning; copy upstream's verbatim
 ```
 
 **Result:** Works behind corporate firewall. IT controls distribution.

@@ -229,6 +229,31 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
         (self._source / "v1.2.3").mkdir(parents=True)
         for asset in RELEASE_ASSETS:
             (self._source / "v1.2.3" / asset).write_bytes(_archive_for(asset))
+        self._write_upstream_sums()
+
+    def _write_upstream_sums(self, corrupt: str | None = None) -> str:
+        """Publish upstream's SHA256SUMS; return the hash a manifest would pin.
+
+        corrupt names an asset whose listed digest is wrong, modelling an upstream (or a
+        man-in-the-middle) serving an archive that does not match its own checksum manifest.
+
+        Digests come from the bytes on disk, never from a second `_archive_for` call: the
+        tar.gz header carries an mtime, so regenerating an asset a second later yields
+        different bytes and the sums file would disagree with the staged archive.
+        """
+        lines = []
+        for asset in RELEASE_ASSETS:
+            digest = (
+                "f" * 64
+                if asset == corrupt
+                else hashlib.sha256(
+                    (self._source / "v1.2.3" / asset).read_bytes()
+                ).hexdigest()
+            )
+            lines.append(f"{digest}  {asset}\n")
+        body = "".join(lines).encode()
+        (self._source / "v1.2.3" / "SHA256SUMS").write_bytes(body)
+        return hashlib.sha256(body).hexdigest()
 
     def tearDown(self) -> None:
         if self._temp.exists():
@@ -271,6 +296,65 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
                 (self._source / "v1.2.3" / asset).read_bytes(), staged.read_bytes()
             )
         self.assertEqual("1.2.3", (dest / "latest").read_text())
+
+    def test_sums_file_is_mirrored_byte_for_byte(self) -> None:
+        """Verbatim, never regenerated: an `@envy sha256sums` pin must stay valid here.
+
+        Regenerating the file -- even with identical digests -- would change its own hash on
+        any ordering or formatting difference, making a project's pin mirror-specific.
+        """
+        dest = self._temp / "staged"
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        upstream = (self._source / "v1.2.3" / "SHA256SUMS").read_bytes()
+        self.assertEqual(upstream, (dest / "v1.2.3" / "SHA256SUMS").read_bytes())
+
+    def test_reports_the_pin_for_the_mirrored_sums(self) -> None:
+        dest = self._temp / "staged"
+        expected = hashlib.sha256(
+            (self._source / "v1.2.3" / "SHA256SUMS").read_bytes()
+        ).hexdigest()
+
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(f'-- @envy sha256sums "{expected}"', result.stderr)
+
+    def test_refuses_to_republish_an_archive_that_fails_its_own_sums(self) -> None:
+        """A mirror that passes on bad bytes turns one bad fetch into many bad consumers.
+
+        Worse, a project pinning this SHA256SUMS would then attest the corrupted archive as
+        authentic, so the run must abort before anything is staged as usable.
+        """
+        self._write_upstream_sums(corrupt="envy-linux-arm64.tar.gz")
+        dest = self._temp / "staged"
+
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("attestation", result.stderr.lower())
+        self.assertIn("envy-linux-arm64.tar.gz", result.stderr)
+        # Same invariant as a failed download: never advertise a bad mirror as latest.
+        self.assertFalse((dest / "latest").exists())
+
+    def test_missing_upstream_sums_fails_the_mirror(self) -> None:
+        (self._source / "v1.2.3" / "SHA256SUMS").unlink()
+        dest = self._temp / "staged"
+
+        result = self._run(
+            ["mirror-envy", "1.2.3", str(dest), f"--from={self._from_uri()}"]
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("failed to download", result.stderr)
+        self.assertFalse((dest / "latest").exists())
 
     def test_staged_windows_archives_are_named_from_any_host(self) -> None:
         """The .zip assets must be produced even when mirroring from a posix host."""
@@ -410,6 +494,12 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
                 (self._source / "v1.2.3" / asset).read_bytes(), stub.objects[key]
             )
         self.assertEqual(b"1.2.3", stub.objects["releases/latest"])
+        # Without this key a pinned project cannot bootstrap from the mirror at all.
+        sums_key = "releases/v1.2.3/SHA256SUMS"
+        self.assertIn(sums_key, stub.objects)
+        self.assertEqual(
+            (self._source / "v1.2.3" / "SHA256SUMS").read_bytes(), stub.objects[sums_key]
+        )
         # No double-slash keys: S3 keys are opaque, so "a//b" would be unreachable.
         for key in stub.objects:
             self.assertNotIn("//", key)
@@ -489,6 +579,12 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn('-- @envy version "1.2.3"', result.stderr)
         self.assertIn('-- @envy mirror "s3://test-bucket/releases"', result.stderr)
+        # All three lines together: a mirror is only as trustworthy as the pin that attests
+        # it, so the pin has to be as easy to paste as the mirror URL.
+        expected = hashlib.sha256(
+            (self._source / "v1.2.3" / "SHA256SUMS").read_bytes()
+        ).hexdigest()
+        self.assertIn(f'-- @envy sha256sums "{expected}"', result.stderr)
 
 
 class InitMirrorSurvivesSyncTest(unittest.TestCase):

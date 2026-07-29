@@ -338,6 +338,14 @@ envy_meta parse_envy_meta(std::string_view content) {
         result.cache_win = value;
       } else if (key == "mirror") {
         result.mirror = value;
+      } else if (key == "sha256sums") {
+        if (!envy_release_sha256_hex_is_valid(value)) {
+          throw std::runtime_error(
+              "'@envy sha256sums' must be exactly 64 hex digits (the sha256 of the "
+              "release's SHA256SUMS file), got: '" +
+              value + "'");
+        }
+        result.sha256sums = value;
       } else if (key == "bin" || key == "bin-dir") {
         result.bin = value;
       } else if (key == "schema") {
@@ -358,6 +366,17 @@ envy_meta parse_envy_meta(std::string_view content) {
 
     if (line_end == std::string_view::npos) { break; }
     line_start = line_end + 1;
+  }
+
+  // A sums pin names one release's checksum file, so it is meaningless without the version
+  // that selects that release: with the version resolved dynamically (cache `latest`, the
+  // mirror's `latest`, GitHub's redirect, or the script's stamped fallback) the pin would
+  // describe a different release than the one being downloaded. Fail closed rather than
+  // silently skip verification -- a pin that quietly stops verifying is worse than none.
+  if (result.sha256sums && !result.version) {
+    throw std::runtime_error(
+        "'@envy sha256sums' requires '@envy version': a sums pin identifies one release, "
+        "so the version cannot be left to dynamic resolution");
   }
 
   // Recovered from bootstrap script stamping, which used to be the only consumer that

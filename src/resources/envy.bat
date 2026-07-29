@@ -44,6 +44,7 @@ goto :findloop
 set "VERSION="
 set "MANIFEST_CACHE="
 set "MANIFEST_MIRROR="
+set "SUMS_PIN="
 set /a LINE_COUNT=0
 
 for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
@@ -59,10 +60,23 @@ for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
             if "!KEY!"=="version" set "VERSION=!VAL!"
             if "!KEY!"=="cache-win" set "MANIFEST_CACHE=!VAL!"
             if "!KEY!"=="mirror" set "MANIFEST_MIRROR=!VAL!"
+            if "!KEY!"=="sha256sums" set "SUMS_PIN=!VAL!"
         )
     )
 )
 :done_parse
+
+REM Remember whether the version came from the directive: a sums pin names one release's
+REM checksum file, so it is meaningless against a version resolved from `latest` or from the
+REM stamped fallback. Captured before the resolution chain below overwrites VERSION.
+set "PINNED_VERSION=!VERSION!"
+
+REM Fail closed, and before any network: a pin that silently stops verifying is worse than
+REM no pin, because the manifest still advertises attestation.
+if defined SUMS_PIN if not defined PINNED_VERSION (
+    echo ERROR: '@envy sha256sums' requires '@envy version' in !MANIFEST! >&2
+    exit /b 1
+)
 
 REM Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
 REM the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
@@ -119,8 +133,8 @@ if "!VERSION!"=="" (
 if not "!VERSION!"=="" goto :version_resolved
 
 REM Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so a
-REM private or air-gapped mirror answers for itself -- ENVY_MIRROR or `@envy mirror` may
-REM point anywhere, so this is not necessarily github.
+REM private or air-gapped mirror answers for itself. The stamped default is not a reliable
+REM "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
 set "LATEST_TMP=!TEMP!\envy-latest-%RANDOM%%RANDOM%.txt"
 set "GOT="
 if defined MIRROR_IS_S3 (
@@ -166,7 +180,8 @@ set "ARCH=x86_64"
 reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE 2>nul | findstr /i "ARM64" >nul 2>&1 && set "ARCH=arm64"
 
 echo Downloading envy !VERSION!... >&2
-set "URL=!ENVY_MIRROR!/v!VERSION!/envy-windows-!ARCH!.zip"
+set "ARCHIVE=envy-windows-!ARCH!.zip"
+set "URL=!ENVY_MIRROR!/v!VERSION!/!ARCHIVE!"
 REM Escape single quotes for PowerShell (replace ' with '')
 set "SAFE_URL=!URL:'=''!"
 REM Claim a unique temp dir via atomic mkdir (cmd's %RANDOM% can collide across
@@ -203,6 +218,58 @@ if not defined OK (
 :dl_done
 if not defined OK (echo ERROR: Failed to download envy from !URL! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 
+REM Attest before extracting: an unattested archive must never be unpacked, or a hostile
+REM mirror gets to choose the paths written under TEMP_DIR -- from which we then run envy.
+if not defined SUMS_PIN goto :attest_done
+
+set "SUMS_URL=!ENVY_MIRROR!/v!VERSION!/SHA256SUMS"
+set "SAFE_SUMS_URL=!SUMS_URL:'=''!"
+set "SUMS_FILE=!TEMP_DIR!\SHA256SUMS"
+set "OK="
+if defined MIRROR_IS_S3 (
+    call aws s3 cp --only-show-errors "!SUMS_URL!" "!SUMS_FILE!" && set "OK=1"
+) else (
+    where /q curl.exe && (curl.exe -fsSL "!SUMS_URL!" -o "!SUMS_FILE!" && set "OK=1")
+    if not defined OK (
+        powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '!SAFE_SUMS_URL!' -OutFile '!SUMS_FILE!' -UseBasicParsing" && set "OK=1"
+    )
+)
+if not defined OK (echo ERROR: Failed to download !SUMS_URL! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+
+REM Anchor the chain on the manifest's pin before trusting anything the sums file says.
+set "HASH_FILE=!SUMS_FILE!"
+call :sha256
+if not defined HASH_OUT (echo ERROR: could not compute a SHA256 of !SUMS_FILE! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+if /i not "!HASH_OUT!"=="!SUMS_PIN!" (
+    echo ERROR: SHA256SUMS does not match the pinned '@envy sha256sums': >&2
+    echo        expected !SUMS_PIN! >&2
+    echo        got      !HASH_OUT! >&2
+    echo        The mirror is serving a different release manifest than !MANIFEST! pinned. >&2
+    echo        Update the pin deliberately; do not remove it. >&2
+    rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1
+)
+
+REM Match the line for this exact archive: keying on the hash alone would accept any
+REM platform's binary, and a prefix match on the name would accept a longer sibling.
+set "WANT="
+for /f "usebackq tokens=1,2" %%h in ("!SUMS_FILE!") do (
+    set "NAME=%%i"
+    if "!NAME:~0,1!"=="*" set "NAME=!NAME:~1!"
+    if /i "!NAME!"=="!ARCHIVE!" if not defined WANT set "WANT=%%h"
+)
+if not defined WANT (echo ERROR: SHA256SUMS lists no entry for !ARCHIVE! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+
+set "HASH_FILE=!TEMP_ZIP!"
+call :sha256
+if not defined HASH_OUT (echo ERROR: could not compute a SHA256 of !TEMP_ZIP! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
+if /i not "!HASH_OUT!"=="!WANT!" (
+    echo ERROR: !ARCHIVE! failed attestation: >&2
+    echo        SHA256SUMS says !WANT! >&2
+    echo        downloaded      !HASH_OUT! >&2
+    rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1
+)
+:attest_done
+
 REM Extract: prefer native tar.exe (bsdtar reads zip), fall back to PowerShell Expand-Archive.
 set "OK="
 where /q tar.exe && (tar.exe -xf "!TEMP_ZIP!" -C "!TEMP_DIR!" && set "OK=1")
@@ -215,6 +282,40 @@ REM tar succeeds on an empty archive, so a zero-length object would otherwise fa
 REM to :run and report a missing path instead of a failed download.
 if not exist "!TEMP_DIR!\envy.exe" (echo ERROR: archive from !URL! contained no envy binary >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & exit /b 1)
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
+goto :run
+
+REM :sha256 -- HASH_FILE in, HASH_OUT out; empty if no hasher on this box could produce a
+REM 64-digit digest. Reached only by `call`, so control never falls into it.
+REM
+REM certutil first: a compiled System32 binary present since Vista, so it survives the same
+REM PowerShell policy lockdowns that motivate the curl.exe/tar.exe preference above. It is
+REM also a known LOLBin (`-urlcache -f` downloads files), so hardened environments sometimes
+REM block it outright -- hence the Get-FileHash fallback rather than a hard failure.
+:sha256
+set "HASH_OUT="
+where /q certutil.exe && (
+    for /f "usebackq skip=1 tokens=*" %%h in (`certutil.exe -hashfile "!HASH_FILE!" SHA256 2^>nul`) do (
+        if not defined HASH_OUT set "HASH_OUT=%%h"
+    )
+)
+REM Windows 7/8 certutil grouped the digest into space-separated byte pairs; Win10+ does not.
+if defined HASH_OUT set "HASH_OUT=!HASH_OUT: =!"
+call :sha256_len_ok
+if not defined HASH_OUT (
+    set "SAFE_HASH_FILE=!HASH_FILE:'=''!"
+    for /f "usebackq tokens=*" %%h in (`powershell -NoProfile -Command "try{(Get-FileHash -LiteralPath '!SAFE_HASH_FILE!' -Algorithm SHA256).Hash}catch{}" 2^>nul`) do set "HASH_OUT=%%h"
+    call :sha256_len_ok
+)
+exit /b 0
+
+REM Discard anything that is not exactly 64 characters. certutil writes its trailing status
+REM line to stdout as well, and a localized or error output would otherwise be compared
+REM against a pin as if it were a digest.
+:sha256_len_ok
+if not defined HASH_OUT exit /b 0
+if "!HASH_OUT:~63,1!"=="" set "HASH_OUT="
+if defined HASH_OUT if not "!HASH_OUT:~64!"=="" set "HASH_OUT="
+exit /b 0
 
 REM envy sync may rewrite this script; single line ensures cmd.exe never reads past here.
 :run

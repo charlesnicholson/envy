@@ -24,6 +24,7 @@ struct envy_meta {
   std::optional<std::string> cache_posix;  // @envy cache-posix (always parsed)
   std::optional<std::string> cache_win;    // @envy cache-win (always parsed)
   std::optional<std::string> mirror;       // @envy mirror "https://..."
+  std::optional<std::string> sha256sums;   // @envy sha256sums "<64 hex of SHA256SUMS>"
   std::optional<std::string> bin;          // @envy bin "relative/path/to/bin"
   std::optional<bool> deploy;              // @envy deploy "true"/"false"
   std::optional<bool> root;                // @envy root "true"/"false"
@@ -31,7 +32,9 @@ struct envy_meta {
   std::optional<std::string> const &cache_for_platform() const;
 };
 
-// Parse @envy metadata from manifest content
+// Parse @envy metadata from manifest content. Throws std::runtime_error on a directive
+// that is present but unusable -- a malformed sha256sums pin, a mirror that cannot survive
+// a round trip through the batch parser, or a sums pin with nothing to pin it to.
 envy_meta parse_envy_meta(std::string_view content);
 
 struct manifest : unmovable {

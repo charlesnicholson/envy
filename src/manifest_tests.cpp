@@ -6,6 +6,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -1752,4 +1754,65 @@ TEST_CASE("manifest::load errors on non-table platforms value") {
 
   CHECK_THROWS_WITH(envy::manifest::load(script, fs::path("/fake/envy.lua")),
                     "platforms must be a table");
+}
+
+// --- @envy sha256sums ---
+
+TEST_CASE("parse_envy_meta extracts sha256sums") {
+  auto meta{ envy::parse_envy_meta(R"(
+-- @envy version "1.2.3"
+-- @envy sha256sums "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.sha256sums.has_value());
+  CHECK(*meta.sha256sums ==
+        "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08");
+}
+
+TEST_CASE("parse_envy_meta sha256sums absent by default") {
+  auto meta{ envy::parse_envy_meta("-- @envy version \"1.2.3\"\nPACKAGES = {}\n") };
+  CHECK_FALSE(meta.sha256sums.has_value());
+}
+
+TEST_CASE("parse_envy_meta rejects a malformed sha256sums pin") {
+  // Fail loudly instead of storing a pin that can never match: a truncated or typo'd hash
+  // would otherwise turn every bootstrap into an attestation failure at download time, far
+  // from the manifest that caused it.
+  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
+                                        "-- @envy sha256sums \"deadbeef\"\n"),
+                  std::runtime_error);
+  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
+                                        "-- @envy sha256sums \"\"\n"),
+                  std::runtime_error);
+  // 64 characters, but 'g' is not a hex digit.
+  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
+                                        "-- @envy sha256sums \"" +
+                                        std::string(63, 'a') + "g\"\n"),
+                  std::runtime_error);
+}
+
+TEST_CASE("parse_envy_meta rejects sha256sums without a pinned version") {
+  // A sums pin names one release's checksum file. With the version resolved dynamically
+  // the pin would describe a different release than the one downloaded, so verification
+  // would fail confusingly or -- worse, if treated as optional -- be skipped silently.
+  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy sha256sums \"" + std::string(64, 'a') +
+                                        "\"\nPACKAGES = {}\n"),
+                  std::runtime_error);
+}
+
+TEST_CASE("parse_envy_meta accepts an uppercase sha256sums pin") {
+  // certutil and Get-FileHash both emit uppercase, so a hand-pasted pin often is.
+  auto meta{ envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
+                                   "-- @envy sha256sums \"" +
+                                   std::string(64, 'A') + "\"\n") };
+  REQUIRE(meta.sha256sums.has_value());
+  CHECK(*meta.sha256sums == std::string(64, 'A'));
+}
+
+TEST_CASE("parse_envy_meta rejects a mirror the batch parser cannot represent") {
+  // Moved here from bootstrap script stamping: the mirror is round-tripped through
+  // envy.bat's directive parser, which runs under EnableDelayedExpansion.
+  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy mirror \"https://x/a!b\"\n"),
+                  std::runtime_error);
 }

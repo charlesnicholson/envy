@@ -87,14 +87,6 @@ Nothing in envy selects an S3 region — not `envy fetch`, not spec `FETCH` URIs
 FETCH = { url = "s3://my-bucket/tool.tar.gz?region=eu-west-1" }
 ```
 
-## Mirror Checksum Manifest
-
-`envy mirror-envy` holds all six archives in hand but publishes no checksums, so a mirror operator cannot prove the bytes match upstream. Emit `SHA256SUMS` beside them; bootstrap could verify opportunistically.
-
-```
-<mirror>/v1.2.3/SHA256SUMS   # "<sha256>  envy-linux-arm64.tar.gz" per line
-```
-
 ## Spec Mirroring and Offline Support
 
 Configure alternate download locations for air-gapped environments. Similar to npm registry mirrors or Go module proxies.

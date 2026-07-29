@@ -38,6 +38,14 @@ jobs:
           cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe && cd ../..
           cd artifacts/envy-windows-arm64-main && zip ../../release/envy-windows-arm64.zip envy.exe
 
+      # Names must be bare, not release/-prefixed: a bootstrap script looks up its own
+      # archive by basename. Sorted so the file is byte-reproducible across runs -- a
+      # project's `@envy sha256sums` pins this file's own hash, and `envy mirror-envy`
+      # republishes it verbatim, so gratuitous ordering churn would invalidate pins.
+      - name: Emit SHA256SUMS
+        working-directory: release
+        run: sha256sum $(ls | sort) > SHA256SUMS
+
       - name: Create release with artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,5 +57,6 @@ jobs:
             release/envy-darwin-x86_64.tar.gz \
             release/envy-windows-x86_64.zip \
             release/envy-windows-arm64.zip \
+            release/SHA256SUMS \
             --repo ${{ github.repository }} \
             --generate-notes

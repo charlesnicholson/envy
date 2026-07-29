@@ -67,11 +67,29 @@ class TestEnvyInit(unittest.TestCase):
             cmd.append(f"--root={kwargs['root']}")
         if "platform" in kwargs:
             cmd.append(f"--platform={kwargs['platform']}")
+        if kwargs.get("pin_sums"):
+            cmd.append("--pin-sums")
 
         env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
 
         return test_config.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+
+    def _stage_sums_mirror(self, body: bytes | None = None) -> tuple[str, str]:
+        """Publish a SHA256SUMS for this build's version on a file:// mirror.
+
+        Returns (mirror uri, expected pin). --pin-sums fetches the file for the running
+        version, so the mirror layout has to match what a real release would serve.
+        """
+        import hashlib
+
+        version = _get_envy_version()
+        mirror = self._temp_dir / "mirror"
+        (mirror / f"v{version}").mkdir(parents=True, exist_ok=True)
+        if body is None:
+            body = f"{'a' * 64}  envy-linux-x86_64.tar.gz\n".encode()
+        (mirror / f"v{version}" / "SHA256SUMS").write_bytes(body)
+        return mirror.as_uri(), hashlib.sha256(body).hexdigest()
 
     def test_init_creates_all_expected_files(self) -> None:
         """Init creates bootstrap script, manifest, and .luarc.json."""
@@ -209,6 +227,62 @@ class TestEnvyInit(unittest.TestCase):
         self.assertNotIn(custom_mirror, content)
         # Guards against passing vacuously against an unstamped template.
         self.assertNotIn("@@DOWNLOAD_URL@@", content)
+
+    def test_init_pin_sums_writes_the_directive(self) -> None:
+        """--pin-sums records the fetched SHA256SUMS's own hash, not an archive's."""
+        mirror, expected = self._stage_sums_mirror()
+
+        result = self._run_init(mirror=mirror, pin_sums=True)
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = (self._project_dir / "envy.lua").read_text()
+        self.assertIn(f'-- @envy sha256sums "{expected}"', manifest)
+        # The pin is meaningless without a pinned version, and the template stamps one.
+        self.assertIn(f'-- @envy version "{_get_envy_version()}"', manifest)
+
+    def test_init_without_pin_sums_writes_no_directive(self) -> None:
+        """Attestation is opt-in, and plain `envy init` must not need the network."""
+        result = self._run_init()
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+
+        manifest = (self._project_dir / "envy.lua").read_text()
+        self.assertNotIn("@envy sha256sums", manifest)
+        # No stray blank line where the directive would have gone.
+        self.assertNotIn("\n\n\n", manifest)
+
+    def test_init_pin_sums_writes_nothing_when_the_fetch_fails(self) -> None:
+        """Fail before creating files: a half-initialized unattested project is worse.
+
+        The pin is fetched up front precisely so this case leaves no manifest and no
+        bootstrap script behind for someone to run unknowingly.
+        """
+        result = self._run_init(mirror="file:///nonexistent/mirror", pin_sums=True)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("SHA256SUMS", result.stderr)
+        self.assertFalse((self._project_dir / "envy.lua").exists())
+        self.assertFalse((self._bin_dir / "envy").exists())
+        self.assertFalse((self._bin_dir / "envy.bat").exists())
+
+    def test_init_pinned_manifest_round_trips_through_the_parser(self) -> None:
+        """A pin envy writes must be one envy accepts; `envy lua` reloads the manifest."""
+        mirror, _ = self._stage_sums_mirror()
+        self.assertEqual(0, self._run_init(mirror=mirror, pin_sums=True).returncode)
+
+        script = self._temp_dir / "probe.lua"
+        script.write_text("print('ok')\n")
+
+        env = test_config.get_test_env()
+        env["ENVY_CACHE_ROOT"] = str(self._cache_dir)
+        result = test_config.run(
+            [str(self._envy), "lua", str(script)],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=self._project_dir,
+            timeout=30,
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
     def test_init_extracts_type_definitions_to_cache(self) -> None:
         """Init extracts type definitions to cache."""
