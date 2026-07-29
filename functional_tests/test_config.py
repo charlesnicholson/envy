@@ -2,6 +2,7 @@
 
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -40,21 +41,43 @@ def run(*args, **kwargs) -> subprocess.CompletedProcess[str]:
     return subprocess.run(*args, **kwargs)
 
 
-def is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
-    """True if pwsh's .NET runtime crashed at startup rather than running the script.
+def describe_exit(result: subprocess.CompletedProcess) -> str:
+    """Human-readable exit status: the signal name when killed, else the code."""
+    rc = result.returncode
+    if rc >= 0:
+        return f"exit {rc}"
+    try:
+        return f"killed by {signal.Signals(-rc).name}"
+    except ValueError:
+        return f"killed by signal {-rc}"
 
-    pwsh intermittently aborts at process startup on resource-constrained CI
-    runners (observed on linux-arm64 under ASAN). Two CoreCLR signatures seen:
+
+def is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
+    """True if pwsh's .NET runtime died instead of running the script to a verdict.
+
+    pwsh intermittently dies on resource-constrained CI runners (observed on
+    linux-arm64 under ASAN). Three CoreCLR failure modes seen:
+    - death by signal, usually SIGSEGV, with no output whatsoever
     - "Unhandled exception ... The given assembly name was invalid" (SIGABRT)
     - a bare "Stack overflow." (SIGABRT)
-    Both fire before the script executes and are nondeterministic and unrelated
-    to the behavior under test. A genuine script failure exits cleanly with the
-    wrong output (not a managed-runtime abort), so these signatures are safe to
-    retry without masking a real bug — a deterministic crash still fails after
+
+    All are nondeterministic and unrelated to the behavior under test. The signal
+    check is the one that generalizes: pwsh reports a script's verdict through its
+    own exit code, so a genuine hook failure always terminates normally with a
+    non-negative code. Death by signal therefore means the runtime went down
+    without producing a verdict at all -- including the SIGSEGV case, which writes
+    nothing to stderr and so is invisible to the text signatures below. A crash in
+    a program the script invokes (envy, say) does not reach here: pwsh survives it
+    and exits normally with a non-negative code.
+
+    Retrying these cannot mask a real bug: a deterministic crash still fails once
     the retries are exhausted.
     """
     if result.returncode == 0:
         return False
+    # POSIX-only arm: Windows reports no negative codes, so this never fires there.
+    if result.returncode < 0:
+        return True
     stderr = result.stderr or ""
     if "Unhandled exception" in stderr and (
         "FileLoadException" in stderr or "assembly" in stderr
@@ -64,7 +87,7 @@ def is_pwsh_runtime_crash(result: subprocess.CompletedProcess) -> bool:
 
 
 def run_pwsh(cmd, retries: int = 3, delay: float = 0.5, **kwargs):
-    """Run a pwsh command, retrying .NET-runtime startup crashes.
+    """Run a pwsh command, retrying .NET-runtime crashes.
 
     See is_pwsh_runtime_crash; genuine failures are returned as-is. When every
     attempt hits the runtime-crash signature, pwsh itself is broken on this
@@ -73,19 +96,24 @@ def run_pwsh(cmd, retries: int = 3, delay: float = 0.5, **kwargs):
     test, so the test is skipped rather than failed. A real hook failure exits
     cleanly with the wrong output (never a managed-runtime abort), so it is never
     skipped here.
+
+    The retry line reports the exit status, not just stderr: the SIGSEGV mode
+    prints nothing, so a stderr-only message logged a blank reason.
     """
+    last = ""
     for attempt in range(retries):
         result = run(cmd, **kwargs)
         if not is_pwsh_runtime_crash(result):
             return result
+        detail = (result.stderr or "").strip()[:120]
+        last = f"{describe_exit(result)}: {detail}".strip(": ")
         sys.stderr.write(
-            f"pwsh runtime crash (attempt {attempt + 1}/{retries}), retrying: "
-            f"{(result.stderr or '').strip()[:120]}\n"
+            f"pwsh runtime crash (attempt {attempt + 1}/{retries}), retrying: {last}\n"
         )
         time.sleep(delay)
     raise unittest.SkipTest(
-        f"pwsh .NET runtime crashes at startup on this runner ({retries}/{retries} "
-        "attempts); skipping pwsh-dependent test"
+        f"pwsh .NET runtime crashes on this runner ({retries}/{retries} attempts, "
+        f"last: {last}); skipping pwsh-dependent test"
     )
 
 
