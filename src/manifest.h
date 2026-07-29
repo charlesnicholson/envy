@@ -33,8 +33,8 @@ struct envy_meta {
 };
 
 // Parse @envy metadata from manifest content. Throws std::runtime_error on a directive
-// that is present but unusable -- a malformed sha256sums pin, a mirror that cannot survive
-// a round trip through the batch parser, or a sums pin with nothing to pin it to.
+// that is present but unusable: a malformed sha256sums pin, or a sums pin with no
+// '@envy version' to pin it to.
 envy_meta parse_envy_meta(std::string_view content);
 
 struct manifest : unmovable {

@@ -1811,9 +1811,28 @@ TEST_CASE("parse_envy_meta accepts an uppercase sha256sums pin") {
   CHECK(*meta.sha256sums == std::string(64, 'A'));
 }
 
-TEST_CASE("parse_envy_meta rejects a mirror the batch parser cannot represent") {
-  // Moved here from bootstrap script stamping: the mirror is round-tripped through
-  // envy.bat's directive parser, which runs under EnableDelayedExpansion.
-  CHECK_THROWS_AS(envy::parse_envy_meta("-- @envy mirror \"https://x/a!b\"\n"),
-                  std::runtime_error);
+TEST_CASE("parse_envy_meta accepts a mirror containing backslashes") {
+  // A Windows `file://` or UNC mirror is a normal value. Enforcing the mirror character set
+  // on read (rather than only at `envy init --mirror`, where a user-supplied value enters
+  // the manifest) rejected these and broke every manifest-aware command for such a project
+  // -- all 17 test_reexec cases on Windows.
+  SUBCASE("raw path, as a Windows tool or user writes it") {
+    // `\U` is not a recognized escape, so it survives verbatim.
+    auto meta{ envy::parse_envy_meta("-- @envy mirror \"file://C:\\Users\\me\\rel\"\n") };
+    REQUIRE(meta.mirror.has_value());
+    CHECK(*meta.mirror == "file://C:\\Users\\me\\rel");
+  }
+
+  SUBCASE("escaped path, per the documented directive escaping") {
+    auto meta{ envy::parse_envy_meta(
+        "-- @envy mirror \"file://C:\\\\Users\\\\me\\\\rel\"\n") };
+    REQUIRE(meta.mirror.has_value());
+    CHECK(*meta.mirror == "file://C:\\Users\\me\\rel");
+  }
+
+  SUBCASE("UNC share") {
+    auto meta{ envy::parse_envy_meta("-- @envy mirror \"\\\\\\\\srv\\\\envy\"\n") };
+    REQUIRE(meta.mirror.has_value());
+    CHECK(*meta.mirror == "\\\\srv\\envy");
+  }
 }
