@@ -15,6 +15,8 @@ The bootstrap scripts (`envy` for Unix, `envy.bat` for Windows) each:
 - The manifest (`-- @envy version "1.2.3"`) — primary source of truth
 - The bootstrap scripts (`FALLBACK_VERSION="1.2.3"`) — recovery if directive deleted
 
+The version is the *only* project value a script carries. The mirror is read from the manifest at run time, never stamped—see **Mirror precedence** below.
+
 **Fast path:** If envy is cached, the bootstrap adds ~0ms overhead—it's just `exec`.
 
 **Self-deployment:** Envy handles its own cache installation. The bootstrap script downloads to a temp location and executes from there. On startup, envy checks if the expected cache location exists; if not, it copies itself there and extracts types alongside. This keeps bootstrap scripts simple (no `mkdir`, no knowledge of cache internals) and makes envy the single source of truth for cache structure.
@@ -74,7 +76,9 @@ All values are quoted. Escaping is supported:
 
 *If `version` is missing, bootstrap resolves it from the mirror's `latest` file (written by `envy mirror-envy`), then—for non-s3 mirrors only—from GitHub's latest-release redirect, then from the version stamped when `envy init` created the scripts.
 
-**Mirror precedence** is `ENVY_MIRROR` env > `@envy mirror` > stamped default, identically in the bootstrap scripts and in the running binary. Trailing slashes are stripped: for `s3://` a doubled slash is a distinct, nonexistent key.
+**Mirror precedence** is `ENVY_MIRROR` env > `@envy mirror` > envy upstream, identically in the bootstrap scripts and in the running binary. Trailing slashes are stripped: for `s3://` a doubled slash is a distinct, nonexistent key.
+
+The scripts carry **no project configuration**—only envy's own upstream URLs are stamped, so a given envy version emits byte-identical scripts for every project. `--mirror` writes `@envy mirror` to the manifest and nothing else. A stamped copy would be unreachable (the parsed directive outranks it) except when the directive is deleted, and then it resolved the script to the stale mirror while the re-exec'd binary went to upstream—two binaries for one project.
 
 **`s3://` mirrors** require AWS CLI v2 on `PATH`—the bootstrap shells out to `aws s3 cp`, because curl cannot sign requests and no envy binary exists yet. Region and credentials resolve from the environment/profile exactly as for every other AWS tool; run `aws sso login` first for a credential-gated bucket. Note a stale exported `AWS_ACCESS_KEY_ID` silently beats a fresh SSO session. Prefer `https://` for public distribution to keep bootstrap dependency-free. Bucket names must use hyphens, not underscores.
 

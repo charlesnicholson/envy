@@ -185,12 +185,20 @@ class TestEnvyInit(unittest.TestCase):
         self.assertEqual("config", data.get("existing"))
 
     def test_init_with_mirror_option(self) -> None:
-        """Init respects --mirror option."""
+        """--mirror lands in the manifest, which is the only place it belongs.
+
+        The bootstrap scripts parse `@envy mirror` at run time and carry no copy: a stamped
+        one is unreachable while the directive exists, and once it is deleted it resolved the
+        script to the stale mirror while the re-exec'd binary went to upstream.
+        """
         custom_mirror = "https://internal.corp/envy-releases"
         result = self._run_init(mirror=custom_mirror)
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
 
         import sys
+
+        manifest = (self._project_dir / "envy.lua").read_text()
+        self.assertIn(f'-- @envy mirror "{custom_mirror}"', manifest)
 
         if sys.platform == "win32":
             bootstrap = self._bin_dir / "envy.bat"
@@ -198,7 +206,9 @@ class TestEnvyInit(unittest.TestCase):
             bootstrap = self._bin_dir / "envy"
 
         content = bootstrap.read_text()
-        self.assertIn(custom_mirror, content)
+        self.assertNotIn(custom_mirror, content)
+        # Guards against passing vacuously against an unstamped template.
+        self.assertNotIn("@@DOWNLOAD_URL@@", content)
 
     def test_init_extracts_type_definitions_to_cache(self) -> None:
         """Init extracts type definitions to cache."""

@@ -64,10 +64,11 @@ for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
 )
 :done_parse
 
-REM Precedence: ENVY_MIRROR env > @envy mirror directive > stamped default. Matches the
-REM runtime resolver (src/reexec.cpp) and the documented env-over-manifest order; the two
-REM used to disagree, which let a stale exported ENVY_MIRROR and a manifest mirror resolve
-REM to different binaries for the same project.
+REM Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
+REM the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
+REM envy's own release URL, never a copy of this project's mirror. Stamping the project's
+REM mirror here used to make deleting the directive resolve the script to the stale custom
+REM mirror while the re-exec'd binary went to upstream -- two binaries, one project.
 if defined ENV_MIRROR (
     set "ENVY_MIRROR=!ENV_MIRROR!"
 ) else if defined MANIFEST_MIRROR (
@@ -118,8 +119,8 @@ if "!VERSION!"=="" (
 if not "!VERSION!"=="" goto :version_resolved
 
 REM Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so a
-REM private or air-gapped mirror answers for itself. The stamped default is not a reliable
-REM "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
+REM private or air-gapped mirror answers for itself -- ENVY_MIRROR or `@envy mirror` may
+REM point anywhere, so this is not necessarily github.
 set "LATEST_TMP=!TEMP!\envy-latest-%RANDOM%%RANDOM%.txt"
 set "GOT="
 if defined MIRROR_IS_S3 (

@@ -49,12 +49,13 @@ inline constexpr std::array<envy_release_target, 6> kEnvyReleaseTargets{ {
 // escape it or confuse a shell.
 bool envy_release_version_is_valid(std::string_view version);
 
-// A mirror gets stamped verbatim into a quoted `-- @envy mirror "..."` manifest directive
-// and into quoted shell/batch assignments in both bootstrap scripts. Characters that would
-// need escaping are rejected outright rather than escaped: a newline would inject extra
-// directives into the manifest, and the batch directive parser cannot represent `\"` or
-// `!` at all (see docs/envy-init.md), so escaping would yield a manifest that works on
-// POSIX and silently breaks on Windows. Throws std::runtime_error naming the bad byte.
+// A mirror gets written verbatim into a quoted `-- @envy mirror "..."` manifest directive,
+// which both bootstrap scripts then parse back out into a shell/batch variable. Characters
+// that would need escaping are rejected outright rather than escaped: a newline would
+// inject extra directives into the manifest, and the batch directive parser cannot
+// represent `\"` or `!` at all (see docs/envy-init.md), so escaping would yield a manifest
+// that works on POSIX and silently breaks on Windows. Throws std::runtime_error naming the
+// bad byte.
 void envy_release_validate_mirror(std::string_view mirror, std::string_view op);
 
 // Keyed on the target os rather than the host, so a posix host can name (and mirror) the

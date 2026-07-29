@@ -2,6 +2,7 @@
 
 #include "bundle.h"
 #include "engine.h"
+#include "envy_release.h"
 #include "lua_envy.h"
 #include "lua_shell.h"
 #include "shell.h"
@@ -358,6 +359,11 @@ envy_meta parse_envy_meta(std::string_view content) {
     if (line_end == std::string_view::npos) { break; }
     line_start = line_end + 1;
   }
+
+  // Recovered from bootstrap script stamping, which used to be the only consumer that
+  // validated this. Checking at parse time covers every consumer instead: the value is
+  // round-tripped through the batch directive parser, which cannot represent `!` or `\"`.
+  if (result.mirror) { envy_release_validate_mirror(*result.mirror, "manifest"); }
 
   return result;
 }

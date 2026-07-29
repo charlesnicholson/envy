@@ -67,9 +67,8 @@ std::string stamp_manifest_placeholders(std::string_view content,
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@BIN_DIR@@", bin_dir);
 
-  // The mirror has to land in the manifest, not just in the bootstrap script: `envy sync`
-  // re-stamps the script from the manifest's @envy mirror, so a script-only mirror is
-  // silently reverted to the default on the first sync.
+  // The manifest is the only place the mirror lands: the bootstrap scripts carry no
+  // project configuration and parse `@envy mirror` back out at run time.
   if (mirror.has_value() && !mirror->empty()) {
     replace_all(result, "@@MIRROR_DIRECTIVE@@", "-- @envy mirror \"" + *mirror + "\"\n");
   } else {
@@ -131,8 +130,8 @@ cmd_init::cmd_init(cmd_init::cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_init::execute() {
-  // Before creating any directories: the mirror is stamped verbatim into a quoted manifest
-  // directive and into both bootstrap scripts.
+  // Before creating any directories: the mirror is written verbatim into a quoted manifest
+  // directive that both bootstrap scripts parse back out.
   if (cfg_.mirror) { envy_release_validate_mirror(*cfg_.mirror, "init"); }
 
   auto c{ std::make_unique<cache>(cli_cache_root_) };
@@ -156,7 +155,7 @@ void cmd_init::execute() {
 
   auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
   for (auto const plat : platforms) {
-    bootstrap_write_script(cfg_.bin_dir, cfg_.mirror, plat);
+    bootstrap_write_script(cfg_.bin_dir, plat);
     auto const name{ (plat == platform_id::WINDOWS) ? "envy.bat" : "envy" };
     tui::info("Created %s", (cfg_.bin_dir / name).string().c_str());
   }

@@ -225,14 +225,13 @@ void deploy_product_scripts(fs::path const &bin_dir,
 }
 
 void deploy_finalize(std::filesystem::path const &bin_dir,
-                     std::optional<std::string> const &mirror,
                      std::vector<product_info> const &products,
                      std::vector<platform_id> const &platforms,
                      bool strict,
                      bool deploy_enabled,
                      std::filesystem::path const &manifest_path) {
   for (auto const plat : platforms) {
-    if (bootstrap_write_script(bin_dir, mirror, plat)) {
+    if (bootstrap_write_script(bin_dir, plat)) {
       tui::info("Updated bootstrap script");
     }
   }

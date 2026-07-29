@@ -57,10 +57,11 @@ while read -r key val; do
     esac
 done < <(parse_directives)
 
-# Precedence: ENVY_MIRROR env > @envy mirror directive > stamped default. Matches the
-# runtime resolver (src/reexec.cpp) and the documented env-over-manifest order; the two
-# used to disagree, which let a stale exported ENVY_MIRROR and a manifest mirror resolve
-# to different binaries for the same project.
+# Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
+# the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
+# envy's own release URL, never a copy of this project's mirror. Stamping the project's
+# mirror here used to make deleting the directive resolve the script to the stale custom
+# mirror while the re-exec'd binary went to upstream -- two binaries, one project.
 if [[ -n "$ENV_MIRROR" ]]; then ENVY_MIRROR="$ENV_MIRROR"
 elif [[ -n "$MANIFEST_MIRROR" ]]; then ENVY_MIRROR="$MANIFEST_MIRROR"
 else ENVY_MIRROR="$DEFAULT_MIRROR"; fi
@@ -112,8 +113,8 @@ if [[ -z "$VERSION" ]]; then
         [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
     fi
     # Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so
-    # a private or air-gapped mirror answers for itself. Note the stamped default is not a
-    # reliable "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
+    # a private or air-gapped mirror answers for itself -- ENVY_MIRROR or `@envy mirror` may
+    # point anywhere, so this is not necessarily github.
     if [[ -z "$VERSION" ]]; then
         VERSION="$(mirror_cat "$ENVY_MIRROR/latest" 2>/dev/null || true)"
         VERSION="${VERSION//[[:space:]]/}"

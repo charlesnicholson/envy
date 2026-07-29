@@ -539,22 +539,38 @@ class InitMirrorSurvivesSyncTest(unittest.TestCase):
 
         manifest = (self._temp / "envy.lua").read_text()
         self.assertIn(f'-- @envy mirror "{mirror}"', manifest)
-        self.assertIn(mirror, self._script().read_text())
 
         sync = self._run(["sync"])
         self.assertEqual(0, sync.returncode, f"stderr: {sync.stderr}")
 
-        # Assert the stamped assignment itself, not the absence of a hardcoded upstream URL:
-        # that spelling changes when the project relocates, so a stale "not in" check would
-        # then pass vacuously.
+        # The manifest is the only home for the mirror. A stamped copy in the script is
+        # unreachable (the parsed directive outranks it) except when the directive is
+        # deleted -- and then it resolved the script to the stale mirror while the
+        # re-exec'd binary went to upstream. The placeholder check keeps this from passing
+        # vacuously against an unstamped template.
         after = self._script().read_text()
-        assignment = (
-            f'set "DEFAULT_MIRROR={mirror}"'
-            if sys.platform == "win32"
-            else f'DEFAULT_MIRROR="{mirror}"'
-        )
-        self.assertIn(assignment, after)
+        self.assertNotIn(mirror, after)
         self.assertNotIn("@@DOWNLOAD_URL@@", after)
+
+    def test_deleting_mirror_directive_resolves_script_to_upstream(self) -> None:
+        """Script and binary must agree on the last mirror tier.
+
+        `envy init --mirror` then removing the directive leaves nothing project-specific
+        behind, so the script falls back to envy upstream -- exactly what reexec.cpp does.
+        """
+        mirror = "s3://my-envy-mirror/releases"
+        init = self._run(["init", ".", "./tools", f"--mirror={mirror}"])
+        self.assertEqual(0, init.returncode, f"stderr: {init.stderr}")
+
+        manifest_path = self._temp / "envy.lua"
+        kept = [
+            line
+            for line in manifest_path.read_text().splitlines(keepends=True)
+            if "@envy mirror" not in line
+        ]
+        manifest_path.write_text("".join(kept))
+
+        self.assertNotIn(mirror, self._script().read_text())
 
     def test_init_rejects_mirrors_that_cannot_be_stamped(self) -> None:
         """A mirror is stamped into a quoted directive and quoted shell/batch assignments.
