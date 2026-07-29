@@ -379,10 +379,9 @@ envy_meta parse_envy_meta(std::string_view content) {
         "so the version cannot be left to dynamic resolution");
   }
 
-  // Deliberately no envy_release_validate_mirror here. That check belongs at the write
-  // side
-  // (`envy init --mirror`), where a user-supplied value first enters the manifest.
-  // Applying it on read rejects manifests that already work: a Windows `file://C:\...` or
+  // Deliberately no envy_release_validate_mirror here. That check belongs to the write
+  // side, `envy init --mirror`, where a user-supplied value first enters the manifest.
+  // Enforcing it on read rejects manifests that already work: a Windows `file://C:\...` or
   // UNC mirror carries backslashes, and refusing those breaks every manifest-aware command
   // for that project. The newline case the character set exists for cannot occur here
   // anyway -- directives are matched per line, so a parsed value never contains one.

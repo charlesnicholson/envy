@@ -1813,10 +1813,9 @@ TEST_CASE("parse_envy_meta accepts an uppercase sha256sums pin") {
 
 TEST_CASE("parse_envy_meta accepts a mirror containing backslashes") {
   // A Windows `file://` or UNC mirror is a normal value. Enforcing the mirror character
-  // set on read (rather than only at `envy init --mirror`, where a user-supplied value
-  // enters the manifest) rejected these and broke every manifest-aware command for such a
-  // project
-  // -- all 17 test_reexec cases on Windows.
+  // set on read, rather than only at `envy init --mirror` where a user-supplied value
+  // enters the manifest, rejected these and broke every manifest-aware command for such a
+  // project: all 17 test_reexec cases failed on Windows.
   SUBCASE("raw path, as a Windows tool or user writes it") {
     // `\U` is not a recognized escape, so it survives verbatim.
     auto meta{ envy::parse_envy_meta("-- @envy mirror \"file://C:\\Users\\me\\rel\"\n") };
