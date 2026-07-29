@@ -38,13 +38,24 @@ jobs:
           cd artifacts/envy-windows-x64-main && zip ../../release/envy-windows-x86_64.zip envy.exe && cd ../..
           cd artifacts/envy-windows-arm64-main && zip ../../release/envy-windows-arm64.zip envy.exe
 
-      # Names must be bare, not release/-prefixed: a bootstrap script looks up its own
-      # archive by basename. Sorted so the file is byte-reproducible across runs -- a
-      # project's `@envy sha256sums` pins this file's own hash, and `envy mirror-envy`
-      # republishes it verbatim, so gratuitous ordering churn would invalidate pins.
+      # A project's `@envy sha256sums` pins this file's own hash, so its bytes must be
+      # reproducible and must contain exactly the six release archives. Hence an explicit
+      # list rather than `ls`: globbing would order by the runner's locale collation, would
+      # absorb any stray file that lands in release/, and on a re-run would try to hash
+      # SHA256SUMS itself. The order matches kEnvyReleaseTargets in src/envy_release.h.
+      # Names are bare, not release/-prefixed: a bootstrap script looks up its own archive
+      # by basename. A missing archive fails the step instead of yielding a short manifest.
       - name: Emit SHA256SUMS
         working-directory: release
-        run: sha256sum $(ls | sort) > SHA256SUMS
+        run: |
+          sha256sum \
+            envy-darwin-arm64.tar.gz \
+            envy-darwin-x86_64.tar.gz \
+            envy-linux-arm64.tar.gz \
+            envy-linux-x86_64.tar.gz \
+            envy-windows-arm64.zip \
+            envy-windows-x86_64.zip \
+            > SHA256SUMS
 
       - name: Create release with artifacts
         env:

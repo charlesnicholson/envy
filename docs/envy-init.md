@@ -219,24 +219,20 @@ A mirror moves the trust boundary to whoever ran `envy mirror-envy`: it copies r
 
 ### Attestation (`@envy sha256sums`)
 
-Every release publishes `SHA256SUMS` beside its archives. A manifest optionally pins **that file's own hash**; bootstrap and re-exec then refuse any archive the mirror cannot prove:
+Optional. Manifest pins the hash of the release's `SHA256SUMS`; that file names the archive's hash; the archive is what executes. Pin from `envy init --pin-sums`, or copy what `mirror-envy` prints.
 
 ```
 -- @envy version "1.2.3"
 -- @envy sha256sums "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 ```
 
-Chain: the manifest pins `SHA256SUMS` → `SHA256SUMS` names the archive's hash → the archive is what executes. Get the pin from `envy init --pin-sums` or from what `envy mirror-envy` prints.
-
-One pin covers all six platforms — a cross-platform manifest cannot reasonably carry six archive hashes, so the indirection through `SHA256SUMS` is the point. `mirror-envy` republishes that file **byte-for-byte** rather than regenerating it, which is what keeps a pin valid against upstream and every mirror downstream; it also verifies all six archives against it before publishing, so a mirror cannot launder corrupt bytes.
-
-**What this buys:** the project's git repo becomes the root of trust for the envy binary. It defends against a tampered or compromised mirror — most usefully `s3://` and plain-`http` mirrors, and insider write access to a corporate prefix. It does *not* defend against a compromised upstream release or a compromised manifest; the bootstrap scripts are checked in beside `envy.lua`, so git was already the root of trust.
-
-**Fail-closed rules.** A pin requires `@envy version`: it identifies one release, so with the version resolved dynamically it would describe a different release than the one downloaded. A pinned manifest whose mirror has no `SHA256SUMS` is an error, not a silent downgrade. A pin that quietly stopped verifying would be worse than no pin, because the manifest still advertises attestation.
-
-**Not covered:** the cache fast path. Once `$CACHE/envy/$VERSION/envy` exists, bootstrap `exec`s it without re-hashing. Anyone who can write your cache can also write your `bin/envy`, so this is not a downgrade — but attestation is a download-time check, not a per-invocation one.
-
-Hashing needs no extra software: `sha256sum`/`shasum`/`openssl` on POSIX, `certutil` on Windows with `Get-FileHash` as fallback (`certutil` is a known LOLBin and some hardened environments block it).
+- **One pin, six platforms** — the indirection exists because a cross-platform manifest cannot carry six archive hashes.
+- **`mirror-envy` copies `SHA256SUMS` byte-for-byte**, never regenerates it: that is what keeps a pin valid against upstream *and* every mirror downstream. It also attests all six archives before publishing, so a mirror cannot launder corrupt bytes.
+- **Buys:** git becomes the root of trust for the envy binary — defeating a tampered mirror, especially `s3://`, plain-`http`, or insider write access to a corporate prefix. Not a compromised upstream release or manifest; the scripts are checked in beside `envy.lua`, so git already was.
+- **Fail-closed:** a pin requires `@envy version` (it names one release, so dynamic resolution would describe a different one), and a pinned manifest whose mirror lacks `SHA256SUMS` errors rather than silently downgrading.
+- **Verified before extract** — an unattested archive is never unpacked, so a hostile mirror never chooses paths under the temp dir.
+- **Not covered:** the cache fast path re-`exec`s without re-hashing. Download-time check, not per-invocation; whoever can write your cache can write your `bin/envy`.
+- **No extra software:** `sha256sum`/`shasum`/`openssl` on POSIX; `certutil` on Windows, with `Get-FileHash` as fallback since certutil is a known LOLBin some environments block.
 
 Future option: code signing for authenticity independent of the manifest.
 
