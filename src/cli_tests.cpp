@@ -1298,6 +1298,50 @@ TEST_CASE("cli_parse: cmd_init --platform") {
   }
 }
 
+TEST_CASE("cli_parse: cmd_init --pin-sums") {
+  SUBCASE("default is off") {
+    // Attestation is opt-in: `envy init` must keep working with no network reachable.
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK_FALSE(cfg->pin_sums);
+  }
+
+  SUBCASE("--pin-sums is a flag, taking no value") {
+    std::vector<std::string> args{ "envy", "init", "/tmp/proj", "/tmp/bin", "--pin-sums" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->pin_sums);
+  }
+
+  SUBCASE("--pin-sums composes with --mirror") {
+    // The pin is fetched from whichever mirror the project will actually bootstrap from,
+    // so these two have to be usable together.
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj", "/tmp/bin",
+                                   "--mirror", "s3://b/rel", "--pin-sums" };
+    auto argv{ make_argv(args) };
+
+    auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
+
+    REQUIRE(parsed.cmd_cfg.has_value());
+    auto const *cfg{ std::get_if<envy::cmd_init::cfg>(&*parsed.cmd_cfg) };
+    REQUIRE(cfg != nullptr);
+    CHECK(cfg->pin_sums);
+    REQUIRE(cfg->mirror.has_value());
+    CHECK(*cfg->mirror == "s3://b/rel");
+  }
+}
+
 TEST_CASE("cli_parse: cmd_export") {
   SUBCASE("no arguments (export all)") {
     std::vector<std::string> args{ "envy", "export" };

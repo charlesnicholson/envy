@@ -27,6 +27,9 @@ struct mirror_envy_plan {
   std::string prefix;               // s3 dest only; normalized, no leading/trailing slash
   std::filesystem::path local_dir;  // local dest only
   std::vector<mirror_envy_item> items;
+  // Which entry of `items` is the checksum manifest rather than an archive. Named rather
+  // than positional so the verify pass cannot drift out of sync with the item ordering.
+  std::string sums_relpath;
 };
 
 // Throws std::runtime_error on an invalid version, an unusable destination, or an empty

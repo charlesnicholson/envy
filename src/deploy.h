@@ -3,7 +3,6 @@
 #include "util.h"
 
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,7 +25,6 @@ void deploy_product_scripts(std::filesystem::path const &bin_dir,
 // platform, then either deploy product scripts (deploy_enabled) or explain how
 // to turn deployment on. manifest_path names the file in the disabled hint.
 void deploy_finalize(std::filesystem::path const &bin_dir,
-                     std::optional<std::string> const &mirror,
                      std::vector<product_info> const &products,
                      std::vector<platform_id> const &platforms,
                      bool strict,

@@ -46,13 +46,14 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
   }
 }
 
-std::string stamp_bootstrap(std::string_view download_url, platform_id platform) {
+std::string stamp_bootstrap(platform_id platform) {
   std::string result{ get_bootstrap_template(platform) };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
-  replace_all(result, "@@DOWNLOAD_URL@@", download_url);
-  // Distinct from DOWNLOAD_URL: that one may be a custom mirror, while the latest-release
-  // probe always targets envy upstream. Stamped rather than hardcoded in the scripts so
-  // relocating the project stays a one-line edit in envy_release.h.
+  // Both URLs are envy's own upstream, never a project's mirror: the script resolves
+  // `@envy mirror` out of the manifest at run time and only falls back to these. Stamped
+  // rather than hardcoded in the scripts so relocating the project stays a one-line edit
+  // in envy_release.h.
+  replace_all(result, "@@DOWNLOAD_URL@@", kEnvyReleaseDownloadUrl);
   replace_all(result, "@@LATEST_URL@@", kEnvyReleaseLatestUrl);
   return result;
 }
@@ -95,9 +96,7 @@ bool bootstrap_is_envy_managed(fs::path const &path) {
   return content.find(kEnvyManagedMarker) != std::string::npos;
 }
 
-bool bootstrap_write_script(fs::path const &bin_dir,
-                            std::optional<std::string> const &mirror,
-                            platform_id platform) {
+bool bootstrap_write_script(fs::path const &bin_dir, platform_id platform) {
   fs::path const script_path{ bootstrap_script_path(bin_dir, platform) };
 
   // Check if existing file is envy-managed
@@ -107,15 +106,8 @@ bool bootstrap_write_script(fs::path const &bin_dir,
         "' exists but is not envy-managed. Remove manually to allow envy to manage it.");
   }
 
-  // Validate here rather than only at the `envy init --mirror` entry point: this also runs
-  // for a mirror read back out of a hand-edited manifest, and the value is about to be
-  // stamped into a quoted shell/batch assignment.
-  if (mirror) { envy_release_validate_mirror(*mirror, "bootstrap"); }
-
   // Generate new content
-  std::string_view const url{ mirror ? std::string_view{ *mirror }
-                                     : kEnvyReleaseDownloadUrl };
-  std::string const new_content{ stamp_bootstrap(url, platform) };
+  std::string const new_content{ stamp_bootstrap(platform) };
 
   // Compare with existing
   std::string const existing_content{ read_file_content(script_path) };

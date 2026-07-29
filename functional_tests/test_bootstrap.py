@@ -6,6 +6,7 @@ Uses a mock HTTP server serving the real envy binary.
 
 from __future__ import annotations
 
+import hashlib
 import http.server
 import io
 import os
@@ -104,6 +105,32 @@ class EnvyServer:
             zf.writestr("envy.exe", self.binary_content)
         self.zip_content = zip_buffer.getvalue()
 
+        # Attestation knobs. corrupt_archive flips the served archive bytes while leaving
+        # SHA256SUMS alone (a mirror that tampers with one object); sums_body replaces the
+        # sums file itself (a mirror that tampers with both, which only the manifest's pin
+        # can catch); serve_sums=False models a mirror missing the file entirely.
+        self.host_archive_name = f"envy-{_OS_NAME}-{_ARCH}{_EXT}"
+        self.corrupt_archive = False
+        self.serve_sums = True
+        self.sums_body: bytes | None = None
+
+    @property
+    def pristine_archive(self) -> bytes:
+        return self.zip_content if sys.platform == "win32" else self.tar_gz_content
+
+    @property
+    def published_sums(self) -> bytes:
+        """What the mirror serves at v<version>/SHA256SUMS."""
+        if self.sums_body is not None:
+            return self.sums_body
+        digest = hashlib.sha256(self.pristine_archive).hexdigest()
+        return f"{digest}  {self.host_archive_name}\n".encode()
+
+    @property
+    def sums_pin(self) -> str:
+        """The value an `@envy sha256sums` directive would carry for this mirror."""
+        return hashlib.sha256(self.published_sums).hexdigest()
+
     def start(self) -> int:
         """Start the server and return the port number."""
         parent = self
@@ -111,18 +138,27 @@ class EnvyServer:
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 parent.request_paths.append(self.path)
-                match self.path.rsplit(".", 1)[-1]:
-                    case "gz" if self.path.endswith(".tar.gz"):
-                        content, content_type = (
-                            parent.tar_gz_content,
-                            "application/gzip",
-                        )
-                    case "zip":
-                        content, content_type = parent.zip_content, "application/zip"
-                    case _:
+                if self.path.endswith("SHA256SUMS"):
+                    if not parent.serve_sums:
                         self.send_response(404)
                         self.end_headers()
                         return
+                    content, content_type = parent.published_sums, "text/plain"
+                else:
+                    match self.path.rsplit(".", 1)[-1]:
+                        case "gz" if self.path.endswith(".tar.gz"):
+                            content, content_type = (
+                                parent.tar_gz_content,
+                                "application/gzip",
+                            )
+                        case "zip":
+                            content, content_type = parent.zip_content, "application/zip"
+                        case _:
+                            self.send_response(404)
+                            self.end_headers()
+                            return
+                    if parent.corrupt_archive:
+                        content = content + b"corrupted"
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(content)))
@@ -732,6 +768,137 @@ class BootstrapIntegrationTest(unittest.TestCase):
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("envy.lua", result.stderr.lower())
+
+    # --- attestation (@envy sha256sums) ------------------------------------------
+    #
+    # The chain: the manifest pins SHA256SUMS's own hash, SHA256SUMS names the archive's
+    # hash, the archive is what gets executed. Break any link and the bootstrap must refuse
+    # to exec rather than degrade to an unverified download.
+
+    def _setup_attested_project(
+        self,
+        pin: str | None,
+        version: str | None = "1.2.3",
+    ) -> Path:
+        """Write a manifest with an optional sums pin, plus the bootstrap script."""
+        project_dir = self._temp_dir / "project"
+        bin_dir = project_dir / "tools"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        lines = []
+        if version is not None:
+            lines.append(f'-- @envy version "{version}"')
+        if pin is not None:
+            lines.append(f'-- @envy sha256sums "{pin}"')
+        (project_dir / "envy.lua").write_text("\n".join(lines) + "\n\nPACKAGES = {}\n")
+
+        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
+        dest.write_text(
+            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
+        )
+        if sys.platform != "win32":
+            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return dest
+
+    def test_bootstrap_attests_a_matching_archive(self) -> None:
+        bootstrap = self._setup_attested_project(self._server.sums_pin)
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        # Proves the sums file was actually consulted, not that verification was skipped.
+        self.assertTrue(
+            any(p.endswith("SHA256SUMS") for p in self._server.request_paths),
+            f"SHA256SUMS was never fetched: {self._server.request_paths}",
+        )
+
+    def test_bootstrap_rejects_a_tampered_archive(self) -> None:
+        """Mirror serves modified archive bytes but an untouched SHA256SUMS."""
+        self._server.corrupt_archive = True
+        bootstrap = self._setup_attested_project(self._server.sums_pin)
+
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("attestation", result.stderr.lower())
+        # The whole point: nothing ran. A corrupted archive that still extracted and exec'd
+        # would make the check decorative.
+        self.assertNotIn("envy version", result.stderr)
+
+    def test_bootstrap_rejects_a_tampered_sums_file(self) -> None:
+        """Mirror rewrites the archive *and* SHA256SUMS; only the manifest pin catches it."""
+        pin = self._server.sums_pin  # captured before the mirror is rewritten
+        self._server.corrupt_archive = True
+        corrupted = self._server.pristine_archive + b"corrupted"
+        digest = hashlib.sha256(corrupted).hexdigest()
+        self._server.sums_body = (
+            f"{digest}  {self._server.host_archive_name}\n".encode()
+        )
+
+        bootstrap = self._setup_attested_project(pin)
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("sha256sums", result.stderr.lower())
+        self.assertNotIn("envy version", result.stderr)
+
+    def test_bootstrap_rejects_sums_without_an_entry_for_this_platform(self) -> None:
+        self._server.sums_body = (
+            f"{'a' * 64}  envy-some-other-platform.tar.gz\n".encode()
+        )
+        bootstrap = self._setup_attested_project(self._server.sums_pin)
+
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("no entry", result.stderr.lower())
+
+    def test_bootstrap_fails_when_pinned_sums_are_unavailable(self) -> None:
+        """A mirror without SHA256SUMS cannot satisfy a pin, so the run must stop."""
+        self._server.serve_sums = False
+        bootstrap = self._setup_attested_project(self._server.sums_pin)
+
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("SHA256SUMS", result.stderr)
+        self.assertNotIn("envy version", result.stderr)
+
+    def test_bootstrap_rejects_a_pin_without_a_pinned_version(self) -> None:
+        """A sums pin names one release, so a dynamically resolved version cannot use it.
+
+        Fails before any network traffic: silently skipping verification would be worse
+        than having no pin, because the manifest still advertises attestation.
+        """
+        bootstrap = self._setup_attested_project(self._server.sums_pin, version=None)
+
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("@envy version", result.stderr)
+        self.assertEqual([], self._server.request_paths)
+
+    def test_bootstrap_without_a_pin_does_not_fetch_sums(self) -> None:
+        """Attestation is opt-in: an unpinned manifest keeps working, and pays nothing."""
+        self._server.serve_sums = False  # would 404 if the script asked for it
+        bootstrap = self._setup_attested_project(None)
+
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        self.assertFalse(
+            any(p.endswith("SHA256SUMS") for p in self._server.request_paths),
+            f"unpinned bootstrap fetched SHA256SUMS: {self._server.request_paths}",
+        )
+
+    def test_bootstrap_accepts_an_uppercase_pin(self) -> None:
+        """certutil and Get-FileHash emit uppercase, so a hand-pasted pin often is."""
+        bootstrap = self._setup_attested_project(self._server.sums_pin.upper())
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
 
 
 if __name__ == "__main__":

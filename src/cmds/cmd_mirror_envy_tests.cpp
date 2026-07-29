@@ -107,13 +107,30 @@ TEST_CASE("mirror_envy_make_plan: empty source mirror rejected") {
 
 TEST_CASE("mirror_envy_make_plan: covers every published release target") {
   auto const plan{ plan_for("./stage") };
-  CHECK(plan.items.size() == 6);
+  CHECK(plan.items.size() == 7);  // six archives plus the checksum manifest
   CHECK(has_relpath(plan, "v1.2.3/envy-darwin-arm64.tar.gz"));
   CHECK(has_relpath(plan, "v1.2.3/envy-darwin-x86_64.tar.gz"));
   CHECK(has_relpath(plan, "v1.2.3/envy-linux-arm64.tar.gz"));
   CHECK(has_relpath(plan, "v1.2.3/envy-linux-x86_64.tar.gz"));
   CHECK(has_relpath(plan, "v1.2.3/envy-windows-arm64.zip"));
   CHECK(has_relpath(plan, "v1.2.3/envy-windows-x86_64.zip"));
+  CHECK(has_relpath(plan, "v1.2.3/SHA256SUMS"));
+}
+
+TEST_CASE("mirror_envy_make_plan: sums_relpath names a mirrored item") {
+  // The verify pass skips this entry and attests the rest against it, so a name not in
+  // items would either verify nothing or try to hash a file nobody downloaded.
+  auto const plan{ plan_for("./stage") };
+  CHECK(plan.sums_relpath == "v1.2.3/SHA256SUMS");
+  CHECK(has_relpath(plan, plan.sums_relpath));
+}
+
+TEST_CASE("mirror_envy_make_plan: sums file is read from the source mirror") {
+  // Verbatim republication is what keeps an '@envy sha256sums' pin valid across mirrors,
+  // so this must be a copy of the source's file, never one regenerated locally.
+  auto const plan{ plan_for("./stage") };
+  CHECK(url_for(plan, "v1.2.3/SHA256SUMS") ==
+        "https://example.com/releases/v1.2.3/SHA256SUMS");
 }
 
 TEST_CASE("mirror_envy_make_plan: windows archives are named from any host") {

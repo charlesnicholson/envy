@@ -4,8 +4,10 @@
 #include "cache.h"
 #include "embedded_init_resources.h"  // Generated from cmake/EmbedResource.cmake
 #include "envy_release.h"
+#include "fetch.h"
 #include "luarc.h"
 #include "platform.h"
+#include "sha256.h"
 #include "tui.h"
 #include "util.h"
 
@@ -33,6 +35,10 @@ void cmd_init::register_cli(CLI::App &app, std::function<void(cfg)> on_selected)
   sub->add_option("bin-dir", cfg_ptr->bin_dir, "Directory for bootstrap scripts")
       ->required();
   sub->add_option("--mirror", cfg_ptr->mirror, "Override download mirror URL");
+  sub->add_flag("--pin-sums",
+                cfg_ptr->pin_sums,
+                "Fetch this release's SHA256SUMS and pin its hash in @envy sha256sums, so "
+                "bootstrap attests every envy binary it downloads");
   sub->add_option("--deploy", cfg_ptr->deploy, "Set @envy deploy directive (true/false)");
   sub->add_option("--root", cfg_ptr->root, "Set @envy root directive (true/false)");
   sub->add_option("--platform",
@@ -58,18 +64,54 @@ void replace_all(std::string &s, std::string_view from, std::string_view to) {
   }
 }
 
+// Download this release's SHA256SUMS and return its own sha256, the value that
+// `@envy sha256sums` pins. Fetched rather than computed locally: the pin has to describe
+// the published file byte-for-byte, and this binary has no copy of it.
+std::string fetch_sums_pin(std::optional<std::string> const &mirror) {
+  std::string_view const base{ mirror ? std::string_view{ *mirror }
+                                      : kEnvyReleaseDownloadUrl };
+  auto const url{ envy_release_sums_url(base, ENVY_VERSION_STR) };
+
+  auto const tmp{ platform::create_unique_temp_dir("envy-init-sums") };
+  scoped_path_cleanup const cleanup{ tmp };
+  auto const dest{ tmp / std::string{ kEnvyReleaseSumsFile } };
+
+  tui::info("Fetching %s for %s",
+            std::string{ kEnvyReleaseSumsFile }.c_str(),
+            url.c_str());
+  auto const results{ fetch({ fetch_request_from_url(url, dest) }) };
+  if (results.empty()) {
+    throw std::runtime_error("init: --pin-sums: failed to download " + url +
+                             ": unknown error");
+  }
+  if (auto const *err{ std::get_if<std::string>(&results[0]) }) {
+    throw std::runtime_error("init: --pin-sums: failed to download " + url + ": " + *err);
+  }
+
+  auto const hash{ sha256(dest) };
+  return util_bytes_to_hex(hash.data(), hash.size());
+}
+
 std::string stamp_manifest_placeholders(std::string_view content,
                                         std::optional<std::string> const &mirror,
                                         std::string_view bin_dir,
                                         std::optional<bool> deploy,
-                                        std::optional<bool> root) {
+                                        std::optional<bool> root,
+                                        std::optional<std::string> const &sums_pin) {
   std::string result{ content };
   replace_all(result, "@@ENVY_VERSION@@", ENVY_VERSION_STR);
   replace_all(result, "@@BIN_DIR@@", bin_dir);
 
-  // The mirror has to land in the manifest, not just in the bootstrap script: `envy sync`
-  // re-stamps the script from the manifest's @envy mirror, so a script-only mirror is
-  // silently reverted to the default on the first sync.
+  if (sums_pin) {
+    replace_all(result,
+                "@@SHA256SUMS_DIRECTIVE@@",
+                "-- @envy sha256sums \"" + *sums_pin + "\"\n");
+  } else {
+    replace_all(result, "@@SHA256SUMS_DIRECTIVE@@", "");
+  }
+
+  // The manifest is the only place the mirror lands: the bootstrap scripts carry no
+  // project configuration and parse `@envy mirror` back out at run time.
   if (mirror.has_value() && !mirror->empty()) {
     replace_all(result, "@@MIRROR_DIRECTIVE@@", "-- @envy mirror \"" + *mirror + "\"\n");
   } else {
@@ -101,7 +143,8 @@ void write_manifest(fs::path const &project_dir,
                     fs::path const &bin_dir,
                     std::optional<std::string> const &mirror,
                     std::optional<bool> deploy,
-                    std::optional<bool> root) {
+                    std::optional<bool> root,
+                    std::optional<std::string> const &sums_pin) {
   fs::path const manifest_path{ project_dir / "envy.lua" };
 
   if (fs::exists(manifest_path)) {
@@ -118,7 +161,8 @@ void write_manifest(fs::path const &project_dir,
                                                          mirror,
                                                          relative_bin.string(),
                                                          deploy,
-                                                         root) };
+                                                         root,
+                                                         sums_pin) };
   util_write_file(manifest_path, content);
 
   tui::info("Created %s", manifest_path.string().c_str());
@@ -131,9 +175,16 @@ cmd_init::cmd_init(cmd_init::cfg cfg,
     : cfg_{ std::move(cfg) }, cli_cache_root_{ cli_cache_root } {}
 
 void cmd_init::execute() {
-  // Before creating any directories: the mirror is stamped verbatim into a quoted manifest
-  // directive and into both bootstrap scripts.
+  // Before creating any directories: the mirror is written verbatim into a quoted manifest
+  // directive that both bootstrap scripts parse back out.
   if (cfg_.mirror) { envy_release_validate_mirror(*cfg_.mirror, "init"); }
+
+  // Also before creating anything: --pin-sums needs the network, and failing after having
+  // written a manifest and two scripts would leave a project half-initialized and
+  // unattested. A dev build (0.0.0) has no published release, so this is where that
+  // says so.
+  std::optional<std::string> sums_pin;
+  if (cfg_.pin_sums) { sums_pin = fetch_sums_pin(cfg_.mirror); }
 
   auto c{ std::make_unique<cache>(cli_cache_root_) };
   std::error_code ec;
@@ -156,12 +207,17 @@ void cmd_init::execute() {
 
   auto const platforms{ util_parse_platform_flag(cfg_.platform_flag) };
   for (auto const plat : platforms) {
-    bootstrap_write_script(cfg_.bin_dir, cfg_.mirror, plat);
+    bootstrap_write_script(cfg_.bin_dir, plat);
     auto const name{ (plat == platform_id::WINDOWS) ? "envy.bat" : "envy" };
     tui::info("Created %s", (cfg_.bin_dir / name).string().c_str());
   }
 
-  write_manifest(cfg_.project_dir, cfg_.bin_dir, cfg_.mirror, cfg_.deploy, cfg_.root);
+  write_manifest(cfg_.project_dir,
+                 cfg_.bin_dir,
+                 cfg_.mirror,
+                 cfg_.deploy,
+                 cfg_.root,
+                 sums_pin);
   extract_lua_ls_types(c->root());
   write_luarc(cfg_.project_dir, envy_meta{});
 

@@ -115,7 +115,6 @@ void cmd_sync::execute() {
   auto const products{ eng.collect_all_products() };
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
   deploy_finalize(bin_dir,
-                  m->meta.mirror,
                   products,
                   platforms,
                   cfg_.strict,

@@ -83,7 +83,6 @@ void cmd_deploy::execute() {
   // Check deploy directive: absent or false means deployment disabled
   bool const deploy_enabled{ m->meta.deploy.has_value() && *m->meta.deploy };
   deploy_finalize(bin_dir,
-                  m->meta.mirror,
                   products,
                   platforms,
                   cfg_.strict,

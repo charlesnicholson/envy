@@ -220,3 +220,97 @@ TEST_CASE("envy_release_url: trailing slash on mirror produces double slash") {
   };
   CHECK(url == "https://mirror.example.com//v1.0.0/envy-darwin-arm64.tar.gz");
 }
+
+// --- checksum manifest ---
+
+TEST_CASE("envy_release_sums_url: hangs off the same versioned prefix as the archives") {
+  CHECK(envy::envy_release_sums_url("https://mirror.example.com/rel", "1.2.3") ==
+        "https://mirror.example.com/rel/v1.2.3/SHA256SUMS");
+  CHECK(envy::envy_release_sums_url("s3://b/prefix", "0.9.0") ==
+        "s3://b/prefix/v0.9.0/SHA256SUMS");
+}
+
+TEST_CASE("envy_release_sha256_hex_is_valid: exactly 64 hex digits, either case") {
+  std::string const lower(64, 'a');
+  std::string const upper(64, 'F');
+  CHECK(envy::envy_release_sha256_hex_is_valid(lower));
+  CHECK(envy::envy_release_sha256_hex_is_valid(upper));
+  CHECK(envy::envy_release_sha256_hex_is_valid(
+      "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"));
+
+  // A truncated pin must be rejected outright rather than compared on its prefix: a
+  // one-digit pin would otherwise "verify" one sixteenth of the digests in existence.
+  CHECK_FALSE(envy::envy_release_sha256_hex_is_valid(""));
+  CHECK_FALSE(envy::envy_release_sha256_hex_is_valid(std::string(63, 'a')));
+  CHECK_FALSE(envy::envy_release_sha256_hex_is_valid(std::string(65, 'a')));
+  CHECK_FALSE(envy::envy_release_sha256_hex_is_valid(std::string(63, 'a') + "g"));
+  CHECK_FALSE(envy::envy_release_sha256_hex_is_valid(std::string(63, 'a') + " "));
+}
+
+namespace {
+
+// Two entries in the exact shape `sha256sum *.tar.gz *.zip > SHA256SUMS` produces.
+constexpr std::string_view kSums{
+  "1111111111111111111111111111111111111111111111111111111111111111  "
+  "envy-linux-x86_64.tar.gz\n"
+  "2222222222222222222222222222222222222222222222222222222222222222  "
+  "envy-windows-x86_64.zip\n"
+};
+
+}  // namespace
+
+TEST_CASE("envy_release_sums_lookup: finds each artifact") {
+  CHECK(envy::envy_release_sums_lookup(kSums, "envy-linux-x86_64.tar.gz") ==
+        std::string(64, '1'));
+  CHECK(envy::envy_release_sums_lookup(kSums, "envy-windows-x86_64.zip") ==
+        std::string(64, '2'));
+}
+
+TEST_CASE("envy_release_sums_lookup: absent artifact yields nullopt") {
+  // A sums file that does not describe the running platform must fail the bootstrap, not
+  // fall back to skipping verification.
+  CHECK_FALSE(
+      envy::envy_release_sums_lookup(kSums, "envy-darwin-arm64.tar.gz").has_value());
+  CHECK_FALSE(envy::envy_release_sums_lookup("", "envy-linux-x86_64.tar.gz").has_value());
+}
+
+TEST_CASE("envy_release_sums_lookup: empty artifact name never matches") {
+  // Otherwise it matches the empty tail of a malformed line and returns that line's hash,
+  // attesting an archive against an unrelated digest.
+  CHECK_FALSE(envy::envy_release_sums_lookup(kSums, "").has_value());
+}
+
+TEST_CASE("envy_release_sums_lookup: tolerates CRLF, binary marker, and tabs") {
+  // A Windows producer emits CRLF; `sha256sum -b` prefixes the name with '*'. Neither is
+  // worth failing a release over.
+  constexpr std::string_view kOdd{
+    "3333333333333333333333333333333333333333333333333333333333333333 "
+    "*envy-windows-arm64.zip\r\n"
+    "\t4444444444444444444444444444444444444444444444444444444444444444\t"
+    "envy-linux-arm64.tar.gz\r\n"
+  };
+  CHECK(envy::envy_release_sums_lookup(kOdd, "envy-windows-arm64.zip") ==
+        std::string(64, '3'));
+  CHECK(envy::envy_release_sums_lookup(kOdd, "envy-linux-arm64.tar.gz") ==
+        std::string(64, '4'));
+}
+
+TEST_CASE("envy_release_sums_lookup: last line needs no trailing newline") {
+  CHECK(envy::envy_release_sums_lookup(std::string(64, 'a') + "  envy-linux-arm64.tar.gz",
+                                       "envy-linux-arm64.tar.gz") == std::string(64, 'a'));
+}
+
+TEST_CASE("envy_release_sums_lookup: skips lines whose hash is not a sha256") {
+  // Guards against a GPG-signed or otherwise decorated sums file donating a short token as
+  // if it were a digest.
+  constexpr std::string_view kNoise{
+    "-----BEGIN PGP SIGNED MESSAGE-----\n"
+    "Hash: SHA256\n"
+    "\n"
+    "deadbeef  envy-linux-arm64.tar.gz\n"
+    "5555555555555555555555555555555555555555555555555555555555555555  "
+    "envy-linux-arm64.tar.gz\n"
+  };
+  CHECK(envy::envy_release_sums_lookup(kNoise, "envy-linux-arm64.tar.gz") ==
+        std::string(64, '5'));
+}
