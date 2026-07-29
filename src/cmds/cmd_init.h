@@ -20,7 +20,7 @@ class cmd_init : public cmd {
     std::optional<std::string> mirror;
     std::optional<bool> deploy{ true };  // @envy deploy directive value
     std::optional<bool> root{ true };    // @envy root directive value
-    bool pin_sums{ false };  // fetch this release's SHA256SUMS and pin its hash
+    bool pin_sums{ false };     // fetch this release's SHA256SUMS and pin its hash
     std::string platform_flag;  // "posix", "windows", "all", or empty (current OS)
   };
 

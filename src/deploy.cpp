@@ -231,9 +231,7 @@ void deploy_finalize(std::filesystem::path const &bin_dir,
                      bool deploy_enabled,
                      std::filesystem::path const &manifest_path) {
   for (auto const plat : platforms) {
-    if (bootstrap_write_script(bin_dir, plat)) {
-      tui::info("Updated bootstrap script");
-    }
+    if (bootstrap_write_script(bin_dir, plat)) { tui::info("Updated bootstrap script"); }
   }
 
   if (deploy_enabled) {

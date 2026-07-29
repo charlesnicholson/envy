@@ -102,9 +102,9 @@ std::optional<std::string> envy_release_sums_lookup(std::string_view sums_text,
 
   for (size_t pos{ 0 }; pos < sums_text.size();) {
     auto const eol{ sums_text.find('\n', pos) };
-    auto line{ sums_text.substr(pos,
-                                (eol == std::string_view::npos ? sums_text.size() : eol) -
-                                    pos) };
+    auto line{
+      sums_text.substr(pos, (eol == std::string_view::npos ? sums_text.size() : eol) - pos)
+    };
     pos = (eol == std::string_view::npos) ? sums_text.size() : eol + 1;
 
     if (line.ends_with('\r')) { line.remove_suffix(1); }  // CRLF from a Windows producer

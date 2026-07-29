@@ -1803,9 +1803,10 @@ TEST_CASE("parse_envy_meta rejects sha256sums without a pinned version") {
 
 TEST_CASE("parse_envy_meta accepts an uppercase sha256sums pin") {
   // certutil and Get-FileHash both emit uppercase, so a hand-pasted pin often is.
-  auto meta{ envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
-                                   "-- @envy sha256sums \"" +
-                                   std::string(64, 'A') + "\"\n") };
+  auto meta{ envy::parse_envy_meta(
+      "-- @envy version \"1.2.3\"\n"
+      "-- @envy sha256sums \"" +
+      std::string(64, 'A') + "\"\n") };
   REQUIRE(meta.sha256sums.has_value());
   CHECK(*meta.sha256sums == std::string(64, 'A'));
 }

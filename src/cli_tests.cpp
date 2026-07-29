@@ -1327,9 +1327,8 @@ TEST_CASE("cli_parse: cmd_init --pin-sums") {
   SUBCASE("--pin-sums composes with --mirror") {
     // The pin is fetched from whichever mirror the project will actually bootstrap from,
     // so these two have to be usable together.
-    std::vector<std::string> args{ "envy",      "init",     "/tmp/proj",
-                                   "/tmp/bin",  "--mirror", "s3://b/rel",
-                                   "--pin-sums" };
+    std::vector<std::string> args{ "envy",     "init",       "/tmp/proj", "/tmp/bin",
+                                   "--mirror", "s3://b/rel", "--pin-sums" };
     auto argv{ make_argv(args) };
 
     auto parsed{ envy::cli_parse(static_cast<int>(args.size()), argv.data()) };
