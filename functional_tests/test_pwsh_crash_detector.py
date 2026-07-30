@@ -81,6 +81,14 @@ class TestPwshCrashRetry(unittest.TestCase):
     """run_pwsh must retry a segfaulting pwsh, and skip rather than fail if it never
     recovers."""
 
+    # The stubs kill themselves with SIGKILL rather than the SIGSEGV that CoreCLR
+    # actually raises. is_pwsh_runtime_crash treats every negative returncode
+    # identically, and the SIGSEGV-specific coverage lives in the pure-function
+    # tests above, which need no subprocess. Raising a real SIGSEGV here would
+    # make macOS write a crash report and pop a "python quit unexpectedly" dialog
+    # on every run.
+    CRASH = "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"
+
     def _run_stub(self, script_body: str, **kwargs):
         """Drive run_pwsh against a python stub standing in for pwsh."""
         return test_config.run_pwsh(
@@ -91,12 +99,11 @@ class TestPwshCrashRetry(unittest.TestCase):
             **kwargs,
         )
 
-    def test_always_segfaulting_pwsh_skips_after_retries(self) -> None:
-        crash = "import os, signal; os.kill(os.getpid(), signal.SIGSEGV)"
+    def test_always_crashing_pwsh_skips_after_retries(self) -> None:
         with self.assertRaises(unittest.SkipTest) as caught:
-            self._run_stub(crash)
+            self._run_stub(self.CRASH)
         # The skip reason must name the signal, or CI shows a bare "skipped".
-        self.assertIn("SIGSEGV", str(caught.exception))
+        self.assertIn("SIGKILL", str(caught.exception))
 
     def test_recovering_pwsh_returns_the_successful_attempt(self) -> None:
         """A crash on the first attempt must not fail the test if a retry succeeds."""
@@ -110,7 +117,7 @@ class TestPwshCrashRetry(unittest.TestCase):
                 f"p = pathlib.Path({str(marker)!r}); "
                 "first = not p.exists(); p.touch(); "
                 "sys.stdout.write('recovered') if not first else "
-                "os.kill(os.getpid(), signal.SIGSEGV)"
+                "os.kill(os.getpid(), signal.SIGKILL)"
             )
             result = self._run_stub(body)
 
