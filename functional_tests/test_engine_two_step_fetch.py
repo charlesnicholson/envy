@@ -6,7 +6,6 @@ and envy.commit_fetch() moves files to fetch_dir with SHA256 verification.
 
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -79,21 +78,24 @@ end
         spec_path = self.cache_root / "two_step_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
+        manifest = test_config.write_spec_manifest(
+            self.cache_root, [("local.two_step_sha256@v1", spec_path)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.two_step_sha256@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.two_step_sha256@v1", result.stdout)
+        self.assertIn("local.two_step_sha256@v1", result.stderr)
 
     def test_fetch_then_inspect_then_commit(self):
         """Fetch manifest → read contents → fetch listed files → commit all."""
@@ -141,21 +143,24 @@ end
         spec_path = self.cache_root / "manifest_workflow.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
+        manifest = test_config.write_spec_manifest(
+            self.cache_root, [("local.manifest_workflow@v1", spec_path)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.manifest_workflow@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.manifest_workflow@v1", result.stdout)
+        self.assertIn("local.manifest_workflow@v1", result.stderr)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import tempfile
 import threading
 from functools import partial
@@ -24,10 +23,8 @@ class _QuietHandler(SimpleHTTPRequestHandler):
 
 class FetchCommandFunctionalTest(unittest.TestCase):
     def setUp(self) -> None:
-        root = Path(__file__).resolve().parent.parent
-        binary_name = "envy.exe" if sys.platform == "win32" else "envy"
-        self._envy_binary = root / "out" / "build" / binary_name
-        self._project_root = root
+        self._envy_binary = test_config.get_envy_production_executable()
+        self._project_root = Path(__file__).resolve().parent.parent
 
     def test_fetch_local_file(self) -> None:
         """Test fetch with local file source."""

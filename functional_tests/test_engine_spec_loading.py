@@ -12,6 +12,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import TraceParser
 
 
 class TestEngineSpecLoading(unittest.TestCase):
@@ -67,14 +68,19 @@ SETUP = {
 """
         spec_path = self.write_spec("simple.lua", simple_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.simple@v1", spec_path)]
+        )
+        trace_file = self.cache_root / "trace.jsonl"
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.simple@v1",
-                str(spec_path),
+                f"--trace=file:{trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -82,13 +88,10 @@ SETUP = {
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        # Output should be single line: id_or_identity -> asset_hash
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-
-        key, value = lines[0].split(" -> ", 1)
-        self.assertEqual(key, "local.simple@v1")
-        self.assertGreater(len(value), 0)
+        # The spec is the only package the engine resolved
+        self.assertEqual(
+            TraceParser(trace_file).registered_specs(), {"local.simple@v1"}
+        )
 
     def test_validation_no_phases(self):
         """Engine rejects spec with no phases."""
@@ -99,14 +102,18 @@ DEPENDENCIES = {}
 """
         spec_path = self.write_spec("no_phases.lua", no_phases_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.nophases@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.nophases@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -180,22 +187,29 @@ SETUP = {{
             tmp_path = tmp.name
 
         try:
+            manifest = test_config.write_spec_manifest(
+                self.specs_dir, [("test.sha256_ok@v1", tmp_path)]
+            )
+            trace_file = self.cache_root / "trace.jsonl"
+
             result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
-                    *self.trace_flag,
-                    "engine-test",
-                    "test.sha256_ok@v1",
-                    tmp_path,
+                    f"--trace=file:{trace_file}",
+                    "install",
+                    "--manifest",
+                    str(manifest),
                 ],
                 capture_output=True,
                 text=True,
             )
 
             self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-            lines = [line for line in result.stdout.strip().split("\n") if line]
-            self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+            self.assertEqual(
+                TraceParser(trace_file).registered_specs(),
+                {"test.sha256_ok@v1", "remote.child@v1"},
+            )
         finally:
             Path(tmp_path).unlink()
 
@@ -254,14 +268,18 @@ SETUP = {{
             tmp_path = tmp.name
 
         try:
+            manifest = test_config.write_spec_manifest(
+                self.specs_dir, [("test.sha256_fail@v1", tmp_path)]
+            )
+
             result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
                     *self.trace_flag,
-                    "engine-test",
-                    "test.sha256_fail@v1",
-                    tmp_path,
+                    "install",
+                    "--manifest",
+                    str(manifest),
                 ],
                 capture_output=True,
                 text=True,
@@ -305,23 +323,28 @@ SETUP = {
 """
         spec_path = self.write_spec("identity_correct.lua", identity_correct_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.identity_correct@v1", spec_path)]
+        )
+        trace_file = self.cache_root / "trace.jsonl"
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.identity_correct@v1",
-                str(spec_path),
+                f"--trace=file:{trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        self.assertIn("local.identity_correct@v1", result.stdout)
+        self.assertEqual(
+            TraceParser(trace_file).registered_specs(), {"local.identity_correct@v1"}
+        )
 
     def test_identity_validation_missing(self):
         """Spec missing identity field fails with clear error."""
@@ -344,14 +367,18 @@ SETUP = {
 """
         spec_path = self.write_spec("identity_missing.lua", identity_missing_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.identity_missing@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.identity_missing@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -393,14 +420,18 @@ SETUP = {
 """
         spec_path = self.write_spec("identity_mismatch.lua", identity_mismatch_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.identity_expected@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.identity_expected@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -447,14 +478,18 @@ SETUP = {
 """
         spec_path = self.write_spec("identity_wrong_type.lua", identity_wrong_type_spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.identity_wrong_type@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.identity_wrong_type@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -493,14 +528,18 @@ SETUP = {
             tmp_path = tmp.name
 
         try:
+            manifest = test_config.write_spec_manifest(
+                self.specs_dir, [("local.temp_no_identity@v1", tmp_path)]
+            )
+
             result = test_config.run(
                 [
                     str(self.envy_test),
                     f"--cache-root={self.cache_root}",
                     *self.trace_flag,
-                    "engine-test",
-                    "local.temp_no_identity@v1",
-                    tmp_path,
+                    "install",
+                    "--manifest",
+                    str(manifest),
                 ],
                 capture_output=True,
                 text=True,
@@ -536,16 +575,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_table_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_table_ok@v1", spec_path, options='{ version = "1.0" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_table_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "1.0" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -569,14 +611,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_table_missing.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_table_missing@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_table_missing@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -601,16 +647,21 @@ SETUP = {
 """
         spec_path = self.write_spec("options_table_unknown.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_table_unknown@v1",
+            spec_path,
+            options='{ version = "1", typo = "x" }',
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_table_unknown@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "1", typo = "x" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -635,16 +686,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_semver_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_semver_ok@v1", spec_path, options='{ version = "1.2.3" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_semver_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "1.2.3" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -668,16 +722,21 @@ SETUP = {
 """
         spec_path = self.write_spec("options_semver_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_semver_bad@v1",
+            spec_path,
+            options='{ version = "not-semver" }',
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_semver_bad@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "not-semver" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -702,16 +761,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_range_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_range_ok@v1", spec_path, options='{ version = "1.5.0" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_range_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "1.5.0" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -735,16 +797,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_range_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_range_bad@v1", spec_path, options='{ version = "3.0.0" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_range_bad@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "3.0.0" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -769,16 +834,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_numrange_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_numrange_ok@v1", spec_path, options="{ count = 5 }"
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_numrange_ok@v1",
-                str(spec_path),
-                "--options",
-                "{ count = 5 }",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -802,16 +870,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_numrange_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_numrange_bad@v1", spec_path, options="{ count = 15 }"
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_numrange_bad@v1",
-                str(spec_path),
-                "--options",
-                "{ count = 15 }",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -836,16 +907,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_cv_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_cv_ok@v1", spec_path, options='{ mode = "install" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_cv_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ mode = "install" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -869,16 +943,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_cv_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_cv_bad@v1", spec_path, options='{ mode = "x" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_cv_bad@v1",
-                str(spec_path),
-                "--options",
-                '{ mode = "x" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -903,14 +980,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_opt_ok.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_opt_ok@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_opt_ok@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -934,14 +1015,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_empty.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_empty@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_empty@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -967,16 +1052,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_type_str_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_type_str_ok@v1", spec_path, options='{ name = "hello" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_type_str_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ name = "hello" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1000,16 +1088,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_type_str_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_type_str_bad@v1", spec_path, options="{ name = 42 }"
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_type_str_bad@v1",
-                str(spec_path),
-                "--options",
-                "{ name = 42 }",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1034,16 +1125,21 @@ SETUP = {
 """
         spec_path = self.write_spec("options_type_list_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_type_list_ok@v1",
+            spec_path,
+            options='{ items = { "a", "b" } }',
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_type_list_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ items = { "a", "b" } }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1067,16 +1163,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_type_list_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_type_list_bad@v1", spec_path, options="{ items = { a = 1 } }"
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_type_list_bad@v1",
-                str(spec_path),
-                "--options",
-                "{ items = { a = 1 } }",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1101,16 +1200,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_choices_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_choices_ok@v1", spec_path, options='{ mode = "install" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_choices_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ mode = "install" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1134,16 +1236,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_choices_bad.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_choices_bad@v1", spec_path, options='{ mode = "debug" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_choices_bad@v1",
-                str(spec_path),
-                "--options",
-                '{ mode = "debug" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1170,14 +1275,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_nil.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_nil@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_nil@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1201,14 +1310,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_true.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_true@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_true@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1232,14 +1345,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_false.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_false@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_false@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1264,14 +1381,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_string.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_string@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_string@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1296,14 +1417,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_type.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_type@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_type@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1328,14 +1453,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_error.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_error@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_error@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1362,16 +1491,19 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_envy_ok.lua", spec)
 
+        entry = test_config.spec_entry(
+            "test.options_fn_envy_ok@v1", spec_path, options='{ version = "1.0" }'
+        )
+        manifest = test_config.write_spec_manifest(self.specs_dir, [entry])
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_envy_ok@v1",
-                str(spec_path),
-                "--options",
-                '{ version = "1.0" }',
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1397,14 +1529,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_fn_envy_bad.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_fn_envy_bad@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_fn_envy_bad@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1431,14 +1567,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_badtype.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_badtype@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_badtype@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -1463,14 +1603,18 @@ SETUP = {
 """
         spec_path = self.write_spec("options_strtype.lua", spec)
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("test.options_strtype@v1", spec_path)]
+        )
+
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.options_strtype@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,

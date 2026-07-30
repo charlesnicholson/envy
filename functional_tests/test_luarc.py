@@ -4,7 +4,6 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,18 +11,10 @@ from pathlib import Path
 from . import test_config
 
 
-def _get_envy_binary() -> Path:
-    """Get the main envy binary (not functional tester)."""
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
-
-
 def _get_envy_version() -> str:
     """Get the baked-in version from the envy binary."""
     result = subprocess.run(
-        [str(_get_envy_binary()), "version"],
+        [str(test_config.get_envy_production_executable()), "version"],
         capture_output=True,
         text=True,
         timeout=10,
@@ -52,7 +43,7 @@ class TestLuarcTypesPathUpdate(unittest.TestCase):
         self._project_dir = self._temp_dir / "project"
         self._bin_dir = self._temp_dir / "project" / "tools"
         self._cache_dir = self._temp_dir / "cache"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
         self._version = _get_envy_version()
 
     def tearDown(self) -> None:

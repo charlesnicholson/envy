@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import unittest
 
 from . import test_config
@@ -12,12 +11,7 @@ from pathlib import Path
 class EnvyBinarySmokeTest(unittest.TestCase):
     def setUp(self) -> None:
         self._project_root = Path(__file__).resolve().parent.parent
-        self._envy_binary = (
-            self._project_root
-            / "out"
-            / "build"
-            / ("envy.exe" if sys.platform == "win32" else "envy")
-        )
+        self._envy_binary = test_config.get_envy_production_executable()
 
     def test_envy_help_executes(self) -> None:
 

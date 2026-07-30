@@ -11,13 +11,6 @@ from pathlib import Path
 from . import test_config
 
 
-def _get_envy_binary() -> Path:
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
-
-
 @unittest.skipIf(sys.platform == "win32", "bash hook tests require Unix")
 class TestBashHook(unittest.TestCase):
     """Test bash shell hook behavior by sourcing and invoking _envy_hook."""
@@ -25,7 +18,7 @@ class TestBashHook(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-bash-hook-test-"))
         self._cache_dir = self._temp_dir / "cache"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
         # Trigger self-deploy to get hook files
         project_dir = self._temp_dir / "setup-project"
@@ -450,7 +443,7 @@ class TestZshHook(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-zsh-hook-test-"))
         self._cache_dir = self._temp_dir / "cache"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
         project_dir = self._temp_dir / "setup-project"
         bin_dir = self._temp_dir / "setup-bin"
@@ -784,7 +777,7 @@ class TestFishHook(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-fish-hook-test-"))
         self._cache_dir = self._temp_dir / "cache"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
         project_dir = self._temp_dir / "setup-project"
         bin_dir = self._temp_dir / "setup-bin"
@@ -995,7 +988,7 @@ class TestPowerShellHook(unittest.TestCase):
         # (runneradmin) so Python paths match PowerShell's Resolve-Path output.
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-pwsh-hook-test-")).resolve()
         self._cache_dir = self._temp_dir / "cache"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
         project_dir = self._temp_dir / "setup-project"
         bin_dir = self._temp_dir / "setup-bin"

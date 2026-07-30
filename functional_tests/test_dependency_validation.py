@@ -16,6 +16,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import TraceParser
 
 # Test archive contents
 TEST_ARCHIVE_FILES = {
@@ -45,7 +46,6 @@ class TestDependencyValidation(unittest.TestCase):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-depval-test-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-depval-specs-"))
         self.envy_test = test_config.get_envy_executable()
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
         # Create test archive and get its hash
         self.archive_path = self.specs_dir / "test.tar.gz"
@@ -65,6 +65,31 @@ class TestDependencyValidation(unittest.TestCase):
         path = self.specs_dir / name
         path.write_text(spec_content, encoding="utf-8")
         return path
+
+    def install_spec(self, identity: str, spec_name: str, **kwargs):
+        """Install one spec through a generated manifest.
+
+        Returns (result, registered) where registered is the set of package keys
+        the engine resolved.
+        """
+        trace_file = self.cache_root / "trace.jsonl"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / spec_name)]
+        )
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                f"--trace=file:{trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+            **kwargs,
+        )
+        return result, TraceParser(trace_file).registered_specs()
 
     def test_direct_dependency_declared(self):
         """Spec calls envy.package() on declared direct dependency - should succeed."""
@@ -116,24 +141,13 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_direct@v1",
-                str(self.specs_dir / "dep_val_direct.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_direct@v1", "dep_val_direct.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         # Success means validation passed - the build completed without error
-        self.assertIn("local.dep_val_direct@v1", result.stdout)
+        self.assertIn("local.dep_val_direct@v1", output)
 
     def test_missing_dependency_declaration(self):
         """Spec calls envy.package() without declaring dependency - should fail."""
@@ -183,18 +197,7 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_missing@v1",
-                str(self.specs_dir / "dep_val_missing.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("local.dep_val_missing@v1", "dep_val_missing.lua")
 
         self.assertNotEqual(
             result.returncode, 0, "Expected failure for missing dependency"
@@ -288,24 +291,13 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_transitive@v1",
-                str(self.specs_dir / "dep_val_transitive.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_transitive@v1", "dep_val_transitive.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
         # Success means validation passed - the build completed without error
-        self.assertIn("local.dep_val_transitive@v1", result.stdout)
+        self.assertIn("local.dep_val_transitive@v1", output)
 
     def test_transitive_3_levels(self):
         """Spec calls envy.package() on transitive dependency 3 levels deep - should succeed."""
@@ -375,23 +367,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_level3_top@v1",
-                str(self.specs_dir / "dep_val_level3_top.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_level3_top@v1", "dep_val_level3_top.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_level3_top@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_level3_top@v1", output)
 
     def test_diamond_dependency(self):
         """Spec accesses dependency via two different paths (diamond) - should succeed."""
@@ -483,23 +464,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_diamond_top@v1",
-                str(self.specs_dir / "dep_val_diamond_top.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_diamond_top@v1", "dep_val_diamond_top.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_diamond_top@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_diamond_top@v1", output)
 
     def test_deep_chain_5_levels(self):
         """Spec calls envy.package() on dependency 5 levels deep - should succeed."""
@@ -612,23 +582,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_chain5_e@v1",
-                str(self.specs_dir / "dep_val_chain5_e.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_chain5_e@v1", "dep_val_chain5_e.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_chain5_e@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_chain5_e@v1", output)
 
     def test_unrelated_recipe_error(self):
         """Spec calls envy.package() on unrelated spec - should fail."""
@@ -675,17 +634,8 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_unrelated@v1",
-                str(self.specs_dir / "dep_val_unrelated.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, _ = self.install_spec(
+            "local.dep_val_unrelated@v1", "dep_val_unrelated.lua"
         )
 
         self.assertNotEqual(result.returncode, 0, "Expected failure for unrelated spec")
@@ -736,23 +686,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_needed_by_direct@v1",
-                str(self.specs_dir / "dep_val_needed_by_direct.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_needed_by_direct@v1", "dep_val_needed_by_direct.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_needed_by_direct@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_needed_by_direct@v1", output)
 
     def test_needed_by_transitive(self):
         """Spec with needed_by="recipe_fetch" calls envy.package() on transitive dep in fetch phase - should succeed."""
@@ -818,23 +757,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_needed_by_transitive@v1",
-                str(self.specs_dir / "dep_val_needed_by_transitive.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_needed_by_transitive@v1", "dep_val_needed_by_transitive.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_needed_by_transitive@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_needed_by_transitive@v1", output)
 
     def test_needed_by_undeclared(self):
         """Spec with needed_by="recipe_fetch" calls envy.package() on undeclared dep - should fail."""
@@ -919,17 +847,8 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_needed_by_undeclared@v1",
-                str(self.specs_dir / "dep_val_needed_by_undeclared.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, _ = self.install_spec(
+            "local.dep_val_needed_by_undeclared@v1", "dep_val_needed_by_undeclared.lua"
         )
 
         self.assertNotEqual(
@@ -1018,24 +937,14 @@ end
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_parallel_manifest@v1",
-                str(self.specs_dir / "dep_val_parallel_manifest.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_parallel_manifest@v1",
+            "dep_val_parallel_manifest.lua",
             env=env,
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_parallel_manifest@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_parallel_manifest@v1", output)
 
     def test_default_shell_with_dependency(self):
         """default_shell function calls envy.package(), spec declares dependency - should succeed."""
@@ -1085,23 +994,12 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_shell_with_dep@v1",
-                str(self.specs_dir / "dep_val_shell_with_dep.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.dep_val_shell_with_dep@v1", "dep_val_shell_with_dep.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_shell_with_dep@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_shell_with_dep@v1", output)
 
     def test_deep_chain_parallel(self):
         """Deep transitive chain under parallel execution - validation doesn't race."""
@@ -1218,24 +1116,12 @@ end
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.dep_val_chain5_e@v1",
-                str(self.specs_dir / "dep_val_chain5_e.lua"),
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
+        result, output = self.install_spec(
+            "local.dep_val_chain5_e@v1", "dep_val_chain5_e.lua", env=env
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-        self.assertIn("local.dep_val_chain5_e@v1", result.stdout)
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
+        self.assertIn("local.dep_val_chain5_e@v1", output)
 
 
 if __name__ == "__main__":

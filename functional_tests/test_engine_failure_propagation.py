@@ -100,6 +100,9 @@ SETUP = {{
 
     def test_mid_graph_failure_fails_dependents_without_hang(self):
         self.build_diamond()
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.root@v1", self.specs_dir / "root.lua")]
+        )
 
         # Repeat to shake out scheduling-dependent races; each run spawns
         # MID_COUNT+3 package threads. Harness timeout catches hangs.
@@ -109,9 +112,9 @@ SETUP = {{
                     [
                         str(self.envy_test),
                         f"--cache-root={self.cache_root}",
-                        "engine-test",
-                        "local.root@v1",
-                        str(self.specs_dir / "root.lua"),
+                        "install",
+                        "--manifest",
+                        str(manifest),
                     ],
                     capture_output=True,
                     text=True,
@@ -120,7 +123,7 @@ SETUP = {{
                 self.assertNotEqual(
                     result.returncode,
                     0,
-                    f"expected failure, got success; stdout: {result.stdout}",
+                    f"expected failure, got success; stderr: {result.stderr}",
                 )
                 self.assertIn(
                     f"mid-{FAILING_MID} deliberate failure",

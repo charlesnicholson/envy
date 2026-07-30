@@ -115,28 +115,18 @@ class TestUserManagedPackages(unittest.TestCase):
     ):
         """Run spec by name and identity.
 
-        setup=None uses the bare engine-test path (no pair selection). A list of
-        pair names writes a manifest selecting them and runs `install --manifest`.
+        setup=None selects no SETUP pairs; a list of pair names selects those.
+        Either way the spec runs via a generated manifest and `install`.
         """
         cmd = [str(self.envy_test), f"--cache-root={self.cache_root}"]
         if trace:
             # Observe per-package decision narrative (DEBUG); --trace is separate.
             cmd.append("--verbose")
 
-        if setup is None:
-            cmd.extend(["engine-test", identity, str(self.specs_dir / f"{name}.lua")])
-        else:
-            names = ", ".join(f'"{n}"' for n in setup)
-            spec_path = (self.specs_dir / f"{name}.lua").as_posix()
-            manifest = self.test_dir / "envy.lua"
-            manifest.write_text(
-                test_config.make_manifest(
-                    f'PACKAGES = {{ {{ spec = "{identity}", source = "{spec_path}", '
-                    f"setup = {{ {names} }} }} }}"
-                ),
-                encoding="utf-8",
-            )
-            cmd.extend(["install", "--manifest", str(manifest)])
+        spec_path = self.specs_dir / f"{name}.lua"
+        entry = (identity, spec_path) if setup is None else (identity, spec_path, setup)
+        manifest = test_config.write_spec_manifest(self.test_dir, [entry])
+        cmd.extend(["install", "--manifest", str(manifest)])
 
         env = os.environ.copy()
         if env_vars:

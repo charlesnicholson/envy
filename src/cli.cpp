@@ -78,16 +78,15 @@ cli_args cli_parse(int argc, char **argv) {
                            cmd_cache
 #ifdef ENVY_FUNCTIONAL_TESTER
                            ,
-                           cmd_engine_functional_test,
                            cmd_trace_schema
 #endif
                            >(app);
 
 #ifdef ENVY_FUNCTIONAL_TESTER
-  // Cache testing commands nest under the real "cache" command; it yields to
-  // them when one is selected.
+  // Test-only cache drivers get their own parent so the production "cache"
+  // command never has to reason about child subcommands.
   register_cmds.operator()<cmd_cache_ensure_package, cmd_cache_ensure_spec>(
-      *app.get_subcommand("cache"));
+      *app.add_subcommand("cache-test", "Drive cache primitives directly (test only)"));
 #endif
 
   cli_args args{};

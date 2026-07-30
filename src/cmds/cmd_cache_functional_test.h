@@ -11,34 +11,28 @@ namespace CLI { class App; }
 
 namespace envy {
 
-struct cache_test_result {
-  bool locked{ false };
-  bool fast_path{ false };
-  std::filesystem::path entry_path;
-  std::filesystem::path pkg_path;
-  std::filesystem::path install_path;
-  std::filesystem::path fetch_path;
-  std::filesystem::path stage_path;
-  std::filesystem::path lock_file;
-
-  std::string to_keyvalue() const;
+// Functional-tester-only: drive cache::ensure_pkg / ensure_spec directly so tests
+// can choreograph two processes around a single lock. What happened is reported
+// through the normal trace stream (cache_hit, cache_miss, lock_acquired,
+// cache_entry_finalized); these commands print nothing.
+struct cache_test_cfg {
+  std::string test_id;
+  std::filesystem::path barrier_dir;  // empty = temp_dir/envy-barrier-<test_id>
+  std::string barrier_signal;         // empty = no barrier
+  std::string barrier_wait;           // empty = no barrier
+  std::string barrier_signal_after;   // signal after lock acquired
+  std::string barrier_wait_after;     // wait after lock acquired
+  int crash_after_ms = -1;            // -1 = no crash
+  bool fail_before_complete = false;
 };
 
 class cmd_cache_ensure_package : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_cache_ensure_package> {
+  struct cfg : cmd_cfg<cmd_cache_ensure_package>, cache_test_cfg {
     std::string identity;
     std::string platform;
     std::string arch;
     std::string hash_prefix;
-    std::string test_id;
-    std::filesystem::path barrier_dir;  // empty = use default
-    std::string barrier_signal;         // empty = no barrier
-    std::string barrier_wait;           // empty = no barrier
-    std::string barrier_signal_after;   // signal after lock acquired
-    std::string barrier_wait_after;     // wait after lock acquired
-    int crash_after_ms = -1;            // -1 = no crash
-    bool fail_before_complete = false;
   };
 
   static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);
@@ -54,16 +48,8 @@ class cmd_cache_ensure_package : public cmd {
 
 class cmd_cache_ensure_spec : public cmd {
  public:
-  struct cfg : cmd_cfg<cmd_cache_ensure_spec> {
+  struct cfg : cmd_cfg<cmd_cache_ensure_spec>, cache_test_cfg {
     std::string identity;
-    std::string test_id;
-    std::filesystem::path barrier_dir;  // empty = use default
-    std::string barrier_signal;         // empty = no barrier
-    std::string barrier_wait;           // empty = no barrier
-    std::string barrier_signal_after;   // signal after lock acquired
-    std::string barrier_wait_after;     // wait after lock acquired
-    int crash_after_ms = -1;            // -1 = no crash
-    bool fail_before_complete = false;
   };
 
   static void register_cli(CLI::App &parent, std::function<void(cfg)> on_selected);

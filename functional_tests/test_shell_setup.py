@@ -10,14 +10,6 @@ from pathlib import Path
 from . import test_config
 
 
-def _get_envy_binary() -> Path:
-    """Get the main envy binary (not functional tester)."""
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
-
-
 class TestShellCommand(unittest.TestCase):
     """Test the envy shell command."""
 
@@ -26,7 +18,7 @@ class TestShellCommand(unittest.TestCase):
         self._cache_dir = self._temp_dir / "cache"
         self._project_dir = self._temp_dir / "project"
         self._bin_dir = self._temp_dir / "bin"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
     def tearDown(self) -> None:
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():
@@ -115,7 +107,7 @@ class TestShellHookDeployment(unittest.TestCase):
         self._cache_dir = self._temp_dir / "cache"
         self._project_dir = self._temp_dir / "project"
         self._bin_dir = self._temp_dir / "bin"
-        self._envy = _get_envy_binary()
+        self._envy = test_config.get_envy_production_executable()
 
     def tearDown(self) -> None:
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():

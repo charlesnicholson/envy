@@ -13,8 +13,7 @@ from pathlib import Path
 class EnvyLuaTests(unittest.TestCase):
     def setUp(self) -> None:
         self._project_root = Path(__file__).resolve().parent.parent
-        binary_name = "envy.exe" if sys.platform == "win32" else "envy"
-        self._envy_binary = self._project_root / "out" / "build" / binary_name
+        self._envy_binary = test_config.get_envy_production_executable()
 
     def _run_envy(self, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()

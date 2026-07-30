@@ -41,17 +41,24 @@ class TestObservability(unittest.TestCase):
             f'FETCH = {{ source = "file://{lua_path(self.payload)}" }}\n',
             encoding="utf-8",
         )
+        self.manifest = self._manifest("obs", "local.obs@v1", self.spec)
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def _engine_test(self, *extra, trace_file: Path | None = None):
+    def _manifest(self, name: str, identity: str, spec: Path) -> Path:
+        """One manifest per subdir; write_spec_manifest always names it envy.lua."""
+        d = self.test_dir / name
+        d.mkdir(exist_ok=True)
+        return test_config.write_spec_manifest(d, [(identity, spec)])
+
+    def _install(self, *extra, trace_file: Path | None = None):
         cmd = [str(self.envy), f"--cache-root={self.cache_root}"]
         if trace_file is not None:
             cmd.append(f"--trace=file:{trace_file}")
         cmd.extend(extra)
-        cmd.extend(["engine-test", "local.obs@v1", str(self.spec)])
+        cmd.extend(["install", "--manifest", str(self.manifest)])
         return test_config.run(cmd, capture_output=True, text=True)
 
     # --- outcomes -----------------------------------------------------------
@@ -59,10 +66,10 @@ class TestObservability(unittest.TestCase):
     def test_outcome_installed_then_cache_hit(self):
         """pkg_outcome + INFO line report installed on build, cache_hit on rerun."""
         trace1 = self.cache_root / "t1.jsonl"
-        r1 = self._engine_test(trace_file=trace1)
+        r1 = self._install(trace_file=trace1)
         self.assertEqual(r1.returncode, 0, r1.stderr)
 
-        # Non-TTY INFO outcome line (functional tester forces non-TTY).
+        # Non-TTY INFO outcome line (capture_output pipes stderr, so no TTY).
         self.assertRegex(r1.stderr, r"\[local\.obs@v1\] installed \(\d")
 
         outcomes1 = TraceParser(trace1).filter_by_event("pkg_outcome")
@@ -72,7 +79,7 @@ class TestObservability(unittest.TestCase):
         self.assertGreaterEqual(outcomes1[0].raw["duration_ms"], 0)
 
         trace2 = self.cache_root / "t2.jsonl"
-        r2 = self._engine_test(trace_file=trace2)
+        r2 = self._install(trace_file=trace2)
         self.assertEqual(r2.returncode, 0, r2.stderr)
         self.assertIn("[local.obs@v1] cache hit", r2.stderr)
 
@@ -82,14 +89,14 @@ class TestObservability(unittest.TestCase):
 
     def test_quiet_suppresses_outcome_line(self):
         """-q keeps warnings/errors only; the INFO outcome line is gone."""
-        r = self._engine_test("-q")
+        r = self._install("-q")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("installed", r.stderr)
         self.assertNotIn("cache hit", r.stderr)
 
     def test_verbose_surfaces_decision_narrative(self):
         """--verbose shows the per-package DEBUG narrative, [identity]-prefixed."""
-        r = self._engine_test("--verbose")
+        r = self._install("--verbose")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("[local.obs@v1] check: miss", r.stderr)
         self.assertIn("[local.obs@v1] fetch: downloading", r.stderr)
@@ -98,7 +105,7 @@ class TestObservability(unittest.TestCase):
 
     def test_download_start_and_complete(self):
         trace = self.cache_root / "t.jsonl"
-        r = self._engine_test(trace_file=trace)
+        r = self._install(trace_file=trace)
         self.assertEqual(r.returncode, 0, r.stderr)
 
         parser = TraceParser(trace)
@@ -118,15 +125,16 @@ class TestObservability(unittest.TestCase):
             f'FETCH = {{ source = "file://{lua_path(missing)}" }}\n',
             encoding="utf-8",
         )
+        manifest = self._manifest("bad", "local.obsbad@v1", bad_spec)
         trace = self.cache_root / "bad.jsonl"
         r = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace}",
-                "engine-test",
-                "local.obsbad@v1",
-                str(bad_spec),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,

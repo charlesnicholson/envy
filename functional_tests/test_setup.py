@@ -406,13 +406,13 @@ class TestSetupPairs(unittest.TestCase):
             self.assertNotEqual(
                 result.returncode,
                 0,
-                f"Expected failure.\nstdout: {result.stdout}\nstderr: {result.stderr}",
+                f"Expected failure: {result.stderr}",
             )
         else:
             self.assertEqual(
                 result.returncode,
                 0,
-                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+                f"stderr: {result.stderr}",
             )
         return result
 
@@ -1202,7 +1202,7 @@ SETUP = {{{{
         ]
         results = [p.communicate(timeout=45) for p in procs]
         for p, (out, err) in zip(procs, results):
-            self.assertEqual(p.returncode, 0, f"stdout: {out}\nstderr: {err}")
+            self.assertEqual(p.returncode, 0, f"stderr: {err}")
 
         log = self.test_dir / "concurrent_log.txt"
         self.assertTrue(log.exists())

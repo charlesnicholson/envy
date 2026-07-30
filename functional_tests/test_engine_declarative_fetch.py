@@ -6,7 +6,6 @@ FETCH = [{...}, ...], and basic error handling (collision, bad SHA256).
 
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -28,7 +27,7 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
     envy_watchdog_timeout = 60
 
     def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-decl-fetch-cache-"))
         self.test_files_dir = Path(tempfile.mkdtemp(prefix="envy-decl-fetch-files-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
@@ -57,6 +56,33 @@ class TestEngineDeclarativeFetch(unittest.TestCase):
         )
         return result.stdout.strip().split("  ", 1)[0]
 
+    def run_spec(self, identity, spec_path, *flags):
+        """Install one local spec through a generated manifest."""
+        manifest = test_config.write_spec_manifest(
+            self.cache_root, [(identity, spec_path)]
+        )
+        return test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *(flags or self.trace_flag),
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+    def assert_sole_package(self, result, identity):
+        """Exactly one package outcome, and it belongs to `identity`.
+
+        Requires --trace on stderr; pkg_outcome is emitted once per package.
+        """
+        outcomes = [ln for ln in result.stderr.splitlines() if "pkg_outcome" in ln]
+        self.assertEqual(len(outcomes), 1, f"Expected one package: {result.stderr}")
+        self.assertIn(f"spec={identity}", outcomes[0])
+
     def test_declarative_fetch_string(self):
         """Spec with declarative fetch (string format) downloads file."""
         # Create spec with inline content
@@ -69,24 +95,12 @@ FETCH = "{self.lua_path("simple.lua")}"
         spec_path = self.cache_root / "fetch_string.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_string@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_string@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        self.assertIn("local.fetch_string@v1", result.stdout)
+        self.assert_sole_package(result, "local.fetch_string@v1")
 
         # Verify fetch phase executed
         stderr_lower = result.stderr.lower()
@@ -112,24 +126,12 @@ FETCH = {{
         modified_spec = self.cache_root / "fetch_single.lua"
         modified_spec.write_text(spec_content)
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_single@v1",
-                str(modified_spec),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_single@v1", modified_spec, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        self.assertIn("local.fetch_single@v1", result.stdout)
+        self.assert_sole_package(result, "local.fetch_single@v1")
 
         # Verify SHA256 verification occurred
         stderr_lower = result.stderr.lower()
@@ -166,24 +168,12 @@ FETCH = {{
         modified_spec = self.cache_root / "fetch_array.lua"
         modified_spec.write_text(spec_content)
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_array@v1",
-                str(modified_spec),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_array@v1", modified_spec, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        self.assertIn("local.fetch_array@v1", result.stdout)
+        self.assert_sole_package(result, "local.fetch_array@v1")
 
         # Verify multiple files were downloaded
         stderr_lower = result.stderr.lower()
@@ -218,18 +208,7 @@ FETCH = {{
         spec_path = self.cache_root / "fetch_collision.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_collision@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.fetch_collision@v1", spec_path)
 
         self.assertNotEqual(
             result.returncode, 0, "Expected filename collision to cause failure"
@@ -259,18 +238,7 @@ FETCH = {{
         spec_path = self.cache_root / "fetch_bad_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_bad_sha256@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.fetch_bad_sha256@v1", spec_path)
 
         self.assertNotEqual(
             result.returncode, 0, "Expected SHA256 mismatch to cause failure"
@@ -313,18 +281,8 @@ end
         spec_path = self.cache_root / "fetch_dest_override.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_dest_override@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_dest_override@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -352,18 +310,8 @@ end
         spec_path = self.cache_root / "fetch_dest_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_dest_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_dest_array@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -404,18 +352,7 @@ end
         spec_path = self.cache_root / "fetch_dest_collision_fix.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_dest_collision_fix@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.fetch_dest_collision_fix@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -432,18 +369,7 @@ FETCH = {{
         spec_path = self.cache_root / "fetch_dest_dup.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_dest_dup@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.fetch_dest_dup@v1", spec_path)
 
         self.assertNotEqual(
             result.returncode, 0, "Expected collision error for duplicate dest"
@@ -467,24 +393,12 @@ FETCH = {{
         spec_path = self.cache_root / "fetch_string_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.fetch_string_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.fetch_string_array@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        self.assertIn("local.fetch_string_array@v1", result.stdout)
+        self.assert_sole_package(result, "local.fetch_string_array@v1")
 
         # Verify downloading log mentions 3 files
         stderr_lower = result.stderr.lower()
@@ -527,21 +441,10 @@ end
         spec_path = self.cache_root / "fetch_git_test.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_git_test@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.fetch_git_test@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.fetch_git_test@v1", result.stdout)
+        self.assertIn("local.fetch_git_test@v1", result.stderr)
 
     def test_declarative_git_in_stage_not_fetch(self):
         """Git repos must be cloned to stage_dir, NOT fetch_dir."""
@@ -576,18 +479,7 @@ end
         spec_path = self.cache_root / "git_location_test.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.git_location_test@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.git_location_test@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -614,18 +506,8 @@ end
         spec_path = self.cache_root / "git_no_cache.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.git_no_cache@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.git_no_cache@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")

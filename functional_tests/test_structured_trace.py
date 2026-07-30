@@ -44,6 +44,9 @@ class TestStructuredTrace(unittest.TestCase):
         # Write spec to temp directory
         self.spec_path = self.test_dir / "simple.lua"
         self.spec_path.write_text(SIMPLE_SPEC, encoding="utf-8")
+        self.manifest = test_config.write_spec_manifest(
+            self.test_dir, [("local.simple@v1", self.spec_path)]
+        )
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -56,9 +59,9 @@ class TestStructuredTrace(unittest.TestCase):
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 "--trace=stderr",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -90,9 +93,9 @@ class TestStructuredTrace(unittest.TestCase):
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -143,9 +146,9 @@ class TestStructuredTrace(unittest.TestCase):
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -168,9 +171,9 @@ class TestStructuredTrace(unittest.TestCase):
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=stderr,file:{trace_file}",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -197,9 +200,9 @@ class TestStructuredTrace(unittest.TestCase):
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -234,9 +237,9 @@ class TestStructuredTrace(unittest.TestCase):
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,

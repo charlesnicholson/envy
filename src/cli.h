@@ -21,7 +21,6 @@
 #include "cmds/cmd_version.h"
 #ifdef ENVY_FUNCTIONAL_TESTER
 #include "cmds/cmd_cache_functional_test.h"
-#include "cmds/cmd_engine_functional_test.h"
 #include "cmds/cmd_trace_schema.h"
 #endif
 #include "tui.h"
@@ -57,7 +56,6 @@ struct cli_args {
                                  ,
                                  cmd_cache_ensure_package::cfg,
                                  cmd_cache_ensure_spec::cfg,
-                                 cmd_engine_functional_test::cfg,
                                  cmd_trace_schema::cfg
 #endif
                                  >;

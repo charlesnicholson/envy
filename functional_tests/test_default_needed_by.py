@@ -135,14 +135,18 @@ end
         """Verify default needed_by is asset_build (phase 4), not asset_check."""
         trace_file = self.cache_root / "trace.jsonl"
 
+        spec = self.specs_dir / "default_needed_by_parent.lua"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.default_needed_by_parent@v1", spec)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.default_needed_by_parent@v1",
-                str(self.specs_dir / "default_needed_by_parent.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -172,14 +176,18 @@ end
         """Verify explicit needed_by='check' still works correctly."""
         trace_file = self.cache_root / "trace.jsonl"
 
+        spec = self.specs_dir / "explicit_check_parent.lua"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.explicit_check_parent@v1", spec)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.explicit_check_parent@v1",
-                str(self.specs_dir / "explicit_check_parent.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -201,14 +209,18 @@ end
         """Verify explicit needed_by='fetch' works correctly."""
         trace_file = self.cache_root / "trace.jsonl"
 
+        spec = self.specs_dir / "explicit_fetch_parent.lua"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.explicit_fetch_parent@v1", spec)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.explicit_fetch_parent@v1",
-                str(self.specs_dir / "explicit_fetch_parent.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,

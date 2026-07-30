@@ -96,15 +96,19 @@ end
             spec_trace_ctx_access, encoding="utf-8"
         )
 
+        manifest = test_config.write_spec_manifest(
+            self.test_dir,
+            [("local.trace_ctx_access@v1", self.test_dir / "trace_ctx_access.lua")],
+        )
         trace_file = self.cache_root / "trace.jsonl"
         result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.trace_ctx_access@v1",
-                str(self.test_dir / "trace_ctx_access.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,

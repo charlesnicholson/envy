@@ -112,6 +112,29 @@ class TestNeededBy(unittest.TestCase):
         """Get path to spec file."""
         return str(self.specs_dir / name)
 
+    def install_spec(
+        self, identity: str, spec_name: str, trace: str = "trace.jsonl", **kwargs
+    ):
+        """Install one spec through a generated manifest; returns (result, parser)."""
+        trace_file = self.cache_root / trace
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / spec_name)]
+        )
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                f"--trace=file:{trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+            **kwargs,
+        )
+        return result, TraceParser(trace_file)
+
     def test_needed_by_fetch_allows_parallelism(self):
         """Spec A depends on B with needed_by='fetch' - A's early phases run in parallel."""
         # Parent spec - tests needed_by="fetch" dependency
@@ -153,26 +176,15 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_fetch_parent@v1",
-                self.spec_path("needed_by_fetch_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_fetch_parent@v1", "needed_by_fetch_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_fetch_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_fetch_dep@v1", result.stdout)
+        self.assertIn("local.needed_by_fetch_parent@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_fetch_dep@v1", parser.registered_specs())
 
         # Verify needed_by phase is set correctly
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_fetch_parent@v1",
             "local.needed_by_fetch_dep@v1",
@@ -225,25 +237,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_build_parent@v1",
-                self.spec_path("needed_by_build_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_build_parent@v1", "needed_by_build_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_build_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_build_dep@v1", result.stdout)
+        self.assertIn("local.needed_by_build_parent@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_build_dep@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_build_parent@v1",
             "local.needed_by_build_dep@v1",
@@ -292,25 +293,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_stage_parent@v1",
-                self.spec_path("needed_by_stage_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_stage_parent@v1", "needed_by_stage_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_stage_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_stage_dep@v1", result.stdout)
+        self.assertIn("local.needed_by_stage_parent@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_stage_dep@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_stage_parent@v1",
             "local.needed_by_stage_dep@v1",
@@ -362,25 +352,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_install_parent@v1",
-                self.spec_path("needed_by_install_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_install_parent@v1", "needed_by_install_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_install_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_install_dep@v1", result.stdout)
+        self.assertIn("local.needed_by_install_parent@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_install_dep@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_install_parent@v1",
             "local.needed_by_install_dep@v1",
@@ -429,25 +408,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_check_parent@v1",
-                self.spec_path("needed_by_check_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_check_parent@v1", "needed_by_check_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_check_parent@v1", result.stdout)
-        self.assertIn("local.needed_by_check_dep@v1", result.stdout)
+        self.assertIn("local.needed_by_check_parent@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_check_dep@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_check_parent@v1",
             "local.needed_by_check_dep@v1",
@@ -483,25 +451,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_default_parent@v1",
-                self.spec_path("needed_by_default_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_default_parent@v1", "needed_by_default_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_default_parent@v1", result.stdout)
-        self.assertIn("local.dep_val_lib@v1", result.stdout)
+        self.assertIn("local.needed_by_default_parent@v1", parser.registered_specs())
+        self.assertIn("local.dep_val_lib@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         parser.assert_dependency_needed_by(
             "local.needed_by_default_parent@v1",
             "local.dep_val_lib@v1",
@@ -531,16 +488,8 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "engine-test",
-                "local.needed_by_invalid@v1",
-                self.spec_path("needed_by_invalid.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, _ = self.install_spec(
+            "local.needed_by_invalid@v1", "needed_by_invalid.lua"
         )
 
         self.assertNotEqual(result.returncode, 0, "Expected invalid phase name to fail")
@@ -619,27 +568,16 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_chain_a@v1",
-                self.spec_path("needed_by_chain_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_chain_a@v1", "needed_by_chain_a.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_chain_a@v1", result.stdout)
-        self.assertIn("local.needed_by_chain_b@v1", result.stdout)
-        self.assertIn("local.needed_by_chain_c@v1", result.stdout)
+        self.assertIn("local.needed_by_chain_a@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_chain_b@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_chain_c@v1", parser.registered_specs())
 
         # Verify all three specs completed successfully
-        parser = TraceParser(trace_file)
         for spec in [
             "local.needed_by_chain_a@v1",
             "local.needed_by_chain_b@v1",
@@ -713,27 +651,16 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_diamond_a@v1",
-                self.spec_path("needed_by_diamond_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_diamond_a@v1", "needed_by_diamond_a.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_diamond_a@v1", result.stdout)
-        self.assertIn("local.needed_by_diamond_b@v1", result.stdout)
-        self.assertIn("local.needed_by_diamond_c@v1", result.stdout)
+        self.assertIn("local.needed_by_diamond_a@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_diamond_b@v1", parser.registered_specs())
+        self.assertIn("local.needed_by_diamond_c@v1", parser.registered_specs())
 
         # Verify all three specs completed
-        parser = TraceParser(trace_file)
         for spec in [
             "local.needed_by_diamond_a@v1",
             "local.needed_by_diamond_b@v1",
@@ -773,25 +700,13 @@ end
         env = os.environ.copy()
         env["ENVY_TEST_JOBS"] = "8"
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_race_parent@v1",
-                self.spec_path("needed_by_race_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
+        result, parser = self.install_spec(
+            "local.needed_by_race_parent@v1", "needed_by_race_parent.lua", env=env
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_race_parent@v1", result.stdout)
+        self.assertIn("local.needed_by_race_parent@v1", parser.registered_specs())
 
-        parser = TraceParser(trace_file)
         completes = parser.filter_by_spec_and_event(
             "local.needed_by_race_parent@v1", "phase_complete"
         )
@@ -825,47 +740,29 @@ end
 """,
         )
 
-        trace_file1 = self.cache_root / "trace1.jsonl"
-        result1 = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file1}",
-                "engine-test",
-                "local.needed_by_cached_parent@v1",
-                self.spec_path("needed_by_cached_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result1, parser1 = self.install_spec(
+            "local.needed_by_cached_parent@v1",
+            "needed_by_cached_parent.lua",
+            trace="trace1.jsonl",
         )
 
         self.assertEqual(result1.returncode, 0, f"stderr: {result1.stderr}")
 
         # Verify first run had cache miss for dependency
-        parser1 = TraceParser(trace_file1)
         cache_misses = parser1.filter_by_event("cache_miss")
         self.assertGreater(len(cache_misses), 0, "Expected cache misses on first run")
 
         # Second run: cache hit (should still respect needed_by)
-        trace_file2 = self.cache_root / "trace2.jsonl"
-        result2 = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file2}",
-                "engine-test",
-                "local.needed_by_cached_parent@v1",
-                self.spec_path("needed_by_cached_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result2, parser2 = self.install_spec(
+            "local.needed_by_cached_parent@v1",
+            "needed_by_cached_parent.lua",
+            trace="trace2.jsonl",
         )
 
         self.assertEqual(result2.returncode, 0, f"stderr: {result2.stderr}")
-        self.assertIn("local.needed_by_cached_parent@v1", result2.stdout)
+        self.assertIn("local.needed_by_cached_parent@v1", parser2.registered_specs())
 
         # Verify second run had cache hits
-        parser2 = TraceParser(trace_file2)
         cache_hits = parser2.filter_by_event("cache_hit")
         self.assertGreater(len(cache_hits), 0, "Expected cache hits on second run")
 
@@ -989,25 +886,14 @@ end
 """,
         )
 
-        trace_file = self.cache_root / "trace.jsonl"
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.needed_by_all_phases@v1",
-                self.spec_path("needed_by_all_phases.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, parser = self.install_spec(
+            "local.needed_by_all_phases@v1", "needed_by_all_phases.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.needed_by_all_phases@v1", result.stdout)
+        self.assertIn("local.needed_by_all_phases@v1", parser.registered_specs())
 
         # Verify spec completed and has multiple dependencies
-        parser = TraceParser(trace_file)
         deps = parser.get_dependency_added_events("local.needed_by_all_phases@v1")
         self.assertGreater(len(deps), 1, "Expected multiple dependencies")
 
