@@ -81,15 +81,18 @@ class TestStagePhase(unittest.TestCase):
         return None
 
     def run_spec(self, name: str, identity: str, should_succeed: bool = True):
-        """Run spec and return result."""
+        """Install the named spec via a generated manifest; return result."""
+        manifest = test_config.write_spec_manifest(
+            self.test_dir, [(identity, self.test_dir / f"{name}.lua")]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                identity,
-                str(self.test_dir / f"{name}.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -99,7 +102,7 @@ class TestStagePhase(unittest.TestCase):
             self.assertEqual(
                 result.returncode,
                 0,
-                f"Spec {name} failed:\nstdout: {result.stdout}\nstderr: {result.stderr}",
+                f"Spec {name} failed: {result.stderr}",
             )
         else:
             self.assertNotEqual(

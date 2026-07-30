@@ -67,8 +67,8 @@ class TestCheckInstallRuntime(unittest.TestCase):
     ):
         """Run a spec with given content and identity, return subprocess result.
 
-        setup=None uses the bare engine-test path (no pair selection). A list of
-        pair names writes a manifest selecting them and runs `install --manifest`.
+        setup=None selects no SETUP pairs; a list of pair names selects those.
+        Either way the spec runs via a generated manifest and `install`.
         """
         spec_path = self.specs_dir / f"{spec_name}.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
@@ -77,19 +77,9 @@ class TestCheckInstallRuntime(unittest.TestCase):
         cmd.extend(self.trace_flag)
         if verbose:
             cmd.append("--verbose")
-        if setup is None:
-            cmd.extend(["engine-test", identity, str(spec_path)])
-        else:
-            names = ", ".join(f'"{n}"' for n in setup)
-            manifest = self.test_dir / "envy.lua"
-            manifest.write_text(
-                test_config.make_manifest(
-                    f'PACKAGES = {{ {{ spec = "{identity}", '
-                    f'source = "{spec_path.as_posix()}", setup = {{ {names} }} }} }}'
-                ),
-                encoding="utf-8",
-            )
-            cmd.extend(["install", "--manifest", str(manifest)])
+        entry = (identity, spec_path) if setup is None else (identity, spec_path, setup)
+        manifest = test_config.write_spec_manifest(self.test_dir, [entry])
+        cmd.extend(["install", "--manifest", str(manifest)])
 
         env = os.environ.copy()
         if env_vars:
@@ -103,13 +93,13 @@ class TestCheckInstallRuntime(unittest.TestCase):
             self.assertNotEqual(
                 result.returncode,
                 0,
-                f"Expected failure but succeeded.\nstdout: {result.stdout}\nstderr: {result.stderr}",
+                f"Expected failure but succeeded: {result.stderr}",
             )
         else:
             self.assertEqual(
                 result.returncode,
                 0,
-                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+                f"stderr: {result.stderr}",
             )
 
         return result

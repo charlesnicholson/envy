@@ -1,19 +1,9 @@
 """Tests for platform utilities including exe path detection."""
 
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 
 from . import test_config
-
-
-def _get_envy_binary() -> Path:
-    """Get the main envy binary (not functional tester)."""
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
 
 
 class TestPlatformExePath(unittest.TestCase):
@@ -29,7 +19,7 @@ class TestPlatformExePath(unittest.TestCase):
 
     def test_exe_path_matches_invoked_binary(self):
         """Exe path should match the binary we invoked."""
-        envy_binary = _get_envy_binary()
+        envy_binary = test_config.get_envy_production_executable()
         result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,
@@ -59,7 +49,7 @@ class TestPlatformExePath(unittest.TestCase):
 
     def test_exe_path_is_absolute(self):
         """Reported exe path should be absolute."""
-        envy_binary = _get_envy_binary()
+        envy_binary = test_config.get_envy_production_executable()
         result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,
@@ -72,7 +62,7 @@ class TestPlatformExePath(unittest.TestCase):
 
     def test_exe_path_exists(self):
         """Reported exe path should exist."""
-        envy_binary = _get_envy_binary()
+        envy_binary = test_config.get_envy_production_executable()
         result = test_config.run(
             [str(envy_binary), "version"],
             capture_output=True,

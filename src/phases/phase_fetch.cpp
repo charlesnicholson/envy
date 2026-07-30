@@ -15,10 +15,6 @@
 #include "uri.h"
 #include "util.h"
 
-#ifdef ENVY_FUNCTIONAL_TESTER
-#include "test_support.h"
-#endif
-
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -427,15 +423,6 @@ void execute_downloads(std::vector<fetch_spec> const &specs,
     if (auto const *err{ std::get_if<std::string>(&results[i]) }) {
       errors.push_back(url + ": " + *err);
     } else {
-#ifdef ENVY_FUNCTIONAL_TESTER
-      try {
-        test::decrement_fail_counter();
-      } catch (std::exception const &e) {
-        errors.push_back(get_source(specs[spec_idx].request) + ": " + e.what());
-        continue;
-      }
-#endif
-
       if (!specs[spec_idx].sha256.empty()) {
         try {
           auto const *result{ std::get_if<fetch_result>(&results[i]) };

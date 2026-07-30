@@ -127,7 +127,7 @@ class interactive_mode_guard {
   ~interactive_mode_guard();
 };
 
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
 namespace test {
 extern int g_terminal_width;
 extern bool g_isatty;

@@ -19,7 +19,7 @@ class TestEnginePhases(unittest.TestCase):
     """Tests for phase execution lifecycle."""
 
     def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-phases-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-engine-specs-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
@@ -65,15 +65,18 @@ SETUP = {
 """
         spec_path = self.write_spec("simple", spec)
         trace_file = self.cache_root / "trace.jsonl"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.simple@v1", spec_path)]
+        )
 
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.simple@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -103,15 +106,18 @@ end
 """
         spec_path = self.write_spec("fetch_function_basic", spec)
         trace_file = self.cache_root / "trace.jsonl"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.fetcher@v1", spec_path)]
+        )
 
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.fetcher@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -124,12 +130,8 @@ end
         phase_sequence = parser.get_phase_sequence("local.fetcher@v1")
         self.assertIn(PkgPhase.PKG_FETCH, phase_sequence)
 
-        # Verify output contains package hash
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-        key, value = lines[0].split(" -> ", 1)
-        self.assertEqual(key, "local.fetcher@v1")
-        self.assertGreater(len(value), 0)
+        # The spec is the only package the engine resolved
+        self.assertEqual(parser.registered_specs(), {"local.fetcher@v1"})
 
     def test_fetch_function_with_dependency(self):
         """Engine executes fetch() with dependencies available."""
@@ -168,15 +170,18 @@ end
 """
         spec_path = self.write_spec("fetch_function_with_dep", fetcher_spec)
         trace_file = self.cache_root / "trace.jsonl"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.fetcher_with_dep@v1", spec_path)]
+        )
 
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 f"--trace=file:{trace_file}",
-                "engine-test",
-                "local.fetcher_with_dep@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -185,19 +190,13 @@ end
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         # Verify both specs executed
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2)
-
-        # Verify dependency executed
-        dep_lines = [l for l in lines if "local.tool@v1" in l]
-        self.assertEqual(len(dep_lines), 1)
-
-        # Verify main spec executed
-        main_lines = [l for l in lines if "local.fetcher_with_dep@v1" in l]
-        self.assertEqual(len(main_lines), 1)
+        parser = TraceParser(trace_file)
+        self.assertEqual(
+            parser.registered_specs(),
+            {"local.fetcher_with_dep@v1", "local.tool@v1"},
+        )
 
         # Verify dependency relationship via structured trace
-        parser = TraceParser(trace_file)
         deps = parser.get_dependency_added_events("local.fetcher_with_dep@v1")
         dep_names = [d.raw.get("dependency") for d in deps]
         self.assertIn("local.tool@v1", dep_names)

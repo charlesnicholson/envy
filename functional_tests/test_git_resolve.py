@@ -8,7 +8,6 @@ the ``git`` binary; the suite skips itself when it is absent.
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,10 +23,8 @@ class TestGitResolve(unittest.TestCase):
     """Resolve tags/branches/shas of a local repo via `envy git-resolve`."""
 
     def setUp(self) -> None:
-        project_root = Path(__file__).resolve().parent.parent
-        binary_name = "envy.exe" if sys.platform == "win32" else "envy"
-        self._envy = project_root / "out" / "build" / binary_name
-        self._project_root = project_root
+        self._envy = test_config.get_envy_production_executable()
+        self._project_root = Path(__file__).resolve().parent.parent
 
         self._work = Path(tempfile.mkdtemp(prefix="envy-git-resolve-"))
         self._repo = self._work / "repo"

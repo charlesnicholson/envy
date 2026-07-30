@@ -193,13 +193,7 @@ class BootstrapIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls._project_root = Path(__file__).resolve().parent.parent
-        cls._build_dir = cls._project_root / "out/build"
-
-        if sys.platform == "win32":
-            cls._envy_binary = cls._build_dir / "envy.exe"
-        else:
-            cls._envy_binary = cls._build_dir / "envy"
-
+        cls._envy_binary = test_config.get_envy_production_executable()
         cls._bootstrap_unix = cls._project_root / "src/resources/envy"
         cls._bootstrap_windows = cls._project_root / "src/resources/envy.bat"
 

@@ -217,13 +217,9 @@ class MirrorEnvyFunctionalTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        root = Path(__file__).resolve().parent.parent
-        cls._envy = root / "out" / "build" / (
-            "envy.exe" if sys.platform == "win32" else "envy"
-        )
+        cls._envy = test_config.get_envy_production_executable()
 
     def setUp(self) -> None:
-        self.assertTrue(self._envy.exists(), f"envy binary not found at {self._envy}")
         self._temp = Path(tempfile.mkdtemp(prefix="envy-mirror-envy-test-"))
         self._source = self._temp / "upstream"
         (self._source / "v1.2.3").mkdir(parents=True)
@@ -599,10 +595,7 @@ class InitMirrorSurvivesSyncTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        root = Path(__file__).resolve().parent.parent
-        cls._envy = root / "out" / "build" / (
-            "envy.exe" if sys.platform == "win32" else "envy"
-        )
+        cls._envy = test_config.get_envy_production_executable()
 
     def setUp(self) -> None:
         self._temp = Path(tempfile.mkdtemp(prefix="envy-init-mirror-test-"))

@@ -101,15 +101,18 @@ class TestErrorOutput(unittest.TestCase):
         return str(path)
 
     def run_spec_fail(self, name: str, identity: str):
-        """Run spec, assert it fails, return combined output."""
+        """Install the named spec, assert it fails, return combined output."""
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / f"{name}.lua")]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                identity,
-                str(self.specs_dir / f"{name}.lua"),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -119,7 +122,7 @@ class TestErrorOutput(unittest.TestCase):
             result.returncode,
             0,
             f"Spec {name} should have failed but succeeded.\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}",
+            f"stderr: {result.stderr}",
         )
 
         return result.stdout + result.stderr

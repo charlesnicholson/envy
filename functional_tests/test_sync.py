@@ -21,14 +21,6 @@ from .test_config import make_manifest
 from .trace_parser import TraceParser
 
 
-def _get_envy_binary() -> Path:
-    """Get the main envy binary (not functional tester)."""
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
-
-
 # Test archive contents
 TEST_ARCHIVE_FILES = {
     "root/file1.txt": "Test file content\n",
@@ -2318,7 +2310,7 @@ PACKAGES = {{
 
     def test_init_then_sync_preserves_bootstrap_mtime(self):
         """Init creates bootstrap, sync preserves it when unchanged (mtime test)."""
-        envy_main = _get_envy_binary()
+        envy_main = test_config.get_envy_production_executable()
         env = test_config.get_test_env()
         env["ENVY_CACHE_ROOT"] = str(self.cache_root)
 

@@ -11,6 +11,7 @@
 #endif
 
 #include <cerrno>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -336,7 +337,14 @@ void await_files_accessible(std::filesystem::path const &) {}
 
 void mark_not_indexed(std::filesystem::path const &) {}
 
-[[noreturn]] void terminate_process() { std::abort(); }
+// SIGKILL, not abort(): both die without running destructors, but SIGABRT is a
+// Mach exception, so macOS writes a crash report and pops a "quit unexpectedly"
+// dialog for every deliberate kill the cache tests perform. A kernel kill is
+// not reported, and abrupt kernel termination is what those tests simulate.
+[[noreturn]] void terminate_process() {
+  ::kill(::getpid(), SIGKILL);
+  _exit(137);  // Unreachable: SIGKILL cannot be caught, blocked, or ignored.
+}
 
 bool is_tty() { return ::isatty(::fileno(stderr)) != 0; }
 

@@ -6,7 +6,6 @@ cycle detection, memoization, and local/remote security constraints.
 
 import hashlib
 import io
-import os
 import shutil
 import subprocess
 import tarfile
@@ -15,6 +14,7 @@ from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import TraceParser
 
 # Test archive contents
 TEST_ARCHIVE_FILES = {
@@ -41,12 +41,10 @@ class TestEngineDependencyResolution(unittest.TestCase):
     """Tests for dependency graph construction and validation."""
 
     def setUp(self):
-        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-engine-test-"))
+        self.cache_root = Path(tempfile.mkdtemp(prefix="envy-dep-cache-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-dep-specs-"))
         self.envy_test = test_config.get_envy_executable()
         self.envy = test_config.get_envy_executable()
-        # Enable trace for all tests if ENVY_TEST_TRACE is set
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
         # Create test archive and get its hash
         self.archive_path = self.specs_dir / "test.tar.gz"
@@ -75,6 +73,31 @@ class TestEngineDependencyResolution(unittest.TestCase):
             check=True,
         )
         return result.stdout.strip().split("  ", 1)[0]
+
+    def install_spec(self, identity: str, spec_name: str, **kwargs):
+        """Install one spec through a generated manifest.
+
+        Returns (result, registered) where registered is the set of package keys
+        the engine resolved -- the dependency graph these tests assert on.
+        """
+        trace_file = self.cache_root / "trace.jsonl"
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / spec_name)]
+        )
+        result = test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                f"--trace=file:{trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+            **kwargs,
+        )
+        return result, TraceParser(trace_file).registered_specs()
 
     def test_recipe_with_one_dependency(self):
         """Engine loads spec and its dependency."""
@@ -124,26 +147,13 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.withdep@v1",
-                str(self.specs_dir / "with_dep.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.withdep@v1", "with_dep.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 2, f"Expected 2 recipes, got: {output}")
 
         # Check both identities present
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.withdep@v1", output)
         self.assertIn("local.simple@v1", output)
 
@@ -197,18 +207,7 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.cycle_a@v1",
-                str(self.specs_dir / "cycle_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("local.cycle_a@v1", "cycle_a.lua")
 
         self.assertNotEqual(result.returncode, 0, "Expected cycle to cause failure")
         self.assertIn(
@@ -243,18 +242,7 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.self_dep@v1",
-                str(self.specs_dir / "self_dep.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("local.self_dep@v1", "self_dep.lua")
 
         self.assertNotEqual(
             result.returncode, 0, "Expected self-dependency to cause failure"
@@ -362,38 +350,15 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.diamond_a@v1",
-                str(self.specs_dir / "diamond_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.diamond_a@v1", "diamond_a.lua")
+
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
         self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\n\nstdout: {result.stdout}"
+            len(output), 4, f"Expected 4 specs (A,B,C,D once), got: {output}"
         )
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(
-            len(lines), 4, f"Expected 4 specs (A,B,C,D once), got: {result.stdout}"
-        )
-
-        # Verify all present - parse with better error reporting
-        output = {}
-        for i, line in enumerate(lines):
-            parts = line.split(" -> ", 1)
-            self.assertEqual(
-                len(parts),
-                2,
-                f"Line {i} malformed (expected 'key -> value'): {repr(line)}\nAll lines: {lines}",
-            )
-            output[parts[0]] = parts[1]
+        # Verify all present
         self.assertIn("local.diamond_a@v1", output)
         self.assertIn("local.diamond_b@v1", output)
         self.assertIn("local.diamond_c@v1", output)
@@ -442,31 +407,18 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_dep_blocked@v1",
-                str(self.specs_dir / "fetch_dep_blocked.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.fetch_dep_blocked@v1", "fetch_dep_blocked.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines),
+            len(output),
             2,
-            f"Expected 2 specs (parent + helper), got: {result.stdout}",
+            f"Expected 2 specs (parent + helper), got: {output}",
         )
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.fetch_dep_blocked@v1", output)
         self.assertIn("local.fetch_dep_helper@v1", output)
 
@@ -541,26 +493,15 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.multiple_roots@v1",
-                str(self.specs_dir / "multiple_roots.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.multiple_roots@v1", "multiple_roots.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 3, f"Expected 3 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 3, f"Expected 3 recipes, got: {output}")
 
         # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.multiple_roots@v1", output)
         self.assertIn("local.independent_left@v1", output)
         self.assertIn("local.independent_right@v1", output)
@@ -614,30 +555,19 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.options_parent@v1",
-                str(self.specs_dir / "options_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.options_parent@v1", "options_parent.lua"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines),
+            len(output),
             3,
-            f"Expected 3 specs (parent + 2 variants), got: {result.stdout}",
+            f"Expected 3 specs (parent + 2 variants), got: {output}",
         )
 
         # Verify all present with options in keys (strings are quoted)
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.options_parent@v1", output)
         self.assertIn('local.with_options@v1{variant="bar"}', output)
         self.assertIn('local.with_options@v1{variant="foo"}', output)
@@ -762,28 +692,15 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.chain_a@v1",
-                str(self.specs_dir / "chain_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.chain_a@v1", "chain_a.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines), 5, f"Expected 5 specs (A,B,C,D,E), got: {result.stdout}"
+            len(output), 5, f"Expected 5 specs (A,B,C,D,E), got: {output}"
         )
 
         # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.chain_a@v1", output)
         self.assertIn("local.chain_b@v1", output)
         self.assertIn("local.chain_c@v1", output)
@@ -907,26 +824,13 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fanout_root@v1",
-                str(self.specs_dir / "fanout_root.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.fanout_root@v1", "fanout_root.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 5, f"Expected 5 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 5, f"Expected 5 recipes, got: {output}")
 
         # Verify all present
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.fanout_root@v1", output)
         self.assertIn("local.fanout_child1@v1", output)
         self.assertIn("local.fanout_child2@v1", output)
@@ -986,18 +890,7 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.badrecipe@v1",
-                str(self.specs_dir / "nonlocal_bad.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("remote.badrecipe@v1", "nonlocal_bad.lua")
 
         self.assertNotEqual(
             result.returncode, 0, "Expected validation to cause failure"
@@ -1033,27 +926,11 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.fileuri@v1",
-                str(self.specs_dir / "remote_fileuri.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("remote.fileuri@v1", "remote_fileuri.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 1)
-
-        key, value = lines[0].split(" -> ", 1)
-        self.assertEqual(key, "remote.fileuri@v1")
-        self.assertGreater(len(value), 0)
+        self.assertEqual(output, {"remote.fileuri@v1"})
 
     def test_remote_depends_on_remote(self):
         """Remote spec depending on another remote spec succeeds."""
@@ -1110,25 +987,12 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.parent@v1",
-                str(self.specs_dir / "remote_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("remote.parent@v1", "remote_parent.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 2, f"Expected 2 recipes, got: {output}")
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("remote.parent@v1", output)
         self.assertIn("remote.child@v1", output)
 
@@ -1187,25 +1051,12 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.wrapper@v1",
-                str(self.specs_dir / "local_wrapper.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.wrapper@v1", "local_wrapper.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 2, f"Expected 2 recipes, got: {output}")
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.wrapper@v1", output)
         self.assertIn("remote.base@v1", output)
 
@@ -1263,25 +1114,12 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.parent@v1",
-                str(self.specs_dir / "local_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, output = self.install_spec("local.parent@v1", "local_parent.lua")
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
-        self.assertEqual(len(lines), 2, f"Expected 2 recipes, got: {result.stdout}")
+        self.assertEqual(len(output), 2, f"Expected 2 recipes, got: {output}")
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.parent@v1", output)
         self.assertIn("local.child@v1", output)
 
@@ -1369,18 +1207,7 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "remote.a@v1",
-                str(self.specs_dir / "remote_transitive_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("remote.a@v1", "remote_transitive_a.lua")
 
         self.assertNotEqual(
             result.returncode, 0, "Expected transitive violation to cause failure"
@@ -1447,18 +1274,7 @@ end
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.fetch_cycle_a@v1",
-                str(self.specs_dir / "fetch_cycle_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result, _ = self.install_spec("local.fetch_cycle_a@v1", "fetch_cycle_a.lua")
 
         self.assertNotEqual(
             result.returncode, 0, "Expected fetch dependency cycle to cause failure"
@@ -1559,31 +1375,18 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.simple_fetch_dep_parent@v1",
-                str(self.specs_dir / "simple_fetch_dep_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.simple_fetch_dep_parent@v1", "simple_fetch_dep_parent.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines),
+            len(output),
             3,
-            f"Expected 3 specs (parent + child + base), got: {result.stdout}",
+            f"Expected 3 specs (parent + child + base), got: {output}",
         )
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.simple_fetch_dep_parent@v1", output)
         self.assertIn("local.simple_fetch_dep_child@v1", output)
         self.assertIn("local.simple_fetch_dep_base@v1", output)
@@ -1690,31 +1493,18 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.multi_level_a@v1",
-                str(self.specs_dir / "multi_level_a.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.multi_level_a@v1", "multi_level_a.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines),
+            len(output),
             4,
-            f"Expected 4 specs (A + B + C + base), got: {result.stdout}",
+            f"Expected 4 specs (A + B + C + base), got: {output}",
         )
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.multi_level_a@v1", output)
         self.assertIn("local.multi_level_b@v1", output)
         self.assertIn("local.multi_level_c@v1", output)
@@ -1808,31 +1598,18 @@ SETUP = {{
 """,
         )
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.multiple_fetch_deps_parent@v1",
-                str(self.specs_dir / "multiple_fetch_deps_parent.lua"),
-            ],
-            capture_output=True,
-            text=True,
+        result, output = self.install_spec(
+            "local.multiple_fetch_deps_parent@v1", "multiple_fetch_deps_parent.lua"
         )
 
-        self.assertEqual(
-            result.returncode, 0, f"stderr: {result.stderr}\\nstdout: {result.stdout}"
-        )
+        self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        lines = [line for line in result.stdout.strip().split("\n") if line]
         self.assertEqual(
-            len(lines),
+            len(output),
             4,
-            f"Expected 4 specs (parent + child + base + helper), got: {result.stdout}",
+            f"Expected 4 specs (parent + child + base + helper), got: {output}",
         )
 
-        output = dict(line.split(" -> ", 1) for line in lines)
         self.assertIn("local.multiple_fetch_deps_parent@v1", output)
         self.assertIn("local.multiple_fetch_deps_child@v1", output)
         self.assertIn("local.simple_fetch_dep_base@v1", output)

@@ -330,9 +330,7 @@ set(ENVY_COMMON_SOURCES ${ENVY_BASE_SOURCES} src/main.cpp)
 # Functional test-specific sources
 set(ENVY_FUNCTIONAL_TEST_SOURCES
     src/cmds/cmd_cache_functional_test.cpp
-    src/cmds/cmd_engine_functional_test.cpp
     src/cmds/cmd_trace_schema.cpp
-    src/test_support.cpp
 )
 
 # Enable ARC for Objective-C++ files

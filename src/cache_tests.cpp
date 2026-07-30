@@ -121,6 +121,39 @@ TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_pkg fast path when marker present"
   CHECK(std::filesystem::exists(result.pkg_path / "existing.txt"));
 }
 
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_pkg entry layout") {
+  auto result = cache->ensure_pkg("gcc", "linux", "x86_64", "deadbeef");
+  REQUIRE(result.lock != nullptr);
+
+  CHECK(result.entry_path ==
+        temp_root / "packages" / "gcc" / "linux-x86_64-blake3-deadbeef");
+  CHECK(result.pkg_path == result.entry_path / "pkg");
+  CHECK(result.lock->install_dir() == result.pkg_path);
+  CHECK(result.lock->fetch_dir() == result.entry_path / "fetch");
+  CHECK(result.lock->stage_dir() == result.entry_path / "work" / "stage");
+  result.lock.reset();
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_spec entry layout") {
+  auto result = cache->ensure_spec("envy.cmake@v1");
+  REQUIRE(result.lock != nullptr);
+
+  CHECK(result.entry_path == temp_root / "specs" / "envy.cmake@v1");
+  CHECK(result.pkg_path == result.entry_path / "pkg");
+  result.lock->mark_install_complete();
+  result.lock.reset();
+
+  CHECK(std::filesystem::is_directory(result.entry_path));
+  CHECK(std::filesystem::exists(result.entry_path / "envy-complete"));
+}
+
+TEST_CASE_FIXTURE(temp_cache_fixture, "ensure_pkg creates locks directory on demand") {
+  REQUIRE_FALSE(std::filesystem::exists(temp_root / "locks"));
+  auto result = cache->ensure_pkg("gcc", "darwin", "arm64", "auto1");
+  CHECK(std::filesystem::is_directory(temp_root / "locks"));
+  result.lock.reset();
+}
+
 TEST_CASE_FIXTURE(temp_cache_fixture, "mark_fetch_complete creates sentinel") {
   auto result = cache->ensure_pkg("foo", "darwin", "arm64", "deadbeef");
   REQUIRE(result.lock != nullptr);

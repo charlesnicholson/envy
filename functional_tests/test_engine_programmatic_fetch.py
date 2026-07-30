@@ -5,7 +5,6 @@ Tests FETCH = function(ctx) ... end syntax with envy.fetch() and envy.commit_fet
 
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -52,6 +51,24 @@ class TestEngineProgrammaticFetch(unittest.TestCase):
         )
         return result.stdout.strip().split("  ", 1)[0]
 
+    def run_spec(self, identity, spec_path, *flags):
+        """Install one local spec through a generated manifest."""
+        manifest = test_config.write_spec_manifest(
+            self.cache_root, [(identity, spec_path)]
+        )
+        return test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={self.cache_root}",
+                *(flags or self.trace_flag),
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
     def test_fetch_single_string(self):
         """envy.fetch("url") returns scalar string basename."""
         spec_content = f"""IDENTITY = "local.prog_fetch_single@v1"
@@ -70,21 +87,10 @@ end
         spec_path = self.cache_root / "prog_fetch_single.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_single@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_single@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.prog_fetch_single@v1", result.stdout)
+        self.assertIn("local.prog_fetch_single@v1", result.stderr)
 
     def test_fetch_string_array(self):
         """envy.fetch({"url1", "url2"}) returns array of basenames."""
@@ -110,18 +116,7 @@ end
         spec_path = self.cache_root / "prog_fetch_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -143,18 +138,7 @@ end
         spec_path = self.cache_root / "prog_fetch_table.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_table@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_table@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -179,18 +163,7 @@ end
         spec_path = self.cache_root / "prog_fetch_table_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_table_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_table_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -219,18 +192,7 @@ end
         spec_path = self.cache_root / "prog_fetch_dest.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_dest@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_dest@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -260,18 +222,7 @@ end
         spec_path = self.cache_root / "prog_fetch_dest_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_fetch_dest_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_fetch_dest_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -295,18 +246,7 @@ end
         spec_path = self.cache_root / "prog_return_dest.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_dest@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_dest@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -331,18 +271,7 @@ end
         spec_path = self.cache_root / "prog_commit_scalar.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_commit_scalar@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_commit_scalar@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -367,18 +296,8 @@ end
         spec_path = self.cache_root / "prog_commit_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                "--trace",
-                "--verbose",
-                "engine-test",
-                "local.prog_commit_sha256@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
+        result = self.run_spec(
+            "local.prog_commit_sha256@v1", spec_path, "--trace", "--verbose"
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
@@ -402,18 +321,7 @@ end
         spec_path = self.cache_root / "prog_commit_bad_sha256.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_commit_bad_sha256@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_commit_bad_sha256@v1", spec_path)
 
         self.assertNotEqual(result.returncode, 0, "Expected SHA256 mismatch to fail")
         self.assertIn("sha256", result.stderr.lower())
@@ -434,18 +342,7 @@ end
         spec_path = self.cache_root / "prog_commit_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_commit_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_commit_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -461,18 +358,7 @@ end
         spec_path = self.cache_root / "prog_commit_missing.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_commit_missing@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_commit_missing@v1", spec_path)
 
         self.assertNotEqual(result.returncode, 0, "Expected missing file error")
         stderr_lower = result.stderr.lower()
@@ -501,18 +387,7 @@ end
         spec_path = self.cache_root / "prog_selective_commit.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_selective_commit@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_selective_commit@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -533,18 +408,7 @@ end
         spec_path = self.cache_root / "prog_ctx_identity.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_ctx_identity@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_ctx_identity@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -565,18 +429,7 @@ end
         spec_path = self.cache_root / "prog_ctx_options.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_ctx_options@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_ctx_options@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -606,18 +459,7 @@ end
         spec_path = self.cache_root / "prog_ctx_options_empty.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_ctx_options_empty@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_ctx_options_empty@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -656,18 +498,7 @@ end
         spec_path = self.cache_root / "prog_serial_fetches.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_serial_fetches@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_serial_fetches@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -682,18 +513,7 @@ end
         spec_path = self.cache_root / "prog_error_prop.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_error_prop@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_error_prop@v1", spec_path)
 
         self.assertNotEqual(result.returncode, 0, "Expected error to cause failure")
         # Verify error mentions spec identity
@@ -711,21 +531,10 @@ end
         spec_path = self.cache_root / "prog_return_string.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_string@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_string@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.prog_return_string@v1", result.stdout)
+        self.assertIn("local.prog_return_string@v1", result.stderr)
 
     def test_fetch_function_returns_table_single(self):
         """FETCH = function(ctx) return {source="...", sha256="..."} end."""
@@ -742,18 +551,7 @@ end
         spec_path = self.cache_root / "prog_return_table.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_table@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_table@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -771,18 +569,7 @@ end
         spec_path = self.cache_root / "prog_return_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -800,25 +587,13 @@ end
         spec_path = self.cache_root / "prog_return_str_array.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_str_array@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_str_array@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
     def test_fetch_function_returns_with_options_templating(self):
         """FETCH = function(ctx, opts) return with opts templating."""
-        # Note: engine-test doesn't support passing options, so we use default behavior
-        # Real-world usage would pass options via manifest
+        # The manifest entry passes no options, so the defaults apply.
         spec_content = f"""IDENTITY = "local.prog_options_template@v1"
 
 function FETCH(tmp_dir, options)
@@ -830,18 +605,7 @@ end
         spec_path = self.cache_root / "prog_options_template.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_options_template@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_options_template@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -864,18 +628,7 @@ end
         spec_path = self.cache_root / "prog_mixed_mode.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_mixed_mode@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_mixed_mode@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -892,18 +645,7 @@ end
         spec_path = self.cache_root / "prog_return_nil.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_nil@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_nil@v1", spec_path)
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
@@ -918,18 +660,7 @@ end
         spec_path = self.cache_root / "prog_return_invalid.lua"
         spec_path.write_text(spec_content, encoding="utf-8")
 
-        result = test_config.run(
-            [
-                str(self.envy_test),
-                f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                "local.prog_return_invalid@v1",
-                str(spec_path),
-            ],
-            capture_output=True,
-            text=True,
-        )
+        result = self.run_spec("local.prog_return_invalid@v1", spec_path)
 
         self.assertNotEqual(
             result.returncode, 0, "Expected error for invalid return type"

@@ -20,13 +20,6 @@ from . import test_config
 from .test_config import make_manifest
 
 
-def _get_envy_binary() -> Path:
-    root = Path(__file__).parent.parent / "out" / "build"
-    if sys.platform == "win32":
-        return root / "envy.exe"
-    return root / "envy"
-
-
 TEST_ARCHIVE_FILES = {"root/file1.txt": "content\n"}
 
 
@@ -139,7 +132,7 @@ class PlatformFilterBase(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="envy-platfilter-mf-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-platfilter-sp-"))
         self.envy = test_config.get_envy_executable()
-        self.envy_main = _get_envy_binary()
+        self.envy_main = test_config.get_envy_production_executable()
         self.project_root = Path(__file__).parent.parent
 
         self.archive_path = self.specs_dir / "test.tar.gz"

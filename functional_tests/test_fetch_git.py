@@ -6,7 +6,6 @@ error handling, and basic integration scenarios.
 
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -287,21 +286,24 @@ end
         spec_path = self.cache_root / "ninja_recipe.lua"
         spec_path.write_text(spec_content)
 
+        manifest = test_config.write_spec_manifest(
+            self.cache_root, [("test.ninja@v1", spec_path)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "test.ninja@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("test.ninja@v1", result.stdout)
+        self.assertIn("test.ninja@v1", result.stderr)
 
     # ========================================================================
     # Parallel Git Fetching
@@ -335,21 +337,24 @@ end
         spec_path = self.specs_dir / "fetch_git_parallel.lua"
         spec_path.write_text(spec, encoding="utf-8")
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.fetch_git_parallel@v1", spec_path)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.fetch_git_parallel@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.fetch_git_parallel@v1", result.stdout)
+        self.assertIn("local.fetch_git_parallel@v1", result.stderr)
 
     def test_parallel_git_fetch_declarative(self):
         """Spec with multiple git sources fetches concurrently (declarative)."""
@@ -382,21 +387,24 @@ end
         spec_path = self.specs_dir / "fetch_git_parallel_declarative.lua"
         spec_path.write_text(spec, encoding="utf-8")
 
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [("local.fetch_git_parallel_declarative@v1", spec_path)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                "local.fetch_git_parallel_declarative@v1",
-                str(spec_path),
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
-        self.assertIn("local.fetch_git_parallel_declarative@v1", result.stdout)
+        self.assertIn("local.fetch_git_parallel_declarative@v1", result.stderr)
 
 
 if __name__ == "__main__":

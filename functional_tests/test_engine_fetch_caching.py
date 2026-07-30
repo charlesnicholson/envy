@@ -2,11 +2,16 @@
 
 Tests package cache management: per-file caching across partial failures,
 corruption detection/recovery, and SHA256-based revalidation.
+
+Partial-failure states are produced by pointing one FETCH entry at a file that
+does not exist yet: the other entries download and land in fetch/, that one
+fails, and the run aborts. Creating the file between runs completes the spec.
+The spec text is the cache key, so both runs must use the identical entry list
+-- the missing entry has to stay in the spec rather than being added later.
 """
 
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
@@ -55,68 +60,97 @@ class TestEngineFetchCaching(unittest.TestCase):
         )
         return result.stdout.strip().split("  ", 1)[0]
 
+    def empty_file_hash(self, scratch_dir):
+        """SHA256 of an empty file -- what a to-be-created missing file will hash to."""
+        probe = scratch_dir / "empty_probe.txt"
+        probe.write_text("")
+        return self.get_file_hash(probe)
+
+    def write_fetch_spec(self, dest_dir, sources):
+        """Write the shared fetch spec; `sources` is a list of (source, sha256|None)."""
+        entries = "".join(
+            f'  {{ source = "{src}"'
+            + (f', sha256 = "{sha}"' if sha else "")
+            + " },\n"
+            for src, sha in sources
+        )
+        path = dest_dir / "fetch_array.lua"
+        path.write_text(
+            f'IDENTITY = "local.fetch_array@v1"\n\nFETCH = {{\n{entries}}}\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def run_engine(self, cache_root, spec, trace_file=None):
+        """Install the spec through a generated manifest, with verbose logging."""
+        manifest = test_config.write_spec_manifest(
+            Path(spec).parent, [("local.fetch_array@v1", spec)]
+        )
+        return test_config.run(
+            [
+                str(self.envy_test),
+                f"--cache-root={cache_root}",
+                f"--trace=file:{trace_file}" if trace_file else "--trace",
+                "--verbose",
+                "install",
+                "--manifest",
+                str(manifest),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+    def sole_variant_dir(self, cache_root):
+        """The single cache variant directory for local.fetch_array@v1."""
+        identity_dir = cache_root / "packages" / "local.fetch_array@v1"
+        self.assertTrue(
+            identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
+        )
+        variant_dirs = list(identity_dir.glob("*-blake3-*"))
+        self.assertEqual(
+            len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
+        )
+        return variant_dirs[0]
+
+    def partial_fetch_spec(self, cache_root):
+        """Spec whose last entry is missing; returns (spec_path, missing_file).
+
+        Run it once to get a failed run with the other files cached in fetch/,
+        then create `missing_file` to let a second run complete.
+        """
+        missing_file = cache_root / "temp_files" / "fetch_missing.lua"
+        missing_file.parent.mkdir(parents=True, exist_ok=True)
+        spec = self.write_fetch_spec(
+            cache_root,
+            [
+                (
+                    self.lua_path("simple.lua"),
+                    self.get_file_hash(self.test_files_dir / "simple.lua"),
+                ),
+                (
+                    self.lua_path("print_single.lua"),
+                    self.get_file_hash(self.test_files_dir / "print_single.lua"),
+                ),
+                # No sha256 - should still work (permissive mode)
+                (self.lua_path("print_multiple.lua"), None),
+                (
+                    f"file://{missing_file.as_posix()}",
+                    self.empty_file_hash(cache_root),
+                ),
+            ],
+        )
+        return spec, missing_file
+
     def test_declarative_fetch_partial_failure_then_complete(self):
-        """Partial failure caches successful files, completion reuses them (no intrusive code)."""
+        """Partial failure caches successful files; completion reuses them."""
         # Use shared cache root so second run sees first run's cached files
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-shared-cache-"))
 
         try:
-            # Create temp directory for the missing file
-            temp_dir = shared_cache / "temp_files"
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            missing_file = temp_dir / "fetch_partial_missing.lua"
+            spec, missing_file = self.partial_fetch_spec(shared_cache)
 
-            # Compute hashes dynamically
-            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
-            print_single_hash = self.get_file_hash(
-                self.test_files_dir / "print_single.lua"
-            )
-
-            # Create empty file and compute its hash
-            empty_temp = shared_cache / "empty_temp.txt"
-            empty_temp.write_text("")
-            empty_hash = self.get_file_hash(empty_temp)
-
-            # Create spec with computed hashes
-            # Convert path to POSIX format (forward slashes) for Lua string compatibility
-            temp_dir_posix = temp_dir.as_posix()
-            spec_content = f"""-- Test per-file caching across partial failures
--- Two files succeed, one fails, then completion reuses cached files
-IDENTITY = "local.fetch_partial@v1"
-
-FETCH = {{
-  {{
-    source = "{self.lua_path("simple.lua")}",
-    sha256 = "{simple_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_single.lua")}",
-    sha256 = "{print_single_hash}"
-  }},
-  {{
-    -- This file will be created by the test after first run
-    source = "file://{temp_dir_posix}/fetch_partial_missing.lua",
-    sha256 = "{empty_hash}"
-  }}
-}}
-"""
-            modified_spec = shared_cache / "fetch_partial_modified.lua"
-            modified_spec.write_text(spec_content)
-
-            # Run 1: Partial failure (2 succeed, 1 fails - missing file doesn't exist yet)
-            trace_file1 = shared_cache / "trace1.jsonl"
-            result1 = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    f"--trace=file:{trace_file1}",
-                    "engine-test",
-                    "local.fetch_partial@v1",
-                    str(modified_spec),
-                ],
-                capture_output=True,
-                text=True,
-            )
+            # Run 1: three files succeed, the missing one fails the run
+            result1 = self.run_engine(shared_cache, spec)
             self.assertNotEqual(result1.returncode, 0, "Expected partial failure")
             self.assertIn(
                 "fetch failed",
@@ -124,17 +158,8 @@ FETCH = {{
                 f"Expected fetch failure: {result1.stderr}",
             )
 
-            # Verify fetch_dir has the 2 successful files (in package cache, not spec cache)
-            # With hierarchical structure, find variant dirs under identity dir
-            identity_dir = shared_cache / "packages" / "local.fetch_partial@v1"
-            self.assertTrue(
-                identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
-            )
-            variant_dirs = list(identity_dir.glob("*-blake3-*"))
-            self.assertEqual(
-                len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
-            )
-            fetch_dir = variant_dirs[0] / "fetch"
+            # Successful downloads survive the failed run in the package cache
+            fetch_dir = self.sole_variant_dir(shared_cache) / "fetch"
             self.assertTrue(
                 (fetch_dir / "simple.lua").exists(), "simple.lua should be cached"
             )
@@ -143,157 +168,43 @@ FETCH = {{
                 "print_single.lua should be cached",
             )
 
-            # Create the missing file (empty file matches the SHA256 for empty content)
+            # Empty file matches the SHA256 the spec declared for it
             missing_file.write_text("")
 
-            # Run 2: Completion with cache - use same cache root
+            # Run 2: completion with cache - same cache root
             trace_file2 = shared_cache / "trace2.jsonl"
-            result2 = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    f"--trace=file:{trace_file2}",
-                    "engine-test",
-                    "local.fetch_partial@v1",
-                    str(modified_spec),
-                ],
-                capture_output=True,
-                text=True,
-            )
+            result2 = self.run_engine(shared_cache, spec, trace_file2)
             self.assertEqual(
                 result2.returncode, 0, f"Second run failed: {result2.stderr}"
             )
 
-            # Verify caching behavior via structured trace: 2 files reused from
-            # the per-file cache (sha-verified skips), 1 re-downloaded.
+            # Structured trace: the two sha-bearing files are reused from the
+            # per-file cache; the previously-missing file and the un-hashed one
+            # are downloaded.
             parser2 = TraceParser(trace_file2)
             skipped = parser2.filter_by_spec_and_event(
-                "local.fetch_partial@v1", "download_skipped"
+                "local.fetch_array@v1", "download_skipped"
             )
             completed = parser2.filter_by_spec_and_event(
-                "local.fetch_partial@v1", "download_complete"
+                "local.fetch_array@v1", "download_complete"
             )
             self.assertEqual(
                 len(skipped), 2, f"Expected 2 cached files reused, got: {skipped}"
             )
             self.assertEqual(
-                len(completed),
-                1,
-                f"Expected only the missing file downloaded, got: {completed}",
-            )
-        finally:
-            shutil.rmtree(shared_cache, ignore_errors=True)
-
-    def test_declarative_fetch_intrusive_partial_failure(self):
-        """Use --fail-after-fetch-count to simulate partial download (intrusive flag)."""
-        # Use shared cache root so second run sees first run's cached files
-        shared_cache = Path(tempfile.mkdtemp(prefix="envy-intrusive-cache-"))
-
-        try:
-            # Compute hashes dynamically
-            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
-            print_single_hash = self.get_file_hash(
-                self.test_files_dir / "print_single.lua"
+                len(completed), 2, f"Expected 2 files downloaded, got: {completed}"
             )
 
-            # Create spec with computed hashes
-            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-IDENTITY = "local.fetch_array@v1"
-
--- Array format: multiple files with optional sha256
-FETCH = {{
-  {{
-    source = "{self.lua_path("simple.lua")}",
-    sha256 = "{simple_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_single.lua")}",
-    sha256 = "{print_single_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_multiple.lua")}"
-    -- No sha256 - should still work (permissive mode)
-  }}
-}}
-"""
-            modified_spec = shared_cache / "fetch_array.lua"
-            modified_spec.write_text(spec_content)
-
-            # Run 1: Download 2 files then fail
-            result1 = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",  # Has 3 files
-                    str(modified_spec),
-                    "--fail-after-fetch-count=2",
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertNotEqual(
-                result1.returncode, 0, "Expected failure after 2 downloads"
-            )
-            self.assertIn(
-                "fail_after_fetch_count",
-                result1.stderr.lower(),
-                f"Expected fail_after_fetch_count error: {result1.stderr}",
-            )
-
-            # Verify fetch_dir has the first 2 files cached (in package cache, not spec cache)
-            # With hierarchical structure, find variant dirs under identity dir
-            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
-            self.assertTrue(
-                identity_dir.exists(), f"Identity dir should exist: {identity_dir}"
-            )
-            variant_dirs = list(identity_dir.glob("*-blake3-*"))
-            self.assertEqual(
-                len(variant_dirs), 1, f"Expected 1 variant dir, found: {variant_dirs}"
-            )
-            fetch_dir = variant_dirs[0] / "fetch"
-            # Check that at least some files exist (order may vary due to concurrent downloads)
-            cached_files = list(fetch_dir.glob("*.lua")) if fetch_dir.exists() else []
-            self.assertGreaterEqual(
-                len(cached_files),
-                2,
-                f"Expected at least 2 cached files, got: {cached_files}",
-            )
-
-            # Run 2: Complete without flag - use same cache root
-            result2 = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",
-                    str(modified_spec),
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertEqual(
-                result2.returncode, 0, f"Second run failed: {result2.stderr}"
-            )
-
-            # Verify cache hits for some files
-            stderr_lower = result2.stderr.lower()
+            # Same facts on the log sink, which tests the verbose narrative too
             self.assertIn(
                 "cached (sha ok)",
-                stderr_lower,
+                result2.stderr.lower(),
                 f"Expected per-file cache reuse log: {result2.stderr}",
             )
-            # Verify only remaining file(s) downloaded
             self.assertIn(
-                "downloading 1 file(s)",
+                "downloading 2 file(s)",
                 result2.stderr,
-                f"Expected 1 download in second run: {result2.stderr}",
+                f"Expected 2 downloads in second run: {result2.stderr}",
             )
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
@@ -303,107 +214,38 @@ FETCH = {{
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-corrupted-cache-"))
 
         try:
-            # Compute hashes dynamically
-            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
-            print_single_hash = self.get_file_hash(
-                self.test_files_dir / "print_single.lua"
-            )
+            spec, missing_file = self.partial_fetch_spec(shared_cache)
 
-            # Create spec with computed hashes
-            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-IDENTITY = "local.fetch_array@v1"
+            # Run 1: populates fetch/ but fails on the missing entry
+            self.assertNotEqual(self.run_engine(shared_cache, spec).returncode, 0)
 
--- Array format: multiple files with optional sha256
-FETCH = {{
-  {{
-    source = "{self.lua_path("simple.lua")}",
-    sha256 = "{simple_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_single.lua")}",
-    sha256 = "{print_single_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_multiple.lua")}"
-    -- No sha256 - should still work (permissive mode)
-  }}
-}}
-"""
-            modified_spec = shared_cache / "fetch_array.lua"
-            modified_spec.write_text(spec_content)
+            variant_dir = self.sole_variant_dir(shared_cache)
+            fetch_dir = variant_dir / "fetch"
 
-            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
-
-            # Run 1: Let it create the structure but fail it
-            result_setup = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",
-                    str(modified_spec),
-                    "--fail-after-fetch-count=1",  # Fail after 1 file
-                ],
-                capture_output=True,
-                text=True,
-            )
-            # Should fail
-            self.assertNotEqual(result_setup.returncode, 0)
-
-            # Now find the fetch directory and corrupt one of the files
-            variant_dirs = list(identity_dir.glob("*-blake3-*"))
-            self.assertEqual(
-                len(variant_dirs), 1, f"Expected 1 variant dir: {variant_dirs}"
-            )
-            fetch_dir = variant_dirs[0] / "fetch"
-
-            # Corrupt simple.lua (replace with garbage that won't match SHA256)
-            corrupted_file = fetch_dir / "simple.lua"
-            corrupted_file.write_text(
+            # Corrupt simple.lua (garbage that won't match its SHA256)
+            (fetch_dir / "simple.lua").write_text(
                 "GARBAGE CONTENT THAT WILL FAIL SHA256 VERIFICATION"
             )
+            missing_file.write_text("")
 
-            # Run 2: Should detect corruption and re-download
-            result = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",
-                    str(modified_spec),
-                ],
-                capture_output=True,
-                text=True,
-            )
-
+            # Run 2: should detect corruption and re-download
+            result = self.run_engine(shared_cache, spec)
             self.assertEqual(result.returncode, 0, f"Should succeed: {result.stderr}")
-
-            # Verify that corruption was detected and file re-downloaded
-            stderr_lower = result.stderr.lower()
             self.assertIn(
                 "sha mismatch",
-                stderr_lower,
+                result.stderr.lower(),
                 f"Expected sha mismatch detection: {result.stderr}",
             )
 
-            # Verify package completed successfully (entry-level marker exists)
-            # Note: fetch/ is deleted after successful package completion
-            entry_complete = variant_dirs[0] / "envy-complete"
+            # Package completed: fetch/ is deleted, entry marker and pkg/ remain
             self.assertTrue(
-                entry_complete.exists(),
-                "Entry-level completion marker should exist after successful package install",
+                (variant_dir / "envy-complete").exists(),
+                "Entry-level completion marker should exist after successful install",
             )
-
-            # Verify package directory exists with installed files
-            pkg_dir = variant_dirs[0] / "pkg"
             self.assertTrue(
-                pkg_dir.exists(), "Package directory should exist after completion"
+                (variant_dir / "pkg").exists(),
+                "Package directory should exist after completion",
             )
-
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
 
@@ -412,116 +254,49 @@ FETCH = {{
         shared_cache = Path(tempfile.mkdtemp(prefix="envy-complete-unmarked-"))
 
         try:
-            # Compute hashes dynamically
-            simple_hash = self.get_file_hash(self.test_files_dir / "simple.lua")
-            print_single_hash = self.get_file_hash(
-                self.test_files_dir / "print_single.lua"
-            )
+            spec, missing_file = self.partial_fetch_spec(shared_cache)
 
-            # Create spec with computed hashes
-            spec_content = f"""-- Test declarative fetch with array format (concurrent downloads)
-IDENTITY = "local.fetch_array@v1"
+            # Run 1: establishes the cache structure, then fails
+            self.assertNotEqual(self.run_engine(shared_cache, spec).returncode, 0)
 
--- Array format: multiple files with optional sha256
-FETCH = {{
-  {{
-    source = "{self.lua_path("simple.lua")}",
-    sha256 = "{simple_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_single.lua")}",
-    sha256 = "{print_single_hash}"
-  }},
-  {{
-    source = "{self.lua_path("print_multiple.lua")}"
-    -- No sha256 - should still work (permissive mode)
-  }}
-}}
-"""
-            modified_spec = shared_cache / "fetch_array.lua"
-            modified_spec.write_text(spec_content)
-
-            identity_dir = shared_cache / "packages" / "local.fetch_array@v1"
-
-            # Run once to establish cache structure, then fail it
-            result_setup = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",
-                    str(modified_spec),
-                    "--fail-after-fetch-count=1",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            self.assertNotEqual(result_setup.returncode, 0)
-
-            # Find fetch directory
-            variant_dirs = list(identity_dir.glob("*-blake3-*"))
-            self.assertEqual(len(variant_dirs), 1)
-            fetch_dir = variant_dirs[0] / "fetch"
+            variant_dir = self.sole_variant_dir(shared_cache)
+            fetch_dir = variant_dir / "fetch"
             fetch_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy actual test files to cache (they'll match the computed hashes)
-            shutil.copy(self.test_files_dir / "simple.lua", fetch_dir / "simple.lua")
-            shutil.copy(
-                self.test_files_dir / "print_single.lua", fetch_dir / "print_single.lua"
-            )
-            shutil.copy(
-                self.test_files_dir / "print_multiple.lua",
-                fetch_dir / "print_multiple.lua",
-            )
+            # Hand-populate every fetch entry so the content is complete but
+            # unmarked. The fourth entry's source is deliberately left absent, so
+            # the only way the run below can succeed is by reusing this cached
+            # copy -- a reuse regression fails outright instead of re-downloading.
+            for name in TEST_FILES:
+                shutil.copy(self.test_files_dir / name, fetch_dir / name)
+            (fetch_dir / missing_file.name).write_text("")
 
-            # Ensure NO completion marker exists
             completion_marker = fetch_dir / "envy-complete"
-            if completion_marker.exists():
-                completion_marker.unlink()
+            completion_marker.unlink(missing_ok=True)
 
-            # Run: Should verify cached files by SHA256, reuse them
-            result = test_config.run(
-                [
-                    str(self.envy_test),
-                    f"--cache-root={shared_cache}",
-                    "--trace",
-                    "--verbose",
-                    "engine-test",
-                    "local.fetch_array@v1",
-                    str(modified_spec),
-                ],
-                capture_output=True,
-                text=True,
-            )
-
+            # Run 2: should verify cached files by SHA256 and reuse them
+            result = self.run_engine(shared_cache, spec)
             self.assertEqual(result.returncode, 0, f"Should succeed: {result.stderr}")
 
-            stderr_lower = result.stderr.lower()
-
-            # Should see per-file cache reuse for files with SHA256
+            # All three sha-bearing entries are reused on content alone
+            self.assertEqual(
+                result.stderr.lower().count("cached (sha ok)"),
+                3,
+                f"Expected all hashed files reused: {result.stderr}",
+            )
+            # print_multiple.lua has no SHA256 so it cannot be trusted, and it is
+            # the only one -- this count is what holds the premise above honest.
             self.assertIn(
-                "cached (sha ok)",
-                stderr_lower,
-                f"Expected cached files for verified inputs: {result.stderr}",
+                "downloading 1 file(s)",
+                result.stderr,
+                f"Only the un-hashed file should download: {result.stderr}",
             )
 
-            # Should still download print_multiple.lua (no SHA256 = can't trust)
-            self.assertIn(
-                "downloading",
-                stderr_lower,
-                f"Expected download for file without SHA256: {result.stderr}",
-            )
-
-            # Verify package completed successfully (entry-level marker exists)
-            # Note: fetch/ and its marker are deleted after successful package completion
-            entry_complete = variant_dirs[0] / "envy-complete"
+            # fetch/ and its marker are deleted after successful completion
             self.assertTrue(
-                entry_complete.exists(),
-                "Entry-level completion marker should exist after successful package install",
+                (variant_dir / "envy-complete").exists(),
+                "Entry-level completion marker should exist after successful install",
             )
-
         finally:
             shutil.rmtree(shared_cache, ignore_errors=True)
 

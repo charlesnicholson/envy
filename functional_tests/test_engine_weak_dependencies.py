@@ -1,13 +1,12 @@
 """Functional tests for weak dependency resolution."""
 
-import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 import unittest
 
 from . import test_config
+from .trace_parser import TraceParser
 
 
 class TestEngineWeakDependencies(unittest.TestCase):
@@ -17,7 +16,6 @@ class TestEngineWeakDependencies(unittest.TestCase):
         self.cache_root = Path(tempfile.mkdtemp(prefix="envy-weak-ft-"))
         self.specs_dir = Path(tempfile.mkdtemp(prefix="envy-weak-specs-"))
         self.envy_test = test_config.get_envy_executable()
-        self.trace_flag = ["--trace"] if os.environ.get("ENVY_TEST_TRACE") else []
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
@@ -28,24 +26,27 @@ class TestEngineWeakDependencies(unittest.TestCase):
         (self.specs_dir / name).write_text(content, encoding="utf-8")
 
     def run_engine(self, identity, spec_name):
-        spec_path = str(self.specs_dir / spec_name)
+        """Install the spec via a generated manifest; the trace records what resolved."""
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / spec_name)]
+        )
+        self.trace_file = self.cache_root / "trace.jsonl"
         return test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
-                *self.trace_flag,
-                "engine-test",
-                identity,
-                spec_path,
+                f"--trace=file:{self.trace_file}",
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
         )
 
-    @staticmethod
-    def parse_output(stdout):
-        lines = [line for line in stdout.strip().split("\n") if line]
-        return dict(line.split(" -> ", 1) for line in lines)
+    def registered(self):
+        """The package set the engine resolved, per spec_registered trace events."""
+        return TraceParser(self.trace_file).registered_specs()
 
     def test_weak_fallback_used_when_no_match(self):
         # Weak dependency with fallback when the target is absent
@@ -96,7 +97,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.weak_consumer_fallback@v1", output)
         self.assertIn("local.weak_fallback@v1", output)
 
@@ -170,7 +171,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.existing_dep@v1", output)
         self.assertNotIn("local.unused_fallback@v1", output)
 
@@ -224,7 +225,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.weak_provider@v1", output)
 
     def test_ambiguity_reports_all_candidates(self):
@@ -403,7 +404,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.chain_b@v1", output)
         self.assertIn("local.chain_c@v1", output)
 
@@ -502,7 +503,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.branch_one@v1", output)
         self.assertIn("local.branch_two@v1", output)
         self.assertIn("local.shared@v1", output)
@@ -584,7 +585,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.weak_custom_fetch_root@v1", output)
         self.assertIn("local.custom_fetch_dep@v1", output)
         self.assertIn("local.helper.fallback@v1", output)
@@ -691,7 +692,7 @@ SETUP = {
         )
         self.assertEqual(result.returncode, 0, f"stderr: {result.stderr}")
 
-        output = self.parse_output(result.stdout)
+        output = self.registered()
         self.assertIn("local.weak_custom_fetch_root_with_helper@v1", output)
         self.assertIn("local.custom_fetch_dep@v1", output)
         self.assertIn("local.helper@v1", output)

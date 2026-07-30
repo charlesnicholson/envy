@@ -200,6 +200,16 @@ class TraceParser:
         """Filter events by spec and event type."""
         return [e for e in self.filter_by_event(event_type) if e.spec == spec]
 
+    def registered_specs(self) -> set:
+        """Canonical keys of every spec the engine added to the dependency graph.
+
+        Registration happens as the graph is built, before any phase runs, so this
+        answers "what did resolution pull in", NOT "what succeeded" -- a spec whose
+        FETCH throws still appears here. Assert on it for resolution shape, and pair
+        it with the exit code (or pkg_outcome) when the test is about completion.
+        """
+        return {e.raw["key"] for e in self.filter_by_event("spec_registered")}
+
     def get_dependency_added_events(self, parent: str) -> List[TraceEvent]:
         """Get all dependency_added events for a given parent spec."""
         return self.filter_by_spec_and_event(parent, "dependency_added")

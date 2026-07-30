@@ -150,6 +150,37 @@ def make_manifest(packages_content: str, deploy: bool = False) -> str:
     return header + packages_content
 
 
+def spec_entry(identity, source, setup=None, options=None, needed_by=None) -> str:
+    """Render one PACKAGES entry pointing at a local spec file.
+
+    `options` is a Lua table literal (e.g. '{ version = "1.0" }'), matching what
+    a manifest author would write.
+    """
+    fields = [f'spec = "{identity}"', f'source = "{Path(source).as_posix()}"']
+    if setup:
+        fields.append("setup = {" + ", ".join(f'"{s}"' for s in setup) + "}")
+    if options:
+        fields.append(f"options = {options}")
+    if needed_by:
+        fields.append(f'needed_by = "{needed_by}"')
+    return "  { " + ", ".join(fields) + " },"
+
+
+def write_spec_manifest(manifest_dir, entries, deploy: bool = False) -> Path:
+    """Write an envy.lua pulling in local spec files; returns its path.
+
+    Each entry is either a rendered string from spec_entry() or an
+    (identity, source) pair. This is the manifest-driven way to run specs
+    through the engine via the public `envy install`, so tests need no
+    test-only CLI surface.
+    """
+    lines = [e if isinstance(e, str) else spec_entry(*e) for e in entries]
+    body = "PACKAGES = {\n" + "\n".join(lines) + "\n}\n"
+    path = Path(manifest_dir) / "envy.lua"
+    path.write_text(make_manifest(body, deploy=deploy), encoding="utf-8")
+    return path
+
+
 def parse_export_line(line):
     """Parse an export output line '<hash>  <path>' -> (hash, Path)."""
     parts = line.strip().split("  ", 1)
@@ -158,33 +189,46 @@ def parse_export_line(line):
     return parts[0], Path(parts[1])
 
 
-_cached_executable: Path | None = None
+_cached_executable: dict[str, Path] = {}
 
 
-def get_envy_executable() -> Path:
-    """Get the path to the envy functional test executable."""
-    global _cached_executable
-    if _cached_executable is not None:
-        return _cached_executable
+def _get_executable(name: str, label: str) -> Path:
+    if cached := _cached_executable.get(name):
+        return cached
 
     root = Path(__file__).parent.parent / "out" / "build"
-
-    if sys.platform == "win32":
-        exe = root / "envy_functional_tester.exe"
-    else:
-        exe = root / "envy_functional_tester"
+    exe = root / (f"{name}.exe" if sys.platform == "win32" else name)
 
     if not exe.exists():
         raise RuntimeError(
-            f"Functional tester not found at {exe}. "
+            f"{label} not found at {exe}. "
             "Build with: ./build.sh (or ./build.bat on Windows)"
         )
 
     if sys.platform != "win32" and not os.access(exe, os.X_OK):
-        raise RuntimeError(f"Functional tester at {exe} is not executable")
+        raise RuntimeError(f"{label} at {exe} is not executable")
 
-    _cached_executable = exe
+    _cached_executable[name] = exe
     return exe
+
+
+def get_envy_executable() -> Path:
+    """Path to the functional test executable. The default for tests.
+
+    It carries the sanitizers and the test-only subcommands, so anything that
+    does not specifically need the shipped binary should use this one.
+    """
+    return _get_executable("envy_functional_tester", "Functional tester")
+
+
+def get_envy_production_executable() -> Path:
+    """Path to the shipped `envy` binary -- unsanitized, no test-only commands.
+
+    Only for tests that are about the artifact users get: bootstrap, re-exec,
+    mirroring, and anything that copies or serves the binary itself. Everything
+    else should prefer get_envy_executable() for the sanitizer coverage.
+    """
+    return _get_executable("envy", "envy binary")
 
 
 def get_test_env() -> dict[str, str]:

@@ -91,7 +91,7 @@ struct tui_progress_state {
 
 bool envy::tui::g_trace_enabled{ false };
 
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
 namespace envy::tui::test {
 int g_terminal_width{ 0 };
 bool g_isatty{ true };
@@ -102,7 +102,7 @@ std::chrono::steady_clock::time_point g_now{};
 namespace {
 
 int get_terminal_width() {
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
   if (envy::tui::test::g_terminal_width > 0) { return envy::tui::test::g_terminal_width; }
 #endif
 
@@ -120,7 +120,7 @@ int get_terminal_width() {
 }
 
 bool is_ansi_supported() {
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
   return envy::tui::test::g_isatty;
 #endif
 
@@ -141,7 +141,7 @@ bool is_ansi_supported() {
 }
 
 std::chrono::steady_clock::time_point get_now() {
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
   if (envy::tui::test::g_now.time_since_epoch().count() > 0) {
     return envy::tui::test::g_now;
   }
@@ -1231,7 +1231,7 @@ log_ctx_scope::log_ctx_scope(std::string identity) : previous_{ s_log_ctx } {
 
 log_ctx_scope::~log_ctx_scope() { s_log_ctx = std::move(previous_); }
 
-#if defined(ENVY_UNIT_TEST) || defined(ENVY_FUNCTIONAL_TESTER)
+#ifdef ENVY_UNIT_TEST
 namespace test {
 std::string render_section_frame(section_frame const &frame) {
   int const width{ g_terminal_width > 0 ? g_terminal_width : 80 };

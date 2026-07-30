@@ -77,16 +77,18 @@ class CtxRunTestBase(unittest.TestCase):
         return None
 
     def run_spec(self, identity, spec_name, should_fail=False):
-        """Run a spec and return result."""
-        spec_path = str(self.specs_dir / spec_name)
+        """Install a spec via a generated manifest and return result."""
+        manifest = test_config.write_spec_manifest(
+            self.specs_dir, [(identity, self.specs_dir / spec_name)]
+        )
         result = test_config.run(
             [
                 str(self.envy_test),
                 f"--cache-root={self.cache_root}",
                 *self.trace_flag,
-                "engine-test",
-                identity,
-                spec_path,
+                "install",
+                "--manifest",
+                str(manifest),
             ],
             capture_output=True,
             text=True,
@@ -96,13 +98,13 @@ class CtxRunTestBase(unittest.TestCase):
             self.assertNotEqual(
                 result.returncode,
                 0,
-                f"Expected failure but succeeded.\nstdout: {result.stdout}\nstderr: {result.stderr}",
+                f"Expected failure but succeeded: {result.stderr}",
             )
         else:
             self.assertEqual(
                 result.returncode,
                 0,
-                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+                f"stderr: {result.stderr}",
             )
 
         return result

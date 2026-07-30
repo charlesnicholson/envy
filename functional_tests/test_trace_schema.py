@@ -41,20 +41,23 @@ class TestTraceSchema(unittest.TestCase):
 
         self.spec_path = self.test_dir / "simple.lua"
         self.spec_path.write_text(SIMPLE_SPEC, encoding="utf-8")
+        self.manifest = test_config.write_spec_manifest(
+            self.test_dir, [("local.simple@v1", self.spec_path)]
+        )
 
     def tearDown(self):
         shutil.rmtree(self.cache_root, ignore_errors=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def _run_engine_test(self, *trace_args: str):
+    def _run_install(self, *trace_args: str):
         result = test_config.run(
             [
                 str(self.envy),
                 f"--cache-root={self.cache_root}",
                 *trace_args,
-                "engine-test",
-                "local.simple@v1",
-                str(self.spec_path),
+                "install",
+                "--manifest",
+                str(self.manifest),
             ],
             capture_output=True,
             text=True,
@@ -81,7 +84,7 @@ class TestTraceSchema(unittest.TestCase):
     def test_emitted_events_parse_strictly(self):
         """A real run emits only registered events with valid envelopes."""
         trace_file = self.cache_root / "trace.jsonl"
-        self._run_engine_test(f"--trace=file:{trace_file}")
+        self._run_install(f"--trace=file:{trace_file}")
 
         parser = TraceParser(trace_file)
         events = parser.parse()  # raises on unknown events / bad envelope / header
@@ -99,7 +102,7 @@ class TestTraceSchema(unittest.TestCase):
     def test_stderr_and_file_sinks_agree(self):
         """Human and JSONL sinks receive the same events (compare type counts)."""
         trace_file = self.cache_root / "trace.jsonl"
-        result = self._run_engine_test(f"--trace=stderr,file:{trace_file}")
+        result = self._run_install(f"--trace=stderr,file:{trace_file}")
 
         parser = TraceParser(trace_file)
         file_counts = Counter(e.event for e in parser.parse())

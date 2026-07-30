@@ -108,7 +108,7 @@ PACKAGES = {{
             self.assertEqual(
                 result.returncode,
                 0,
-                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+                f"stderr: {result.stderr}",
             )
 
     def test_bundle_custom_fetch_with_dependency(self):
@@ -213,7 +213,7 @@ PACKAGES = {{
             self.assertEqual(
                 result.returncode,
                 0,
-                f"stdout: {result.stdout}\nstderr: {result.stderr}",
+                f"stderr: {result.stderr}",
             )
 
 
