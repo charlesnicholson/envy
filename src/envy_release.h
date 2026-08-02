@@ -15,7 +15,7 @@ namespace envy {
 // Single source of truth for where envy itself is published. Relocating the project to a
 // different GitHub org is a one-line edit here: every derived URL falls out below, and
 // both bootstrap scripts are stamped from these constants instead of carrying copies.
-#define ENVY_UPSTREAM_REPO_URL "https://github.com/charlesnicholson/envy"
+#define ENVY_UPSTREAM_REPO_URL "https://github.com/envy-package-manager/envy"
 
 // Default mirror base: release assets hang off this as /v<version>/<archive name>.
 inline constexpr std::string_view kEnvyReleaseDownloadUrl{ ENVY_UPSTREAM_REPO_URL
