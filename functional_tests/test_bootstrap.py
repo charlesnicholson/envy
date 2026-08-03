@@ -413,8 +413,10 @@ class BootstrapIntegrationTest(unittest.TestCase):
         cmake/EmbedResource.cmake's NORMALIZE_EOL), manifests are written by envy the same
         way, and consumer repos carry `* -text` to keep git from touching either. Anything
         cmd.exe or `for /f` does differently with LF has to be caught here or not at all.
+
+        The encoding is explicit for the same reason: this helper's contract is exact bytes.
         """
-        path.write_bytes(text.encode())
+        path.write_bytes(text.encode("utf-8"))
         return path
 
     def _stamp_bootstrap(
@@ -431,7 +433,9 @@ class BootstrapIntegrationTest(unittest.TestCase):
         DEFAULT_MIRROR points at the stub too: no test should resolve through it, so any
         that does fails loudly on a 404 naming the URL instead of quietly succeeding.
         """
-        content = self._get_bootstrap_script().read_text()
+        # Explicit utf-8: read_text() otherwise decodes with locale.getpreferredencoding(),
+        # which is cp1252 on a Windows runner outside UTF-8 mode.
+        content = self._get_bootstrap_script().read_text(encoding="utf-8")
         content = content.replace("@@ENVY_VERSION@@", fallback_version)
         content = content.replace("@@LATEST_URL@@", latest_url or self._github.missing_url)
         content = content.replace(
