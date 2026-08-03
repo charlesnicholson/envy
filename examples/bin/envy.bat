@@ -66,23 +66,21 @@ for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
 )
 :done_parse
 
-REM Remember whether the version came from the directive: a sums pin names one release's
-REM checksum file, so it is meaningless against a version resolved from `latest` or from the
-REM stamped fallback. Captured before the resolution chain below overwrites VERSION.
+REM A sums pin names one release's checksum file, so it is meaningless against a resolved
+REM or stamped-fallback version. Captured before the resolution chain overwrites VERSION.
 set "PINNED_VERSION=!VERSION!"
 
-REM Fail closed, and before any network: a pin that silently stops verifying is worse than
-REM no pin, because the manifest still advertises attestation.
+REM Fail closed before any network: a pin that silently stops verifying is worse than none,
+REM since the manifest still advertises attestation.
 if defined SUMS_PIN if not defined PINNED_VERSION (
     echo ERROR: '@envy sha256sums' requires '@envy version' in !MANIFEST! >&2
     exit /b 1
 )
 
-REM Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
-REM the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
-REM envy's own release URL, never a copy of this project's mirror. Stamping the project's
-REM mirror here used to make deleting the directive resolve the script to the stale custom
-REM mirror while the re-exec'd binary went to upstream -- two binaries, one project.
+REM Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream, matching the
+REM runtime resolver in src/reexec.cpp. DEFAULT_MIRROR is always envy's own release URL,
+REM never a copy of this project's mirror: deleting the directive must not resolve this
+REM script and the re-exec'd binary to different mirrors.
 if defined ENV_MIRROR (
     set "ENVY_MIRROR=!ENV_MIRROR!"
 ) else if defined MANIFEST_MIRROR (
@@ -91,8 +89,8 @@ if defined ENV_MIRROR (
     set "ENVY_MIRROR=!DEFAULT_MIRROR!"
 )
 
-REM A trailing slash would produce ".../releases//v1.2.3/...". For s3:// that is a distinct
-REM key that does not exist, since S3 keys are opaque byte strings.
+REM A trailing slash would produce ".../releases//v1.2.3/...", a distinct and nonexistent
+REM s3:// key.
 :striptrail
 if "!ENVY_MIRROR:~-1!"=="/" (
     set "ENVY_MIRROR=!ENVY_MIRROR:~0,-1!"
@@ -102,9 +100,8 @@ if "!ENVY_MIRROR:~-1!"=="/" (
 set "MIRROR_IS_S3="
 if /i "!ENVY_MIRROR:~0,5!"=="s3://" set "MIRROR_IS_S3=1"
 
-REM Probe bare `aws`, not `aws.exe`: AWS CLI v2 installs aws.exe but PATHEXT also resolves
-REM aws.cmd/aws.bat shims, and the functional test's mock is a .bat. This deliberately
-REM diverges from the curl.exe/tar.exe probes above, which name the exe to be policy-proof.
+REM Probe bare `aws`, not `aws.exe`: PATHEXT also resolves the aws.cmd/aws.bat shims. The
+REM curl.exe/tar.exe probes below name the exe deliberately, to stay policy-proof.
 if not defined MIRROR_IS_S3 goto :mirror_ok
 where /q aws && goto :mirror_ok
 echo ERROR: mirror "!ENVY_MIRROR!" is an s3:// URI but the aws CLI was not found on PATH. >&2
@@ -132,9 +129,8 @@ if "!VERSION!"=="" (
 )
 if not "!VERSION!"=="" goto :version_resolved
 
-REM Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so a
-REM private or air-gapped mirror answers for itself. The stamped default is not a reliable
-REM "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
+REM Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so
+REM a private or air-gapped mirror answers for itself.
 set "LATEST_TMP=!TEMP!\envy-latest-%RANDOM%%RANDOM%.txt"
 set "GOT="
 if defined MIRROR_IS_S3 (
@@ -143,31 +139,47 @@ if defined MIRROR_IS_S3 (
     where /q curl.exe && (curl.exe -fsSL --connect-timeout 10 --max-time 300 "!ENVY_MIRROR!/latest" -o "!LATEST_TMP!" >nul 2>&1 && set "GOT=1")
 )
 if not defined GOT goto :latest_cleanup
-REM Trim via an unquoted-set for /f (a literal string here, not a filename -- no usebackq),
-REM staging through RAW so a whitespace-only file leaves VERSION empty rather than blank.
+REM Trim with an unquoted for /f (a literal string, not a filename -- no usebackq), staging
+REM through RAW so a whitespace-only file leaves VERSION empty.
 set "RAW_VERSION="
 set /p RAW_VERSION=<"!LATEST_TMP!"
 for /f "tokens=1" %%v in ("!RAW_VERSION!") do set "VERSION=%%v"
+set "VERSION_SRC=!ENVY_MIRROR!/latest"
+call :check_version
 :latest_cleanup
 del "!LATEST_TMP!" 2>nul
 if not "!VERSION!"=="" goto :version_resolved
 
-REM GitHub releases serves no `latest` object, so fall back to its redirect. Skipped for
-REM s3:// mirrors, which are never github and must not reach out to it.
+REM GitHub serves no `latest` object, so fall back to its redirect. Skipped for s3://
+REM mirrors, which are never github.
 if defined MIRROR_IS_S3 goto :version_fallback
 
-REM Prefer native curl.exe (policy-resistant); parse the redirect's trailing tag. Timeouts
-REM matter: an unbounded connect stalls for the OS TCP timeout on a blackholed network.
-set "REDIR="
+REM Prefer native curl.exe (policy-resistant); parse the tag from the end of the redirect
+REM chain, not hop 1: a repo rename inserts a hop whose last segment is `latest`. To a file
+REM behind && rather than a `for /f` backquote: --fail still writes the -w output on an
+REM HTTP error. Timeouts bound a blackholed connect.
+set "EFF_TMP=!TEMP!\envy-effective-%RANDOM%%RANDOM%.txt"
+set "EFFECTIVE="
 set "TAG="
-where /q curl.exe && for /f "usebackq tokens=*" %%u in (`curl.exe -fsS -o nul -w "%%{redirect_url}" --connect-timeout 5 --max-time 15 "!LATEST_URL!" 2^>nul`) do set "REDIR=%%u"
-if defined REDIR set "REDIR=!REDIR:/=\!"
-if defined REDIR for %%a in ("!REDIR!") do set "TAG=%%~nxa"
+set "GOT="
+where /q curl.exe && (curl.exe -fsSL -o nul -w "%%{url_effective}" --connect-timeout 5 --max-time 15 "!LATEST_URL!" >"!EFF_TMP!" 2>nul && set "GOT=1")
+REM goto, not `if defined GOT set /p ...`: cmd applies the redirection whether or not the
+REM `if` body runs, and EFF_TMP is absent when curl.exe is.
+if not defined GOT goto :effective_cleanup
+set /p EFFECTIVE=<"!EFF_TMP!"
+:effective_cleanup
+del "!EFF_TMP!" 2>nul
+if defined EFFECTIVE set "EFFECTIVE=!EFFECTIVE:/=\!"
+if defined EFFECTIVE for %%a in ("!EFFECTIVE!") do set "TAG=%%~nxa"
 if defined TAG set "VERSION=!TAG!"
 if defined TAG if "!TAG:~0,1!"=="v" set "VERSION=!TAG:~1!"
+REM PowerShell fallback for a box without curl.exe. AllowAutoRedirect defaults on, so
+REM ResponseUri is the end of the chain.
 if "!VERSION!"=="" (
-    for /f "tokens=*" %%u in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $r=[System.Net.WebRequest]::Create('!LATEST_URL!'); $r.AllowAutoRedirect=$false; $h=$r.GetResponse().Headers['Location']; if($h){($h -split '/')[-1] -replace '^v',''} } catch {}" 2^>nul') do set "VERSION=%%u"
+    for /f "tokens=*" %%u in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $resp=[System.Net.WebRequest]::Create('!LATEST_URL!').GetResponse(); $u=$resp.ResponseUri.AbsoluteUri; $resp.Close(); ($u -split '/')[-1] -replace '^v','' } catch {}" 2^>nul') do set "VERSION=%%u"
 )
+set "VERSION_SRC=!LATEST_URL!"
+call :check_version
 
 :version_fallback
 if "!VERSION!"=="" set "VERSION=!FALLBACK_VERSION!"
@@ -202,10 +214,9 @@ if defined MIRROR_IS_S3 goto :dl_s3
 goto :dl_http
 
 :dl_s3
-REM `call` so an aws resolved to a .bat/.cmd shim returns control here instead of
-REM transferring it, and so ERRORLEVEL survives. To a file, never piped into tar: cmd takes
-REM ERRORLEVEL from the right side of a pipe only, and tar exits 0 on empty input, so a
-REM failed download piped into tar would look like success.
+REM `call` so an aws resolved to a .bat/.cmd shim returns control here and ERRORLEVEL
+REM survives. To a file, never piped into tar: cmd takes ERRORLEVEL from the right side of a
+REM pipe only, and tar exits 0 on empty input, so a failed download would look like success.
 call aws s3 cp --only-show-errors "!URL!" "!TEMP_ZIP!" && set "OK=1"
 goto :dl_done
 
@@ -219,7 +230,7 @@ if not defined OK (
 if not defined OK (echo ERROR: Failed to download envy from !URL! >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 
 REM Attest before extracting: an unattested archive must never be unpacked, or a hostile
-REM mirror gets to choose the paths written under TEMP_DIR -- from which we then run envy.
+REM mirror chooses the paths written under TEMP_DIR, from which we run envy.
 if not defined SUMS_PIN goto :attest_done
 
 set "SUMS_URL=!ENVY_MIRROR!/v!VERSION!/SHA256SUMS"
@@ -249,8 +260,8 @@ if /i not "!HASH_OUT!"=="!SUMS_PIN!" (
     rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1
 )
 
-REM Match the line for this exact archive: keying on the hash alone would accept any
-REM platform's binary, and a prefix match on the name would accept a longer sibling.
+REM Match this exact archive: keying on the hash alone accepts any platform's binary, and a
+REM prefix name match accepts a longer sibling.
 set "WANT="
 for /f "usebackq tokens=1,2" %%h in ("!SUMS_FILE!") do (
     set "NAME=%%i"
@@ -270,7 +281,7 @@ if /i not "!HASH_OUT!"=="!WANT!" (
 )
 :attest_done
 
-REM Extract: prefer native tar.exe (bsdtar reads zip), fall back to PowerShell Expand-Archive.
+REM Extract: prefer native tar.exe (bsdtar reads zip), fall back to Expand-Archive.
 set "OK="
 where /q tar.exe && (tar.exe -xf "!TEMP_ZIP!" -C "!TEMP_DIR!" && set "OK=1")
 if not defined OK (
@@ -278,19 +289,33 @@ if not defined OK (
 )
 if not defined OK (echo ERROR: Failed to extract envy >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & del "!TEMP_ZIP!" 2>nul & exit /b 1)
 del "!TEMP_ZIP!" 2>nul
-REM tar succeeds on an empty archive, so a zero-length object would otherwise fall through
-REM to :run and report a missing path instead of a failed download.
+REM tar succeeds on an empty archive, so a zero-length object would fall through to :run
+REM and report a missing path instead of a failed download.
 if not exist "!TEMP_DIR!\envy.exe" (echo ERROR: archive from !URL! contained no envy binary >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & exit /b 1)
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 goto :run
 
+REM :check_version -- VERSION and VERSION_SRC in; clears VERSION unless it is numbered
+REM MAJOR.MINOR.PATCH, the only shape an envy release takes. Clearing defers to the next
+REM tier, ultimately FALLBACK_VERSION. A `vlatest/` URL 404s, reported as a 403 by a bucket
+REM without s3:ListBucket. Reached only by `call`.
+REM
+REM VERSION is delayed-expanded, so an `&` in a mirror's `latest` is data to echo, not a
+REM second command.
+:check_version
+if not defined VERSION exit /b 0
+echo(!VERSION!|findstr /r /x /c:"[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" >nul 2>&1
+if not errorlevel 1 exit /b 0
+echo WARNING: ignoring implausible envy version '!VERSION!' from !VERSION_SRC! >&2
+set "VERSION="
+exit /b 0
+
 REM :sha256 -- HASH_FILE in, HASH_OUT out; empty if no hasher on this box could produce a
 REM 64-digit digest. Reached only by `call`, so control never falls into it.
 REM
-REM certutil first: a compiled System32 binary present since Vista, so it survives the same
-REM PowerShell policy lockdowns that motivate the curl.exe/tar.exe preference above. It is
-REM also a known LOLBin (`-urlcache -f` downloads files), so hardened environments sometimes
-REM block it outright -- hence the Get-FileHash fallback rather than a hard failure.
+REM certutil first: a System32 binary, so it survives the PowerShell policy lockdowns that
+REM motivate the curl.exe/tar.exe preference above. It is also a known LOLBin, so hardened
+REM environments sometimes block it -- hence the Get-FileHash fallback, not a hard failure.
 :sha256
 set "HASH_OUT="
 where /q certutil.exe && (
@@ -298,7 +323,7 @@ where /q certutil.exe && (
         if not defined HASH_OUT set "HASH_OUT=%%h"
     )
 )
-REM Windows 7/8 certutil grouped the digest into space-separated byte pairs; Win10+ does not.
+REM Windows 7/8 certutil grouped the digest into space-separated byte pairs; Win10+ not.
 if defined HASH_OUT set "HASH_OUT=!HASH_OUT: =!"
 call :sha256_len_ok
 if not defined HASH_OUT (
@@ -308,9 +333,8 @@ if not defined HASH_OUT (
 )
 exit /b 0
 
-REM Discard anything that is not exactly 64 characters. certutil writes its trailing status
-REM line to stdout as well, and a localized or error output would otherwise be compared
-REM against a pin as if it were a digest.
+REM Discard anything not exactly 64 characters: certutil writes its trailing status line to
+REM stdout too, and a localized or error line would be compared against a pin as a digest.
 :sha256_len_ok
 if not defined HASH_OUT exit /b 0
 if "!HASH_OUT:~63,1!"=="" set "HASH_OUT="

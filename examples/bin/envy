@@ -58,29 +58,27 @@ while read -r key val; do
         mirror) MANIFEST_MIRROR="$val" ;; sums) SUMS_PIN="$val" ;;
     esac
 done < <(parse_directives)
-# Remember whether the version came from the directive: a sums pin names one release's
-# checksum file, so it is meaningless against a version resolved from `latest` or from the
-# stamped fallback. Captured before the resolution chain below overwrites VERSION.
+# A sums pin names one release's checksum file, so it is meaningless against a resolved or
+# stamped-fallback version. Captured before the resolution chain overwrites VERSION.
 PINNED_VERSION="$VERSION"
 
-# Fail closed, and before any network: a pin that silently stops verifying is worse than no
-# pin, because the manifest still advertises attestation.
+# Fail closed before any network: a pin that silently stops verifying is worse than none,
+# since the manifest still advertises attestation.
 if [[ -n "$SUMS_PIN" && -z "$PINNED_VERSION" ]]; then
     echo "ERROR: '@envy sha256sums' requires '@envy version' in $MANIFEST" >&2
     exit 1
 fi
 
-# Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream. Byte-identical to
-# the runtime resolver (src/reexec.cpp), including the last tier: DEFAULT_MIRROR is always
-# envy's own release URL, never a copy of this project's mirror. Stamping the project's
-# mirror here used to make deleting the directive resolve the script to the stale custom
-# mirror while the re-exec'd binary went to upstream -- two binaries, one project.
+# Precedence: ENVY_MIRROR env > @envy mirror directive > envy upstream, matching the
+# runtime resolver in src/reexec.cpp. DEFAULT_MIRROR is always envy's own release URL,
+# never a copy of this project's mirror: deleting the directive must not resolve this
+# script and the re-exec'd binary to different mirrors.
 if [[ -n "$ENV_MIRROR" ]]; then ENVY_MIRROR="$ENV_MIRROR"
 elif [[ -n "$MANIFEST_MIRROR" ]]; then ENVY_MIRROR="$MANIFEST_MIRROR"
 else ENVY_MIRROR="$DEFAULT_MIRROR"; fi
 
-# A trailing slash would produce ".../releases//v1.2.3/...". For s3:// that is a distinct
-# key that does not exist, since S3 keys are opaque byte strings.
+# A trailing slash would produce ".../releases//v1.2.3/...", a distinct and nonexistent
+# s3:// key.
 while [[ "$ENVY_MIRROR" == */ ]]; do ENVY_MIRROR="${ENVY_MIRROR%/}"; done
 
 mirror_is_s3() { [[ "$ENVY_MIRROR" == s3://* || "$ENVY_MIRROR" == S3://* ]]; }
@@ -93,9 +91,8 @@ require_aws() {
     }
 }
 
-# Streams one mirror object to stdout; non-zero if it is missing or unreadable. Region and
-# credentials come from the environment/profile exactly as they do for every other AWS
-# tool -- run 'aws sso login' first for a credential-gated bucket.
+# Streams one mirror object to stdout; non-zero if missing or unreadable. AWS region and
+# credentials come from the environment/profile, as for any other AWS tool.
 mirror_cat() {
     if mirror_is_s3; then
         require_aws
@@ -105,9 +102,8 @@ mirror_cat() {
     fi
 }
 
-# sha256 of a file, lowercase hex, no filename. Every tier ships with the OS: sha256sum with
-# GNU coreutils, shasum on macOS (and any perl install), openssl as a last resort. No tier
-# means no attestation is possible, which is a hard error rather than a skip.
+# sha256 of a file, lowercase hex, no filename. Each tier ships with some OS: sha256sum
+# (coreutils), shasum (macOS), openssl. None available is a hard error, never a skip.
 sha256_file() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
     elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
@@ -119,16 +115,25 @@ sha256_file() {
     fi
 }
 
-# Compare hex case-insensitively. The exact match short-circuits, so the tr pipeline only
-# runs for a pin pasted from certutil or Get-FileHash on Windows, which emit uppercase.
-# `if` rather than `[[ ]] && return`: a failing AND-list is a set -e footgun, and bash 3.2
-# (what macOS ships) has no ${var,,} to do this without subprocesses.
+# Compare hex case-insensitively; certutil and Get-FileHash emit uppercase. `if` rather
+# than `[[ ]] && return`: a failing AND-list is a set -e footgun, and bash 3.2 has no
+# ${var,,}.
 hex_eq() {
     if [[ "$1" == "$2" ]]; then return 0; fi
     local a b
     a="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
     b="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
     [[ "$a" == "$b" ]]
+}
+
+# envy releases are numbered MAJOR.MINOR.PATCH; anything else from a network resolver is
+# not a version. Clearing defers to the next tier, ultimately FALLBACK_VERSION. A
+# `vlatest/` URL 404s, reported as a 403 by a bucket without s3:ListBucket.
+keep_valid_version() {
+    if [[ -n "$VERSION" && ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "WARNING: ignoring implausible envy version '$VERSION' from $1" >&2
+        VERSION=""
+    fi
 }
 
 if [[ -n "${ENVY_CACHE_ROOT:-}" ]]; then CACHE="$ENVY_CACHE_ROOT"
@@ -151,20 +156,26 @@ if [[ -z "$VERSION" ]]; then
         LATEST_VER="${LATEST_VER%%[[:space:]]*}"
         [[ -n "$LATEST_VER" && -x "$CACHE/envy/$LATEST_VER/envy" ]] && VERSION="$LATEST_VER"
     fi
-    # Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root, so
-    # a private or air-gapped mirror answers for itself. Note the stamped default is not a
-    # reliable "is this github" test -- `envy init --mirror` bakes a custom mirror into it.
+    # Ask the mirror first: 'envy mirror-envy' writes a `latest` file at the mirror root,
+    # so a private or air-gapped mirror answers for itself.
     if [[ -z "$VERSION" ]]; then
-        VERSION="$(mirror_cat "$ENVY_MIRROR/latest" 2>/dev/null || true)"
-        VERSION="${VERSION//[[:space:]]/}"
+        if VERSION="$(mirror_cat "$ENVY_MIRROR/latest" 2>/dev/null)"; then
+            VERSION="${VERSION//[[:space:]]/}"
+            keep_valid_version "$ENVY_MIRROR/latest"
+        else
+            VERSION=""  # a failed fetch leaves partial output behind
+        fi
     fi
-    # GitHub releases serves no `latest` object, so fall back to its redirect. Skipped for
-    # s3:// mirrors, which are never github and must not reach out to it. Timeouts matter: on
-    # a network that blackholes egress an unbounded connect stalls for the OS TCP timeout.
+    # GitHub serves no `latest` object, so fall back to its redirect. Parse the end of the
+    # chain, not hop 1: a repo rename inserts a hop whose last segment is `latest`. Skipped
+    # for s3:// mirrors, which are never github. Timeouts bound a blackholed connect.
     if [[ -z "$VERSION" ]] && ! mirror_is_s3; then
-        REDIR="$(curl -fsS -o /dev/null -w '%{redirect_url}' \
-            --connect-timeout 5 --max-time 15 "$LATEST_URL" 2>/dev/null)" || true
-        [[ -n "$REDIR" ]] && { GH="${REDIR##*/}"; VERSION="${GH#v}"; }
+        # Gated on curl's status: --fail still writes the -w output on an HTTP error.
+        if EFFECTIVE="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+            --connect-timeout 5 --max-time 15 "$LATEST_URL" 2>/dev/null)"; then
+            GH="${EFFECTIVE##*/}"; VERSION="${GH#v}"
+            keep_valid_version "$LATEST_URL"
+        fi
     fi
     if [[ -z "$VERSION" ]]; then
         VERSION="$FALLBACK_VERSION"
@@ -185,15 +196,15 @@ ENVY_BIN="$CACHE/envy/$VERSION/envy"
 [[ -x "$ENVY_BIN" ]] && exec "$ENVY_BIN" "$@"
 
 echo "Downloading envy $VERSION..." >&2
-# mktemp, not $$: a predictable name in a shared sticky /tmp lets another user pre-create
-# the directory and have us extract into (and exec from) storage they control.
+# mktemp, not $$: a predictable name in a sticky /tmp lets another user pre-create the
+# directory we extract into and exec from.
 T="$(mktemp -d "${TMPDIR:-/tmp}/envy-XXXXXXXX")"
 die() { echo "ERROR: $1" >&2; rm -rf "$T"; exit 1; }
 ARCHIVE="envy-$PLATFORM-$ARCH.tar.gz"
 URL="$ENVY_MIRROR/v$VERSION/$ARCHIVE"
 
 # To a file, not piped into tar: an unattested archive must never be unpacked, or a hostile
-# mirror gets to choose the paths written under $T -- from which we then exec.
+# mirror chooses the paths written under $T, from which we exec.
 mirror_cat "$URL" > "$T/$ARCHIVE" || die "Failed to download envy from $URL"
 
 if [[ -n "$SUMS_PIN" ]]; then
@@ -208,8 +219,8 @@ if [[ -n "$SUMS_PIN" ]]; then
        The mirror is serving a different release manifest than $MANIFEST pinned.
        Update the pin deliberately; do not remove it."
 
-    # Anchor to the line for this exact archive: matching on the hash alone would accept any
-    # platform's binary, and a substring match on the name would accept a longer one.
+    # Match this exact archive: keying on the hash alone accepts any platform's binary, and
+    # a substring name match accepts a longer sibling.
     WANT="$(sed -nE "s/^([0-9a-fA-F]{64})[[:space:]]+\*?${ARCHIVE//./\\.}\$/\1/p" \
         "$T/SHA256SUMS" | head -1)"
     [[ -n "$WANT" ]] || die "SHA256SUMS lists no entry for $ARCHIVE"
@@ -221,8 +232,8 @@ if [[ -n "$SUMS_PIN" ]]; then
 fi
 
 tar -xzf "$T/$ARCHIVE" -C "$T" || die "Failed to extract envy from $URL"
-# tar exits 0 on an empty archive, so a zero-length object would otherwise fall through to
-# a confusing "no such file" from exec.
+# tar exits 0 on an empty archive, so a zero-length object would fall through to a
+# confusing "no such file" from exec.
 [[ -f "$T/envy" ]] || die "archive from $URL contained no envy binary"
 [[ $PLATFORM == darwin ]] && xattr -d com.apple.quarantine "$T/envy" 2>/dev/null || true
 chmod +x "$T/envy" && exec "$T/envy" "$@"

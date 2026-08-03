@@ -77,7 +77,7 @@ All values are quoted. Escaping is supported:
 | `mirror` | Optional | Override download mirror: `https://…` or `s3://bucket/prefix` |
 | `sha256sums` | Optional | 64 hex digits: sha256 of the release's `SHA256SUMS`. Attests every downloaded archive; requires `version` |
 
-*If `version` is missing, bootstrap resolves it from the mirror's `latest` file (written by `envy mirror-envy`), then—for non-s3 mirrors only—from GitHub's latest-release redirect, then from the version stamped when `envy init` created the scripts.
+*If `version` is missing, bootstrap resolves it from the mirror's `latest` file (written by `envy mirror-envy`), then—for non-s3 mirrors only—from the **end** of GitHub's latest-release redirect chain, then from the version stamped when `envy init` created the scripts. A repo rename or org transfer inserts a hop whose own trailing segment is still `latest`, so only the chain's end names the tag. Either network tier is discarded with a warning unless it yields `MAJOR.MINOR.PATCH`; a `vlatest/` download URL merely 404s, which a mirror bucket without `s3:ListBucket` masks as a 403.
 
 **Mirror precedence** is `ENVY_MIRROR` env > `@envy mirror` > envy upstream, identically in the bootstrap scripts and in the running binary. Trailing slashes are stripped: for `s3://` a doubled slash is a distinct, nonexistent key.
 

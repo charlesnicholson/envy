@@ -113,6 +113,11 @@ class EnvyServer:
         self.corrupt_archive = False
         self.serve_sums = True
         self.sums_body: bytes | None = None
+        # What `GET /latest` answers. None models upstream GitHub, which publishes no such
+        # object; bytes model a mirror written by `envy mirror-envy`. Deliberately bytes and
+        # not str: the real object carries no trailing newline, and cmd's `set /p` reading a
+        # file without a line terminator is exactly the step under test on Windows.
+        self.latest_body: bytes | None = None
 
     @property
     def pristine_archive(self) -> bytes:
@@ -138,7 +143,13 @@ class EnvyServer:
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 parent.request_paths.append(self.path)
-                if self.path.endswith("SHA256SUMS"):
+                if self.path == "/latest":
+                    if parent.latest_body is None:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    content, content_type = parent.latest_body, "text/plain"
+                elif self.path.endswith("SHA256SUMS"):
                     if not parent.serve_sums:
                         self.send_response(404)
                         self.end_headers()
@@ -182,6 +193,73 @@ class EnvyServer:
             self.server.server_close()
 
 
+class RedirectChainServer:
+    """Stands in for GitHub's /releases/latest, which answers only with a redirect.
+
+    `paths` is served in order: every hop 301s to the next, the last answers 200. Two hops
+    before the tag page is the shape a renamed or transferred repo produces, and the reason
+    reading hop 1's trailing path segment resolves the literal string `latest`.
+    """
+
+    def __init__(self, paths: list[str]):
+        self.paths = paths
+        self.requested: list[str] = []
+        self.server: socketserver.TCPServer | None = None
+        self.thread: threading.Thread | None = None
+        self.port: int = 0
+
+    def start(self) -> int:
+        parent = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                parent.requested.append(self.path)
+                if self.path not in parent.paths:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                hop = parent.paths.index(self.path)
+                if hop + 1 < len(parent.paths):
+                    self.send_response(301)
+                    self.send_header("Location", parent.url_for(parent.paths[hop + 1]))
+                    self.end_headers()
+                    return
+                body = b"<html>release page</html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+        self.server = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.daemon = True
+        self.thread.start()
+        return self.port
+
+    def url_for(self, path: str) -> str:
+        return f"http://127.0.0.1:{self.port}{path}"
+
+    @property
+    def entry_url(self) -> str:
+        """What a bootstrap script carries stamped in as LATEST_URL."""
+        return self.url_for(self.paths[0])
+
+    @property
+    def missing_url(self) -> str:
+        """A URL this server 404s, standing in for unreachable GitHub."""
+        return self.url_for("/no-such-repo/releases/latest")
+
+    def stop(self) -> None:
+        if self.server:
+            self.server.shutdown()
+            self.server.server_close()
+
+
 class BootstrapIntegrationTest(unittest.TestCase):
     """Integration tests for the bootstrap scripts."""
 
@@ -212,8 +290,21 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self._temp_dir = Path(tempfile.mkdtemp(prefix="envy-bootstrap-test-"))
         self._server = EnvyServer(self._envy_binary)
         self._port = self._server.start()
+        # Every stamped script points LATEST_URL here instead of at github.com, so a test
+        # can assert either that the chain resolved a tag or -- for the tiers that must not
+        # need the network at all -- that this server was never asked anything.
+        self._github = RedirectChainServer(
+            [
+                "/oldowner/envy/releases/latest",
+                "/envy-package-manager/envy/releases/latest",
+                "/envy-package-manager/envy/releases/tag/v4.5.6",
+            ]
+        )
+        self._github.start()
 
     def tearDown(self) -> None:
+        if hasattr(self, "_github"):
+            self._github.stop()
         if hasattr(self, "_server"):
             self._server.stop()
         if hasattr(self, "_temp_dir") and self._temp_dir.exists():
@@ -313,8 +404,53 @@ class BootstrapIntegrationTest(unittest.TestCase):
             return self._bootstrap_windows
         return self._bootstrap_unix
 
+    @staticmethod
+    def _write_verbatim(path: Path, text: str) -> Path:
+        """Write LF-terminated text as bytes, defeating Python's newline translation.
+
+        `write_text` would emit CRLF on Windows. Neither envy nor a checked-out repo does:
+        `bootstrap_write_script` copies the embedded resource byte for byte (LF, per
+        cmake/EmbedResource.cmake's NORMALIZE_EOL), manifests are written by envy the same
+        way, and consumer repos carry `* -text` to keep git from touching either. Anything
+        cmd.exe or `for /f` does differently with LF has to be caught here or not at all.
+
+        The encoding is explicit for the same reason: this helper's contract is exact bytes.
+        """
+        path.write_bytes(text.encode("utf-8"))
+        return path
+
+    def _stamp_bootstrap(
+        self,
+        dest: Path,
+        fallback_version: str = "1.2.3",
+        latest_url: str | None = None,
+    ) -> Path:
+        """Write the bootstrap script with every placeholder `envy init` fills in.
+
+        LATEST_URL defaults to a path the redirect stub 404s, which is what an unreachable
+        github.com looks like to the script. It used to be left unstamped, so the
+        GitHub-redirect tier failed on a nonsense URL and its parsing was never covered.
+        DEFAULT_MIRROR points at the stub too: no test should resolve through it, so any
+        that does fails loudly on a 404 naming the URL instead of quietly succeeding.
+        """
+        # Explicit utf-8: read_text() otherwise decodes with locale.getpreferredencoding(),
+        # which is cp1252 on a Windows runner outside UTF-8 mode.
+        content = self._get_bootstrap_script().read_text(encoding="utf-8")
+        content = content.replace("@@ENVY_VERSION@@", fallback_version)
+        content = content.replace("@@LATEST_URL@@", latest_url or self._github.missing_url)
+        content = content.replace(
+            "@@DOWNLOAD_URL@@", self._github.url_for("/upstream-not-a-mirror")
+        )
+        self._write_verbatim(dest, content)
+        if sys.platform != "win32":
+            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return dest
+
     def _setup_test_project(
-        self, fixture_name: str, fallback_version: str = "1.2.3"
+        self,
+        fixture_name: str,
+        fallback_version: str = "1.2.3",
+        latest_url: str | None = None,
     ) -> Path:
         """Set up a test project with manifest and bootstrap script."""
         project_dir = self._temp_dir / "project"
@@ -323,26 +459,13 @@ class BootstrapIntegrationTest(unittest.TestCase):
         bin_dir.mkdir(parents=True)
 
         # Write fixture content from inline string
-        fixture_content = FIXTURES[fixture_name]
-        (project_dir / "envy.lua").write_text(fixture_content)
+        self._write_verbatim(project_dir / "envy.lua", FIXTURES[fixture_name])
 
-        bootstrap_src = self._get_bootstrap_script()
-        bootstrap_dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
-
-        content = bootstrap_src.read_text().replace(
-            "@@ENVY_VERSION@@", fallback_version
+        return self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy"),
+            fallback_version,
+            latest_url,
         )
-        bootstrap_dest.write_text(content)
-
-        if sys.platform != "win32":
-            bootstrap_dest.chmod(
-                bootstrap_dest.stat().st_mode
-                | stat.S_IXUSR
-                | stat.S_IXGRP
-                | stat.S_IXOTH
-            )
-
-        return bootstrap_dest
 
     def _run_bootstrap(
         self,
@@ -561,6 +684,100 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertEqual(1, len(self._server.request_paths))
         self.assertEqual(expected, self._server.request_paths[0])
 
+    # --- version resolution over the network ---------------------------------------
+    #
+    # Priority: `@envy version` > $CACHE/envy/latest > $MIRROR/latest > the GitHub redirect
+    # > FALLBACK_VERSION. Only the two network tiers can resolve a string that is not a
+    # version, and a `v<that>/` URL 404s at download time -- reported as a 403 by any mirror
+    # bucket without s3:ListBucket.
+
+    def _archive_requests(self) -> list[str]:
+        return [p for p in self._server.request_paths if p.endswith(_EXT)]
+
+    def test_bootstrap_follows_a_multi_hop_releases_latest_redirect(self) -> None:
+        """The tag lives at the end of the chain, not in the first Location header.
+
+        Renaming a repo or moving it between orgs makes GitHub answer /releases/latest with
+        a redirect to the *new* /releases/latest, so hop 1's trailing path segment is the
+        literal string `latest`. Reading it produced a `vlatest/` download URL.
+        """
+        bootstrap = self._setup_test_project(
+            "missing_version.lua",
+            fallback_version="9.9.9",
+            latest_url=self._github.entry_url,
+        )
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v4.5.6/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+        # Every hop, so a script that stopped early cannot pass by coincidence.
+        self.assertEqual(self._github.paths, self._github.requested)
+
+    def test_bootstrap_rejects_a_redirect_that_never_reaches_a_tag(self) -> None:
+        """A chain ending somewhere other than /releases/tag/vX.Y.Z resolves nothing."""
+        stub = RedirectChainServer(["/envy-package-manager/envy/releases/latest"])
+        stub.start()
+        self.addCleanup(stub.stop)
+
+        bootstrap = self._setup_test_project(
+            "missing_version.lua", fallback_version="9.9.9", latest_url=stub.entry_url
+        )
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("implausible envy version 'latest'", result.stderr)
+        self.assertEqual(
+            [f"/v9.9.9/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_rejects_a_nonsense_mirror_latest(self) -> None:
+        """A mirror `latest` holding something that is not a version is not a version."""
+        self._server.latest_body = b"latest"
+        bootstrap = self._setup_test_project(
+            "missing_version.lua", fallback_version="9.9.9"
+        )
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("implausible envy version 'latest'", result.stderr)
+        self.assertEqual(
+            [f"/v9.9.9/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_resolves_from_an_https_mirror_latest(self) -> None:
+        """An https mirror answers for itself, so github is never consulted.
+
+        The body carries no trailing newline, matching what `envy mirror-envy` publishes.
+        """
+        self._server.latest_body = b"4.4.4"
+        bootstrap = self._setup_test_project(
+            "missing_version.lua",
+            fallback_version="9.9.9",
+            latest_url=self._github.entry_url,
+        )
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v4.4.4/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+        self.assertEqual([], self._github.requested)
+
+    def test_bootstrap_with_a_pinned_version_never_contacts_github(self) -> None:
+        """`@envy version` resolves with no network at all beyond the download itself."""
+        bootstrap = self._setup_test_project(
+            "simple.lua", latest_url=self._github.entry_url
+        )
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._server.request_paths
+        )
+        self.assertEqual([], self._github.requested)
+
     # --- s3:// mirrors ------------------------------------------------------------
 
     def _run_s3_bootstrap(
@@ -579,14 +796,11 @@ class BootstrapIntegrationTest(unittest.TestCase):
         project_dir = self._temp_dir / "project"
         bin_dir = project_dir / "tools"
         bin_dir.mkdir(parents=True)
-        (project_dir / "envy.lua").write_text(manifest)
+        self._write_verbatim(project_dir / "envy.lua", manifest)
 
-        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
-        dest.write_text(
-            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "0.0.1")
+        dest = self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy"), "0.0.1"
         )
-        if sys.platform != "win32":
-            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         env = self._mock_aws_env(bindir, s3root, logfile)
         if extra_env:
@@ -681,16 +895,14 @@ class BootstrapIntegrationTest(unittest.TestCase):
         bin_dir.mkdir(parents=True)
         # The manifest points at a bucket the mock cannot serve; the env var points at the
         # http server. If the manifest won, aws would be invoked and the run would fail.
-        (project_dir / "envy.lua").write_text(
+        self._write_verbatim(
+            project_dir / "envy.lua",
             '-- @envy version "1.2.3"\n'
-            '-- @envy mirror "s3://wrong-bucket/nope"\n\nPACKAGES = {}\n'
+            '-- @envy mirror "s3://wrong-bucket/nope"\n\nPACKAGES = {}\n',
         )
-        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
-        dest.write_text(
-            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
+        dest = self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
         )
-        if sys.platform != "win32":
-            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         result = self._run_bootstrap(
             dest, ["version"], env_overrides=self._mock_aws_env(bindir, s3root, logfile)
@@ -713,15 +925,12 @@ class BootstrapIntegrationTest(unittest.TestCase):
         project_dir = self._temp_dir / "project"
         bin_dir = project_dir / "tools"
         bin_dir.mkdir(parents=True)
-        (project_dir / "envy.lua").write_text(
+        self._write_verbatim(
+            project_dir / "envy.lua",
             '-- @envy version "1.2.3"\n'
-            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n'
+            '-- @envy mirror "s3://fake-bucket/releases"\n\nPACKAGES = {}\n',
         )
-        dest = bin_dir / "envy"
-        dest.write_text(
-            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
-        )
-        dest.chmod(dest.stat().st_mode | stat.S_IXUSR)
+        dest = self._stamp_bootstrap(bin_dir / "envy")
 
         # AWS CLI v2 installs to /usr/local/bin, so a minimal PATH excludes it while still
         # providing the coreutils the script needs.
@@ -739,13 +948,9 @@ class BootstrapIntegrationTest(unittest.TestCase):
         project_dir.mkdir(parents=True)
         bin_dir.mkdir(parents=True)
 
-        bootstrap_src = self._get_bootstrap_script()
-        bootstrap_dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
-
-        content = bootstrap_src.read_text().replace("@@ENVY_VERSION@@", "1.0.0")
-        bootstrap_dest.write_text(content)
-        if sys.platform != "win32":
-            bootstrap_dest.chmod(bootstrap_dest.stat().st_mode | stat.S_IXUSR)
+        bootstrap_dest = self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy"), "1.0.0"
+        )
 
         env = os.environ.copy()
         env["ENVY_MIRROR"] = f"http://127.0.0.1:{self._port}"
@@ -784,15 +989,13 @@ class BootstrapIntegrationTest(unittest.TestCase):
             lines.append(f'-- @envy version "{version}"')
         if pin is not None:
             lines.append(f'-- @envy sha256sums "{pin}"')
-        (project_dir / "envy.lua").write_text("\n".join(lines) + "\n\nPACKAGES = {}\n")
-
-        dest = bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
-        dest.write_text(
-            self._get_bootstrap_script().read_text().replace("@@ENVY_VERSION@@", "1.2.3")
+        self._write_verbatim(
+            project_dir / "envy.lua", "\n".join(lines) + "\n\nPACKAGES = {}\n"
         )
-        if sys.platform != "win32":
-            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        return dest
+
+        return self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy")
+        )
 
     def test_bootstrap_attests_a_matching_archive(self) -> None:
         bootstrap = self._setup_attested_project(self._server.sums_pin)

@@ -63,8 +63,7 @@ _envy_parse_bin() {
 
 _envy_remove_from_path() {
   emulate -L zsh
-  # Filter zsh path array in-place — zsh auto-syncs it to $PATH.
-  # Avoids the old loop+echo pattern which required a $() subshell to capture.
+  # Filter zsh path array in-place — zsh auto-syncs it to $PATH, so no $() to capture.
   path=("${(@)path:#${(b)1}}")
 }
 
