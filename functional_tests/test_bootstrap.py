@@ -683,9 +683,11 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertIn("envy version", result.stderr)
         # Anchoring an absolute directive would miss the seeded binary and download.
         self.assertNotIn("Downloading", result.stderr)
-        self.assertFalse(
-            (project_dir / str(cache).lstrip("/\\")).exists(),
-            "an absolute directive was anchored to the manifest",
+        # Nor did anything land under the manifest. Asserted by listing the project rather
+        # than by predicting the anchored path: joining a manifest directory with an
+        # absolute one takes a different shape on each platform.
+        self.assertEqual(
+            ["envy.lua", "tools"], sorted(p.name for p in project_dir.iterdir())
         )
 
     def test_bootstrap_uses_fallback_when_version_missing(self) -> None:
