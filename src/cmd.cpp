@@ -21,9 +21,9 @@ cmd_startup cmd_startup_load(std::string_view cmd_name,
   auto const manifest_dir{ m->manifest_path.parent_path() };
   reexec_if_needed(m->meta, cli_cache_root, manifest_dir);
 
-  auto c{ self_deploy::ensure(cli_cache_root,
-                              m->meta.cache_for_platform(),
-                              manifest_dir) };
+  auto c{
+    self_deploy::ensure(cli_cache_root, m->meta.cache_for_platform(), manifest_dir)
+  };
   return { std::move(m), std::move(c) };
 }
 
