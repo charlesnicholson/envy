@@ -300,15 +300,24 @@ REM :anchor_cache_to_manifest -- CACHE in/out; a relative directive resolves aga
 REM manifest's directory, never the caller's cwd, matching resolve_cache_root() in
 REM src/cache.cpp: one manifest names one cache tree from every working directory, or every
 REM invocation from a subdirectory refetches the whole package set into a tree of its own.
-REM `X:\`, `X:/`, a leading separator (drive-relative) and a UNC `\\server\share` are all
-REM left alone. Reached only by `call`.
+REM Left alone: `X:\`, `X:/` and a UNC root, the only forms std::filesystem calls absolute
+REM on Windows. Reached only by `call`.
 :anchor_cache_to_manifest
+if "!CACHE:~0,2!"=="\\" exit /b 0
+if "!CACHE:~0,2!"=="//" exit /b 0
 if "!CACHE:~1,2!"==":\" exit /b 0
 if "!CACHE:~1,2!"==":/" exit /b 0
-if "!CACHE:~0,1!"=="\" exit /b 0
-if "!CACHE:~0,1!"=="/" exit /b 0
-REM %%~dpI carries a trailing backslash; %%~fI then collapses any `..` the directive used.
+REM A leading separator is rooted but drive-relative, and is_absolute() is false for it, so
+REM the runtime anchors it too: operator/ keeps the manifest's drive and drops its
+REM directory. Match that -- %%~dI is the drive alone, %%~dpI the drive plus directory with
+REM a trailing backslash. %%~fI then collapses `..` and any doubled separator.
+if "!CACHE:~0,1!"=="\" goto :anchor_cache_to_drive
+if "!CACHE:~0,1!"=="/" goto :anchor_cache_to_drive
 for %%I in ("!MANIFEST!") do set "CACHE=%%~dpI!CACHE!"
+goto :anchor_cache_done
+:anchor_cache_to_drive
+for %%I in ("!MANIFEST!") do set "CACHE=%%~dI!CACHE!"
+:anchor_cache_done
 for %%I in ("!CACHE!") do set "CACHE=%%~fI"
 exit /b 0
 
