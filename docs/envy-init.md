@@ -152,7 +152,7 @@ PACKAGES = {
 
 ### Override Precedence (highest to lowest)
 
-1. `--cache-dir` command-line argument
+1. `--cache-root` command-line argument
 2. `ENVY_CACHE_ROOT` environment variable
 3. `@envy cache-posix` / `@envy cache-win` directive in manifest
 4. Platform default
@@ -420,7 +420,7 @@ export ENVY_CACHE_ROOT=/opt/envy-cache
 
 Or via command line:
 ```bash
-./tools/envy --cache-dir=/opt/envy-cache sync
+./tools/envy --cache-root=/opt/envy-cache sync
 ```
 
 **Result:** Full control over cache location for CI optimization.
