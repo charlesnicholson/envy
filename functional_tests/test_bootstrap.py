@@ -640,6 +640,54 @@ class BootstrapIntegrationTest(unittest.TestCase):
             "cache tree was anchored to the cwd",
         )
 
+    def test_bootstrap_absolute_cache_directive_is_used_as_written(self) -> None:
+        """An absolute cache directive is taken verbatim -- anchoring applies to neither.
+
+        The other half of the contract the relative test covers: the manifest names one
+        tree either way. Written inline rather than as a fixture because the path is only
+        known at run time.
+        """
+        project_dir = self._temp_dir / "project"
+        bin_dir = project_dir / "tools"
+        bin_dir.mkdir(parents=True)
+
+        cache = self._temp_dir / "absolute-cache"
+        directive = "cache-win" if sys.platform == "win32" else "cache-posix"
+        # A Windows path's backslashes are escaped: both parsers unescape '\\' to '\'.
+        value = str(cache).replace("\\", "\\\\")
+        self._write_verbatim(
+            project_dir / "envy.lua",
+            f'-- @envy version "1.2.3"\n'
+            f'-- @envy {directive} "{value}"\n'
+            f"\nPACKAGES = {{}}\n",
+        )
+        bootstrap = self._stamp_bootstrap(
+            bin_dir / ("envy.bat" if sys.platform == "win32" else "envy"), "1.2.3"
+        )
+
+        cached_binary = (
+            cache / "envy" / "1.2.3" / ("envy.exe" if sys.platform == "win32" else "envy")
+        )
+        cached_binary.parent.mkdir(parents=True)
+        shutil.copy(self._envy_binary, cached_binary)
+        if sys.platform != "win32":
+            cached_binary.chmod(cached_binary.stat().st_mode | stat.S_IXUSR)
+
+        elsewhere = self._temp_dir / "elsewhere"
+        elsewhere.mkdir()
+        result = self._run_bootstrap(
+            bootstrap, ["version"], set_cache_root=False, cwd=elsewhere
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        # Anchoring an absolute directive would miss the seeded binary and download.
+        self.assertNotIn("Downloading", result.stderr)
+        self.assertFalse(
+            (project_dir / str(cache).lstrip("/\\")).exists(),
+            "an absolute directive was anchored to the manifest",
+        )
+
     def test_bootstrap_uses_fallback_when_version_missing(self) -> None:
         """Test that bootstrap resolves a version when @envy version is missing.
 
