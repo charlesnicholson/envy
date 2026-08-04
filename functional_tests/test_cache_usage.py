@@ -139,8 +139,11 @@ class TestCacheUsage(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, f"cache failed: {result.stderr}")
 
+        # Both sides resolved: the manifest path envy anchored to came from the cwd it was
+        # handed, which on a Windows runner carries 8.3 short components (RUNNER~1) that
+        # Path.resolve() expands, and on macOS a /var -> /private/var symlink.
         root, _, _ = parse_report(result.stdout)
-        self.assertEqual(Path(root), (project / "relcache").resolve())
+        self.assertEqual(Path(root).resolve(), (project / "relcache").resolve())
 
     def test_override_skips_manifest_discovery(self):
         """`--cache-root` decides alone: no manifest above the cwd is even read.
