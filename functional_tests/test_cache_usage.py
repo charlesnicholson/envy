@@ -142,6 +142,32 @@ class TestCacheUsage(unittest.TestCase):
         root, _, _ = parse_report(result.stdout)
         self.assertEqual(Path(root), (project / "relcache").resolve())
 
+    def test_override_skips_manifest_discovery(self):
+        """`--cache-root` decides alone: no manifest above the cwd is even read.
+
+        Discovery and directive parsing both throw, so consulting a manifest that cannot
+        change the answer would turn any broken envy.lua in an ancestor directory into a
+        failed report.
+        """
+        project = Path(tempfile.mkdtemp(prefix="envy-cache-usage-broken-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        # A sums pin with no '@envy version' to pin it to: parse_envy_meta rejects it.
+        (project / "envy.lua").write_bytes(
+            b'-- @envy sha256sums "' + b"a" * 64 + b'"\n\nPACKAGES = {}\n'
+        )
+
+        result = test_config.run(
+            [str(self.envy), "--cache-root", str(self.cache_root), "cache"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            env=test_config.get_test_env(),
+        )
+
+        self.assertEqual(result.returncode, 0, f"cache failed: {result.stderr}")
+        root, _, _ = parse_report(result.stdout)
+        self.assertEqual(root, str(self.cache_root))
+
     def test_non_package_directories_are_reported(self):
         specs = self.cache_root / "specs"
         specs.mkdir(parents=True)

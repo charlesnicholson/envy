@@ -13,7 +13,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -74,17 +73,17 @@ cmd_cache::cmd_cache(cmd_cache::cfg /*cfg*/,
 void cmd_cache::execute() {
   // The report is about the project's cache, so an '@envy cache-*' directive counts here
   // exactly as it does for every other command -- read from the manifest's text, never by
-  // running its Lua: a disk-usage report must not execute a project.  No manifest above
-  // the cwd leaves the CLI/env/default tiers to answer.
+  // running its Lua: a disk-usage report must not execute a project.  Skipped entirely
+  // when an override already decides, so a malformed manifest somewhere above the cwd
+  // cannot break `envy cache --cache-root`; no manifest at all leaves the default tier.
   std::optional<std::string> manifest_cache;
   std::filesystem::path manifest_dir;
-  if (auto const found{ manifest::discover(false, std::filesystem::current_path()) }) {
-    auto const content{ util_load_file(*found) };
-    std::string_view const text{ reinterpret_cast<char const *>(content.data()),
-                                 content.size() };
-    auto const meta{ parse_envy_meta(text) };
-    manifest_cache = meta.cache_for_platform();
-    manifest_dir = found->parent_path();
+  if (!cli_cache_root_) {
+    if (auto const found{ manifest::discover(false, std::filesystem::current_path()) }) {
+      auto const meta{ parse_envy_meta_file(*found) };
+      manifest_cache = meta.cache_for_platform();
+      manifest_dir = found->parent_path();
+    }
   }
 
   auto const root{ resolve_cache_root(cli_cache_root_, manifest_cache, manifest_dir) };
