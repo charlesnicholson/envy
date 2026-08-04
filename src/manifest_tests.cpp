@@ -130,35 +130,41 @@ TEST_CASE("manifest::discover carries the manifest's bytes and directives") {
   REQUIRE(result.has_value());
   REQUIRE(result->meta.version.has_value());
   CHECK(*result->meta.version == "1.2.3");
-  // A manifest that fits discovery's read is handed on whole, so loading it into Lua costs
-  // no second read.
+  REQUIRE(result->meta.cache_for_platform().has_value());
+  CHECK(*result->meta.cache_for_platform() == "relcache");
+  // The bytes come back with the directives, so loading them into Lua costs no second
+  // read.
   CHECK(result->content == envy::util_load_file(result->path));
 }
 
-// parse_envy_meta_file tests ---------------------------------
+// parse_envy_meta stop-at-code tests --------------------------
 
-TEST_CASE("parse_envy_meta_file reads directives from a manifest file") {
-  auto const path{ test_data_root() / "cache_directive" / "envy.lua" };
-  REQUIRE(fs::exists(path));
-
-  auto const meta{ envy::parse_envy_meta_file(path) };
+TEST_CASE("parse_envy_meta ignores directives below the manifest's first code line") {
+  auto const meta{ envy::parse_envy_meta(R"(-- @envy version "1.2.3"
+PACKAGES = {}
+-- @envy cache-posix "too-late"
+-- @envy cache-win "too-late"
+)") };
 
   REQUIRE(meta.version.has_value());
   CHECK(*meta.version == "1.2.3");
-  REQUIRE(meta.cache_for_platform().has_value());
-  CHECK(*meta.cache_for_platform() == "relcache");
-}
-
-TEST_CASE("parse_envy_meta_file on a manifest with no directives") {
-  auto const meta{ envy::parse_envy_meta_file(test_data_root() / "repo" / "envy.lua") };
-
-  CHECK_FALSE(meta.version.has_value());
   CHECK_FALSE(meta.cache_for_platform().has_value());
 }
 
-TEST_CASE("parse_envy_meta_file throws when the file cannot be read") {
-  CHECK_THROWS_AS(envy::parse_envy_meta_file(test_data_root() / "no-such-manifest.lua"),
-                  std::runtime_error);
+TEST_CASE("parse_envy_meta reads the whole header past blanks and plain comments") {
+  auto const meta{ envy::parse_envy_meta(R"(-- a plain comment
+
+  -- @envy version "9.9.9"
+
+-- another comment
+   -- @envy bin "tools"
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "9.9.9");
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "tools");
 }
 
 // load tests -------------------------------------------------

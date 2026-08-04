@@ -32,15 +32,11 @@ struct envy_meta {
   std::optional<std::string> const &cache_for_platform() const;
 };
 
-// Parse @envy metadata from manifest content. Throws std::runtime_error on a directive
-// that is present but unusable: a malformed sha256sums pin, or a sums pin with no
-// '@envy version' to pin it to.
+// Parse @envy metadata from manifest content. Directives are header comments, so the scan
+// stops at the first line of code. Throws std::runtime_error on a directive that is
+// present but unusable: a malformed sha256sums pin, or a sums pin with no '@envy version'
+// to pin it to.
 envy_meta parse_envy_meta(std::string_view content);
-
-// Same, reading the file at `manifest_path` as text -- its Lua is never run. For callers
-// that want only the directives; a caller that also needs the content should load it once
-// and call parse_envy_meta. Throws if the file cannot be read.
-envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path);
 
 struct manifest : unmovable {
   // PACKAGE_DEPOTS entry: plain URI, or FETCH function with optional package
@@ -72,10 +68,9 @@ struct manifest : unmovable {
       std::optional<std::filesystem::path> const &explicit_path,
       bool nearest);
 
-  // A manifest found on disk, with its '@envy' directives already parsed. `content` holds
-  // the whole file whenever discovery's read reached the end of it, so a caller that goes
-  // on to execute the manifest needs no second read; it is empty when the file is larger
-  // than the directive header discovery keeps (and, harmlessly, when the file is empty).
+  // A manifest found on disk: its bytes, read once, and the '@envy' directives parsed out
+  // of them. A caller that goes on to execute the manifest passes `content` to load()
+  // rather than opening the file a second time.
   struct discovery {
     std::filesystem::path path;
     envy_meta meta;

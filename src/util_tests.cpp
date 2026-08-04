@@ -365,47 +365,6 @@ TEST_CASE("util_load_file throws on nonexistent file") {
   CHECK_THROWS_WITH(envy::util_load_file(path), doctest::Contains("failed to open file"));
 }
 
-TEST_CASE("util_load_file_head stops at max_bytes") {
-  auto path = make_temp_path("head-truncated");
-  {
-    std::ofstream out{ path, std::ios::binary };
-    out << "hello world";
-  }
-  envy::scoped_path_cleanup cleanup{ path };
-
-  auto data = envy::util_load_file_head(path, 5);
-  REQUIRE(data.size() == 5);
-  CHECK(std::memcmp(data.data(), "hello", 5) == 0);
-}
-
-TEST_CASE("util_load_file_head returns a short file whole") {
-  auto path = make_temp_path("head-short");
-  {
-    std::ofstream out{ path, std::ios::binary };
-    out << "hi";
-  }
-  envy::scoped_path_cleanup cleanup{ path };
-
-  auto data = envy::util_load_file_head(path, 4096);
-  REQUIRE(data.size() == 2);
-  CHECK(std::memcmp(data.data(), "hi", 2) == 0);
-}
-
-TEST_CASE("util_load_file_head returns nothing for an empty file or a zero budget") {
-  auto path = make_temp_path("head-empty");
-  std::ignore = std::ofstream{ path };
-  envy::scoped_path_cleanup cleanup{ path };
-
-  CHECK(envy::util_load_file_head(path, 4096).empty());
-  CHECK(envy::util_load_file_head(path, 0).empty());
-}
-
-TEST_CASE("util_load_file_head throws on nonexistent file") {
-  auto path = make_temp_path("head-nonexistent");
-  CHECK_THROWS_WITH(envy::util_load_file_head(path, 16),
-                    doctest::Contains("failed to open file"));
-}
-
 TEST_CASE("util_load_file handles files with null bytes") {
   auto path = make_temp_path("nullbytes");
   unsigned char const test_data[] = { 'a', 'b', 0x00, 'c', 'd', 0x00, 0x00, 'e' };

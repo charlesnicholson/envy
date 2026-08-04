@@ -362,6 +362,9 @@ envy_meta parse_envy_meta(std::string_view content) {
             "in the manifest instead, e.g.: PACKAGE_DEPOTS = { \"" +
             value + "\" }");
       }
+    } else if (auto const body{ line.find_first_not_of(" \t\r") };
+               body != std::string_view::npos && line.compare(body, 2, "--") != 0) {
+      break;  // first line of code ends the header; a directive below it is not one
     }
 
     if (line_end == std::string_view::npos) { break; }
@@ -391,35 +394,16 @@ envy_meta parse_envy_meta(std::string_view content) {
 
 namespace {
 
-// One read serves both jobs. Directives live in the header -- the bootstrap scripts read
-// the first 20 lines and nothing else -- so a caller that wants only them never pays for
-// the body; and 64 KiB is orders of magnitude past any real manifest, so the bytes
-// discovery reads are almost always the whole file, which the Lua load then reuses.
-constexpr std::size_t kHeaderBytes{ 64 * 1024 };
-
+// One read, reused: the directives are parsed out of the same bytes a caller goes on to
+// hand to Lua, and the scan stops at the manifest's first line of code.
 manifest::discovery read_manifest(std::filesystem::path manifest_path) {
-  auto content{ util_load_file_head(manifest_path, kHeaderBytes) };
-  bool const whole_file{ content.size() < kHeaderBytes };
-
-  std::string_view text{ reinterpret_cast<char const *>(content.data()), content.size() };
-  if (!whole_file) {
-    // Drop the clipped final line: a directive cut mid-value would otherwise be parsed as
-    // a shorter one, or (with the closing quote gone) silently vanish.
-    auto const last_newline{ text.rfind('\n') };
-    text = (last_newline == std::string_view::npos) ? std::string_view{}
-                                                    : text.substr(0, last_newline + 1);
-  }
-  auto meta{ parse_envy_meta(text) };
-
-  if (!whole_file) { content.clear(); }  // a header prefix is no use to Lua
+  auto content{ util_load_file(manifest_path) };
+  auto meta{ parse_envy_meta(
+      { reinterpret_cast<char const *>(content.data()), content.size() }) };
   return { std::move(manifest_path), std::move(meta), std::move(content) };
 }
 
 }  // namespace
-
-envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path) {
-  return read_manifest(manifest_path).meta;
-}
 
 std::optional<manifest::discovery> manifest::discover(
     bool nearest,
@@ -488,9 +472,7 @@ std::unique_ptr<manifest> manifest::find_and_load(
   auto const found{ discover(nearest, std::filesystem::current_path()) };
   if (!found) { throw std::runtime_error("manifest not found (discovery failed)"); }
 
-  // Discovery already read the file to reach its directives; only a manifest too large for
-  // that read needs a second one.
-  return found->content.empty() ? load(found->path) : load(found->content, found->path);
+  return load(found->content, found->path);  // discovery already read the file
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
