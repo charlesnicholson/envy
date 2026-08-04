@@ -160,6 +160,23 @@ std::vector<unsigned char> util_load_file(std::filesystem::path const &path) {
   return buffer;
 }
 
+std::vector<unsigned char> util_load_file_head(std::filesystem::path const &path,
+                                               std::size_t max_bytes) {
+  auto file{ util_open_file(path, "rb") };
+  if (!file) {
+    throw std::runtime_error("util_load_file_head: failed to open file: " + path.string());
+  }
+
+  std::vector<unsigned char> buffer(max_bytes);
+  size_t const bytes_read{ std::fread(buffer.data(), 1, buffer.size(), file.get()) };
+  if (bytes_read != buffer.size() && std::ferror(file.get())) {
+    throw std::runtime_error("util_load_file_head: failed to read file: " + path.string());
+  }
+
+  buffer.resize(bytes_read);
+  return buffer;
+}
+
 void util_write_file(std::filesystem::path const &path, std::string_view content) {
   namespace fs = std::filesystem;
   fs::path const temp_path{ path.parent_path() /

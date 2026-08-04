@@ -72,11 +72,20 @@ struct manifest : unmovable {
       std::optional<std::filesystem::path> const &explicit_path,
       bool nearest);
 
+  // A manifest found on disk, with its '@envy' directives already parsed. `content` holds
+  // the whole file whenever discovery's read reached the end of it, so a caller that goes
+  // on to execute the manifest needs no second read; it is empty when the file is larger
+  // than the directive header discovery keeps (and, harmlessly, when the file is empty).
+  struct discovery {
+    std::filesystem::path path;
+    envy_meta meta;
+    std::vector<unsigned char> content;
+  };
+
   // Discover manifest by walking up from start_dir. When nearest=true, return the first
   // envy.lua found immediately instead of walking to the root manifest.
-  static std::optional<std::filesystem::path> discover(
-      bool nearest,
-      std::filesystem::path const &start_dir);
+  static std::optional<discovery> discover(bool nearest,
+                                           std::filesystem::path const &start_dir);
 
   // Discover + load. Uses explicit_path if given, otherwise discovers from CWD.
   static std::unique_ptr<manifest> find_and_load(

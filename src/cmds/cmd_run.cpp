@@ -88,8 +88,8 @@ void cmd_run::execute() {
     }
     throw std::runtime_error(msg);
   }
-  auto const &manifest_path{ *discovered };
-  auto const meta{ parse_envy_meta_file(manifest_path) };
+  auto const &manifest_path{ discovered->path };
+  auto const &meta{ discovered->meta };  // discovery parsed the directives already
 
   reexec_if_needed(meta, cli_cache_root_, manifest_path.parent_path());
 

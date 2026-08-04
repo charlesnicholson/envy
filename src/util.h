@@ -74,6 +74,11 @@ file_ptr_t util_open_file(std::filesystem::path const &path, char const *mode);
 // Throws std::runtime_error if file cannot be opened or read.
 std::vector<unsigned char> util_load_file(std::filesystem::path const &path);
 
+// Load at most the first `max_bytes` of a file. A short read is not an error -- the file
+// may simply be smaller. Throws std::runtime_error if the file cannot be opened or read.
+std::vector<unsigned char> util_load_file_head(std::filesystem::path const &path,
+                                               std::size_t max_bytes);
+
 // Write content to file atomically (temp file + rename).
 // Parent directory must exist. Throws std::runtime_error on failure.
 void util_write_file(std::filesystem::path const &path, std::string_view content);

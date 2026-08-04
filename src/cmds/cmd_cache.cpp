@@ -80,9 +80,8 @@ void cmd_cache::execute() {
   std::filesystem::path manifest_dir;
   if (!cli_cache_root_) {
     if (auto const found{ manifest::discover(false, std::filesystem::current_path()) }) {
-      auto const meta{ parse_envy_meta_file(*found) };
-      manifest_cache = meta.cache_for_platform();
-      manifest_dir = found->parent_path();
+      manifest_cache = found->meta.cache_for_platform();
+      manifest_dir = found->path.parent_path();
     }
   }
 

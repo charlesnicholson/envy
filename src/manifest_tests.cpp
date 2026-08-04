@@ -1,5 +1,7 @@
 #include "manifest.h"
 
+#include "util.h"
+
 #include "sol/sol.hpp"
 
 #include "doctest.h"
@@ -31,8 +33,8 @@ TEST_CASE("manifest::discover finds envy.lua in current directory") {
   auto result{ envy::manifest::discover(false, repo_root) };
 
   REQUIRE(result.has_value());
-  CHECK(result->filename() == "envy.lua");
-  CHECK(result->parent_path() == repo_root);
+  CHECK(result->path.filename() == "envy.lua");
+  CHECK(result->path.parent_path() == repo_root);
 }
 
 TEST_CASE("manifest::discover searches upward from subdirectory") {
@@ -43,8 +45,8 @@ TEST_CASE("manifest::discover searches upward from subdirectory") {
   auto result{ envy::manifest::discover(false, nested) };
 
   REQUIRE(result.has_value());
-  CHECK(result->filename() == "envy.lua");
-  CHECK(result->parent_path() == test_root / "repo");
+  CHECK(result->path.filename() == "envy.lua");
+  CHECK(result->path.parent_path() == test_root / "repo");
 }
 
 TEST_CASE("manifest::discover traverses through submodule (.git file)") {
@@ -66,8 +68,8 @@ TEST_CASE("manifest::discover traverses through submodule (.git file)") {
   auto result{ envy::manifest::discover(false, submodule_nested) };
 
   REQUIRE(result.has_value());
-  CHECK(result->filename() == "envy.lua");
-  CHECK(result->parent_path() == test_root / "repo");
+  CHECK(result->path.filename() == "envy.lua");
+  CHECK(result->path.parent_path() == test_root / "repo");
 
   // Leave placeholder in place for subsequent test runs; fixture removal unnecessary.
 }
@@ -93,8 +95,8 @@ TEST_CASE("manifest::discover finds envy.lua in non-git directory") {
   auto result{ envy::manifest::discover(false, non_git) };
 
   REQUIRE(result.has_value());
-  CHECK(result->filename() == "envy.lua");
-  CHECK(result->parent_path() == non_git);
+  CHECK(result->path.filename() == "envy.lua");
+  CHECK(result->path.parent_path() == non_git);
 }
 
 TEST_CASE("manifest::discover searches upward in non-git directory") {
@@ -105,8 +107,8 @@ TEST_CASE("manifest::discover searches upward in non-git directory") {
   auto result{ envy::manifest::discover(false, deeply_nested) };
 
   REQUIRE(result.has_value());
-  CHECK(result->filename() == "envy.lua");
-  CHECK(result->parent_path() == test_root / "non_git_dir");
+  CHECK(result->path.filename() == "envy.lua");
+  CHECK(result->path.parent_path() == test_root / "non_git_dir");
 }
 
 TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
@@ -118,6 +120,19 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
   CHECK_FALSE(result.has_value());
 
   fs::remove_all(temp_root);
+}
+
+TEST_CASE("manifest::discover carries the manifest's bytes and directives") {
+  auto const test_root{ test_data_root() };
+
+  auto const result{ envy::manifest::discover(false, test_root / "cache_directive") };
+
+  REQUIRE(result.has_value());
+  REQUIRE(result->meta.version.has_value());
+  CHECK(*result->meta.version == "1.2.3");
+  // A manifest that fits discovery's read is handed on whole, so loading it into Lua costs
+  // no second read.
+  CHECK(result->content == envy::util_load_file(result->path));
 }
 
 // parse_envy_meta_file tests ---------------------------------
@@ -1283,7 +1298,7 @@ TEST_CASE("manifest::discover with root=false continues search upward") {
 
   // Should find parent (root=true) instead of child (root=false)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == parent_dir);
+  CHECK(result->path.parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1309,7 +1324,7 @@ TEST_CASE("manifest::discover with root=true stops immediately") {
 
   // Should stop at child (root=true)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == child_dir);
+  CHECK(result->path.parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1341,7 +1356,7 @@ TEST_CASE("manifest::discover with all root=false uses closest to filesystem roo
 
   // Should use grandparent (closest to filesystem root among non-roots)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == grandparent_dir);
+  CHECK(result->path.parent_path() == grandparent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1372,7 +1387,7 @@ TEST_CASE("manifest::discover F-T-F uses middle (root=true) manifest") {
 
   // Should stop at parent (root=true)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == parent_dir);
+  CHECK(result->path.parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1398,7 +1413,7 @@ TEST_CASE("manifest::discover F-F with no grandparent uses parent") {
 
   // Should use parent (closest to root among non-roots, no grandparent manifest exists)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == parent_dir);
+  CHECK(result->path.parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1428,7 +1443,7 @@ TEST_CASE("manifest::discover F with no parent skips to grandparent") {
 
   // Should use grandparent (closest to root, skipping parent which has no manifest)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == grandparent_dir);
+  CHECK(result->path.parent_path() == grandparent_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1449,7 +1464,7 @@ TEST_CASE("manifest::discover with only child manifest (root=false) uses child")
 
   // Should use child even though root=false (only manifest in tree)
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == child_dir);
+  CHECK(result->path.parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1477,12 +1492,12 @@ TEST_CASE("manifest::discover nearest returns first envy.lua found") {
   // Normal discover walks up to parent (root=true)
   auto normal_result{ envy::manifest::discover(false, child_dir) };
   REQUIRE(normal_result.has_value());
-  CHECK(normal_result->parent_path() == parent_dir);
+  CHECK(normal_result->path.parent_path() == parent_dir);
 
   // Nearest discover returns child immediately
   auto nearest_result{ envy::manifest::discover(true, child_dir) };
   REQUIRE(nearest_result.has_value());
-  CHECK(nearest_result->parent_path() == child_dir);
+  CHECK(nearest_result->path.parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1506,7 +1521,7 @@ TEST_CASE("manifest::discover nearest ignores root directive") {
 
   auto result{ envy::manifest::discover(true, child_dir) };
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == child_dir);
+  CHECK(result->path.parent_path() == child_dir);
 
   fs::remove_all(temp_root);
 }
@@ -1525,7 +1540,7 @@ TEST_CASE("manifest::discover nearest from subdirectory without manifest") {
 
   auto result{ envy::manifest::discover(true, sub_dir) };
   REQUIRE(result.has_value());
-  CHECK(result->parent_path() == parent_dir);
+  CHECK(result->path.parent_path() == parent_dir);
 
   fs::remove_all(temp_root);
 }

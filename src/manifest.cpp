@@ -389,50 +389,75 @@ envy_meta parse_envy_meta(std::string_view content) {
   return result;
 }
 
-envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path) {
-  auto const content{ util_load_file(manifest_path) };
-  return parse_envy_meta(
-      { reinterpret_cast<char const *>(content.data()), content.size() });
+namespace {
+
+// One read serves both jobs. Directives live in the header -- the bootstrap scripts read
+// the first 20 lines and nothing else -- so a caller that wants only them never pays for
+// the body; and 64 KiB is orders of magnitude past any real manifest, so the bytes
+// discovery reads are almost always the whole file, which the Lua load then reuses.
+constexpr std::size_t kHeaderBytes{ 64 * 1024 };
+
+manifest::discovery read_manifest(std::filesystem::path manifest_path) {
+  auto content{ util_load_file_head(manifest_path, kHeaderBytes) };
+  bool const whole_file{ content.size() < kHeaderBytes };
+
+  std::string_view text{ reinterpret_cast<char const *>(content.data()), content.size() };
+  if (!whole_file) {
+    // Drop the clipped final line: a directive cut mid-value would otherwise be parsed as
+    // a shorter one, or (with the closing quote gone) silently vanish.
+    auto const last_newline{ text.rfind('\n') };
+    text = (last_newline == std::string_view::npos) ? std::string_view{}
+                                                    : text.substr(0, last_newline + 1);
+  }
+  auto meta{ parse_envy_meta(text) };
+
+  if (!whole_file) { content.clear(); }  // a header prefix is no use to Lua
+  return { std::move(manifest_path), std::move(meta), std::move(content) };
 }
 
-std::optional<std::filesystem::path> manifest::discover(
+}  // namespace
+
+envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path) {
+  return read_manifest(manifest_path).meta;
+}
+
+std::optional<manifest::discovery> manifest::discover(
     bool nearest,
     std::filesystem::path const &start_dir) {
   namespace fs = std::filesystem;
 
-  std::vector<fs::path> candidates;  // non-root manifests encountered during search
+  // Non-root manifests encountered during the search. Each was read to reach its root
+  // directive, so the winner's bytes are carried out rather than read a second time.
+  std::vector<discovery> candidates;
   auto cur{ start_dir };
+
+  auto const closest_to_root{ [&]() -> std::optional<discovery> {
+    if (candidates.empty()) { return std::nullopt; }
+    return std::move(candidates.back());
+  } };
 
   for (;;) {
     auto const manifest_path{ cur / "envy.lua" };
     if (fs::exists(manifest_path)) {
-      // In nearest (subproject) mode, return the first envy.lua found
-      if (nearest) { return manifest_path; }
+      auto found{ read_manifest(manifest_path) };
 
-      // Parse meta to check root directive
-      auto const meta{ parse_envy_meta_file(manifest_path) };
+      // In nearest (subproject) mode, return the first envy.lua found
+      if (nearest) { return found; }
 
       // Default root=true (stops search); root=false continues upward
-      bool const is_root{ !meta.root.has_value() || *meta.root };
+      if (!found.meta.root.has_value() || *found.meta.root) { return found; }
 
-      if (is_root) { return manifest_path; }
       // Non-root manifest: remember and continue searching
-      candidates.push_back(manifest_path);
+      candidates.push_back(std::move(found));
     }
 
     auto const git_path{ cur / ".git" };
     if (fs::exists(git_path) && fs::is_directory(git_path)) {
-      // Hit .git boundary; use closest-to-root candidate if any
-      return candidates.empty() ? std::nullopt
-                                : std::optional<fs::path>{ candidates.back() };
+      return closest_to_root();  // .git boundary
     }
 
     auto const parent{ cur.parent_path() };
-    if (parent == cur) {
-      // Hit filesystem root; use closest-to-root candidate if any
-      return candidates.empty() ? std::nullopt
-                                : std::optional<fs::path>{ candidates.back() };
-    }
+    if (parent == cur) { return closest_to_root(); }  // filesystem root
 
     cur = parent;
   }
@@ -449,7 +474,7 @@ std::filesystem::path manifest::find_manifest_path(
     return path;
   } else {
     if (auto const discovered{ discover(nearest, std::filesystem::current_path()) }) {
-      return *discovered;
+      return discovered->path;
     }
     throw std::runtime_error("manifest not found (discovery failed)");
   }
@@ -458,7 +483,14 @@ std::filesystem::path manifest::find_manifest_path(
 std::unique_ptr<manifest> manifest::find_and_load(
     std::optional<std::filesystem::path> const &explicit_path,
     bool nearest) {
-  return load(find_manifest_path(explicit_path, nearest));
+  if (explicit_path) { return load(find_manifest_path(explicit_path, nearest)); }
+
+  auto const found{ discover(nearest, std::filesystem::current_path()) };
+  if (!found) { throw std::runtime_error("manifest not found (discovery failed)"); }
+
+  // Discovery already read the file to reach its directives; only a manifest too large for
+  // that read needs a second one.
+  return found->content.empty() ? load(found->path) : load(found->content, found->path);
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {
