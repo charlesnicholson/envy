@@ -89,6 +89,7 @@ end
         manifest: Path,
         cache_root: str | None = None,
         env_override: dict | None = None,
+        cwd: Path | None = None,
     ):
         """Run 'envy sync' command and return result."""
         cmd = [str(self.envy)]
@@ -100,7 +101,7 @@ end
 
         result = test_config.run(
             cmd,
-            cwd=self.project_root,
+            cwd=cwd or self.project_root,
             capture_output=True,
             text=True,
             env=env,
@@ -272,6 +273,45 @@ PACKAGES = {{
         finally:
             if manifest_cache.exists():
                 shutil.rmtree(manifest_cache, ignore_errors=True)
+
+    def test_relative_cache_directive_anchors_to_manifest(self):
+        """A relative cache directive resolves against the manifest dir, not the cwd.
+
+        Anchoring to the cwd builds a separate cache tree per working directory, silently
+        refetching every package on each invocation from a subdirectory.
+        """
+        rel_name = "relcache"
+        expected_cache = self.test_dir / rel_name
+        subdirs = [self.test_dir / "sub", self.test_dir / "sub" / "nested"]
+        subdirs[1].mkdir(parents=True)
+
+        manifest = self.create_manifest(
+            f"""-- @envy {CACHE_DIRECTIVE} "{rel_name}"
+PACKAGES = {{
+    {{ spec = "local.cache_test_pkg@v1", source = "{self.lua_path(self.spec_path)}" }},
+}}
+"""
+        )
+
+        # Clear ENVY_CACHE_ROOT to ensure manifest directive is used
+        env = test_config.get_test_env()
+        env.pop("ENVY_CACHE_ROOT", None)
+
+        for cwd in subdirs:
+            result = self.run_sync(manifest, env_override=env, cwd=cwd)
+            self.assertEqual(result.returncode, 0, f"cwd={cwd} stderr: {result.stderr}")
+
+        pkg_path = expected_cache / "packages" / "local.cache_test_pkg@v1"
+        self.assertTrue(
+            pkg_path.exists(),
+            f"Package should exist at {pkg_path}",
+        )
+        # One tree, not one per cwd
+        for cwd in subdirs:
+            self.assertFalse(
+                (cwd / rel_name).exists(),
+                f"Cache should not be anchored to the cwd at {cwd / rel_name}",
+            )
 
     def test_cache_directive_plain_path(self):
         """Cache directive with plain path uses it directly."""

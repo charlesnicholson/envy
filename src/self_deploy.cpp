@@ -78,8 +78,9 @@ bool copy_binary(path const &src, path const &dst) {
 
 std::unique_ptr<cache> self_deploy::ensure(
     std::optional<path> const &cli_cache_root,
-    std::optional<std::string> const &manifest_cache) {
-  auto const root{ resolve_cache_root(cli_cache_root, manifest_cache) };
+    std::optional<std::string> const &manifest_cache,
+    path const &manifest_dir) {
+  auto const root{ resolve_cache_root(cli_cache_root, manifest_cache, manifest_dir) };
   auto c{ std::make_unique<cache>(root) };
 
   try {

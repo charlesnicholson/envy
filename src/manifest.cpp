@@ -362,6 +362,9 @@ envy_meta parse_envy_meta(std::string_view content) {
             "in the manifest instead, e.g.: PACKAGE_DEPOTS = { \"" +
             value + "\" }");
       }
+    } else if (auto const body{ line.find_first_not_of(" \t\r") };
+               body != std::string_view::npos && line.compare(body, 2, "--") != 0) {
+      break;  // first line of code ends the header; a directive below it is not one
     }
 
     if (line_end == std::string_view::npos) { break; }
@@ -389,46 +392,56 @@ envy_meta parse_envy_meta(std::string_view content) {
   return result;
 }
 
-std::optional<std::filesystem::path> manifest::discover(
+namespace {
+
+// One read, reused: the directives are parsed out of the same bytes a caller goes on to
+// hand to Lua, and the scan stops at the manifest's first line of code.
+manifest::discovery read_manifest(std::filesystem::path manifest_path) {
+  auto content{ util_load_file(manifest_path) };
+  auto meta{ parse_envy_meta(
+      { reinterpret_cast<char const *>(content.data()), content.size() }) };
+  return { std::move(manifest_path), std::move(meta), std::move(content) };
+}
+
+}  // namespace
+
+std::optional<manifest::discovery> manifest::discover(
     bool nearest,
     std::filesystem::path const &start_dir) {
   namespace fs = std::filesystem;
 
-  std::vector<fs::path> candidates;  // non-root manifests encountered during search
+  // Non-root manifests encountered during the search. Each was read to reach its root
+  // directive, so the winner's bytes are carried out rather than read a second time.
+  std::vector<discovery> candidates;
   auto cur{ start_dir };
+
+  auto const closest_to_root{ [&]() -> std::optional<discovery> {
+    if (candidates.empty()) { return std::nullopt; }
+    return std::move(candidates.back());
+  } };
 
   for (;;) {
     auto const manifest_path{ cur / "envy.lua" };
     if (fs::exists(manifest_path)) {
-      // In nearest (subproject) mode, return the first envy.lua found
-      if (nearest) { return manifest_path; }
+      auto found{ read_manifest(manifest_path) };
 
-      // Parse meta to check root directive
-      auto content{ util_load_file(manifest_path) };
-      auto meta{ parse_envy_meta(
-          { reinterpret_cast<char const *>(content.data()), content.size() }) };
+      // In nearest (subproject) mode, return the first envy.lua found
+      if (nearest) { return found; }
 
       // Default root=true (stops search); root=false continues upward
-      bool const is_root{ !meta.root.has_value() || *meta.root };
+      if (!found.meta.root.has_value() || *found.meta.root) { return found; }
 
-      if (is_root) { return manifest_path; }
       // Non-root manifest: remember and continue searching
-      candidates.push_back(manifest_path);
+      candidates.push_back(std::move(found));
     }
 
     auto const git_path{ cur / ".git" };
     if (fs::exists(git_path) && fs::is_directory(git_path)) {
-      // Hit .git boundary; use closest-to-root candidate if any
-      return candidates.empty() ? std::nullopt
-                                : std::optional<fs::path>{ candidates.back() };
+      return closest_to_root();  // .git boundary
     }
 
     auto const parent{ cur.parent_path() };
-    if (parent == cur) {
-      // Hit filesystem root; use closest-to-root candidate if any
-      return candidates.empty() ? std::nullopt
-                                : std::optional<fs::path>{ candidates.back() };
-    }
+    if (parent == cur) { return closest_to_root(); }  // filesystem root
 
     cur = parent;
   }
@@ -445,7 +458,7 @@ std::filesystem::path manifest::find_manifest_path(
     return path;
   } else {
     if (auto const discovered{ discover(nearest, std::filesystem::current_path()) }) {
-      return *discovered;
+      return discovered->path;
     }
     throw std::runtime_error("manifest not found (discovery failed)");
   }
@@ -454,7 +467,12 @@ std::filesystem::path manifest::find_manifest_path(
 std::unique_ptr<manifest> manifest::find_and_load(
     std::optional<std::filesystem::path> const &explicit_path,
     bool nearest) {
-  return load(find_manifest_path(explicit_path, nearest));
+  if (explicit_path) { return load(find_manifest_path(explicit_path, nearest)); }
+
+  auto const found{ discover(nearest, std::filesystem::current_path()) };
+  if (!found) { throw std::runtime_error("manifest not found (discovery failed)"); }
+
+  return load(found->content, found->path);  // discovery already read the file
 }
 
 std::unique_ptr<manifest> manifest::load(std::filesystem::path const &manifest_path) {

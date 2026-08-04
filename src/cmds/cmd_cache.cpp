@@ -1,6 +1,7 @@
 #include "cmd_cache.h"
 
 #include "cache.h"
+#include "manifest.h"
 #include "platform.h"
 #include "tui.h"
 #include "util.h"
@@ -9,6 +10,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,7 +71,21 @@ cmd_cache::cmd_cache(cmd_cache::cfg /*cfg*/,
     : cli_cache_root_{ cli_cache_root } {}
 
 void cmd_cache::execute() {
-  auto const root{ resolve_cache_root(cli_cache_root_, std::nullopt) };
+  // The report is about the project's cache, so an '@envy cache-*' directive counts here
+  // exactly as it does for every other command -- read from the manifest's text, never by
+  // running its Lua: a disk-usage report must not execute a project.  Skipped entirely
+  // when an override already decides, so a malformed manifest somewhere above the cwd
+  // cannot break `envy cache --cache-root`; no manifest at all leaves the default tier.
+  std::optional<std::string> manifest_cache;
+  std::filesystem::path manifest_dir;
+  if (!cli_cache_root_) {
+    if (auto const found{ manifest::discover(false, std::filesystem::current_path()) }) {
+      manifest_cache = found->meta.cache_for_platform();
+      manifest_dir = found->path.parent_path();
+    }
+  }
+
+  auto const root{ resolve_cache_root(cli_cache_root_, manifest_cache, manifest_dir) };
 
   std::vector<std::filesystem::path> scan_roots;
   std::vector<row> packages, deployments, other;

@@ -342,6 +342,8 @@ BUILD = function(install_dir, stage_dir, fetch_dir, tmp_dir, options)
 
   envy.copy("source.txt", "dest_file.txt")
   envy.copy("source_dir", "dest_dir")
+  -- Missing parents are created for a directory destination, not just a file one
+  envy.copy("source_dir", "new/nested/dest_dir")
 
   if envy.PLATFORM == "windows" then
     envy.run([[
@@ -373,6 +375,10 @@ end
         self.assertTrue((pkg_path / "dest_dir").is_dir())
         self.assertTrue((pkg_path / "dest_dir" / "file1.txt").exists())
         self.assertTrue((pkg_path / "dest_dir" / "file2.txt").exists())
+
+        nested = pkg_path / "new" / "nested" / "dest_dir"
+        self.assertTrue(nested.is_dir())
+        self.assertTrue((nested / "file1.txt").exists())
 
     def test_build_with_move_operations(self):
         """Build phase can move files and directories with envy.move()."""

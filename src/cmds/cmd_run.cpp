@@ -3,7 +3,6 @@
 #include "manifest.h"
 #include "platform.h"
 #include "reexec.h"
-#include "util.h"
 
 #include "CLI11.hpp"
 
@@ -15,7 +14,6 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #ifdef _WIN32
@@ -90,13 +88,10 @@ void cmd_run::execute() {
     }
     throw std::runtime_error(msg);
   }
-  auto const &manifest_path{ *discovered };
-  auto const content{ util_load_file(manifest_path) };
-  std::string_view const sv{ reinterpret_cast<char const *>(content.data()),
-                             content.size() };
-  auto const meta{ parse_envy_meta(sv) };
+  auto const &manifest_path{ discovered->path };
+  auto const &meta{ discovered->meta };  // discovery parsed the directives already
 
-  reexec_if_needed(meta, cli_cache_root_);
+  reexec_if_needed(meta, cli_cache_root_, manifest_path.parent_path());
 
   if (!meta.bin) {
     throw std::runtime_error("run: manifest has no @envy bin directive: " +

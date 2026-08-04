@@ -38,15 +38,18 @@ void lua_envy_file_ops_install(sol::table &envy_table) {
           dst = dst / src.filename();
         }
 
+        // Both branches: std::filesystem::copy creates only dst itself, so a directory
+        // destination needs its ancestors too.
+        if (dst.has_parent_path()) {
+          std::filesystem::create_directories(dst.parent_path());
+        }
+
         if (std::filesystem::is_directory(src)) {
           std::filesystem::copy(src,
                                 dst,
                                 std::filesystem::copy_options::recursive |
                                     std::filesystem::copy_options::overwrite_existing);
         } else {
-          if (dst.has_parent_path()) {
-            std::filesystem::create_directories(dst.parent_path());
-          }
           std::filesystem::copy_file(src,
                                      dst,
                                      std::filesystem::copy_options::overwrite_existing);

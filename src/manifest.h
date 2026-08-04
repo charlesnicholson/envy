@@ -32,9 +32,10 @@ struct envy_meta {
   std::optional<std::string> const &cache_for_platform() const;
 };
 
-// Parse @envy metadata from manifest content. Throws std::runtime_error on a directive
-// that is present but unusable: a malformed sha256sums pin, or a sums pin with no
-// '@envy version' to pin it to.
+// Parse @envy metadata from manifest content. Directives are header comments, so the scan
+// stops at the first line of code. Throws std::runtime_error on a directive that is
+// present but unusable: a malformed sha256sums pin, or a sums pin with no '@envy version'
+// to pin it to.
 envy_meta parse_envy_meta(std::string_view content);
 
 struct manifest : unmovable {
@@ -67,11 +68,19 @@ struct manifest : unmovable {
       std::optional<std::filesystem::path> const &explicit_path,
       bool nearest);
 
+  // A manifest found on disk: its bytes, read once, and the '@envy' directives parsed out
+  // of them. A caller that goes on to execute the manifest passes `content` to load()
+  // rather than opening the file a second time.
+  struct discovery {
+    std::filesystem::path path;
+    envy_meta meta;
+    std::vector<unsigned char> content;
+  };
+
   // Discover manifest by walking up from start_dir. When nearest=true, return the first
   // envy.lua found immediately instead of walking to the root manifest.
-  static std::optional<std::filesystem::path> discover(
-      bool nearest,
-      std::filesystem::path const &start_dir);
+  static std::optional<discovery> discover(bool nearest,
+                                           std::filesystem::path const &start_dir);
 
   // Discover + load. Uses explicit_path if given, otherwise discovers from CWD.
   static std::unique_ptr<manifest> find_and_load(

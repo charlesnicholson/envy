@@ -1,6 +1,7 @@
 """Functional tests for 'envy cache' (location + disk usage report)."""
 
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -100,6 +101,75 @@ class TestCacheUsage(unittest.TestCase):
 
         packages = dict(sections["Packages"])
         self.assertEqual(packages["pkg.deep@1/darwin-arm64-blake3-cccc"], "2.00KB")
+
+    def test_manifest_directive_selects_reported_root(self):
+        """The report follows the manifest's cache directive, anchored to the manifest.
+
+        Reporting the platform default while every other command uses the project's tree
+        would send a reader to an empty directory.
+        """
+        project = Path(tempfile.mkdtemp(prefix="envy-cache-usage-project-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        directive = "cache-win" if sys.platform == "win32" else "cache-posix"
+        (project / "envy.lua").write_bytes(
+            f'-- @envy {directive} "relcache"\n\nPACKAGES = {{}}\n'.encode()
+        )
+        sub = project / "sub"
+        sub.mkdir()
+
+        # No --cache-root and no ENVY_CACHE_ROOT: the directive is the tier under test.
+        # The default-root variables are redirected into the temp tree so main()'s
+        # pre-dispatch self-deploy cannot reach the developer's real cache.
+        env = test_config.get_test_env()
+        env.pop("ENVY_CACHE_ROOT", None)
+        sandbox = project / "home"
+        env["HOME"] = str(sandbox)
+        env["USERPROFILE"] = str(sandbox)
+        env["XDG_CACHE_HOME"] = str(sandbox / "cache")
+        env["LOCALAPPDATA"] = str(sandbox / "AppData" / "Local")
+
+        # From a subdirectory: discovery walks up, and the directive anchors to what it
+        # finds, not to the cwd.
+        result = test_config.run(
+            [str(self.envy), "cache"],
+            cwd=sub,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(result.returncode, 0, f"cache failed: {result.stderr}")
+
+        # Both sides resolved: the manifest path envy anchored to came from the cwd it was
+        # handed, which on a Windows runner carries 8.3 short components (RUNNER~1) that
+        # Path.resolve() expands, and on macOS a /var -> /private/var symlink.
+        root, _, _ = parse_report(result.stdout)
+        self.assertEqual(Path(root).resolve(), (project / "relcache").resolve())
+
+    def test_override_skips_manifest_discovery(self):
+        """`--cache-root` decides alone: no manifest above the cwd is even read.
+
+        Discovery and directive parsing both throw, so consulting a manifest that cannot
+        change the answer would turn any broken envy.lua in an ancestor directory into a
+        failed report.
+        """
+        project = Path(tempfile.mkdtemp(prefix="envy-cache-usage-broken-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        # A sums pin with no '@envy version' to pin it to: parse_envy_meta rejects it.
+        (project / "envy.lua").write_bytes(
+            b'-- @envy sha256sums "' + b"a" * 64 + b'"\n\nPACKAGES = {}\n'
+        )
+
+        result = test_config.run(
+            [str(self.envy), "--cache-root", str(self.cache_root), "cache"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            env=test_config.get_test_env(),
+        )
+
+        self.assertEqual(result.returncode, 0, f"cache failed: {result.stderr}")
+        root, _, _ = parse_report(result.stdout)
+        self.assertEqual(root, str(self.cache_root))
 
     def test_non_package_directories_are_reported(self):
         specs = self.cache_root / "specs"

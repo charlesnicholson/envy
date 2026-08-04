@@ -16,9 +16,23 @@ using path = std::filesystem::path;
 namespace envy {
 
 path resolve_cache_root(std::optional<path> const &cli_override,
-                        std::optional<std::string> const &manifest_cache) {
-  if (cli_override) { return *cli_override; }
-  if (manifest_cache) { return platform::expand_path(*manifest_cache); }
+                        std::optional<std::string> const &manifest_cache,
+                        path const &manifest_dir) {
+  // Every tier resolves to an absolute path: the cache root prefixes every path envy
+  // computes, prints, or hands to a Lua phase, so a relative one would silently name a
+  // different tree per working directory.  A CLI flag or ENVY_CACHE_ROOT anchors to the
+  // cwd that supplied it; a manifest directive anchors to the manifest's directory, the
+  // one location that reads the same from every cwd.
+  if (cli_override) { return std::filesystem::absolute(*cli_override); }
+  if (manifest_cache) {
+    auto expanded{ platform::expand_path(*manifest_cache) };
+    if (expanded.is_absolute()) { return expanded; }
+    if (manifest_dir.empty()) {
+      throw std::runtime_error("cache: relative cache directive '" + *manifest_cache +
+                               "' has no manifest directory to anchor to");
+    }
+    return manifest_dir / expanded;
+  }
   if (auto def{ platform::get_default_cache_root() }) { return *def; }
 
   throw std::runtime_error("cannot determine cache root");

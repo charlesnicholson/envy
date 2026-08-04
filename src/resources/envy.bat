@@ -114,6 +114,7 @@ if defined ENVY_CACHE_ROOT (
 ) else if defined MANIFEST_CACHE (
     set "CACHE=!MANIFEST_CACHE!"
     if "!CACHE:~0,1!"=="~" set "CACHE=!USERPROFILE!!CACHE:~1!"
+    call :anchor_cache_to_manifest
 ) else (
     set "CACHE=!LOCALAPPDATA!\envy"
 )
@@ -294,6 +295,31 @@ REM and report a missing path instead of a failed download.
 if not exist "!TEMP_DIR!\envy.exe" (echo ERROR: archive from !URL! contained no envy binary >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & exit /b 1)
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 goto :run
+
+REM :anchor_cache_to_manifest -- CACHE in/out; a relative directive resolves against the
+REM manifest's directory, never the caller's cwd, matching resolve_cache_root() in
+REM src/cache.cpp: one manifest names one cache tree from every working directory, or every
+REM invocation from a subdirectory refetches the whole package set into a tree of its own.
+REM Left alone: `X:\`, `X:/` and a UNC root, the only forms std::filesystem calls absolute
+REM on Windows. Reached only by `call`.
+:anchor_cache_to_manifest
+if "!CACHE:~0,2!"=="\\" exit /b 0
+if "!CACHE:~0,2!"=="//" exit /b 0
+if "!CACHE:~1,2!"==":\" exit /b 0
+if "!CACHE:~1,2!"==":/" exit /b 0
+REM A leading separator is rooted but drive-relative, and is_absolute() is false for it, so
+REM the runtime anchors it too: operator/ keeps the manifest's drive and drops its
+REM directory. Match that -- %%~dI is the drive alone, %%~dpI the drive plus directory with
+REM a trailing backslash. %%~fI then collapses `..` and any doubled separator.
+if "!CACHE:~0,1!"=="\" goto :anchor_cache_to_drive
+if "!CACHE:~0,1!"=="/" goto :anchor_cache_to_drive
+for %%I in ("!MANIFEST!") do set "CACHE=%%~dpI!CACHE!"
+goto :anchor_cache_done
+:anchor_cache_to_drive
+for %%I in ("!MANIFEST!") do set "CACHE=%%~dI!CACHE!"
+:anchor_cache_done
+for %%I in ("!CACHE!") do set "CACHE=%%~fI"
+exit /b 0
 
 REM :check_version -- VERSION and VERSION_SRC in; clears VERSION unless it is numbered
 REM MAJOR.MINOR.PATCH, the only shape an envy release takes. Clearing defers to the next

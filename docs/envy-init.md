@@ -106,7 +106,7 @@ Both the bootstrap scripts and the envy runtime must parse `@envy` directives:
 | Bootstrap scripts | Before envy exists locally | Need `version` to know which binary to download; `cache` and `mirror` to know where/how; `sha256sums` to attest it |
 | Envy runtime | After bootstrap, during execution | Need `cache` for type extraction path; `version` for cache key; `mirror` and `sha256sums` for re-exec |
 
-The parsing logic is intentionally simple (regex on first 20 lines) so both bash/batch scripts and C++ can implement it identically. Phase 1 delivers both implementations and validates they produce identical results for all test cases.
+The parsing logic is intentionally simple (regex on first 20 lines) so both bash/batch scripts and C++ can implement it identically. The runtime bounds the scan by the header itself rather than by a line count—it stops at the manifest's first line of code—so it reads the manifest once and never scans a package table looking for comments. Phase 1 delivers both implementations and validates they produce identical results for all test cases.
 
 ---
 
@@ -152,10 +152,12 @@ PACKAGES = {
 
 ### Override Precedence (highest to lowest)
 
-1. `--cache-dir` command-line argument
+1. `--cache-root` command-line argument
 2. `ENVY_CACHE_ROOT` environment variable
 3. `@envy cache-posix` / `@envy cache-win` directive in manifest
 4. Platform default
+
+Every tier resolves to an absolute path. A relative directive anchors to the **manifest's directory**; a relative flag or env value anchors to the cwd that supplied it. Bootstrap scripts and runtime agree, so `-- @envy cache-posix "out/.envy"` names `<manifest dir>/out/.envy` from any working directory—otherwise each subdirectory would refetch the whole package set into a tree of its own, and the relative root would leak into `envy product` output and into phase `stage_dir`/`install_dir`.
 
 ### Cache Structure
 
@@ -418,7 +420,7 @@ export ENVY_CACHE_ROOT=/opt/envy-cache
 
 Or via command line:
 ```bash
-./tools/envy --cache-dir=/opt/envy-cache sync
+./tools/envy --cache-root=/opt/envy-cache sync
 ```
 
 **Result:** Full control over cache location for CI optimization.
