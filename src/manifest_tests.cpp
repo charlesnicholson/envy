@@ -120,6 +120,32 @@ TEST_CASE("manifest::discover returns nullopt when no envy.lua found") {
   fs::remove_all(temp_root);
 }
 
+// parse_envy_meta_file tests ---------------------------------
+
+TEST_CASE("parse_envy_meta_file reads directives from a manifest file") {
+  auto const path{ test_data_root() / "cache_directive" / "envy.lua" };
+  REQUIRE(fs::exists(path));
+
+  auto const meta{ envy::parse_envy_meta_file(path) };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "1.2.3");
+  REQUIRE(meta.cache_for_platform().has_value());
+  CHECK(*meta.cache_for_platform() == "relcache");
+}
+
+TEST_CASE("parse_envy_meta_file on a manifest with no directives") {
+  auto const meta{ envy::parse_envy_meta_file(test_data_root() / "repo" / "envy.lua") };
+
+  CHECK_FALSE(meta.version.has_value());
+  CHECK_FALSE(meta.cache_for_platform().has_value());
+}
+
+TEST_CASE("parse_envy_meta_file throws when the file cannot be read") {
+  CHECK_THROWS_AS(envy::parse_envy_meta_file(test_data_root() / "no-such-manifest.lua"),
+                  std::runtime_error);
+}
+
 // load tests -------------------------------------------------
 
 TEST_CASE("manifest::load parses simple string package") {

@@ -37,6 +37,11 @@ struct envy_meta {
 // '@envy version' to pin it to.
 envy_meta parse_envy_meta(std::string_view content);
 
+// Same, reading the file at `manifest_path` as text -- its Lua is never run. For callers
+// that want only the directives; a caller that also needs the content should load it once
+// and call parse_envy_meta. Throws if the file cannot be read.
+envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path);
+
 struct manifest : unmovable {
   // PACKAGE_DEPOTS entry: plain URI, or FETCH function with optional package
   // DEPENDS (identities resolved against this manifest's PACKAGES).

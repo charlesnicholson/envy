@@ -389,6 +389,12 @@ envy_meta parse_envy_meta(std::string_view content) {
   return result;
 }
 
+envy_meta parse_envy_meta_file(std::filesystem::path const &manifest_path) {
+  auto const content{ util_load_file(manifest_path) };
+  return parse_envy_meta(
+      { reinterpret_cast<char const *>(content.data()), content.size() });
+}
+
 std::optional<std::filesystem::path> manifest::discover(
     bool nearest,
     std::filesystem::path const &start_dir) {
@@ -404,9 +410,7 @@ std::optional<std::filesystem::path> manifest::discover(
       if (nearest) { return manifest_path; }
 
       // Parse meta to check root directive
-      auto content{ util_load_file(manifest_path) };
-      auto meta{ parse_envy_meta(
-          { reinterpret_cast<char const *>(content.data()), content.size() }) };
+      auto const meta{ parse_envy_meta_file(manifest_path) };
 
       // Default root=true (stops search); root=false continues upward
       bool const is_root{ !meta.root.has_value() || *meta.root };
