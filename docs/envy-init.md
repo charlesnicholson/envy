@@ -157,6 +157,8 @@ PACKAGES = {
 3. `@envy cache-posix` / `@envy cache-win` directive in manifest
 4. Platform default
 
+Every tier resolves to an absolute path. A relative directive anchors to the **manifest's directory**; a relative flag or env value anchors to the cwd that supplied it. Bootstrap scripts and runtime agree, so `-- @envy cache-posix "out/.envy"` names `<manifest dir>/out/.envy` from any working directory—otherwise each subdirectory would refetch the whole package set into a tree of its own, and the relative root would leak into `envy product` output and into phase `stage_dir`/`install_dir`.
+
 ### Cache Structure
 
 ```

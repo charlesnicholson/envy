@@ -25,7 +25,7 @@ Logging is per-package narrative. Default (INFO) prints one outcome line per pac
 
 ### Cache
 
-**`envy cache`** — Print the cache root and its disk usage: one line per package entry (`identity/platform-arch-blake3-hash`), one per cached envy deployment, one per remaining top-level directory (`specs`, `locks`), then the total. Rows are largest-first; sizes are apparent file sizes, symlinked trees excluded. Honors `--cache-root`/`ENVY_CACHE_ROOT`; ignores manifests. Measurement is a lock-free parallel walk over platform-native directory enumeration (`openat`/`fdopendir`/`fstatat`, `FindFirstFileExW` with `FIND_FIRST_EX_LARGE_FETCH`), one work-queue entry per directory.
+**`envy cache`** — Print the cache root and its disk usage: one line per package entry (`identity/platform-arch-blake3-hash`), one per cached envy deployment, one per remaining top-level directory (`specs`, `locks`), then the total. Rows are largest-first; sizes are apparent file sizes, symlinked trees excluded. Resolves the root through the full precedence chain—`--cache-root`/`ENVY_CACHE_ROOT`, then a discovered manifest's `@envy cache-*` directive (read as text; the manifest's Lua never runs), then the platform default. Measurement is a lock-free parallel walk over platform-native directory enumeration (`openat`/`fdopendir`/`fstatat`, `FindFirstFileExW` with `FIND_FIRST_EX_LARGE_FETCH`), one work-queue entry per directory.
 
 ### Shell Integration
 

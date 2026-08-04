@@ -12,9 +12,13 @@
 
 namespace envy {
 
+// Resolves to an absolute path or throws.  A relative `manifest_cache` anchors to
+// `manifest_dir`, never the cwd; pass an empty `manifest_dir` only when no manifest is in
+// hand (then a relative directive is an error, not a cwd-relative guess).
 std::filesystem::path resolve_cache_root(
     std::optional<std::filesystem::path> const &cli_override,
-    std::optional<std::string> const &manifest_cache);
+    std::optional<std::string> const &manifest_cache,
+    std::filesystem::path const &manifest_dir);
 
 class cache : unmovable {
  public:

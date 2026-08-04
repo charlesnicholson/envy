@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <stdexcept>
 
 #ifndef ENVY_VERSION_STR
 #error "ENVY_VERSION_STR must be defined by the build system"
@@ -15,6 +16,16 @@
 namespace {
 
 std::string make_entry_name() { return "foo.darwin-arm64-blake3-deadbeef"; }
+
+// Absolute on both platforms: Windows treats a rootless "/x" as drive-relative, so
+// resolve_cache_root would anchor it to the cwd's drive.
+std::filesystem::path const kAbsRoot{
+#ifdef _WIN32
+  "C:\\"
+#else
+  "/"
+#endif
+};
 
 }  // namespace
 
@@ -597,20 +608,45 @@ TEST_CASE_FIXTURE(temp_cache_fixture,
 // Tests for resolve_cache_root()
 
 TEST_CASE("resolve_cache_root CLI override takes precedence") {
-  std::optional<std::filesystem::path> cli{ "/cli/override/path" };
+  std::optional<std::filesystem::path> cli{ kAbsRoot / "cli" / "override" / "path" };
   std::optional<std::string> manifest{ "~/manifest/path" };
 
-  auto result{ envy::resolve_cache_root(cli, manifest) };
-  CHECK(result == "/cli/override/path");
+  auto result{ envy::resolve_cache_root(cli, manifest, kAbsRoot / "repo") };
+  CHECK(result == kAbsRoot / "cli" / "override" / "path");
+}
+
+TEST_CASE("resolve_cache_root relative CLI override anchors to cwd") {
+  // A flag or ENVY_CACHE_ROOT is typed in a shell, so the cwd is its frame of reference —
+  // but the result still leaves the resolver absolute.
+  std::optional<std::filesystem::path> cli{ "rel-cache" };
+
+  auto result{ envy::resolve_cache_root(cli, std::nullopt, kAbsRoot / "repo") };
+  CHECK(result == std::filesystem::current_path() / "rel-cache");
 }
 
 TEST_CASE("resolve_cache_root manifest used when no CLI override") {
   // This test uses expand_path internally, so test with a plain path
   std::optional<std::filesystem::path> cli{ std::nullopt };
-  std::optional<std::string> manifest{ "/manifest/path" };
+  std::optional<std::string> manifest{ (kAbsRoot / "manifest" / "path").string() };
 
-  auto result{ envy::resolve_cache_root(cli, manifest) };
-  CHECK(result == "/manifest/path");
+  auto result{ envy::resolve_cache_root(cli, manifest, kAbsRoot / "repo") };
+  CHECK(result == kAbsRoot / "manifest" / "path");
+}
+
+TEST_CASE("resolve_cache_root relative manifest directive anchors to manifest dir") {
+  std::optional<std::filesystem::path> cli{ std::nullopt };
+  std::optional<std::string> manifest{ "out/.envy" };
+
+  // Not the cwd: the same manifest must name one cache tree from every directory.
+  auto result{ envy::resolve_cache_root(cli, manifest, kAbsRoot / "repo") };
+  CHECK(result == kAbsRoot / "repo" / "out" / ".envy");
+}
+
+TEST_CASE("resolve_cache_root relative manifest directive without a manifest dir throws") {
+  std::optional<std::filesystem::path> cli{ std::nullopt };
+  std::optional<std::string> manifest{ "out/.envy" };
+
+  CHECK_THROWS_AS(envy::resolve_cache_root(cli, manifest, {}), std::runtime_error);
 }
 
 #ifndef _WIN32
@@ -621,7 +657,7 @@ TEST_CASE("resolve_cache_root manifest with tilde is expanded") {
   std::optional<std::filesystem::path> cli{ std::nullopt };
   std::optional<std::string> manifest{ "~/.my-envy-cache" };
 
-  auto result{ envy::resolve_cache_root(cli, manifest) };
+  auto result{ envy::resolve_cache_root(cli, manifest, kAbsRoot / "repo") };
   CHECK(result == std::filesystem::path{ home } / ".my-envy-cache");
 }
 #endif

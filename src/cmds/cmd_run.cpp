@@ -96,7 +96,7 @@ void cmd_run::execute() {
                              content.size() };
   auto const meta{ parse_envy_meta(sv) };
 
-  reexec_if_needed(meta, cli_cache_root_);
+  reexec_if_needed(meta, cli_cache_root_, manifest_path.parent_path());
 
   if (!meta.bin) {
     throw std::runtime_error("run: manifest has no @envy bin directive: " +

@@ -1,6 +1,7 @@
 """Functional tests for 'envy cache' (location + disk usage report)."""
 
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -100,6 +101,46 @@ class TestCacheUsage(unittest.TestCase):
 
         packages = dict(sections["Packages"])
         self.assertEqual(packages["pkg.deep@1/darwin-arm64-blake3-cccc"], "2.00KB")
+
+    def test_manifest_directive_selects_reported_root(self):
+        """The report follows the manifest's cache directive, anchored to the manifest.
+
+        Reporting the platform default while every other command uses the project's tree
+        would send a reader to an empty directory.
+        """
+        project = Path(tempfile.mkdtemp(prefix="envy-cache-usage-project-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        directive = "cache-win" if sys.platform == "win32" else "cache-posix"
+        (project / "envy.lua").write_bytes(
+            f'-- @envy {directive} "relcache"\n\nPACKAGES = {{}}\n'.encode()
+        )
+        sub = project / "sub"
+        sub.mkdir()
+
+        # No --cache-root and no ENVY_CACHE_ROOT: the directive is the tier under test.
+        # The default-root variables are redirected into the temp tree so main()'s
+        # pre-dispatch self-deploy cannot reach the developer's real cache.
+        env = test_config.get_test_env()
+        env.pop("ENVY_CACHE_ROOT", None)
+        sandbox = project / "home"
+        env["HOME"] = str(sandbox)
+        env["USERPROFILE"] = str(sandbox)
+        env["XDG_CACHE_HOME"] = str(sandbox / "cache")
+        env["LOCALAPPDATA"] = str(sandbox / "AppData" / "Local")
+
+        # From a subdirectory: discovery walks up, and the directive anchors to what it
+        # finds, not to the cwd.
+        result = test_config.run(
+            [str(self.envy), "cache"],
+            cwd=sub,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(result.returncode, 0, f"cache failed: {result.stderr}")
+
+        root, _, _ = parse_report(result.stdout)
+        self.assertEqual(Path(root), (project / "relcache").resolve())
 
     def test_non_package_directories_are_reported(self):
         specs = self.cache_root / "specs"

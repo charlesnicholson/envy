@@ -68,6 +68,14 @@ PACKAGES = {
     "local.example@v1",
 }
 """,
+    "relative_cache.lua": """-- @envy version "1.2.3"
+-- @envy cache-posix "relcache"
+-- @envy cache-win "relcache"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
     "all_directives.lua": """-- @envy version "2.0.0"
 -- @envy cache-posix "/opt/envy-cache"
 -- @envy mirror "https://internal.corp/envy-releases"
@@ -474,6 +482,8 @@ class BootstrapIntegrationTest(unittest.TestCase):
         cache_dir: Path | None = None,
         env_overrides: dict[str, str] | None = None,
         set_mirror: bool = True,
+        set_cache_root: bool = True,
+        cwd: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run the bootstrap script and return the result.
 
@@ -481,13 +491,27 @@ class BootstrapIntegrationTest(unittest.TestCase):
         needs now that env wins over the manifest. It must be dropped rather than set to "":
         cmd.exe has no concept of an empty-but-defined variable, so `if defined` would
         disagree with bash's `${VAR:-}` and the two scripts would diverge under test.
+
+        set_cache_root=False does the same for ENVY_CACHE_ROOT, which a manifest-cache test
+        needs for the same reason, and redirects every platform's default-root variable into
+        the temp tree so a resolution that falls all the way through lands somewhere
+        observable instead of in the developer's real cache.
         """
         env = os.environ.copy()
         if set_mirror:
             env["ENVY_MIRROR"] = f"http://127.0.0.1:{self._port}"
         else:
             env.pop("ENVY_MIRROR", None)
-        env["ENVY_CACHE_ROOT"] = str(cache_dir or self._temp_dir / "cache")
+        if set_cache_root:
+            env["ENVY_CACHE_ROOT"] = str(cache_dir or self._temp_dir / "cache")
+        else:
+            env.pop("ENVY_CACHE_ROOT", None)
+            sandbox = self._temp_dir / "home"
+            sandbox.mkdir(exist_ok=True)
+            env["HOME"] = str(sandbox)
+            env["USERPROFILE"] = str(sandbox)
+            env["XDG_CACHE_HOME"] = str(sandbox / "cache")
+            env["LOCALAPPDATA"] = str(sandbox / "AppData" / "Local")
         if env_overrides:
             env.update(env_overrides)
 
@@ -501,7 +525,7 @@ class BootstrapIntegrationTest(unittest.TestCase):
             capture_output=True,
             text=True,
             env=env,
-            cwd=bootstrap_script.parent.parent,
+            cwd=cwd or bootstrap_script.parent.parent,
             timeout=30,
         )
 
@@ -579,6 +603,42 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertEqual(0, result2.returncode, f"stderr: {result2.stderr}")
         self.assertNotIn("Downloading", result2.stderr)
         self.assertIn("envy version", result2.stderr)
+
+    def test_bootstrap_relative_cache_anchors_to_manifest(self) -> None:
+        """A relative cache directive resolves against the manifest, not the caller's cwd.
+
+        find_manifest already walks from the script's own directory, so CACHE was the one
+        thing left that drifted with the cwd -- into a fresh tree that refetches every
+        package. Seed the manifest-anchored tree and run from an unrelated directory: only
+        a correct resolution finds the seeded binary, and anything else downloads.
+        """
+        bootstrap = self._setup_test_project("relative_cache.lua")
+        project_dir = bootstrap.parent.parent
+        cached_binary = (
+            project_dir
+            / "relcache"
+            / "envy"
+            / "1.2.3"
+            / ("envy.exe" if sys.platform == "win32" else "envy")
+        )
+        cached_binary.parent.mkdir(parents=True)
+        shutil.copy(self._envy_binary, cached_binary)
+        if sys.platform != "win32":
+            cached_binary.chmod(cached_binary.stat().st_mode | stat.S_IXUSR)
+
+        elsewhere = self._temp_dir / "elsewhere"
+        elsewhere.mkdir()
+        result = self._run_bootstrap(
+            bootstrap, ["version"], set_cache_root=False, cwd=elsewhere
+        )
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn("envy version", result.stderr)
+        self.assertNotIn("Downloading", result.stderr)
+        self.assertFalse(
+            (elsewhere / "relcache").exists(),
+            "cache tree was anchored to the cwd",
+        )
 
     def test_bootstrap_uses_fallback_when_version_missing(self) -> None:
         """Test that bootstrap resolves a version when @envy version is missing.

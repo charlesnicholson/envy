@@ -15,8 +15,10 @@ void reexec_init(char **argv);
 // If version mismatch: downloads correct envy to cache, re-execs (never returns).
 // Returns normally if: no @envy version, version matches, dev build (0.0.0),
 // ENVY_REEXEC set, or ENVY_NO_REEXEC set.
+// `manifest_dir` anchors a relative '@envy cache-*' directive.
 void reexec_if_needed(envy_meta const &meta,
-                      std::optional<std::filesystem::path> const &cli_cache_root);
+                      std::optional<std::filesystem::path> const &cli_cache_root,
+                      std::filesystem::path const &manifest_dir);
 
 enum class reexec_decision { PROCEED, REEXEC };
 
