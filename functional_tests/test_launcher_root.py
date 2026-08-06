@@ -74,6 +74,13 @@ _ROOT_FALSE_TAB_INDENTED = "\n".join(
     ]
 )
 
+# A `;`-led line is code -- Lua's empty statement prefixing a statement -- so the header ends
+# on it and the `root "false"` below is not a directive. envy.bat's `for /f` treats `;` as a
+# comment marker unless given `eol=`, and skipped the line instead of stopping at it.
+_ROOT_FALSE_BELOW_SEMICOLON = "\n".join(
+    ['-- @envy bin "tools"', ";PACKAGES = {}", '-- @envy root "false"']
+)
+
 
 _LAUNCHER_DIR = Path(__file__).resolve().parent.parent / "src" / "resources"
 
@@ -282,6 +289,11 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
         self._write_manifest(self._parent, None)
         self._assert_manifest_at(self._parent)
 
+    def test_semicolon_led_line_ends_the_header(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_BELOW_SEMICOLON)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._child)
+
 
 @unittest.skipUnless(sys.platform == "win32", "Windows-only tests")
 class TestBatchLauncherRootDiscovery(unittest.TestCase):
@@ -457,6 +469,11 @@ class TestBatchLauncherRootDiscovery(unittest.TestCase):
         (self._child / "envy.lua").write_text(_ROOT_FALSE_TAB_INDENTED)
         self._write_manifest(self._parent, None)
         self._assert_manifest_at(self._parent)
+
+    def test_semicolon_led_line_ends_the_header(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_BELOW_SEMICOLON)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._child)
 
 
 if __name__ == "__main__":

@@ -151,7 +151,7 @@ PACKAGES = {}
   CHECK_FALSE(meta.cache_for_platform().has_value());
 }
 
-// The five cases below fix where the header ends. Each has a twin in
+// The six cases below fix where the header ends. Each has a twin in
 // functional_tests/test_bootstrap.py driving the launcher scripts over the same bytes: the
 // launchers resolve a version and a mirror before this parser ever runs, so a rule that
 // holds in only one of them downloads one release and execs a binary that wanted another.
@@ -170,6 +170,19 @@ TEST_CASE("parse_envy_meta reads past a tab-indented comment") {
   CHECK(*meta.version == "3.2.1");
   REQUIRE(meta.bin.has_value());
   CHECK(*meta.bin == "tools");
+}
+
+TEST_CASE("parse_envy_meta ends the header at a semicolon-led line") {
+  // Lua's empty statement is a line of code like any other. Worth its own case because
+  // cmd.exe's `for /f` reads `;` as a comment marker by default and skipped such a line
+  // instead of stopping on it, so envy.bat took the directive underneath; it now passes
+  // `eol=` to clear the marker.
+  auto const meta{ envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
+                                         ";PACKAGES = {}\n"
+                                         "-- @envy version \"9.9.9\"\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "1.2.3");
 }
 
 TEST_CASE("parse_envy_meta ends the header at a block comment's continuation line") {

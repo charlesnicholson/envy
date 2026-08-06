@@ -119,6 +119,13 @@ PACKAGES = {
         '    "local.example@v1",\r\n'
         "}\r\n"
     ),
+    # A `;`-led line is code -- Lua's empty statement prefixing a statement -- so the header
+    # ends on it and the version below is not a directive. envy.bat's `for /f` reads `;` as a
+    # comment marker unless handed `eol=`, and skipped the line instead of stopping on it, so
+    # the 9.9.9 underneath won and the launcher fetched a release the binary never asked for.
+    "semicolon_ends_header.lua": (
+        '-- @envy version "1.2.3"\n' ";PACKAGES = {}\n" '-- @envy version "9.9.9"\n'
+    ),
     # No line of code anywhere, so the header runs to end of file and the scan's early exit
     # never fires. Also the no-trailing-newline case.
     "header_only.lua": '-- @envy version "6.5.4"',
@@ -934,6 +941,23 @@ class BootstrapIntegrationTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(
             [f"/v5.4.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_ends_the_header_at_a_semicolon_led_line(self) -> None:
+        """Lua's empty statement is code, so the version under it is not a directive.
+
+        A distinct fallback from either directive, so a scan that took neither is not
+        mistaken for one that stopped in the right place.
+        """
+        bootstrap = self._setup_test_project(
+            "semicolon_ends_header.lua", fallback_version="8.8.8"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
         )
 
     def test_bootstrap_parses_a_manifest_that_is_only_a_header(self) -> None:

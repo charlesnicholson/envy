@@ -46,7 +46,11 @@ REM honors a directive-shaped comment sitting in the body under the cap. `for /f
 REM blank lines on its own. No `delims=` override, so the default space+tab set applies:
 REM `for /f` strips leading delimiters, and naming space alone would leave a tab-indented
 REM comment's tab in %%a -- ending the header at a line parse_envy_meta reads straight past.
-for /f "usebackq tokens=1,2,3,*" %%a in ("!MANIFEST!") do (
+REM `eol=` clears the default `;` comment character, which skipped a `;`-led line instead of
+REM ending the header on it; parse_envy_meta stops there like it does at any other code line.
+REM It comes last because `eol=` takes the next character as its value, so an option behind
+REM it would donate its separating space as the marker.
+for /f "usebackq tokens=1,2,3,* eol=" %%a in ("!MANIFEST!") do (
     set "TOK=%%a"
     if not "!TOK:~0,2!"=="--" goto :done_parse
     if "%%a"=="--" if "%%b"=="@envy" (
@@ -298,13 +302,15 @@ goto :run
 REM :read_root -- IS_ROOT out, manifest path in %1. Reads only the manifest header: blank
 REM lines and comments, stopping at the first line of code, the same rule parse_envy_meta
 REM applies in src/manifest.cpp. `for /f` skips blank lines on its own, so only a code line
-REM ends the scan, and the default space+tab delims (no override) keep a tab-indented
-REM comment's tab out of %%a. A subroutine because the early-exit `goto` has to land at this
-REM scope's top level -- inside the caller's `if exist (...)` block it would tear out of the
-REM block and skip the walk's own logic. Reached only by `call`.
+REM ends the scan; the default space+tab delims (no override) keep a tab-indented comment's
+REM tab out of %%a, and `eol=` clears the default `;` comment character so a `;`-led line
+REM ends the header rather than being skipped -- both as in the header scan above. A
+REM subroutine because the early-exit `goto` has to land at this scope's top level -- inside
+REM the caller's `if exist (...)` block it would tear out of the block and skip the walk's
+REM own logic. Reached only by `call`.
 :read_root
 set "IS_ROOT=true"
-for /f "usebackq tokens=1,2,3,4" %%a in ("%~1") do (
+for /f "usebackq tokens=1,2,3,4 eol=" %%a in ("%~1") do (
     set "TOK=%%a"
     if not "!TOK:~0,2!"=="--" goto :read_root_done
     if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
