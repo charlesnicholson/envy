@@ -160,10 +160,11 @@ TEST_CASE("parse_envy_meta reads past a tab-indented comment") {
   // Tabs and spaces indent a header line alike. Worth its own case because cmd.exe's
   // `for /f` strips only the delimiters it is given: envy.bat naming space alone left the
   // tab in the first token, so a tab-indented comment ended its header two lines early.
-  auto const meta{ envy::parse_envy_meta("\t-- a tab-indented comment\n"
-                                         "\t-- @envy bin \"tools\"\n"
-                                         "-- @envy version \"3.2.1\"\n"
-                                         "PACKAGES = {}\n") };
+  auto const meta{ envy::parse_envy_meta(
+      "\t-- a tab-indented comment\n"
+      "\t-- @envy bin \"tools\"\n"
+      "-- @envy version \"3.2.1\"\n"
+      "PACKAGES = {}\n") };
 
   REQUIRE(meta.version.has_value());
   CHECK(*meta.version == "3.2.1");
@@ -184,7 +185,8 @@ TEST_CASE("parse_envy_meta ends the header at a block comment's continuation lin
 
 TEST_CASE("parse_envy_meta reads a directive inside a block comment") {
   // Inside the block the line does start with `--`, so it parses. Pinned as the deliberate
-  // consequence of matching on the comment marker alone, not endorsed as a way to write one.
+  // consequence of matching on the comment marker alone, not endorsed as a way to write
+  // one.
   auto const meta{ envy::parse_envy_meta(R"(--[[
 -- @envy version "7.6.5"
 ]]
