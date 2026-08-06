@@ -106,7 +106,7 @@ Both the bootstrap scripts and the envy runtime must parse `@envy` directives:
 | Bootstrap scripts | Before envy exists locally | Need `version` to know which binary to download; `cache` and `mirror` to know where/how; `sha256sums` to attest it |
 | Envy runtime | After bootstrap, during execution | Need `cache` for type extraction path; `version` for cache key; `mirror` and `sha256sums` for re-exec |
 
-The parsing logic is intentionally simple (regex on first 20 lines) so both bash/batch scripts and C++ can implement it identically. The runtime bounds the scan by the header itself rather than by a line count—it stops at the manifest's first line of code—so it reads the manifest once and never scans a package table looking for comments. Phase 1 delivers both implementations and validates they produce identical results for all test cases.
+The parsing logic is intentionally simple—a per-line regex—so bash, batch, the shell hooks and C++ all implement it identically. Every reader bounds the scan by the header itself rather than by a line count: blank lines and comments, stopping at the manifest's first line of code. A line cap would cut both ways—dropping a directive under a long preamble, and honoring a directive-shaped comment inside the package table—and either way the launcher would resolve a version or mirror the binary it execs ignores. Phase 1 delivers both implementations and validates they produce identical results for all test cases.
 
 ---
 
@@ -609,7 +609,7 @@ function STAGE(fetch_dir, stage_dir, tmp_dir) end
 ### `./tools/envy sync` (cached)
 
 1. **Bootstrap script executes**
-2. **Parse `@envy version`** from `envy.lua` (grep first 20 lines, unescape)
+2. **Parse `@envy version`** from `envy.lua`'s header—blank lines and comments up to the first line of code—and unescape
 3. **Parse `@envy cache-posix`/`cache-win`** (optional, platform-specific)
 4. **Resolve cache dir** (env > manifest > default)
 5. **Check cache** → `$CACHE/envy/1.2.3/envy` exists

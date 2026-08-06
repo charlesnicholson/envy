@@ -14,14 +14,7 @@ set "DIR=%~dp0"
 if "!DIR:~-1!"=="\" set "DIR=!DIR:~0,-1!"
 :findloop
 if exist "!DIR!\envy.lua" (
-    set "IS_ROOT=true"
-    for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("!DIR!\envy.lua") do (
-        if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
-            set "VAL=%%d"
-            set "VAL=!VAL:"=!"
-            if "!VAL!"=="false" set "IS_ROOT=false"
-        )
-    )
+    call :read_root "!DIR!\envy.lua"
     if "!IS_ROOT!"=="true" (
         set "MANIFEST=!DIR!\envy.lua"
         goto :found
@@ -45,11 +38,17 @@ set "VERSION="
 set "MANIFEST_CACHE="
 set "MANIFEST_MIRROR="
 set "SUMS_PIN="
-set /a LINE_COUNT=0
 
-for /f "usebackq tokens=1,2,3,* delims= " %%a in ("!MANIFEST!") do (
-    set /a LINE_COUNT+=1
-    if !LINE_COUNT! GTR 20 goto :done_parse
+REM Header only, stopping at the first line of code, matching parse_envy_meta in
+REM src/manifest.cpp. No line cap: a cap both drops directives under a long preamble -- the
+REM launcher would then resolve a version or mirror the re-exec'd binary ignores -- and
+REM honors a directive-shaped comment sitting in the body under the cap. `for /f` skips
+REM blank lines on its own. No `delims=` override, so the default space+tab set applies:
+REM `for /f` strips leading delimiters, and naming space alone would leave a tab-indented
+REM comment's tab in %%a -- ending the header at a line parse_envy_meta reads straight past.
+for /f "usebackq tokens=1,2,3,*" %%a in ("!MANIFEST!") do (
+    set "TOK=%%a"
+    if not "!TOK:~0,2!"=="--" goto :done_parse
     if "%%a"=="--" if "%%b"=="@envy" (
         set "KEY=%%c"
         set "VAL=%%d"
@@ -295,6 +294,27 @@ REM and report a missing path instead of a failed download.
 if not exist "!TEMP_DIR!\envy.exe" (echo ERROR: archive from !URL! contained no envy binary >&2 & rmdir /s /q "!TEMP_DIR!" 2>nul & exit /b 1)
 set "ENVY_BIN=!TEMP_DIR!\envy.exe"
 goto :run
+
+REM :read_root -- IS_ROOT out, manifest path in %1. Reads only the manifest header: blank
+REM lines and comments, stopping at the first line of code, the same rule parse_envy_meta
+REM applies in src/manifest.cpp. `for /f` skips blank lines on its own, so only a code line
+REM ends the scan, and the default space+tab delims (no override) keep a tab-indented
+REM comment's tab out of %%a. A subroutine because the early-exit `goto` has to land at this
+REM scope's top level -- inside the caller's `if exist (...)` block it would tear out of the
+REM block and skip the walk's own logic. Reached only by `call`.
+:read_root
+set "IS_ROOT=true"
+for /f "usebackq tokens=1,2,3,4" %%a in ("%~1") do (
+    set "TOK=%%a"
+    if not "!TOK:~0,2!"=="--" goto :read_root_done
+    if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
+        set "VAL=%%d"
+        set "VAL=!VAL:"=!"
+        if "!VAL!"=="false" set "IS_ROOT=false"
+    )
+)
+:read_root_done
+exit /b 0
 
 REM :anchor_cache_to_manifest -- CACHE in/out; a relative directive resolves against the
 REM manifest's directory, never the caller's cwd, matching resolve_cache_root() in

@@ -17,15 +17,31 @@ resolve_script_dir() {
     cd -P "$(dirname "$src")" && pwd -P
 }
 
+# Directives from a manifest's header: blank lines and comments, stopping at the first line
+# of code. A directive below that line is not one -- parse_envy_meta in src/manifest.cpp
+# stops there too, and a launcher that read further would resolve a version or mirror the
+# re-exec'd binary ignores. No line cap, deliberately: the header ends where the code
+# starts, wherever that is, so a long preamble can never silently drop a pin. `q` bounds the
+# read to the header, so file size is irrelevant.
+manifest_directives() {
+    sed -nE '
+        /^[[:space:]]*$/d
+        /^[[:space:]]*--/!q
+        s/^[[:space:]]*--[[:space:]]*@envy[[:space:]]+(version|cache-posix|mirror|sha256sums|root)[[:space:]]+"(([^"\\]|\\.)*)".*/\1 \2/p
+    ' "$1"
+}
+
 find_manifest() {
     local d; d="$(resolve_script_dir)"
     local candidates=()
     while [[ "$d" != / ]]; do
         if [[ -f "$d/envy.lua" ]]; then
-            local is_root="true"
-            if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'; then
-                is_root="false"
-            fi
+            # `if`, not `&&`: a failed test as the loop body's last command is a nonzero
+            # body status, and `set -e` would take the whole script down on it.
+            local is_root="true" key val
+            while read -r key val || [[ -n "$key$val" ]]; do
+                if [[ "$key" == "root" && "$val" == "false" ]]; then is_root="false"; fi
+            done < <(manifest_directives "$d/envy.lua")
             if [[ "$is_root" == "true" ]]; then
                 echo "$d/envy.lua" && return
             else
@@ -40,24 +56,18 @@ find_manifest() {
 
 MANIFEST=$(find_manifest) || { echo "ERROR: envy.lua not found" >&2; exit 1; }
 
-parse_directives() {
-    head -20 "$MANIFEST" | sed -nE '
-        s/^--[[:space:]]*@envy[[:space:]]+version[[:space:]]+"(([^"\\]|\\.)*)".*/version \1/p
-        s/^--[[:space:]]*@envy[[:space:]]+cache-posix[[:space:]]+"(([^"\\]|\\.)*)".*/cache \1/p
-        s/^--[[:space:]]*@envy[[:space:]]+mirror[[:space:]]+"(([^"\\]|\\.)*)".*/mirror \1/p
-        s/^--[[:space:]]*@envy[[:space:]]+sha256sums[[:space:]]+"(([^"\\]|\\.)*)".*/sums \1/p
-    '
-}
-
 VERSION="" MANIFEST_CACHE="" MANIFEST_MIRROR="" SUMS_PIN=""
-while read -r key val; do
+# `|| [[ -n ... ]]`: sed reproduces a manifest's missing final newline, and a bare `read`
+# returns nonzero on that unterminated last line -- dropping the directive on it. A manifest
+# whose last line is `-- @envy sha256sums "..."` would then bootstrap with no pin at all.
+while read -r key val || [[ -n "$key$val" ]]; do
     val="${val//\\\"/\"}"
     val="${val//\\\\/\\}"
     case "$key" in
-        version) VERSION="$val" ;; cache) MANIFEST_CACHE="$val" ;;
-        mirror) MANIFEST_MIRROR="$val" ;; sums) SUMS_PIN="$val" ;;
+        version) VERSION="$val" ;; cache-posix) MANIFEST_CACHE="$val" ;;
+        mirror) MANIFEST_MIRROR="$val" ;; sha256sums) SUMS_PIN="$val" ;;
     esac
-done < <(parse_directives)
+done < <(manifest_directives "$MANIFEST")
 # A sums pin names one release's checksum file, so it is meaningless against a resolved or
 # stamped-fallback version. Captured before the resolution chain overwrites VERSION.
 PINNED_VERSION="$VERSION"

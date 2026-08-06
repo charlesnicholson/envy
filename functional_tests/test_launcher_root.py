@@ -45,49 +45,66 @@ def _make_manifest(root_value: str | None) -> str:
     return "\n".join(lines)
 
 
-def _get_bash_find_manifest_script() -> str:
-    """Return a bash script that implements find_manifest and prints result.
+# `root "false"` sitting under the first line of code. Not a directive -- parse_envy_meta
+# stops the header there -- so both launchers must read this manifest as root, the same way
+# the binary does. The launchers used to scan a flat line count instead, which took it.
+_ROOT_FALSE_BELOW_CODE = "\n".join(
+    ['-- @envy bin "tools"', "PACKAGES = {}", '-- @envy root "false"']
+)
 
-    Takes an optional argument to override the starting directory (used by tests
-    to simulate the script living inside a project tree).
+# `root "false"` past the 20th line, under a preamble of comments and blanks. A directive, so
+# both launchers must walk past this manifest. The old line cap stopped short of it and read
+# the manifest as root, disagreeing with the binary about which project it was in.
+_ROOT_FALSE_AFTER_PREAMBLE = "\n".join(
+    ['-- @envy bin "tools"']
+    + [f"-- preamble line {i}" if i % 5 else "" for i in range(1, 26)]
+    + ['-- @envy root "false"', "PACKAGES = {}"]
+)
+
+# Tab-indented, behind a tab-indented plain comment. Still the header for parse_envy_meta,
+# which skips spaces and tabs alike, so both launchers must walk past this manifest.
+# envy.bat's `for /f` gave `delims=` space alone, leaving the tab in the first token, so the
+# comment read as code and ended the scan before the directive under it.
+_ROOT_FALSE_TAB_INDENTED = "\n".join(
+    [
+        '-- @envy bin "tools"',
+        "\t-- a tab-indented comment",
+        '\t-- @envy root "false"',
+        "PACKAGES = {}",
+    ]
+)
+
+
+_LAUNCHER_DIR = Path(__file__).resolve().parent.parent / "src" / "resources"
+
+
+def _splice(text: str, anchor: str, replacement: str) -> str:
+    """Replace `anchor` in `text`, failing loudly if the shipped script no longer has it.
+
+    The harnesses below graft a start-directory override and a print onto the real launcher
+    rather than restating its walk. A silent no-op replace would leave the 15 scenarios
+    exercising a script that never reaches find_manifest, reporting green.
     """
-    return """#!/usr/bin/env bash
-set -euo pipefail
+    if anchor not in text:
+        raise AssertionError(f"launcher no longer contains {anchor!r}; update this harness")
+    return text.replace(anchor, replacement, 1)
 
-resolve_script_dir() {
-    local src="${BASH_SOURCE[0]}"
-    while [[ -L "$src" ]]; do
-        local dir; dir="$(cd -P "$(dirname "$src")" && pwd -P)"
-        src="$(readlink "$src")"
-        [[ "$src" != /* ]] && src="$dir/$src"
-    done
-    cd -P "$(dirname "$src")" && pwd -P
-}
 
-find_manifest() {
-    local d="${1:-$(resolve_script_dir)}"
-    local candidates=()
-    while [[ "$d" != / ]]; do
-        if [[ -f "$d/envy.lua" ]]; then
-            local is_root="true"
-            if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'; then
-                is_root="false"
-            fi
-            if [[ "$is_root" == "true" ]]; then
-                echo "$d/envy.lua" && return
-            else
-                candidates+=("$d/envy.lua")
-            fi
-        fi
-        d="${d%/*}"; d="${d:-/}"
-    done
-    # Use bash 3.x compatible syntax for last array element
-    [[ ${#candidates[@]} -gt 0 ]] && echo "${candidates[${#candidates[@]}-1]}" && return
-    return 1
-}
+def _get_bash_find_manifest_script() -> str:
+    """Return the shipped bash launcher, cut short after find_manifest and told to print it.
 
-find_manifest "$@"
-"""
+    Derived from src/resources/envy, never restated: a hand-copied walk drifts from the
+    script that ships, and then the matrix below certifies the copy. Everything from the
+    real script's first use of the result onward is dropped, so nothing downloads.
+    """
+    src = (_LAUNCHER_DIR / "envy").read_text(encoding="utf-8")
+    anchor = "MANIFEST=$(find_manifest)"
+    if anchor not in src:
+        raise AssertionError(f"launcher no longer contains {anchor!r}; update this harness")
+    # resolve_script_dir takes no arguments, so the start directory arrives in a global.
+    return src.split(anchor)[0] + (
+        'START_DIR="$1"\nresolve_script_dir() { echo "$START_DIR"; }\nfind_manifest\n'
+    )
 
 
 @unittest.skipIf(sys.platform == "win32", "Bash tests skipped on Windows")
@@ -244,6 +261,27 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
         # No parent or grandparent manifest
         self._assert_manifest_at(self._child)
 
+    # --- where the header ends -------------------------------------------------------
+    #
+    # The walk reads the same header the binary does: comments and blank lines, stopping at
+    # the first line of code, with no line cap. Disagreeing with manifest::discover() here
+    # puts the launcher and the binary it execs in different projects.
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_BELOW_CODE)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._child)
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_AFTER_PREAMBLE)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
+
+    def test_tab_indented_root_false_is_still_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_TAB_INDENTED)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
+
 
 @unittest.skipUnless(sys.platform == "win32", "Windows-only tests")
 class TestBatchLauncherRootDiscovery(unittest.TestCase):
@@ -265,52 +303,27 @@ class TestBatchLauncherRootDiscovery(unittest.TestCase):
             shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     def _get_batch_find_manifest_script(self) -> str:
-        """Return a batch script that implements find_manifest and prints result.
+        """Return the shipped envy.bat, with the walk's start overridable and :found printing.
 
-        Takes an optional argument to override the starting directory.
+        Derived from src/resources/envy.bat for the same reason as the bash side. Spliced in
+        place rather than sliced: the walk calls :read_root, which lives with the other
+        subroutines at the end of the file, so a prefix cut would drop it. `exit /b 0` right
+        after the print makes the rest of the real script unreachable, so nothing downloads.
         """
-        return """@echo off
-setlocal EnableDelayedExpansion
-
-set "MANIFEST="
-set "CANDIDATE="
-if "%~1"=="" (
-    set "DIR=%~dp0"
-    if "!DIR:~-1!"=="\\" set "DIR=!DIR:~0,-1!"
-) else (
-    set "DIR=%~1"
-)
-:findloop
-if exist "!DIR!\\envy.lua" (
-    set "IS_ROOT=true"
-    for /f "usebackq tokens=1,2,3,4 delims= " %%a in ("!DIR!\\envy.lua") do (
-        if "%%a"=="--" if "%%b"=="@envy" if "%%c"=="root" (
-            set "VAL=%%d"
-            set "VAL=!VAL:"=!"
-            if "!VAL!"=="false" set "IS_ROOT=false"
+        src = (_LAUNCHER_DIR / "envy.bat").read_text(encoding="utf-8")
+        src = _splice(
+            src,
+            'set "DIR=%~dp0"\nif "!DIR:~-1!"=="\\" set "DIR=!DIR:~0,-1!"',
+            'if "%~1"=="" (\n'
+            '    set "DIR=%~dp0"\n'
+            '    if "!DIR:~-1!"=="\\" set "DIR=!DIR:~0,-1!"\n'
+            ') else (\n'
+            '    set "DIR=%~1"\n'
+            ')',
         )
-    )
-    if "!IS_ROOT!"=="true" (
-        set "MANIFEST=!DIR!\\envy.lua"
-        goto :found
-    ) else (
-        set "CANDIDATE=!DIR!\\envy.lua"
-    )
-)
-for %%I in ("!DIR!\\..") do set "PARENT=%%~fI"
-if "!PARENT!"=="!DIR!" (
-    if defined CANDIDATE (
-        set "MANIFEST=!CANDIDATE!"
-        goto :found
-    )
-    echo ERROR: envy.lua not found >&2
-    exit /b 1
-)
-set "DIR=!PARENT!"
-goto :findloop
-:found
-echo !MANIFEST!
-"""
+        # Anchored on the label at line start, not on `:found` anywhere: the `goto :found`
+        # lines above it would otherwise take the splice and leave the label itself bare.
+        return _splice(src, "\n:found\n", "\n:found\necho !MANIFEST!\nexit /b 0\n")
 
     def _write_manifest(self, directory: Path, root_value: str | None) -> None:
         """Write a manifest to the given directory."""
@@ -427,6 +440,23 @@ echo !MANIFEST!
     def test_scenario_15_f_dash_dash_uses_child(self) -> None:
         self._write_manifest(self._child, "false")
         self._assert_manifest_at(self._child)
+
+    # --- where the header ends: same contract as the bash walk above ------------------
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_BELOW_CODE)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._child)
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_AFTER_PREAMBLE)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
+
+    def test_tab_indented_root_false_is_still_a_directive(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_FALSE_TAB_INDENTED)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
 
 
 if __name__ == "__main__":

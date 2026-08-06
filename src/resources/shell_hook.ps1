@@ -10,20 +10,28 @@ function _envy_detect_utf8 {
 }
 _envy_detect_utf8
 
+# One directive's value out of a manifest's header, $null if the header carries none. Header
+# means blank lines and comments up to the manifest's first line of code -- the rule
+# parse_envy_meta applies in src/manifest.cpp, and the one src/resources/envy walks with. No
+# line cap: the header ends where the code starts, so neither a long preamble nor a
+# directive-shaped comment in the package table can make this hook put a different project's
+# bin directory on PATH than envy itself resolves.
+function _envy_header_directive($manifest, $key) {
+    $re = '^\s*--\s*@envy\s+' + $key + '\s+"([^"\\]*(?:\\.[^"\\]*)*)"'
+    foreach ($line in Get-Content -LiteralPath $manifest) {
+        if ($line -match '^\s*$') { continue }
+        if ($line -notmatch '^\s*--') { return $null }
+        if ($line -match $re) { return $Matches[1] }
+    }
+    return $null
+}
+
 function _envy_find_manifest {
     $d = (Get-Location).Path
     while ($d -ne [System.IO.Path]::GetPathRoot($d)) {
         $manifest = Join-Path $d "envy.lua"
         if (Test-Path $manifest -PathType Leaf) {
-            $isRoot = $true
-            $lines = Get-Content $manifest -TotalCount 20
-            foreach ($line in $lines) {
-                if ($line -match '^\s*--\s*@envy\s+root\s+"false"') {
-                    $isRoot = $false
-                    break
-                }
-            }
-            if ($isRoot) { return $d }
+            if ((_envy_header_directive $manifest "root") -ne "false") { return $d }
         }
         $d = Split-Path $d -Parent
         if (-not $d) { break }
@@ -32,14 +40,7 @@ function _envy_find_manifest {
 }
 
 function _envy_parse_bin($manifestDir) {
-    $manifest = Join-Path $manifestDir "envy.lua"
-    $lines = Get-Content $manifest -TotalCount 20
-    foreach ($line in $lines) {
-        if ($line -match '^\s*--\s*@envy\s+bin\s+"([^"\\]*(?:\\.[^"\\]*)*)"') {
-            return $Matches[1]
-        }
-    }
-    return $null
+    return (_envy_header_directive (Join-Path $manifestDir "envy.lua") "bin")
 }
 
 function _envy_hook {

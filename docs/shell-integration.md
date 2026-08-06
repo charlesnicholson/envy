@@ -28,7 +28,7 @@ On every directory change:
 
 1. Walk up from `$PWD` looking for `envy.lua`
 2. Respect `@envy root "false"` (continue upward) vs default `root=true` (stop)
-3. Parse `@envy bin` from first 20 lines of manifest
+3. Parse `@envy bin` from the manifest header—blank lines and comments up to the first line of code, same rule as the launcher and the runtime
 4. Compute absolute bin path: `$manifest_dir/$bin_value`
 5. Manage `PATH`—prepend new bin dir, remove old one on project switch or exit
 6. Export `ENVY_PROJECT_ROOT` (or unset when leaving)

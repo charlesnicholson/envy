@@ -151,6 +151,70 @@ PACKAGES = {}
   CHECK_FALSE(meta.cache_for_platform().has_value());
 }
 
+// The five cases below fix where the header ends. Each has a twin in
+// functional_tests/test_bootstrap.py driving the launcher scripts over the same bytes: the
+// launchers resolve a version and a mirror before this parser ever runs, so a rule that
+// holds in only one of them downloads one release and execs a binary that wanted another.
+
+TEST_CASE("parse_envy_meta reads past a tab-indented comment") {
+  // Tabs and spaces indent a header line alike. Worth its own case because cmd.exe's
+  // `for /f` strips only the delimiters it is given: envy.bat naming space alone left the
+  // tab in the first token, so a tab-indented comment ended its header two lines early.
+  auto const meta{ envy::parse_envy_meta("\t-- a tab-indented comment\n"
+                                         "\t-- @envy bin \"tools\"\n"
+                                         "-- @envy version \"3.2.1\"\n"
+                                         "PACKAGES = {}\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "3.2.1");
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "tools");
+}
+
+TEST_CASE("parse_envy_meta ends the header at a block comment's continuation line") {
+  // `  still inside it ]]` starts no `--`, so the scan treats it as code. A reader that
+  // tracked Lua block-comment nesting instead would take the directive below it.
+  auto const meta{ envy::parse_envy_meta(R"(--[[ a block comment
+  still inside it ]]
+-- @envy version "9.9.9"
+)") };
+
+  CHECK_FALSE(meta.version.has_value());
+}
+
+TEST_CASE("parse_envy_meta reads a directive inside a block comment") {
+  // Inside the block the line does start with `--`, so it parses. Pinned as the deliberate
+  // consequence of matching on the comment marker alone, not endorsed as a way to write one.
+  auto const meta{ envy::parse_envy_meta(R"(--[[
+-- @envy version "7.6.5"
+]]
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "7.6.5");
+}
+
+TEST_CASE("parse_envy_meta reads a CRLF manifest") {
+  // A blank line is `\r` alone, which the stop-at-code test counts as whitespace, and a
+  // value ends at its closing quote -- so no carriage return reaches a download URL.
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy version \"5.4.3\"\r\n\r\n-- @envy bin \"tools\"\r\nPACKAGES = {}\r\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "5.4.3");
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "tools");
+}
+
+TEST_CASE("parse_envy_meta reads a header that runs to end of file") {
+  // No code line to stop at, and no trailing newline either.
+  auto const meta{ envy::parse_envy_meta("-- @envy version \"6.5.4\"") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "6.5.4");
+}
+
 TEST_CASE("parse_envy_meta reads the whole header past blanks and plain comments") {
   auto const meta{ envy::parse_envy_meta(R"(-- a plain comment
 
