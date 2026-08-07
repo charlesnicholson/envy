@@ -173,13 +173,15 @@ TEST_CASE("parse_envy_meta reads past a tab-indented comment") {
 }
 
 TEST_CASE("parse_envy_meta takes the last of a repeated directive") {
-  // Assignment per match, so the later line wins -- what an author editing a value in place
-  // and leaving the old line above it would expect. The launchers' read loops overwrite the
-  // same way, and the four shell hooks scan the whole header rather than stopping at the
-  // first hit, so none of the six can put a different bin directory on PATH than another.
-  auto const meta{ envy::parse_envy_meta("-- @envy bin \"old\"\n"
-                                         "-- @envy bin \"new\"\n"
-                                         "PACKAGES = {}\n") };
+  // Assignment per match, so the later line wins -- what an author editing a value in
+  // place and leaving the old line above it would expect. The launchers' read loops
+  // overwrite the same way, and the four shell hooks scan the whole header rather than
+  // stopping at the first hit, so none of the six can put a different bin directory on
+  // PATH than another.
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy bin \"old\"\n"
+      "-- @envy bin \"new\"\n"
+      "PACKAGES = {}\n") };
 
   REQUIRE(meta.bin.has_value());
   CHECK(*meta.bin == "new");
