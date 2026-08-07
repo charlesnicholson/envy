@@ -10,20 +10,48 @@ function _envy_detect_utf8 {
 }
 _envy_detect_utf8
 
+# One directive's value out of a manifest's header, $null if the header carries none. Header
+# means blank lines and comments up to the manifest's first line of code -- the rule
+# parse_envy_meta applies in src/manifest.cpp, and the one src/resources/envy walks with. No
+# line cap: the header ends where the code starts, so neither a long preamble nor a
+# directive-shaped comment in the package table can make this hook put a different project's
+# bin directory on PATH than envy itself resolves.
+#
+# A StreamReader, not `foreach ($line in Get-Content ...)`: the foreach statement runs its
+# collection expression to completion before its first iteration, so Get-Content would read
+# and materialize the whole manifest even though this leaves at the first code line -- and it
+# runs twice per directory change, once for root and once for bin. Disposed explicitly rather
+# than leaning on [System.IO.File]::ReadLines(), whose enumerator the foreach statement is not
+# guaranteed to dispose; a leaked handle denies writes to envy.lua until GC. Both call sites
+# pass an absolute path, which .NET requires -- its working directory is not PowerShell's.
+#
+# The whole header is read even after a hit: a repeated directive resolves to the last one,
+# because parse_envy_meta overwrites on each match and src/resources/envy's read loop does too.
+function _envy_header_directive($manifest, $key) {
+    $re = '^\s*--\s*@envy\s+' + $key + '\s+"([^"\\]*(?:\\.[^"\\]*)*)"'
+    $found = $null
+    $reader = $null
+    try {
+        $reader = [System.IO.File]::OpenText($manifest)
+        while ($null -ne ($line = $reader.ReadLine())) {
+            if ($line -match '^\s*$') { continue }
+            if ($line -notmatch '^\s*--') { break }
+            if ($line -match $re) { $found = $Matches[1] }
+        }
+    } catch {
+        return $null
+    } finally {
+        if ($reader) { $reader.Dispose() }
+    }
+    return $found
+}
+
 function _envy_find_manifest {
     $d = (Get-Location).Path
     while ($d -ne [System.IO.Path]::GetPathRoot($d)) {
         $manifest = Join-Path $d "envy.lua"
         if (Test-Path $manifest -PathType Leaf) {
-            $isRoot = $true
-            $lines = Get-Content $manifest -TotalCount 20
-            foreach ($line in $lines) {
-                if ($line -match '^\s*--\s*@envy\s+root\s+"false"') {
-                    $isRoot = $false
-                    break
-                }
-            }
-            if ($isRoot) { return $d }
+            if ((_envy_header_directive $manifest "root") -ne "false") { return $d }
         }
         $d = Split-Path $d -Parent
         if (-not $d) { break }
@@ -32,14 +60,7 @@ function _envy_find_manifest {
 }
 
 function _envy_parse_bin($manifestDir) {
-    $manifest = Join-Path $manifestDir "envy.lua"
-    $lines = Get-Content $manifest -TotalCount 20
-    foreach ($line in $lines) {
-        if ($line -match '^\s*--\s*@envy\s+bin\s+"([^"\\]*(?:\\.[^"\\]*)*)"') {
-            return $Matches[1]
-        }
-    }
-    return $null
+    return (_envy_header_directive (Join-Path $manifestDir "envy.lua") "bin")
 }
 
 function _envy_hook {

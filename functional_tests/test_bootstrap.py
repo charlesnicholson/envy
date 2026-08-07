@@ -84,6 +84,86 @@ PACKAGES = {
     "local.example@v1",
 }
 """,
+    # The header ends at the first line of code, so neither directive below is one. Matches
+    # parse_envy_meta; the launcher that read them would fetch a version the binary it execs
+    # never asked for, from a mirror the binary would never use.
+    "below_first_code_line.lua": """-- @envy version "1.2.3"
+
+PACKAGES = {
+    "local.example@v1",
+}
+-- @envy version "9.9.9"
+-- @envy mirror "http://127.0.0.1:1/never-contacted"
+""",
+    # Indented, and behind a blank line and a plain comment: still the header. The bash
+    # launcher used to anchor its match at column 0 and miss this, while parse_envy_meta
+    # took it. `version` sits *under* the tab-indented lines on purpose: envy.bat gave its
+    # `for /f` a space-only `delims=`, which left the tab in the first token and ended the
+    # header there, so a version above them would have passed a broken parser.
+    "indented_directives.lua": """-- a plain comment
+
+\t-- a tab-indented comment
+\t-- @envy bin "tools"
+  -- @envy version "3.2.1"
+
+PACKAGES = {
+    "local.example@v1",
+}
+""",
+    # A CRLF checkout. `\r` is in POSIX [[:space:]], so the blank line still reads as blank
+    # and the header does not end early; the value stops at its closing quote either way.
+    "crlf_directives.lua": (
+        '-- @envy version "5.4.3"\r\n'
+        "\r\n"
+        "PACKAGES = {\r\n"
+        '    "local.example@v1",\r\n'
+        "}\r\n"
+    ),
+    # A `;`-led line is code -- Lua's empty statement prefixing a statement -- so the header
+    # ends on it and the version below is not a directive. envy.bat's `for /f` reads `;` as a
+    # comment marker unless handed `eol=`, and skipped the line instead of stopping on it, so
+    # the 9.9.9 underneath won and the launcher fetched a release the binary never asked for.
+    "semicolon_ends_header.lua": (
+        '-- @envy version "1.2.3"\n' ";PACKAGES = {}\n" '-- @envy version "9.9.9"\n'
+    ),
+    # No line of code anywhere, so the header runs to end of file and the scan's early exit
+    # never fires. Also the no-trailing-newline case.
+    "header_only.lua": '-- @envy version "6.5.4"',
+    # A block comment's continuation line does not start with `--`, so it ends the header the
+    # same way any other line of code would, and the directive beneath it is not one.
+    # parse_envy_meta agrees; pinned on both sides so the two cannot drift apart.
+    "block_comment_ends_header.lua": (
+        "--[[ a block comment\n"
+        "  still inside it ]]\n"
+        '-- @envy version "9.9.9"\n'
+        "\n"
+        "PACKAGES = {\n"
+        '    "local.example@v1",\n'
+        "}\n"
+    ),
+    # Inside the block, though, the line does start with `--`, so it parses. A quirk, shared
+    # by both parsers; pinned so it stays deliberate rather than becoming a surprise.
+    "directive_inside_block_comment.lua": (
+        "--[[\n"
+        '-- @envy version "7.6.5"\n'
+        "]]\n"
+        "\n"
+        "PACKAGES = {\n"
+        '    "local.example@v1",\n'
+        "}\n"
+    ),
+    # A directive past the 20th line. Both launchers used to cap the scan there and fall
+    # through to a resolved version, silently disagreeing with the binary's own reading.
+    "long_preamble.lua": (
+        "-- Some projects open their manifest with a license header.\n"
+        + "".join(f"-- preamble line {i}\n" if i % 5 else "\n" for i in range(1, 26))
+        + """-- @envy version "4.5.6"
+
+PACKAGES = {
+    "local.example@v1",
+}
+"""
+    ),
 }
 
 
@@ -793,6 +873,133 @@ class BootstrapIntegrationTest(unittest.TestCase):
         expected = f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"
         self.assertEqual(1, len(self._server.request_paths))
         self.assertEqual(expected, self._server.request_paths[0])
+
+    # --- where the header ends ---------------------------------------------------------
+    #
+    # The launchers read the same header parse_envy_meta does: comments and blank lines, up
+    # to the first line of code, with no line cap. The cap they used to apply cut both ways
+    # -- it dropped directives under a long preamble and honored directive-shaped comments
+    # sitting in the body -- and either way the launcher resolved a version or a mirror the
+    # binary it execs would not.
+
+    def test_bootstrap_ignores_a_version_below_the_first_code_line(self) -> None:
+        bootstrap = self._setup_test_project("below_first_code_line.lua")
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_ignores_a_mirror_below_the_first_code_line(self) -> None:
+        """The body directive names an unroutable mirror, so honoring it is visible.
+
+        With ENVY_MIRROR dropped, resolution falls to DEFAULT_MIRROR, which the fixture
+        stamps at the redirect stub's 404 path -- so the failure names the URL that was
+        actually used, and a body comment steering the bootstrap fetch cannot hide.
+        """
+        bootstrap = self._setup_test_project("below_first_code_line.lua")
+        result = self._run_bootstrap(bootstrap, ["version"], set_mirror=False)
+
+        self.assertNotEqual(0, result.returncode, f"stdout: {result.stdout}")
+        self.assertIn("upstream-not-a-mirror", result.stderr)
+        self.assertNotIn("127.0.0.1:1/", result.stderr)
+
+    def test_bootstrap_parses_an_indented_directive(self) -> None:
+        bootstrap = self._setup_test_project(
+            "indented_directives.lua", fallback_version="9.9.9"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v3.2.1/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_parses_a_directive_past_the_twentieth_line(self) -> None:
+        bootstrap = self._setup_test_project(
+            "long_preamble.lua", fallback_version="9.9.9"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v4.5.6/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_parses_a_crlf_manifest(self) -> None:
+        """A CRLF checkout must not carry `\\r` into the version or end the header early."""
+        bootstrap = self._setup_test_project(
+            "crlf_directives.lua", fallback_version="9.9.9"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v5.4.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_ends_the_header_at_a_semicolon_led_line(self) -> None:
+        """Lua's empty statement is code, so the version under it is not a directive.
+
+        A distinct fallback from either directive, so a scan that took neither is not
+        mistaken for one that stopped in the right place.
+        """
+        bootstrap = self._setup_test_project(
+            "semicolon_ends_header.lua", fallback_version="8.8.8"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_parses_a_manifest_that_is_only_a_header(self) -> None:
+        """No code line and no trailing newline: the header runs to end of file."""
+        bootstrap = self._setup_test_project("header_only.lua", fallback_version="9.9.9")
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v6.5.4/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_ends_the_header_at_a_block_comment_continuation(self) -> None:
+        """`  still inside it ]]` starts no `--`, so it ends the header like any code line.
+
+        The directive under it is therefore not one, and resolution falls through to the
+        stamped fallback -- which is what the binary does with the same bytes.
+        """
+        bootstrap = self._setup_test_project(
+            "block_comment_ends_header.lua", fallback_version="1.2.3"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v1.2.3/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
+
+    def test_bootstrap_reads_a_directive_inside_a_block_comment(self) -> None:
+        """The line starts with `--`, so both parsers take it. Pinned, not endorsed."""
+        bootstrap = self._setup_test_project(
+            "directive_inside_block_comment.lua", fallback_version="9.9.9"
+        )
+        self._server.request_paths.clear()
+        result = self._run_bootstrap(bootstrap, ["version"])
+
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(
+            [f"/v7.6.5/envy-{_OS_NAME}-{_ARCH}{_EXT}"], self._archive_requests()
+        )
 
     # --- version resolution over the network ---------------------------------------
     #

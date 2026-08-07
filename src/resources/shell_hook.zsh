@@ -18,25 +18,42 @@ prompt_envy() {
   p10k segment -f 208 -t '🦝'
 }
 
-_envy_find_manifest() {
+# One directive's value into REPLY, empty if the manifest's header carries none. Header
+# means blank lines and comments up to the first line of code -- the rule parse_envy_meta
+# applies in src/manifest.cpp, and the one src/resources/envy walks with. No line cap: the
+# header ends where the code starts, so neither a long preamble nor a directive-shaped
+# comment in the package table can make this hook put a different project's bin directory on
+# PATH than envy itself resolves.
+#
+# Pure zsh read+regex instead of head|grep — avoids fork/exec per directory, and REPLY
+# avoids a $() subshell at the call site. `line=""` is explicit: without it, zsh's
+# NO_TYPESET_SILENT default makes `local line` print a prior value. `|| [[ -n "$line" ]]`
+# catches a manifest with no final newline, which `read` reports as a failure after
+# filling $line.
+#
+# The whole header is read even after a hit: a repeated directive resolves to the last one,
+# because parse_envy_meta overwrites on each match and src/resources/envy's read loop does
+# too. Returning on the first would hand this hook one project's bin directory while the
+# binary deployed another's.
+_envy_header_directive() {
   emulate -L zsh
   REPLY=""
+  local line="" re=""
+  re='^[[:space:]]*--[[:space:]]*@envy[[:space:]]+'"$2"'[[:space:]]+"(([^"\\]|\\.)*)"'
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ '^[[:space:]]*$' ]]; then continue; fi
+    if [[ ! "$line" =~ '^[[:space:]]*--' ]]; then break; fi
+    if [[ "$line" =~ $re ]]; then REPLY="${match[1]}"; fi
+  done < "$1"
+}
+
+_envy_find_manifest() {
+  emulate -L zsh
   local d="$PWD"
   while [ "$d" != / ]; do
     if [ -f "$d/envy.lua" ]; then
-      local is_root="true"
-      # Pure zsh read+regex instead of head|grep — avoids fork/exec per directory.
-      # `line=""` is explicit: without it, zsh's NO_TYPESET_SILENT default makes
-      # `local line` print the prior iteration's value when re-declared in-loop.
-      local line="" i=0
-      while (( i++ < 20 )) && IFS= read -r line; do
-        if [[ "$line" =~ '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"' ]]; then
-          is_root="false"
-          break
-        fi
-      done < "$d/envy.lua"
-      if [ "$is_root" = "true" ]; then
-        # Return via REPLY to avoid $() subshell at call site
+      _envy_header_directive "$d/envy.lua" root
+      if [ "$REPLY" != "false" ]; then
         REPLY="$d"
         return 0
       fi
@@ -44,21 +61,13 @@ _envy_find_manifest() {
     d="${d%/*}"
     d="${d:-/}"
   done
+  REPLY=""
   return 1
 }
 
 _envy_parse_bin() {
   emulate -L zsh
-  local manifest="$1/envy.lua"
-  # Pure zsh read+regex instead of head|sed — avoids fork/exec; returns via REPLY
-  local line i=0
-  REPLY=""
-  while (( i++ < 20 )) && IFS= read -r line; do
-    if [[ "$line" =~ '^--[[:space:]]*@envy[[:space:]]+bin[[:space:]]+"(([^"\\]|\\.)*)"' ]]; then
-      REPLY="${match[1]}"
-      return
-    fi
-  done < "$manifest"
+  _envy_header_directive "$1/envy.lua" bin
 }
 
 _envy_remove_from_path() {

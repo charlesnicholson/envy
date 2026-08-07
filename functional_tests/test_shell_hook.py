@@ -10,6 +10,49 @@ from pathlib import Path
 
 from . import test_config
 
+# --- where a manifest's header ends -------------------------------------------------------
+#
+# Every hook reads the header the same way parse_envy_meta does in src/manifest.cpp, and the
+# same way src/resources/envy walks it: blank lines and comments, stopping at the first line
+# of code, with no line cap. A hook that stops earlier or reads further puts a different
+# project's bin directory on PATH than the envy it sits next to resolves. The four scripts
+# used to cap at 20 lines and anchor `--` at column 0, so all three fixtures below were read
+# wrong -- and in the same wrong way, which is why they are shared across the four classes.
+
+_HEADER_PREAMBLE = "\n".join(
+    f"-- preamble line {i}" if i % 5 else "" for i in range(1, 26)
+)
+
+# `root "false"` sitting under the first line of code is not a directive, so this manifest is
+# its own project root and the walk must stop here rather than climb to the ancestor.
+_ROOT_FALSE_BELOW_CODE = '-- @envy bin "tools"\nPACKAGES = {}\n-- @envy root "false"\n'
+
+# Tab-indented and past the 20th line, so both directives still count and the walk continues
+# upward. Tabs indent a header line exactly as spaces do.
+_ROOT_FALSE_AFTER_PREAMBLE = (
+    _HEADER_PREAMBLE + '\n\t-- @envy root "false"\n\t-- @envy bin "tools"\nPACKAGES = {}\n'
+)
+
+# The same preamble with `root` absent: this manifest is the root, and the `bin` beneath the
+# preamble is the directory the hook has to put on PATH.
+_BIN_AFTER_PREAMBLE = _HEADER_PREAMBLE + '\n\t-- @envy bin "tools"\nPACKAGES = {}\n'
+
+# `bin` twice in one header. parse_envy_meta assigns per match, so the last wins, and the
+# launchers' read loops overwrite the same way. Both directories exist in the fixture, so a
+# hook that stops at the first hit puts a real directory on PATH -- just not the one the
+# binary deploys into. Shared across the four classes because all four used to do exactly
+# that.
+_BIN_REPEATED_LAST_WINS = '-- @envy bin "stale"\n-- @envy bin "tools"\nPACKAGES = {}\n'
+
+
+def _write_project(parent_dir: Path, name: str, content: str) -> Path:
+    """A project directory under `parent_dir` with a `tools/` bin dir and `content`."""
+    project = parent_dir / name
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "tools").mkdir(exist_ok=True)
+    (project / "envy.lua").write_text(content)
+    return project
+
 
 @unittest.skipIf(sys.platform == "win32", "bash hook tests require Unix")
 class TestBashHook(unittest.TestCase):
@@ -204,6 +247,63 @@ class TestBashHook(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         # Should find the parent project (which is root=true by default)
         self.assertIn(str(parent), result.stdout)
+
+    # --- where a manifest's header ends ---
+    #
+    # Compared exactly, not with assertIn: the child's path has the parent's as a prefix, so
+    # a containment check passes for either answer.
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        parent = self._make_envy_project("hdr-below-parent")
+        child = _write_project(parent, "sub", _ROOT_FALSE_BELOW_CODE)
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{child}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$ENVY_PROJECT_ROOT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(child), result.stdout.strip())
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        parent = self._make_envy_project("hdr-preamble-parent")
+        child = _write_project(parent, "sub", _ROOT_FALSE_AFTER_PREAMBLE)
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{child}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$ENVY_PROJECT_ROOT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(parent), result.stdout.strip())
+
+    def test_bin_under_a_long_preamble_reaches_path(self) -> None:
+        project = _write_project(self._temp_dir, "hdr-bin-preamble", _BIN_AFTER_PREAMBLE)
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "hdr-bin-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     def test_bin_dir_with_spaces(self) -> None:
         project = self._temp_dir / "space proj"
@@ -522,6 +622,44 @@ class TestZshHook(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
 
+    # --- where a manifest's header ends ---
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        parent = self._make_envy_project("zsh-hdr-below")
+        child = _write_project(parent, "sub", _ROOT_FALSE_BELOW_CODE)
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{child}"\necho "$ENVY_PROJECT_ROOT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(child), result.stdout.strip())
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        parent = self._make_envy_project("zsh-hdr-preamble")
+        child = _write_project(parent, "sub", _ROOT_FALSE_AFTER_PREAMBLE)
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{child}"\necho "$ENVY_PROJECT_ROOT"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(parent), result.stdout.strip())
+
+    def test_bin_under_a_long_preamble_reaches_path(self) -> None:
+        project = _write_project(self._temp_dir, "zsh-hdr-bin", _BIN_AFTER_PREAMBLE)
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "zsh-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
+
     # --- v2: enter/leave messages ---
 
     def test_entering_message_on_cd_into_project(self) -> None:
@@ -836,6 +974,44 @@ class TestFishHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertEqual(str(project), result.stdout.strip())
+
+    # --- where a manifest's header ends ---
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        parent = self._make_envy_project("fish-hdr-below")
+        child = _write_project(parent, "sub", _ROOT_FALSE_BELOW_CODE)
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{child}"\necho $ENVY_PROJECT_ROOT'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(child), result.stdout.strip())
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        parent = self._make_envy_project("fish-hdr-preamble")
+        child = _write_project(parent, "sub", _ROOT_FALSE_AFTER_PREAMBLE)
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{child}"\necho $ENVY_PROJECT_ROOT'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(parent), result.stdout.strip())
+
+    def test_bin_under_a_long_preamble_reaches_path(self) -> None:
+        project = _write_project(self._temp_dir, "fish-hdr-bin", _BIN_AFTER_PREAMBLE)
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho $PATH'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "fish-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho $PATH'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     @staticmethod
     def _hook_test_env() -> dict[str, str]:
@@ -1179,6 +1355,63 @@ class TestPowerShellHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(parent), result.stdout)
+
+    # --- where a manifest's header ends ---
+    #
+    # Compared exactly, not with assertIn: the child's path has the parent's as a prefix, so
+    # a containment check passes for either answer.
+
+    def test_root_false_below_the_first_code_line_is_not_a_directive(self) -> None:
+        parent = self._make_envy_project("ps-hdr-below")
+        child = _write_project(parent, "sub", _ROOT_FALSE_BELOW_CODE)
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{child}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:ENVY_PROJECT_ROOT"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(child), result.stdout.strip())
+
+    def test_root_false_under_a_long_preamble_is_still_a_directive(self) -> None:
+        parent = self._make_envy_project("ps-hdr-preamble")
+        child = _write_project(parent, "sub", _ROOT_FALSE_AFTER_PREAMBLE)
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{child}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:ENVY_PROJECT_ROOT"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertEqual(str(parent), result.stdout.strip())
+
+    def test_bin_under_a_long_preamble_reaches_path(self) -> None:
+        project = _write_project(self._temp_dir, "ps-hdr-bin", _BIN_AFTER_PREAMBLE)
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:PATH"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "ps-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:PATH"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     def test_initial_activation_inside_project(self) -> None:
         """Dot-sourcing hook while already in a project activates immediately."""

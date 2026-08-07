@@ -166,6 +166,15 @@ if(NOT _prod_script_ver_line)
 endif()
 string(REGEX MATCH "[0-9]+" ENVY_PRODUCT_SCRIPT_VERSION "${_prod_script_ver_line}")
 
+# Both versions above are read at configure time and stamped into the embedded scripts, while
+# the C++ that compares against them reads the headers directly. Without this, bumping either
+# constant leaves an incremental build's resources stamped with the old number, so `ensure`
+# rewrites a hook and then decides the result is still stale.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    src/shell_hooks.h
+    src/deploy.h
+)
+
 # Generate embedded resource header (all platform variants unconditionally)
 embed_resources(envy_embedded_resources
     OUTPUT embedded_init_resources.h

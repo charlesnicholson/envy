@@ -7,15 +7,34 @@ case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
   *) _ENVY_UTF8=; _ENVY_DASH="--" ;;
 esac
 
+# One directive's value out of a manifest's header, empty if the header carries none.
+# Header means blank lines and comments up to the manifest's first line of code -- the rule
+# parse_envy_meta applies in src/manifest.cpp, and the one src/resources/envy walks with.
+# No line cap: the header ends where the code starts, so neither a long preamble nor a
+# directive-shaped comment in the package table can make this hook put a different project's
+# bin directory on PATH than envy itself resolves. `|| [ -n "$line" ]` catches a manifest
+# with no final newline, which `read` reports as a failure after filling $line.
+#
+# The whole header is read even after a hit: a repeated directive resolves to the last one,
+# because parse_envy_meta overwrites on each match and src/resources/envy's read loop does
+# too. Returning on the first would hand this hook one project's bin directory while the
+# binary deployed another's.
+_envy_header_directive() {
+  local line found=""
+  local re='^[[:space:]]*--[[:space:]]*@envy[[:space:]]+'"$2"'[[:space:]]+"(([^"\\]|\\.)*)"'
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^[[:space:]]*$ ]]; then continue; fi
+    if [[ ! "$line" =~ ^[[:space:]]*-- ]]; then break; fi
+    if [[ "$line" =~ $re ]]; then found="${BASH_REMATCH[1]}"; fi
+  done < "$1"
+  printf '%s\n' "$found"
+}
+
 _envy_find_manifest() {
   local d="$PWD"
   while [ "$d" != / ]; do
     if [ -f "$d/envy.lua" ]; then
-      local is_root="true"
-      if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'; then
-        is_root="false"
-      fi
-      if [ "$is_root" = "true" ]; then
+      if [ "$(_envy_header_directive "$d/envy.lua" root)" != "false" ]; then
         echo "$d"
         return 0
       fi
@@ -27,10 +46,7 @@ _envy_find_manifest() {
 }
 
 _envy_parse_bin() {
-  local manifest="$1/envy.lua"
-  local bin_val
-  bin_val=$(head -20 "$manifest" | sed -nE 's/^--[[:space:]]*@envy[[:space:]]+bin[[:space:]]+"(([^"\\]|\\.)*)".*/\1/p') || true
-  if [ -n "$bin_val" ]; then echo "$bin_val"; fi
+  _envy_header_directive "$1/envy.lua" bin
 }
 
 _envy_remove_from_path() {

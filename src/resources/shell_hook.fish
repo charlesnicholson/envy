@@ -10,15 +10,34 @@ else
     set -g _ENVY_DASH "--"
 end
 
+# One directive's value out of a manifest's header, nothing if the header carries none.
+# Header means blank lines and comments up to the manifest's first line of code -- the rule
+# parse_envy_meta applies in src/manifest.cpp, and the one src/resources/envy walks with, sed
+# program included. No line cap: the header ends where the code starts, so neither a long
+# preamble nor a directive-shaped comment in the package table can make this hook put a
+# different project's bin directory on PATH than envy itself resolves. `q` bounds the read to
+# the header, so manifest size is irrelevant.
+#
+# The sed keeps scanning after a hit, so a repeated directive prints once per occurrence and
+# the last is taken -- parse_envy_meta overwrites on each match and src/resources/envy's read
+# loop does too. Indexing is what picks it: bare command substitution would hand a caller a
+# multi-element list, and fish joins those with a space inside quotes, so a doubled
+# `root "false"` would compare as `false false` and read as root=true.
+function _envy_header_directive
+    set -l vals (sed -nE '
+        /^[[:space:]]*$/d
+        /^[[:space:]]*--/!q
+        s/^[[:space:]]*--[[:space:]]*@envy[[:space:]]+'"$argv[2]"'[[:space:]]+"(([^"\\\\]|\\\\.)*)".*/\\1/p
+    ' "$argv[1]")
+    test (count $vals) -gt 0; and echo $vals[-1]
+end
+
 function _envy_find_manifest
     set -l d $PWD
     while test "$d" != /
         if test -f "$d/envy.lua"
-            set -l is_root true
-            if head -20 "$d/envy.lua" | grep -qE '^--[[:space:]]*@envy[[:space:]]+root[[:space:]]+"false"'
-                set is_root false
-            end
-            if test "$is_root" = true
+            set -l root_val (_envy_header_directive "$d/envy.lua" root)
+            if test "$root_val" != false
                 echo "$d"
                 return 0
             end
@@ -30,8 +49,7 @@ function _envy_find_manifest
 end
 
 function _envy_parse_bin
-    set -l manifest "$argv[1]/envy.lua"
-    set -l bin_val (head -20 "$manifest" | sed -nE 's/^--[[:space:]]*@envy[[:space:]]+bin[[:space:]]+"(([^"\\\\]|\\\\.)*)".*/\\1/p')
+    set -l bin_val (_envy_header_directive "$argv[1]/envy.lua" bin)
     test -n "$bin_val"; and echo "$bin_val"
 end
 

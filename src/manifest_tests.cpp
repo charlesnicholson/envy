@@ -151,6 +151,101 @@ PACKAGES = {}
   CHECK_FALSE(meta.cache_for_platform().has_value());
 }
 
+// The six cases below fix where the header ends. Each has a twin in
+// functional_tests/test_bootstrap.py driving the launcher scripts over the same bytes: the
+// launchers resolve a version and a mirror before this parser ever runs, so a rule that
+// holds in only one of them downloads one release and execs a binary that wanted another.
+
+TEST_CASE("parse_envy_meta reads past a tab-indented comment") {
+  // Tabs and spaces indent a header line alike. Worth its own case because cmd.exe's
+  // `for /f` strips only the delimiters it is given: envy.bat naming space alone left the
+  // tab in the first token, so a tab-indented comment ended its header two lines early.
+  auto const meta{ envy::parse_envy_meta(
+      "\t-- a tab-indented comment\n"
+      "\t-- @envy bin \"tools\"\n"
+      "-- @envy version \"3.2.1\"\n"
+      "PACKAGES = {}\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "3.2.1");
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "tools");
+}
+
+TEST_CASE("parse_envy_meta takes the last of a repeated directive") {
+  // Assignment per match, so the later line wins -- what an author editing a value in
+  // place and leaving the old line above it would expect. The launchers' read loops
+  // overwrite the same way, and the four shell hooks scan the whole header rather than
+  // stopping at the first hit, so none of the six can put a different bin directory on
+  // PATH than another.
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy bin \"old\"\n"
+      "-- @envy bin \"new\"\n"
+      "PACKAGES = {}\n") };
+
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "new");
+}
+
+TEST_CASE("parse_envy_meta ends the header at a semicolon-led line") {
+  // Lua's empty statement is a line of code like any other. Worth its own case because
+  // cmd.exe's `for /f` reads `;` as a comment marker by default and skipped such a line
+  // instead of stopping on it, so envy.bat took the directive underneath; it now passes
+  // `eol=` to clear the marker.
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy version \"1.2.3\"\n"
+      ";PACKAGES = {}\n"
+      "-- @envy version \"9.9.9\"\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "1.2.3");
+}
+
+TEST_CASE("parse_envy_meta ends the header at a block comment's continuation line") {
+  // `  still inside it ]]` starts no `--`, so the scan treats it as code. A reader that
+  // tracked Lua block-comment nesting instead would take the directive below it.
+  auto const meta{ envy::parse_envy_meta(R"(--[[ a block comment
+  still inside it ]]
+-- @envy version "9.9.9"
+)") };
+
+  CHECK_FALSE(meta.version.has_value());
+}
+
+TEST_CASE("parse_envy_meta reads a directive inside a block comment") {
+  // Inside the block the line does start with `--`, so it parses. Pinned as the deliberate
+  // consequence of matching on the comment marker alone, not endorsed as a way to write
+  // one.
+  auto const meta{ envy::parse_envy_meta(R"(--[[
+-- @envy version "7.6.5"
+]]
+PACKAGES = {}
+)") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "7.6.5");
+}
+
+TEST_CASE("parse_envy_meta reads a CRLF manifest") {
+  // A blank line is `\r` alone, which the stop-at-code test counts as whitespace, and a
+  // value ends at its closing quote -- so no carriage return reaches a download URL.
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy version \"5.4.3\"\r\n\r\n-- @envy bin \"tools\"\r\nPACKAGES = {}\r\n") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "5.4.3");
+  REQUIRE(meta.bin.has_value());
+  CHECK(*meta.bin == "tools");
+}
+
+TEST_CASE("parse_envy_meta reads a header that runs to end of file") {
+  // No code line to stop at, and no trailing newline either.
+  auto const meta{ envy::parse_envy_meta("-- @envy version \"6.5.4\"") };
+
+  REQUIRE(meta.version.has_value());
+  CHECK(*meta.version == "6.5.4");
+}
+
 TEST_CASE("parse_envy_meta reads the whole header past blanks and plain comments") {
   auto const meta{ envy::parse_envy_meta(R"(-- a plain comment
 
