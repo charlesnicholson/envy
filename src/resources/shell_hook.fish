@@ -17,12 +17,19 @@ end
 # preamble nor a directive-shaped comment in the package table can make this hook put a
 # different project's bin directory on PATH than envy itself resolves. `q` bounds the read to
 # the header, so manifest size is irrelevant.
+#
+# The sed keeps scanning after a hit, so a repeated directive prints once per occurrence and
+# the last is taken -- parse_envy_meta overwrites on each match and src/resources/envy's read
+# loop does too. Indexing is what picks it: bare command substitution would hand a caller a
+# multi-element list, and fish joins those with a space inside quotes, so a doubled
+# `root "false"` would compare as `false false` and read as root=true.
 function _envy_header_directive
-    sed -nE '
+    set -l vals (sed -nE '
         /^[[:space:]]*$/d
         /^[[:space:]]*--/!q
         s/^[[:space:]]*--[[:space:]]*@envy[[:space:]]+'"$argv[2]"'[[:space:]]+"(([^"\\\\]|\\\\.)*)".*/\\1/p
-    ' "$argv[1]"
+    ' "$argv[1]")
+    test (count $vals) -gt 0; and echo $vals[-1]
 end
 
 function _envy_find_manifest

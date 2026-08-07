@@ -37,6 +37,13 @@ _ROOT_FALSE_AFTER_PREAMBLE = (
 # preamble is the directory the hook has to put on PATH.
 _BIN_AFTER_PREAMBLE = _HEADER_PREAMBLE + '\n\t-- @envy bin "tools"\nPACKAGES = {}\n'
 
+# `bin` twice in one header. parse_envy_meta assigns per match, so the last wins, and the
+# launchers' read loops overwrite the same way. Both directories exist in the fixture, so a
+# hook that stops at the first hit puts a real directory on PATH -- just not the one the
+# binary deploys into. Shared across the four classes because all four used to do exactly
+# that.
+_BIN_REPEATED_LAST_WINS = '-- @envy bin "stale"\n-- @envy bin "tools"\nPACKAGES = {}\n'
+
 
 def _write_project(parent_dir: Path, name: str, content: str) -> Path:
     """A project directory under `parent_dir` with a `tools/` bin dir and `content`."""
@@ -283,6 +290,20 @@ class TestBashHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "hdr-bin-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_bash_hook_test(
+            f'source "{self._hook_path}"\n'
+            f'cd "{project}"\n'
+            f'_ENVY_LAST_PWD=""\n'
+            f"_envy_hook\n"
+            f'echo "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     def test_bin_dir_with_spaces(self) -> None:
         project = self._temp_dir / "space proj"
@@ -629,6 +650,16 @@ class TestZshHook(unittest.TestCase):
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
 
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "zsh-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_zsh_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho "$PATH"'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
+
     # --- v2: enter/leave messages ---
 
     def test_entering_message_on_cd_into_project(self) -> None:
@@ -971,6 +1002,16 @@ class TestFishHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "fish-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_fish_hook_test(
+            f'source "{self._hook_path}"\ncd "{project}"\necho $PATH'
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     @staticmethod
     def _hook_test_env() -> dict[str, str]:
@@ -1357,6 +1398,20 @@ class TestPowerShellHook(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
         self.assertIn(str(project / "tools"), result.stdout)
+
+    def test_repeated_bin_directive_takes_the_last(self) -> None:
+        project = _write_project(self._temp_dir, "ps-hdr-dup", _BIN_REPEATED_LAST_WINS)
+        (project / "stale").mkdir(exist_ok=True)
+        result = self._run_pwsh_hook_test(
+            f'. "{self._hook_path}"\n'
+            f'Set-Location "{project}"\n'
+            f"$global:_ENVY_LAST_PWD = $null\n"
+            f"_envy_hook\n"
+            f"Write-Output $env:PATH"
+        )
+        self.assertEqual(0, result.returncode, f"stderr: {result.stderr}")
+        self.assertIn(str(project / "tools"), result.stdout)
+        self.assertNotIn(str(project / "stale"), result.stdout)
 
     def test_initial_activation_inside_project(self) -> None:
         """Dot-sourcing hook while already in a project activates immediately."""

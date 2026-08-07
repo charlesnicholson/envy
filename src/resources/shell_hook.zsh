@@ -30,6 +30,11 @@ prompt_envy() {
 # NO_TYPESET_SILENT default makes `local line` print a prior value. `|| [[ -n "$line" ]]`
 # catches a manifest with no final newline, which `read` reports as a failure after
 # filling $line.
+#
+# The whole header is read even after a hit: a repeated directive resolves to the last one,
+# because parse_envy_meta overwrites on each match and src/resources/envy's read loop does
+# too. Returning on the first would hand this hook one project's bin directory while the
+# binary deployed another's.
 _envy_header_directive() {
   emulate -L zsh
   REPLY=""
@@ -37,8 +42,8 @@ _envy_header_directive() {
   re='^[[:space:]]*--[[:space:]]*@envy[[:space:]]+'"$2"'[[:space:]]+"(([^"\\]|\\.)*)"'
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ '^[[:space:]]*$' ]]; then continue; fi
-    if [[ ! "$line" =~ '^[[:space:]]*--' ]]; then return 0; fi
-    if [[ "$line" =~ $re ]]; then REPLY="${match[1]}"; return 0; fi
+    if [[ ! "$line" =~ '^[[:space:]]*--' ]]; then break; fi
+    if [[ "$line" =~ $re ]]; then REPLY="${match[1]}"; fi
   done < "$1"
 }
 

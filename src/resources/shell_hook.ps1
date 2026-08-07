@@ -16,14 +16,34 @@ _envy_detect_utf8
 # line cap: the header ends where the code starts, so neither a long preamble nor a
 # directive-shaped comment in the package table can make this hook put a different project's
 # bin directory on PATH than envy itself resolves.
+#
+# A StreamReader, not `foreach ($line in Get-Content ...)`: the foreach statement runs its
+# collection expression to completion before its first iteration, so Get-Content would read
+# and materialize the whole manifest even though this leaves at the first code line -- and it
+# runs twice per directory change, once for root and once for bin. Disposed explicitly rather
+# than leaning on [System.IO.File]::ReadLines(), whose enumerator the foreach statement is not
+# guaranteed to dispose; a leaked handle denies writes to envy.lua until GC. Both call sites
+# pass an absolute path, which .NET requires -- its working directory is not PowerShell's.
+#
+# The whole header is read even after a hit: a repeated directive resolves to the last one,
+# because parse_envy_meta overwrites on each match and src/resources/envy's read loop does too.
 function _envy_header_directive($manifest, $key) {
     $re = '^\s*--\s*@envy\s+' + $key + '\s+"([^"\\]*(?:\\.[^"\\]*)*)"'
-    foreach ($line in Get-Content -LiteralPath $manifest) {
-        if ($line -match '^\s*$') { continue }
-        if ($line -notmatch '^\s*--') { return $null }
-        if ($line -match $re) { return $Matches[1] }
+    $found = $null
+    $reader = $null
+    try {
+        $reader = [System.IO.File]::OpenText($manifest)
+        while ($null -ne ($line = $reader.ReadLine())) {
+            if ($line -match '^\s*$') { continue }
+            if ($line -notmatch '^\s*--') { break }
+            if ($line -match $re) { $found = $Matches[1] }
+        }
+    } catch {
+        return $null
+    } finally {
+        if ($reader) { $reader.Dispose() }
     }
-    return $null
+    return $found
 }
 
 function _envy_find_manifest {

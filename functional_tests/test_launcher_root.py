@@ -81,6 +81,12 @@ _ROOT_FALSE_BELOW_SEMICOLON = "\n".join(
     ['-- @envy bin "tools"', ";PACKAGES = {}", '-- @envy root "false"']
 )
 
+# `root` twice in one header. parse_envy_meta assigns per match, so the last wins and this
+# manifest is not a root; both launchers overwrite the same way and must walk past it.
+_ROOT_REPEATED_LAST_WINS = "\n".join(
+    ['-- @envy root "true"', '-- @envy root "false"', "PACKAGES = {}"]
+)
+
 
 _LAUNCHER_DIR = Path(__file__).resolve().parent.parent / "src" / "resources"
 
@@ -294,6 +300,11 @@ class TestBashLauncherRootDiscovery(unittest.TestCase):
         self._write_manifest(self._parent, None)
         self._assert_manifest_at(self._child)
 
+    def test_repeated_root_directive_takes_the_last(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_REPEATED_LAST_WINS)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
+
 
 @unittest.skipUnless(sys.platform == "win32", "Windows-only tests")
 class TestBatchLauncherRootDiscovery(unittest.TestCase):
@@ -474,6 +485,11 @@ class TestBatchLauncherRootDiscovery(unittest.TestCase):
         (self._child / "envy.lua").write_text(_ROOT_FALSE_BELOW_SEMICOLON)
         self._write_manifest(self._parent, None)
         self._assert_manifest_at(self._child)
+
+    def test_repeated_root_directive_takes_the_last(self) -> None:
+        (self._child / "envy.lua").write_text(_ROOT_REPEATED_LAST_WINS)
+        self._write_manifest(self._parent, None)
+        self._assert_manifest_at(self._parent)
 
 
 if __name__ == "__main__":
