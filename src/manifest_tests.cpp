@@ -177,9 +177,10 @@ TEST_CASE("parse_envy_meta ends the header at a semicolon-led line") {
   // cmd.exe's `for /f` reads `;` as a comment marker by default and skipped such a line
   // instead of stopping on it, so envy.bat took the directive underneath; it now passes
   // `eol=` to clear the marker.
-  auto const meta{ envy::parse_envy_meta("-- @envy version \"1.2.3\"\n"
-                                         ";PACKAGES = {}\n"
-                                         "-- @envy version \"9.9.9\"\n") };
+  auto const meta{ envy::parse_envy_meta(
+      "-- @envy version \"1.2.3\"\n"
+      ";PACKAGES = {}\n"
+      "-- @envy version \"9.9.9\"\n") };
 
   REQUIRE(meta.version.has_value());
   CHECK(*meta.version == "1.2.3");
